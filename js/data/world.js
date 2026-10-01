@@ -1,0 +1,122 @@
+// Port Solace — map layout. The city is a 12x12-block grid (150 m blocks)
+// with a highway to the north, desert to the south, mountains to the west
+// and the harbor to the south-east. Positions are metres; -z is north.
+
+export const GRID = [];
+for (let v = -900; v <= 900; v += 150) GRID.push(v);
+export const BLOCK = 150;
+export const ROAD_W = 16;          // city street, kerb to kerb
+export const HWY_Z = -1350;        // Glory Highway centreline
+export const HWY_X = [-2700, 2700];
+export const HWY_W = 30;
+export const DESERT_Z = 1050;      // desert starts south of here
+export const DESERT_ROAD_END = 2700;
+export const RIVER_X = -1650;
+export const TUNNEL = [1450, 1900];
+export const SEA_X = 1000;         // harbor water east of here (south half)
+
+export const STREET_NS = ['Bayview Ave', 'Carver Ave', 'Delmar Ave', 'Elm St', 'Foundry Ave', 'Grand Ave', 'Main St', 'Harbor Ave', 'Ironside Blvd', 'Juniper Ave', 'Kessler Ave', 'Lighthouse Rd', 'Marina Way'];
+export const STREET_EW = ['1st St', '2nd St', '3rd St', '4th St', '5th St', '6th St', 'Central St', '8th St', '9th St', '10th St', '11th St', '12th St', 'Shore Dr'];
+
+export function districtAt(x, z) {
+  if (z < -1000) return 'Glory Highway';
+  if (z > DESERT_Z) return 'Dust Flats (Desert)';
+  if (x < -1000) return z < -100 ? 'Northridge Mountains' : 'West Hills';
+  if (x > SEA_X) return z > 300 ? 'Port Solace Harbor' : 'Eastern Shore';
+  if (Math.abs(x) <= 300 && Math.abs(z) <= 300) return 'Downtown';
+  if (x > 300) return z > 600 ? 'Harbor District' : 'Ironside Industrial';
+  if (x < -300) return 'Westbrook Residential';
+  return z < 0 ? 'Midtown North' : 'Southside';
+}
+
+export function blockCenter(i, j) {
+  return { x: -825 + BLOCK * i, z: -825 + BLOCK * j };
+}
+
+// Point on the kerb of block (i,j), facing the street on `side`.
+function front(i, j, side, along = 0) {
+  const c = blockCenter(i, j);
+  const d = BLOCK / 2 - 13;
+  switch (side) {
+    case 'N': return { x: c.x + along, z: c.z - d, face: Math.PI };
+    case 'S': return { x: c.x + along, z: c.z + d, face: 0 };
+    case 'E': return { x: c.x + d, z: c.z + along, face: Math.PI / 2 };
+    case 'W': return { x: c.x - d, z: c.z + along, face: -Math.PI / 2 };
+  }
+}
+
+// type: what pressing E does there. tier: rep tier to use it.
+const L = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], ...front(i, j, side), ...extra });
+
+export const LOCATIONS = [
+  L('eastgate_studio', 'home', 'Eastgate Studio (Home)', 8, 6, 'W', { color: '#ffffff', icon: 'home' }),
+  L('rusty_used', 'usedlot', "Rusty's Used Autos", 5, 9, 'N', { color: '#c8b98a', icon: 'car', contact: 'sal' }),
+  L('auto_row', 'dealer', 'Solace Auto Row (Ford · Chevy · Dodge · Ram · Jeep · GMC · Cadillac)', 6, 4, 'S', { color: '#f2f2f2', icon: 'car',
+    makes: ['ford', 'lincoln', 'chevrolet', 'gmc', 'cadillac', 'buick', 'dodge', 'chrysler', 'ram', 'jeep'] }),
+  L('pacific_imports', 'dealer', 'Pacific Imports (Toyota · Honda · Nissan · Mazda · Subaru · Hyundai · Kia)', 7, 4, 'S', { color: '#f2f2f2', icon: 'car',
+    makes: ['toyota', 'lexus', 'honda', 'acura', 'nissan', 'infiniti', 'mazda', 'subaru', 'mitsubishi', 'hyundai', 'kia', 'genesis', 'scion'] }),
+  L('eurohaus', 'dealer', 'EuroHaus Motors (BMW · Mercedes · Audi · VW · Porsche)', 4, 4, 'S', { color: '#f2f2f2', icon: 'car',
+    makes: ['bmw', 'mercedes', 'audi', 'volkswagen', 'porsche', 'volvo', 'mini', 'jaguar', 'landrover', 'alfaromeo'] }),
+  L('volt_row', 'dealer', 'Volt Row EV Center (Tesla · Rivian · Lucid)', 3, 4, 'S', { color: '#13b3c4', icon: 'car', makes: ['tesla', 'rivian', 'lucid'] }),
+  L('halo_exotics', 'dealer', 'Halo Exotics (Ferrari · Lamborghini · McLaren · Aston Martin · Bentley)', 5, 2, 'S', { color: '#e8c21a', icon: 'car',
+    makes: ['ferrari', 'lamborghini', 'mclaren', 'astonmartin', 'bentley', 'rollsroyce', 'maserati', 'lotus', 'bugatti', 'koenigsegg', 'pagani'] }),
+  L('torque_temple', 'perf', 'Torque Temple Performance', 9, 5, 'W', { color: '#e8641a', icon: 'wrench', contact: 'rosa' }),
+  L('vega_kustoms', 'visual', 'Vega Kustoms', 3, 7, 'E', { color: '#d12a8a', icon: 'spray', contact: 'manny' }),
+  L('second_chance', 'repair', 'Second Chance Collision', 7, 8, 'N', { color: '#1b4fc4', icon: 'repair' }),
+  L('gas_westbrook', 'gas', 'Volt & Petrol', 2, 4, 'E', { color: '#1f8f3a', icon: 'gas' }),
+  L('gas_harbor', 'gas', 'Gas-N-Go', 10, 8, 'W', { color: '#1f8f3a', icon: 'gas' }),
+  L('gas_south', 'gas', 'Volt & Petrol', 6, 10, 'N', { color: '#1f8f3a', icon: 'gas' }),
+  L('luckys', 'food', "Lucky's 24hr Diner", 6, 7, 'N', { color: '#e8c21a', icon: 'food' }),
+  L('noodle', 'food', 'Midnight Noodle Bar', 9, 3, 'S', { color: '#e8c21a', icon: 'food' }),
+  L('threadline', 'clothing', 'Threadline Streetwear', 4, 6, 'E', { color: '#a01aff', icon: 'shirt' }),
+  L('bayline', 'realty', 'Bayline Realty', 5, 5, 'S', { color: '#1f8f3a', icon: 'key', contact: 'priya' }),
+  L('pspd_central', 'police', 'PSPD Central Precinct', 5, 6, 'N', { color: '#1b4fc4', icon: 'shield' }),
+  L('pspd_harbor', 'police', 'PSPD Harbor Precinct', 10, 10, 'N', { color: '#1b4fc4', icon: 'shield' }),
+  L('harbor_loft', 'property', 'Harbor Loft', 9, 10, 'N', { color: '#ffffff', icon: 'home' }),
+  L('westside_house', 'property', 'Westbrook House', 1, 6, 'E', { color: '#ffffff', icon: 'home' }),
+  L('hillcrest_villa', 'property', 'Hillcrest Villa', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
+  L('foundry_warehouse', 'property', 'Foundry Warehouse Garage', 11, 3, 'W', { color: '#ffffff', icon: 'home' }),
+  L('pier9', 'meet', 'Pier 9 Lot', 11, 11, 'W', { color: '#ff1a2e', icon: 'meet', tier: 1 }),
+  L('kessler_lot', 'meet', 'Kessler Mall Lot', 2, 9, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  L('old_foundry', 'meet', 'The Old Foundry', 10, 2, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
+  { id: 'ironline', type: 'drag', name: 'Ironline Dragway', x: 34, z: 1260, face: Math.PI / 2, color: '#ff1a2e', icon: 'flag' },
+  { id: 'glory_onramp', type: 'roll', name: 'Glory Highway On-Ramp', x: 12, z: -1180, face: Math.PI, color: '#ff1a2e', icon: 'flag', road: 'highway' },
+  { id: 'ironside_start', type: 'roll', name: 'Ironside Blvd Runs', x: 312, z: 650, face: 0, color: '#ff1a2e', icon: 'flag', road: 'industrial' },
+  { id: 'dustline_start', type: 'roll', name: 'Dust Line Road', x: 12, z: 1120, face: 0, color: '#ff1a2e', icon: 'flag', road: 'desert', tier: 2 },
+  { id: 'northridge_start', type: 'roll', name: 'Northridge Pass', x: -1120, z: -330, face: -Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'mountain', tier: 4 },
+  { id: 'gas_desert', type: 'gas', name: 'Last Chance Gas', x: -24, z: 1700, face: -Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
+];
+
+export const LOC_BY_ID = Object.fromEntries(LOCATIONS.map(l => [l.id, l]));
+
+// Homes. `slots` is garage capacity. Safehouses clear a pursuit in cooldown.
+export const PROPERTIES = {
+  eastgate_studio:   { name: 'Eastgate Studio', price: 0, slots: 2, desc: 'One room, one window, a two-car shared carport. Home.' },
+  harbor_loft:       { name: 'Harbor Loft', price: 42000, slots: 3, desc: 'Converted cannery loft with a view of the cranes.' },
+  westside_house:    { name: 'Westbrook House', price: 135000, slots: 4, desc: 'Quiet street, four-car garage with a lift.' },
+  hillcrest_villa:   { name: 'Hillcrest Villa', price: 780000, slots: 8, desc: 'Hillside glass house with a heated showroom garage.', tier: 4 },
+  foundry_warehouse: { name: 'Foundry Warehouse Garage', price: 260000, slots: 12, desc: 'A crew HQ: dyno cell, paint booth, twelve bays.', tier: 3 },
+};
+
+// Race roads available for roll racing (built by race/track.js).
+export const ROADS = {
+  industrial: { name: 'Ironside Blvd', theme: 'industrial', lanes: 4, traffic: 0.35, tier: 1, heat: 0.6, desc: 'Four lanes between the warehouses. Trucks at night.' },
+  highway:    { name: 'Glory Highway', theme: 'highway', lanes: 6, traffic: 0.55, tier: 1, heat: 1.0, desc: 'Six lanes, long and straight, and the troopers know it.' },
+  desert:     { name: 'Dust Line Road', theme: 'desert', lanes: 2, traffic: 0.12, tier: 2, heat: 0.3, desc: 'Two-lane desert straight. Nothing out here but heat haze.' },
+  mountain:   { name: 'Northridge Pass Straight', theme: 'mountain', lanes: 2, traffic: 0.2, tier: 4, heat: 0.4, desc: 'The one straight piece of the pass. Pine trees and a long drop.' },
+  strip:      { name: 'Ironline Dragway', theme: 'strip', lanes: 2, traffic: 0, tier: 1, heat: 0, desc: 'Sanctioned strip. Prepped surface, real timing.' },
+};
+
+export const ROLL_SPEEDS = [30, 40, 50, 60, 70];
+export const ROLL_DISTANCES = [
+  { id: 'eighth', name: '1/8 mile' }, { id: 'quarter', name: '1/4 mile' },
+  { id: 'half', name: '1/2 mile' }, { id: 'mile', name: '1 mile' },
+];
+export const DRAG_DISTANCES = [
+  { id: 'eighth', name: '1/8 mile' }, { id: 'quarter', name: '1/4 mile' }, { id: 'half', name: '1/2 mile' },
+];
+
+// Wager ceilings per tier.
+export const WAGER_CAP = [0, 1500, 6000, 20000, 75000, 300000];
+
+export const GAS = { regular: 3.79, premium: 4.59, e85: 2.99, kwh: 0.38 };

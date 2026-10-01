@@ -1,0 +1,31 @@
+name: CI
+
+# Data sanity checks plus a headless-browser playthrough (title → new game →
+# Marketplace → driving → garage → PartsHub → drag race → roll race → save).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run check:data
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+        timeout-minutes: 6
+      - name: Smoke test
+        run: |
+          python3 -m http.server 8123 &
+          sleep 1
+          npm run check:smoke
+        timeout-minutes: 10

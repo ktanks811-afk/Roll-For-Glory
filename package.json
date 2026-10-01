@@ -1,0 +1,15 @@
+{
+  "name": "roll-for-glory",
+  "private": true,
+  "type": "module",
+  "description": "Dev tooling only — the game ships as static files with no build step.",
+  "scripts": {
+    "check:data": "node scripts/check-data.mjs",
+    "check:smoke": "node scripts/smoke.mjs",
+    "metrics": "node scripts/metrics.mjs",
+    "serve": "python3 -m http.server 8000"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}

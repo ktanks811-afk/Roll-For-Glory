@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Roll for Glory</title>
+<meta name="description" content="Build your car. Build your name. Roll for Glory. A 2D open-world street racing life sim.">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud" class="hidden"></div>
+  <div id="screen"></div>
+  <div id="panels"></div>
+  <div id="touch" class="hidden"></div>
+  <div id="modals"></div>
+  <div id="toasts"></div>
+  <div id="boot" class="boot">
+    <div class="boot-logo">ROLL <span>FOR</span> GLORY</div>
+    <div class="boot-msg" id="boot-msg">Loading Port Solace…</div>
+  </div>
+  <noscript><div class="boot"><div class="boot-msg">Roll for Glory needs JavaScript turned on.</div></div></noscript>
+  <script type="module" src="js/main.js"></script>
+  <script>
+    // Opening index.html straight off disk blocks ES modules. Say so instead
+    // of sitting on "Loading…" forever.
+    if (location.protocol === 'file:') {
+      document.getElementById('boot-msg').innerHTML = 'This game has to be served over http(s).<br>Run <code>./serve.sh</code> (Mac/Linux) or <code>serve.cmd</code> (Windows), or play the GitHub Pages link.';
+    }
+    window.addEventListener('error', e => {
+      const m = document.getElementById('boot-msg');
+      if (m && document.getElementById('boot').style.display !== 'none') m.textContent = 'Failed to start: ' + (e.message || e);
+    });
+  </script>
+</body>
+</html>
