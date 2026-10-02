@@ -131,7 +131,7 @@ export class TrafficSystem {
   // ---------------- pedestrians ----------------
   updatePeds(dt, ctx) {
     const { px, pz } = ctx;
-    this.peds = this.peds.filter(p => Math.hypot(p.x - px, p.z - pz) < 260);
+    this.peds = this.peds.filter(p => Math.hypot(p.x - px, p.z - pz) < 260 && !p.gone);
     const want = ctx.inCity ? (ctx.night ? 18 : 40) : 0;
     let guard = 0;
     while (this.peds.length < want && guard++ < 4) {
@@ -145,6 +145,8 @@ export class TrafficSystem {
       if (Math.hypot(p.x - px, p.z - pz) > 60) this.peds.push(p);
     }
     for (const p of this.peds) {
+      if (p.down) { p.down -= dt; if (p.down <= 0) p.gone = true; continue; }
+      if (p.cower) continue;
       p.t = (p.t + p.sp * p.dir * dt * (p.scared ? 2.5 : 1) + p.size * 4) % (p.size * 4);
       // jump out of the way of fast cars
       for (const c of ctx.movers) {

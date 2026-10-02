@@ -349,6 +349,8 @@ export const audio = {
   nos() { noiseHit(0.5, 0.12, 4000, 'highpass'); },
   // a crackle/bang from the exhaust (2-step limiter cuts)
   pop(vol = 1) { noiseHit(0.09, 0.2 * vol, 1500, 'bandpass'); tone(95, 0.1, 'sine', 0.22 * vol, -50); },
+  // a gunshot: sharp crack plus a low thump (kind scales the size)
+  gunshot(size = 1) { noiseHit(0.22, Math.min(0.7, 0.4 * size), 2400, 'highpass'); noiseHit(0.35, Math.min(0.6, 0.3 * size), 700); tone(70, 0.22, 'sine', 0.35 * size, -40); },
   phone() { tone(1046, 0.08, 'sine', 0.1); setTimeout(() => tone(1318, 0.1, 'sine', 0.1), 110); },
   radio() { noiseHit(0.12, 0.06, 2200, 'bandpass'); },
 };

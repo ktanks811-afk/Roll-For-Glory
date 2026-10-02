@@ -54,6 +54,7 @@ export class PoliceSystem {
     this.seen = false;
     this.decayHold = 0;
     this.noiseAtt = 0;   // 0..1: how much attention a loud exhaust has drawn
+    this.gunHeat = 0;    // shots fired recently
     this.suspicion = 0;  // builds while a cop watches you speed or burn rubber; a chase starts when it fills
     this.record = [];    // what you did since the last stop: [{ kind, text, fine }]
   }
@@ -113,34 +114,36 @@ export class PoliceSystem {
     for (const c of this.patrols) c.update(dt, w.trafficCtx);
 
     // ---- detection ----
-    this.seen = p.inCar ? this.detect(p.x, p.z) : false;
+    const watchable = p.inCar || !!w.combat?.armed || !!w.combat?.rob;
+    this.seen = watchable ? this.detect(p.x, p.z) : false;
     if (this.seen) { this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz }; this.unseenT = 0; }
     else this.unseenT += dt;
 
     // Offences only count when a cop is close enough to actually see them.
     // Speeding and burnouts have to go on for a few seconds before anyone
     // reacts; running a light or hitting something gets noticed at once.
-    const witnessed = p.inCar && (this.phase !== 'none' ? this.seen : this.detect(p.x, p.z, 65));
+    const witnessed = watchable && (this.phase !== 'none' ? this.seen : this.detect(p.x, p.z, 65));
     const o = w.offence;
     if (witnessed && o) {
-      const gradual = o.kind === 'speeding' || o.kind === 'burnout';
+      const gradual = o.kind === 'speeding' || o.kind === 'burnout' || o.kind === 'brandish';
       if (this.phase === 'none' && gradual) {
         this.suspicion += o.heat;
         this.suspicionHold = 2;
         if (this.suspicion >= 1) {
           this.suspicion = 0;
-          this.addHeat(o.heat, o.text, w.hud); this.note(o); this.startChase(w);
+          this.addHeat(o.kind === 'brandish' ? 0.6 : o.heat, o.text, w.hud); this.note(o); this.startChase(w, o.kind === 'brandish');
         }
       } else {
         this.addHeat(o.heat, o.text, w.hud);
         this.note(o);
-        if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') this.startChase(w);
+        if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') this.startChase(w, o.kind === 'robbery' || o.kind === 'assault');
       }
     } else if (this.suspicion > 0) {
       this.suspicionHold = (this.suspicionHold || 0) - dt;
       if (this.suspicionHold <= 0) this.suspicion = Math.max(0, this.suspicion - dt * 0.3);
     }
 
+    this.gunHeat = Math.max(0, this.gunHeat - dt * 0.25);
     this.hear(dt, w);
 
     // ---- state machine ----
@@ -155,7 +158,7 @@ export class PoliceSystem {
       }
       // busted: stopped with a cop on top of you
       const near = this.units.some(u => Math.hypot(u.x - p.x, u.z - p.z) < 9) || this.patrols.some(u => Math.hypot(u.x - p.x, u.z - p.z) < 9);
-      if (p.inCar && p.speed < 1.5 && near) this.bustT += dt; else this.bustT = Math.max(0, this.bustT - dt * 2);
+      if ((p.inCar || w.combat?.armed) && p.speed < 1.5 && near) this.bustT += dt; else this.bustT = Math.max(0, this.bustT - dt * 2);
       if (this.bustT > (this.phase === 'notice' ? 2.5 : 3.5)) { this.busted(w); return; }
     } else if (this.phase === 'search') {
       const d = Math.hypot(p.x - this.lastSeen.x, p.z - this.lastSeen.z);
@@ -250,9 +253,9 @@ export class PoliceSystem {
     this.unseenT = near ? 0 : -18;   // a unit coming from across town gets time to arrive
   }
 
-  startChase(w) {
+  startChase(w, force = false) {
     if (this.phase === 'none') {
-      this.phase = this.level >= 2 ? 'chase' : 'notice';
+      this.phase = force || this.level >= 2 ? 'chase' : 'notice';
       w.hud.radio(this.phase === 'notice' ? 'PSPD: Pull over! (Stop to take the ticket, or run.)' : 'Pursuit initiated.');
       w.audio.siren(true, 0.6);
       w.audio.music('pursuit');
@@ -364,6 +367,35 @@ export class PoliceSystem {
     }
   }
 
+  // A shot was fired (kind 'hit' when it struck someone). Anyone within earshot
+  // reports it; dispatch doesn't need to see you.
+  gunshot(w, kind = 'shot', melee = false, auto = false) {
+    if (auto) this.note({ kind: 'auto', text: 'Possession and use of a machine gun (FRT / full-auto conversion).', fine: 15000 });
+    this.gunHeat += kind === 'hit' ? 1 : 0.4;
+    if (this.gunHeat < 0.8) return;
+    this.gunHeat = 0;
+    const p = w.player;
+    this.addHeat(kind === 'hit' ? 1.2 : 0.7, melee ? 'Assault reported.' : 'Shots fired!', w.hud);
+    this.note({ kind: 'shots', text: melee ? 'Assault with a weapon.' : 'Discharging a firearm in public.', fine: kind === 'hit' ? 4000 : 1800 });
+    this.lastSeen = { x: p.x, z: p.z, vx: 0, vz: 0 };
+    if (this.phase === 'none') {
+      const near = this.allCars().some(c => Math.hypot(c.x - p.x, c.z - p.z) < 160);
+      this.startChase(w, true);
+      this.unseenT = near ? 0 : -10;
+    } else if (this.phase === 'search' || this.phase === 'cooldown') this.startChase(w, true);
+  }
+
+  // Silent alarm / 911 call from a robbery: units head for the spot.
+  dispatchRobbery(w, loc, mugging = false) {
+    const p = w.player;
+    if (!mugging) w.hud.radio(`Dispatch: 211 in progress at ${loc.name}. Silent alarm. All units respond.`);
+    else w.hud.radio('Dispatch: caller reports an armed mugging. Units responding.');
+    this.addHeat(mugging ? 0.9 : 1.6, 'Armed robbery.', w.hud);
+    this.note({ kind: 'robbery', text: mugging ? 'Armed mugging.' : `Armed robbery — ${loc.name}.`, fine: mugging ? 4000 : 6000 });
+    this.lastSeen = { x: loc.x ?? p.x, z: loc.z ?? p.z, vx: 0, vz: 0 };
+    if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') { this.startChase(w, true); this.unseenT = -8; }
+  }
+
   busted(w) {
     const lvl = Math.max(1, this.level);
     if (this.phase === 'notice') {
@@ -371,7 +403,7 @@ export class PoliceSystem {
       const record = this.record.length ? this.record : [{ kind: 'reckless', text: 'Failure to maintain safe driving.', fine: 250 }];
       w.onTrafficStop(record);
     } else {
-      w.onBusted(400 * lvl + 250 * (lvl - 1) ** 2, false);
+      w.onBusted(400 * lvl + 250 * (lvl - 1) ** 2, false, this.record.slice());
     }
     this.reset(w);
   }

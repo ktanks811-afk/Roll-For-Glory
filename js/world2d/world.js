@@ -6,6 +6,7 @@ import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, 
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
 import { PoliceSystem } from './police.js';
+import { Combat } from './combat.js';
 import { carSprite, drawCar, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
@@ -58,6 +59,7 @@ export class World {
     this.redLightNode = null;
     this.trafficCtx = { signalT: 0, others: [] };
     this.audio = audio;
+    this.combat = new Combat(this);
     this.spawnPlayer();
   }
 
@@ -146,6 +148,7 @@ export class World {
     if (this.inCar && !this.vehicle) this.inCar = false;
     if (this.inCar && this.vehicle) this.updateDriving(dt);
     else this.updateFoot(dt);
+    this.combat.update(dt);
     this.updateOnline(dt);
 
     // traffic + police
@@ -483,8 +486,9 @@ export class World {
     this.ui.toast('SPIKE STRIP! Tires are shredded — grip is gone.', 'bad');
   }
 
-  onBusted(fine, ticketOnly) {
+  onBusted(fine, ticketOnly, record = []) {
     const s = this.s;
+    fine += ticketOnly ? 0 : this.combat.onBusted(record);
     const insured = s.insurance;
     const total = Math.round(fine * (insured && !ticketOnly ? 0.75 : 1));
     if (!spend(s, total, ticketOnly ? 'PSPD traffic citation' : 'PSPD fines + impound')) {
@@ -569,7 +573,11 @@ export class World {
     if (this.inCar && this.vehicle && this.vehicle.speed > 4 && !inside) best = null;
     if (inside && this.inCar && this.vehicle.speed > 6) best = null;
     this.nearLoc = best;
-    if (best && input.pressed('interact')) this.ui.openPlace(best, this);
+    if (input.pressed('interact')) {
+      if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
+      else if (best && this.combat.armed && this.combat.storeNear()) this.ui.toast('Holster your weapon (G) to go inside.', 'info');
+      else if (best) this.ui.openPlace(best, this);
+    }
   }
 
   // Your other cars, parked in the bays of the garages you own.
@@ -655,7 +663,8 @@ export class World {
     // pedestrians
     for (const pd of this.traffic.peds) {
       if (pd.x < v.x0 || pd.x > v.x1 || pd.z < v.z0 || pd.z > v.z1) continue;
-      drawPerson(ctx, cam.sx(pd.x), cam.sy(pd.z), 0, cam.zoom, { top: pd.color, skin: '#c68e65', hair: '#222' }, this.t * 6 * pd.sp);
+      if (pd.down) { ctx.fillStyle = pd.color; ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.ellipse(cam.sx(pd.x), cam.sy(pd.z), 0.55 * cam.zoom, 0.28 * cam.zoom, 0.6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#c68e65'; ctx.beginPath(); ctx.arc(cam.sx(pd.x) + 0.4 * cam.zoom, cam.sy(pd.z) - 0.15 * cam.zoom, 0.16 * cam.zoom, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+      else drawPerson(ctx, cam.sx(pd.x), cam.sy(pd.z), pd.cower ? Math.PI : 0, cam.zoom, { top: pd.color, skin: '#c68e65', hair: '#222' }, pd.cower ? 0 : this.t * 6 * pd.sp);
     }
     // cars
     const cars = [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.police.blocks.flatMap(b => b.cars)];
@@ -680,6 +689,7 @@ export class World {
       }
     }
     if (!this.inCar) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
+    this.combat.draw(ctx, cam);
 
     const livePeers = online.active ? this.drawPeers(ctx, v) : [];
 
@@ -720,6 +730,7 @@ export class World {
 
     drawBuildings(ctx, cam, items, night);
     drawTrees(ctx, cam, items);
+    this.combat.drawOverlay(ctx, cam);
     drawTunnel(ctx, cam);
 
     // helicopter shadow + searchlight

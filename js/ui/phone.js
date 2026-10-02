@@ -16,6 +16,7 @@ import { openGarage } from './garage.js';
 import { openSettings, openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
 import { renderHustle } from './hustle.js';
+import { renderShop } from './shop.js';
 import { renderMap } from './mapapp.js';
 
 const APPS = [
@@ -29,6 +30,7 @@ const APPS = [
   { id: 'races', name: 'Races', icon: '🏁', bg: '#111' },
   { id: 'ryde', name: 'Ryde', icon: '🚕', bg: '#e8c21a' },
   { id: 'hustle', name: 'Hustle', icon: '💼', bg: '#0f6b4f' },
+  { id: 'shop', name: "Amazin'", icon: '📦', bg: '#ff9900' },
   { id: 'crew', name: 'Crew', icon: '👥', bg: '#3a3d46' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
@@ -79,6 +81,7 @@ function renderHome(scr, ctx) {
 
 const RENDER = {};
 RENDER.hustle = renderHustle;
+RENDER.shop = renderShop;
 
 // ---------------- messages ----------------
 RENDER.messages = (scr, ctx) => {

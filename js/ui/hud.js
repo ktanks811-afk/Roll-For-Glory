@@ -15,7 +15,7 @@ import { MiniMap } from './minimap.js';
 import { LEGAL_DB } from '../sim/sound.js';
 
 const HELP = {
-  foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · P phone · M map · C zoom',
+  foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · G draw/holster gun · J/Space/click fire · R reload · P phone · M map · C zoom',
   car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · Enter interact · F get out · P phone',
 };
 
@@ -49,6 +49,7 @@ export class Hud {
       </div>
       </div>
       <div class="hud-radio" data-radio></div>
+      <div class="hud-weapon hidden" data-weapon></div>
       <div class="hud-prompt hidden" data-prompt></div>
       <div class="hud-help" data-help></div>
     `;
@@ -125,9 +126,22 @@ export class Hud {
     const parts = [];
     const tch = touchUi.active;
     if (w.garageHint && !w.nearLoc) parts.push(`<span style="color:#2cff7a">▶</span> ${esc(w.garageHint)}`);
-    if (w.nearLoc) parts.push(`<kbd>${tch ? 'USE' : w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
+    const cb = w.combat;
+    const rp = cb ? cb.robPrompt() : '';
+    if (rp) parts.push(`<kbd>${tch ? 'USE' : 'E'}</kbd> <b style="color:#ff5a5a">${esc(rp)}</b>`);
+    if (w.nearLoc && !(cb && cb.armed)) parts.push(`<kbd>${tch ? 'USE' : w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
     if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${tch ? 'GET IN' : 'F'}</kbd> ${tch ? 'your car' : 'Get in'}`);
     else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push(`<kbd>${tch ? 'GET OUT' : 'F'}</kbd> ${tch ? '' : 'Get out'}`);
+    const wl = cb && !w.inCar ? cb.hudLine() : '';
+    const wq = this.q('weapon');
+    if (wq) {
+      const hp = cb ? Math.round(cb.arms.hp) : 100, ar = cb ? Math.round(cb.arms.armor * 100) : 0;
+      const html = wl ? `🔫 ${wl}${hp < 100 ? ` &nbsp; ❤ ${hp}` : ''}${ar ? ` &nbsp; 🛡 ${ar}%` : ''}` : '';
+      if (wq.dataset.h !== html) { wq.dataset.h = html; wq.innerHTML = html; }
+      wq.classList.toggle('hidden', !html);
+    }
+    const troot = document.getElementById('touch');
+    if (troot) { troot.classList.toggle('armed', !!(cb && cb.armed)); troot.classList.toggle('has-gun', !!(cb && cb.gun && !w.inCar)); }
     const prompt = parts.join(' &nbsp;·&nbsp; ');
     pr.innerHTML = prompt; pr.classList.toggle('hidden', !prompt);
     // dash

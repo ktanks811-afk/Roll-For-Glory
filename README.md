@@ -155,6 +155,29 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   hit Set GPS: the route lights up on the map right away and the minimap picks
   it up. Tap any empty spot to drop a pin and navigate there. Your car, cops
   and other players show up too.
+- **Guns, robberies and the Amazin' app.** Phone → Amazin' (a same-minute
+  delivery store) sells **every Glock model and generation** (61 entries:
+  G17 through G48, G17L, G19X, G30S, G40 MOS, G43X and more, with real calibers
+  and magazine sizes), **AR pistols**, melee weapons, boxes of ammo, body armor
+  and a concealed-carry holster. Handguns and AR pistols are 21+ (ID check), and
+  the full-auto Glock 18 is never sold online. Deliveries land straight in your
+  inventory (My gear tab: equip, load, sell).
+  On foot: **G** draws or holsters, **J / Space / click** fires (a held trigger
+  on a semi-auto fires slowly), **R** reloads. On touch the ARM, FIRE and
+  RELOAD buttons appear next to RUN. Shots are loud: pedestrians scatter and
+  the police are told.
+- **FRT.** Buy a forced-reset trigger in Amazin' → Gear, then install it on a
+  Glock from My gear. Holding the trigger fires full-auto, but the gun sprays
+  wide, sometimes jams (press R to clear it) and sometimes dumps a burst on its
+  own. Police treat it as a machine gun: heavy fine and the gun is confiscated.
+- **Robbery.** Draw a gun next to a gas station, diner or clothing store and
+  press **E**: the clerk empties the register while you keep the gun on them.
+  Some stores have a silent alarm (cops get sent), some clerks pull a shotgun,
+  a dye pack can ruin half the take, leave early and you only get part of it,
+  and the same store is on alert for a day. Aim at a pedestrian and press E to
+  mug them (witnesses may call 911). Get busted after a robbery or with an FRT
+  and you lose the gun and a lot of cash. Health, armor and a hospital bill
+  exist if a clerk gets you.
 - **Police.** Five heat levels. A cop has to be close (about 65 m) and have
   line of sight. Speeding (30+ mph over) and burnouts have to go on for a few
   seconds before anyone reacts; running reds or hitting cars gets noticed at
@@ -210,6 +233,7 @@ in the car.
 | Run | Hold RUN |
 | Shops, homes, meets | USE |
 | Get in your car | GET IN (stand next to it) |
+| Draw / holster, fire, reload a gun | ARM, FIRE, RE-LOAD (appear once you own a gun) |
 
 | Driving | |
 | --- | --- |

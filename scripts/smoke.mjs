@@ -245,7 +245,7 @@ await step('burnout: gas + brake, no 2-step', async () => {
   await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW');
   console.log('     burnout', JSON.stringify(r));
   if (!r.burning || r.slip < 0.5) throw new Error('gas + brake did not start a burnout ' + JSON.stringify(r));
-  if (r.skids < 10 || r.smoke < 3) throw new Error('burnout left no marks or smoke');
+  if (r.skids < 10 || r.smoke < 3) throw new Error('burnout left no marks or smoke ' + JSON.stringify(r));
   if (r.flames !== 0) throw new Error('flames without a 2-step');
   if (r.speed > 4) throw new Error('burnout drove away at ' + r.speed);
   if (r.rpm < r.redline * 0.75) throw new Error('burnout rpm too low ' + r.rpm);
@@ -265,7 +265,8 @@ await step('drive-in garage', async () => {
   await p.waitForTimeout(500);
   const outside = await p.evaluate(() => { const w = window.__rfg.app.world; return { hint: w.garageHint, prompt: document.querySelector('#hud-prompt, .prompt')?.textContent || '', roof: w.map.garages.find(g => g.id === window.__rfg.game.s.home).roof.a }; });
   await snap('garage-outside');
-  await p.keyboard.down('KeyW'); await p.waitForTimeout(1500);
+  await p.keyboard.down('KeyW');
+  for (let i = 0; i < 30; i++) { await p.waitForTimeout(150); if (await p.evaluate(() => !!window.__rfg.app.world.inGarage)) break; }
   const inside = await p.evaluate(() => { const w = window.__rfg.app.world; const g = w.map.garages.find(g => g.id === window.__rfg.game.s.home); return { in: w.inGarage?.id === g.id, roof: g.roof.a, cars: w.garageCars.length, nearLoc: w.nearLoc?.id, x: w.vehicle.x }; });
   await p.waitForTimeout(700); await snap('garage-inside');
   await p.keyboard.up('KeyW');
@@ -294,6 +295,124 @@ await step('drive-in garage', async () => {
   if (stuck.in) throw new Error('drove into a garage you do not own: ' + blocked.id);
   await p.evaluate(() => { const w = window.__rfg.app.world; const g = w.map.garages.find(g => g.id === window.__rfg.game.s.home); const sp = w.homeSpot(g.loc); w.vehicle.x = sp.x; w.vehicle.z = sp.z; w.vehicle.vx = w.vehicle.vz = 0; w.vehicle.sim.v = 0; });
 });
+// ---------------- guns, shop, robbery ----------------
+await step('Amazin\' shop + guns + robbery', async () => {
+  const calm = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; try { w.police.reset(w); } catch {} w.paused = false; });
+  await calm();
+  await p.evaluate(async () => { const { openPhone } = await import('./js/ui/phone.js'); const s = window.__rfg.game.s; s.cash += 30000; s.player.age = 19; s.arms = undefined; openPhone('shop', window.__rfg.app); });
+  await p.waitForTimeout(250);
+  // 19: no handguns
+  await p.fill('[data-q]', 'glock 19');
+  if (!(await p.evaluate(() => document.querySelector('button[data-action="buy"][data-id="glock_19_g5"]').disabled))) throw new Error('a 19-year-old could buy a Glock');
+  await p.evaluate(() => { window.__rfg.game.s.player.age = 25; });
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); const { openPhone } = await import('./js/ui/phone.js'); openPhone('shop', window.__rfg.app); });
+  await p.waitForTimeout(200);
+  const nGlocks = await p.evaluate(() => document.querySelectorAll('[data-list] .li').length);
+  if (nGlocks < 50) throw new Error('shop shows only ' + nGlocks + ' Glocks');
+  await p.click('button[data-action="tab"][data-id="arp"]');
+  if ((await p.evaluate(() => document.querySelectorAll('[data-list] .li').length)) < 10) throw new Error('no AR pistols');
+  await p.click('button[data-action="tab"][data-id="ammo"]');
+  await p.click('button[data-action="ammo"][data-cal="9mm"][data-n="5"]');
+  await p.click('button[data-action="tab"][data-id="hand"]');
+  await p.fill('[data-q]', 'glock 19');
+  await p.click('button[data-action="buy"][data-id="glock_19_g5"]');
+  await p.click('button[data-action="tab"][data-id="mine"]');
+  const arms0 = await p.evaluate(() => JSON.parse(JSON.stringify(window.__rfg.game.s.arms)));
+  if (arms0.guns.length !== 1 || arms0.guns[0].loaded !== 15) throw new Error('purchase did not deliver a loaded Glock ' + JSON.stringify(arms0));
+  await snap('30-shop');
+  await calm();
+  // go stand next to the gas station
+  await p.evaluate(async () => { const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world; const l = LOC_BY_ID.gas_westbrook; w.inCar = false; w.foot.x = l.x - 3; w.foot.z = l.z; w.foot.h = Math.PI / 2; w.cam.x = w.foot.x; w.cam.z = w.foot.z; w.cam.zoom = 13; });
+  await p.waitForTimeout(400);
+  await p.keyboard.press('KeyG'); await p.waitForTimeout(200);
+  if (!(await p.evaluate(() => window.__rfg.app.world.combat.armed))) throw new Error('G did not draw the gun');
+  // shoot: a round leaves the mag, a tracer is drawn, the shot is heard
+  const l0 = await p.evaluate(() => window.__rfg.app.world.combat.gun.g.loaded);
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(150); await p.keyboard.up('KeyJ');
+  const shot = await p.evaluate(() => { const c = window.__rfg.app.world.combat; return { loaded: c.gun.g.loaded, shots: c.shots || 0, gunHeat: window.__rfg.app.world.police.gunHeat }; });
+  if (shot.loaded >= l0 || shot.shots < 1) throw new Error('firing did nothing ' + JSON.stringify(shot));
+  await snap('31-gun');
+  // semi-auto: holding the trigger only fires slowly
+  await p.evaluate(() => { window.__rfg.app.world.combat.cd = 0; window.__rfg.app.world.combat.shots = 0; });
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(1000); await p.keyboard.up('KeyJ');
+  const semi = await p.evaluate(() => window.__rfg.app.world.combat.shots);
+  if (semi < 1 || semi > 5) throw new Error('semi-auto should fire a few rounds per second held, fired ' + semi);
+  // FRT: buy it, install it, hold the trigger = full auto; it can jam
+  await p.evaluate(async () => { const { openPhone } = await import('./js/ui/phone.js'); openPhone('shop', window.__rfg.app); });
+  await p.waitForTimeout(250);
+  await p.click('button[data-action="tab"][data-id="gear"]');
+  await p.click('button[data-action="gear"][data-id="frt"]');
+  await p.click('button[data-action="tab"][data-id="mine"]');
+  await p.click('button[data-action="frt"]');
+  if (!(await p.evaluate(() => window.__rfg.game.s.arms.guns[0].frt))) throw new Error('FRT did not install on the Glock');
+  await calm();
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.combat.cd = 0; w.combat.shots = 0; w.combat.jamChance = 0; w.combat.burstChance = 0; w.combat.gun.g.loaded = 15; w.combat.drawn = true; });
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(1000); await p.keyboard.up('KeyJ');
+  const auto = await p.evaluate(() => window.__rfg.app.world.combat.shots);
+  if (auto < 9) throw new Error('an FRT Glock should dump rounds, only fired ' + auto);
+  const rec = await p.evaluate(() => window.__rfg.app.world.police.record.some(r => r.kind === 'auto') || window.__rfg.game.s.heat > 0);
+  if (!rec) throw new Error('police ignored full-auto fire');
+  await calm();
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.combat.cd = 0; w.combat.jamChance = 1; w.combat.gun.g.loaded = 15; w.combat.reload = 0; });
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(400); await p.keyboard.up('KeyJ');
+  if (!(await p.evaluate(() => window.__rfg.app.world.combat.jammed))) throw new Error('the FRT never jammed');
+  const jshots = await p.evaluate(() => window.__rfg.app.world.combat.shots);
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(300); await p.keyboard.up('KeyJ');
+  if ((await p.evaluate(() => window.__rfg.app.world.combat.shots)) !== jshots) throw new Error('a jammed gun still fired');
+  await p.keyboard.press('KeyR'); await p.waitForTimeout(1500);
+  if (await p.evaluate(() => window.__rfg.app.world.combat.jammed)) throw new Error('R did not clear the jam');
+  await p.evaluate(() => { const c = window.__rfg.app.world.combat; c.jamChance = 0; c.burstChance = 1; c.cd = 0; c.shots = 0; c.gun.g.loaded = 15; });
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(70); await p.keyboard.up('KeyJ'); await p.waitForTimeout(500);
+  const burst = await p.evaluate(() => window.__rfg.app.world.combat.shots);
+  if (burst < 3) throw new Error('burst-fire malfunction did not fire a burst: ' + burst);
+  await p.evaluate(() => { const g = window.__rfg.game.s.arms.guns[0]; g.frt = false; const c = window.__rfg.app.world.combat; c.jamChance = undefined; c.burstChance = undefined; c.jammed = false; c.burstLeft = 0; c.gun.g.loaded = 15; });
+  await calm();
+  // reload
+  await p.evaluate(() => { window.__rfg.app.world.combat.gun.g.loaded = 3; });
+  await p.keyboard.press('KeyR'); await p.waitForTimeout(2300);
+  if ((await p.evaluate(() => window.__rfg.app.world.combat.gun.g.loaded)) !== 15) throw new Error('reload did not fill the mag');
+  await calm();
+  // robbery: press E at the register; make the outcome deterministic
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
+  if (!(await p.evaluate(() => !!window.__rfg.app.world.combat.rob))) throw new Error('E at a store with a gun out did not start a robbery');
+  await p.evaluate(() => { const r = window.__rfg.app.world.combat.rob; r.fightAt = 0; r.alarm = true; r.alarmAt = 1; r.dur = 3; r.pay = 500; });
+  await p.waitForTimeout(1500);
+  await snap('32-robbery');
+  await p.waitForTimeout(2400);
+  const rob = await p.evaluate(() => { const w = window.__rfg.app.world, s = window.__rfg.game.s; return { cash: s.cash, rob: !!w.combat.rob, heat: s.heat, phase: w.police.phase, n: s.arms.robberies, rec: w.police.record.map(r => r.kind) }; });
+  if (rob.rob || !(rob.cash > cash0 + 200) || rob.n < 1) throw new Error('robbery did not pay out ' + JSON.stringify(rob));
+  if (rob.phase !== 'chase' || rob.heat < 1) throw new Error('the silent alarm did not send the cops ' + JSON.stringify(rob));
+  if (!rob.rec.includes('robbery')) throw new Error('robbery not on the record');
+  // same store is on alert for a day
+  await calm();
+  await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
+  if (await p.evaluate(() => !!window.__rfg.app.world.combat.rob)) throw new Error('could rob the same store twice in a day');
+  // mugging a pedestrian
+  await p.evaluate(async () => { const { LOCATIONS } = await import('./js/data/world.js'); const w = window.__rfg.app.world; const f = w.foot; for (const [x, z] of [[0, 75], [150, 225], [-300, 75], [300, -75], [0, -225], [-150, 375]]) if (LOCATIONS.every(l => Math.hypot(l.x - x, l.z - z) > 30)) { f.x = x; f.z = z; break; } w.cam.x = f.x; w.cam.z = f.z; w.traffic.peds.length = 0; w.traffic.peds.push({ x0: f.x, z0: f.z - 2.2, size: 1, t: 0, sp: 0, dir: 1, color: '#c41b1b', dodge: 0, dx: 0, dz: 0, x: f.x, z: f.z - 2.2, hp: 40 }); f.h = 0; });
+  await calm();
+  await p.waitForTimeout(100);
+  const m0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
+  if (!(await p.evaluate(() => !!window.__rfg.app.world.combat.mug))) {
+    const dbg = await p.evaluate(() => { const w = window.__rfg.app.world, c = w.combat; return { armed: c.armed, drawn: c.drawn, gun: !!c.gun, inCar: w.inCar, rob: !!c.rob, prompt: c.robPrompt(), foot: [w.foot.x | 0, w.foot.z | 0, w.foot.h], peds: w.traffic.peds.map(q => [q.x | 0, q.z | 0, q.down, q.mugged]), near: c.pedNear(5) ? 1 : 0, nearLoc: w.nearLoc?.id }; });
+    throw new Error('could not mug a pedestrian ' + JSON.stringify(dbg));
+  }
+  await p.waitForTimeout(2600);
+  if (!((await p.evaluate(() => window.__rfg.game.s.cash)) > m0)) throw new Error('mugging paid nothing');
+  // a ped that gets shot goes down
+  await p.evaluate(() => { const w = window.__rfg.app.world, f = w.foot; w.traffic.peds.length = 0; w.traffic.peds.push({ x0: f.x, z0: f.z - 4, size: 1, t: 0, sp: 0, dir: 1, color: '#1b4fc4', dodge: 0, dx: 0, dz: 0, x: f.x, z: f.z - 4, hp: 20 }); w.combat.cd = 0; f.h = 0; });
+  await calm();
+  for (let i = 0; i < 3; i++) { await p.keyboard.down('KeyJ'); await p.waitForTimeout(120); await p.keyboard.up('KeyJ'); await p.waitForTimeout(160); }
+  if (!(await p.evaluate(() => window.__rfg.app.world.traffic.peds.some(q => q.down)))) throw new Error('shooting a pedestrian did nothing');
+  // busted after a robbery: the gun is confiscated
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.record = [{ kind: 'robbery', text: 'Armed robbery', fine: 6000 }]; w.police.phase = 'chase'; w.police.busted(w); });
+  await p.waitForSelector('.modal h2:has-text("BUSTED")');
+  const after = await p.evaluate(() => ({ guns: window.__rfg.game.s.arms.guns.length, drawn: window.__rfg.app.world.combat.drawn }));
+  if (after.guns !== 0 || after.drawn) throw new Error('gun not confiscated ' + JSON.stringify(after));
+  await p.click('.modal button'); await calm();
+});
+
 await step('save + reload', async () => {
   await p.evaluate(async () => { const { saveGame } = await import('./js/core/save.js'); saveGame('slot1'); });
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(500);
@@ -386,7 +505,7 @@ await step('online free roam', async () => {
 
 // ---------------- minimap ----------------
 await step('minimap', async () => {
-  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; w.paused = false; try { w.police.reset(w); } catch {} w.police.patrols.length = 0; });
   await p.waitForTimeout(500);
   const px = () => p.evaluate(() => { const c = document.querySelector('.hud-mini canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0, red = 0; for (let i = 0; i < d.length; i += 16) { if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; if (d[i] > 200 && d[i + 1] < 90) red++; } return { lit, red, w: c.width }; });
   const a = await px();
@@ -473,13 +592,13 @@ await step('noise + traffic stop', async () => {
   console.log('     Mustang stock', stock, 'dB; with long tubes + straight pipes', loud.sdb, 'dB');
   if (!(loud.sdb > 95 && stock < 95)) throw new Error('straight-piped Mustang should be over 95 dB and stock under');
   // floor it: the noise gets noticed (a unit is dispatched or a patrol pulls us over)
-  await p.evaluate(() => { window.__rfg.app.world.police.noiseAtt = 0.97; });
+  await p.evaluate(() => { window.__rfg.app.world.police.noiseAtt = 1.15; });
   await p.keyboard.down('KeyW'); await p.keyboard.down('KeyS');     // rev it in place: loud, but not speeding
   let got = null;
   for (let i = 0; i < 40 && !got; i++) { await p.waitForTimeout(100); const s = await W(); if (s.phase === 'notice') got = s; }
   await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW');
   console.log('     police reaction', JSON.stringify(got));
-  if (!got) throw new Error('police never noticed the straight-piped car');
+  if (!got) throw new Error('police never noticed the straight-piped car ' + JSON.stringify(await p.evaluate(() => { const w = window.__rfg.app.world; return { phase: w.police.phase, heat: window.__rfg.game.s.heat, att: w.police.noiseAtt, db: w.liveDb, inCar: w.inCar, sp: w.vehicle.speed, patrols: w.police.patrols.length, susp: w.police.suspicion, paused: w.paused }; })));
   if (!got.rec.includes('noise')) throw new Error('no noise citation on the record');
   // pulled over: the officer's traffic stop
   const cash0 = got.cash;

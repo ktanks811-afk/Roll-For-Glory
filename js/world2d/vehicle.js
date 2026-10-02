@@ -100,9 +100,9 @@ export class Vehicle {
     const wb = this.dims.L * 0.6;
     const mu = clamp(spec.handling * (env.grip ?? 1), 0.25, 2.0) * 0.98;
     const speed = Math.abs(u0);
-    const rate = Math.abs(inp.steer) > Math.abs(this.steerIn) ? 5 : 8;     // turn in a bit slower than you unwind
+    const rate = Math.abs(inp.steer) > Math.abs(this.steerIn) ? 10 : 14;     // turn in a bit slower than you unwind
     this.steerIn += clamp(inp.steer - this.steerIn, -rate * dt, rate * dt);
-    const lock = clamp(0.05 / (1 + speed / 20) + 1.15 * mu * G * wb / (speed * speed + 30), 0.03, 0.56);
+    const lock = clamp(0.1 / (1 + speed / 18) + 1.9 * mu * G * wb / (speed * speed + 30), 0.07, 0.58);   // arrow keys are all-or-nothing, so full lock has to bite at any speed
     let target = this.steerIn * lock;
     // a touch of counter-steer help so a slide is catchable on a thumb stick
     const beta = Math.atan2(vy, Math.max(2, Math.abs(u0)));
@@ -111,7 +111,7 @@ export class Vehicle {
       target += clamp(-beta * w, -0.32, 0.32);
     }
     target = clamp(target, -0.6, 0.6);
-    this.steer += (target - this.steer) * Math.min(1, dt * 11);
+    this.steer += (target - this.steer) * Math.min(1, dt * 16);
     const d = this.steer;
 
     // ---- dynamics ----

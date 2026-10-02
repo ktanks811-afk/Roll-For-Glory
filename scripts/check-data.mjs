@@ -13,6 +13,8 @@ import { createState, newCar, game } from '../js/core/state.js';
 import * as H from '../js/core/hustle.js';
 import { SERVERS, SERVER_CAP } from '../js/net/online.js';
 import { Vehicle } from '../js/world2d/vehicle.js';
+import { GLOCKS, ARPS, WEAPONS, WEAPON_BY_ID, CAL, buyWeapon, buyAmmo, ensureArms, giveWeapon, minAge } from '../js/data/weapons.js';
+import { spend } from '../js/core/state.js';
 import { buildMap, collideCircle } from '../js/world2d/map.js';
 import { PROPERTIES } from '../js/data/world.js';
 import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
@@ -192,9 +194,9 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (!(gmax > 0.5 && gmax < 1.2)) bad(`${m.id} cornering ${gmax.toFixed(2)} g`);
     if (Math.max(...l2.map(e => Math.abs(e.beta))) > 0.5) bad(`${m.id} spins out on full lock at 15 m/s`);
     // 3. power on mid-corner: FWD pushes wide, RWD rotates
-    const v3 = mk(m); run(v3, 30, (t, vv) => cruise(vv, 20)); run(v3, 1.5, (t, vv) => ({ ...cruise(vv, 20), steer: 0.7 }));
+    const v3 = mk(m); run(v3, 30, (t, vv) => cruise(vv, 20)); run(v3, 1.5, (t, vv) => ({ ...cruise(vv, 20), steer: 0.4 }));
     const r0 = v3.speed / Math.abs(v3.yawRate);
-    run(v3, 1.2, () => ({ throttle: 1, steer: 0.7 }));
+    run(v3, 1.2, () => ({ throttle: 1, steer: 0.4 }));
     radiusAfterFloorIt[d] = v3.speed / Math.abs(v3.yawRate) / r0;
     // 4. handbrake at speed swings the tail out
     const v4 = mk(m); run(v4, 30, (t, vv) => cruise(vv, 20));
@@ -303,6 +305,51 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   calls.length = 0;
   for (let i = 0; i < 60 * 6; i++) P2.update(1 / 60, w);
   if (calls.length) bad('a cop 200 m away should not see you speed');
+}
+
+// ---- arrow keys turn the car quickly at any speed ----
+{
+  const DT = 1 / 60;
+  const m = CARS.find(c => c.id === 'ford_mustang_gt_s197_2005');
+  for (const sp of [10, 20, 30, 45]) {
+    const v = new Vehicle({ nos: 0, cond: {}, parts: {} }, m, buildSpec(m, {}, {}), 0, 0, 0);
+    const step = inp => v.update(DT, { throttle: 0, brake: 0, steer: 0, auto: true, ...inp }, { grip: 1, drag: 0 });
+    for (let t = 0; t < 40; t += DT) step({ throttle: Math.max(0, Math.min(1, (sp - v.speed) * 0.5)), brake: v.speed > sp + 2 ? 0.3 : 0 });
+    let t50 = -1, peak = 0;
+    for (let t = 0; t < 2; t += DT) { step({ steer: 1, throttle: Math.max(0, Math.min(1, (sp - v.speed) * 0.5)) }); peak = Math.max(peak, Math.abs(v.latG)); if (t50 < 0 && Math.abs(v.latG) > 0.5) t50 = t; }
+    if (t50 < 0 || t50 > 0.4) bad(`holding right at ${sp} m/s takes ${t50 < 0 ? 'forever' : t50.toFixed(2) + ' s'} to reach 0.5 g`);
+    if (peak < (sp <= 10 ? 0.6 : 0.7)) bad(`full lock at ${sp} m/s only reaches ${peak.toFixed(2)} g`);
+  }
+}
+
+// ---- weapons: every Glock, AR pistols, shopping rules ----
+{
+  const models = new Set(GLOCKS.map(g => g.model));
+  for (const m of ['G17', 'G17L', 'G18', 'G19', 'G19X', 'G20', 'G21', 'G22', 'G23', 'G24', 'G25', 'G26', 'G27', 'G28', 'G29', 'G30', 'G30S', 'G31', 'G32', 'G33', 'G34', 'G35', 'G36', 'G37', 'G38', 'G39', 'G40', 'G41', 'G42', 'G43', 'G43X', 'G44', 'G45', 'G47', 'G48']) if (!models.has(m)) bad(`missing ${m}`);
+  if (GLOCKS.length < 55) bad(`only ${GLOCKS.length} Glock entries`);
+  if (ARPS.length < 10) bad('AR pistols');
+  if (new Set(WEAPONS.map(w => w.id)).size !== WEAPONS.length) bad('duplicate weapon ids');
+  for (const w of WEAPONS) {
+    if (!w.melee && !(CAL[w.cal] && w.mag > 0 && w.price > 0 && w.spread > 0 && w.cd > 0 && w.reload > 0)) bad(`${w.id} stats`);
+  }
+  const g17 = WEAPON_BY_ID.glock_17_g5, g26 = WEAPON_BY_ID.glock_26_g5;
+  if (!(g17.mag === 17 && g17.cal === '9mm' && g26.mag === 10 && g26.spread > g17.spread)) bad('G17 / G26 specs');
+  if (WEAPON_BY_ID.glock_17_g5.spread >= WEAPON_BY_ID.glock_17_g3.spread) bad('Gen5 should group tighter than Gen3');
+  const st = createState({ name: 'T', age: 19, look: {}, story: false });
+  st.cash = 50000;
+  if (buyWeapon(st, 'glock_19_g5', 0, spend).ok) bad('a 19-year-old cannot buy a handgun');
+  if (!buyWeapon(st, 'bat', 0, spend).ok) bad('a 19-year-old can buy a bat');
+  st.player.age = 25;
+  if (buyWeapon(st, 'glock_18', 0, spend).ok) bad('the Glock 18 is restricted');
+  buyAmmo(st, '9mm', 2, spend);
+  const before = st.cash;
+  const r = buyWeapon(st, 'glock_19_g5', 0, spend);
+  if (!r.ok || before - st.cash !== WEAPON_BY_ID.glock_19_g5.price) bad('buying a Glock charges its price');
+  const gun = ensureArms(st).guns.find(g => g.id === 'glock_19_g5');
+  if (!gun || gun.loaded !== 15 || st.arms.ammo['9mm'] !== 85) bad(`new Glock should arrive with a loaded mag (loaded ${gun?.loaded}, reserve ${st.arms.ammo['9mm']})`);
+  if (minAge(WEAPON_BY_ID.knife) !== 18 || minAge(g17) !== 21) bad('age gates');
+  const poor = createState({ name: 'P', age: 30, look: {}, story: false }); poor.cash = 10;
+  if (buyWeapon(poor, 'glock_17_g5', 0, spend).ok) bad('cannot buy without money');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);
