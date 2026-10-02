@@ -11,6 +11,8 @@ import { settings } from '../core/save.js';
 import { game, isNight } from '../core/state.js';
 import { $, el, esc } from '../ui/dom.js';
 import { touchUi } from '../ui/touch.js';
+import { RevLimiter, launchRpmSetting, optimalLaunchRpm } from '../sim/twostep.js';
+import { drawFlameJets } from '../gfx2d/flames.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // instruction text: phone wording when the on-screen controls are showing
@@ -27,7 +29,8 @@ const THEMES = {
 
 class Driver {
   constructor({ name, car, model, spec, visual, levels, cond, isPlayer, skill = 0.6 }) {
-    Object.assign(this, { name, car, model, spec, isPlayer, skill });
+    Object.assign(this, { name, car, model, spec, visual, isPlayer, skill });
+    this.flame = 0; this.flameCount = 0;
     this.dims = DIMS[model.body];
     this.sprite = carSprite(model.body, visual, levels, cond);
     this.lane = 0; this.x = 0; this.y = 0;
@@ -66,7 +69,10 @@ export class Race {
     if (this.isDrag) {
       this.p.lane = 0; this.p.x = laneX(0);
       if (this.n) { this.n.lane = 1; this.n.x = laneX(1); } else { this.p.lane = 0; }
-      for (const d of this.drivers) { d.y = -14; d.sim = newSim(d.spec, { v: 0, tireTemp: 0.45 }); d.sim.nos = d.isPlayer ? (d.car.nos ?? d.spec.nosSecs) : d.spec.nosSecs; }
+      for (const d of this.drivers) {
+        d.y = -14; d.sim = newSim(d.spec, { v: 0, tireTemp: 0.45 }); d.sim.nos = d.isPlayer ? (d.car.nos ?? d.spec.nosSecs) : d.spec.nosSecs;
+        d.rev = new RevLimiter(d.spec, d.isPlayer ? launchRpmSetting(d.spec, d.car) : optimalLaunchRpm(d.spec));
+      }
       this.tree = { ambers: 0, green: false, red: [false, false], startAt: null, greenAt: null, pro: (opts.tier || 1) >= 3 };
       this.msg = 'BURNOUT'; this.sub = T('Hold BRAKE + GAS to heat the tires · then ease on the GAS to roll into the beams', 'Hold S + W to heat the tires · then tap W to roll into the beams');
     } else {
@@ -296,17 +302,18 @@ export class Race {
       if (P.staged && (!N || N.staged)) {
         this.phase = 'tree';
         tr.startAt = this.t + 0.6 + Math.random() * 0.9;
-        this.msg = ''; this.sub = T('Hold BRAKE + GAS to load it up · let go of BRAKE on GREEN', 'Hold S + W to load it up · release S (or press W) on GREEN');
+        this.msg = ''; this.sub = this.loadHint();
       }
       return;
     }
     if (this.phase === 'tree') {
       // revving against the brake
       const holding = inp.brake > 0.5;
-      const lc = P.spec.launchControl;
-      const optimal = P.spec.asp === 'turbo' ? P.spec.redline * 0.62 : P.spec.asp === 'ev' ? 0 : P.spec.redline * 0.48;
-      if (holding && inp.throttle > 0.5) P.sim.rpm = Math.min(lc ? optimal : P.spec.redline * 0.95, P.sim.rpm + dt * 4200);
-      else P.sim.rpm += (P.spec.idle + 400 - P.sim.rpm) * dt * 3;
+      // gas + brake: a 2-step holds the launch rpm and throws flames; without
+      // one the engine just revs into the limiter (no flames)
+      const r = P.rev.update(dt, holding && inp.throttle > 0.5);
+      P.sim.rpm = r.rpm; P.flame = r.flame;
+      if (r.bang) { P.flameCount++; audio.pop(); }
       if (P.spec.asp === 'turbo' && holding && inp.throttle > 0.5) P.sim.boost = Math.min(1, P.sim.boost + dt * 0.8 * clamp(P.sim.rpm / P.spec.spoolRpm, 0, 1));
       P.thr = holding ? inp.throttle : 0;
       // tree sequence
@@ -329,8 +336,14 @@ export class Race {
         const tired = (100 - game.s.player.energy) / 100 * 0.08;
         P.rt = (this.t - tr.greenAt) + tired;
         P.tired = tired;
-        P.launchRpm = Math.max(P.sim.rpm, P.spec.idle + 800);
+        P.launchRpm = P.spec.twoStep ? P.rev.releaseRpm() : Math.max(P.sim.rpm, P.spec.idle + 800);
+        P.flame = 0;
         if (!this.goT) this.goT = tr.greenAt;
+      }
+      if (N && !N.launched && N.spec.twoStep && N.staged) {
+        const r = N.rev.update(dt, true);
+        N.sim.rpm = r.rpm; N.flame = r.flame; N.thr = 1;
+        if (r.bang) { N.flameCount++; audio.pop(0.5); }
       }
       this.aiLaunch(N);
       if (P.launched) this.phase = 'race';
@@ -347,6 +360,15 @@ export class Race {
     }
   }
 
+  loadHint() {
+    const P = this.p;
+    if (P.spec.twoStep) {
+      const n = Math.round(P.rev.target / 100) * 100;
+      return T(`2-STEP: hold BRAKE + GAS — it holds ${n.toLocaleString()} rpm and pops flames · let go of BRAKE on GREEN`, `2-STEP: hold S + W — it holds ${n.toLocaleString()} rpm and pops flames · release S on GREEN`);
+    }
+    return T('Hold BRAKE + GAS to load it up · let go of BRAKE on GREEN', 'Hold S + W to load it up · release S (or press W) on GREEN');
+  }
+
   aiLaunch(N) {
     const tr = this.tree;
     {
@@ -357,7 +379,8 @@ export class Race {
         if (this.t >= greenT + rt) {
           if (rt < 0) { tr.red[1] = true; N.redLight = true; }
           N.launched = true; N.rt = rt;
-          N.launchRpm = N.spec.asp === 'turbo' ? N.spec.redline * (0.55 + N.skill * 0.1) : N.spec.redline * (0.42 + N.skill * 0.1);
+          N.launchRpm = N.spec.twoStep ? N.rev.releaseRpm() : N.spec.asp === 'turbo' ? N.spec.redline * (0.55 + N.skill * 0.1) : N.spec.redline * (0.42 + N.skill * 0.1);
+          N.flame = 0;
           N.sim.boost = N.spec.asp === 'turbo' ? 0.7 : 0;
           if (!this.goT) this.goT = greenT;
         }
@@ -553,6 +576,13 @@ export class Race {
         g2.addColorStop(0, 'rgba(255,0,0,0.5)'); g2.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(SX(d.x), tY, 3 * z, 0, Math.PI * 2); ctx.fill();
       }
+      ctx.restore();
+    }
+    // flames out of the exhaust tips — only a 2-step throws these
+    for (const d of this.drivers) {
+      if (d.flame < 0.04) continue;
+      ctx.save(); ctx.translate(SX(d.x), SY(d.y)); ctx.scale(z, z);
+      drawFlameJets(ctx, d.model.body, d.visual, d.flame);
       ctx.restore();
     }
     // mini progress bar

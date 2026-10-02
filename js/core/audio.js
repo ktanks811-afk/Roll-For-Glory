@@ -250,6 +250,8 @@ export const audio = {
   crash(strength = 1) { noiseHit(0.35, Math.min(0.6, 0.15 + strength * 0.3), 600); tone(70, 0.25, 'sine', 0.3 * Math.min(1, strength)); },
   shift() { noiseHit(0.06, 0.05, 3000, 'highpass'); },
   nos() { noiseHit(0.5, 0.12, 4000, 'highpass'); },
+  // a crackle/bang from the exhaust (2-step limiter cuts)
+  pop(vol = 1) { noiseHit(0.09, 0.2 * vol, 1500, 'bandpass'); tone(95, 0.1, 'sine', 0.22 * vol, -50); },
   phone() { tone(1046, 0.08, 'sine', 0.1); setTimeout(() => tone(1318, 0.1, 'sine', 0.1), 110); },
   radio() { noiseHit(0.12, 0.06, 2200, 'bandpass'); },
 };

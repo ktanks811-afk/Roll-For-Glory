@@ -146,7 +146,7 @@ export function showControls() {
       <span>Nitrous · e-brake · horn</span><span>NOS · E-BRK · HORN</span>
       <span>Gas stations, races, shops</span><span>USE</span><span>Get out (slow down first)</span><span>GET OUT</span></div>
       <div class="section-title">Top right</div><div class="kv"><span>☰</span><span>Menu &amp; save</span><span>⌕</span><span>Zoom the map</span><span>☎</span><span>Phone</span></div>
-      <p class="muted small" style="margin-top:10px">Drag race: hold BRAKE + GAS for a burnout, ease on the GAS to roll up and stage, hold both against the brake, and let go of BRAKE on green.</p>`);
+      <p class="muted small" style="margin-top:10px">Drag race: hold BRAKE + GAS for a burnout, ease on the GAS to roll up and stage, hold both against the brake, and let go of BRAKE on green. Gas + brake while stopped (or at a meet) just revs the engine — with a 2-step installed it holds the launch rpm and shoots flames.</p>`);
     return;
   }
   modal('Controls', `<div class="section-title" style="margin-top:0">On foot</div><div class="kv">
@@ -168,7 +168,7 @@ export function showControls() {
     <span>Map</span><span><kbd>M</kbd></span>
     <span>Camera zoom</span><span><kbd>C</kbd></span>
     <span>Pause</span><span><kbd>Esc</kbd></span></div>
-    <p class="muted small" style="margin-top:10px">Walking and driving use separate controls: car keys do nothing on foot, and walking keys do nothing in the car. Drag race: hold <kbd>S</kbd>+<kbd>W</kbd> for a burnout, tap <kbd>W</kbd> to roll up and stage, hold <kbd>S</kbd>+<kbd>W</kbd> against the brake, and release <kbd>S</kbd> on green.</p>`);
+    <p class="muted small" style="margin-top:10px">Walking and driving use separate controls: car keys do nothing on foot, and walking keys do nothing in the car. Drag race: hold <kbd>S</kbd>+<kbd>W</kbd> for a burnout, tap <kbd>W</kbd> to roll up and stage, hold <kbd>S</kbd>+<kbd>W</kbd> against the brake, and release <kbd>S</kbd> on green. Gas + brake while stopped (or at a meet) just revs the engine — with a 2-step installed it holds the launch rpm and shoots flames.</p>`);
 }
 
 // ---------------- save slots ----------------

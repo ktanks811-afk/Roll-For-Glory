@@ -16,6 +16,8 @@ import { audio } from '../core/audio.js';
 import { settings, saveGame } from '../core/save.js';
 import { emit } from '../core/events.js';
 import { MPH } from '../sim/powertrain.js';
+import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
+import { drawFlameJets } from '../gfx2d/flames.js';
 
 let MAP = null;
 export function getMap() { if (!MAP) { MAP = buildMap(); MAP.lights = buildStreetLights(MAP); MAP.overview = renderOverview(MAP); } return MAP; }
@@ -36,6 +38,7 @@ export class World {
     this.paused = false;
     this.vehicle = null;
     this.engine = null;
+    this.flame = 0;
     this.foot = { x: 0, z: 0, h: 0, walk: 0 };
     this.saveT = 0;
     this.gpsT = 0;
@@ -263,6 +266,17 @@ export class World {
     }, { grip, drag: paved ? 0 : sand ? 2.2 : 1.6, noFuel });
     if (v.shifted) { v.shifted = false; audio.shift(); }
     if (input.pressed('horn')) audio.horn();
+    // gas + brake while stopped: rev it. With a 2-step it holds the launch rpm
+    // and throws flames; without one it just revs into the limiter.
+    if (!this.limiter || this.limiter.spec !== v.spec || this.limiter.car !== car) {
+      this.limiter = new RevLimiter(v.spec, launchRpmSetting(v.spec, car)); this.limiter.car = car;
+    }
+    this.limiter.target = launchRpmSetting(v.spec, car);   // follows the Garage → Tune setting
+    const revving = !noFuel && v.model.asp !== 'ev' && v.rev > -1 && v.speed < 1.5 && input.axis('throttle') > 0.3 && input.axis('brake') > 0.3;
+    const lr = this.limiter.update(dt, revving);
+    this.flame = lr.flame;
+    if (revving) { v.sim.rpm = lr.rpm; v.rev = 0; }   // gas + brake beats the reverse gear creeping in
+    if (lr.bang) { audio.pop(); if (settings.shake) this.cam.shake = Math.max(this.cam.shake, 0.12); }
     if (noFuel && input.axis('throttle') > 0 && !this.fuelWarned) { this.fuelWarned = true; this.ui.toast('Out of gas! Call roadside assistance from your phone (Bank → Roadside) or push it to a station.', 'bad'); }
 
     // buildings / water
@@ -572,6 +586,13 @@ export class World {
       ctx.setLineDash([10, 8]); ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(cam.sx(this.police.lastSeen.x), cam.sy(this.police.lastSeen.z), this.police.searchR * cam.zoom, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]);
+    }
+    // 2-step flames out of the exhaust tips
+    if (this.vehicle && this.inCar && this.flame > 0.04) {
+      const pv = this.vehicle;
+      ctx.save(); ctx.translate(cam.sx(pv.x), cam.sy(pv.z)); ctx.rotate(pv.h); ctx.scale(cam.zoom, cam.zoom);
+      drawFlameJets(ctx, pv.model.body, pv.car.visual, this.flame);
+      ctx.restore();
     }
     drawRain(ctx, cam, s.weather === 'rain' ? 1 : 0, dt);
     if (s.weather === 'fog') { ctx.fillStyle = 'rgba(180,185,195,0.28)'; ctx.fillRect(0, 0, W, H); }

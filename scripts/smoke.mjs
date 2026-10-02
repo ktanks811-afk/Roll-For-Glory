@@ -184,6 +184,46 @@ await step('places', async () => {
     await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
   }
 });
+await step('2-step flames (street + meet)', async () => {
+  const world = () => p.evaluate(() => { const w = window.__rfg.app.world; return { inCar: w.inCar, flame: w.flame, flames: w.limiter?.flames || 0, rpm: Math.round(w.vehicle.sim?.rpm || 0), sp: w.vehicle.speed }; });
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; w.paused = false; });
+  const rev = async ms => {
+    for (let i = 0; i < 80 && (await world()).sp > 0.8; i++) { await p.keyboard.down('KeyS'); await p.waitForTimeout(100); await p.keyboard.up('KeyS'); }
+    await p.keyboard.down('KeyW'); await p.keyboard.down('KeyS'); await p.waitForTimeout(ms); const r = await world(); await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW'); await p.waitForTimeout(300); return r; };
+  // 1. no 2-step: revs hard but never any flames
+  await p.evaluate(() => { const s = window.__rfg.game.s; const c = s.cars.find(c => c.uid === s.activeCar); delete c.parts.twostep; });
+  const plain = await rev(2500);
+  console.log('     plain rev', JSON.stringify(plain));
+  if (plain.rpm < 3000) throw new Error('plain gas + brake did not rev the engine');
+  if (plain.flames !== 0 || plain.flame > 0) throw new Error('flames without a 2-step');
+  // 2. install a 2-step: flames appear on gas + brake
+  await p.evaluate(async () => { const { CATALOG, fits } = await import('./js/data/catalog.js'); const { CAR_BY_ID } = await import('./js/data/cars.js'); const s = window.__rfg.game.s; const c = s.cars.find(c => c.uid === s.activeCar); const it = CATALOG.find(p => p.cat === 'twostep' && fits(p, CAR_BY_ID[c.modelId])); if (!it) throw new Error('no 2-step fits the test car'); c.parts.twostep = it.id; window.__rfg.app.world.refreshCar?.(); });
+  await p.waitForTimeout(200);
+  const hot = await rev(3000);
+  console.log('     2-step rev', JSON.stringify(hot));
+  if (hot.flames < 1) throw new Error('2-step produced no flames on gas + brake');
+  // gas alone with a 2-step: still no flames
+  const before = (await world()).flames;
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1200); await p.keyboard.up('KeyW');
+  if ((await world()).flames !== before) throw new Error('flames from gas alone');
+  // 3. the meet: Rev it button
+  await p.evaluate(async () => { const { openMeet } = await import('./js/ui/meet.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const l = Object.values(LOC_BY_ID).find(l => l.type === 'meet' || /meet/i.test(l.id)); openMeet(l, window.__rfg.app); });
+  await p.waitForTimeout(400);
+  const lot = () => p.evaluate(() => { const c = document.querySelector('[data-lot]'); return { n: +c.dataset.flameCount, f: +c.dataset.flames, rev: c.dataset.revving }; });
+  const idle = await lot(); if (idle.n !== 0) throw new Error('flames at a meet without revving');
+  await p.dispatchEvent('[data-rev]', 'pointerdown');
+  await p.waitForTimeout(2500);
+  const on = await lot(); await snap('21-meet-flames');
+  await p.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup')));
+  console.log('     meet rev', JSON.stringify(on));
+  if (on.rev !== '1' || on.n < 1) throw new Error('meet rev gave no flames with a 2-step');
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  // 4. garage tune tab shows the rpm slider
+  await p.evaluate(async () => { const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home', tab: 'tune' }); });
+  await p.waitForTimeout(250);
+  if (!(await p.$('[data-ts]'))) throw new Error('no 2-step rpm slider in Garage → Tune');
+  await p.keyboard.press('Escape');
+});
 await step('save + reload', async () => {
   await p.evaluate(async () => { const { saveGame } = await import('./js/core/save.js'); saveGame('slot1'); });
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(500);

@@ -12,9 +12,9 @@ import { CAR_BY_ID, carName } from '../data/cars.js';
 import { installPart, pickColorFor } from './garage.js';
 import { audio } from '../core/audio.js';
 
-const PERF_CATS = ['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'ecu', 'transmission', 'clutch', 'diff', 'suspension', 'brakes', 'tires', 'weight', 'nitrous'];
+const PERF_CATS = ['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'ecu', 'transmission', 'clutch', 'diff', 'suspension', 'brakes', 'tires', 'weight', 'nitrous', 'twostep'];
 const VIS_CATS = ['wheels', 'paint', 'tint', 'spoiler', 'kit', 'frontBumper', 'rearBumper', 'skirts', 'hood', 'exhaustTips', 'headlights', 'taillights', 'decal', 'neon', 'interior'];
-const ICONS = { engine: '⚙', turbo: '🌀', supercharger: '🔩', intake: '🌬', exhaust: '💨', intercooler: '❄', fuel: '⛽', ecu: '💻', transmission: '⚙', clutch: '◎', diff: '⊕', suspension: '⇕', brakes: '⛔', tires: '◯', weight: '⚖', nitrous: '🧪',
+const ICONS = { engine: '⚙', turbo: '🌀', supercharger: '🔩', intake: '🌬', exhaust: '💨', intercooler: '❄', fuel: '⛽', ecu: '💻', transmission: '⚙', clutch: '◎', diff: '⊕', suspension: '⇕', brakes: '⛔', tires: '◯', weight: '⚖', nitrous: '🧪', twostep: '🔥',
   wheels: '◉', paint: '🎨', tint: '▦', spoiler: '⎺', kit: '▭', frontBumper: '▔', rearBumper: '▁', skirts: '═', hood: '▱', exhaustTips: '◍', headlights: '💡', taillights: '🔴', decal: '✦', neon: '✺', interior: '💺' };
 
 const view = { tab: 'shop', cat: 'turbo', brand: '', q: '', fitOnly: true, sort: 'pop' };
@@ -37,6 +37,7 @@ function effectText(it, car) {
     case 'suspension': return `Handling +${Math.round((FX.suspension.handling[L] - 1) * 100)}%`;
     case 'brakes': return `Braking +${Math.round((FX.brakes.force[L] - 1) * 100)}%`;
     case 'nitrous': return `${FX.nitrous.hp[L]} hp shot`;
+    case 'twostep': return `Holds launch rpm ±${FX.twostep.tol[L]} · ${['', 'small pops', 'flames', 'big flames', 'huge flames'][L]}`;
     case 'fuel': return `Supports ${Math.round((FX.fuel.cap[L] - 1) * 100)}% over stock`;
     default: return '';
   }

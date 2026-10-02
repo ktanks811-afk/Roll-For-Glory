@@ -4,7 +4,8 @@
 // to install. `makes` restricts fitment to listed brands; `eng` to engines
 // whose description matches.
 
-const ICE_ONLY = new Set(['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'transmission', 'clutch', 'nitrous']);
+const ICE_ONLY = new Set(['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'transmission', 'clutch', 'nitrous', 'twostep']);
+const JDM = ['honda', 'acura', 'toyota', 'lexus', 'scion', 'nissan', 'infiniti', 'mazda', 'subaru', 'mitsubishi'];
 
 const GM = ['chevrolet', 'gmc', 'cadillac', 'pontiac', 'buick'];
 const FORD = ['ford', 'lincoln'];
@@ -400,6 +401,36 @@ export const PERF_CATALOG = [
     ['Nitrous Outlet', 'Direct Port System', 2250, 4, 12],
     ['Nitrous Express', 'Pro Race Fogger System', 3550, 4, 12],
   ]),
+
+  // ---------------- 2-Step launch control ----------------
+  // Hold gas + brake: the engine sits on a launch rev limiter. Each limiter
+  // cut can throw flames out the exhaust. Higher stages hold the rpm tighter
+  // and burn bigger. Old cars take an ignition box; newer ones take an ECU map.
+  ...cat('twostep', [
+    ['MSD', 'Soft Touch Rev Controller (8728)', 150, 1, 2, { maxYear: 2008 }],
+    ['MSD', '6AL-2 Ignition w/ 2-Step Rev Limiter', 340, 1, 3, { maxYear: 2008 }],
+    ['DragonFire Racing', 'Plug & Play 2-Step Launch Module', 160, 1, 2, { makes: JDM, maxYear: 2015 }],
+    ['MSD', 'Digital-6 Plus (6425) w/ 2-Step', 540, 2, 4, { maxYear: 2008 }],
+    ['MSD', '7AL-3 Programmable Ignition w/ 2-Step', 620, 2, 4, { maxYear: 2008 }],
+    ['Cobb Tuning', 'Accessport Launch Control + Flat-Foot Shift Map', 450, 2, 1, { makes: ['subaru', 'ford', 'mazda', 'volkswagen', 'porsche', 'nissan', 'mitsubishi', 'audi'], minYear: 2002 }],
+    ['HP Tuners', 'Custom 2-Step / Launch Control Tune', 520, 2, 2, { makes: [...DOMESTIC, 'nissan', 'infiniti', 'kia', 'hyundai', 'genesis', 'mitsubishi', 'subaru'], minYear: 2003 }],
+    ['SCT Performance', 'X4 Launch Control Tune', 480, 2, 1, { makes: DOMESTIC, minYear: 2003 }],
+    ['Hondata', 'FlashPro 2-Step Launch Control Unlock', 200, 2, 1, { makes: ['honda', 'acura'], minYear: 2001 }],
+    ['bootmod3', 'Launch Control & Burble Map', 250, 2, 1, { makes: ['bmw', 'toyota', 'mini'], minYear: 2008 }],
+    ['APR', 'Launch Control ECU Add-On', 230, 2, 1, { makes: VAG, minYear: 2005 }],
+    ['EcuTek', 'Launch Control Map', 350, 2, 2, { makes: ['nissan', 'infiniti', 'subaru', 'toyota', 'lexus', 'mazda', 'scion', 'kia', 'hyundai', 'genesis', 'bmw'], minYear: 2005 }],
+    ['MSD', 'Power Grid Ignition System (7730) w/ 2-Step', 1050, 3, 8, { maxYear: 2014 }],
+    ['Holley', 'HP EFI 2-Step & Flame Package', 1350, 3, 8],
+    ['Haltech', 'Elite 1500 + 2-Step & Flame Pack', 1250, 3, 8],
+    ['AEM', 'Infinity 2-Step & Launch Strategy Pack', 1450, 3, 8],
+    ['FuelTech', 'FT450 w/ 2-Step & Flame Mode', 1690, 3, 8],
+    ['Link Engine Management', 'G4X Xtreme 2-Step & Flame Strategy', 1890, 3, 8],
+    ['FuelTech', 'FT600 Pro — 2-Step, Anti-Lag & Flame Mode', 2990, 4, 12],
+    ['Haltech', 'Nexus R5 Race — Launch & Flame Pack', 3300, 4, 12],
+    ['Syvecs', 'S6Plus Race ECU — Launch & Flame Strategy', 3800, 4, 12],
+    ['MoTeC', 'M130 + Launch & Flame Strategy License', 4200, 4, 12],
+    ['Holley', 'Dominator EFI — 2-Step, Rolling Anti-Lag & Flames', 2990, 4, 12],
+  ]),
 ];
 
 // ---------------- Visual / cosmetic products ----------------
@@ -534,7 +565,7 @@ export const CATEGORY_NAMES = {
   engine: 'Engine Internals', turbo: 'Turbochargers & Kits', supercharger: 'Superchargers', intake: 'Intake',
   exhaust: 'Exhaust', intercooler: 'Intercoolers & Water/Meth', fuel: 'Fuel System', ecu: 'Tuning & ECUs',
   transmission: 'Transmission', clutch: 'Clutch', diff: 'Differential & Rear End', suspension: 'Suspension',
-  brakes: 'Brakes', tires: 'Tires', weight: 'Weight Reduction & Seats', nitrous: 'Nitrous',
+  brakes: 'Brakes', tires: 'Tires', weight: 'Weight Reduction & Seats', nitrous: 'Nitrous', twostep: '2-Step Launch Control',
   wheels: 'Wheels', paint: 'Paint, Wraps & PPF', tint: 'Window Tint', spoiler: 'Wings & Spoilers', kit: 'Body Kits',
   frontBumper: 'Front Lips & Splitters', rearBumper: 'Rear Diffusers', skirts: 'Side Skirts', hood: 'Hoods',
   exhaustTips: 'Exhaust Tips', headlights: 'Headlights', taillights: 'Tail Lights', decal: 'Graphics & Stripes',
@@ -549,6 +580,8 @@ export function fits(item, model) {
   if (item.makes && !item.makes.includes(model.make)) return false;
   if (item.eng && !item.eng.test(model.engine)) return false;
   if (item.asp && item.asp !== model.asp) return false;
+  if (item.maxYear && model.years[1] > item.maxYear) return false;
+  if (item.minYear && model.years[1] < item.minYear) return false;
   if (model.asp === 'ev' && ICE_ONLY.has(item.cat)) return false;
   if (model.asp === 'ev' && item.cat === 'ecu' && !(item.makes || []).includes(model.make)) return false;
   return true;
@@ -559,6 +592,8 @@ export function fitNote(item, model) {
   if (model.asp === 'ev' && ICE_ONLY.has(item.cat)) return 'Electric car — no engine to fit this to';
   if (item.makes && !item.makes.includes(model.make)) return 'Not made for this make';
   if (item.eng) return 'Wrong engine type';
+  if (item.maxYear && model.years[1] > item.maxYear) return 'Needs an older ignition system — this car is ECU-controlled';
+  if (item.minYear && model.years[1] < item.minYear) return 'Needs a newer, ECU-flashable car';
   if (item.asp) return 'Turbo cars only';
   return 'Does not fit';
 }

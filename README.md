@@ -50,6 +50,13 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
 - **Drag racing at Ironline Dragway.** Burnout box, pre-stage and stage
   beams, sportsman or pro tree, holding the car on the brake, reaction time,
   red lights, and a full timeslip (RT, 60', 330', ⅛, 1000', ¼, trap speed).
+- **2-step launch control.** A purchasable part (PartsHub → Power Adders, 23
+  products from MSD, Haltech, FuelTech, Cobb and more, stages 1–4, with real
+  fitment). Hold gas + brake together and it holds your launch rpm (set in
+  Garage → Tune) and throws flames out the exhaust tips. Higher stages hold
+  tighter and burn bigger. Flames come only from a 2-step: without one, gas +
+  brake just revs into the limiter. It works on the drag strip, at street meets
+  (Rev it) and when you're stopped on the street. Not for EVs.
 - **Police.** Five heat levels. Patrols have to actually see you speeding,
   running reds or hitting cars. Pursuit units drive in from precincts. When
   they lose you they set up a search zone, and you need a cooldown to
@@ -115,7 +122,7 @@ in the car.
 | Get out | GET OUT |
 
 Multi-touch works, so you can steer with one thumb and work the pedals with
-the other. Drag races use BRAKE + GAS together. Top right: ☰ menu and save,
+the other. Drag races use BRAKE + GAS together, and so does the 2-step (hold both pedals). Top right: ☰ menu and save,
 ⌕ zoom, ☎ phone. It works in portrait and landscape.
 
 ## Running it locally

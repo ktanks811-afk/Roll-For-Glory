@@ -8,6 +8,7 @@ import { LOCATIONS } from '../js/data/world.js';
 import { generateListings } from '../js/data/market.js';
 import { buildSpec, metrics } from '../js/sim/powertrain.js';
 import { partLevels } from '../js/data/parts.js';
+import { RevLimiter } from '../js/sim/twostep.js';
 
 let fails = 0;
 const bad = (msg) => { fails++; console.error('FAIL', msg); };
@@ -37,5 +38,23 @@ if (listings.filter(l => l.price <= 4500).length < 4) bad('not enough affordable
 const civic = CAR_BY_ID.honda_civic_ex_1996, tesla = CAR_BY_ID.tesla_model_3_performance_2024;
 if (!CATALOG.some(p => p.cat === 'turbo' && fits(p, civic))) bad('no turbo fits a Civic');
 if (CATALOG.some(p => p.cat === 'turbo' && fits(p, tesla))) bad('a turbo fits a Tesla');
+// 2-step: part exists, fits ICE cars, never EVs, and flames only come with it
+if (CATALOG.filter(p => p.cat === 'twostep').length < 15) bad('too few 2-step products');
+if (CATALOG.some(p => p.cat === 'twostep' && fits(p, tesla))) bad('a 2-step fits a Tesla');
+if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, civic))) bad('no 2-step fits a Civic');
+const mustang = CAR_BY_ID.ford_mustang_gt_2015 || CARS.find(c => c.asp !== 'ev' && c.years[1] >= 2020);
+if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step fits a modern car');
+{
+  const stock = buildSpec(mustang, {}, {});
+  if (stock.twoStep || stock.launchControl) bad('stock car has a 2-step');
+  const ts = buildSpec(mustang, partLevels({ twostep: CATALOG.find(p => p.cat === 'twostep' && fits(p, mustang)).id }), {});
+  if (!ts.twoStep || !ts.launchControl) bad('installed 2-step not in spec');
+  for (const lvl of [0, 1, 2, 3, 4]) {
+    const rl = new RevLimiter({ ...stock, twoStep: lvl }, 5000);
+    for (let i = 0; i < 600; i++) rl.update(1 / 60, true);
+    if ((lvl === 0) !== (rl.flames === 0)) bad(`2-step stage ${lvl} flame count ${rl.flames}`);
+    if (lvl > 0 && rl.flames < 2) bad(`2-step stage ${lvl} produced almost no flames over 10s`);
+  }
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

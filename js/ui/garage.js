@@ -7,6 +7,7 @@ import { ITEM_BY_ID, CATEGORY_NAMES, fits, fitNote, LABOR_RATE } from '../data/c
 import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, partLevels } from '../data/parts.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { buildSpec, dynoCurve, metrics, MPH } from '../sim/powertrain.js';
+import { launchRpmSetting } from '../sim/twostep.js';
 import { emit } from '../core/events.js';
 import { drawThumb, sellCar } from './marketplace.js';
 import { PROPERTIES, LOC_BY_ID } from '../data/world.js';
@@ -288,7 +289,16 @@ function tune(body, h, app, st, s, car, m) {
     <p class="small muted">${can ? 'Changes apply immediately. Swapping a ring & pinion for real costs $650 in parts and labor at Torque Temple — here we just charge you once you save.' : 'Go home or to Torque Temple to change gearing.'}</p>
     <button class="btn btn-primary" data-action="save" ${can ? '' : 'disabled'}>Save gearing (${st.mode === 'perf' ? '$650' : 'DIY, 4h'})</button>
     <div class="section-title">Launch</div>
-    <p class="small">${lv.ecu >= 2 ? '✅ Launch control enabled (ECU stage 2+). The drag strip holds your rpm on the line.' : '❌ No launch control. Get a Stage 2 tune for a rev limiter on the line.'}</p></div>`;
+    <p class="small">${lv.twostep ? `✅ 2-step installed (stage ${lv.twostep}). Hold gas + brake and it holds your launch rpm — and throws flames out the exhaust. Works on the drag strip, at meets and when you're stopped on the street.` : lv.ecu >= 2 ? '✅ Launch control enabled (ECU stage 2+). The drag strip holds your rpm on the line. Add a 2-step (PartsHub → Power Adders) for tighter holds and flames.' : '❌ No launch control. Install a 2-step (PartsHub → Power Adders) or get a Stage 2 tune for a rev limiter on the line. Plain gas + brake just revs — flames only come from a 2-step.'}</p>
+    ${lv.twostep && m.asp !== 'ev' ? `<label class="field"><span>2-step launch rpm — <b data-ts-val></b></span>
+      <input type="range" min="2000" max="${Math.round(m.redline * 0.92)}" step="100" value="${Math.round(launchRpmSetting(carSpec(car), car))}" data-ts class="input" ${can ? '' : 'disabled'}></label>
+      <p class="small muted">Higher rpm = harder launch but easier to spin the tires. Turbo cars want it up where boost builds; stage ${lv.twostep} holds it within ±${FX.twostep.tol[lv.twostep]} rpm.</p>` : ''}</div>`;
+  const ts = body.querySelector('[data-ts]');
+  if (ts) {
+    const show = () => { body.querySelector('[data-ts-val]').textContent = `${ts.value} rpm`; };
+    ts.oninput = () => { car.tune.twoStepRpm = +ts.value; show(); };
+    show();
+  }
   const fd = body.querySelector('[data-fd]');
   const orig = car.tune.finalDrive;
   const out = () => {

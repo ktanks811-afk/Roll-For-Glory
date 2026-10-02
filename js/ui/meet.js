@@ -3,13 +3,15 @@
 // to show off your build.
 
 import { openPanel, closeAllPanels, bind, esc, toast, modal, confirm, prompt } from './dom.js';
-import { game, fmtMoney, spend, earn, activeCar, carMetrics, modelOf, levels, tierOf, addRep, addFollowers, uid } from '../core/state.js';
+import { game, fmtMoney, spend, earn, activeCar, carSpec, carMetrics, modelOf, levels, tierOf, addRep, addFollowers, uid } from '../core/state.js';
 import { RACERS, CREWS } from '../data/npcs.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { PERF_CATALOG, fits } from '../data/catalog.js';
 import { partLevels, defaultVisual } from '../data/parts.js';
 import { buildSpec, metrics } from '../sim/powertrain.js';
 import { carSprite } from '../gfx2d/carSprite.js';
+import { drawFlameJets } from '../gfx2d/flames.js';
+import { RevLimiter, launchRpmSetting, cylindersOf } from '../sim/twostep.js';
 import { LOC_BY_ID } from '../data/world.js';
 import { openRaceSetup } from './raceSetup.js';
 import { emit } from '../core/events.js';
@@ -27,6 +29,37 @@ export function openMeet(loc, app) {
   emit('meetVisited', { loc: loc.id });
   audio.music('meet');
   let anim = 0;
+  // Rev it: gas + brake held together (button, or W + S). Flames only with a 2-step.
+  const rev = { btn: false, keys: new Set(), lim: null, voice: null, last: performance.now(), car: null };
+  const fx = { flame: 0, revving: false };
+  const revHeld = () => rev.btn || (rev.keys.has('w') && rev.keys.has('s')) || (rev.keys.has('arrowup') && rev.keys.has('arrowdown'));
+  const onKey = (down) => (e) => { rev.keys[down ? 'add' : 'delete'](e.key.toLowerCase()); };
+  const kd = onKey(true), ku = onKey(false), pu = () => { rev.btn = false; };
+  window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
+  window.addEventListener('pointerup', pu); window.addEventListener('pointercancel', pu);
+  const revTick = (car) => {
+    const now = performance.now(), dt = Math.min(0.05, (now - rev.last) / 1000); rev.last = now;
+    if (!car || modelOf(car).asp === 'ev') { fx.flame = 0; fx.revving = false; return; }
+    const spec = carSpec(car);
+    if (!rev.lim || rev.lim.spec !== spec) rev.lim = new RevLimiter(spec, launchRpmSetting(spec, car));
+    rev.lim.target = launchRpmSetting(spec, car);
+    const on = revHeld() && !panel.root.classList.contains('hidden');
+    const r = rev.lim.update(dt, on);
+    fx.flame = r.flame; fx.revving = on;
+    if (on && !rev.voice) rev.voice = audio.engine({ cylinders: cylindersOf(modelOf(car)), loudness: 0.5 + (levels(car).exhaust || 0) * 0.12 });
+    if (rev.voice) {
+      if (on) rev.voice.update({ rpm: r.rpm, throttle: 1, volume: 1 });
+      else { rev.voice.stop(); rev.voice = null; }
+    }
+    if (r.bang) audio.pop();
+    // a crowd reaction once, after a proper show of flames
+    if (rev.lim.flames >= 8 && !st.crowd) {
+      st.crowd = true; addFollowers(s, 25); addRep(s, 2, 'Flames at the meet');
+      st.log.push('"Did you see that?! Flames!" — phones are out.');
+      toast('The crowd loves it · +25 followers · +2 rep', 'good');
+      panel.refresh?.();
+    }
+  };
   const panel = openPanel((root, h) => {
     const car = activeCar(s);
     root.innerHTML = `<div class="p-head"><h1>${esc(loc.name)}<small>Street meet · ${present.length} racers here · Kingpin Dre runs the lot</small></h1><button class="btn x" data-action="close">×</button></div>
@@ -46,6 +79,9 @@ export function openMeet(loc, app) {
         <div class="section-title" style="margin-top:0">Show your car</div>
         <p class="small muted">Park it under the lights. People film, post, and talk. Once per meet.</p>
         <button class="btn btn-primary" data-action="show" ${st.shown || !car ? 'disabled' : ''}>${st.shown ? 'Already showed it tonight' : `Show off the ${esc(car ? modelOf(car).model : '')}`}</button>
+        <div class="section-title">Rev it</div>
+        <p class="small muted">${!car ? 'Bring a car to rev.' : car.modelId && modelOf(car).asp === 'ev' ? 'Electric cars have no engine to rev.' : levels(car).twostep ? 'Hold the button — or W + S on a keyboard — for gas + brake. Your 2-step holds the launch rpm and throws flames.' : 'Hold the button — or W + S — for gas + brake. Just revs into the limiter: no flames until you install a 2-step (PartsHub → Power Adders).'}</p>
+        <button class="btn" data-rev style="touch-action:none;user-select:none;width:100%;padding:14px" ${!car || modelOf(car).asp === 'ev' ? 'disabled' : ''}>🔥 HOLD: GAS + BRAKE</button>
         <div class="section-title">Side bets</div>
         <p class="small muted">Two locals are about to run a quarter. Pick a winner.</p>
         ${st.betDone ? '<p class="small">Bet settled.</p>' : (() => { const [a, b] = present; if (!a || !b) return ''; return `<div class="row"><button class="btn btn-sm" data-action="bet" data-w="0">${esc(a.nick)} (${odds(a, b)})</button><button class="btn btn-sm" data-action="bet" data-w="1">${esc(b.nick)} (${odds(b, a)})</button></div>`; })()}
@@ -54,7 +90,9 @@ export function openMeet(loc, app) {
         <div class="list">${st.vendor.map((p, i) => `<div class="li"><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)}</div><div class="s">Stage ${p.stage} · retail ${fmtMoney(p.price)}</div></div><button class="btn btn-sm" data-action="zed" data-i="${i}" ${p.sold ? 'disabled' : ''}>${p.sold ? 'Sold' : fmtMoney(p.deal)}</button></div>`).join('')}</div>
       </div></div></div>`;
     const cv = root.querySelector('[data-lot]');
-    drawLot(cv, present, car, anim);
+    drawLot(cv, present, car, anim, fx);
+    const rb = root.querySelector('[data-rev]');
+    if (rb) rb.onpointerdown = (e) => { e.preventDefault(); rev.btn = true; };
     bind(root, {
       close: () => h.close(),
       talk: d => {
@@ -125,13 +163,21 @@ export function openMeet(loc, app) {
         h.refresh();
       },
     });
-  }, { onClose: () => { audio.music(null); cancelAnimationFrame(raf); } });
+  }, { onClose: () => {
+    audio.music(null); cancelAnimationFrame(raf);
+    window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku);
+    window.removeEventListener('pointerup', pu); window.removeEventListener('pointercancel', pu);
+    if (rev.voice) { rev.voice.stop(); rev.voice = null; }
+  } });
   let raf = 0;
   const tick = () => {
     anim += 1 / 60;
     const cv = panel.root.querySelector('[data-lot]');
     if (!cv) return;
-    drawLot(cv, present, activeCar(s), anim);
+    const car = activeCar(s);
+    revTick(car);
+    cv.dataset.flames = fx.flame.toFixed(2); cv.dataset.revving = fx.revving ? '1' : '0'; cv.dataset.flameCount = rev.lim?.flames || 0;
+    drawLot(cv, present, car, anim, fx);
     raf = requestAnimationFrame(tick);
   };
   raf = requestAnimationFrame(tick);
@@ -157,7 +203,7 @@ function makeVendor(s) {
   });
 }
 
-function drawLot(cv, present, car, t) {
+function drawLot(cv, present, car, t, fx = { flame: 0, revving: false }) {
   const g = cv.getContext('2d');
   const W = cv.width, H = cv.height;
   g.fillStyle = '#16171a'; g.fillRect(0, 0, W, H);
@@ -183,7 +229,10 @@ function drawLot(cv, present, car, t) {
       gr.addColorStop(0, c.v.neon); gr.addColorStop(1, 'rgba(0,0,0,0)');
       g.globalAlpha = 0.55 + Math.sin(t * 3 + i) * 0.1; g.fillStyle = gr; g.beginPath(); g.arc(x, y, 60, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
     }
-    g.save(); g.translate(x, y); g.rotate(top ? Math.PI : 0); g.scale(k, k);
+    const shake = c.mine && fx.revving ? (Math.random() - 0.5) * 1.2 : 0;
+    g.save(); g.translate(x + shake, y); g.rotate(top ? Math.PI : 0);
+    if (c.mine && fx.flame > 0.04) { g.save(); g.scale(9, 9); drawFlameJets(g, c.m.body, c.v, fx.flame); g.restore(); }
+    g.scale(k, k);
     g.drawImage(sp.canvas, -sp.canvas.width / 2, -sp.canvas.height / 2); g.restore();
     if (c.mine) { g.fillStyle = '#ff2a3a'; g.font = 'bold 14px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillText('YOU', x, top ? 140 : 168); }
     // people standing around

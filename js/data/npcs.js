@@ -11,7 +11,7 @@ function build(level, focus = 'power', extra = {}) {
     turbo: 0, supercharger: 0,
   };
   if (focus === 'light') { p.weight = l; p.suspension = l; p.engine = lo; }
-  if (focus === 'launch') { p.tires = Math.min(4, l + 1); p.diff = l; p.clutch = Math.min(4, l + 1); p.transmission = l; }
+  if (focus === 'launch') { p.tires = Math.min(4, l + 1); p.diff = l; p.clutch = Math.min(4, l + 1); p.transmission = l; p.twostep = Math.max(1, l); }
   if (focus === 'nitrous') p.nitrous = Math.max(1, l);
   return { ...p, ...extra };
 }

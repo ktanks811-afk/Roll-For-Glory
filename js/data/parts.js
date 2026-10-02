@@ -23,6 +23,7 @@ export const PERF = [
   { id: 'tires', name: 'Tires', group: 'Chassis' },
   { id: 'weight', name: 'Weight Reduction', group: 'Chassis' },
   { id: 'nitrous', name: 'Nitrous', group: 'Power Adders' },
+  { id: 'twostep', name: '2-Step Launch Control', group: 'Power Adders' },
 ];
 export const PERF_IDS = PERF.map(p => p.id);
 export const PERF_BY_ID = Object.fromEntries(PERF.map(p => [p.id, p]));
@@ -47,6 +48,11 @@ export const FX = {
   tires:        { mu: [1, 1.08, 1.17, 1.32, 1.45], width: [0, 0.02, 0.04, 0.07, 0.09] },
   weight:       { mult: [1, 0.965, 0.93, 0.89, 0.85] },
   nitrous:      { hp: [0, 50, 100, 175, 250], secs: [0, 7, 7, 8, 9] },
+  // 2-step: gas + brake holds the engine on a launch rev limiter. tol = how far
+  // the rpm wanders around the set point (and how far off the line you leave
+  // it); pop = chance each limiter cut throws a flame out the exhaust; flame =
+  // how big; hz = how fast the limiter cuts.
+  twostep:      { tol: [0, 380, 240, 120, 50], pop: [0, 0.55, 0.7, 0.85, 0.95], flame: [0, 0.55, 0.8, 1, 1.3], hz: [0, 9, 11, 13, 16] },
 };
 
 export const NITROUS_REFILL = 65; // 10 lb bottle fill
