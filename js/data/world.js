@@ -46,7 +46,7 @@ function front(i, j, side, along = 0) {
 }
 
 // type: what pressing E does there. tier: rep tier to use it.
-const L = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], ...front(i, j, side), ...extra });
+const L = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], side, ...front(i, j, side), ...extra });
 
 export const LOCATIONS = [
   L('eastgate_studio', 'home', 'Eastgate Studio (Home)', 8, 6, 'W', { color: '#ffffff', icon: 'home' }),

@@ -77,15 +77,45 @@ export function drawWater(ctx, cam, map, t) {
   }
 }
 
+// Concrete garage floor: bay outlines, an oil stain or two and a painted
+// threshold, so the interior reads once the roof fades away.
+function drawGarageFloor(ctx, l, x, y, w, h, z) {
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.fillRect(x + w * 0.3, y, w * 0.4, h);
+  if (z < 1.1) return;
+  ctx.strokeStyle = 'rgba(232,194,26,0.75)'; ctx.lineWidth = Math.max(1, z * 0.14);
+  for (const b of l.bays) {
+    ctx.save(); ctx.translate(cam0.sx(b.x), cam0.sy(b.z)); ctx.rotate(b.h);
+    ctx.strokeRect(-1.35 * z, -2.5 * z, 2.7 * z, 5 * z);
+    ctx.restore();
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.14)';
+  for (let k = 0; k < 4; k++) {
+    const hx = (l.x * 13 + k * 71) % 1, fx = Math.abs(Math.sin(l.x * 0.7 + k * 2.1)), fz = Math.abs(Math.cos(l.z * 0.9 + k * 1.3));
+    ctx.beginPath(); ctx.ellipse(x + w * (0.3 + 0.4 * fx), y + h * (0.2 + 0.6 * fz), 1.1 * z, 0.7 * z, k, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+}
+let cam0 = null;
+
 export function drawLots(ctx, cam, items) {
   const z = cam.zoom;
+  cam0 = cam;
   for (const it of items) {
     if (it.type !== 'l') continue;
     const l = it.o;
     const x = cam.sx(l.x), y = cam.sy(l.z), w = l.w * z, h = l.d * z;
     ctx.fillStyle = COLORS[l.kind] || '#444';
     if (l.kind === 'strip') ctx.fillStyle = '#4b4c50';
+    if (l.kind === 'drive') ctx.fillStyle = '#8b8d91';
+    if (l.kind === 'garagefloor') ctx.fillStyle = '#6c6e73';
     ctx.fillRect(x, y, w, h);
+    if (l.kind === 'garagefloor') { drawGarageFloor(ctx, l, x, y, w, h, z); continue; }
+    if (l.kind === 'drive' && z > 1.2) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+      const long = l.w > l.d;
+      for (let s = 2; s < (long ? l.w : l.d); s += 2) { ctx.beginPath(); if (long) { ctx.moveTo(x + s * z, y); ctx.lineTo(x + s * z, y + h); } else { ctx.moveTo(x, y + s * z); ctx.lineTo(x + w, y + s * z); } ctx.stroke(); }
+    }
     if (l.kind === 'parking' && z > 1.5) {
       ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = Math.max(1, z * 0.12);
       for (let sx = 3; sx < l.w - 2; sx += 3) {
@@ -204,6 +234,7 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
     const x0 = cam.sx(b.x), y0 = cam.sy(b.z), w = b.w * z, d = b.d * z;
     const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
     const ox = cx * b.h * k, oy = cy * b.h * k;
+    if (b.kind === 'roof') { drawGarageRoof(ctx, b, x0 + ox, y0 + oy, w, d, z, showLabels); continue; }
     // shadow
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(x0 + b.h * 0.25 * z * 0.4, y0 + b.h * 0.3 * z * 0.4, w, d);
@@ -250,6 +281,8 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
       ctx.strokeStyle = 'rgba(255,255,255,0.08)';
       for (let s = 4; s < b.w; s += 4) { ctx.beginPath(); ctx.moveTo(x0 + ox + s * z, y0 + oy); ctx.lineTo(x0 + ox + s * z, y0 + oy + d); ctx.stroke(); }
     }
+    if (b.side && (b.kind === 'landmark' || b.kind === 'store') && z > 0.7) drawStorefront(ctx, b, x0 + ox, y0 + oy, w, d, z, night);
+    if (b.kind === 'gantry' && z > 0.5) drawGantry(ctx, b, x0, y0, ox, oy, w, d, z);
     if (b.label && showLabels && z > 1.3) {
       const fs = Math.max(10, Math.min(18, 2.6 * z));
       ctx.font = `700 ${fs}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -261,6 +294,127 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
       ctx.fillText(b.label.toUpperCase(), tx, ty + 1);
     }
   }
+}
+
+// A garage roof you can see through once you're inside (b.a fades 1 -> 0).
+function drawGarageRoof(ctx, b, rx, ry, w, d, z, showLabels) {
+  if (b.a < 0.03) return;
+  ctx.save();
+  ctx.globalAlpha = b.a;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(rx + 0.5 * z, ry + 0.6 * z, w, d);
+  ctx.fillStyle = b.color; ctx.fillRect(rx, ry, w, d);
+  const across = b.side === 'N' || b.side === 'S';
+  if (z > 1) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 1;
+    const step = (b.style === 'metal' ? 1.6 : 1.1) * z;
+    // ribs run from street to back: perpendicular to the facade
+    ctx.beginPath();
+    if (across) for (let t = step; t < w; t += step) { if (b.style === 'metal') { ctx.moveTo(rx + t, ry); ctx.lineTo(rx + t, ry + d); } else { /* shingle rows */ } }
+    else for (let t = step; t < d; t += step) { if (b.style === 'metal') { ctx.moveTo(rx, ry + t); ctx.lineTo(rx + w, ry + t); } }
+    if (b.style !== 'metal') {
+      if (across) for (let t = step; t < d; t += step) { ctx.moveTo(rx, ry + t); ctx.lineTo(rx + w, ry + t); }
+      else for (let t = step; t < w; t += step) { ctx.moveTo(rx + t, ry); ctx.lineTo(rx + t, ry + d); }
+    }
+    ctx.stroke();
+    // ridge line down the middle
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = Math.max(1, 0.25 * z);
+    ctx.beginPath();
+    if (across) { ctx.moveTo(rx + w / 2, ry); ctx.lineTo(rx + w / 2, ry + d); } else { ctx.moveTo(rx, ry + d / 2); ctx.lineTo(rx + w, ry + d / 2); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1.5; ctx.strokeRect(rx, ry, w, d);
+  if (b.label && showLabels && z > 1.0) {
+    const fs = Math.max(10, Math.min(17, 2.3 * z));
+    ctx.font = `700 ${fs}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const txt = b.label.toUpperCase(), tw = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.62)'; ctx.fillRect(rx + w / 2 - tw / 2 - 6, ry + d / 2 - fs * 0.7, tw + 12, fs * 1.4);
+    ctx.fillStyle = b.labelColor || '#fff'; ctx.fillText(txt, rx + w / 2, ry + d / 2 + 1);
+  }
+  ctx.restore();
+}
+
+// Shopfront on the street side of a landmark: awning, glass, doors, props.
+const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e' };
+function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
+  const side = b.side, ns = side === 'N' || side === 'S';
+  const len = ns ? w : d;
+  // front-frame rect: u along the facade, v outward from the front edge (negative = onto the roof)
+  const fr = (u0, u1, v0, v1) => {
+    if (side === 'S') return [rx + u0, ry + d + v0, u1 - u0, v1 - v0];
+    if (side === 'N') return [rx + u0, ry - v1, u1 - u0, v1 - v0];
+    if (side === 'E') return [rx + w + v0, ry + u0, v1 - v0, u1 - u0];
+    return [rx - v1, ry + u0, v1 - v0, u1 - u0];
+  };
+  const box = (r, col) => { ctx.fillStyle = col; ctx.fillRect(r[0], r[1], r[2], r[3]); };
+  const accent = b.accent || AWN[b.shop] || '#ddd';
+  const mid = len / 2, aw = Math.min(len * 0.5, 20 * z), awn = 2.6 * z;
+  const shop = b.shop;
+  // glass front
+  if (['dealer', 'clothing', 'realty', 'food', 'usedlot', 'visual', 'gas'].includes(shop)) {
+    const gl = fr(len * 0.07, len * 0.93, -3.2 * z, -0.35 * z);
+    box(gl, night > 0.3 ? 'rgba(255,224,150,0.7)' : 'rgba(150,200,230,0.55)');
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let u = len * 0.07; u < len * 0.93; u += 4 * z) { const q = fr(u, u, -3.2 * z, -0.35 * z); if (ns) { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[0], q[1] + q[3]); } else { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[0] + q[2], q[1]); } }
+    ctx.stroke();
+    if (shop === 'dealer' && z > 1.2) {
+      const cols = ['#c41b1b', '#1b4fc4', '#e8e8e8', '#222'];
+      for (let k = 0; k < 3; k++) {
+        const u0 = len * (0.16 + k * 0.27);
+        const cr = fr(u0, u0 + 8 * z * 0.5, -3.0 * z, -0.8 * z);
+        ctx.fillStyle = cols[(k + ((b.x | 0) & 3)) & 3];
+        ctx.fillRect(cr[0] + (ns ? 0 : 0), cr[1], ns ? 4.4 * z : cr[2], ns ? cr[3] : 4.4 * z);
+      }
+    }
+  }
+  if (shop === 'perf' || shop === 'repair') {
+    for (let k = 0; k < 3; k++) {
+      const u = len * (0.14 + k * 0.28);
+      const r = fr(u, u + len * 0.2, -1.6 * z, 0);
+      box(r, '#9aa0a8');
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+      for (let q = 1; q < 4; q++) { const t = fr(u, u + len * 0.2, -1.6 * z + q * 0.4 * z, -1.6 * z + q * 0.4 * z); ctx.beginPath(); if (ns) { ctx.moveTo(t[0], t[1]); ctx.lineTo(t[0] + t[2], t[1]); } else { ctx.moveTo(t[0], t[1]); ctx.lineTo(t[0], t[1] + t[3]); } ctx.stroke(); }
+    }
+  }
+  if (shop === 'police') {
+    box(fr(0, len, -1.4 * z, -0.4 * z), '#1b4fc4');
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(rx + w / 2, ry + d / 2 - (ns ? 0 : 0), Math.min(w, d) * 0.22, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1b4fc4'; ctx.font = `700 ${Math.max(8, Math.min(w, d) * 0.3)}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('H', rx + w / 2, ry + d / 2 + 1);
+  }
+  // roof units
+  const hx = Math.abs(Math.sin(b.x * 0.37 + b.z * 0.11));
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  for (let k = 0; k < 2; k++) {
+    const u = len * (0.15 + 0.5 * ((hx * (k + 1)) % 1));
+    const r = fr(u, u + 3 * z, -(ns ? d : w) * (0.55 + 0.15 * k), -(ns ? d : w) * (0.55 + 0.15 * k) + 3 * z);
+    ctx.fillRect(r[0], r[1], r[2], r[3]);
+  }
+  // awning over the door
+  const aRect = fr(mid - aw / 2, mid + aw / 2, -0.3 * z, awn);
+  box([aRect[0] + 0.5 * z, aRect[1] + 0.6 * z, aRect[2], aRect[3]], 'rgba(0,0,0,0.28)');
+  const sw = 1.2 * z;
+  let toggle = 0;
+  for (let u = mid - aw / 2; u < mid + aw / 2 - 0.01; u += sw, toggle++) {
+    box(fr(u, Math.min(u + sw, mid + aw / 2), -0.3 * z, awn), toggle % 2 ? '#f4f4f4' : accent);
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(aRect[0], aRect[1], aRect[2], aRect[3]);
+  // door light strip on the awning lip
+  box(fr(mid - 1.4 * z, mid + 1.4 * z, awn - 0.1 * z, awn + 0.3 * z), night > 0.2 ? '#fff3c4' : '#d9d2b0');
+}
+
+function drawGantry(ctx, b, x0, y0, ox, oy, w, d, z) {
+  const horiz = b.horiz, rx = x0 + ox, ry = y0 + oy;
+  // chequered band along the span
+  const sq = 1.2 * z, n = Math.max(1, Math.floor((horiz ? d : w) / sq));
+  for (let k = 0; k < n; k++) {
+    ctx.fillStyle = k % 2 ? '#f4f4f4' : '#111';
+    if (horiz) ctx.fillRect(rx, ry + k * sq, w, sq); else ctx.fillRect(rx + k * sq, ry, sq, d);
+  }
+  // posts
+  ctx.fillStyle = '#2a2c33';
+  const ps = Math.max(2, 1.4 * z);
+  if (horiz) { ctx.fillRect(x0 - ps / 2 + w / 2, y0 - ps / 2, ps, ps); ctx.fillRect(x0 - ps / 2 + w / 2, y0 + d - ps / 2, ps, ps); }
+  else { ctx.fillRect(x0 - ps / 2, y0 - ps / 2 + d / 2, ps, ps); ctx.fillRect(x0 + w - ps / 2, y0 - ps / 2 + d / 2, ps, ps); }
 }
 
 export function drawTrees(ctx, cam, items) {

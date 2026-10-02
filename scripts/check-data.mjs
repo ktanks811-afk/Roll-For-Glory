@@ -12,6 +12,9 @@ import { RevLimiter } from '../js/sim/twostep.js';
 import { createState, newCar, game } from '../js/core/state.js';
 import * as H from '../js/core/hustle.js';
 import { SERVERS, SERVER_CAP } from '../js/net/online.js';
+import { Vehicle } from '../js/world2d/vehicle.js';
+import { buildMap, collideCircle } from '../js/world2d/map.js';
+import { PROPERTIES } from '../js/data/world.js';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
 let fails = 0;
@@ -159,6 +162,99 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!away || Math.abs(away.net - expect) > 2) bad(`away income ${away?.net} vs ${expect}`);
   if (H.settleAway(s, t0 + 60 * 1000)) bad('a minute away should pay nothing');
   const sold = H.sellBiz(s, 'taco'); if (!sold.ok || s.hustle.biz.taco) bad('sell business');
+}
+
+// ---- driving physics: stable, grippy, and each drivetrain behaves like itself ----
+{
+  const DT = 1 / 60;
+  const mk = (model, parts = {}) => { const spec = buildSpec(model, parts, {}); return new Vehicle({ nos: 0, cond: {}, parts }, model, spec, 0, 0, 0); };
+  const run = (v, secs, f, env = { grip: 1, drag: 0 }) => {
+    const log = [];
+    for (let t = 0; t < secs; t += DT) { v.update(DT, { throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, auto: true, ...f(t, v) }, env); log.push({ sp: v.speed, yaw: v.yawRate, lat: v.latG, beta: v.slipAngle, h: v.h, skid: v.skid, x: v.x, z: v.z }); }
+    return log;
+  };
+  const cruise = (v, target) => ({ throttle: Math.max(0, Math.min(1, (target - v.speed) * 0.5)), brake: v.speed > target + 2 ? 0.3 : 0 });
+  const byDrive = d => CARS.find(c => c.drive === d && ['coupe', 'sedan', 'hatch', 'muscle'].includes(c.body) && c.hp < 330);
+  const radiusAfterFloorIt = {};
+  for (const d of ['FWD', 'RWD', 'AWD']) {
+    const m = byDrive(d);
+    // 1. brake from 27 m/s: 0.6-1.3 g
+    const v = mk(m); run(v, 30, (t, vv) => cruise(vv, 27)); const s0 = v.speed;
+    const bl = run(v, 8, () => ({ brake: 1 })); const stop = bl.findIndex(e => e.sp < 0.3) * DT;
+    const g = s0 / stop / 9.81;
+    if (!(g > 0.6 && g < 1.3)) bad(`${m.id} braking ${g.toFixed(2)} g`);
+    // 2. full lock at 15 m/s: grip-limited, around 0.5-1.1 g, never a spin
+    const v2 = mk(m); run(v2, 30, (t, vv) => cruise(vv, 15));
+    const l2 = run(v2, 3, (t, vv) => ({ ...cruise(vv, 15), steer: 1 }));
+    const gmax = Math.max(...l2.map(e => Math.abs(e.lat)));
+    if (!(gmax > 0.5 && gmax < 1.2)) bad(`${m.id} cornering ${gmax.toFixed(2)} g`);
+    if (Math.max(...l2.map(e => Math.abs(e.beta))) > 0.5) bad(`${m.id} spins out on full lock at 15 m/s`);
+    // 3. power on mid-corner: FWD pushes wide, RWD rotates
+    const v3 = mk(m); run(v3, 30, (t, vv) => cruise(vv, 20)); run(v3, 1.5, (t, vv) => ({ ...cruise(vv, 20), steer: 0.7 }));
+    const r0 = v3.speed / Math.abs(v3.yawRate);
+    run(v3, 1.2, () => ({ throttle: 1, steer: 0.7 }));
+    radiusAfterFloorIt[d] = v3.speed / Math.abs(v3.yawRate) / r0;
+    // 4. handbrake at speed swings the tail out
+    const v4 = mk(m); run(v4, 30, (t, vv) => cruise(vv, 20));
+    const hb = run(v4, 1.2, () => ({ steer: 0.8, handbrake: true }));
+    if (!(Math.max(...hb.map(e => Math.abs(e.beta))) > 0.5)) bad(`${m.id} handbrake does not slide the rear`);
+    // 5. burnout: gas + brake pins the car and lights up the driven tires
+    const v5 = mk(m); const bo = run(v5, 2.5, () => ({ throttle: 1, brake: 1, burnout: true }));
+    if (!v5.burning || v5.sim.slip < 0.5 || v5.skid < 0.5 || v5.speed > 3) bad(`${m.id} burnout: burning ${v5.burning} slip ${v5.sim.slip} speed ${v5.speed}`);
+  }
+  if (process.env.DBG) console.error("radius ratios", radiusAfterFloorIt);
+  if (!(radiusAfterFloorIt.FWD > 1.25)) bad(`FWD should understeer when you floor it mid-corner (${radiusAfterFloorIt.FWD?.toFixed(2)}x radius)`);
+  if (!(radiusAfterFloorIt.RWD < 0.85)) bad(`RWD should tighten its line when you floor it mid-corner (${radiusAfterFloorIt.RWD?.toFixed(2)}x radius)`);
+  // burnout needs gas AND brake, and a 2-step turns it into launch hold instead
+  { const m = byDrive('RWD'); const v = mk(m); run(v, 1, () => ({ throttle: 1, burnout: true })); if (v.burning) bad('gas alone is not a burnout');
+    const v2 = mk(m); run(v2, 0.5, () => ({ brake: 1, burnout: true })); if (v2.burning) bad('brake alone is not a burnout');
+    const v3 = mk(m, { twostep: 1 }); if (!(v3.spec.twoStep >= 1)) bad('2-step part sets spec.twoStep'); }
+  // donuts: RWD burnout with the wheel turned goes round
+  { const m = byDrive('RWD'); const v = mk(m); const l = run(v, 4, () => ({ throttle: 1, brake: 1, burnout: true, steer: 1 })); if (!(Math.abs(v.h) > 3)) bad(`RWD donut only turned ${v.h.toFixed(1)} rad`); if (Math.hypot(v.x, v.z) > 12) bad('donut drifts away'); }
+  // nothing explodes: every car, random inputs, 25 s
+  for (const c of CARS) {
+    const v = mk(c); let seed = 11;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    let st = 0, sb = 0, ss = 0, sh = false;
+    for (let t = 0; t < 25; t += DT) {
+      if (Math.floor(t * 2) !== Math.floor((t - DT) * 2)) { st = rnd() < 0.7 ? 1 : 0; sb = rnd() < 0.2 ? 1 : 0; ss = [-1, 0, 1][Math.floor(rnd() * 3)]; sh = rnd() < 0.15; }
+      v.update(DT, { throttle: st, brake: sb, steer: ss, handbrake: sh, auto: true, burnout: true }, { grip: 1, drag: 0 });
+      if (!Number.isFinite(v.x + v.z + v.h) || v.speed > 150 || Math.abs(v.yawRate) > 9) { bad(`${c.id} physics blew up at ${t.toFixed(1)}s (speed ${v.speed}, yaw ${v.yawRate})`); break; }
+    }
+  }
+}
+
+// ---- buildings you pull up to, and drive-in garages ----
+{
+  const map = buildMap();
+  const gar = map.garages;
+  for (const id of Object.keys(PROPERTIES)) if (!gar.find(g => g.id === id)) bad(`no garage building for ${id}`);
+  for (const g of gar) {
+    const P = PROPERTIES[g.id];
+    if (g.bays.length < P.slots - 1) bad(`${g.id} has ${g.bays.length} bays for ${P.slots} slots`);
+    if (!g.roof || g.roof.kind !== 'roof' || g.roof.a !== 1) bad(`${g.id} roof`);
+    // the door is solid until you own the place, and open after
+    g.panel.off = false;
+    const car = r => collideCircle(map, r.x, r.z, 1.1);
+    const dir = g.inDir;
+    const walk = (from, to, steps = 60) => { for (let i = 0; i <= steps; i++) { const t = i / steps; if (car({ x: from.x + (to.x - from.x) * t, z: from.z + (to.z - from.z) * t })) return false; } return true; };
+    if (walk(g.park, g.center)) bad(`${g.id}: closed garage door should block the way in`);
+    g.panel.off = true;
+    if (!walk(g.park, g.center)) bad(`${g.id}: can't drive from the driveway to the middle of the garage`);
+    for (const b of g.bays) if (collideCircle(map, b.x, b.z, 0.9)) bad(`${g.id}: a bay is inside a wall`);
+    if (collideCircle(map, g.park.x, g.park.z, 1)) bad(`${g.id}: driveway spot is blocked`);
+    g.panel.off = false;
+  }
+  // every business is a building right at its marker, with a front door side
+  for (const l of LOCATIONS) {
+    if (!l.block || l.type === 'home' || l.type === 'property') continue;
+    const bs = map.buildings.filter(b => b.loc === l.id);
+    if (!bs.length) { bad(`${l.id} has no building`); continue; }
+    const near = Math.min(...bs.map(b => Math.hypot(Math.max(b.x - l.x, 0, l.x - (b.x + b.w)), Math.max(b.z - l.z, 0, l.z - (b.z + b.d)))));
+    if (near > 12) bad(`${l.id}: nearest building is ${near.toFixed(0)} m from the marker`);
+    if (l.type !== 'gas' && !bs.some(b => b.side === l.side)) bad(`${l.id}: building front does not face the street`);
+  }
+  for (const l of LOCATIONS) if ((l.type === 'roll' || l.type === 'drag') && !map.buildings.some(b => b.kind === 'gantry' && b.loc === l.id)) bad(`${l.id} has no start gantry`);
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

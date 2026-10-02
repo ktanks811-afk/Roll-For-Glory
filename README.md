@@ -54,9 +54,30 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   products from MSD, Haltech, FuelTech, Cobb and more, stages 1–4, with real
   fitment). Hold gas + brake together and it holds your launch rpm (set in
   Garage → Tune) and throws flames out the exhaust tips. Higher stages hold
-  tighter and burn bigger. Flames come only from a 2-step: without one, gas +
-  brake just revs into the limiter. It works on the drag strip, at street meets
-  (Rev it) and when you're stopped on the street. Not for EVs.
+  tighter and burn bigger. Flames come only from a 2-step. It works on the
+  drag strip, at street meets (Rev it) and when you're stopped on the street.
+  Not for EVs.
+- **Burnouts (no 2-step needed).** Gas + brake together without a 2-step is a
+  burnout: the brakes pin the car, the driven wheels light up (rear on RWD,
+  front on FWD, both on AWD), the engine bounces off the limiter, and you get
+  smoke, skid marks, tire wear and tire-temp. Turn the wheel for donuts. Cops
+  that see one will write it up as an exhibition of speed.
+- **Real driving model.** Each axle has a slip angle and a tire curve that
+  peaks and lets go, weight moves forward under braking and back under power,
+  and a friction circle means a tire can't corner and brake or put power down
+  at once. So FWD pushes wide when you floor it mid-corner, RWD snaps its tail
+  out, trail-braking rotates the car, the handbrake swings the rear, and
+  grip, tires and suspension parts change how all of it feels. Steering lock
+  shrinks with speed and a light counter-steer assist catches slides.
+- **Buildings, not circles.** Every shop, dealer, diner, precinct and gas
+  station is a building with its front door and a striped awning on the street
+  side, right behind the kerb marker, so you pull up to it. Race starts have
+  a banner gantry over the road.
+- **Drive-in garages.** Your home and every property you buy is a garage
+  building. Pull up and the HUD says "Drive into the garage". Once you're
+  inside the roof fades away and you can see all your other cars parked in
+  the bays (filled home-first, up to the property's slots). Press E inside to
+  open the garage. A property you haven't bought keeps its door shut.
 - **Online servers.** Title screen → Play Online (or Pause → Online Free
   Roam) opens a server browser: eight named servers (Harbor, Downtown, Eastgate,
   Ironside, Dustline, Northridge, Pier 9, Glory Row), 16 players each, with live
@@ -195,7 +216,7 @@ in landscape from launch. On iPhone, where browsers can't lock rotation, a
 "Rotate your phone" screen appears in portrait (with a play-anyway button).
 
 Multi-touch works, so you can steer with one thumb and work the pedals with
-the other. Drag races use BRAKE + GAS together, and so does the 2-step (hold both pedals). Top right: ☰ menu and save,
+the other. Drag races use BRAKE + GAS together, and so do burnouts and the 2-step (hold both pedals). Top right: ☰ menu and save,
 ⌕ zoom, ☎ phone. It works in portrait and landscape.
 
 ## Running it locally

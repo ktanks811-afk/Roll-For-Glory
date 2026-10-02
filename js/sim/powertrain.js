@@ -68,7 +68,7 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}) {
     spoolTime: asp === 'turbo' ? 0.25 + 0.07 * boostLevel : 0,
     mass: model.kg * FX.weight.mult[L('weight')] + (L('nitrous') ? 14 : 0),
     mu, trac: FX.diff.trac[L('diff')] * FX.suspension.trac[L('suspension')],
-    driveFrac, eff: model.drive === 'AWD' ? 0.8 : model.drive === 'FWD' ? 0.88 : 0.86,
+    wf: model.wf ?? 0.54, driveFrac, eff: model.drive === 'AWD' ? 0.8 : model.drive === 'FWD' ? 0.88 : 0.86,
     gears: model.gears.slice(), fd: model.fd * (tune.finalDrive || 1),
     wheelR: WHEEL_R[model.body] || 0.32,
     cd: model.cd, area: model.area,

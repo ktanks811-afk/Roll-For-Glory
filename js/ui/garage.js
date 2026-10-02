@@ -396,7 +396,7 @@ function collection(body, h, app, st, s, car, m) {
     drive: d => {
       s.activeCar = d.uid; s.carPos = null;
       const w = app.world;
-      if (w) { const home = LOC_BY_ID[s.home]; w.vehicle = null; w.placeCar(getCar(s, d.uid), home.x + Math.cos(home.face) * 6, home.z + Math.sin(home.face) * 6, home.face + Math.PI / 2); }
+      if (w) { const home = LOC_BY_ID[s.home]; w.vehicle = null; const hs = w.homeSpot(home); w.placeCar(getCar(s, d.uid), hs.x, hs.z, hs.h); }
       toast(`Now driving your ${modelOf(getCar(s, d.uid)).model}`, 'good');
       h.refresh();
     },

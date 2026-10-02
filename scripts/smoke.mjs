@@ -231,6 +231,67 @@ await step('2-step flames (street + meet)', async () => {
   if (!(await p.$('[data-ts]'))) throw new Error('no 2-step rpm slider in Garage → Tune');
   await p.keyboard.press('Escape');
 });
+await step('burnout: gas + brake, no 2-step', async () => {
+  await p.evaluate(async () => {
+    const st = await import('./js/core/state.js'); const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const w = window.__rfg.app.world, s = window.__rfg.game.s; const c = s.cars.find(c => c.uid === s.activeCar);
+    delete c.parts.twostep; w.vehicle.setSpec(st.carSpec(c)); w.inCar = true; w.paused = false;
+    const v = w.vehicle; v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; w.skids.length = 0; w.smoke.length = 0; if (w.limiter) w.limiter.flames = 0;
+  });
+  await p.keyboard.down('KeyW'); await p.keyboard.down('KeyS'); await p.waitForTimeout(2200);
+  const r = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; return { burning: v.burning, slip: +v.sim.slip.toFixed(2), speed: +v.speed.toFixed(2), skids: w.skids.length, smoke: w.smoke.length, flames: w.limiter?.flames || 0, rpm: Math.round(v.sim.rpm), redline: v.spec.redline }; });
+  await snap('burnout');
+  await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW');
+  console.log('     burnout', JSON.stringify(r));
+  if (!r.burning || r.slip < 0.5) throw new Error('gas + brake did not start a burnout');
+  if (r.skids < 10 || r.smoke < 3) throw new Error('burnout left no marks or smoke');
+  if (r.flames !== 0) throw new Error('flames without a 2-step');
+  if (r.speed > 4) throw new Error('burnout drove away at ' + r.speed);
+  if (r.rpm < r.redline * 0.75) throw new Error('burnout rpm too low ' + r.rpm);
+  await p.waitForTimeout(400);
+});
+await step('drive-in garage', async () => {
+  const q = await p.evaluate(async () => {
+    const st = await import('./js/core/state.js'); const { openPlace } = await import('./js/ui/places.js');
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    for (const id of ['honda_s2000_ap2_2004', 'acura_nsx_type_s_2022']) s.cars.push(st.newCar(id));
+    const g = w.map.garages.find(q => q.id === s.home);
+    const sp = w.homeSpot(g.loc); const v = w.vehicle; v.x = sp.x; v.z = sp.z; v.h = sp.h; v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; v.yawRate = 0;
+    w.inCar = true; w.paused = false; w.cam.zoom = 9;
+    return { hint: null, roofBefore: g.roof.a };
+  });
+  await p.waitForTimeout(500);
+  const outside = await p.evaluate(() => { const w = window.__rfg.app.world; return { hint: w.garageHint, prompt: document.querySelector('#hud-prompt, .prompt')?.textContent || '', roof: w.map.garages.find(g => g.id === window.__rfg.game.s.home).roof.a }; });
+  await snap('garage-outside');
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1500);
+  const inside = await p.evaluate(() => { const w = window.__rfg.app.world; const g = w.map.garages.find(g => g.id === window.__rfg.game.s.home); return { in: w.inGarage?.id === g.id, roof: g.roof.a, cars: w.garageCars.length, nearLoc: w.nearLoc?.id, x: w.vehicle.x }; });
+  await p.waitForTimeout(700); await snap('garage-inside');
+  await p.keyboard.up('KeyW');
+  await p.keyboard.down('KeyS'); await p.waitForTimeout(300); await p.keyboard.up('KeyS');
+  const roofIn = await p.evaluate(() => window.__rfg.app.world.map.garages.find(g => g.id === window.__rfg.game.s.home).roof.a);
+  console.log('     garage', JSON.stringify({ outside, inside, roofIn }));
+  if (!outside.hint || !/garage/i.test(outside.hint)) throw new Error('no drive-in prompt outside the garage');
+  if (outside.roof < 0.95) throw new Error('roof should be solid from outside');
+  if (!inside.in) throw new Error('driving through the door did not put the car inside the garage');
+  if (roofIn > 0.2) throw new Error('roof did not fade away inside the garage: ' + roofIn);
+  if (inside.cars < 1) throw new Error('your other cars are not parked in the garage');
+  // leave: roof comes back
+  await p.evaluate(() => { const w = window.__rfg.app.world; const g = w.map.garages.find(g => g.id === window.__rfg.game.s.home); const sp = w.homeSpot(g.loc); w.vehicle.x = sp.x - g.inDir.x * 12; w.vehicle.z = sp.z - g.inDir.z * 12; w.vehicle.vx = w.vehicle.vz = 0; w.vehicle.sim.v = 0; });
+  await p.waitForTimeout(1800);
+  const roofOut = await p.evaluate(() => window.__rfg.app.world.map.garages.find(g => g.id === window.__rfg.game.s.home).roof.a);
+  if (roofOut < 0.9) throw new Error('roof should return after leaving: ' + roofOut);
+  // a place you don't own keeps its door shut
+  const blocked = await p.evaluate(async () => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    const g = w.map.garages.find(q => !s.properties.includes(q.id));
+    const sp = w.homeSpot(g.loc); const v = w.vehicle; v.x = sp.x; v.z = sp.z; v.h = sp.h; v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0;
+    return { id: g.id, ix: g.inner.x + g.inner.w / 2, iz: g.inner.z + g.inner.d / 2 };
+  });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1800); await p.keyboard.up('KeyW');
+  const stuck = await p.evaluate(() => { const w = window.__rfg.app.world; return { in: !!w.inGarage, d: 0 }; });
+  if (stuck.in) throw new Error('drove into a garage you do not own: ' + blocked.id);
+  await p.evaluate(() => { const w = window.__rfg.app.world; const g = w.map.garages.find(g => g.id === window.__rfg.game.s.home); const sp = w.homeSpot(g.loc); w.vehicle.x = sp.x; w.vehicle.z = sp.z; w.vehicle.vx = w.vehicle.vz = 0; w.vehicle.sim.v = 0; });
+});
 await step('save + reload', async () => {
   await p.evaluate(async () => { const { saveGame } = await import('./js/core/save.js'); saveGame('slot1'); });
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(500);

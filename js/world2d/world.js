@@ -22,6 +22,8 @@ import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 
+const st0 = (w, g) => w.s.properties.includes(g.id);
+
 let MAP = null;
 export function getMap() { if (!MAP) { MAP = buildMap(); MAP.lights = buildStreetLights(MAP); MAP.overview = renderOverview(MAP); } return MAP; }
 
@@ -47,6 +49,11 @@ export class World {
     this.gpsT = 0;
     this.gpsPath = null;
     this.nearLoc = null;
+    this.inGarage = null;       // garage you're standing in (roof fades away)
+    this.garageHint = '';
+    this.garageCars = [];
+    this.garageT = 0;
+    this.garageSprites = new Map();
     this.offenceCooldown = {};
     this.redLightNode = null;
     this.trafficCtx = { signalT: 0, others: [] };
@@ -65,13 +72,21 @@ export class World {
     if (car && s.carPos) {
       this.placeCar(car, s.carPos.x, s.carPos.z, s.carPos.h);
     } else if (car) {
-      this.placeCar(car, home.x - Math.sin(home.face) * 6 + 4, home.z + Math.cos(home.face) * 6, home.face + Math.PI / 2);
+      const sp = this.homeSpot(home);
+      this.placeCar(car, sp.x, sp.z, sp.h);
     }
     if (pos && pos.inCar && this.vehicle) { this.inCar = true; }
     else {
       this.inCar = false;
       this.foot.x = pos?.x ?? home.x; this.foot.z = pos?.z ?? home.z; this.foot.h = pos?.h ?? home.face;
     }
+  }
+
+  // Where your car waits outside a home: on the driveway, nose to the garage door.
+  homeSpot(home) {
+    const g = this.map.garages.find(q => q.id === home.id);
+    if (g) return { x: g.park.x, z: g.park.z, h: g.park.h };
+    return { x: home.x + Math.cos(home.face) * 6, z: home.z + Math.sin(home.face) * 6, h: home.face + Math.PI / 2 };
   }
 
   placeCar(car, x, z, h) {
@@ -93,7 +108,7 @@ export class World {
       const home = LOC_BY_ID[this.s.home];
       const sp = this.s.carPos;
       if (sp) this.placeCar(car, sp.x, sp.z, sp.h);
-      else this.placeCar(car, home.x + Math.cos(home.face) * 6, home.z + Math.sin(home.face) * 6, home.face + Math.PI / 2);
+      else { const hs = this.homeSpot(home); this.placeCar(car, hs.x, hs.z, hs.h); }
       if (this.inCar) { this.inCar = false; this.foot.x = this.vehicle.x + 3; this.foot.z = this.vehicle.z; }
     } else {
       this.vehicle.setSpec(carSpec(car));
@@ -151,6 +166,8 @@ export class World {
 
     // interactions
     this.updateInteractions();
+    this.updateGarageCars(dt);
+    for (const g of this.map.garages) g.roof.a += ((g === this.inGarage ? 0 : 1) - g.roof.a) * Math.min(1, dt * 4);
 
     // camera
     const focus = this.inCar && this.vehicle ? this.vehicle : this.foot;
@@ -330,6 +347,8 @@ export class World {
       handbrake: input.held('handbrake'), nitrous: input.held('nitrous'),
       shiftUp: input.pressed('shiftUp'), shiftDown: input.pressed('shiftDown'),
       auto: settings.transmission === 'auto',
+      // gas + brake with no 2-step fitted = burnout (with one it's launch-control hold, handled below)
+      burnout: !(v.spec.twoStep >= 1),
     }, { grip, drag: paved ? 0 : sand ? 2.2 : 1.6, noFuel });
     if (v.shifted) { v.shifted = false; audio.shift(); }
     if (input.pressed('horn')) { audio.horn(); online.honk(); }
@@ -339,7 +358,7 @@ export class World {
       this.limiter = new RevLimiter(v.spec, launchRpmSetting(v.spec, car)); this.limiter.car = car;
     }
     this.limiter.target = launchRpmSetting(v.spec, car);   // follows the Garage → Tune setting
-    const revving = !noFuel && v.model.asp !== 'ev' && v.rev > -1 && v.speed < 1.5 && input.axis('throttle') > 0.3 && input.axis('brake') > 0.3;
+    const revving = !noFuel && v.model.asp !== 'ev' && v.rev > -1 && (v.speed < 1.5 || v.burning) && input.axis('throttle') > 0.3 && input.axis('brake') > 0.3;
     const lr = this.limiter.update(dt, revving);
     this.flame = lr.flame;
     if (revving) { v.sim.rpm = lr.rpm; v.rev = 0; }   // gas + brake beats the reverse gear creeping in
@@ -381,15 +400,23 @@ export class World {
     // tire wear from wheelspin
     if (v.sim.slip > 0.2) car.cond.tires = Math.max(1, car.cond.tires - dt * 0.6 * v.sim.slip);
 
-    // skid marks + smoke
-    const sliding = Math.abs(v.slipAngle) > 0.18 && v.speed > 6;
-    if ((v.sim.slip > 0.25 || sliding) && v.speed > 0.5) {
-      const bx = v.x - Math.sin(v.h) * v.dims.L * 0.32, bz = v.z + Math.cos(v.h) * v.dims.L * 0.32;
+    // skid marks + smoke (burnouts light up the driven axle, slides light up the rears)
+    const fwdBurn = v.burning && v.spec.drive === 'FWD';
+    if ((v.skid > 0 || v.sim.slip > 0.25) && (v.speed > 0.5 || v.burning)) {
+      const sgn = fwdBurn ? 1 : -1;
+      const bx = v.x + sgn * Math.sin(v.h) * v.dims.L * 0.32, bz = v.z - sgn * Math.cos(v.h) * v.dims.L * 0.32;
       const rx = Math.cos(v.h) * v.dims.W * 0.4, rz = Math.sin(v.h) * v.dims.W * 0.4;
-      if (this.lastSkid) for (const k of [-1, 1]) this.skids.push([this.lastSkid.x + rx * k, this.lastSkid.z + rz * k, bx + rx * k, bz + rz * k]);
-      this.lastSkid = { x: bx, z: bz };
-      if (Math.random() < 0.5) this.smoke.push({ x: bx, z: bz, r: 0.5, life: 1.2, a: 0.32 });
-      if (this.skids.length > 900) this.skids.splice(0, 100);
+      if (this.lastSkid && Math.hypot(bx - this.lastSkid.x, bz - this.lastSkid.z) > 0.12) {
+        for (const k of [-1, 1]) this.skids.push([this.lastSkid.x + this.lastSkid.rx * k, this.lastSkid.z + this.lastSkid.rz * k, bx + rx * k, bz + rz * k]);
+      }
+      if (!this.lastSkid || Math.hypot(bx - this.lastSkid.x, bz - this.lastSkid.z) > 0.12) this.lastSkid = { x: bx, z: bz, rx, rz };
+      const puffs = v.burning ? 2 : Math.random() < 0.5 ? 1 : 0;
+      for (let i = 0; i < puffs; i++) {
+        const k = i % 2 ? 1 : -1;
+        this.smoke.push({ x: bx + rx * k * 0.8, z: bz + rz * k * 0.8, r: v.burning ? 0.8 : 0.5, life: v.burning ? 1.8 : 1.2, a: v.burning ? 0.5 : 0.32 });
+      }
+      if (this.skids.length > 1100) this.skids.splice(0, 100);
+      if (this.smoke.length > 160) this.smoke.splice(0, this.smoke.length - 160);
     } else this.lastSkid = null;
     if (car.cond.engine < 35 && Math.random() < dt * 6) {
       this.smoke.push({ x: v.x + Math.sin(v.h) * v.dims.L * 0.4, z: v.z - Math.cos(v.h) * v.dims.L * 0.4, r: 0.8, life: 2, a: 0.4, dark: true });
@@ -417,7 +444,7 @@ export class World {
     this.liveDb = liveNoiseDb(this.staticDb ?? noiseDb(v.model, v.car.parts), thr, v.sim.rpm / v.spec.redline);
     // engine audio
     if (this.engine) {
-      this.engine.update({ rpm: v.sim.rpm, throttle: thr, boost: v.sim.boost, slip: Math.max(v.sim.slip, sliding ? 0.5 : 0), turbo: v.spec.asp === 'turbo', speed: v.speed });
+      this.engine.update({ rpm: v.sim.rpm, throttle: thr, boost: v.sim.boost, slip: Math.max(v.sim.slip, v.skid * 0.7), turbo: v.spec.asp === 'turbo', speed: v.speed });
     }
     if (v.sim.nosOn && !this.nosSound) { audio.nos(); this.nosSound = true; }
     if (!v.sim.nosOn) this.nosSound = false;
@@ -518,14 +545,57 @@ export class World {
 
   updateInteractions() {
     const p = this.playerState();
+    const st = this.s;
     let best = null, bd = 10;
     for (const l of LOCATIONS) {
       const d = Math.hypot(l.x - p.x, l.z - p.z);
       if (d < bd) { bd = d; best = l; }
     }
-    if (this.inCar && this.vehicle && this.vehicle.speed > 4) best = null;
+    // garages: doors open for places you own, the roof fades when you're inside
+    let inside = null, hint = '';
+    for (const g of this.map.garages) {
+      const owned = st.properties.includes(g.id);
+      g.panel.off = owned;
+      const inn = g.inner;
+      if (owned && p.x > inn.x && p.x < inn.x + inn.w && p.z > inn.z && p.z < inn.z + inn.d) inside = g;
+      else if (owned && !inside && Math.hypot(p.x - g.park.x, p.z - g.park.z) < 22 && true) {
+        hint = this.inCar ? `Drive into the garage — ${g.loc.name.split(' (')[0]}` : `Walk into your garage — ${g.loc.name.split(' (')[0]}`;
+      }
+    }
+    if (inside && inside !== this.inGarage) this.ui.toast(`${inside.loc.name.split(' (')[0]} — your garage. Press E to manage your cars.`, 'info');
+    this.inGarage = inside;
+    this.garageHint = inside ? '' : hint;
+    if (inside) best = inside.loc;   // anywhere inside counts as being at the door
+    if (this.inCar && this.vehicle && this.vehicle.speed > 4 && !inside) best = null;
+    if (inside && this.inCar && this.vehicle.speed > 6) best = null;
     this.nearLoc = best;
     if (best && input.pressed('interact')) this.ui.openPlace(best, this);
+  }
+
+  // Your other cars, parked in the bays of the garages you own.
+  updateGarageCars(dt) {
+    this.garageT -= dt;
+    if (this.garageT > 0) return;
+    this.garageT = 0.5;
+    const st = this.s;
+    const others = st.cars.filter(c => c.uid !== st.activeCar);
+    const order = [...new Set([st.home, ...st.properties])].map(id => this.map.garages.find(g => g.id === id)).filter(Boolean);
+    const out = [];
+    let k = 0;
+    for (const g of order) {
+      for (const bay of g.bays) {
+        const car = others[k++];
+        if (!car) break;
+        const model = CAR_BY_ID[car.modelId];
+        if (!model) continue;
+        const key = car.uid + JSON.stringify([car.visual, levels(car), (car.cond?.body ?? 100) | 0]);
+        let spr = this.garageSprites.get(key);
+        if (!spr) { spr = carSprite(model.body, car.visual, levels(car), car.cond, { crewColor: st.crew?.color }); this.garageSprites.set(key, spr); }
+        out.push({ x: bay.x, z: bay.z, h: bay.h, sprite: spr, dims: DIMS[model.body] || DIMS.sedan, garage: g.id, car });
+      }
+    }
+    this.garageCars = out;
+    if (this.garageSprites.size > 40) this.garageSprites.clear();
   }
 
   // The road route from where you are to (x, z): { path: [[x, z], …], meters }.
@@ -565,15 +635,6 @@ export class World {
     drawSkids(ctx, cam, this.skids);
     if (s.weather === 'rain') { ctx.fillStyle = 'rgba(40,60,90,0.12)'; ctx.fillRect(0, 0, W, H); }
 
-    // location markers
-    for (const l of LOCATIONS) {
-      if (l.x < v.x0 || l.x > v.x1 || l.z < v.z0 || l.z > v.z1) continue;
-      const pulse = 0.6 + Math.sin(this.t * 3) * 0.2;
-      ctx.strokeStyle = l.color; ctx.lineWidth = Math.max(2, 0.4 * cam.zoom);
-      ctx.globalAlpha = pulse;
-      ctx.beginPath(); ctx.arc(cam.sx(l.x), cam.sy(l.z), 3.2 * cam.zoom, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 0.18; ctx.fillStyle = l.color; ctx.fill(); ctx.globalAlpha = 1;
-    }
     // gps path
     if (this.gpsPath && s.gps) {
       ctx.strokeStyle = 'rgba(255,40,60,0.55)'; ctx.lineWidth = Math.max(3, 1.4 * cam.zoom); ctx.lineJoin = 'round';
@@ -622,6 +683,35 @@ export class World {
 
     const livePeers = online.active ? this.drawPeers(ctx, v) : [];
 
+    // your other cars, parked inside the garages (the roof is drawn over them and fades out)
+    for (const c of this.garageCars) {
+      if (c.x < v.x0 || c.x > v.x1 || c.z < v.z0 || c.z > v.z1) continue;
+      this.drawShadow(ctx, c.x, c.z, c.h, c.dims);
+      drawCar(ctx, c.sprite, cam.sx(c.x), cam.sy(c.z), c.h, cam.zoom);
+    }
+    // "drive in" chevrons leading into the door
+    if (this.garageHint && !this.inGarage) {
+      for (const g of this.map.garages) {
+        if (!st0(this, g) || Math.hypot(g.park.x - cam.x, g.park.z - cam.z) > 90) continue;
+        const pulse = (this.t * 1.6) % 1;
+        ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        for (let k = 0; k < 3; k++) {
+          const f = (k + pulse) / 3;                                  // 0..1 travelling toward the door
+          const px = g.park.x + g.inDir.x * (f * 10 - 3), pz = g.park.z + g.inDir.z * (f * 10 - 3);
+          const ang = Math.atan2(g.inDir.z, g.inDir.x);
+          ctx.globalAlpha = Math.sin(f * Math.PI) * 0.9;
+          ctx.strokeStyle = '#2cff7a'; ctx.lineWidth = Math.max(2, 0.55 * cam.zoom);
+          ctx.beginPath();
+          const sx = cam.sx(px), sy = cam.sy(pz), r = 1.7 * cam.zoom;
+          ctx.moveTo(sx + Math.cos(ang + 2.5) * r, sy + Math.sin(ang + 2.5) * r);
+          ctx.lineTo(sx + Math.cos(ang) * r * 0.6, sy + Math.sin(ang) * r * 0.6);
+          ctx.lineTo(sx + Math.cos(ang - 2.5) * r, sy + Math.sin(ang - 2.5) * r);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
     // smoke
     for (const sm of this.smoke) {
       ctx.fillStyle = sm.dark ? `rgba(40,40,40,${sm.a * sm.life / 2})` : `rgba(220,220,220,${sm.a * sm.life / 1.4})`;
@@ -666,7 +756,8 @@ export class World {
         }
       }
       if (this.police.heli) blobs.push({ x: this.police.heli.x, z: this.police.heli.z, r: 22, a: 1 });
-      for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 6, color: l.color, a: 0.3 });
+      for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
+      if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       drawLighting(ctx, cam, night, this.map.lights, { cars: carsLit, glows, blobs });
     } else if (this.police.active) {
       // daytime light bars still flash
