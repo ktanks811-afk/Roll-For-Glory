@@ -291,3 +291,7 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .kv + label.field, .kv + p + label.field { margin-top: 12px; }
 @media (max-width: 820px) { .p-head > .muted.small { display: none; } }
 
+
+/* garage showroom: side-view pixel car */
+.showroom .sr-stage { background: linear-gradient(#6c6f74 0%, #50535a 62%, #2c2e33 62.2%, #1c1d21 100%); border: 1px solid var(--line2); border-radius: 8px; padding: 14px 10px 0; }
+.showroom canvas { width: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; aspect-ratio: 330 / 132; }

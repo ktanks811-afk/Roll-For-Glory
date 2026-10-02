@@ -213,8 +213,9 @@ await step('2-step flames (street + meet)', async () => {
   const lot = () => p.evaluate(() => { const c = document.querySelector('[data-lot]'); return { n: +c.dataset.flameCount, f: +c.dataset.flames, rev: c.dataset.revving }; });
   const idle = await lot(); if (idle.n !== 0) throw new Error('flames at a meet without revving');
   await p.dispatchEvent('[data-rev]', 'pointerdown');
-  await p.waitForTimeout(2500);
-  const on = await lot(); await snap('21-meet-flames');
+  let on = await lot();
+  for (let i = 0; i < 40 && on.n < 1; i++) { await p.waitForTimeout(200); on = await lot(); }   // slow frame rates need longer to wind up
+  await snap('21-meet-flames');
   await p.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup')));
   console.log('     meet rev', JSON.stringify(on));
   if (on.rev !== '1' || on.n < 1) throw new Error('meet rev gave no flames with a 2-step');
@@ -256,8 +257,9 @@ await step('online free roam', async () => {
   await p.evaluate(() => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; window.__rfg.game.s.heat = 2.5; });
   const pos = await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; return { x: v.x, z: v.z, h: v.h }; });
   await p2.evaluate(pos => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.x = pos.x + 9; w.vehicle.z = pos.z - 3; w.vehicle.h = pos.h; }, pos);
-  await p.waitForTimeout(2200);
-  const seen = await p.evaluate(() => window.__rfg.online.list().map(o => ({ name: o.name, car: o.model.id, x: o.x, z: o.z })));
+  const near = () => p.evaluate(([px, pz]) => window.__rfg.online.list().map(o => ({ name: o.name, car: o.model.id, x: o.x, z: o.z, d: Math.hypot(o.x - px, o.z - pz) })), [pos.x + 9, pos.z - 3]);
+  for (let i = 0; i < 40; i++) { await p.waitForTimeout(250); const l = await near(); if (l.length === 1 && l[0].d < 4) break; }   // slow frame rates ease the car in slowly
+  const seen = await near();
   console.log('     tab1 sees', JSON.stringify(seen), 'me', JSON.stringify(pos));
   if (seen.length !== 1) throw new Error('tab 1 does not see exactly one other racer');
   if (Math.hypot(seen[0].x - (pos.x + 9), seen[0].z - (pos.z - 3)) > 4) throw new Error('remote car is in the wrong place');
@@ -357,6 +359,46 @@ await step('noise + traffic stop', async () => {
   await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; const c = s.cars.find(c => c.uid === s.activeCar); delete c.parts.exhaust; w.refreshCar(); });
   await p.keyboard.down('KeyW'); await p.waitForTimeout(1500); const quiet = await W(); await p.keyboard.up('KeyW');
   if (quiet.att > 0.05 || quiet.phase !== 'none') throw new Error('a street-legal car should not draw attention for noise');
+});
+
+// ---------------- side-view showroom (layered Mustang) ----------------
+await step('showroom (side-view Mustang)', async () => {
+  const hash = () => p.evaluate(() => { const c = document.querySelector('[data-side]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0, solid = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3]) solid++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7 + d[i + 3]) | 0; } return { h, solid, w: c.width, hgt: c.height }; });
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { newCar } = await import('./js/core/state.js'); const { openGarage } = await import('./js/ui/garage.js');
+    const r = window.__rfg, s = r.game.s; const c = newCar('ford_mustang_gt_s650_2024'); s.cars.push(c); s.activeCar = c.uid; s.cash += 5000; r.app.world.refreshCar();
+    openGarage(r.app, { mode: 'home', tab: 'showroom' });
+  });
+  await p.waitForSelector('[data-side]');
+  const a = await hash();
+  console.log('     showroom canvas', JSON.stringify({ w: a.w, h: a.hgt, solid: a.solid }));
+  if (a.w !== 330 || a.solid < 6000) throw new Error('showroom Mustang did not draw');
+  await snap('27-showroom');
+  // every layer is separate: hiding wheels changes the picture
+  await p.click('[data-layer="wheels"]'); const b = await hash();
+  if (b.h === a.h) throw new Error('hiding the wheels changed nothing'); await p.click('[data-layer="wheels"]');
+  // wheel size costs a fitting fee and changes the car
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  await p.click('button[data-action="wsize"][data-n="21"]'); await p.waitForTimeout(150);
+  const c1 = await hash(), cash1 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  if (c1.h === a.h || !(cash1 < cash0)) throw new Error('wheel size did not change the car / cost nothing');
+  await p.click('button[data-action="offset"][data-o="poke"]'); await p.waitForTimeout(150);
+  // engine view
+  await p.click('button[data-action="engine"]'); await p.waitForTimeout(150);
+  const e = await hash(); if (e.h === c1.h) throw new Error('open hood changed nothing');
+  await snap('28-showroom-engine');
+  // paint + parts show up: a different paint changes the picture
+  await p.evaluate(() => { const s = window.__rfg.game.s, c = s.cars.find(x => x.uid === s.activeCar); c.visual.paint = '#1b4fc4'; c.visual.spoiler = 'gt'; c.parts.supercharger = 1; });
+  await p.click('button[data-action="engine"]'); await p.waitForTimeout(150);
+  const f2 = await hash(); if (f2.h === c1.h) throw new Error('paint + spoiler did not show');
+  // other cars point you to the overhead view
+  await p.evaluate(async () => { const { newCar } = await import('./js/core/state.js'); const s = window.__rfg.game.s; const c = newCar('honda_civic_ex_1996'); s.cars.push(c); s.activeCar = c.uid; });
+  await p.keyboard.press('Escape');
+  await p.evaluate(async () => { const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home', tab: 'showroom' }); });
+  await p.waitForTimeout(200);
+  if (await p.$('[data-side]')) throw new Error('a Civic should not get the Mustang side view');
+  await p.keyboard.press('Escape');
 });
 
 // ---------------- side hustles: passive income ----------------

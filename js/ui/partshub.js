@@ -20,7 +20,8 @@ const ICONS = { engine: '⚙', turbo: '🌀', supercharger: '🔩', intake: '�
 const view = { tab: 'shop', cat: 'turbo', brand: '', q: '', fitOnly: true, sort: 'pop' };
 
 export function openPartsHub(app, opts = {}) {
-  const store = opts.store || null;       // 'perf' | 'visual' when used at a shop counter
+  const store = opts.store || null;
+  if (opts.cat) view.cat = opts.cat;       // 'perf' | 'visual' when used at a shop counter
   if (store === 'visual' && PERF_CATS.includes(view.cat)) view.cat = 'wheels';
   if (store === 'perf' && VIS_CATS.includes(view.cat)) view.cat = 'turbo';
   return openPanel((root, h) => render(root, h, app, store));

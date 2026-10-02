@@ -70,6 +70,7 @@ export function defaultVisual(model) {
     tint: 'none', kit: 'stock', frontBumper: 'stock', rearBumper: 'stock', skirts: 'none',
     spoiler: 'none', hood: 'stock', exhaustTips: 'single', headlights: 'halogen', taillights: 'stock',
     decal: 'none', decalColor: '#f2f2f2', plate: randomPlate(), neon: 'none', interior: '#111111',
+    wheelSize: '19', offset: 'flush',
   };
 }
 
