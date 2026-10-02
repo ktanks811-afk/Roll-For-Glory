@@ -68,7 +68,9 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   at once. So FWD pushes wide when you floor it mid-corner, RWD snaps its tail
   out, trail-braking rotates the car, the handbrake swings the rear, and
   grip, tires and suspension parts change how all of it feels. Steering lock
-  shrinks with speed and a light counter-steer assist catches slides. Turning is
+  shrinks with speed and a light counter-steer assist catches slides. Cars are planted by
+  default: they only get greasy and tail-happy once the tires are worn to 10%
+  or less (the handbrake still slides on purpose). Turning is
   instant: the wheel follows the arrow or stick immediately, and a turn assist
   adds the missing yaw if the front tires are pushing, so a held left or right
   always turns the car as hard as the tires allow.

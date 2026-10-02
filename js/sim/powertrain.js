@@ -50,7 +50,9 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}) {
   else if (/AT|CVT/.test(code)) shiftBase *= 0.75;
   const shiftTime = shiftBase * (1 + (1 - c('trans')) * 1.5);
 
-  const tireHealth = c('tires') <= 0.01 ? 0.35 : 0.6 + 0.4 * c('tires');
+  // full grip until the tires are nearly gone: they only go greasy at 10% or less
+  const tc = c('tires');
+  const tireHealth = tc >= 0.15 ? 1 : tc > 0.10 ? 0.75 + 0.25 * (tc - 0.10) / 0.05 : 0.35 + 0.4 * (tc / 0.10);
   const mu = model.grip * FX.tires.mu[L('tires')] * tireHealth;
 
   const driveFrac = model.drive === 'AWD' ? 1

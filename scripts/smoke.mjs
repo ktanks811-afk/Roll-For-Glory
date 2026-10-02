@@ -523,8 +523,9 @@ await step('minimap', async () => {
   for (let i = 0; i < 4; i++) await p.dispatchEvent('.hud-mini', 'pointerdown');
   if ((await p.evaluate(() => window.__rfg.app.hud.minimap.mode.name)) !== m1) throw new Error('minimap views should loop');
   // a destination shows up as a route + flag/arrow
-  await p.evaluate(async () => { const { LOC_BY_ID } = await import('./js/data/world.js'); const l = LOC_BY_ID.pier9; window.__rfg.app.world.setGps(l.x, l.z, 'Pier 9'); });
-  await p.waitForTimeout(1500);
+  await p.evaluate(async () => { const { LOC_BY_ID } = await import('./js/data/world.js'); const l = LOC_BY_ID.pier9; const w = window.__rfg.app.world; w.paused = false; w.setGps(l.x, l.z, 'Pier 9'); });
+  for (let i = 0; i < 30; i++) { await p.waitForTimeout(100); if (await p.evaluate(() => (window.__rfg.app.world.gpsPath || []).length > 1)) break; }
+  await p.waitForTimeout(600);
   const b = await px(); const route = await p.evaluate(() => (window.__rfg.app.world.gpsPath || []).length);
   if (route < 2 || b.red < a.red - 3) throw new Error('GPS route not drawn on the minimap ' + JSON.stringify({ a, b, route }));
   await p.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });

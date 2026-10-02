@@ -171,7 +171,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
 // ---- driving physics: stable, grippy, and each drivetrain behaves like itself ----
 {
   const DT = 1 / 60;
-  const mk = (model, parts = {}) => { const spec = buildSpec(model, parts, {}); return new Vehicle({ nos: 0, cond: {}, parts }, model, spec, 0, 0, 0); };
+  const mk = (model, parts = {}, tires = 100) => { const spec = buildSpec(model, parts, { tires }); return new Vehicle({ nos: 0, cond: { tires }, parts }, model, spec, 0, 0, 0); };
   const run = (v, secs, f, env = { grip: 1, drag: 0 }) => {
     const log = [];
     for (let t = 0; t < secs; t += DT) { v.update(DT, { throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, auto: true, ...f(t, v) }, env); log.push({ sp: v.speed, yaw: v.yawRate, lat: v.latG, beta: v.slipAngle, h: v.h, skid: v.skid, x: v.x, z: v.z }); }
@@ -179,7 +179,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   };
   const cruise = (v, target) => ({ throttle: Math.max(0, Math.min(1, (target - v.speed) * 0.5)), brake: v.speed > target + 2 ? 0.3 : 0 });
   const byDrive = d => CARS.find(c => c.drive === d && ['coupe', 'sedan', 'hatch', 'muscle'].includes(c.body) && c.hp < 330);
-  const radiusAfterFloorIt = {};
+  const radiusAfterFloorIt = {}, wornBeta = {};
   for (const d of ['FWD', 'RWD', 'AWD']) {
     const m = byDrive(d);
     // 1. brake from 27 m/s: 0.6-1.3 g
@@ -193,11 +193,17 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     const gmax = Math.max(...l2.map(e => Math.abs(e.lat)));
     if (!(gmax > 0.5 && gmax < 1.2)) bad(`${m.id} cornering ${gmax.toFixed(2)} g`);
     if (Math.max(...l2.map(e => Math.abs(e.beta))) > 0.5) bad(`${m.id} spins out on full lock at 15 m/s`);
-    // 3. power on mid-corner: FWD pushes wide, RWD rotates
-    const v3 = mk(m); run(v3, 30, (t, vv) => cruise(vv, 20)); run(v3, 1.5, (t, vv) => ({ ...cruise(vv, 20), steer: 0.4 }));
-    const r0 = v3.speed / Math.abs(v3.yawRate);
-    run(v3, 1.2, () => ({ throttle: 1, steer: 0.4 }));
-    radiusAfterFloorIt[d] = v3.speed / Math.abs(v3.yawRate) / r0;
+    // 3. power on mid-corner. Good tires stay planted for every drivetrain; tires at 5% push (FWD) or snap (RWD)
+    const floorIt = tires => {
+      const v3 = mk(m, {}, tires); run(v3, 30, (t, vv) => cruise(vv, 20)); run(v3, 1.5, (t, vv) => ({ ...cruise(vv, 20), steer: 0.4 }));
+      const r0 = v3.speed / Math.abs(v3.yawRate);
+      const lw = run(v3, 1.2, () => ({ throttle: 1, steer: 0.4 }));
+      return { ratio: v3.speed / Math.abs(v3.yawRate) / r0, beta: Math.max(...lw.map(e => Math.abs(e.beta))) };
+    };
+    const good = floorIt(100), worn = floorIt(5);
+    if (good.beta > 0.2) bad(`${m.id} (${d}) fishtails on good tires: slip angle ${good.beta.toFixed(2)} rad`);
+    if (!(good.ratio > 0.8 && good.ratio < 2.2)) bad(`${m.id} (${d}) good tires: radius ratio ${good.ratio.toFixed(2)}`);
+    radiusAfterFloorIt[d] = worn.ratio; wornBeta[d] = worn.beta;
     // 4. handbrake at speed swings the tail out
     const v4 = mk(m); run(v4, 30, (t, vv) => cruise(vv, 20));
     const hb = run(v4, 1.2, () => ({ steer: 0.8, handbrake: true }));
@@ -207,8 +213,8 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (!v5.burning || v5.sim.slip < 0.5 || v5.skid < 0.5 || v5.speed > 3) bad(`${m.id} burnout: burning ${v5.burning} slip ${v5.sim.slip} speed ${v5.speed}`);
   }
   if (process.env.DBG) console.error("radius ratios", radiusAfterFloorIt);
-  if (!(radiusAfterFloorIt.FWD > 1.25)) bad(`FWD should understeer when you floor it mid-corner (${radiusAfterFloorIt.FWD?.toFixed(2)}x radius)`);
-  if (!(radiusAfterFloorIt.RWD < 0.85)) bad(`RWD should tighten its line when you floor it mid-corner (${radiusAfterFloorIt.RWD?.toFixed(2)}x radius)`);
+  if (!(radiusAfterFloorIt.FWD > 1.25)) bad(`FWD on worn tires should understeer when you floor it mid-corner (${radiusAfterFloorIt.FWD?.toFixed(2)}x radius)`);
+  if (!(radiusAfterFloorIt.RWD < 0.85)) bad(`RWD on worn tires should tighten its line when you floor it mid-corner (${radiusAfterFloorIt.RWD?.toFixed(2)}x radius)`);
   // burnout needs gas AND brake, and a 2-step turns it into launch hold instead
   { const m = byDrive('RWD'); const v = mk(m); run(v, 1, () => ({ throttle: 1, burnout: true })); if (v.burning) bad('gas alone is not a burnout');
     const v2 = mk(m); run(v2, 0.5, () => ({ brake: 1, burnout: true })); if (v2.burning) bad('brake alone is not a burnout');

@@ -137,10 +137,14 @@ export class Vehicle {
       const rs = clamp(0.85 * Nr / (m * G), 0.1, 0.35);
       rhoF = -Fx * (1 - rs) / (mu * Nf); rhoR = -Fx * rs / (mu * Nr);
     }
+    // Good tires: power and brakes barely eat into cornering grip, and the car stays planted.
+    // Tires at 10% or less: the old greasy, tail-happy behaviour.
+    const grippy = (this.car.cond?.tires ?? 100) > 10;
+    if (grippy) { rhoF *= 0.5; rhoR *= 0.5; }
     const spin = this.sim.slip;
     const spinNow = spin;
     if (spin > 0) {
-      const lit = 0.7 + 0.3 * Math.min(1, spin);
+      const lit = (0.7 + 0.3 * Math.min(1, spin)) * (grippy ? 0.45 : 1);
       if (drive !== 'RWD') rhoF = Math.max(rhoF, lit * (drive === 'AWD' ? 0.65 : 1));
       if (drive !== 'FWD') rhoR = Math.max(rhoR, lit * (drive === 'AWD' ? 0.9 : 1));
     }
@@ -173,6 +177,7 @@ export class Vehicle {
       const vDot = (fyF * Math.cos(d) + fyR) / m - u * r;
       const rDot = (A * fyF * Math.cos(d) - B * fyR) / Iz;
       let nr = r + rDot * h, nv = v + vDot * h;
+      if (grippy && !inp.handbrake && !burn) nv *= Math.exp(-3.5 * dyn * h);   // planted: sideways speed is bled off
       if (dyn < 1) {
         const rk = u * Math.tan(d) / wb;
         nr = dyn * nr + (1 - dyn) * rk;
