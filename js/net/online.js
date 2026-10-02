@@ -66,16 +66,41 @@ export function cleanLevels(lv) {
 
 const norm = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 
-class LocalTransport {
-  constructor(room, onMsg, id) {
-    this.room = room; this.id = id;
-    this.ch = new BroadcastChannel('rfg:' + room); this.ch.onmessage = e => onMsg(e.data);
+export class LocalTransport {
+  constructor(room, onMsg, id, onPresence) {
+    this.room = room; this.id = id; this.onPresence = onPresence;
+    this.ch = new BroadcastChannel('rfg:' + room);
+    this.ch.onmessage = e => { const m = e.data; if (m && m.k === '_p') this.gotPresence(m); else onMsg(m); };
     this.census = new BroadcastChannel('rfg-census');
+    this.seenP = new Map(); this.meta = null;
   }
-  async open() { this.beat(); this.timer = setInterval(() => this.beat(), 1000); return true; }
+  // Presence is only emulated when a meta object is given (the crew lobby); game servers don't use it here.
+  async open(name, meta) {
+    this.beat(); this.timer = setInterval(() => this.beat(), 1000);
+    if (meta !== undefined) {
+      this.meta = meta; this.joined = Date.now();
+      this.pbeat(); this.ptimer = setInterval(() => { this.pbeat(); this.sweep(); }, 800);
+    }
+    return true;
+  }
+  update(meta) { this.meta = meta; this.pbeat(); }
+  pbeat() { try { this.ch.postMessage({ k: '_p', id: this.id, t: this.joined, meta: this.meta }); } catch { /* closed */ } this.emitP(); }
+  gotPresence(m) {
+    if (m.bye) this.seenP.delete(m.id); else this.seenP.set(m.id, { t: m.t, meta: m.meta, last: Date.now() });
+    this.emitP();
+  }
+  sweep() { const now = Date.now(); for (const [id, v] of this.seenP) if (now - v.last > 2600) this.seenP.delete(id); this.emitP(); }
+  emitP() {
+    if (!this.onPresence || this.meta === null) return;
+    const list = [{ id: this.id, t: this.joined, meta: this.meta }, ...[...this.seenP].map(([id, v]) => ({ id, t: v.t, meta: v.meta }))];
+    const sig = JSON.stringify(list.map(x => [x.id, x.meta]));
+    if (sig === this.lastSig) return;
+    this.lastSig = sig;
+    this.onPresence(list.sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1)));
+  }
   beat() { try { this.census.postMessage({ srv: this.room, id: this.id }); } catch { /* closed */ } }
   send(msg) { this.ch.postMessage(msg); }
-  close() { clearInterval(this.timer); this.ch.close(); this.census.close(); }
+  close() { clearInterval(this.timer); clearInterval(this.ptimer); try { this.ch.postMessage({ k: '_p', id: this.id, bye: true }); } catch { /* closed */ } this.ch.close(); this.census.close(); }
   // How many are on each server? Listen for the heartbeats for a moment.
   static async count(servers) {
     const seen = Object.fromEntries(servers.map(sv => [sv.id, new Set()]));
@@ -93,23 +118,25 @@ async function supabaseClient() {
 }
 const presenceCount = ch => Object.keys(ch.presenceState()).length;
 
-class SupabaseTransport {
+export class SupabaseTransport {
   constructor(room, onMsg, id, onPresence) { this.room = room; this.onMsg = onMsg; this.id = id; this.onPresence = onPresence; this.ch = null; this.client = null; }
-  async open(name) {
+  async open(name, meta) {
+    this.name = name; this.t0 = Date.now();
     this.client = await supabaseClient();
     this.ch = this.client.channel('rfg:srv:' + this.room, { config: { broadcast: { self: false, ack: false }, presence: { key: this.id } } });
     this.ch.on('broadcast', { event: 'm' }, ({ payload }) => this.onMsg(payload));
     // presence = who is on this server right now (also tells us when someone drops)
-    this.ch.on('presence', { event: 'sync' }, () => this.onPresence?.(Object.entries(this.ch.presenceState()).map(([id, metas]) => ({ id, t: metas?.[0]?.t || 0 })).sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1))));
+    this.ch.on('presence', { event: 'sync' }, () => this.onPresence?.(Object.entries(this.ch.presenceState()).map(([id, metas]) => ({ id, t: metas?.[0]?.t || 0, meta: metas?.[metas.length - 1]?.m })).sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1))));
     await new Promise((res, rej) => {
       const to = setTimeout(() => rej(new Error('Timed out connecting to the server')), 12000);
       this.ch.subscribe(async st => {
-        if (st === 'SUBSCRIBED') { try { await this.ch.track({ n: name, t: Date.now() }); } catch { /* presence is best-effort */ } clearTimeout(to); res(); }
+        if (st === 'SUBSCRIBED') { try { await this.ch.track({ n: name, t: this.t0, m: meta }); } catch { /* presence is best-effort */ } clearTimeout(to); res(); }
         else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT' || st === 'CLOSED') { clearTimeout(to); rej(new Error('Could not connect to the server')); }
       });
     });
     return true;
   }
+  update(meta) { try { this.ch?.track({ n: this.name, t: this.t0, m: meta }); } catch { /* best effort */ } }
   send(msg) { this.ch?.send({ type: 'broadcast', event: 'm', payload: msg }); }
   close() { try { this.ch?.untrack?.(); this.client?.removeChannel(this.ch); this.client?.realtime?.disconnect(); } catch { /* already closed */ } }
   // Player counts for every server: listen to each channel's presence without joining it.
@@ -222,7 +249,7 @@ class Online {
   sendHello() {
     const me = this.me;
     if (!me) return;
-    this.send({ k: 'h', n: this.name, m: me.modelId, v: me.visual, l: me.levels, t: me.tier });
+    this.send({ k: 'h', n: this.name, m: me.modelId, v: me.visual, l: me.levels, t: me.tier, cr: me.crew ? { t: me.crew.tag, c: me.crew.color } : undefined });
   }
 
   say(text) {
@@ -260,6 +287,8 @@ class Online {
         p.model = model; p.visual = cleanVisual(model, m.v); p.levels = cleanLevels(m.l); p.tier = Math.round(num(m.t, 1, 9, 1));
         p.spriteKey = '';
       }
+      const cr = m.cr && typeof m.cr === 'object' ? m.cr : null;
+      p.crew = cr && /^[A-Z0-9]{2,4}$/.test(String(cr.t)) && /^#[0-9a-fA-F]{6}$/.test(String(cr.c)) ? { tag: cr.t, color: cr.c } : null;
       this.emit('peers');
     } else if (m.k === 's') {
       const x = num(m.x, -5000, 5000), z = num(m.z, -5000, 5000);

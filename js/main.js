@@ -11,6 +11,7 @@ import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
+import { initCrews } from './ui/ocrew.js';
 import { initOrientation } from './ui/orientation.js';
 import { online } from './net/online.js';
 import { World, getMap } from './world2d/world.js';
@@ -209,6 +210,7 @@ async function boot() {
     requestAnimationFrame(frame);
     window.__rfg = { app, game, ui, online };
     initOnline(app);
+    initCrews(app);
     initOrientation();
   } catch (e) {
     console.error(e);

@@ -210,7 +210,7 @@ export class World {
     if (this.onlineMeT <= 0) {
       this.onlineMeT = 1;
       const car = activeCar(this.s);
-      if (car) online.me = { name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n };
+      if (car) online.me = { name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n, crew: this.s.onlineCrew ? { tag: this.s.onlineCrew.tag, color: this.s.onlineCrew.color } : null };
     }
     const speed = this.inCar ? (this.vehicle.rev < 0 ? -p.speed : p.speed) : walking ? 3 : 0;
     online.tick(dt, { x: p.x, z: p.z, h: p.h, speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0 });
@@ -253,10 +253,11 @@ export class World {
     ctx.font = '600 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const p of peers) {
       const x = cam.sx(p.x), y = cam.sy(p.z) - (p.inCar ? 3.2 : 1.8) * cam.zoom;
-      const w = ctx.measureText(p.name).width + 14;
+      const label = p.crew ? `[${p.crew.tag}] ${p.name}` : p.name;
+      const w = ctx.measureText(label).width + 14;
       ctx.fillStyle = 'rgba(8,9,12,0.78)'; ctx.fillRect(x - w / 2, y - 9, w, 18);
-      ctx.fillStyle = '#ff2a3a'; ctx.fillRect(x - w / 2, y - 9, 2, 18);
-      ctx.fillStyle = '#f2f4f8'; ctx.fillText(p.name, x, y + 1);
+      ctx.fillStyle = p.crew ? p.crew.color : '#ff2a3a'; ctx.fillRect(x - w / 2, y - 9, 3, 18);
+      ctx.fillStyle = '#f2f4f8'; ctx.fillText(label, x, y + 1);
     }
     ctx.restore();
   }

@@ -12,7 +12,7 @@ const QUICK = ['🏁 Race me!', '🔥 Nice build', '👍', '😂', 'Meet at Pier
 export function meFromGame() {
   const s = game.s, car = activeCar(s);
   if (!car) return null;
-  return { name: s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(s.rep).n };
+  return { name: s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(s.rep).n, crew: s.onlineCrew ? { tag: s.onlineCrew.tag, color: s.onlineCrew.color } : null };
 }
 
 // Wire network events to sound/toasts once at boot.

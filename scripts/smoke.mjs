@@ -503,6 +503,75 @@ await step('online free roam', async () => {
   await p2.close();
 });
 
+// ---------------- online crews (two tabs, same-browser transport) ----------------
+await step('online crews', async () => {
+  const mk = async name => {
+    const pg = await p.context().newPage(); pg.setDefaultTimeout(8000);
+    pg.on('pageerror', e => errs.push(name + ' pageerror: ' + e.message));
+    pg.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(name + ' console: ' + m.text()); });
+    await pg.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+    await pg.goto(URL, { waitUntil: 'domcontentloaded' });
+    await pg.waitForFunction(() => window.__rfg, null, { timeout: 15000 });
+    await pg.waitForTimeout(500);
+    await pg.click('.menu button:has-text("Continue")');
+    await pg.waitForTimeout(800);
+    await pg.evaluate(async () => { const r = window.__rfg; r.online.kindOverride = 'local'; r.game.s.onlineCrew = null; r.game.s.cash += 20000; r.app.world.paused = false; });
+    return pg;
+  };
+  const q = await mk('crewB');
+  await p.evaluate(async () => { const r = window.__rfg; r.online.kindOverride = 'local'; r.game.s.onlineCrew = null; r.game.s.cash += 20000; r.app.world.paused = false; const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  const openApp = pg => pg.evaluate(async () => { const { openPhone } = await import('./js/ui/phone.js'); openPhone('ocrew', window.__rfg.app); });
+  const wait = async (pg, fn, arg, ms = 8000) => { await pg.waitForFunction(fn, arg, { timeout: ms }); };
+  const lob = pg => pg.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); return { st: lobby.status, dir: lobby.directory().map(g => ({ n: g.name, t: g.tag, open: g.open, c: g.members.length })), req: lobby.requests.length, chat: lobby.chat.map(c => c.text), crew: window.__rfg.game.s.onlineCrew && { n: window.__rfg.game.s.onlineCrew.name, r: window.__rfg.game.s.onlineCrew.role } }; });
+  // tab A founds a crew
+  await openApp(p);
+  await wait(p, async () => (await import('./js/net/crews.js')).lobby.status === 'on');
+  await p.click('button[data-action="tab"][data-id="create"]');
+  await p.fill('[data-f="name"]', 'Night Shift'); await p.fill('[data-f="tag"]', 'nsft'); await p.fill('[data-f="motto"]', 'We only go left');
+  await p.click('button[data-action="create"]');
+  await p.waitForFunction(() => window.__rfg.game.s.onlineCrew?.role === 'leader');
+  const created = await lob(p);
+  if (created.crew?.n !== 'Night Shift') throw new Error('crew was not created ' + JSON.stringify(created));
+  // tab B sees it in the live directory and joins (open crew)
+  await openApp(q);
+  await wait(q, async () => (await import('./js/net/crews.js')).lobby.directory().some(g => g.tag === 'NSFT'), null, 10000);
+  await q.waitForSelector('button[data-action="join"]');
+  await q.click('button[data-action="join"]');
+  await q.waitForFunction(() => window.__rfg.game.s.onlineCrew?.role === 'member');
+  // crew chat both ways
+  await q.evaluate(async () => (await import('./js/net/crews.js')).lobby.say('yo crew'));
+  await wait(p, async () => (await import('./js/net/crews.js')).lobby.chat.some(c => c.text === 'yo crew'));
+  await p.evaluate(async () => (await import('./js/net/crews.js')).lobby.say('welcome'));
+  await wait(q, async () => (await import('./js/net/crews.js')).lobby.chat.some(c => c.text === 'welcome'));
+  // an outsider-forged kick (bad signature) does nothing
+  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.send({ k: 'cmd', c: 'kick', crew: window.__rfg.game.s.onlineCrew.id, to: '*', ts: Date.now(), nz: 'forged01', sig: 'AAAA' }); });
+  await p.waitForTimeout(600);
+  if ((await lob(q)).crew?.r !== 'member') throw new Error('a forged kick removed a member');
+  // leader goes invite-only; B leaves and has to ask
+  await p.evaluate(async () => { const c = window.__rfg.game.s.onlineCrew; c.open = false; (await import('./js/ui/ocrew.js')).syncLobby(); });
+  await q.evaluate(async () => { window.__rfg.game.s.onlineCrew = null; (await import('./js/ui/ocrew.js')).syncLobby(); });
+  await wait(q, async () => { const g = (await import('./js/net/crews.js')).lobby.directory().find(x => x.tag === 'NSFT'); return g && !g.open; }, null, 8000);
+  await q.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.request(lobby.directory().find(g => g.tag === 'NSFT')); });
+  await wait(p, async () => (await import('./js/net/crews.js')).lobby.requests.length === 1);
+  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); await lobby.accept(lobby.requests[0].id); });
+  await q.waitForFunction(() => window.__rfg.game.s.onlineCrew?.name === 'Night Shift', null, { timeout: 8000 });
+  // the leader kicks them
+  const bId = await q.evaluate(async () => (await import('./js/net/crews.js')).lobby.id);
+  await p.evaluate(async id => (await import('./js/net/crews.js')).lobby.kick(id), bId);
+  await q.waitForFunction(() => !window.__rfg.game.s.onlineCrew, null, { timeout: 8000 });
+  // rejoin (invite-only again), then disband
+  await q.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.request(lobby.directory().find(g => g.tag === 'NSFT')); });
+  await wait(p, async () => (await import('./js/net/crews.js')).lobby.requests.length === 1);
+  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); await lobby.accept(lobby.requests[0].id); });
+  await q.waitForFunction(() => window.__rfg.game.s.onlineCrew?.name === 'Night Shift', null, { timeout: 8000 });
+  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); await lobby.disband(); window.__rfg.game.s.onlineCrew = null; (await import('./js/ui/ocrew.js')).syncLobby(); });
+  await q.waitForFunction(() => !window.__rfg.game.s.onlineCrew, null, { timeout: 8000 });
+  // tags show up on peers in the game servers
+  await q.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.disconnect(); });
+  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.disconnect(); });
+  await q.close();
+});
+
 // ---------------- minimap ----------------
 await step('minimap', async () => {
   await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; w.paused = false; try { w.police.reset(w); } catch {} w.police.patrols.length = 0; });
@@ -824,7 +893,7 @@ await step('phone controls', async () => {
   await fire('#touch [data-steermode]', 'pointerdown', 6); await fire('#touch [data-steermode]', 'pointerup', 6);
   expect(await m.evaluate(async () => (await import('./js/core/save.js')).settings.steerMode) === 'wheel', 'STEER MODE button did not switch to the wheel');
   expect(await vis('#touch .tc-wheel') && !(await vis('#touch .tc-arrow')), 'wheel mode should show the wheel and hide the arrows');
-  await m.evaluate(() => { const w = window.__rfg.app.world; const v = w.vehicle; v.vx = 0; v.vz = 0; v.sim.v = 0; v.h = 0; v.yawRate = 0; });
+  await m.evaluate(() => { const w = window.__rfg.app.world; const v = w.vehicle; v.x = 0; v.z = 150; v.vx = 0; v.vz = 0; v.sim.v = 0; v.h = 0; v.yawRate = 0; v.rev = 0; w.cam.x = 0; w.cam.z = 150; });
   a = await st();
   await fire('#touch .tc-gas', 'pointerdown', 1);
   await m.waitForTimeout(500);

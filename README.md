@@ -160,6 +160,17 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   hit Set GPS: the route lights up on the map right away and the minimap picks
   it up. Tap any empty spot to drop a pin and navigate there. Your car, cops
   and other players show up too.
+- **Online crews.** Phone → Online Crew. Found a crew ($1,500 for jackets: name,
+  2–4 letter tag, colour, motto, open or invite-only) or join one that other
+  real players run. The browser lists crews that have a member online right
+  now, with member counts and total rep. Members get a crew chat, see who is
+  online and which server they're on (and can hop to it), and your crew tag
+  shows next to your name in online free roam. The leader accepts requests,
+  kicks, edits the motto, flips open/invite-only, or disbands. There's no
+  server logic and nothing stored online: crews live in members' saves and the
+  directory is realtime presence. Leader actions are signed (ECDSA) and members
+  pin the crew's public key when they join, so nobody can fake a kick or an
+  acceptance. The older single-player Crew app (NPC crews) is still there.
 - **Guns, robberies and the Amazin' app.** Phone → Amazin' (a same-minute
   delivery store) sells **every Glock model and generation** (61 entries:
   G17 through G48, G17L, G19X, G30S, G40 MOS, G43X and more, with real calibers
