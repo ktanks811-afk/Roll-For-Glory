@@ -67,20 +67,35 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
 
 ## Controls
 
+Walking and driving use separate controls. Keys only do something in the
+mode they belong to: car keys do nothing on foot, and walking keys do nothing
+in the car.
+
+**On foot**
+
 | | |
 | --- | --- |
-| Drive / walk | WASD or arrows |
-| Get in / out | F |
+| Walk | WASD or arrows |
+| Run | Shift |
 | Interact | E or Enter |
-| E-brake | Space |
-| Nitrous | N or Left Shift |
-| Shift up / down (manual) | E / Q |
-| Phone | P or Tab |
-| Map | M |
-| Zoom | C |
-| Pause / save | Esc |
+| Get in your car | F |
 
-On touch devices an on-screen stick and buttons appear.
+**In the car**
+
+| | |
+| --- | --- |
+| Gas / brake and reverse | W / S |
+| Steer | A / D or arrows |
+| E-brake | Space |
+| Nitrous | N or Shift |
+| Shift up / down (manual) | E / Q |
+| Horn | H |
+| Interact (gas, races, shops) | Enter |
+| Get out | F |
+
+**Anywhere:** Phone P or Tab · Map M · Zoom C · Pause Esc
+
+On touch devices an on-screen stick and buttons appear, and the buttons change to match whether you're walking or driving.
 
 ## Running it locally
 

@@ -10,6 +10,11 @@ import { MPH } from '../sim/powertrain.js';
 import { input, isTouchDevice } from '../core/input.js';
 import { audio } from '../core/audio.js';
 
+const HELP = {
+  foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · P phone · M map · C zoom',
+  car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · Enter interact · F get out · P phone',
+};
+
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', meet: '●', flag: '⚑' };
 
 export class Hud {
@@ -44,8 +49,7 @@ export class Hud {
     this.mini = this.q('mini').getContext('2d');
     this.last = 0;
     this.radioLines = [];
-    this.root.querySelector('[data-help]').textContent = isTouchDevice() ? '' : 'WASD drive/walk · F car · E interact · Space e-brake · N/Shift nitrous · Q/E shift (manual) · P phone · M map · C zoom';
-    setTimeout(() => this.q('help')?.classList.add('fade'), 12000);
+    this.helpCtx = null;
   }
 
   radio(text) {
@@ -93,11 +97,23 @@ export class Hud {
     const step = s.story.enabled ? currentStep(s.story) : null;
     this.q('obj').innerHTML = step ? `<small>${esc(CHAPTERS[s.story.chapter].title)}</small>${esc(step.objective)}` : '';
     this.q('obj').classList.toggle('hidden', !step);
+    // control hints follow what you're doing: walking or driving
+    const ctx = w.inCar ? 'car' : 'foot';
+    if (ctx !== this.helpCtx) {
+      this.helpCtx = ctx;
+      const help = this.q('help');
+      help.textContent = isTouchDevice() ? '' : HELP[ctx];
+      help.classList.remove('fade');
+      clearTimeout(this.helpT);
+      this.helpT = setTimeout(() => help.classList.add('fade'), 9000);
+    }
     // prompt
     const pr = this.q('prompt');
-    let prompt = '';
-    if (w.nearLoc) prompt = `<kbd>E</kbd> ${esc(w.nearLoc.name)}`;
-    else if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) prompt = `<kbd>F</kbd> Get in`;
+    const parts = [];
+    if (w.nearLoc) parts.push(`<kbd>${w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
+    if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push('<kbd>F</kbd> Get in');
+    else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push('<kbd>F</kbd> Get out');
+    const prompt = parts.join(' &nbsp;·&nbsp; ');
     pr.innerHTML = prompt; pr.classList.toggle('hidden', !prompt);
     // dash
     const dash = this.q('dash');

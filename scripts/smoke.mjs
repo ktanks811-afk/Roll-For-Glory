@@ -70,6 +70,46 @@ await step('teleport to car + drive', async () => {
   console.log('     driving state', JSON.stringify(st));
   if (!st.inCar) throw new Error('not in car');
 });
+await step('walking vs driving controls', async () => {
+  const ctxNow = () => p.evaluate(async () => (await import('./js/core/input.js')).input.context);
+  const snapState = () => p.evaluate(() => { const w = window.__rfg.app.world; return { cx: w.vehicle.x, cz: w.vehicle.z, fx: w.foot.x, fz: w.foot.z, inCar: w.inCar }; });
+  const moved = (a, b, k) => Math.hypot(a[k + 'x'] - b[k + 'x'], a[k + 'z'] - b[k + 'z']) > 0.3;
+  const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
+  // park the car and step out
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.vehicle.vx = w.vehicle.vz = 0; w.vehicle.sim.v = 0; });
+  await p.waitForTimeout(150);
+  expect(await ctxNow() === 'car', 'expected car controls while driving');
+  await key('KeyF'); await p.waitForTimeout(250);
+  expect(await ctxNow() === 'foot', 'expected foot controls after getting out');
+  // on foot: car keys do nothing
+  let a = await snapState();
+  for (const k of ['KeyN', 'Space', 'KeyQ']) await key(k, 250);
+  let b = await snapState();
+  expect(!moved(a, b, 'f') && !moved(a, b, 'c'), 'car keys moved something while on foot');
+  // on foot: W walks the player, not the car
+  await key('KeyW', 600); b = await snapState();
+  expect(moved(a, b, 'f'), 'W did not walk the player');
+  expect(!moved(a, b, 'c'), 'W moved the parked car while on foot');
+  // Shift while walking runs, and must not fire nitrous
+  const nos0 = await p.evaluate(() => window.__rfg.app.world.vehicle.sim.nos);
+  await p.keyboard.down('ShiftLeft'); await key('KeyW', 400); await p.keyboard.up('ShiftLeft');
+  expect(await p.evaluate(() => window.__rfg.app.world.vehicle.sim.nos) === nos0, 'Shift used nitrous while on foot');
+  // holding Shift (run) while climbing in must not fire nitrous
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; });
+  await p.keyboard.down('ShiftLeft'); await key('KeyF'); await p.waitForTimeout(150);
+  expect(await ctxNow() === 'car', 'expected car controls after getting in');
+  const heldWhileLatched = await p.evaluate(async () => (await import('./js/core/input.js')).input.held('nitrous'));
+  expect(heldWhileLatched === false, 'Shift held from walking triggered nitrous in the car');
+  await p.keyboard.up('ShiftLeft'); await p.keyboard.down('ShiftLeft');
+  expect(await p.evaluate(async () => (await import('./js/core/input.js')).input.held('nitrous')) === true, 'nitrous key does not work in the car after re-pressing');
+  await p.keyboard.up('ShiftLeft');
+  // in the car: W drives the car, not the player
+  a = await snapState();
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1200); await p.keyboard.up('KeyW');
+  b = await snapState();
+  expect(moved(a, b, 'c'), 'W did not drive the car');
+  expect(!moved(a, b, 'f'), 'W walked the player while in the car');
+});
 await step('night + police chase', async () => {
   await p.evaluate(() => { const s = window.__rfg.game.s; s.time.min = 23 * 60; s.heat = 3.2; const w = window.__rfg.app.world; w.police.lastSeen = { x: w.vehicle.x, z: w.vehicle.z }; w.police.phase = 'chase'; });
   await p.keyboard.down('KeyW'); await p.waitForTimeout(3000); await p.keyboard.up('KeyW');

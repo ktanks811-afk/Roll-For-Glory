@@ -135,18 +135,26 @@ export function openPause(app) {
 }
 
 export function showControls() {
-  modal('Controls', `<div class="kv">
-    <span>Drive / walk</span><span>W A S D or arrows</span>
-    <span>Get in / out of car</span><span><kbd>F</kbd></span>
-    <span>Interact (shops, races)</span><span><kbd>E</kbd> / <kbd>Enter</kbd></span>
+  modal('Controls', `<div class="section-title" style="margin-top:0">On foot</div><div class="kv">
+    <span>Walk</span><span>W A S D or arrows</span>
+    <span>Run</span><span><kbd>Shift</kbd></span>
+    <span>Interact (shops, homes, meets)</span><span><kbd>E</kbd> / <kbd>Enter</kbd></span>
+    <span>Get in your car</span><span><kbd>F</kbd> (stand next to it)</span></div>
+    <div class="section-title">In the car</div><div class="kv">
+    <span>Gas / brake &amp; reverse</span><span><kbd>W</kbd> / <kbd>S</kbd></span>
+    <span>Steer</span><span><kbd>A</kbd> <kbd>D</kbd> or arrows</span>
     <span>E-brake (drift)</span><span><kbd>Space</kbd></span>
     <span>Nitrous</span><span><kbd>N</kbd> / <kbd>Shift</kbd></span>
     <span>Shift up / down (manual)</span><span><kbd>E</kbd> / <kbd>Q</kbd></span>
+    <span>Horn</span><span><kbd>H</kbd></span>
+    <span>Interact (gas, races, shops)</span><span><kbd>Enter</kbd></span>
+    <span>Get out (slow down first)</span><span><kbd>F</kbd></span></div>
+    <div class="section-title">Anywhere</div><div class="kv">
     <span>Phone</span><span><kbd>P</kbd> / <kbd>Tab</kbd></span>
     <span>Map</span><span><kbd>M</kbd></span>
     <span>Camera zoom</span><span><kbd>C</kbd></span>
-    <span>Pause</span><span><kbd>Esc</kbd></span>
-  </div><p class="muted small" style="margin-top:10px">Drag race: hold <kbd>S</kbd>+<kbd>W</kbd> for a burnout in the box, roll forward with <kbd>W</kbd> to stage, hold <kbd>S</kbd>+<kbd>W</kbd> to build boost against the brake, release <kbd>S</kbd> on green.</p>`);
+    <span>Pause</span><span><kbd>Esc</kbd></span></div>
+    <p class="muted small" style="margin-top:10px">Walking and driving use separate controls: car keys do nothing on foot, and walking keys do nothing in the car. Drag race: hold <kbd>S</kbd>+<kbd>W</kbd> for a burnout, tap <kbd>W</kbd> to roll up and stage, hold <kbd>S</kbd>+<kbd>W</kbd> against the brake, and release <kbd>S</kbd> on green.</p>`);
 }
 
 // ---------------- save slots ----------------

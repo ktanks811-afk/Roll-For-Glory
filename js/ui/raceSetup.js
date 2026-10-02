@@ -56,7 +56,7 @@ export function openRaceSetup(app, { type, loc, npcId = null, wager = null }) {
   const car = activeCar(s);
   if (!car) { modal(loc.name, '<p>You need a car to race. Check Marketplace on your phone.</p>'); return; }
   const w = app.world;
-  if (w && (!w.inCar)) { modal(loc.name, '<p>Get in your car first (F), then pull up here.</p>'); return; }
+  if (w && (!w.inCar)) { modal(loc.name, '<p>Get in your car first (F), then pull up here and press Enter.</p>'); return; }
   if (w && w.police.active) { modal('Not now', '<p>Nobody is lining up with the cops on your tail. Lose them first.</p>'); return; }
   if (car.fuel < 0.05) { modal('Out of gas', '<p>You\'re running on fumes. Fill up first.</p>'); return; }
   const tier = tierOf(s.rep).n;

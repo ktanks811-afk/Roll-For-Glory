@@ -164,6 +164,8 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // which control scheme is live: walking, driving, racing, or none
+  input.setContext(app.mode === 'race' ? 'race' : app.mode === 'world' && app.world ? (app.world.inCar && app.world.vehicle ? 'car' : 'foot') : 'menu');
   try {
     if (app.mode === 'world' && app.world) {
       if (!panelOpen() && !modalOpen()) app.world.update(dt);

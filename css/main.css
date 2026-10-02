@@ -296,3 +296,9 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 }
 .kv + label.field, .kv + p + label.field { margin-top: 12px; }
 @media (max-width: 820px) { .p-head > .muted.small { display: none; } }
+
+/* touch buttons only show in the control mode they belong to */
+#touch[data-ctx="foot"] [data-for]:not([data-for~="foot"]),
+#touch[data-ctx="car"] [data-for]:not([data-for~="car"]),
+#touch[data-ctx="race"] [data-for]:not([data-for~="race"]),
+#touch[data-ctx="menu"] [data-for] { display: none; }

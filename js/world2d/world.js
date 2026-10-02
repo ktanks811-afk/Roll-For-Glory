@@ -209,12 +209,14 @@ export class World {
       if (this.vehicle.speed > 2) { this.ui.toast('Slow down to get out', 'bad'); return; }
       const v = this.vehicle;
       this.inCar = false;
+      input.setContext('foot');
       const rx = Math.cos(v.h), rz = Math.sin(v.h);
       this.foot.x = v.x - rx * (v.dims.W / 2 + 0.8); this.foot.z = v.z - rz * (v.dims.W / 2 + 0.8); this.foot.h = v.h;
       if (this.engine) { this.engine.stop(); this.engine = null; }
     } else if (this.vehicle) {
       if (Math.hypot(this.vehicle.x - this.foot.x, this.vehicle.z - this.foot.z) < 4.5) {
         this.inCar = true;
+        input.setContext('car');
         this.restartEngineSound();
       } else if (!this.nearLoc) this.ui.toast('Get closer to your car (F)', 'info');
     } else if (!this.nearLoc) {
@@ -224,7 +226,7 @@ export class World {
 
   updateFoot(dt) {
     const f = this.foot;
-    const fwd = input.axis('throttle') - input.axis('brake');
+    const fwd = input.axis('forward') - input.axis('back');
     const side = input.steer();
     const run = input.held('run');
     const sp = run ? 5.2 : 1.8;
@@ -256,10 +258,11 @@ export class World {
     v.update(dt, {
       throttle: input.axis('throttle'), brake: input.axis('brake'), steer: input.steer(),
       handbrake: input.held('handbrake'), nitrous: input.held('nitrous'),
-      shiftUp: input.pressed('shiftUp') && !this.nearLoc, shiftDown: input.pressed('shiftDown'),
+      shiftUp: input.pressed('shiftUp'), shiftDown: input.pressed('shiftDown'),
       auto: settings.transmission === 'auto',
     }, { grip, drag: paved ? 0 : sand ? 2.2 : 1.6, noFuel });
     if (v.shifted) { v.shifted = false; audio.shift(); }
+    if (input.pressed('horn')) audio.horn();
     if (noFuel && input.axis('throttle') > 0 && !this.fuelWarned) { this.fuelWarned = true; this.ui.toast('Out of gas! Call roadside assistance from your phone (Bank → Roadside) or push it to a station.', 'bad'); }
 
     // buildings / water
