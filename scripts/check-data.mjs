@@ -12,6 +12,8 @@ import { RevLimiter } from '../js/sim/twostep.js';
 import { createState, newCar, game } from '../js/core/state.js';
 import * as H from '../js/core/hustle.js';
 import { SERVERS, SERVER_CAP } from '../js/net/online.js';
+import { SPRITE_CATS } from '../js/data/mustangParts.js';
+import fs from 'fs';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
 let fails = 0;
@@ -159,6 +161,24 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!away || Math.abs(away.net - expect) > 2) bad(`away income ${away?.net} vs ${expect}`);
   if (H.settleAway(s, t0 + 60 * 1000)) bad('a minute away should pay nothing');
   const sold = H.sellBiz(s, 'taco'); if (!sold.ok || s.hustle.biz.taco) bad('sell business');
+}
+// the Mustang's real part pictures: every picture exists, and every one can be bought
+{
+  const parts = JSON.parse(fs.readFileSync('assets/mustang/parts.json', 'utf8'));
+  for (const name of ['body', 'bodyglass', 'bodypaint']) if (!parts[name] || !fs.existsSync(`assets/mustang/parts/${name}.png`)) bad(`missing picture ${name}`);
+  const S650 = CAR_BY_ID.ford_mustang_gt_s650_2024, DH = CAR_BY_ID.ford_mustang_dark_horse_2024;
+  const factory0 = new Set(['frontBumper', 'rearBumper', 'hood', 'roof', 'trunk', 'grille']);
+  for (const [cat, def] of Object.entries(SPRITE_CATS)) {
+    def.pics.forEach((name, i) => {
+      if (!parts[name] || !fs.existsSync(`assets/mustang/parts/${name}.png`)) bad(`${cat}: missing picture ${name}`);
+      const items = CATALOG.filter(p => p.cat === cat && p.design === i && fits(p, S650));
+      if (!items.length && !(i === 0 && factory0.has(cat))) bad(`${cat} picture ${name} has no part to buy`);
+      if (items.length && !CATALOG.some(p => p.cat === cat && p.design === i && fits(p, DH))) bad(`${cat} picture ${name} does not fit the Dark Horse`);
+    });
+  }
+  // the new picture parts are Mustang-only
+  const civic2 = CAR_BY_ID.honda_civic_ex_1996;
+  if (CATALOG.some(p => ['mirrors', 'handles', 'emblem', 'roof', 'trunk', 'grille', 'plate'].includes(p.cat) && fits(p, civic2))) bad('Mustang picture parts should not fit a Civic');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

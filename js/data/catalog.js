@@ -5,6 +5,7 @@
 // whose description matches.
 
 const ICE_ONLY = new Set(['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'transmission', 'clutch', 'nitrous', 'twostep']);
+const S650 = ['ford_mustang_gt_s650_2024', 'ford_mustang_dark_horse_2024'];
 const JDM = ['honda', 'acura', 'toyota', 'lexus', 'scion', 'nissan', 'infiniti', 'mazda', 'subaru', 'mitsubishi'];
 
 const GM = ['chevrolet', 'gmc', 'cadillac', 'pontiac', 'buick'];
@@ -495,11 +496,11 @@ export const VISUAL_CATALOG = [
     ['(Remove)', 'Strip Window Tint', 120, 'none'],
   ]),
   ...vis('spoiler', [
-    ['Seibon', 'Carbon Trunk Lip', 360, 'lip'],
-    ['Duraflex', 'Ducktail Spoiler', 290, 'duck'],
-    ['APR Performance', 'GTC-300 Adjustable Wing', 1850, 'gt'],
-    ['Voltex', 'Type 7 Swan Neck Wing', 2750, 'gt'],
-    ['Wicker Bill Drag Spoiler', 'Drag Spoiler + Wicker', 420, 'drag'],
+    ['Seibon', 'Carbon Trunk Lip', 360, 'lip', { design: 0 }],
+    ['Duraflex', 'Ducktail Spoiler', 290, 'duck', { design: 1 }],
+    ['APR Performance', 'GTC-300 Adjustable Wing', 1850, 'gt', { design: 3 }],
+    ['Voltex', 'Type 7 Swan Neck Wing', 2750, 'gt', { design: 2 }],
+    ['Wicker Bill Drag Spoiler', 'Drag Spoiler + Wicker', 420, 'drag', { design: 2 }],
     ['(Remove)', 'Delete Spoiler', 80, 'none'],
   ]),
   ...vis('kit', [
@@ -510,37 +511,46 @@ export const VISUAL_CATALOG = [
     ['Liberty Walk', 'LB-Works Widebody', 15200, 'wide', { labor: 40 }],
   ]),
   ...vis('frontBumper', [
-    ['Seibon', 'OEM-Style Carbon Front Lip', 520, 'sport'],
-    ['Maxton Design', 'Front Splitter V2', 380, 'sport'],
-    ['APR Performance', 'Carbon Front Wind Splitter', 1150, 'splitter'],
+    ['Seibon', 'OEM-Style Carbon Front Lip', 520, 'sport', { design: 1 }],
+    ['Maxton Design', 'Front Splitter V2', 380, 'sport', { design: 2 }],
+    ['APR Performance', 'Carbon Front Wind Splitter', 1150, 'splitter', { design: 2 }],
   ]),
   ...vis('rearBumper', [
-    ['Maxton Design', 'Rear Side Splitters', 320, 'sport'],
-    ['Voltex', 'Carbon Rear Diffuser', 1450, 'diffuser'],
+    ['Maxton Design', 'Rear Side Splitters', 320, 'sport', { design: 1 }],
+    ['Voltex', 'Carbon Rear Diffuser', 1450, 'diffuser', { design: 2 }],
+    ['Ford Performance', 'Track Rear Valance', 760, 'sport', { models: S650, design: 3 }],
+    ['Anderson Composites', 'Carbon Rear Valance', 1480, 'diffuser', { models: S650, design: 3 }],
   ]),
   ...vis('skirts', [
-    ['Maxton Design', 'Side Skirt Diffusers', 360, 'sport'],
-    ['APR Performance', 'Carbon Side Rocker Extensions', 1050, 'aero'],
+    ['Maxton Design', 'Side Skirt Diffusers', 360, 'sport', { design: 0 }],
+    ['APR Performance', 'Carbon Side Rocker Extensions', 1050, 'aero', { design: 1 }],
+    ['Ford Performance', 'Track Pack Side Skirts', 540, 'aero', { models: S650, design: 2 }],
+    ['Anderson Composites', 'Carbon Rocker Panels', 980, 'aero', { models: S650, design: 3 }],
   ]),
   ...vis('hood', [
-    ['Cervini\'s', 'Cowl Induction Hood', 1250, 'cowl', { labor: 3 }],
-    ['Ford Performance', 'Shaker-Style Scoop Hood', 2600, 'scoop', { labor: 3 }],
-    ['Anderson Composites', 'Carbon Vented Hood', 1150, 'vented', { labor: 3 }],
-    ['Vorsteiner', 'Carbon Vented Hood', 2100, 'vented', { labor: 3 }],
+    ['Cervini\'s', 'Cowl Induction Hood', 1250, 'cowl', { labor: 3, design: 1 }],
+    ['Ford Performance', 'Shaker-Style Scoop Hood', 2600, 'scoop', { labor: 3, design: 2 }],
+    ['Anderson Composites', 'Carbon Vented Hood', 1150, 'vented', { labor: 3, design: 2 }],
+    ['Vorsteiner', 'Carbon Vented Hood', 2100, 'vented', { labor: 3, design: 2 }],
   ]),
   ...vis('exhaustTips', [
-    ['Borla', 'Dual Polished Tips', 260, 'dual'],
-    ['MagnaFlow', 'Quad Tip Kit', 460, 'quad'],
-    ['HKS', 'Cannon Tip Muffler', 620, 'cannon'],
+    ['Borla', 'Dual Polished Tips', 260, 'dual', { design: 0 }],
+    ['MagnaFlow', 'Quad Tip Kit', 460, 'quad', { design: 1 }],
+    ['HKS', 'Cannon Tip Muffler', 620, 'cannon', { design: 3 }],
+    ['Corsa', 'Pro-Series Blue Titanium Tips', 540, 'dual', { models: S650, design: 2 }],
   ]),
   ...vis('headlights', [
-    ['Philips', 'Xenon HID Conversion', 320, 'xenon'],
-    ['Morimoto', 'XB LED Headlights', 1350, 'led'],
-    ['Diode Dynamics', 'SS3 Selective Yellow', 360, 'yellow'],
+    ['Philips', 'Xenon HID Conversion', 320, 'xenon', { design: 1 }],
+    ['Morimoto', 'XB LED Headlights', 1350, 'led', { design: 3 }],
+    ['Diode Dynamics', 'SS3 Selective Yellow', 360, 'yellow', { design: 5 }],
+    ['Spyder Auto', 'Sequential LED DRL Headlights', 640, 'led', { models: S650, design: 0 }],
+    ['Raxiom', 'Switchback Headlights', 780, 'led', { models: S650, design: 2 }],
+    ['Anzo', 'Projector Headlights', 560, 'xenon', { models: S650, design: 4 }],
   ]),
   ...vis('taillights', [
-    ['Spec-D', 'Smoked Tail Lights', 220, 'smoked'],
-    ['Morimoto', 'XB LED Tail Light Bar', 920, 'bar'],
+    ['Spec-D', 'Smoked Tail Lights', 220, 'smoked', { design: 1 }],
+    ['Morimoto', 'XB LED Tail Light Bar', 920, 'bar', { design: 2 }],
+    ['Raxiom', 'Sequential Tail Lights', 590, 'bar', { models: S650, design: 0 }],
   ]),
   ...vis('decal', [
     ['3M', 'Racing Stripes Kit', 480, 'stripes'],
@@ -565,7 +575,61 @@ export const VISUAL_CATALOG = [
     ['Alcantara (OEM+)', 'Navy Alcantara Interior', 2400, '#1d2a44', { labor: 8 }],
     ['Katzkin', 'Leather Interior (Black)', 1750, '#111111', { labor: 6 }],
   ]),
+
+  // ---- 2024+ Mustang GT / Dark Horse: parts with their own side/front/rear/top pictures ----
+  ...vis('mirrors', [
+    ['Ford Performance', 'Gloss Black Mirror Caps', 240, 'm0', { models: S650, design: 0 }],
+    ['Anderson Composites', 'Carbon Fiber Mirror Covers', 420, 'm1', { models: S650, design: 1 }],
+    ['APR Performance', 'Carbon Mirror Housings', 560, 'm2', { models: S650, design: 2 }],
+    ['Morimoto', 'Blade Signal Mirror Set', 480, 'm3', { models: S650, design: 3 }],
+    ['Ford Performance', 'Race Red Mirror Caps', 260, 'm4', { models: S650, design: 4 }],
+  ]),
+  ...vis('handles', [
+    ['Ford Performance', 'Black Door Handle Covers', 120, 'h0', { models: S650, design: 0 }],
+    ['Spec-D', 'Smoked Handle Inserts', 90, 'h1', { models: S650, design: 1 }],
+    ['Oracle Lighting', 'Chrome Door Handle Covers', 110, 'h2', { models: S650, design: 2 }],
+    ['Anderson Composites', 'Carbon Handle Overlays', 160, 'h3', { models: S650, design: 3 }],
+  ]),
+  ...vis('emblem', [
+    ['Ford Performance', '5.0 Fender Badge (White)', 60, 'e0', { models: S650, design: 0 }],
+    ['Ford Performance', '5.0 Fender Badge (Race Red)', 60, 'e1', { models: S650, design: 1 }],
+    ['Ford', 'Running Pony Emblem (Chrome)', 80, 'e2', { models: S650, design: 2 }],
+    ['Ford Performance', 'Running Pony Emblem (White)', 80, 'e3', { models: S650, design: 3 }],
+    ['Ford', 'GT Fender Badge (Smoked)', 70, 'e4', { models: S650, design: 4 }],
+    ['Ford', 'GT Fender Badge (Chrome)', 70, 'e5', { models: S650, design: 5 }],
+  ]),
+  ...vis('roof', [
+    ['Ford Performance', 'Painted Roof Skin', 420, 'r0', { models: S650, design: 0, labor: 3 }],
+    ['Anderson Composites', 'Carbon Roof Insert (Vented)', 1250, 'r1', { models: S650, design: 1, labor: 4 }],
+    ['APR Performance', 'Carbon Fiber Weave Roof', 2100, 'r2', { models: S650, design: 2, labor: 5 }],
+  ]),
+  ...vis('trunk', [
+    ['Ford Performance', 'Trunk Lid Panel', 480, 't0', { models: S650, design: 0, labor: 2 }],
+    ['Anderson Composites', 'Carbon Trunk Lid', 1450, 't1', { models: S650, design: 1, labor: 3 }],
+    ['APR Performance', 'Carbon Rear Deck (Badge Delete)', 1750, 't2', { models: S650, design: 2, labor: 3 }],
+  ]),
+  ...vis('grille', [
+    ['Ford Performance', 'Pony Mesh Grille', 340, 'g0', { models: S650, design: 0 }],
+    ['Ford Performance', 'Dark Horse Grille', 420, 'g1', { models: S650, design: 1 }],
+    ['Roush', 'Honeycomb Grille', 480, 'g2', { models: S650, design: 2 }],
+    ['Anderson Composites', 'Carbon Fiber Grille', 760, 'g3', { models: S650, design: 3 }],
+  ]),
+  ...vis('plate', [
+    ['Ford Performance', 'Frame + Clean White Plate', 70, 'p0', { models: S650, design: 0 }],
+    ['Cervini\'s', 'Blackout Frame + Plate', 90, 'p1', { models: S650, design: 1 }],
+    ['Lone Star Customs', 'Texas Star Plate Set', 110, 'p2', { models: S650, design: 2 }],
+  ]),
 ];
+
+// Every wheel gets one of the nine wheel pictures (round-robin per style, bronze for gold).
+{
+  const WHEEL_DESIGNS = { five: [1, 0, 6], dish: [7, 5], mesh: [8, 5, 3], split: [1, 4, 2], turbine: [0, 2], six: [4, 6, 3] };
+  const rr = {};
+  for (const it of VISUAL_CATALOG) if (it.cat === 'wheels' && it.design == null) {
+    const list = WHEEL_DESIGNS[it.value] || [4]; rr[it.value] = (rr[it.value] ?? -1) + 1;
+    it.design = it.color === '#c9a24a' ? 2 : list[rr[it.value] % list.length];
+  }
+}
 
 export const CATALOG = [...PERF_CATALOG, ...VISUAL_CATALOG];
 export const ITEM_BY_ID = Object.fromEntries(CATALOG.map(p => [p.id, p]));
@@ -580,6 +644,7 @@ export const CATEGORY_NAMES = {
   frontBumper: 'Front Lips & Splitters', rearBumper: 'Rear Diffusers', skirts: 'Side Skirts', hood: 'Hoods',
   exhaustTips: 'Exhaust Tips', headlights: 'Headlights', taillights: 'Tail Lights', decal: 'Graphics & Stripes',
   neon: 'Underglow', interior: 'Interior',
+  mirrors: 'Mirrors', handles: 'Door Handles', emblem: 'Badges & Emblems', roof: 'Roof Panels', trunk: 'Trunk Lids', grille: 'Grilles', plate: 'License Plates',
 };
 
 export const LABOR_RATE = 125;   // $/hour at a shop
@@ -587,6 +652,7 @@ export const SALES_TAX = 0.0725;
 
 // Does a product fit this car?
 export function fits(item, model) {
+  if (item.models && !item.models.includes(model.id)) return false;
   if (item.makes && !item.makes.includes(model.make)) return false;
   if (item.eng && !item.eng.test(model.engine)) return false;
   if (item.asp && item.asp !== model.asp) return false;
@@ -599,6 +665,7 @@ export function fits(item, model) {
 
 export function fitNote(item, model) {
   if (fits(item, model)) return null;
+  if (item.models && !item.models.includes(model.id)) return 'Made for the 2024+ Mustang GT / Dark Horse';
   if (model.asp === 'ev' && ICE_ONLY.has(item.cat)) return 'Electric car — no engine to fit this to';
   if (item.makes && !item.makes.includes(model.make)) return 'Not made for this make';
   if (item.eng) return 'Wrong engine type';

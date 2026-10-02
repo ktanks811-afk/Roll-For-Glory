@@ -78,16 +78,17 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   about 30 game days, can be upgraded to level 3, and the big ones need rep.
   Random inspection fines, break-ins and viral days keep it interesting, and
   getting busted can cost you a job.
-- **Side-view showroom (Mustang).** Garage → Showroom shows the Ford Mustang GT
-  (S650) and Dark Horse in side-view pixel art, built from separate layers:
-  base body, paint and finish (gloss, matte, metallic, pearl, chrome), front and
-  rear wheels (six styles), brake calipers (colour follows your brake stage),
-  exhaust tips, spoiler, front and rear bumpers, side skirts, headlights and
-  taillights, window tint, hood, decals and liveries, underglow, ride height
-  (lowers with suspension stages), wheel size (17–22") and offset (stock / flush /
-  poke). Tick a layer to hide it, hit Change to jump to that part in PartsHub, or
-  open the hood to see the engine bay: supercharger, turbo, intake, intercooler,
-  long-tube headers, nitrous line. Other cars still use the overhead view.
+- **Mustang showroom with the real part pictures.** Garage → Showroom shows the
+  Ford Mustang GT (S650) and Dark Horse built from the pixel-art customization
+  sheet (`assets/mustang/sheet.png`, cut into one picture per part by
+  `scripts/slice-mustang.py`). The base body is re-coloured for your paint and
+  finish; the side view shows the wheels (9 designs), spoilers (4), side skirts
+  (4), mirrors (5), door handles (4), emblems (6), headlights (6), tail lights
+  (3) and exhaust tips (4) you've fitted, plus caliper colour, window tint,
+  decals, underglow, ride height, wheel size and offset. Front, rear and top
+  views show the front bumpers (3), grilles (4), plates (3), rear bumpers (4),
+  hoods (3), roofs (3) and trunks (3). Click any picture to buy and fit that
+  part; open the hood to see the engine bay.
 - **Engine sound that matches the car.** Every car's engine note is built from
   its real firing pattern: cross-plane V8s lope (Mustang, Camaro, Hellcat),
   flat-plane V8s scream (Corvette Z06 C8, Ferrari, McLaren), inline-6s are

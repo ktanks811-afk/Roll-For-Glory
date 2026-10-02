@@ -3,12 +3,13 @@
 
 import { openPanel, bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
 import { game, fmtMoney, spend, earn, activeCar, carSpec, carMetrics, carValue, modelOf, levels, uid, carMpg, tankGallons, getCar } from '../core/state.js';
-import { ITEM_BY_ID, CATEGORY_NAMES, fits, fitNote, LABOR_RATE } from '../data/catalog.js';
-import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, partLevels } from '../data/parts.js';
+import { ITEM_BY_ID, CATALOG, CATEGORY_NAMES, fits, fitNote, LABOR_RATE } from '../data/catalog.js';
+import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, partLevels, defaultVisual } from '../data/parts.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { buildSpec, dynoCurve, metrics, MPH } from '../sim/powertrain.js';
 import { launchRpmSetting } from '../sim/twostep.js';
-import { drawSideMustang, hasSideView } from '../gfx2d/sideMustang.js';
+import { drawSideMustang, drawFrontView, drawRearView, drawTopView, hasSideView, loadMustangParts, partUrl } from '../gfx2d/sideMustang.js';
+import { SPRITE_CATS, designOfVisual } from '../data/mustangParts.js';
 import { soundProfile, noiseDb, LEGAL_DB } from '../sim/sound.js';
 import { emit } from '../core/events.js';
 import { drawThumb, sellCar } from './marketplace.js';
@@ -61,6 +62,9 @@ export function installPart(s, car, pid, { color, app } = {}) {
     else if (p.cat === 'wheels') { car.visual.wheels = p.value; car.visual.wheelColor = color || p.color; }
     else car.visual[p.cat] = p.value;
     if (p.cat === 'decal' && color) car.visual.decalColor = color;
+    // which picture of this part is on the car (side / front / rear / top views)
+    const dz = car.visual.design ??= {};
+    if (p.design != null && p.value !== 'none') dz[p.cat] = p.design; else delete dz[p.cat];
   } else {
     const old = car.parts[p.cat];
     if (typeof old === 'string' && old) s.partsBin.push({ pid: old, uid: uid('b') });
@@ -226,60 +230,81 @@ function looks(body, h, app, st, s, car, m) {
   });
 }
 
-// ---------------- showroom: side-view pixel car built from layers ----------------
-function showroom(body, h, app, st, s, car, m) {
+// ---------------- showroom: the Mustang built from the real part pictures ----------------
+const FACTORY_DESIGN0 = new Set(['frontBumper', 'rearBumper', 'hood', 'roof', 'trunk', 'grille']);   // design 0 is the stock piece
+const SHOP_CHIPS = [['paint', 'Paint & finish', '🎨'], ['tint', 'Window tint', '▦'], ['decal', 'Decals & livery', '✦'], ['neon', 'Underglow', '✺'], ['brakes', 'Brakes & calipers', '⛔'], ['suspension', 'Suspension', '⇕'], ['exhaust', 'Exhaust system', '💨'], ['engine', 'Engine', '⚙']];
+const LAYER_NAMES = [['body', 'Body'], ['wheels', 'Wheels'], ['calipers', 'Calipers'], ['skirts', 'Side skirts'], ['spoiler', 'Spoiler'], ['mirrors', 'Mirrors'], ['handles', 'Door handles'], ['emblem', 'Emblems'], ['lights', 'Head & tail lights'], ['tips', 'Exhaust tips'], ['windows', 'Window tint'], ['decals', 'Decals'], ['underglow', 'Underglow']];
+
+async function showroom(body, h, app, st, s, car, m) {
   if (!hasSideView(car.modelId)) {
     body.innerHTML = `<div class="garage"><div class="garage-view"><canvas width="640" height="360" data-car></canvas></div><div>
-      <p>The side-view showroom is built for the <b>Ford Mustang GT (S650)</b> and <b>Dark Horse</b> so far — every part you install shows up on the car, layer by layer.</p>
+      <p>The picture showroom is built for the <b>Ford Mustang GT (S650)</b> and <b>Dark Horse</b> so far — every part you install shows up on the car, picture by picture.</p>
       <p class="small muted">Your ${esc(carName(m, car.year))} still shows in the overhead view. More cars are coming.</p></div></div>`;
     drawThumb(body.querySelector('[data-car]'), m, car.visual, car.parts, car.cond);
     return;
   }
+  body.innerHTML = '<div class="empty">Loading the showroom…</div>';
+  try { await loadMustangParts(); } catch (e) { body.innerHTML = `<div class="empty">Couldn't load the part pictures: ${esc(e.message)}</div>`; return; }
+  if (!body.isConnected || st.tab !== 'showroom') return;
+
   const v = car.visual, lv = levels(car);
   const can = st.mode !== 'readOnly';
-  st.layers ??= {};
-  const swatch = c => `<span class="swatch" style="width:14px;height:14px;vertical-align:middle;background:${c}"></span>`;
-  const part = id => { const it = ITEM_BY_ID[car.parts?.[id]]; return it ? `${it.brand} ${it.name}` : 'Stock'; };
-  const nameOf = (k, val) => (!val || val === 'none' || val === 'stock') ? 'Stock' : esc(String(val));
-  const rows = [
-    ['body', 'Base body', esc(carName(m, car.year)), null],
-    ['paint', 'Paint / material', `${esc(v.finish)} ${swatch(v.paint)}`, 'paint'],
-    ['wheels', 'Front wheels', `${esc(v.wheels)} ${swatch(v.wheelColor)} ${v.wheelSize || 19}"`, 'wheels'],
-    ['wheels', 'Rear wheels', `${esc(v.wheels)} ${swatch(v.wheelColor)} ${v.wheelSize || 19}"`, 'wheels'],
-    ['calipers', 'Brake calipers', `${['Stock grey', 'Grey', 'Red', 'Yellow', 'Orange'][Math.min(4, lv.brakes || 0)]} · ${esc(part('brakes'))}`, 'brakes'],
-    ['exhaust', 'Exhaust', `${esc(part('exhaust'))} · ${esc(v.exhaustTips)} tips`, 'exhaust'],
-    ['spoiler', 'Spoiler', nameOf('spoiler', v.spoiler), 'spoiler'],
-    ['front', 'Front bumper', nameOf('f', v.frontBumper), 'frontBumper'],
-    ['rear', 'Rear bumper', nameOf('r', v.rearBumper), 'rearBumper'],
-    ['skirts', 'Side skirts', nameOf('s', v.skirts), 'skirts'],
-    ['lights', 'Headlights / taillights', `${esc(v.headlights)} / ${esc(v.taillights)}`, 'headlights'],
-    ['windows', 'Windows / tint', nameOf('t', v.tint), 'tint'],
-    ['hood', 'Hood', nameOf('h', v.hood), 'hood'],
-    ['suspension', 'Suspension / ride height', `${esc(part('suspension'))}${lv.suspension ? ` · −${[0, 9, 16, 22, 26][Math.min(4, lv.suspension)] * 0.4 | 0} mm` : ''}`, 'suspension'],
-    ['engine', 'Engine upgrades', `Engine S${lv.engine || 0} · ${lv.turbo ? 'turbo S' + lv.turbo + ' · ' : ''}${lv.supercharger ? 'supercharger S' + lv.supercharger + ' · ' : ''}ECU S${lv.ecu || 0}`, 'engine'],
-    ['decals', 'Decals / livery', nameOf('d', v.decal), 'decal'],
-    ['underglow', 'Underglow', v.neon && v.neon !== 'none' ? swatch(v.neon) : 'None', 'neon'],
-  ];
-  const layerKey = k => k === 'calipers' ? 'wheels' : k;
+  st.layers ??= {}; st.cat ??= 'wheels';
+  const cat = st.cat, def = SPRITE_CATS[cat];
+  const installed = designOfVisual(v, cat);
+  const shown = installed ?? (FACTORY_DESIGN0.has(cat) ? 0 : null);
+  const item = i => CATALOG.filter(p => p.cat === cat && p.design === i && fits(p, m)).sort((a, b) => a.price - b.price)[0];
+
+  const chips = Object.entries(SPRITE_CATS).map(([c, d]) => `<button class="sr-chip ${c === cat ? 'on' : ''}" data-action="cat" data-c="${c}">${esc(d.label)}</button>`).join('')
+    + SHOP_CHIPS.map(([c, label, ic]) => `<button class="sr-chip alt" data-action="shop" data-c="${c}">${ic} ${esc(label)}</button>`).join('');
+  const options = [
+    `<button class="sr-opt ${shown == null ? 'on' : ''}" data-action="restore" ${shown == null || !can ? 'disabled' : ''}><span class="sr-none">Factory</span><b>${shown == null ? 'Installed' : 'Put the factory part back'}</b></button>`,
+    ...def.pics.map((name, i) => {
+      const it = item(i), on = shown === i && (installed != null || FACTORY_DESIGN0.has(cat));
+      const label = on ? 'Installed' : it ? `${esc(it.brand)} ${esc(it.name)}` : i === 0 && FACTORY_DESIGN0.has(cat) ? 'Factory' : 'Not for sale';
+      const price = !on && it ? `<small>${fmtMoney(it.price + it.labor * LABOR_RATE)} fitted</small>` : '';
+      return `<button class="sr-opt ${on ? 'on' : ''}" data-action="fit" data-i="${i}" ${on || !it || !can ? 'disabled' : ''}><img src="${partUrl(name)}" alt=""><b>${label}</b>${price}</button>`;
+    }),
+  ].join('');
   body.innerHTML = `<div class="showroom"><div class="sr-stage"><canvas data-side></canvas></div>
     <div class="row" style="gap:8px;margin:10px 0;flex-wrap:wrap">
       <button class="btn btn-sm ${st.engineView ? 'btn-primary' : ''}" data-action="engine">${st.engineView ? '🔧 Close the hood' : '🔧 Open the hood'}</button>
       <span class="small muted">Wheel size</span>${[17, 18, 19, 20, 21, 22].map(n => `<button class="btn btn-sm ${(+v.wheelSize || 19) === n ? 'btn-primary' : ''}" data-action="wsize" data-n="${n}" ${can ? '' : 'disabled'}>${n}"</button>`).join('')}
       <span class="small muted">Offset</span>${['stock', 'flush', 'poke'].map(o => `<button class="btn btn-sm ${(v.offset || 'flush') === o ? 'btn-primary' : ''}" data-action="offset" data-o="${o}" ${can ? '' : 'disabled'}>${o}</button>`).join('')}
     </div>
-    <p class="small muted">Wheel size and offset are a $180 wheel-and-tire fitting each time. Tick a layer to show or hide it; Change opens the parts shop for that part.</p>
-    <div class="list">${rows.map(([key, label, val, cat], i) => `<div class="li"><label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer"><input type="checkbox" data-layer="${layerKey(key)}" ${st.layers[layerKey(key)] === false ? '' : 'checked'}><span class="grow"><span class="t">${label}</span><br><span class="s">${val}</span></span></label>
-      ${cat ? `<button class="btn btn-sm" data-action="change" data-cat="${cat}">Change</button>` : ''}</div>`).join('')}</div></div>`;
-  const cv = body.querySelector('[data-side]');
-  const draw = () => drawSideMustang(cv, { visual: car.visual, levels: levels(car), cond: car.cond, showEngine: !!st.engineView, layers: st.layers });
+    <div class="sr-views"><div><canvas data-front></canvas><small>Front</small></div><div><canvas data-rear></canvas><small>Rear</small></div><div><canvas data-top></canvas><small>Top</small></div></div>
+    <div class="section-title">Customize — ${esc(def.label)} <small class="muted">· shows on the ${{ side: 'side view', front: 'front view', rear: 'rear view', top: 'top view' }[def.view]}</small></div>
+    <div class="sr-cats">${chips}</div>
+    <div class="sr-options">${options}</div>
+    <p class="small muted">${can ? 'Click a picture to buy and fit that part (parts + the booth\'s labor). Wheel size and offset are a $180 fitting each.' : 'Go home or to a shop to fit parts.'}</p>
+    <details class="sr-layers"><summary>Show / hide layers</summary><div class="row" style="flex-wrap:wrap;gap:6px 14px;margin-top:8px">${LAYER_NAMES.map(([k, n]) => `<label><input type="checkbox" data-layer="${k}" ${st.layers[k] === false ? '' : 'checked'}> ${n}</label>`).join('')}</div></details></div>`;
+  const draw = () => {
+    const o = { visual: car.visual, levels: levels(car), showEngine: !!st.engineView, layers: st.layers };
+    drawSideMustang(body.querySelector('[data-side]'), o); drawFrontView(body.querySelector('[data-front]'), o); drawRearView(body.querySelector('[data-rear]'), o); drawTopView(body.querySelector('[data-top]'), o);
+  };
   draw();
   body.querySelectorAll('[data-layer]').forEach(cb => cb.onchange = () => { st.layers[cb.dataset.layer] = cb.checked; draw(); });
-  const fit = async (what, apply) => { if (!spend(s, 180, 'Wheel & tire fitting')) return; apply(); app.world?.refreshCar(); h.refresh(); };
+  const fitFee = (apply) => { if (!spend(s, 180, 'Wheel & tire fitting')) return; apply(); app.world?.refreshCar(); h.refresh(); };
   bind(body, {
+    cat: d => { st.cat = d.c; h.refresh(); },
+    shop: async d => { const { openPartsHub } = await import('./partshub.js'); openPartsHub(app, { cat: d.c }); },
     engine: () => { st.engineView = !st.engineView; h.refresh(); },
-    wsize: d => { if ((+v.wheelSize || 19) !== +d.n) fit('size', () => { v.wheelSize = String(d.n); }); },
-    offset: d => { if ((v.offset || 'flush') !== d.o) fit('offset', () => { v.offset = d.o; }); },
-    change: async d => { const { openPartsHub } = await import('./partshub.js'); openPartsHub(app, { cat: d.cat }); },
+    wsize: d => { if ((+v.wheelSize || 19) !== +d.n) fitFee(() => { v.wheelSize = String(d.n); }); },
+    offset: d => { if ((v.offset || 'flush') !== d.o) fitFee(() => { v.offset = d.o; }); },
+    fit: async d => {
+      const it = item(+d.i); if (!it) return;
+      const cost = it.price + it.labor * LABOR_RATE;
+      if (!await confirm('Fit this part?', `<p>${esc(it.brand)} ${esc(it.name)}</p><p class="muted small">${fmtMoney(it.price)} for the part + ${fmtMoney(it.labor * LABOR_RATE)} to have it fitted.</p>`, `Pay ${fmtMoney(cost)}`)) return;
+      if (!spend(s, cost, `${it.brand} ${it.name}`)) return;
+      installPart(s, car, it.id, { app });
+      h.refresh();
+    },
+    restore: () => {
+      const dflt = defaultVisual(m)[cat];
+      if (v.design) delete v.design[cat];
+      v[cat] = dflt ?? (cat === 'plate' ? 'none' : 'stock');
+      app.world?.refreshCar(); h.refresh();
+    },
   });
 }
 
