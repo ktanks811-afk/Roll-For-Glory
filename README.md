@@ -129,6 +129,11 @@ in the car.
 | Gas stations, races, shops | USE |
 | Get out | GET OUT |
 
+The game asks for landscape: your first tap goes fullscreen and locks the
+screen to landscape (Android Chrome). Add it to your home screen and it opens
+in landscape from launch. On iPhone, where browsers can't lock rotation, a
+"Rotate your phone" screen appears in portrait (with a play-anyway button).
+
 Multi-touch works, so you can steer with one thumb and work the pedals with
 the other. Drag races use BRAKE + GAS together, and so does the 2-step (hold both pedals). Top right: ☰ menu and save,
 ⌕ zoom, ☎ phone. It works in portrait and landscape.

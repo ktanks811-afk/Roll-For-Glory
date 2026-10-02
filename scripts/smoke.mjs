@@ -307,6 +307,10 @@ await step('phone controls', async () => {
   await m.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   await m.goto(URL, { waitUntil: 'domcontentloaded' });
   await m.waitForFunction(() => window.__rfg);
+  // portrait on a phone shows the rotate screen; it can be skipped
+  if (!(await m.evaluate(() => { const r = document.getElementById('rotate'); return !!r && !r.classList.contains('hidden'); }))) throw new Error('no rotate-your-phone screen in portrait');
+  await m.tap('#rotate-skip');
+  if (await m.evaluate(() => !document.getElementById('rotate').classList.contains('hidden'))) throw new Error('rotate screen did not dismiss');
   await m.tap('text=New Game'); await m.fill('[data-name]', 'Phone'); await m.tap('text=Hit the streets'); await m.waitForTimeout(600);
   const expect = (c, msg) => { if (!c) throw new Error(msg); };
   // pointer helper: fire at an element (centre by default, or an offset in px)
@@ -371,6 +375,11 @@ await step('phone controls', async () => {
   c = await st();
   expect(!c.inCar && c.ctx === 'foot', 'GET OUT did not put the player on foot');
   expect(await vis('#touch .tc-stick') && !(await vis('#touch .tc-pedal')), 'controls did not switch back to walking');
+  // rotating to landscape: no rotate screen
+  await m.setViewportSize({ width: 844, height: 390 }); await m.waitForTimeout(300);
+  expect(await m.evaluate(() => document.getElementById('rotate').classList.contains('hidden')), 'rotate screen shown in landscape');
+  await m.setViewportSize({ width: 390, height: 844 }); await m.waitForTimeout(300);
+  expect(await m.evaluate(() => !document.getElementById('rotate').classList.contains('hidden')), 'rotate screen did not come back after going portrait again');
   await mctx.close();
 });
 

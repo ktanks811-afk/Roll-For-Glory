@@ -136,3 +136,13 @@ body.touch .race-sub { font-size: 14px; top: 44%; }
 /* online free roam badge (all devices) */
 .hud-online { pointer-events: auto; margin-top: calc(var(--u, 1px) * 5); align-self: flex-start; background: rgba(10, 10, 12, .72); color: #3ddc84; border: 1px solid rgba(61, 220, 132, .45); border-radius: 999px; padding: calc(var(--u, 1px) * 3) calc(var(--u, 1px) * 9); font: 700 calc(var(--u, 1px) * 12) Rajdhani, sans-serif; letter-spacing: .04em; touch-action: none; }
 .hud-online.hidden { display: none; }
+
+/* "rotate your phone" screen (portrait on touch devices) */
+.rotate { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; background: radial-gradient(ellipse at 50% 60%, #1a0a0d 0%, #050506 75%); color: #f2f4f8; font-family: Rajdhani, sans-serif; }
+.rotate.hidden { display: none; }
+.rotate b { font: 700 28px 'Chakra Petch', sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.rotate span { color: #9aa0ab; font-size: 17px; }
+.rotate button { margin-top: 10px; background: transparent; color: #c0c4cc; border: 1px solid rgba(255, 255, 255, .3); border-radius: 6px; padding: 10px 18px; font: 600 15px Rajdhani, sans-serif; }
+.rotate-phone { width: 54px; height: 92px; border: 3px solid #e0192e; border-radius: 10px; position: relative; animation: rfg-rot 2.4s ease-in-out infinite; }
+.rotate-phone::after { content: ''; position: absolute; left: 50%; bottom: 6px; width: 14px; height: 3px; margin-left: -7px; border-radius: 2px; background: #e0192e; }
+@keyframes rfg-rot { 0%, 15% { transform: rotate(0); } 55%, 100% { transform: rotate(-90deg); } }

@@ -10,6 +10,7 @@ import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
+import { initOrientation } from './ui/orientation.js';
 import { online } from './net/online.js';
 import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
@@ -204,6 +205,7 @@ async function boot() {
     requestAnimationFrame(frame);
     window.__rfg = { app, game, ui, online };
     initOnline(app);
+    initOrientation();
   } catch (e) {
     console.error(e);
     $('#boot-msg').textContent = 'Failed to start: ' + e.message;
