@@ -4,6 +4,7 @@
 
 import { game } from './state.js';
 import { emit } from './events.js';
+import { ensure as ensureHustle, settleAway } from './hustle.js';
 
 const PREFIX = 'rollforglory.';
 export const SLOTS = ['auto', 'slot1', 'slot2', 'slot3'];
@@ -17,6 +18,7 @@ function write(key, val) {
 
 export function saveGame(slot = 'auto', quiet = false) {
   if (!game.s) return false;
+  ensureHustle(game.s).lastReal = Date.now();
   const ok = write('save.' + slot, { savedAt: Date.now(), state: game.s });
   if (!quiet) emit('toast', ok
     ? { kind: 'good', text: slot === 'auto' ? 'Autosaved' : `Saved to ${slotName(slot)}` }
@@ -70,6 +72,8 @@ function migrate(s) {
   s.feed ??= [];
   s.challenges ??= {};
   s.story.counters ??= {};
+  ensureHustle(s);
+  settleAway(s);   // the businesses kept running while the game was closed
   return s;
 }
 

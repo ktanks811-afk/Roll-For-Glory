@@ -9,6 +9,9 @@ import { generateListings } from '../js/data/market.js';
 import { buildSpec, metrics } from '../js/sim/powertrain.js';
 import { partLevels } from '../js/data/parts.js';
 import { RevLimiter } from '../js/sim/twostep.js';
+import { createState, newCar, game } from '../js/core/state.js';
+import * as H from '../js/core/hustle.js';
+import { SERVERS, SERVER_CAP } from '../js/net/online.js';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
 let fails = 0;
@@ -116,6 +119,46 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!(liveNoiseDb(wildDb, 1, 0.8) > liveNoiseDb(wildDb, 0, 0.3))) bad('flooring it should be louder than cruising');
   if (!(hearingRange(110) > hearingRange(90) * 2)) bad('louder cars are heard from farther away');
   if (exhaustDb({ exhaust: 3 }) !== 15) bad('NPC stage-based exhaust dB');
+}
+// servers instead of codes
+{
+  if (SERVERS.length < 6) bad('need a real list of servers');
+  if (new Set(SERVERS.map(sv => sv.id)).size !== SERVERS.length) bad('duplicate server ids');
+  if (!(SERVER_CAP >= 8 && SERVER_CAP <= 32)) bad('server cap');
+}
+// side hustles: passive income balance + rules
+{
+  for (const b of H.BIZ) {
+    const payback = b.price / b.daily;
+    if (payback < 20 || payback > 45) bad(`${b.id}: pays back in ${payback.toFixed(0)} days`);
+  }
+  for (let i = 1; i < H.BIZ.length; i++) if (H.BIZ[i].price < H.BIZ[i - 1].price) bad('businesses should get pricier');
+  for (const j of H.JOBS) if (!(j.pay >= 60 && j.pay <= 800)) bad(`${j.id} pay`);
+  const s = createState({ name: 'T', age: 25, look: {}, story: false });
+  game.s = s;
+  s.cars.push(newCar('ford_mustang_gt_s650_2024'), newCar('honda_civic_ex_1996')); s.activeCar = s.cars[0].uid;
+  if (!H.hire(s, 'pizza').ok) bad('a nobody can take the pizza job');
+  if (H.hire(s, 'ryde').ok) bad('tier-1 should only hold one job');
+  if (H.hire(s, 'crew').ok) bad('tier-1 can\'t be pit crew chief');
+  const bank0 = s.bank;
+  const day = H.runDay(s, () => 0.5);
+  if (day.net !== Math.round(90 * 0.88) || s.bank - bank0 !== day.net) bad(`one day of the pizza job paid ${day.net}`);
+  if (H.buyBiz(s, 'taco').ok) bad('could buy a $9k business with $4.5k');
+  s.cash = 50000; s.rep = 1600;
+  if (!H.buyBiz(s, 'taco').ok) bad('buy the taco truck');
+  if (H.buyBiz(s, 'detail').ok) bad('tier-3 business at tier 2');
+  const inc1 = H.bizIncome(s); H.upgradeBiz(s, 'taco'); const inc2 = H.bizIncome(s);
+  if (!(inc2 > inc1 * 1.4)) bad('upgrades should raise income');
+  if (H.toggleRental(s, s.activeCar).ok) bad('cannot rent out the car you drive');
+  if (!H.toggleRental(s, s.cars[1].uid).ok || H.rentalIncome(s) <= 0) bad('rental fleet');
+  const total = H.dailyIncome(s);
+  // away: 8h cap, quarter rate, nothing for a short break
+  const t0 = Date.now(); s.hustle.lastReal = t0 - 3600 * 1000 * 30;
+  const away = H.settleAway(s, t0);
+  const expect = Math.round(total * (8 * 3600 / 1440) * 0.25);
+  if (!away || Math.abs(away.net - expect) > 2) bad(`away income ${away?.net} vs ${expect}`);
+  if (H.settleAway(s, t0 + 60 * 1000)) bad('a minute away should pay nothing');
+  const sold = H.sellBiz(s, 'taco'); if (!sold.ok || s.hustle.biz.taco) bad('sell business');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

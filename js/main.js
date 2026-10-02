@@ -7,6 +7,7 @@ import { touchUi } from './ui/touch.js';
 import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
+import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
@@ -61,6 +62,8 @@ export function enterWorld() {
   else app.world.refreshCar();
   app.world.paused = false;
   $('#screen').innerHTML = '';
+  const away = ensureHustle(game.s).away;
+  if (away) { game.s.hustle.away = null; modal('Welcome back', `<p>While you were away (${away.hours} h), your side hustles earned <b>${fmtMoney(away.net)}</b>. It's in your bank.</p>`); }
   touchUi.show(true);
   audio.music(null);
 }
@@ -124,6 +127,7 @@ function morning() {
 
 function newDay() {
   const s = game.s;
+  hustleDay(s);
   // marketplace churn
   s.listings = s.listings.filter(() => Math.random() > 0.3);
   while (s.listings.length < 30) s.listings.push(makeListing());

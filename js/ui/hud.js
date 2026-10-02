@@ -84,7 +84,7 @@ export class Hud {
     this.q('place').textContent = `${street ? street + ' · ' : ''}${districtAt(p.x, p.z)}`;
     const ob = this.q('online');
     ob.classList.toggle('hidden', !online.active);
-    if (online.active) ob.textContent = `🌐 ${online.room} · ${online.list().length + 1} online`;
+    if (online.active) ob.textContent = `🌐 ${online.serverName} · ${online.list().length + 1} online`;
     this.q('cash').textContent = fmtMoney(s.cash);
     this.q('bank').textContent = s.bank ? `Bank ${fmtMoney(s.bank)}` : '';
     const t = tierOf(s.rep), nt = nextTier(s.rep);

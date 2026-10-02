@@ -57,14 +57,27 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   tighter and burn bigger. Flames come only from a 2-step: without one, gas +
   brake just revs into the limiter. It works on the drag strip, at street meets
   (Rev it) and when you're stopped on the street. Not for EVs.
-- **Online free roam.** Title screen → Play Online (or Pause → Online Free
-  Roam). Join a room code (default `PORT-SOLACE`; share your own with friends)
-  and everyone in the room shares the map live: their cars with the real
-  paint/parts, name tags, minimap dots, horns, 2-step flames, and chat. Police
-  stay active online: your own city's cops chase you as usual. It uses Supabase Realtime *broadcast* only — no
-  tables, no accounts, nothing stored — and all incoming data is sanitised.
-  Cars don't collide online, and the clock/weather are per player. For testing
-  without a server, open `?net=local` in two tabs of the same browser.
+- **Online servers.** Title screen → Play Online (or Pause → Online Free
+  Roam) opens a server browser: eight named servers (Harbor, Downtown, Eastgate,
+  Ironside, Dustline, Northridge, Pier 9, Glory Row), 16 players each, with live
+  player counts and a Quick Join that drops you where people are. Everyone on a
+  server shares the map live: their cars with the real paint/parts, name tags,
+  minimap dots, horns, 2-step flames, and chat. Police stay active online: your
+  own city's cops chase you as usual. It uses Supabase Realtime *broadcast and
+  presence* only — no tables, no accounts, nothing stored — and all incoming
+  data is sanitised. The 16-player cap is enforced by the clients (a full
+  server turns the latest joiner away). Cars don't collide online, and the
+  clock/weather are per player. For testing without a server, open `?net=local`
+  in two tabs of the same browser.
+- **Side hustles (passive income).** Phone → Hustle. Take a job (delivery,
+  rideshare, tow dispatcher, parts counter, valet, shop mechanic, pit crew
+  chief), buy a business (food truck up to a stake in Ironline Dragway), or put
+  your spare cars on the rental fleet. They pay into your bank every game day
+  without you doing anything, and keep paying while the game is closed (a
+  quarter of the normal rate, up to 8 hours). Businesses pay themselves back in
+  about 30 game days, can be upgraded to level 3, and the big ones need rep.
+  Random inspection fines, break-ins and viral days keep it interesting, and
+  getting busted can cost you a job.
 - **Engine sound that matches the car.** Every car's engine note is built from
   its real firing pattern: cross-plane V8s lope (Mustang, Camaro, Hellcat),
   flat-plane V8s scream (Corvette Z06 C8, Ferrari, McLaren), inline-6s are

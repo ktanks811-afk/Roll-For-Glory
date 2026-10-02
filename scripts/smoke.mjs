@@ -248,7 +248,7 @@ await step('online free roam', async () => {
   const join = pg => pg.evaluate(async () => {
     const { meFromGame } = await import('./js/ui/online.js');
     const r = window.__rfg; r.app.world.paused = false;
-    const ok = await r.online.join('smoke-room', meFromGame(), 'local');
+    const ok = await r.online.join('harbor', meFromGame(), 'local');
     return ok && r.online.active;
   });
   if (!(await join(p)) || !(await join(p2))) throw new Error('could not join the room');
@@ -265,6 +265,10 @@ await step('online free roam', async () => {
   // police stay active online: heat is not wiped, and an offence still raises it
   const heat = await p.evaluate(() => window.__rfg.game.s.heat);
   if (!(heat > 2)) throw new Error('police heat was cleared while online');
+  // the server browser counts players per server
+  const counts = await p.evaluate(() => window.__rfg.online.census('local'));
+  console.log('     server census', JSON.stringify(counts));
+  if (counts.harbor !== 2 || counts.downtown !== 0) throw new Error('server census wrong: ' + JSON.stringify(counts));
   // chat + honk reach the other tab
   await p.evaluate(() => { window.__rfg.online.say('hello <b>there</b>'); window.__rfg.online.honk(); });
   await p2.waitForTimeout(400);
@@ -273,7 +277,7 @@ await step('online free roam', async () => {
   if (chat.some(t => t.includes('<'))) throw new Error('chat was not sanitised');
   // hostile packets must not break anything
   await p.evaluate(() => {
-    const ch = new BroadcastChannel('rfg:SMOKE-ROOM');
+    const ch = new BroadcastChannel('rfg:harbor');
     ch.postMessage({ k: 'h', id: 'evil1', n: '<img src=x onerror=alert(1)>'.repeat(5), m: '__proto__', v: { paint: 'url(javascript:1)' } });
     ch.postMessage({ k: 'h', id: 'evil2', n: 'Eve', m: window.__rfg.game.s.cars[0].modelId, v: { paint: 'red;}</style><script>', plate: '<script>' }, l: { turbo: 99999 } });
     ch.postMessage({ k: 's', id: 'evil2', x: 'NaN', z: Infinity, h: {}, v: 1e99, c: 1, f: -5 });
@@ -295,6 +299,14 @@ await step('online free roam', async () => {
   const gone = await p.evaluate(() => window.__rfg.online.list().filter(o => o.name !== 'Eve').length);
   if (gone !== 0) throw new Error('left racer is still shown');
   await p.evaluate(() => window.__rfg.online.leave());
+  // not connected: the panel is a server browser, not a code box
+  await p.evaluate(async () => { const { openOnline } = await import('./js/ui/online.js'); window.__rfg.online.kindOverride = 'local'; openOnline(window.__rfg.app); });
+  await p.waitForTimeout(300);
+  if (await p.$('[data-room]')) throw new Error('there is still a room code box');
+  const rows = await p.$$('.panel .li button[data-action="join"]');
+  if (rows.length < 6) throw new Error('server browser lists only ' + rows.length + ' servers');
+  await snap('25-servers');
+  await p.keyboard.press('Escape');
   await p2.close();
 });
 
@@ -345,6 +357,31 @@ await step('noise + traffic stop', async () => {
   await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; const c = s.cars.find(c => c.uid === s.activeCar); delete c.parts.exhaust; w.refreshCar(); });
   await p.keyboard.down('KeyW'); await p.waitForTimeout(1500); const quiet = await W(); await p.keyboard.up('KeyW');
   if (quiet.att > 0.05 || quiet.phase !== 'none') throw new Error('a street-legal car should not draw attention for noise');
+});
+
+// ---------------- side hustles: passive income ----------------
+await step('hustle (jobs, business, rentals)', async () => {
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { openPhone } = await import('./js/ui/phone.js'); openPhone('hustle', window.__rfg.app);
+  });
+  await p.waitForTimeout(300);
+  await snap('26-hustle');
+  const bank0 = await p.evaluate(() => window.__rfg.game.s.bank);
+  await p.click('button[data-action="hire"][data-id="pizza"]');
+  await p.waitForTimeout(150);
+  if (!(await p.evaluate(() => window.__rfg.game.s.hustle.jobs.includes('pizza')))) throw new Error('job not taken');
+  await p.click('button[data-action="tab"][data-id="biz"]');
+  if (!(await p.$('button[data-action="buy"][data-id="taco"]'))) throw new Error('no business list');
+  // a day goes by: the paycheck lands in the bank
+  await p.evaluate(async () => { const h = await import('./js/core/hustle.js'); window.__rfg.game.s.time.day += 1; h.newDay(window.__rfg.game.s); });
+  const bank1 = await p.evaluate(() => window.__rfg.game.s.bank);
+  if (!(bank1 > bank0)) throw new Error('the paycheck did not arrive: ' + bank0 + ' -> ' + bank1);
+  // closing the game for a while: it keeps earning (reload path)
+  const away = await p.evaluate(async () => { const h = await import('./js/core/hustle.js'); const s = window.__rfg.game.s; s.hustle.lastReal = Date.now() - 4 * 3600 * 1000; try { localStorage.removeItem('rollforglory.settled.' + s.player.name); } catch {} return h.settleAway(s); });
+  console.log('     away income', JSON.stringify(away));
+  if (!away || !(away.net > 0)) throw new Error('no income while away');
+  await p.keyboard.press('Escape');
 });
 
 // ---------------- engine sounds: each car's note matches its engine ----------------

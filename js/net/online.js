@@ -17,7 +17,23 @@ export const SUPABASE_URL = 'https://fikdilgfjponqygiwofa.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_X7bhi2RvfjUxUt8cK_c88w_gTw1hB8x';
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
-export const DEFAULT_ROOM = 'PORT-SOLACE';
+// Named game servers, like a real server browser. Each is its own realtime
+// channel with a player cap, so the world never gets crowded. Player counts
+// come from realtime presence (nobody is stored anywhere). The cap is enforced
+// by the clients themselves: a full server turns you away.
+export const SERVER_CAP = 16;
+export const SERVERS = [
+  { id: 'harbor',    name: 'Harbor',    blurb: 'Docks and warehouses, never sleeps' },
+  { id: 'downtown',  name: 'Downtown',  blurb: 'Lights, traffic, and a lot of cops' },
+  { id: 'eastgate',  name: 'Eastgate',  blurb: 'Where everyone starts out' },
+  { id: 'ironside',  name: 'Ironside',  blurb: 'Industrial roads, long straights' },
+  { id: 'dustline',  name: 'Dustline',  blurb: 'Desert highway and open sand' },
+  { id: 'northridge',name: 'Northridge', blurb: 'Mountain roads' },
+  { id: 'pier9',     name: 'Pier 9',    blurb: 'Meet-night crowd' },
+  { id: 'glory',     name: 'Glory Row', blurb: 'The big leagues' },
+];
+export const SERVER_BY_ID = Object.fromEntries(SERVERS.map(sv => [sv.id, sv]));
+export const DEFAULT_ROOM = SERVERS[2].id;
 const SEND_HZ = 6;           // state updates per second while moving
 const IDLE_HZ = 1;           // … while standing still
 const HELLO_EVERY = 4;       // seconds between car-appearance refreshes
@@ -26,7 +42,7 @@ const MAX_PEERS = 24;
 
 const num = (v, lo, hi, d = 0) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
 const cleanName = (s, d = 'Racer') => (String(s ?? '').replace(/[^\w .'\-]/g, '').trim().slice(0, 16) || d);
-const cleanRoom = s => (String(s ?? '').toUpperCase().replace(/[^A-Z0-9\-]/g, '').slice(0, 20) || DEFAULT_ROOM);
+const cleanRoom = s => (SERVER_BY_ID[String(s ?? '').toLowerCase()] ? String(s).toLowerCase() : DEFAULT_ROOM);
 const cleanText = s => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 90);
 const SAFE_VAL = /^[#\w .\-]{1,24}$/;
 const PERF_IDS = PERF.map(p => p.id);
@@ -51,37 +67,73 @@ export function cleanLevels(lv) {
 const norm = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 
 class LocalTransport {
-  constructor(room, onMsg) { this.ch = new BroadcastChannel('rfg:' + room); this.ch.onmessage = e => onMsg(e.data); }
-  async open() { return true; }
+  constructor(room, onMsg, id) {
+    this.room = room; this.id = id;
+    this.ch = new BroadcastChannel('rfg:' + room); this.ch.onmessage = e => onMsg(e.data);
+    this.census = new BroadcastChannel('rfg-census');
+  }
+  async open() { this.beat(); this.timer = setInterval(() => this.beat(), 1000); return true; }
+  beat() { try { this.census.postMessage({ srv: this.room, id: this.id }); } catch { /* closed */ } }
   send(msg) { this.ch.postMessage(msg); }
-  close() { this.ch.close(); }
+  close() { clearInterval(this.timer); this.ch.close(); this.census.close(); }
+  // How many are on each server? Listen for the heartbeats for a moment.
+  static async count(servers) {
+    const seen = Object.fromEntries(servers.map(sv => [sv.id, new Set()]));
+    const ch = new BroadcastChannel('rfg-census');
+    ch.onmessage = e => { const m = e.data; if (m && seen[m.srv]) seen[m.srv].add(m.id); };
+    await new Promise(r => setTimeout(r, 1400));
+    ch.close();
+    return Object.fromEntries(servers.map(sv => [sv.id, seen[sv.id].size]));
+  }
 }
 
+async function supabaseClient() {
+  const { createClient } = await import(/* @vite-ignore */ SUPABASE_JS);
+  return createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { params: { eventsPerSecond: 20 } }, auth: { persistSession: false, autoRefreshToken: false } });
+}
+const presenceCount = ch => Object.keys(ch.presenceState()).length;
+
 class SupabaseTransport {
-  constructor(room, onMsg) { this.room = room; this.onMsg = onMsg; this.ch = null; this.client = null; }
-  async open() {
-    const { createClient } = await import(/* @vite-ignore */ SUPABASE_JS);
-    this.client = createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { params: { eventsPerSecond: 20 } }, auth: { persistSession: false, autoRefreshToken: false } });
-    this.ch = this.client.channel('rfg:' + this.room, { config: { broadcast: { self: false, ack: false } } });
+  constructor(room, onMsg, id, onPresence) { this.room = room; this.onMsg = onMsg; this.id = id; this.onPresence = onPresence; this.ch = null; this.client = null; }
+  async open(name) {
+    this.client = await supabaseClient();
+    this.ch = this.client.channel('rfg:srv:' + this.room, { config: { broadcast: { self: false, ack: false }, presence: { key: this.id } } });
     this.ch.on('broadcast', { event: 'm' }, ({ payload }) => this.onMsg(payload));
+    // presence = who is on this server right now (also tells us when someone drops)
+    this.ch.on('presence', { event: 'sync' }, () => this.onPresence?.(Object.entries(this.ch.presenceState()).map(([id, metas]) => ({ id, t: metas?.[0]?.t || 0 })).sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1))));
     await new Promise((res, rej) => {
       const to = setTimeout(() => rej(new Error('Timed out connecting to the server')), 12000);
-      this.ch.subscribe(st => {
-        if (st === 'SUBSCRIBED') { clearTimeout(to); res(); }
+      this.ch.subscribe(async st => {
+        if (st === 'SUBSCRIBED') { try { await this.ch.track({ n: name, t: Date.now() }); } catch { /* presence is best-effort */ } clearTimeout(to); res(); }
         else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT' || st === 'CLOSED') { clearTimeout(to); rej(new Error('Could not connect to the server')); }
       });
     });
     return true;
   }
   send(msg) { this.ch?.send({ type: 'broadcast', event: 'm', payload: msg }); }
-  close() { try { this.client?.removeChannel(this.ch); this.client?.realtime?.disconnect(); } catch { /* already closed */ } }
+  close() { try { this.ch?.untrack?.(); this.client?.removeChannel(this.ch); this.client?.realtime?.disconnect(); } catch { /* already closed */ } }
+  // Player counts for every server: listen to each channel's presence without joining it.
+  static async count(servers) {
+    const client = await supabaseClient();
+    const out = {};
+    await Promise.all(servers.map(sv => new Promise(res => {
+      const ch = client.channel('rfg:srv:' + sv.id, { config: { presence: { key: 'peek-' + Math.random().toString(36).slice(2, 8) } } });
+      const done = n => { out[sv.id] = n; try { client.removeChannel(ch); } catch { /* ignore */ } res(); };
+      const to = setTimeout(() => done(null), 6000);
+      ch.on('presence', { event: 'sync' }, () => { clearTimeout(to); done(presenceCount(ch)); });
+      ch.subscribe(st => { if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') { clearTimeout(to); done(null); } });
+    })));
+    try { client.realtime?.disconnect(); } catch { /* ignore */ }
+    return out;
+  }
 }
 
 class Online {
   constructor() {
     this.status = 'off';          // off | connecting | on | error
     this.error = '';
-    this.room = DEFAULT_ROOM;
+    this.room = DEFAULT_ROOM;     // server id
+    this.presence = null;         // ids currently on the server (null until known)
     this.id = '';
     this.name = '';
     this.peers = new Map();
@@ -93,6 +145,14 @@ class Online {
   }
 
   get active() { return this.status === 'on'; }
+  get serverName() { return SERVER_BY_ID[this.room]?.name || this.room; }
+  get kind() { return this.kindOverride || (new URLSearchParams(location.search).get('net') === 'local' ? 'local' : 'supabase'); }   // 'local' = same-browser testing
+
+  // Players on every server (null = couldn't tell).
+  async census(kind) {
+    const T = (kind || this.kind) === 'local' ? LocalTransport : SupabaseTransport;
+    try { return await T.count(SERVERS); } catch { return Object.fromEntries(SERVERS.map(sv => [sv.id, null])); }
+  }
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   emit(ev, data) { this.listeners.forEach(f => { try { f(ev, data); } catch { /* listener bug must not kill the loop */ } }); }
 
@@ -105,12 +165,15 @@ class Online {
     this.id = Math.random().toString(36).slice(2, 10);
     this.peers.clear(); this.chat = [];
     this.status = 'connecting'; this.error = '';
-    this.transportKind = kind || (new URLSearchParams(location.search).get('net') === 'local' ? 'local' : 'supabase');
+    this.transportKind = kind || this.kind;
+    this.presence = null;
     this.emit('status');
     try {
       const T = this.transportKind === 'local' ? LocalTransport : SupabaseTransport;
-      this.tr = new T(this.room, m => this.receive(m));
-      await this.tr.open();
+      this.tr = new T(this.room, m => this.receive(m), this.id, list => this.onPresence(list));
+      await this.tr.open(this.name);
+      if (this.status === 'error') return false;   // turned away while connecting (server full)
+      // full? (the cap is enforced by the clients: we turn ourselves away)
     } catch (e) {
       this.status = 'error'; this.error = e.message || 'Could not connect';
       try { this.tr?.close(); } catch { /* ignore */ }
@@ -122,6 +185,24 @@ class Online {
     this.sendHello();
     this.emit('status');
     return true;
+  }
+
+  // Presence is ordered by join time: whoever is past the cap is the one turned away.
+  onPresence(list) {
+    this.presence = list.map(x => x.id);
+    if (list.findIndex(x => x.id === this.id) >= SERVER_CAP) {
+      this.error = `${this.serverName} is full (${SERVER_CAP}/${SERVER_CAP})`;
+      this.leave(); this.status = 'error'; this.emit('status');
+      return;
+    }
+    this.pruneToPresence(); this.emit('peers');
+  }
+
+  // Presence tells us right away when someone leaves or drops.
+  pruneToPresence() {
+    if (!this.presence) return;
+    const here = new Set(this.presence);
+    for (const id of [...this.peers.keys()]) if (!here.has(id)) this.peers.delete(id);
   }
 
   leave() {

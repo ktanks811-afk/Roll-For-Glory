@@ -15,6 +15,7 @@ import { openPartsHub } from './partshub.js';
 import { openGarage } from './garage.js';
 import { openSettings, openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
+import { renderHustle } from './hustle.js';
 
 const APPS = [
   { id: 'messages', name: 'Messages', icon: '💬', bg: '#2bd96b' },
@@ -26,6 +27,7 @@ const APPS = [
   { id: 'social', name: 'Throttle', icon: '📸', bg: 'linear-gradient(135deg,#a01aff,#ff1a6a)' },
   { id: 'races', name: 'Races', icon: '🏁', bg: '#111' },
   { id: 'ryde', name: 'Ryde', icon: '🚕', bg: '#e8c21a' },
+  { id: 'hustle', name: 'Hustle', icon: '💼', bg: '#0f6b4f' },
   { id: 'crew', name: 'Crew', icon: '👥', bg: '#3a3d46' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
@@ -75,11 +77,12 @@ function renderHome(scr, ctx) {
 }
 
 const RENDER = {};
+RENDER.hustle = renderHustle;
 
 // ---------------- messages ----------------
 RENDER.messages = (scr, ctx) => {
   const s = ctx.s;
-  const who = id => id === 'marketplace' ? { name: 'Marketplace', color: '#1877f2' } : id === 'partshub' ? { name: 'PartsHub', color: '#e0192e' } : id === 'insurance' ? { name: 'Solace Mutual Insurance', color: '#1f8f3a' } : contactInfo(id);
+  const who = id => id === 'marketplace' ? { name: 'Marketplace', color: '#1877f2' } : id === 'partshub' ? { name: 'PartsHub', color: '#e0192e' } : id === 'insurance' ? { name: 'Solace Mutual Insurance', color: '#1f8f3a' } : id === 'hustle' ? { name: 'Hustle', color: '#0f6b4f' } : contactInfo(id);
   scr.innerHTML = head('Messages') + `<div class="app-body">${s.messages.length ? s.messages.map(m => {
     const w = who(m.from);
     let action = '';

@@ -102,6 +102,15 @@ export function earn(s, amount, label) {
   emit('money', { amount, label });
 }
 
+// Income that is paid straight into the bank (paychecks, business profits).
+export function earnBank(s, amount, label) {
+  amount = Math.round(amount);
+  s.bank += amount;
+  if (amount > 0) s.stats.earnings += amount;
+  log(s, label, amount);
+  emit('money', { amount, label });
+}
+
 export function spend(s, amount, label, { fromBank = true } = {}) {
   amount = Math.round(amount * 100) / 100;
   const total = s.cash + (fromBank ? s.bank : 0);

@@ -122,7 +122,7 @@ export function openPause(app) {
     root.innerHTML = `<div class="p-head"><h1>Paused<small>${esc(game.s.player.name)} · Day ${game.s.time.day}</small></h1><button class="btn x" data-action="close">×</button></div>
       <div class="p-body"><nav class="menu" style="width:100%;max-width:420px">
         <button data-action="close">Resume</button>
-        <button data-action="online">Online Free Roam<small>${online.active ? `Connected · room ${esc(online.room)}` : 'See other players on the map'}</small></button>
+        <button data-action="online">Online Free Roam<small>${online.active ? `Connected · ${esc(online.serverName)} server` : 'See other players on the map'}</small></button>
         <button data-action="save">Save Game<small>3 manual slots plus autosave</small></button>
         <button data-action="load">Load Game</button>
         <button data-action="settings">Settings</button>
