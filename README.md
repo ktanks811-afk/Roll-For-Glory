@@ -34,8 +34,8 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   Wilwood, KW, Öhlins, Mickey Thompson, Hoosier, Nitrous Express, BBS, Volk,
   HRE, Akrapovič, Borla and more. Parts are checked for fitment against your
   car (a Hondata won't flash a Mustang, and a Tesla can't take a turbo).
-  Checkout adds sales tax and shipping, and orders arrive at your door the
-  next morning.
+  Checkout adds sales tax and shipping, and orders are delivered
+  instantly into My Parts.
 - **Installing parts.** Do it yourself at home for small jobs (it costs you
   in-game hours), or pay $125/hr shop labor at Torque Temple or Vega
   Kustoms. Every visual mod shows up on the car. So do big performance
