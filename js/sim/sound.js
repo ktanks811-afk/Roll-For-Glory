@@ -13,7 +13,43 @@
 // rather than recordings; the numbers below are tuned by ear-and-physics, not
 // sampled. Everything is synthesized, no audio files.
 
+import { ITEM_BY_ID } from '../data/catalog.js';
+
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ---------------------------------------------------------------- noise (dB)
+// How loud a car is, and what the law says about it. A stock car idles around
+// 70 dB and tops out in the 80s; the street limit is 95 dB. Each exhaust part
+// has a `db` rating in the catalog: cat-backs add a few, long tube headers add
+// 15–20, and long tubes with straight pipes add over 20. That's what gets you
+// pulled over.
+export const LEGAL_DB = 95;
+const STAGE_DB = [0, 5, 10, 15, 19];            // for NPC builds that only have stage numbers
+
+// dB the exhaust adds over stock. `parts` is car.parts (product ids for the
+// player's cars, stage numbers for NPC builds).
+export function exhaustDb(parts = {}) {
+  const v = parts.exhaust;
+  if (!v) return 0;
+  if (typeof v === 'number') return STAGE_DB[clamp(v, 0, 4)];
+  const it = ITEM_BY_ID[v];
+  return it ? (it.db ?? STAGE_DB[it.stage] ?? 0) : 0;
+}
+
+// Static loudness of the car at wide-open throttle (dB).
+export function noiseDb(m, parts = {}) {
+  if (m.asp === 'ev') return 62;
+  const base = 70 + clamp((m.hp - 150) / 45, 0, 15);          // 150 hp ≈ 70 dB … 800+ hp ≈ 85 dB
+  return Math.round((base + exhaustDb(parts)) * 10) / 10;
+}
+
+// What it measures right now: cruising is quieter than flooring it.
+export function liveNoiseDb(staticDb, throttle, rpmFrac) {
+  return staticDb - 13 + 13 * clamp(throttle * 0.65 + rpmFrac * 0.45, 0, 1);
+}
+
+// How far away people (and cops) can hear it, in metres.
+export function hearingRange(db) { return clamp(40 + (db - 80) * 12, 40, 420); }
 
 // kind → how it fires. n = cylinders firing per 2 crank turns (rotary: 4, two
 // rotors); slope = how fast the harmonics fall off (small = bright/shrieky);
@@ -87,19 +123,21 @@ const EXH = {
   burble:[0.00, 0.00, 0.25, 0.55, 0.85],   // chance of overrun pops per lift
 };
 
-export function soundProfile(m, lv = {}) {
+export function soundProfile(m, lv = {}, parts = null) {
   const kind = engineKind(m);
   const k = KINDS[kind];
   const ex = clamp(lv.exhaust || 0, 0, 4);
+  // real decibels over stock when we know the exact part, else by stage
+  const db = parts ? exhaustDb(parts) : STAGE_DB[ex];
   const turbo = m.asp === 'turbo' || lv.turbo > 0;
   const blower = (m.asp === 'sc' || lv.supercharger > 0) && !(lv.turbo > 0);
   const base = 0.4 + clamp((m.hp - 150) / 1500, 0, 0.35);       // fast cars are louder
   const tuned = (lv.ecu || 0) >= 2 || (lv.exhaust || 0) >= 2;
   return {
     kind, label: k.label, n: k.n, slope: k.slope, leak: k.leak,
-    grit: clamp(k.grit + EXH.drive[ex] * 0.6, 0, 1.2),
-    cut: EXH.cut[ex], drive: EXH.drive[ex], exhaust: ex,
-    loud: clamp(base * EXH.gain[ex], 0.25, 1.1),
+    grit: clamp(k.grit + clamp(db / 26, 0, 1) * 0.6, 0, 1.2),
+    cut: 0.65 + clamp(db, 0, 26) * 0.036, drive: clamp(db / 26, 0, 1), exhaust: ex, db,
+    loud: clamp(base * (1 + db * 0.055), 0.25, 2.4),
     turbo, twinCharged: turbo && (m.asp === 'sc' || /Twincharged/.test(m.engine || '')),
     turboBig: lv.turbo || 0,
     blower,
@@ -108,7 +146,7 @@ export function soundProfile(m, lv = {}) {
     intake: lv.intake || 0,
     vtec: vtecRpm(m),
     lope: lopey(m) || kind === 'rotary' ? 1 : 0,
-    burble: clamp(EXH.burble[ex] + (tuned ? 0.1 : 0) + (kind === 'v8x' ? 0.15 : 0), 0, 0.95),
+    burble: db < 8 ? 0 : clamp((db - 6) / 22 + (tuned ? 0.1 : 0) + (kind === 'v8x' ? 0.15 : 0), 0, 0.95),
     // pulses per crank turn → fundamental used by the synth
     redline: m.redline,
   };

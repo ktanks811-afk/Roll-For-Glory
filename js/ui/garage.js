@@ -8,7 +8,7 @@ import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, part
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { buildSpec, dynoCurve, metrics, MPH } from '../sim/powertrain.js';
 import { launchRpmSetting } from '../sim/twostep.js';
-import { soundProfile } from '../sim/sound.js';
+import { soundProfile, noiseDb, LEGAL_DB } from '../sim/sound.js';
 import { emit } from '../core/events.js';
 import { drawThumb, sellCar } from './marketplace.js';
 import { PROPERTIES, LOC_BY_ID } from '../data/world.js';
@@ -122,6 +122,7 @@ function overview(body, h, app, st, s, car, m) {
       <div class="kv">
         <span>Engine</span><span>${esc(m.engine)}</span><span>Transmission</span><span>${esc(m.trans)}</span><span>Drivetrain</span><span>${m.drive}</span>
         <span>Aspiration</span><span>${{ na: 'Naturally aspirated', turbo: 'Turbocharged', sc: 'Supercharged', ev: 'Electric' }[spec.asp]}</span>
+        <span>Exhaust noise</span><span>${(() => { const db = noiseDb(m, car.parts); return `${Math.round(db)} dB at full throttle · ${db > LEGAL_DB ? '<b class="bad">over the 95 dB street limit — expect tickets</b>' : 'street legal'}`; })()}</span>
         <span>Redline</span><span>${spec.asp === 'ev' ? '—' : spec.redline.toLocaleString() + ' rpm'}</span>
         <span>Odometer</span><span>${Math.round(car.miles).toLocaleString()} mi</span><span>Title</span><span class="${car.title !== 'Clean' ? 'bad' : ''}">${car.title}</span>
         <span>Fuel economy</span><span>${carMpg(car).toFixed(0)} ${m.asp === 'ev' ? 'MPGe' : 'mpg'}</span>
@@ -236,7 +237,7 @@ function dyno(body, h, app, st, s, car, m) {
   bind(body, {
     run: () => {
       audio.engine && audio.beep(440, 0.1);
-      const eng = audio.engine({ profile: soundProfile(m, levels(car)) });
+      const eng = audio.engine({ profile: soundProfile(m, levels(car), car.parts) });
       let t = 0;
       const tick = () => {
         t += 1 / 60 / 3.2;

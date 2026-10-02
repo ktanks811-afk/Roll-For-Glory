@@ -12,6 +12,7 @@ import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../da
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
 import { input } from '../core/input.js';
+import { esc } from '../ui/dom.js';
 import { audio } from '../core/audio.js';
 import { settings, saveGame } from '../core/save.js';
 import { emit } from '../core/events.js';
@@ -19,7 +20,7 @@ import { MPH } from '../sim/powertrain.js';
 import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
-import { soundProfile } from '../sim/sound.js';
+import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 
 let MAP = null;
 export function getMap() { if (!MAP) { MAP = buildMap(); MAP.lights = buildStreetLights(MAP); MAP.overview = renderOverview(MAP); } return MAP; }
@@ -103,8 +104,9 @@ export class World {
 
   restartEngineSound() {
     if (this.engine) { this.engine.stop(); this.engine = null; }
+    this.staticDb = this.vehicle ? noiseDb(this.vehicle.model, this.vehicle.car.parts) : 0;
     if (this.inCar && this.vehicle) {
-      this.engine = audio.engine({ profile: soundProfile(this.vehicle.model, levels(this.vehicle.car)) });
+      this.engine = audio.engine({ profile: soundProfile(this.vehicle.model, levels(this.vehicle.car), this.vehicle.car.parts) });
     }
   }
 
@@ -362,7 +364,7 @@ export class World {
         if (o.hit) o.hit(imp); else o.v *= 0.5;
         if (imp > 2.5) {
           this.onCrash(imp, o.police ? 'police' : 'car');
-          this.setOffence(o.police || this.police.units.includes(o) ? 1.5 : 0.8, o.police ? 'Assault on an officer with a vehicle!' : 'Hit-and-run collision.', 'crash');
+          this.setOffence(o.police || this.police.units.includes(o) ? 1.5 : 0.8, o.police ? 'Assault on an officer with a vehicle!' : 'Hit-and-run collision.', 'crash', o.police ? 'assault' : 'hitrun', o.police ? 2500 : 650);
         }
       }
     }
@@ -398,19 +400,21 @@ export class World {
     // ---- offences (only matter if a cop sees them) ----
     const edge = onRoad?.edge;
     const limit = edge ? (edge.kind === 'highway' ? 29 : edge.kind === 'desert' ? 24.6 : 15.6) : 15.6;
-    if (v.speed > limit + 9) this.setOffence(dt * (v.speed > limit + 20 ? 0.9 : 0.45), `Speeding — ${Math.round(v.speed * MPH)} in a ${Math.round(limit * MPH)}.`);
-    if (v.sim.slip > 0.4 && v.speed < 8) this.setOffence(dt * 0.25, 'Exhibition of speed (burnout).');
+    if (v.speed > limit + 9) this.setOffence(dt * (v.speed > limit + 20 ? 0.9 : 0.45), `Speeding — ${Math.round(v.speed * MPH)} in a ${Math.round(limit * MPH)}.`, undefined, 'speeding', 150 + Math.round(Math.max(0, (v.speed - limit) * MPH - 10) * 18));
+    if (v.sim.slip > 0.4 && v.speed < 8) this.setOffence(dt * 0.25, 'Exhibition of speed (burnout).', undefined, 'burnout', 450);
     // red lights
     const node = this.map.roads.nearestNode(v.x, v.z);
     if (node && node.edges.length >= 3 && Math.abs(node.x) <= 900 && Math.abs(node.z) <= 900 && Math.abs(v.x - node.x) < ROAD_W / 2 && Math.abs(v.z - node.z) < ROAD_W / 2) {
       if (this.redLightNode !== node.id && v.speed > 6) {
         const sig = signalState(node, this.signalT);
         const ns = Math.abs(v.vz) > Math.abs(v.vx);
-        if ((ns !== sig.nsGreen) && !sig.yellow) this.setOffence(0.7, 'Ran a red light.', 'red' + node.id);
+        if ((ns !== sig.nsGreen) && !sig.yellow) this.setOffence(0.7, 'Ran a red light.', 'red' + node.id, 'redlight', 320);
         this.redLightNode = node.id;
       }
     } else this.redLightNode = null;
 
+    // how loud the car is right now (cops listen)
+    this.liveDb = liveNoiseDb(this.staticDb ?? noiseDb(v.model, v.car.parts), thr, v.sim.rpm / v.spec.redline);
     // engine audio
     if (this.engine) {
       this.engine.update({ rpm: v.sim.rpm, throttle: thr, boost: v.sim.boost, slip: Math.max(v.sim.slip, sliding ? 0.5 : 0), turbo: v.spec.asp === 'turbo', speed: v.speed });
@@ -419,12 +423,12 @@ export class World {
     if (!v.sim.nosOn) this.nosSound = false;
   }
 
-  setOffence(heat, text, onceKey) {
+  setOffence(heat, text, onceKey, kind, fine) {
     if (onceKey) {
       if (this.offenceCooldown[onceKey] > this.t) return;
       this.offenceCooldown[onceKey] = this.t + 4;
     }
-    if (!this.offence || this.offence.heat < heat) this.offence = { heat, text };
+    if (!this.offence || this.offence.heat < heat) this.offence = { heat, text, kind, fine };
   }
 
   onCrash(impact, what) {
@@ -464,6 +468,34 @@ export class World {
       ? `<p>The officer writes you a ticket for ${fmtMoney(total)}. "Slow it down out here."</p>`
       : `<p>You're in cuffs. Your car spends the night in impound.</p><p>Fines, towing and impound: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>`);
     emit('busted', { fine: total });
+  }
+
+  // You pulled over. The officer writes up everything they saw.
+  async onTrafficStop(record) {
+    const s = this.s;
+    const items = record.map(r => ({ ...r }));
+    let total = items.reduce((t, r) => t + r.fine, 0);
+    const hasNoise = items.some(r => r.kind === 'noise');
+    const priors = s.stats.noiseTickets || 0;
+    s.stats.tickets = (s.stats.tickets || 0) + 1;
+    if (hasNoise) s.stats.noiseTickets = priors + 1;
+    // third noise citation: they want the car off the road
+    if (hasNoise && priors >= 2) { this.onBusted(1200, false); return; }
+    const say = hasNoise ? '"Sir, you could hear that thing from three blocks away. Step out of the car — license and registration."'
+      : items.some(r => r.kind === 'speeding') ? '"Do you know how fast you were going?"' : '"License and registration. You know why I pulled you over?"';
+    const list = () => items.map(r => `<div class="row" style="justify-content:space-between"><span>${esc(r.text)}</span><b>${fmtMoney(r.fine)}</b></div>`).join('');
+    const pick = await this.ui.modal('Traffic stop',
+      `<p class="muted">${esc(say)}</p><div style="margin:10px 0">${list()}</div><p><b>Total: ${fmtMoney(total)}</b></p>${hasNoise ? `<p class="small muted">Noise citation${priors ? ` (#${priors + 1}) — a third one gets the car impounded` : ''}. Quieter exhaust, quieter tickets.</p>` : ''}`,
+      [{ label: 'Accept the citation', primary: true, value: 'accept' }, { label: 'Try to talk your way out', value: 'argue' }]);
+    let note = '';
+    if (pick === 'argue') {
+      const chance = Math.max(0.05, 0.15 + tierOf(s.rep).n * 0.04 - priors * 0.05 - (hasNoise ? 0.05 : 0));
+      if (Math.random() < chance) { total = 0; note = 'The officer sighs. "Just a warning this time. Get that fixed."'; }
+      else { total = Math.round(total * 1.4); note = '"Now you\'re getting every violation I saw." Fines go up 40%.'; }
+    }
+    if (total > 0 && !spend(s, total, 'PSPD traffic citation')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
+    this.ui.modal(total ? 'Citation issued' : 'Warning', `<p>${total ? `You paid <b>${fmtMoney(total)}</b>. ` : ''}${esc(note || '"Drive safe. Keep it under control."')}</p>`);
+    emit('busted', { fine: total, ticket: true });
   }
 
   onEscaped() {

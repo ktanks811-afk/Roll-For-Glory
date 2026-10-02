@@ -298,6 +298,55 @@ await step('online free roam', async () => {
   await p2.close();
 });
 
+// ---------------- loud exhaust → cops notice → traffic stop ----------------
+await step('noise + traffic stop', async () => {
+  const W = () => p.evaluate(() => { const w = window.__rfg.app.world; return { db: Math.round(w.liveDb), sdb: Math.round(w.staticDb), phase: w.police.phase, att: +w.police.noiseAtt.toFixed(2), rec: w.police.record.map(r => r.kind), cash: window.__rfg.game.s.cash }; });
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { newCar } = await import('./js/core/state.js'); const { CATALOG } = await import('./js/data/catalog.js');
+    const r = window.__rfg, s = r.game.s, w = r.app.world;
+    const c = newCar('ford_mustang_gt_s650_2024'); s.cars.push(c); s.activeCar = c.uid; w.refreshCar();
+    w.police.reset(w); s.heat = 0; w.paused = false;
+    c.parts.exhaust = CATALOG.find(p => p.cat === 'exhaust' && p.name.includes('Off-Road Long Tubes')).id;
+    w.refreshCar();
+    w.inCar = false; w.vehicle.vx = 0; w.vehicle.vz = 0; w.vehicle.rev = 0; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z;
+  });
+  await p.waitForTimeout(300);
+  await key('KeyF'); await p.waitForTimeout(400);   // get in properly so the car controls are live
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) await p.evaluate(() => window.__rfg.app.world.toggleCar());   // key press missed: fall back
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get into the Mustang: ' + JSON.stringify(await p.evaluate(async () => { const w = window.__rfg.app.world, { input } = await import('./js/core/input.js'); return { ctx: input.context, paused: w.paused, modal: !!document.querySelector('#modals .modal-back'), panels: document.querySelectorAll('#panels .panel').length, dist: Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z), mode: window.__rfg.app.mode, speed: w.vehicle.speed }; })));
+  const stock = await p.evaluate(async () => { const { noiseDb } = await import('./js/sim/sound.js'); const { CAR_BY_ID } = await import('./js/data/cars.js'); return Math.round(noiseDb(CAR_BY_ID.ford_mustang_gt_s650_2024, {})); });
+  const loud = await W();
+  console.log('     Mustang stock', stock, 'dB; with long tubes + straight pipes', loud.sdb, 'dB');
+  if (!(loud.sdb > 95 && stock < 95)) throw new Error('straight-piped Mustang should be over 95 dB and stock under');
+  // floor it: the noise gets noticed (a unit is dispatched or a patrol pulls us over)
+  await p.evaluate(() => { window.__rfg.app.world.police.noiseAtt = 0.97; });
+  await p.keyboard.down('KeyW'); await p.keyboard.down('KeyS');     // rev it in place: loud, but not speeding
+  let got = null;
+  for (let i = 0; i < 40 && !got; i++) { await p.waitForTimeout(100); const s = await W(); if (s.phase === 'notice') got = s; }
+  await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW');
+  console.log('     police reaction', JSON.stringify(got));
+  if (!got) throw new Error('police never noticed the straight-piped car');
+  if (!got.rec.includes('noise')) throw new Error('no noise citation on the record');
+  // pulled over: the officer's traffic stop
+  const cash0 = got.cash;
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.busted(w); });
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")');
+  const txt = await p.textContent('.modal');
+  if (!/exhaust noise/i.test(txt)) throw new Error('traffic stop does not mention the noise');
+  await snap('24-traffic-stop');
+  await p.click('.modal button:has-text("Accept the citation")');
+  await p.waitForSelector('.modal h2:has-text("Citation issued")');
+  await p.click('.modal button');
+  const after = await W();
+  if (!(after.cash < cash0)) throw new Error('citation was not charged');
+  if (after.phase !== 'none') throw new Error('police did not stand down after the stop');
+  // a stock-exhaust car is not bothered
+  await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; const c = s.cars.find(c => c.uid === s.activeCar); delete c.parts.exhaust; w.refreshCar(); });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1500); const quiet = await W(); await p.keyboard.up('KeyW');
+  if (quiet.att > 0.05 || quiet.phase !== 'none') throw new Error('a street-legal car should not draw attention for noise');
+});
+
 // ---------------- engine sounds: each car's note matches its engine ----------------
 await step('engine sounds', async () => {
   const r = await p.evaluate(async () => {
@@ -324,7 +373,9 @@ await step('engine sounds', async () => {
       await wait(300); an.getFloatFrequencyData(bins);
       let bi = 3; for (let i = 3; i < bins.length && i * sr / an.fftSize < 1500; i++) if (bins[i] > bins[bi]) bi = i;
       const f = bi * sr / an.fftSize, want = firingHz(prof, 3000);
-      if (Math.abs(f - want) > 6) res.bad.push(`${mk} ${md}: loudest ${Math.round(f)}Hz, firing ${want}Hz`);
+      // the firing frequency must be one of the loudest tones (a bright rotary has many near-equal peaks)
+      let at = Math.round(want * an.fftSize / sr), fire = -Infinity; for (let i = at - 2; i <= at + 2; i++) fire = Math.max(fire, bins[i]);
+      if (fire < bins[bi] - 9) res.bad.push(`${mk} ${md}: firing ${want}Hz is ${Math.round(bins[bi] - fire)} dB below the loudest tone (${Math.round(f)}Hz)`);
       v.stop(); await wait(100);
     }
     return res;

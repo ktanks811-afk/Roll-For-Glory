@@ -11,6 +11,7 @@ import { input, touch, isTouchDevice } from '../core/input.js';
 import { touchUi } from './touch.js';
 import { audio } from '../core/audio.js';
 import { online } from '../net/online.js';
+import { LEGAL_DB } from '../sim/sound.js';
 
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · P phone · M map · C zoom',
@@ -41,6 +42,7 @@ export class Hud {
         <div class="dash-gear" data-gear>N</div>
         <div class="dash-tach"><div data-rpm></div><i data-redline></i></div>
         <div class="dash-row"><span>FUEL</span><div class="bar thin"><div data-fuel></div></div></div>
+        <div class="dash-row hidden" data-noiserow><span>NOISE</span><b data-noise>—</b></div>
         <div class="dash-row" data-nosrow><span>NOS</span><div class="bar thin nos"><div data-nos></div></div></div>
         <div class="dash-car" data-carname></div>
       </div>
@@ -141,6 +143,14 @@ export class Hud {
       this.q('rpm').classList.toggle('hot', rpmPct > 0.9);
       this.q('fuel').style.width = `${v.car.fuel * 100}%`;
       this.q('fuel').classList.toggle('low', v.car.fuel < 0.15);
+      // exhaust noise: only worth showing once the car is loud enough to matter
+      const nr = this.q('noiserow'), loud = (w.staticDb || 0) > LEGAL_DB - 8;
+      nr.classList.toggle('hidden', !loud);
+      if (loud) {
+        const nz = this.q('noise'), over = (w.liveDb || 0) > LEGAL_DB;
+        nz.textContent = `${Math.round(w.liveDb || 0)} dB${over ? ` · over ${LEGAL_DB}` : ''}${w.police.noiseAtt > 0.15 ? ` · ${w.police.noiseAtt > 0.6 ? '👮 cops hear you' : 'heads turning'}` : ''}`;
+        nz.style.color = over ? (w.police.noiseAtt > 0.6 ? '#ff2a3a' : '#ffb020') : '';
+      }
       this.q('nosrow').classList.toggle('hidden', !v.spec.nosSecs);
       if (v.spec.nosSecs) this.q('nos').style.width = `${v.sim.nos / v.spec.nosSecs * 100}%`;
       this.q('carname').textContent = `${v.car.year} ${v.model.model}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : ''}`;

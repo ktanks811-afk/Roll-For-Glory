@@ -38,6 +38,7 @@ function effectText(it, car) {
     case 'brakes': return `Braking +${Math.round((FX.brakes.force[L] - 1) * 100)}%`;
     case 'nitrous': return `${FX.nitrous.hp[L]} hp shot`;
     case 'twostep': return `Holds launch rpm ±${FX.twostep.tol[L]} · ${['', 'small pops', 'flames', 'big flames', 'huge flames'][L]}`;
+    case 'exhaust': return it.db != null ? `+${it.db} dB louder${it.db >= 14 ? ' · too loud for the street' : ''}` : '';
     case 'fuel': return `Supports ${Math.round((FX.fuel.cap[L] - 1) * 100)}% over stock`;
     default: return '';
   }
@@ -111,7 +112,7 @@ function renderShop(body, h, s, car, cats, counts, store, app) {
       <div class="list">${items.map(p => {
         const ok = !m || fits(p, m);
         const gain = ok ? hpGain(p, car) : null;
-        const eff = gain ? `${gain.delta >= 0 ? '+' : ''}${gain.delta} hp${gain.limited ? ' (fuel-limited!)' : ''}` : effectText(p, car);
+        const eff = (gain ? `${gain.delta >= 0 ? '+' : ''}${gain.delta} hp${gain.limited ? ' (fuel-limited!)' : ''}` : effectText(p, car)) + (gain && p.cat === 'exhaust' ? ` · ${effectText(p, car)}` : '');
         const isOn = installed.has(p.id);
         const price = Math.round(p.price * mult);
         return `<div class="li prod"><div class="prod-img">${ICONS[p.cat]}</div>

@@ -9,6 +9,7 @@ import { carSprite, DIMS } from '../gfx2d/carSprite.js';
 import { TrafficCar } from './traffic.js';
 import { collideCircle, lineOfSight } from './map.js';
 import { LOC_BY_ID, TUNNEL, HWY_Z, HWY_W } from '../data/world.js';
+import { LEGAL_DB, hearingRange } from '../sim/sound.js';
 
 const PATROL_MODELS = ['ford_crown_victoria_police_interceptor_2003', 'dodge_charger_scat_pack_2015', 'ford_explorer_xlt_2002', 'chevrolet_tahoe_lt_2007'];
 const INTERCEPTORS = ['dodge_charger_srt_hellcat_redeye_2021', 'ford_mustang_gt_s650_2024', 'chevrolet_camaro_ss_2016'];
@@ -52,6 +53,8 @@ export class PoliceSystem {
     this.chatterT = 0;
     this.seen = false;
     this.decayHold = 0;
+    this.noiseAtt = 0;   // 0..1: how much attention a loud exhaust has drawn
+    this.record = [];    // what you did since the last stop: [{ kind, text, fine }]
   }
   get level() { return Math.floor(clamp(this.s.heat, 0, 5.99)); }
   get active() { return this.phase === 'chase' || this.phase === 'search' || this.phase === 'cooldown' || this.phase === 'notice'; }
@@ -116,8 +119,11 @@ export class PoliceSystem {
     // offences only count when a cop can see them (w.offence set by world)
     if (this.seen && w.offence) {
       this.addHeat(w.offence.heat, w.offence.text, w.hud);
+      this.note(w.offence);
       if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') this.startChase(w);
     }
+
+    this.hear(dt, w);
 
     // ---- state machine ----
     const lvl = this.level;
@@ -193,6 +199,37 @@ export class PoliceSystem {
         : [`Units, sweep ${w.districtAt(this.lastSeen?.x ?? p.x, this.lastSeen?.z ?? p.z)}.`, 'Check the parking lots and alleys.', 'Anyone have eyes on the suspect vehicle?'];
       w.hud.radio(pick(lines));
     }
+  }
+
+  // Keep the worst of each kind of offence for the ticket.
+  note(o) {
+    if (!o.kind) return;
+    const have = this.record.find(r => r.kind === o.kind);
+    if (!have) this.record.push({ kind: o.kind, text: o.text, fine: o.fine || 250 });
+    else if ((o.fine || 0) > have.fine) { have.fine = o.fine; have.text = o.text; }
+  }
+
+  // Loud exhausts get noticed. Anyone within earshot (no line of sight needed)
+  // starts paying attention; once it fills up, a patrol nearby pulls you over,
+  // or dispatch sends a unit to the noise complaint.
+  hear(dt, w) {
+    const p = w.player;
+    const db = p.inCar ? (w.liveDb || 0) : 0;
+    if (!(db > LEGAL_DB) || this.phase === 'chase') { this.noiseAtt = Math.max(0, this.noiseAtt - dt * 0.25); return; }
+    const range = hearingRange(db);
+    const near = this.allCars().some(c => Math.hypot(c.x - p.x, c.z - p.z) < range);
+    const over = (db - LEGAL_DB) / 10;
+    this.noiseAtt = Math.min(1.2, this.noiseAtt + dt * 0.09 * (0.6 + over) * (near ? 1 : 0.35));
+    if (this.noiseAtt < 1) return;
+    this.noiseAtt = 0;
+    if (this.phase !== 'none') { this.note({ kind: 'noise', text: `Excessive exhaust noise — ${Math.round(db)} dB (limit ${LEGAL_DB}).`, fine: 400 }); return; }
+    this.note({ kind: 'noise', text: `Excessive exhaust noise — ${Math.round(db)} dB (limit ${LEGAL_DB}).`, fine: 400 });
+    this.s.heat = Math.max(this.s.heat, 0.2);
+    this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz };
+    const street = w.streetAt(p.x, p.z);
+    w.hud.radio(near ? `That exhaust is way too loud${street ? ' on ' + street : ''}. Pulling them over.` : `Dispatch: noise complaint — loud exhaust${street ? ' on ' + street : ''}. Unit responding.`);
+    this.startChase(w);
+    this.unseenT = near ? 0 : -18;   // a unit coming from across town gets time to arrive
   }
 
   startChase(w) {
@@ -311,11 +348,17 @@ export class PoliceSystem {
 
   busted(w) {
     const lvl = Math.max(1, this.level);
-    const fine = this.phase === 'notice' ? 250 : 400 * lvl + 250 * (lvl - 1) ** 2;
-    w.onBusted(fine, this.phase === 'notice');
+    if (this.phase === 'notice') {
+      // you pulled over: a proper traffic stop
+      const record = this.record.length ? this.record : [{ kind: 'reckless', text: 'Failure to maintain safe driving.', fine: 250 }];
+      w.onTrafficStop(record);
+    } else {
+      w.onBusted(400 * lvl + 250 * (lvl - 1) ** 2, false);
+    }
     this.reset(w);
   }
   escaped(w) {
+    this.record = [];
     w.onEscaped();
     this.phase = 'none';
     this.decayHold = 20;
@@ -324,6 +367,7 @@ export class PoliceSystem {
   }
   reset(w) {
     this.phase = 'none';
+    this.record = []; this.noiseAtt = 0;
     this.s.heat = 0;
     this.units = [];
     this.blocks = [];

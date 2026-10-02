@@ -74,6 +74,18 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   at the VTEC crossover, turbos whistle and flutter, Roots and twin-screw
   blowers whine differently, and EVs hum a motor whine. Exhaust parts make it
   louder, brighter and raspier, and from stage 2 it burbles on the overrun.
+- **Loud exhausts get you pulled over.** Every exhaust part has a real dB
+  rating. Cat-backs add a few dB, long tube headers add 15–20, and long tubes
+  with straight pipes add over 20 and make the car way louder (in the mix too).
+  The street limit is 95 dB: your dash shows a live NOISE reading, and cops
+  within earshot — no line of sight needed — start paying attention. Once they
+  have enough, a patrol pulls you over, or dispatch sends a unit to a noise
+  complaint. A third noise ticket gets the car impounded.
+- **Traffic stops.** Break the law where a cop can see you (speeding, running a
+  red, a burnout, a hit-and-run, a loud exhaust) and you get "PULL OVER". Stop
+  and the officer writes up everything they saw: accept the citation or try to
+  talk your way out (it can work — or cost you 40% more). Keep going and it
+  becomes a pursuit.
 - **Police.** Five heat levels. Patrols have to actually see you speeding,
   running reds or hitting cars. Pursuit units drive in from precincts. When
   they lose you they set up a search zone, and you need a cooldown to

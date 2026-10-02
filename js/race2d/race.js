@@ -95,8 +95,8 @@ export class Race {
       for (let i = 0; i < n; i++) this.spawnTraffic(80 + Math.random() * (this.dist + 300));
     }
     this.cam = { y: this.p.y, zoom: 13 };
-    this.engineP = audio.engine({ profile: soundProfile(this.p.model, this.p.spec.lv) });
-    this.engineN = this.n ? audio.engine({ profile: soundProfile(this.n.model, this.n.spec.lv), volume: 0.65 }) : null;
+    this.engineP = audio.engine({ profile: soundProfile(this.p.model, this.p.spec.lv, this.p.car?.parts) });
+    this.engineN = this.n ? audio.engine({ profile: soundProfile(this.n.model, this.n.spec.lv, this.n.car?.parts), volume: 0.65 }) : null;
     audio.music(this.isDrag ? null : 'race');
     touchUi.setRace(this.isDrag ? 'drag' : 'roll');
     this.hud = el(`<div class="race-hud"><div class="race-top">

@@ -9,7 +9,7 @@ import { generateListings } from '../js/data/market.js';
 import { buildSpec, metrics } from '../js/sim/powertrain.js';
 import { partLevels } from '../js/data/parts.js';
 import { RevLimiter } from '../js/sim/twostep.js';
-import { soundProfile, harmonics, firingHz } from '../js/sim/sound.js';
+import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
 let fails = 0;
 const bad = (msg) => { fails++; console.error('FAIL', msg); };
@@ -33,6 +33,9 @@ for (const r of RACERS) {
   metrics(buildSpec(m, partLevels(r.car.parts), {}));
 }
 for (const l of LOCATIONS) if (!isFinite(l.x) || !isFinite(l.z)) bad(`location ${l.id} has no position`);
+let worst = Infinity;
+for (let i = 0; i < 200; i++) worst = Math.min(worst, generateListings(30).filter(l => l.price <= 4500).length);
+if (worst < 4) bad(`a new game can start with only ${worst} cars under $4,500`);
 const listings = generateListings(40);
 if (listings.filter(l => l.price <= 4500).length < 4) bad('not enough affordable first cars on Marketplace');
 // fitment spot checks
@@ -92,6 +95,27 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const m0 = soundProfile(CAR_BY_ID.ford_mustang_gt_s650_2024, {}), m4 = soundProfile(CAR_BY_ID.ford_mustang_gt_s650_2024, { exhaust: 4 });
   if (!(m4.loud > m0.loud && m4.cut > m0.cut && m4.burble > m0.burble && m4.grit > m0.grit)) bad('exhaust stage does not change the sound');
   if (soundProfile(CAR_BY_ID.tesla_model_3_performance_2024, { exhaust: 4 }).kind !== 'ev') bad('EV sound changed with exhaust');
+}
+// exhaust loudness: long tubes + straight pipes are way louder than a cat-back, and illegal
+{
+  const ex = CATALOG.filter(p => p.cat === 'exhaust');
+  for (const p of ex) if (typeof p.db !== 'number') bad(`exhaust ${p.id} has no dB rating`);
+  const named = n => ex.find(p => p.name.includes(n));
+  const catback = named('Street Series Cat-Back'), longTube = named('Long Tube Headers + X-Pipe'), offroad = named('Off-Road Long Tubes + Straight Pipes');
+  if (!(catback.db < longTube.db && longTube.db < offroad.db)) bad('cat-back < long tubes < long tubes + straight pipes');
+  if (offroad.db < 20) bad('long tubes + straight pipes should add 20+ dB');
+  const mus = CAR_BY_ID.ford_mustang_gt_s650_2024;
+  const stockDb = noiseDb(mus, {}), cbDb = noiseDb(mus, { exhaust: catback.id }), wildDb = noiseDb(mus, { exhaust: offroad.id });
+  if (!(stockDb < LEGAL_DB && cbDb < LEGAL_DB)) bad(`a stock/cat-back Mustang should be street legal (${stockDb}, ${cbDb})`);
+  if (!(wildDb > LEGAL_DB)) bad(`long tubes + straight pipes should be over the limit (${wildDb})`);
+  const civic = CAR_BY_ID.honda_civic_ex_1996;
+  if (noiseDb(civic, { exhaust: catback.id }) > LEGAL_DB) bad('a Civic with a cat-back should be legal');
+  if (noiseDb(tesla, {}) > 70) bad('EVs are quiet');
+  const loud0 = soundProfile(mus, {}, {}).loud, loud1 = soundProfile(mus, { exhaust: 3 }, { exhaust: offroad.id }).loud;
+  if (!(loud1 > loud0 * 1.9)) bad(`straight pipes should be wayyy louder in the mix (${loud0} → ${loud1})`);
+  if (!(liveNoiseDb(wildDb, 1, 0.8) > liveNoiseDb(wildDb, 0, 0.3))) bad('flooring it should be louder than cruising');
+  if (!(hearingRange(110) > hearingRange(90) * 2)) bad('louder cars are heard from farther away');
+  if (exhaustDb({ exhaust: 3 }) !== 15) bad('NPC stage-based exhaust dB');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

@@ -167,7 +167,12 @@ export function generateListings(count = 30) {
   const out = [];
   // guarantee a handful of real beaters a broke new player can afford
   const cheap = CARS.filter(c => !c.market && c.msrp < 30000 && c.years[1] < 2016);
-  for (let i = 0; i < 6; i++) out.push(makeListing(pick(cheap)));
+  const old = CARS.filter(c => !c.market && c.msrp < 30000 && c.years[1] < 2012);
+  for (let i = 0, got = 0; got < 4 && i < 120; i++) {         // at least four that really cost under $4,500
+    const l = makeListing(pick(old));
+    if (l.price <= 4500) { out.push(l); got++; }
+  }
+  for (let i = 0; i < 2; i++) out.push(makeListing(pick(cheap)));
   while (out.length < count) out.push(makeListing());
   return out;
 }
