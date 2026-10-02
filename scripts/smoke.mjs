@@ -131,11 +131,15 @@ await step('partshub buy', async () => {
   await snap('13-partshub');
   await p.click('.prod >> nth=0 >> button');
   await p.click('.tabs button:has-text("Cart")');
+  const binBefore = await p.evaluate(() => window.__rfg.game.s.partsBin.length);
   await p.click('text=Place order');
-  await p.click('.modal button');
+  await p.waitForTimeout(150);
+  // instant delivery: the part is in the bin the moment the order is placed, no waiting for morning
+  const binAfter = await p.evaluate(() => window.__rfg.game.s.partsBin.length), pending = await p.evaluate(() => window.__rfg.game.s.orders.length);
+  if (binAfter !== binBefore + 1 || pending !== 0) throw new Error(`order was not instant (bin ${binBefore} -> ${binAfter}, pending ${pending})`);
+  if (await p.$('.tabs button:has-text("Orders")')) throw new Error('there should be no Orders tab to wait on');
   await p.keyboard.press('Escape');
-  // deliver + install at a shop
-  await p.evaluate(() => { const s = window.__rfg.game.s; s.time.day += 1; window.__rfg.ui.onMorning(); });
+  // install at a shop
   await p.evaluate(async () => { const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'perf', tab: 'install' }); });
   await p.waitForTimeout(200);
   await p.click('button:has-text("Install") >> nth=1').catch(() => p.click('.li button.btn-primary'));

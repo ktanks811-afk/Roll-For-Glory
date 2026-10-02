@@ -72,6 +72,10 @@ function migrate(s) {
   s.feed ??= [];
   s.challenges ??= {};
   s.story.counters ??= {};
+  // orders from before instant delivery arrive right now
+  s.orders ??= [];
+  for (const o of s.orders) for (const pid of o.items) s.partsBin.push({ pid, uid: Math.random().toString(36).slice(2) });
+  s.orders = [];
   ensureHustle(s);
   settleAway(s);   // the businesses kept running while the game was closed
   return s;

@@ -75,13 +75,12 @@ function render(root, h, app, store) {
   root.innerHTML = `<div class="p-head"><h1><span style="color:var(--red2)">${store ? '' : 'PARTS'}</span>${store ? esc(title) : 'HUB'}<small>${esc(subtitle)}</small></h1>
     <span class="muted small">${car ? `Shopping for: <b style="color:#fff">${esc(carName(m, car.year))}</b>` : 'No car — fitment not checked'}</span>
     <button class="btn x" data-action="close">×</button></div>
-    ${store ? '' : `<div class="tabs">${[['shop', 'Shop'], ['cart', `Cart (${s.cart.length})`], ['orders', `Orders (${s.orders.length})`], ['bin', `My Parts (${s.partsBin.length})`]].map(([id, l]) => `<button class="${view.tab === id ? 'on' : ''}" data-action="tab" data-id="${id}">${l}</button>`).join('')}</div>`}
+    ${store ? '' : `<div class="tabs">${[['shop', 'Shop'], ['cart', `Cart (${s.cart.length})`], ['bin', `My Parts (${s.partsBin.length})`]].map(([id, l]) => `<button class="${view.tab === id ? 'on' : ''}" data-action="tab" data-id="${id}">${l}</button>`).join('')}</div>`}
     <div class="p-body" style="padding:0" data-body></div>`;
   const body = root.querySelector('[data-body]');
   const tab = store ? 'shop' : view.tab;
   if (tab === 'shop') renderShop(body, h, s, car, cats, counts, store, app);
   if (tab === 'cart') renderCart(body, h, s, car);
-  if (tab === 'orders') renderOrders(body, h, s);
   if (tab === 'bin') renderBin(body, h, s);
   bind(root.querySelector('.p-head'), { close: () => h.close() });
   const tabs = root.querySelector('.tabs');
@@ -167,17 +166,18 @@ function renderCart(body, h, s, car) {
   const m = car ? modelOf(car) : null;
   body.innerHTML = `<div class="p-body">${t.items.length ? `<div class="list">${t.items.map((p, i) => `<div class="li"><div class="prod-img">${ICONS[p.cat]}</div><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)}</div><div class="s">${CATEGORY_NAMES[p.cat]}${m && !fits(p, m) ? ` · <span class="bad">${esc(fitNote(p, m))} (for your ${esc(m.model)})</span>` : ''}</div></div><b>${fmtMoney(p.price)}</b><button class="btn btn-sm" data-action="rm" data-i="${i}">✕</button></div>`).join('')}</div>
     <div style="max-width:360px;margin:16px 0 0 auto"><div class="kv"><span>Subtotal</span><span>${fmtMoney(t.sub, true)}</span><span>Shipping</span><span>${t.ship ? fmtMoney(t.ship, true) : 'FREE'}</span><span>Sales tax (7.25%)</span><span>${fmtMoney(t.tax, true)}</span><span><b>Total</b></span><span style="font-size:20px">${fmtMoney(t.total, true)}</span></div>
-    <p class="small muted">Arrives ${t.days === 1 ? 'tomorrow morning' : `in ${t.days} days`} to your front door. Install at home (DIY, ≤6h jobs) or at Torque Temple / Vega Kustoms.</p>
+    <p class="small muted">⚡ Instant delivery: the parts land in My Parts the moment you order. Install at home (DIY, ≤6h jobs) or at Torque Temple / Vega Kustoms.</p>
     <button class="btn btn-primary" style="width:100%" data-action="checkout">Place order · ${fmtMoney(t.total, true)}</button></div>` : '<div class="empty">Your cart is empty.</div>'}</div>`;
   bind(body, {
     rm: d => { s.cart.splice(+d.i, 1); h.refresh(); },
     checkout: () => {
       if (!spend(s, t.total, `PartsHub order (${t.items.length} item${t.items.length > 1 ? 's' : ''})`)) return;
-      s.orders.push({ id: uid('ord'), items: [...s.cart], arriveDay: s.time.day + t.days, total: t.total, placed: s.time.day });
+      // instant delivery: straight into your parts bin
+      for (const p of t.items) s.partsBin.push({ pid: p.id, uid: uid('b') });
       s.cart = [];
       audio.buy();
-      modal('Order placed', `<p>Thanks for shopping PartsHub! Your order arrives ${t.days === 1 ? 'tomorrow at 8 AM' : `in ${t.days} days at 8 AM`}.</p><p class="muted small">Tip: sleep at home to skip to morning.</p>`);
-      view.tab = 'orders'; h.refresh();
+      toast(`⚡ Delivered: ${t.items.length} part${t.items.length > 1 ? 's' : ''} in My Parts`, 'good');
+      view.tab = 'bin'; h.refresh();
     },
   });
 }
@@ -187,5 +187,5 @@ function renderOrders(body, h, s) {
 }
 
 function renderBin(body, h, s) {
-  body.innerHTML = `<div class="p-body">${s.partsBin.length ? `<div class="list">${s.partsBin.map(b => { const p = ITEM_BY_ID[b.pid]; return `<div class="li"><div class="prod-img">${ICONS[p.cat]}</div><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)}</div><div class="s">${CATEGORY_NAMES[p.cat]} · ${p.labor}h install${p.labor > 6 || p.shopOnly ? ' (shop install)' : ''}</div></div></div>`; }).join('')}</div><p class="small muted">Install these from your Garage at home, or at Torque Temple / Vega Kustoms.</p>` : '<div class="empty">No uninstalled parts. Delivered orders show up here.</div>'}</div>`;
+  body.innerHTML = `<div class="p-body">${s.partsBin.length ? `<div class="list">${s.partsBin.map(b => { const p = ITEM_BY_ID[b.pid]; return `<div class="li"><div class="prod-img">${ICONS[p.cat]}</div><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)}</div><div class="s">${CATEGORY_NAMES[p.cat]} · ${p.labor}h install${p.labor > 6 || p.shopOnly ? ' (shop install)' : ''}</div></div></div>`; }).join('')}</div><p class="small muted">Install these from your Garage at home, or at Torque Temple / Vega Kustoms.</p>` : '<div class="empty">No uninstalled parts. Parts you order show up here instantly.</div>'}</div>`;
 }
