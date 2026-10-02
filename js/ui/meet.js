@@ -11,7 +11,8 @@ import { partLevels, defaultVisual } from '../data/parts.js';
 import { buildSpec, metrics } from '../sim/powertrain.js';
 import { carSprite } from '../gfx2d/carSprite.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
-import { RevLimiter, launchRpmSetting, cylindersOf } from '../sim/twostep.js';
+import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
+import { soundProfile } from '../sim/sound.js';
 import { LOC_BY_ID } from '../data/world.js';
 import { openRaceSetup } from './raceSetup.js';
 import { emit } from '../core/events.js';
@@ -46,7 +47,7 @@ export function openMeet(loc, app) {
     const on = revHeld() && !panel.root.classList.contains('hidden');
     const r = rev.lim.update(dt, on);
     fx.flame = r.flame; fx.revving = on;
-    if (on && !rev.voice) rev.voice = audio.engine({ cylinders: cylindersOf(modelOf(car)), loudness: 0.5 + (levels(car).exhaust || 0) * 0.12 });
+    if (on && !rev.voice) rev.voice = audio.engine({ profile: soundProfile(modelOf(car), levels(car)) });
     if (rev.voice) {
       if (on) rev.voice.update({ rpm: r.rpm, throttle: 1, volume: 1 });
       else { rev.voice.stop(); rev.voice = null; }

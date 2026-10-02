@@ -298,6 +298,42 @@ await step('online free roam', async () => {
   await p2.close();
 });
 
+// ---------------- engine sounds: each car's note matches its engine ----------------
+await step('engine sounds', async () => {
+  const r = await p.evaluate(async () => {
+    const { audio } = await import('./js/core/audio.js');
+    const { CARS } = await import('./js/data/cars.js');
+    const { soundProfile, firingHz } = await import('./js/sim/sound.js');
+    const an = await audio.analyser();
+    if (!an) return { skip: true };
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const bins = new Float32Array(an.frequencyBinCount), sr = an.context.sampleRate;
+    const res = { bad: [], built: 0 };
+    // every car builds a voice and runs without throwing
+    for (const c of CARS) {
+      const v = audio.engine({ profile: soundProfile(c, { exhaust: 2, turbo: 0 }) });
+      v.update({ rpm: 4000, throttle: 1, speed: 20, boost: 0.5 }); v.update({ rpm: 4000, throttle: 0, speed: 20 });
+      v.stop(); res.built++;
+    }
+    // the loudest pitch is the firing frequency (rotary = 4-cyl equivalent, EV whine tracks speed)
+    for (const [mk, md, ex] of [['ford', 'Mustang', 'Coyote'], ['mazda', 'RX-7', ''], ['toyota', 'Supra', '2JZ'], ['lamborghini', 'Huracán', ''], ['chevrolet', 'Corvette', 'LT6']]) {
+      const c = CARS.find(x => x.make === mk && x.model.includes(md) && (!ex || (x.trim + x.engine).includes(ex)));
+      const prof = soundProfile(c, {});
+      const v = audio.engine({ profile: prof });
+      for (let i = 0; i < 10; i++) { v.update({ rpm: 3000, throttle: 1, speed: 20 }); await wait(50); }
+      await wait(300); an.getFloatFrequencyData(bins);
+      let bi = 3; for (let i = 3; i < bins.length && i * sr / an.fftSize < 1500; i++) if (bins[i] > bins[bi]) bi = i;
+      const f = bi * sr / an.fftSize, want = firingHz(prof, 3000);
+      if (Math.abs(f - want) > 6) res.bad.push(`${mk} ${md}: loudest ${Math.round(f)}Hz, firing ${want}Hz`);
+      v.stop(); await wait(100);
+    }
+    return res;
+  });
+  if (r.skip) { console.error('     (no audio in this browser, skipped)'); return; }
+  console.log('     voices built', r.built, r.bad.length ? r.bad : '');
+  if (r.bad.length) throw new Error(r.bad.join('; '));
+});
+
 // ---------------- phone controls (separate touch context) ----------------
 await step('phone controls', async () => {
   const mctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });

@@ -19,6 +19,7 @@ import { MPH } from '../sim/powertrain.js';
 import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
+import { soundProfile } from '../sim/sound.js';
 
 let MAP = null;
 export function getMap() { if (!MAP) { MAP = buildMap(); MAP.lights = buildStreetLights(MAP); MAP.overview = renderOverview(MAP); } return MAP; }
@@ -103,9 +104,7 @@ export class World {
   restartEngineSound() {
     if (this.engine) { this.engine.stop(); this.engine = null; }
     if (this.inCar && this.vehicle) {
-      const m = this.vehicle.model;
-      const cyl = m.asp === 'ev' ? 0 : /V12|W12/.test(m.engine) ? 12 : /V10/.test(m.engine) ? 10 : /V8|W16/.test(m.engine) ? 8 : /V6|I6|Flat-6/.test(m.engine) ? 6 : /Rotary/.test(m.engine) ? 6 : /I3/.test(m.engine) ? 3 : /I5/.test(m.engine) ? 5 : 4;
-      if (cyl) this.engine = audio.engine({ cylinders: cyl, loudness: 0.45 + (levels(this.vehicle.car).exhaust || 0) * 0.12 });
+      this.engine = audio.engine({ profile: soundProfile(this.vehicle.model, levels(this.vehicle.car)) });
     }
   }
 

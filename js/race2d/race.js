@@ -12,6 +12,7 @@ import { game, isNight } from '../core/state.js';
 import { $, el, esc } from '../ui/dom.js';
 import { touchUi } from '../ui/touch.js';
 import { RevLimiter, launchRpmSetting, optimalLaunchRpm } from '../sim/twostep.js';
+import { soundProfile } from '../sim/sound.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -94,8 +95,8 @@ export class Race {
       for (let i = 0; i < n; i++) this.spawnTraffic(80 + Math.random() * (this.dist + 300));
     }
     this.cam = { y: this.p.y, zoom: 13 };
-    this.engineP = audio.engine({ cylinders: cylinders(this.p.model), loudness: 0.55 });
-    this.engineN = this.n ? audio.engine({ cylinders: cylinders(this.n.model), loudness: 0.35 }) : null;
+    this.engineP = audio.engine({ profile: soundProfile(this.p.model, this.p.spec.lv) });
+    this.engineN = this.n ? audio.engine({ profile: soundProfile(this.n.model, this.n.spec.lv), volume: 0.65 }) : null;
     audio.music(this.isDrag ? null : 'race');
     touchUi.setRace(this.isDrag ? 'drag' : 'roll');
     this.hud = el(`<div class="race-hud"><div class="race-top">
@@ -643,7 +644,4 @@ export class Race {
 
 function summary(d) {
   return { name: d.name, rt: d.rt, time: d.time, elapsed: d.elapsed, trap: d.trap, splits: d.splits, redLight: d.redLight, finished: d.finished, crashes: d.crashes || 0, shifts: d.sim.shifts, spin: d.sim.spinTime, peak: d.sim.peakV * MPH };
-}
-function cylinders(m) {
-  return m.asp === 'ev' ? 0 : /V12|W12/.test(m.engine) ? 12 : /V10/.test(m.engine) ? 10 : /V8|W16/.test(m.engine) ? 8 : /V6|I6|Flat-6|Rotary/.test(m.engine) ? 6 : /I5/.test(m.engine) ? 5 : /I3/.test(m.engine) ? 3 : 4;
 }

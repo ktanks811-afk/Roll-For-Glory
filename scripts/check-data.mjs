@@ -9,6 +9,7 @@ import { generateListings } from '../js/data/market.js';
 import { buildSpec, metrics } from '../js/sim/powertrain.js';
 import { partLevels } from '../js/data/parts.js';
 import { RevLimiter } from '../js/sim/twostep.js';
+import { soundProfile, harmonics, firingHz } from '../js/sim/sound.js';
 
 let fails = 0;
 const bad = (msg) => { fails++; console.error('FAIL', msg); };
@@ -55,6 +56,42 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if ((lvl === 0) !== (rl.flames === 0)) bad(`2-step stage ${lvl} flame count ${rl.flames}`);
     if (lvl > 0 && rl.flames < 2) bad(`2-step stage ${lvl} produced almost no flames over 10s`);
   }
+}
+// engine sound: every car maps to the right firing pattern
+{
+  const want = (make, model, kind, extra) => {
+    const c = CARS.find(x => x.make === make && x.model.includes(model) && (!extra || (x.trim + ' ' + x.engine).includes(extra)));
+    if (!c) return bad(`sound check: no ${make} ${model} ${extra || ''}`);
+    const p = soundProfile(c, {});
+    if (p.kind !== kind) bad(`${make} ${model} ${extra || ''} should sound like ${kind}, got ${p.kind}`);
+  };
+  want('mazda', 'RX-7', 'rotary'); want('mazda', 'RX-8', 'rotary');
+  want('ford', 'Mustang', 'v8x', 'Coyote'); want('dodge', 'Challenger', 'v8x', 'R/T');
+  want('chevrolet', 'Corvette', 'v8f', 'LT6'); want('chevrolet', 'Corvette', 'v8x', 'LS1');
+  want('ferrari', '458', 'v8f'); want('ferrari', 'F8', 'v8f'); want('mclaren', '720S', 'v8f'); want('mercedes', 'E63', 'v8x');
+  want('porsche', '911', 'flat6', 'GT3'); want('subaru', 'Impreza', 'flat4', 'EJ257'); want('subaru', 'WRX', 'flat4eq', 'FA24');
+  want('toyota', 'Supra', 'i6', '2JZ'); want('bmw', 'M3', 'i6', 'S54'); want('toyota', 'GR Corolla', 'i3');
+  want('audi', 'TT RS', 'i5'); want('lamborghini', 'Huracán', 'v10'); want('lamborghini', 'Aventador', 'v12');
+  want('bugatti', 'Veyron', 'w16'); want('bentley', 'Continental', 'w12'); want('nissan', 'GT-R', 'v6', 'VR38'); want('nissan', 'GT-R', 'i6', 'RB26');
+  want('tesla', 'Model 3', 'ev'); want('buick', 'Grand National', 'v6odd'); want('honda', 'Civic', 'i4', 'B16A2');
+  for (const c of CARS) {
+    const p = soundProfile(c, {});
+    if (p.kind === 'ev') continue;
+    const h = harmonics(p);
+    const top = h.indexOf(Math.max(...h));
+    if (top !== p.n) bad(`${c.id}: strongest harmonic is ${top}, expected the firing order ${p.n}`);
+    if (![...h].every(Number.isFinite)) bad(`${c.id}: bad harmonics`);
+    // firing frequency at 3000 rpm must match n/2 pulses per crank turn
+    if (Math.abs(firingHz(p, 3000) - p.n * 25) > 1e-9) bad(`${c.id}: firing frequency`);
+  }
+  const hc = CARS.find(c => c.model === 'Challenger' && /Hellcat/.test(c.trim));
+  if (soundProfile(hc, {}).blowerKind !== 'screw') bad('Hellcat should have a twin-screw whine');
+  const gt = CARS.find(c => c.model === 'Mustang' && /GT500/.test(c.trim));
+  if (soundProfile(gt, {}).blowerKind !== 'roots') bad('GT500 should have a roots whine');
+  // exhaust parts make it louder, brighter and burblier
+  const m0 = soundProfile(CAR_BY_ID.ford_mustang_gt_s650_2024, {}), m4 = soundProfile(CAR_BY_ID.ford_mustang_gt_s650_2024, { exhaust: 4 });
+  if (!(m4.loud > m0.loud && m4.cut > m0.cut && m4.burble > m0.burble && m4.grit > m0.grit)) bad('exhaust stage does not change the sound');
+  if (soundProfile(CAR_BY_ID.tesla_model_3_performance_2024, { exhaust: 4 }).kind !== 'ev') bad('EV sound changed with exhaust');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

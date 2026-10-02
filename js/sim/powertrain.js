@@ -75,6 +75,7 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}) {
     shiftTime,
     clutchCap: model.tq * LBFT_NM * FX.clutch.cap[L('clutch')],
     nosHp: FX.nitrous.hp[L('nitrous')], nosSecs: FX.nitrous.secs[L('nitrous')],
+    lv: { ...parts },
     twoStep: L('twostep'),
     launchControl: L('twostep') >= 1,
     brakeG: 0.85 * FX.brakes.force[L('brakes')],

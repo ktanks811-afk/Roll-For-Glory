@@ -19,12 +19,6 @@ export function optimalLaunchRpm(spec) {
   return spec.asp === 'turbo' ? spec.redline * 0.62 : spec.redline * 0.48;
 }
 
-// Cylinder count for the engine sound.
-export function cylindersOf(m) {
-  const e = m.engine || '';
-  return m.asp === 'ev' ? 0 : /V12|W12/.test(e) ? 12 : /V10/.test(e) ? 10 : /V8|W16/.test(e) ? 8 : /V6|I6|Flat-6|Rotary/.test(e) ? 6 : /I3/.test(e) ? 3 : /I5/.test(e) ? 5 : 4;
-}
-
 // The rpm the player has dialed in (Garage → Tune), or the default.
 export function launchRpmSetting(spec, car) {
   const want = car?.tune?.twoStepRpm;

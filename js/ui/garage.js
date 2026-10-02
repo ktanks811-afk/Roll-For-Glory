@@ -8,6 +8,7 @@ import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, part
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { buildSpec, dynoCurve, metrics, MPH } from '../sim/powertrain.js';
 import { launchRpmSetting } from '../sim/twostep.js';
+import { soundProfile } from '../sim/sound.js';
 import { emit } from '../core/events.js';
 import { drawThumb, sellCar } from './marketplace.js';
 import { PROPERTIES, LOC_BY_ID } from '../data/world.js';
@@ -235,7 +236,7 @@ function dyno(body, h, app, st, s, car, m) {
   bind(body, {
     run: () => {
       audio.engine && audio.beep(440, 0.1);
-      const eng = audio.engine({ cylinders: /V8/.test(m.engine) ? 8 : 6, loudness: 0.6 });
+      const eng = audio.engine({ profile: soundProfile(m, levels(car)) });
       let t = 0;
       const tick = () => {
         t += 1 / 60 / 3.2;

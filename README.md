@@ -65,6 +65,15 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   tables, no accounts, nothing stored — and all incoming data is sanitised.
   Cars don't collide online, and the clock/weather are per player. For testing
   without a server, open `?net=local` in two tabs of the same browser.
+- **Engine sound that matches the car.** Every car's engine note is built from
+  its real firing pattern: cross-plane V8s lope (Mustang, Camaro, Hellcat),
+  flat-plane V8s scream (Corvette Z06 C8, Ferrari, McLaren), inline-6s are
+  smooth, boxers rumble (EJ Subarus with unequal-length headers; the FA20/FA24
+  cars are smoother), the RX-7/RX-8 rotary brap, V10s/V12s/W16s each have their
+  own voice, odd-fire V6s (Grand National) are lumpy, Hondas change their tune
+  at the VTEC crossover, turbos whistle and flutter, Roots and twin-screw
+  blowers whine differently, and EVs hum a motor whine. Exhaust parts make it
+  louder, brighter and raspier, and from stage 2 it burbles on the overrun.
 - **Police.** Five heat levels. Patrols have to actually see you speeding,
   running reds or hitting cars. Pursuit units drive in from precincts. When
   they lose you they set up a search zone, and you need a cooldown to
