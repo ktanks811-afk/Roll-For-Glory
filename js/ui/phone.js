@@ -16,6 +16,7 @@ import { openGarage } from './garage.js';
 import { openSettings, openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
 import { renderHustle } from './hustle.js';
+import { renderMap } from './mapapp.js';
 
 const APPS = [
   { id: 'messages', name: 'Messages', icon: '💬', bg: '#2bd96b' },
@@ -153,56 +154,7 @@ RENDER.contacts = (scr, ctx) => {
 function relWord(r) { return r > 60 ? 'Friend' : r > 25 ? 'Respect' : r > -10 ? 'Neutral' : r > -40 ? 'Rival' : 'Bad blood'; }
 
 // ---------------- map ----------------
-RENDER.map = (scr, ctx) => {
-  const s = ctx.s;
-  const w = ctx.app.world;
-  const zoomed = ctx.st.sub !== 'full';
-  scr.innerHTML = head('Map') + `<div class="app-body" style="padding:6px">
-    <div class="row" style="margin-bottom:6px"><button class="btn btn-sm ${zoomed ? 'btn-primary' : ''}" data-action="z" data-v="city">City</button><button class="btn btn-sm ${!zoomed ? 'btn-primary' : ''}" data-action="z" data-v="full">All of Port Solace</button>
-    ${s.gps ? '<button class="btn btn-sm" data-action="clear">Clear GPS</button>' : ''}</div>
-    <canvas data-map width="760" height="760" style="width:100%;border-radius:8px;background:#000;touch-action:none"></canvas>
-    <p class="small muted">Tap a marker to set your GPS. ● you · ■ your car · red = race/meet spots.</p>
-    <div class="list" data-legend></div></div>`;
-  const cv = scr.querySelector('[data-map]');
-  const g = cv.getContext('2d');
-  const ov = w ? w.map.overview : null;
-  const [x0, z0, span] = zoomed ? [-1100, -1500, 2700] : [-3300, -3300, 6600];
-  const k = cv.width / span;
-  const M = (x, z) => [(x - x0) * k, (z - z0) * k];
-  if (ov) g.drawImage(ov.canvas, (x0 - ov.x0) * ov.scale, (z0 - ov.z0) * ov.scale, span * ov.scale, span * ov.scale, 0, 0, cv.width, cv.height);
-  if (w?.gpsPath && s.gps) { g.strokeStyle = '#ff2a3a'; g.lineWidth = 4; g.beginPath(); w.gpsPath.forEach(([x, z], i) => { const [a, b] = M(x, z); i ? g.lineTo(a, b) : g.moveTo(a, b); }); g.stroke(); }
-  const pts = [];
-  for (const l of LOCATIONS) {
-    const [a, b] = M(l.x, l.z);
-    pts.push({ a, b, l });
-    g.fillStyle = l.color; g.strokeStyle = '#000'; g.lineWidth = 2;
-    g.beginPath(); g.arc(a, b, zoomed ? 9 : 6, 0, Math.PI * 2); g.fill(); g.stroke();
-  }
-  if (w) {
-    const p = w.playerState();
-    const [a, b] = M(p.x, p.z);
-    g.fillStyle = '#fff'; g.beginPath(); g.arc(a, b, 8, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#ff2a3a'; g.lineWidth = 3; g.stroke();
-    if (w.vehicle && !w.inCar) { const [c, d] = M(w.vehicle.x, w.vehicle.z); g.fillStyle = '#4af'; g.fillRect(c - 6, d - 6, 12, 12); }
-    for (const u of w.police.units) { const [c, d] = M(u.x, u.z); g.fillStyle = '#2a6bff'; g.fillRect(c - 4, d - 4, 8, 8); }
-  }
-  g.font = 'bold 16px Rajdhani, sans-serif'; g.fillStyle = '#fff'; g.textAlign = 'center';
-  if (zoomed) { g.fillText('DOWNTOWN', ...M(0, 0)); g.fillText('WESTBROOK', ...M(-600, 0)); g.fillText('IRONSIDE', ...M(600, -200)); g.fillText('HARBOR', ...M(700, 800)); g.fillText('GLORY HIGHWAY', ...M(0, -1330)); g.fillText('DUST FLATS', ...M(-400, 1150)); }
-  else { g.fillText('PORT SOLACE', ...M(0, 0)); g.fillText('NORTHRIDGE MOUNTAINS', ...M(-2200, -400)); g.fillText('DUST FLATS DESERT', ...M(0, 2000)); g.fillText('GLORY HIGHWAY', ...M(-1800, -1400)); g.fillText('HARBOR', ...M(1700, 800)); }
-  cv.onclick = e => {
-    const r = cv.getBoundingClientRect();
-    const mx = (e.clientX - r.left) / r.width * cv.width, my = (e.clientY - r.top) / r.height * cv.height;
-    let best = null, bd = 30;
-    for (const p of pts) { const d = Math.hypot(p.a - mx, p.b - my); if (d < bd) { bd = d; best = p.l; } }
-    if (best) { w?.setGps(best.x, best.z, best.name); ctx.h.close(); }
-  };
-  scr.querySelector('[data-legend]').innerHTML = LOCATIONS.filter(l => l.type !== 'property' || s.properties.includes(l.id) || true).map(l =>
-    `<div class="li click" data-action="gps" data-loc="${l.id}"><span class="avatar" style="background:${l.color};width:14px;height:14px"></span><div class="grow"><div class="t">${esc(l.name)}</div><div class="s">${esc(districtAt(l.x, l.z))}${l.tier ? ` · Tier ${l.tier}+` : ''}</div></div></div>`).join('');
-  wire(scr, ctx, {
-    z: d => ctx.go('map', d.v === 'full' ? 'full' : null),
-    clear: () => { s.gps = null; if (w) w.gpsPath = null; ctx.h.refresh(); },
-    gps: d => { const l = LOC_BY_ID[d.loc]; w?.setGps(l.x, l.z, l.name); ctx.h.close(); },
-  });
-};
+RENDER.map = renderMap;
 
 // ---------------- bank ----------------
 RENDER.bank = (scr, ctx) => {

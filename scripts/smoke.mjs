@@ -331,7 +331,7 @@ await step('minimap', async () => {
   if (a.w < 220) throw new Error('minimap canvas is too small');
   if (a.lit < 1500) throw new Error('minimap is nearly empty');
   // sharp tiles are built around you (not just the blurry overview)
-  const tiles = await p.evaluate(() => document.querySelector('.hud-mini') && window.__rfg.app.hud.minimap.tiles.size);
+  const tiles = await p.evaluate(() => document.querySelector('.hud-mini') && window.__rfg.app.hud.minimap.tileCount());
   if (!(tiles >= 1)) throw new Error('no detailed map tiles were drawn');
   // tapping cycles the view
   const m0 = await p.evaluate(() => window.__rfg.app.hud.minimap.mode.name);
@@ -345,6 +345,47 @@ await step('minimap', async () => {
   await p.waitForTimeout(1500);
   const b = await px(); if (b.red <= a.red) throw new Error('GPS route not drawn on the minimap');
   await p.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
+});
+
+// ---------------- phone Map app: browse places, tap, GPS ----------------
+await step('phone map (places + GPS)', async () => {
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; window.__rfg.game.s.gps = null; w.gpsPath = null; const { openPhone } = await import('./js/ui/phone.js'); openPhone('map', window.__rfg.app); });
+  await p.waitForSelector('[data-map]'); await p.waitForTimeout(800);
+  const total = await p.evaluate(async () => (await import('./js/data/world.js')).LOCATIONS.length);
+  const rows = await p.$$eval('.mapapp .li[data-loc]', e => e.length);
+  if (rows !== total) throw new Error(`the map lists ${rows} of ${total} places`);
+  // the picture is real (not blank) and has pins on it
+  const lit = await p.evaluate(() => { const c = document.querySelector('[data-map]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 40) if (d[i] + d[i + 1] + d[i + 2] > 150) n++; return n; });
+  if (lit < 800) throw new Error('the map canvas is nearly empty');
+  await snap('30-phone-map');
+  // filters + search narrow the list
+  await p.click('.mapapp [data-cat="fuel"]'); await p.waitForTimeout(100);
+  const fuel = await p.$$eval('.mapapp .li[data-loc]', e => e.length);
+  if (!(fuel > 0 && fuel < total)) throw new Error('the Gas & food filter did nothing');
+  await p.click('.mapapp [data-cat="all"]');
+  await p.fill('.mapapp [data-q]', 'torque'); await p.waitForTimeout(100);
+  if ((await p.$$eval('.mapapp .li[data-loc]', e => e.length)) !== 1) throw new Error('search did not find Torque Temple');
+  // tap a place: the card says what it is and how far; Set GPS makes the route
+  await p.click('.mapapp .li[data-loc="torque_temple"]'); await p.waitForTimeout(300);
+  const txt = await p.textContent('.map-card');
+  if (!/Torque Temple/.test(txt) || !/by road/.test(txt)) throw new Error('place card is missing details: ' + txt.slice(0, 80));
+  await p.click('.map-card [data-gps]'); await p.waitForTimeout(300);
+  const g = await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { label: s.gps?.label, path: w.gpsPath?.length || 0 }; });
+  if (!/Torque Temple/.test(g.label || '') || g.path < 2) throw new Error('GPS / route not set: ' + JSON.stringify(g));
+  if (!(await p.$('.map-card [data-go]'))) throw new Error('no Start driving button after setting GPS');
+  await snap('31-phone-map-gps');
+  // tapping empty ground drops a pin you can navigate to
+  await p.fill('.mapapp [data-q]', ''); await p.dispatchEvent('.mapapp [data-q]', 'input');
+  await p.click('.map-card [data-clear]'); await p.waitForTimeout(100);
+  const box = await (await p.$('[data-map]')).boundingBox();
+  await p.mouse.click(box.x + 6, box.y + box.height - 40); await p.waitForTimeout(300);
+  if (!/Dropped pin/.test(await p.textContent('.map-card'))) throw new Error('tapping the map did not drop a pin');
+  await p.click('.map-card [data-gps]'); await p.waitForTimeout(200);
+  if (!(await p.evaluate(() => /Dropped pin/.test(window.__rfg.game.s.gps?.label || '')))) throw new Error('could not navigate to a dropped pin');
+  // zoom buttons work
+  const k0 = await p.evaluate(() => 0); await p.click('.map-tools [data-z="1"]'); await p.waitForTimeout(100);
+  await p.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
+  await p.keyboard.press('Escape');
 });
 
 // ---------------- loud exhaust → cops notice → traffic stop ----------------

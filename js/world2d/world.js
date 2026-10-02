@@ -528,14 +528,19 @@ export class World {
     if (best && input.pressed('interact')) this.ui.openPlace(best, this);
   }
 
-  updateGps() {
-    const s = this.s, p = this.playerState();
-    const roads = this.map.roads;
-    const a = roads.nearestNode(p.x, p.z), b = roads.nearestNode(s.gps.x, s.gps.z);
+  // The road route from where you are to (x, z): { path: [[x, z], …], meters }.
+  routeTo(x, z) {
+    const p = this.playerState(), roads = this.map.roads;
+    const a = roads.nearestNode(p.x, p.z), b = roads.nearestNode(x, z);
     const route = roads.route(a.id, b.id);
-    this.gpsPath = route ? [[p.x, p.z], ...route.map(id => [roads.nodes[id].x, roads.nodes[id].z]), [s.gps.x, s.gps.z]] : [[p.x, p.z], [s.gps.x, s.gps.z]];
+    const path = route ? [[p.x, p.z], ...route.map(id => [roads.nodes[id].x, roads.nodes[id].z]), [x, z]] : [[p.x, p.z], [x, z]];
+    let meters = 0;
+    for (let i = 1; i < path.length; i++) meters += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+    return { path, meters };
   }
-
+  updateGps() {
+    this.gpsPath = this.routeTo(this.s.gps.x, this.s.gps.z).path;
+  }
   setGps(x, z, label) {
     this.s.gps = { x, z, label };
     this.gpsT = 0;

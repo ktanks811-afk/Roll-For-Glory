@@ -6,15 +6,13 @@
 //
 // Tap it to switch view: heading-up (auto zoom) → close → far → north-up.
 
-import { LOCATIONS, DESERT_Z } from '../data/world.js';
-import { BACKROAD } from '../world2d/map.js';
+import { LOCATIONS } from '../data/world.js';
+import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { settings, saveSettings } from '../core/save.js';
 import { game } from '../core/state.js';
 import { online } from '../net/online.js';
 
 const S = 220;                         // logical size of the canvas
-const TILE = 400, TS = 1.1;            // tile size in metres, tile resolution in px per metre
-const MAX_TILES = 40;
 const MODES = [
   { name: 'HEADING UP', rot: true, zoom: 'auto' },
   { name: 'HEADING UP · CLOSE', rot: true, zoom: 'close' },
@@ -22,7 +20,6 @@ const MODES = [
   { name: 'NORTH UP', rot: false, zoom: 'auto' },
 ];
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', meet: '●', flag: '⚑' };
-const LOT_COLOR = { park: '#27402a', yard: '#2c3828', parking: '#363840', gas: '#3d3f45', strip: '#4a4b50' };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
@@ -32,72 +29,17 @@ export class MiniMap {
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = canvas.height = Math.round(S * this.dpr);
     this.g = canvas.getContext('2d');
-    this.tiles = new Map();            // "i,j" → canvas
     this.h = 0; this.scale = 0.7; this.t = performance.now();
     this.modeT = 0;
     this.q = [];
     canvas.parentElement.addEventListener('pointerdown', e => { e.preventDefault(); this.cycle(); });
   }
 
+  tileCount() { return tileCache.size; }
   get mode() { return MODES[(settings.miniMode ?? 0) % MODES.length]; }
   cycle() {
     settings.miniMode = ((settings.miniMode ?? 0) + 1) % MODES.length;
     saveSettings(); this.modeT = 1.6;
-  }
-
-  // ---------------------------------------------------------------- tiles
-  tile(map, i, j) {
-    const key = i + ',' + j;
-    let c = this.tiles.get(key);
-    if (c) { this.tiles.delete(key); this.tiles.set(key, c); return c; }   // refresh LRU
-    return null;
-  }
-  build(map, i, j) {
-    const x0 = i * TILE - 1, z0 = j * TILE - 1, W = TILE + 2;
-    const c = document.createElement('canvas'); c.width = c.height = Math.ceil(W * TS);
-    const g = c.getContext('2d');
-    g.scale(TS, TS); g.translate(-x0, -z0);
-    const inside = (x, z, w, d) => x + w >= x0 && x <= x0 + W && z + d >= z0 && z <= z0 + W;
-    // ground
-    g.fillStyle = '#1b2417'; g.fillRect(x0, z0, W, W);
-    g.fillStyle = '#6a5b43'; g.fillRect(x0, DESERT_Z, W, W);
-    g.fillStyle = '#222b1d'; g.fillRect(-3300, -1000, 2300, DESERT_Z + 1000);
-    g.fillStyle = '#2a2c31'; g.fillRect(-985, -985, 1970, 1970);
-    // water
-    for (const w of map.water) if (inside(w.x, w.z, w.w, w.d)) { g.fillStyle = '#12304a'; g.fillRect(w.x, w.z, w.w, w.d); g.strokeStyle = '#1d4b70'; g.lineWidth = 3; g.strokeRect(w.x, w.z, w.w, w.d); }
-    // lots and buildings
-    const items = map.drawGrid.query(x0, z0, x0 + W, z0 + W);
-    for (const it of items) if (it.type === 'l') { const l = it.o; g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(l.x, l.z, l.w, l.d); }
-    // roads: dark casing first, then the surface
-    const edges = [];
-    for (const e of map.roads.edges) {
-      const minx = Math.min(e.ax, e.bx) - e.width, maxx = Math.max(e.ax, e.bx) + e.width, minz = Math.min(e.az, e.bz) - e.width, maxz = Math.max(e.az, e.bz) + e.width;
-      if (maxx < x0 || minx > x0 + W || maxz < z0 || minz > z0 + W) continue;
-      edges.push(e);
-    }
-    const wid = e => Math.max(e.width * (e.kind === 'highway' ? 1.1 : 1.3), 4.5 / TS);
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    const road = (e, w, color) => { g.strokeStyle = color; g.lineWidth = w; g.beginPath(); g.moveTo(e.ax, e.az); g.lineTo(e.bx, e.bz); g.stroke(); };
-    for (const e of edges) road(e, wid(e) + 3 / TS, '#14161a');
-    if (BACKROAD) { g.strokeStyle = '#14161a'; g.lineWidth = 8; g.beginPath(); BACKROAD.forEach(([x, z], k) => k ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke(); }
-    for (const e of edges) road(e, wid(e), e.kind === 'highway' ? '#d9ad1f' : e.kind === 'desert' ? '#b79f74' : '#9ca1ac');
-    for (const e of edges) if (e.kind === 'highway') { g.setLineDash([14, 14]); road(e, 1.6, 'rgba(255,255,255,.65)'); g.setLineDash([]); }
-    if (BACKROAD) { g.strokeStyle = '#a8aab0'; g.lineWidth = 5; g.beginPath(); BACKROAD.forEach(([x, z], k) => k ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke(); }
-    // buildings sit on top of the lots, beside the roads
-    for (const it of items) if (it.type === 'b') {
-      const b = it.o;
-      g.fillStyle = b.kind === 'stands' ? '#5a5f69' : '#4b515d'; g.fillRect(b.x, b.z, b.w, b.d);
-      g.strokeStyle = '#2b2f37'; g.lineWidth = 1.4; g.strokeRect(b.x + 0.5, b.z + 0.5, b.w - 1, b.d - 1);
-    }
-    return c;
-  }
-  ensureTiles(map, i0, i1, j0, j1, cx, cz) {
-    const want = [];
-    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) if (!this.tiles.has(i + ',' + j)) want.push([i, j, Math.hypot((i + 0.5) * TILE - cx, (j + 0.5) * TILE - cz)]);
-    want.sort((a, b) => a[2] - b[2]);
-    // one new tile per frame keeps driving smooth; the blurry overview fills in meanwhile
-    if (want.length) { const [i, j] = want[0]; this.tiles.set(i + ',' + j, this.build(map, i, j)); }
-    while (this.tiles.size > MAX_TILES) this.tiles.delete(this.tiles.keys().next().value);
   }
 
   // ---------------------------------------------------------------- drawing
@@ -130,8 +72,8 @@ export class MiniMap {
     const R = ((S / 2) * 1.45 + OFF) / s;
     const i0 = Math.floor((p.x - R) / TILE), i1 = Math.floor((p.x + R) / TILE), j0 = Math.floor((p.z - R) / TILE), j1 = Math.floor((p.z + R) / TILE);
     if ((i1 - i0 + 1) * (j1 - j0 + 1) <= 36) {
-      this.ensureTiles(map, i0, i1, j0, j1, p.x, p.z);
-      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const c = this.tile(map, i, j); if (c) g.drawImage(c, i * TILE - 1, j * TILE - 1, TILE + 2, TILE + 2); }
+      tileCache.ensure(map, i0, i1, j0, j1, p.x, p.z, 1);   // one new tile a frame keeps driving smooth
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const c = tileCache.get(i, j); if (c) g.drawImage(c, i * TILE - 1, j * TILE - 1, TILE + 2, TILE + 2); }
     }
     g.restore();
 

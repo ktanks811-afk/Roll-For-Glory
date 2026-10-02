@@ -117,6 +117,14 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   pulse around you, roadblocks show as red Xs, the helicopter and other
   players show up, and the street name sits along the bottom. Tap it to switch
   between heading-up (auto zoom), close, far and north-up.
+- **Phone Map.** A real map you can drag, pinch and zoom, drawn sharp from the
+  city's roads and buildings, with every place pinned and named. Filter by
+  Cars, Shops, Races & meets, Gas & food, Home or Police, or search by name.
+  Tap a pin (or a row in the list, sorted by distance) to see what's there,
+  the rep tier it needs, and how far it is by road with a time estimate, then
+  hit Set GPS: the route lights up on the map right away and the minimap picks
+  it up. Tap any empty spot to drop a pin and navigate there. Your car, cops
+  and other players show up too.
 - **Police.** Five heat levels. Patrols have to actually see you speeding,
   running reds or hitting cars. Pursuit units drive in from precincts. When
   they lose you they set up a search zone, and you need a cooldown to
