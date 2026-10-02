@@ -14,6 +14,7 @@ import { HWY_Z } from '../data/world.js';
 import { openCreate } from './create.js';
 import { enterWorld, toTitle } from '../main.js';
 import { openPhone } from './phone.js';
+import { touchUi } from './touch.js';
 import { openGarage } from './garage.js';
 import { openRaceMenu } from './raceSetup.js';
 
@@ -135,6 +136,19 @@ export function openPause(app) {
 }
 
 export function showControls() {
+  if (touchUi.active) {
+    modal('Controls', `<div class="section-title" style="margin-top:0">Walking</div><div class="kv">
+      <span>Move</span><span>Joystick (left)</span><span>Run</span><span>Hold RUN</span>
+      <span>Shops, homes, meets</span><span>USE</span><span>Get in your car</span><span>GET IN (stand next to it)</span></div>
+      <div class="section-title">Driving</div><div class="kv">
+      <span>Steer</span><span>◀ ▶ arrows (left)</span><span>Gas / brake &amp; reverse</span><span>GAS / BRAKE pedals (right)</span>
+      <span>Shift gears</span><span>Drag the shift knob up / down</span><span>Auto / manual</span><span>Tap the knob (A / M)</span>
+      <span>Nitrous · e-brake · horn</span><span>NOS · E-BRK · HORN</span>
+      <span>Gas stations, races, shops</span><span>USE</span><span>Get out (slow down first)</span><span>GET OUT</span></div>
+      <div class="section-title">Top right</div><div class="kv"><span>☰</span><span>Menu &amp; save</span><span>⌕</span><span>Zoom the map</span><span>☎</span><span>Phone</span></div>
+      <p class="muted small" style="margin-top:10px">Drag race: hold BRAKE + GAS for a burnout, ease on the GAS to roll up and stage, hold both against the brake, and let go of BRAKE on green.</p>`);
+    return;
+  }
   modal('Controls', `<div class="section-title" style="margin-top:0">On foot</div><div class="kv">
     <span>Walk</span><span>W A S D or arrows</span>
     <span>Run</span><span><kbd>Shift</kbd></span>
@@ -223,7 +237,7 @@ export function openSettings(app) {
         let v = d.v; if (v === 'true') v = true; if (v === 'false') v = false;
         settings[d.k] = v; saveSettings();
         if (d.k === 'quality') window.dispatchEvent(new Event('resize'));
-        if (d.k === 'touch' && app.mode === 'world') $('#touch').classList.toggle('hidden', !(v === 'on' || (v === 'auto' && ('ontouchstart' in window))));
+        if (d.k === 'touch') touchUi.refresh();
         h.refresh();
       },
     });

@@ -83,7 +83,7 @@ window.addEventListener('blur', () => { down.clear(); latched.clear(); touchHeld
 const keys = action => CONTEXTS[context][action];
 const isDown = k => down.has(k) && !latched.has(k);
 
-let touchRoot = null;
+const contextListeners = new Set();
 
 export const input = {
   get context() { return context; },
@@ -93,9 +93,10 @@ export const input = {
     context = name;
     latched.clear();
     for (const k of down) latched.add(k);
-    touchHeld.clear();
-    if (touchRoot) touchRoot.dataset.ctx = name;
+    touch.reset();
+    for (const fn of contextListeners) fn(name);
   },
+  onContext(fn) { contextListeners.add(fn); },
   setEnabled(v) { enabled = v; if (!v) { down.clear(); latched.clear(); } },
   has(action) { return !!keys(action); },
   held(action) {
@@ -127,66 +128,18 @@ export const input = {
   },
 };
 
-// ---------------- touch overlay ----------------
+// ---------------- touch ----------------
 export function isTouchDevice() {
   return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 }
 
-// data-for lists the contexts a button shows in; CSS hides it otherwise.
-export function buildTouchControls(root) {
-  touchRoot = root;
-  root.dataset.ctx = context;
-  root.innerHTML = `
-    <div class="tc-stick" data-stick><div class="tc-knob"></div></div>
-    <div class="tc-right">
-      <button class="tc-btn tc-gas" data-for="car race" data-hold="throttle">GAS</button>
-      <button class="tc-btn tc-brake" data-for="car race" data-hold="brake">BRK</button>
-      <button class="tc-btn" data-for="car race" data-hold="nitrous">NOS</button>
-      <button class="tc-btn" data-for="car" data-hold="handbrake">E-BRK</button>
-      <button class="tc-btn" data-for="car race" data-tap="shiftDown">−</button>
-      <button class="tc-btn" data-for="car race" data-tap="shiftUp">+</button>
-      <button class="tc-btn" data-for="foot" data-hold="run">RUN</button>
-      <button class="tc-btn" data-for="foot car" data-tap="enterExit">F</button>
-      <button class="tc-btn" data-for="foot car" data-tap="interact">USE</button>
-      <button class="tc-btn" data-for="car" data-tap="horn">HORN</button>
-      <button class="tc-btn" data-for="foot car" data-tap="phone">☎</button>
-    </div>`;
-  root.querySelectorAll('[data-hold]').forEach(b => {
-    const a = b.dataset.hold;
-    const on = e => { e.preventDefault(); touchHeld.add(a); touchPressed.add(a); };
-    const off = e => { e.preventDefault(); touchHeld.delete(a); };
-    b.addEventListener('touchstart', on, { passive: false });
-    b.addEventListener('touchend', off, { passive: false });
-    b.addEventListener('touchcancel', off, { passive: false });
-  });
-  root.querySelectorAll('[data-tap]').forEach(b => {
-    b.addEventListener('touchstart', e => { e.preventDefault(); touchPressed.add(b.dataset.tap); }, { passive: false });
-  });
-  const stick = root.querySelector('[data-stick]');
-  const knob = stick.querySelector('.tc-knob');
-  let id = null, cx = 0, cy = 0;
-  stick.addEventListener('touchstart', e => {
-    e.preventDefault();
-    const t = e.changedTouches[0]; id = t.identifier;
-    const r = stick.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2;
-  }, { passive: false });
-  stick.addEventListener('touchmove', e => {
-    e.preventDefault();
-    for (const t of e.changedTouches) if (t.identifier === id) {
-      const dx = Math.max(-50, Math.min(50, t.clientX - cx));
-      const dy = Math.max(-50, Math.min(50, t.clientY - cy));
-      knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      touchAxes.steer = dx / 50;
-      // up/down on the stick = forward/back on foot, gas/brake in a car
-      touchAxes.throttle = dy < -15 ? Math.min(1, -dy / 50) : 0;
-      touchAxes.brake = dy > 15 ? Math.min(1, dy / 50) : 0;
-    }
-  }, { passive: false });
-  const end = e => {
-    for (const t of e.changedTouches) if (t.identifier === id) {
-      id = null; knob.style.transform = ''; touchAxes.steer = 0; touchAxes.throttle = 0; touchAxes.brake = 0;
-    }
-  };
-  stick.addEventListener('touchend', end);
-  stick.addEventListener('touchcancel', end);
-}
+// What the on-screen controls (ui/touch.js) drive. Same actions as the
+// keyboard, so game code never knows the difference.
+export const touch = {
+  hold(action, on) {
+    if (on) { touchHeld.add(action); touchPressed.add(action); } else touchHeld.delete(action);
+  },
+  press(action) { touchPressed.add(action); },
+  axis(name, v) { touchAxes[name] = v; },
+  reset() { touchHeld.clear(); touchAxes.throttle = touchAxes.brake = touchAxes.steer = 0; },
+};

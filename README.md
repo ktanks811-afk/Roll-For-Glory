@@ -95,7 +95,28 @@ in the car.
 
 **Anywhere:** Phone P or Tab · Map M · Zoom C · Pause Esc
 
-On touch devices an on-screen stick and buttons appear, and the buttons change to match whether you're walking or driving.
+**On a phone** the on-screen controls change to match what you're doing:
+
+| Walking | |
+| --- | --- |
+| Move | Joystick (bottom left) |
+| Run | Hold RUN |
+| Shops, homes, meets | USE |
+| Get in your car | GET IN (stand next to it) |
+
+| Driving | |
+| --- | --- |
+| Steer | ◀ ▶ arrows (bottom left) |
+| Gas / brake and reverse | GAS and BRAKE pedals (bottom right) |
+| Shift gears | Drag the shift knob up (upshift) or down (downshift) |
+| Automatic / manual | Tap the shift knob (shows A or M) |
+| Nitrous, e-brake, horn | NOS, E-BRK, HORN |
+| Gas stations, races, shops | USE |
+| Get out | GET OUT |
+
+Multi-touch works, so you can steer with one thumb and work the pedals with
+the other. Drag races use BRAKE + GAS together. Top right: ☰ menu and save,
+⌕ zoom, ☎ phone. It works in portrait and landscape.
 
 ## Running it locally
 

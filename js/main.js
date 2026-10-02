@@ -2,7 +2,8 @@
 
 import { game, fmtMoney, activeCar, carValue, spend, hourOf } from './core/state.js';
 import { on, emit } from './core/events.js';
-import { input, buildTouchControls, isTouchDevice } from './core/input.js';
+import { input } from './core/input.js';
+import { touchUi } from './ui/touch.js';
 import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
@@ -57,14 +58,14 @@ export function enterWorld() {
   else app.world.refreshCar();
   app.world.paused = false;
   $('#screen').innerHTML = '';
-  $('#touch').classList.toggle('hidden', !(settings.touch === 'on' || (settings.touch === 'auto' && isTouchDevice())));
+  touchUi.show(true);
   audio.music(null);
 }
 
 export function leaveWorld() {
   if (app.world) { app.world.destroy(); app.world = null; }
   if (app.hud) app.hud.show(false);
-  $('#touch').classList.add('hidden');
+  touchUi.show(false);
 }
 
 export function startRace(RaceClass, opts) {
@@ -192,7 +193,7 @@ function frame(now) {
 async function boot() {
   try {
     getMap();
-    buildTouchControls($('#touch'));
+    touchUi.mount($('#touch'));
     initStory();
     app.backdrop = new MenuBackdrop();
     showTitle(app);

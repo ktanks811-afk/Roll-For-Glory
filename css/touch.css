@@ -1,0 +1,134 @@
+/* Phone controls. Everything is sized from --u (≈1px on a 390px-wide phone,
+   scaled by the shorter screen side) so portrait, landscape, small phones and
+   tablets all get sensible touch targets. Which group shows depends on the
+   control context set by core/input.js: foot, car, race or menu. */
+:root { --u: clamp(.8px, calc(min(100vw, 100vh) / 390), 1.3px); }
+#touch {
+  --pl: max(calc(var(--u) * 12), env(safe-area-inset-left, 0px));
+  --pr: max(calc(var(--u) * 12), env(safe-area-inset-right, 0px));
+  --pb: max(calc(var(--u) * 14), env(safe-area-inset-bottom, 0px));
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+#touch > .tc-foot, #touch > .tc-drive { position: absolute; inset: 0; pointer-events: none; }
+#touch[data-ctx="foot"] .tc-drive,
+#touch[data-ctx="car"] .tc-foot, #touch[data-ctx="race"] .tc-foot,
+#touch[data-ctx="menu"] .tc-foot, #touch[data-ctx="menu"] .tc-drive { display: none; }
+#touch[data-ctx="race"] .tc-car-only { display: none; }
+
+/* shared look */
+#touch .tc-btn, #touch .tc-stick, #touch .tc-shifter { pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+#touch .tc-btn {
+  position: relative; padding: 0; color: #fff; font-family: var(--head); font-weight: 700; line-height: 1.05;
+  font-size: calc(var(--u) * 12); letter-spacing: .06em; text-transform: uppercase;
+  border: calc(var(--u) * 1.5) solid rgba(255, 255, 255, .24); background: rgba(16, 17, 21, .62);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45); transition: transform .05s, background .05s, border-color .05s;
+}
+#touch .tc-btn.on { transform: scale(.93); background: rgba(255, 255, 255, .26); border-color: rgba(255, 255, 255, .6); }
+#touch .tc-round { width: calc(var(--u) * 58); height: calc(var(--u) * 58); border-radius: 50%; }
+#touch .tc-round.tc-sm { width: calc(var(--u) * 46); height: calc(var(--u) * 46); font-size: calc(var(--u) * 10.5); letter-spacing: .03em; }
+#touch .tc-use { border-color: rgba(224, 25, 46, .85); background: rgba(150, 14, 30, .55); }
+#touch .tc-use.on { background: rgba(224, 25, 46, .75); }
+#touch .tc-use:not(.tc-sm) { width: calc(var(--u) * 74); height: calc(var(--u) * 74); font-size: calc(var(--u) * 14); }
+#touch .tc-nos { border-color: rgba(120, 100, 255, .9); background: rgba(70, 50, 190, .5); }
+#touch .tc-nos.on { background: rgba(120, 100, 255, .75); }
+
+/* ---------- walking ---------- */
+#touch .tc-stick {
+  position: absolute; left: calc(var(--pl) + var(--u) * 6); bottom: calc(var(--pb) + var(--u) * 8);
+  width: calc(var(--u) * 128); height: calc(var(--u) * 128); border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .07), rgba(255, 255, 255, .03)); border: calc(var(--u) * 2) solid rgba(255, 255, 255, .2);
+}
+#touch .tc-knob {
+  position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 54); height: calc(var(--u) * 54);
+  margin: calc(var(--u) * -27) 0 0 calc(var(--u) * -27); border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .55), rgba(255, 255, 255, .18)); box-shadow: 0 3px 10px rgba(0, 0, 0, .5);
+}
+#touch .tc-foot-btns { position: absolute; right: var(--pr); bottom: calc(var(--pb) + var(--u) * 10); display: flex; gap: calc(var(--u) * 10); align-items: flex-end; pointer-events: none; }
+
+/* ---------- driving + racing ---------- */
+#touch .tc-arrows { position: absolute; left: var(--pl); bottom: var(--pb); display: flex; gap: calc(var(--u) * 8); pointer-events: none; }
+#touch .tc-arrow { width: calc(var(--u) * 70); height: calc(var(--u) * 92); border-radius: calc(var(--u) * 18); display: flex; align-items: center; justify-content: center; }
+#touch .tc-arrow i { width: 0; height: 0; border-style: solid; border-width: calc(var(--u) * 17) calc(var(--u) * 24) calc(var(--u) * 17) 0; border-color: transparent #fff transparent transparent; opacity: .92; }
+#touch .tc-arrow.tc-right i { border-width: calc(var(--u) * 17) 0 calc(var(--u) * 17) calc(var(--u) * 24); border-color: transparent transparent transparent #fff; }
+#touch .tc-arrow.on i { border-right-color: var(--yellow); }
+#touch .tc-arrow.tc-right.on i { border-right-color: transparent; border-left-color: var(--yellow); }
+
+#touch .tc-pedals { position: absolute; right: var(--pr); bottom: var(--pb); display: flex; gap: calc(var(--u) * 8); align-items: flex-end; pointer-events: none; }
+#touch .tc-pedal { border-radius: calc(var(--u) * 14); overflow: hidden; display: flex; align-items: flex-start; justify-content: center; padding-top: calc(var(--u) * 9); }
+#touch .tc-pedal::before { content: ''; position: absolute; inset: calc(var(--u) * 28) calc(var(--u) * 8) calc(var(--u) * 8); border-radius: calc(var(--u) * 8);
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .14) 0 calc(var(--u) * 3), transparent calc(var(--u) * 3) calc(var(--u) * 11)); }
+#touch .tc-pedal span { position: relative; font-size: calc(var(--u) * 12); }
+#touch .tc-brake { width: calc(var(--u) * 58); height: calc(var(--u) * 100); border-color: rgba(224, 25, 46, .8); background: linear-gradient(rgba(224, 25, 46, .3), rgba(70, 8, 16, .6)); }
+#touch .tc-gas { width: calc(var(--u) * 72); height: calc(var(--u) * 134); border-color: rgba(43, 217, 107, .8); background: linear-gradient(rgba(43, 217, 107, .3), rgba(8, 60, 30, .62)); }
+#touch .tc-brake.on { background: linear-gradient(rgba(224, 25, 46, .6), rgba(120, 14, 26, .8)); }
+#touch .tc-gas.on { background: linear-gradient(rgba(43, 217, 107, .6), rgba(14, 110, 52, .82)); }
+
+/* shift knob */
+#touch .tc-shifter {
+  position: absolute; bottom: var(--pb); width: calc(var(--u) * 52); height: calc(var(--u) * 126); border-radius: calc(var(--u) * 26);
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  background: linear-gradient(90deg, rgba(10, 10, 12, .8), rgba(36, 38, 44, .8), rgba(10, 10, 12, .8)); border: calc(var(--u) * 1.5) solid rgba(255, 255, 255, .26);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, .7), 0 4px 14px rgba(0, 0, 0, .45); font-family: var(--head); color: #fff;
+}
+#touch .tc-shifter::before { content: ''; position: absolute; top: calc(var(--u) * 18); bottom: calc(var(--u) * 18); left: 50%; width: calc(var(--u) * 4); margin-left: calc(var(--u) * -2); background: #000; border-radius: 2px; }
+#touch .tc-plus, #touch .tc-minus { position: relative; font-size: calc(var(--u) * 20); font-weight: 700; line-height: 1; padding: calc(var(--u) * 5) 0; opacity: .85; pointer-events: none; transition: color .1s, opacity .1s; }
+#touch:not(.manual) .tc-plus, #touch:not(.manual) .tc-minus { opacity: .35; }
+#touch .tc-shifter.up .tc-plus { color: var(--green); opacity: 1; }
+#touch .tc-shifter.down .tc-minus { color: var(--red2); opacity: 1; }
+#touch .tc-sknob {
+  position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 44); height: calc(var(--u) * 44); margin: calc(var(--u) * -22) 0 0 calc(var(--u) * -22); border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #f4f5f7, #9aa0a8 55%, #5d626a); color: #111; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .6); pointer-events: none; transition: transform .12s;
+}
+#touch .tc-shifter.on .tc-sknob { transition: none; background: radial-gradient(circle at 35% 28%, #fff, #c8ccd2 55%, #8b9098); }
+#touch .tc-sknob b { font-size: calc(var(--u) * 19); line-height: 1; }
+#touch .tc-sknob small { font-size: calc(var(--u) * 9); font-weight: 700; letter-spacing: .05em; opacity: .75; }
+
+/* ---------- portrait ---------- */
+@media (orientation: portrait) {
+  #touch .tc-shifter { right: calc(var(--pr) + var(--u) * 146); }
+  #touch .tc-row { position: absolute; left: 0; right: 0; bottom: calc(var(--pb) + var(--u) * 146); display: flex; justify-content: center; gap: calc(var(--u) * 7); pointer-events: none; }
+  .hud-prompt { bottom: calc(var(--u) * 232) !important; }
+}
+/* ---------- landscape ---------- */
+@media (orientation: landscape) {
+  #touch .tc-arrow { width: calc(var(--u) * 82); height: calc(var(--u) * 88); }
+  #touch .tc-brake { width: calc(var(--u) * 62); height: calc(var(--u) * 96); }
+  #touch .tc-gas { width: calc(var(--u) * 80); height: calc(var(--u) * 122); }
+  #touch .tc-shifter { right: calc(var(--pr) + var(--u) * 162); height: calc(var(--u) * 118); }
+  #touch .tc-row { position: absolute; left: calc(var(--pl) + var(--u) * 190); right: calc(var(--pr) + var(--u) * 232); bottom: var(--pb);
+    display: flex; flex-wrap: wrap-reverse; align-content: flex-start; justify-content: center; gap: calc(var(--u) * 7); pointer-events: none; }
+  .hud-prompt { bottom: calc(var(--u) * 110) !important; }
+}
+
+/* ---------- HUD when playing on a phone ---------- */
+.hud-btns { display: none; }
+body.touch .hud-help { display: none; }
+body.touch .hud-tl { max-width: 46vw; }
+body.touch .hud-tr { width: calc(var(--u, 1px) * 158); }
+body.touch .hud-btns { display: flex; gap: calc(var(--u, 1px) * 6); justify-content: flex-end; margin-top: calc(var(--u, 1px) * 8); }
+.hud-btn { pointer-events: auto; width: calc(var(--u, 1px) * 38); height: calc(var(--u, 1px) * 38); border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .28); background: rgba(10, 10, 12, .7); color: #fff; font-size: calc(var(--u, 1px) * 17); padding: 0; touch-action: none; }
+.hud-btn:active { background: rgba(255, 255, 255, .25); }
+body.touch .hud-mini { position: relative; width: calc(var(--u, 1px) * 92); height: calc(var(--u, 1px) * 92); margin-top: calc(var(--u, 1px) * 12); }
+body.touch .hud-objective { font-size: calc(var(--u, 1px) * 12); max-width: 100%; padding: 4px 8px; }
+body.touch .hud-dash { position: relative; width: 100%; margin-top: calc(var(--u, 1px) * 8); padding: calc(var(--u, 1px) * 6) calc(var(--u, 1px) * 9); }
+body.touch .dash-speed b { font-size: calc(var(--u, 1px) * 32); }
+body.touch .dash-gear { font-size: calc(var(--u, 1px) * 24); top: calc(var(--u, 1px) * 6); }
+body.touch .dash-car { display: none; }
+body.touch .hud-radio { width: 54vw; top: 36%; }
+body.touch .hud-radio div { font-size: 12px; }
+body.touch .hud-prompt { font-size: 14px; padding: 6px 12px; }
+body.touch .hud-prompt kbd { background: var(--red); border-color: var(--red); color: #fff; }
+
+/* ---------- races on a phone ---------- */
+body.touch .race-top { gap: 5px; top: 8px; }
+body.touch .race-top > div { min-width: 0; padding: 3px 7px; }
+body.touch .race-top b { font-size: calc(var(--u, 1px) * 15); white-space: nowrap; }
+body.touch .race-top small { font-size: 9px; }
+body.touch .race-hud .hud-dash { position: fixed; top: calc(var(--u, 1px) * 76); right: 8px !important; bottom: auto !important; left: auto; width: calc(var(--u, 1px) * 120); margin: 0; }
+body.touch .race-hud .tree { top: calc(var(--u, 1px) * 76); transform: scale(.6); transform-origin: left top; left: 4px; }
+body.touch .race-sub { font-size: 14px; top: 44%; }
+
+/* a drag race has no lanes to change, so no steering arrows */
+#touch[data-race="drag"] .tc-arrows { display: none; }

@@ -10,8 +10,11 @@ import { audio } from '../core/audio.js';
 import { settings } from '../core/save.js';
 import { game, isNight } from '../core/state.js';
 import { $, el, esc } from '../ui/dom.js';
+import { touchUi } from '../ui/touch.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// instruction text: phone wording when the on-screen controls are showing
+const T = (phone, keys) => touchUi.active ? phone : keys;
 // fit the whole road comfortably on narrow screens
 const H_ZOOM = () => Math.min(14, window.innerWidth / 34);
 const THEMES = {
@@ -65,7 +68,7 @@ export class Race {
       if (this.n) { this.n.lane = 1; this.n.x = laneX(1); } else { this.p.lane = 0; }
       for (const d of this.drivers) { d.y = -14; d.sim = newSim(d.spec, { v: 0, tireTemp: 0.45 }); d.sim.nos = d.isPlayer ? (d.car.nos ?? d.spec.nosSecs) : d.spec.nosSecs; }
       this.tree = { ambers: 0, green: false, red: [false, false], startAt: null, greenAt: null, pro: (opts.tier || 1) >= 3 };
-      this.msg = 'BURNOUT'; this.sub = 'Hold S + W to heat the tires · then tap W to roll into the beams';
+      this.msg = 'BURNOUT'; this.sub = T('Hold BRAKE + GAS to heat the tires · then ease on the GAS to roll into the beams', 'Hold S + W to heat the tires · then tap W to roll into the beams');
     } else {
       const v = opts.roll / MPH;
       const lanes = th.lanes;
@@ -79,7 +82,7 @@ export class Race {
         d.sim.boost = 0.4;
       }
       this.honks = 0;
-      this.msg = `${opts.roll} ROLL`; this.sub = 'Hold your lane · downshift now (Q) if you want · go on the third honk';
+      this.msg = `${opts.roll} ROLL`; this.sub = T('◀ ▶ change lanes · drag the shift knob down to downshift · floor the GAS on the third honk', 'Hold your lane · downshift now (Q) if you want · go on the third honk');
       // traffic on public roads
       const n = Math.round((opts.trafficDensity ?? 0.4) * this.dist / 120);
       for (let i = 0; i < n; i++) this.spawnTraffic(80 + Math.random() * (this.dist + 300));
@@ -88,6 +91,7 @@ export class Race {
     this.engineP = audio.engine({ cylinders: cylinders(this.p.model), loudness: 0.55 });
     this.engineN = this.n ? audio.engine({ cylinders: cylinders(this.n.model), loudness: 0.35 }) : null;
     audio.music(this.isDrag ? null : 'race');
+    touchUi.setRace(this.isDrag ? 'drag' : 'roll');
     this.hud = el(`<div class="race-hud"><div class="race-top">
       <div><b data-spd>0</b><small>${settings.units === 'kmh' ? 'km/h' : 'mph'}</small></div><div><b data-gear>1</b><small>gear</small></div><div><b data-time>0.000</b><small>time</small></div><div><b data-gap>—</b><small>gap</small></div><div><b data-left>—</b><small>to go</small></div></div>
       <div class="race-msg" data-msg></div><div class="race-sub" data-sub></div>
@@ -272,14 +276,14 @@ export class Race {
         P.sim.rpm += (P.spec.redline * 0.82 - P.sim.rpm) * dt * 6;
         P.thr = 1; P.sim.slip = 1;
         this.puff(P, 3);
-        this.sub = `Burnout! Tires ${Math.round(P.sim.tireTemp * 100)}° — let off and tap W to roll up`;
+        this.sub = `Burnout! Tires ${Math.round(P.sim.tireTemp * 100)}° — ${T('let off and ease on the GAS to roll up', 'let off and tap W to roll up')}`;
       } else {
         P.thr = 0; P.sim.slip = 0;
         P.sim.rpm += (P.spec.idle + 300 - P.sim.rpm) * dt * 4;
-        if (inp.throttle > 0.5 && inp.brake < 0.1) { this.phase = 'stage'; this.msg = 'STAGE'; this.sub = 'Hold W to creep forward · stop when both STAGE lights are on'; }
+        if (inp.throttle > 0.5 && inp.brake < 0.1) { this.phase = 'stage'; this.msg = 'STAGE'; this.sub = T('Hold GAS to creep forward · it stops when both STAGE lights are on', 'Hold W to creep forward · stop when both STAGE lights are on'); }
       }
       if (N) { N.sim.tireTemp = Math.min(1.1, N.sim.tireTemp + dt * 0.12 * N.skill); if (this.t < 2.5) this.puff(N, 2); }
-      if (this.t > 1.2 && this.t < 1.4 && !P.burn) this.sub = 'Hold S + W to heat the tires (skip it if you like) · W to roll up';
+      if (this.t > 1.2 && this.t < 1.4 && !P.burn) this.sub = T('Hold BRAKE + GAS to heat the tires (skip it if you like) · GAS to roll up', 'Hold S + W to heat the tires (skip it if you like) · W to roll up');
       return;
     }
     if (this.phase === 'stage') {
@@ -292,7 +296,7 @@ export class Race {
       if (P.staged && (!N || N.staged)) {
         this.phase = 'tree';
         tr.startAt = this.t + 0.6 + Math.random() * 0.9;
-        this.msg = ''; this.sub = 'Hold S + W to load it up · release S (or press W) on GREEN';
+        this.msg = ''; this.sub = T('Hold BRAKE + GAS to load it up · let go of BRAKE on GREEN', 'Hold S + W to load it up · release S (or press W) on GREEN');
       }
       return;
     }
@@ -422,7 +426,9 @@ export class Race {
     const P = this.p, N = this.n;
     const kmh = settings.units === 'kmh';
     this.q('spd').textContent = Math.round(P.sim.v * (kmh ? 3.6 : MPH));
-    this.q('gear').textContent = P.sim.shiftT > 0 ? '–' : P.model.asp === 'ev' ? 'D' : String(P.sim.gear + 1);
+    const gearTxt = P.sim.shiftT > 0 ? '–' : P.model.asp === 'ev' ? 'D' : String(P.sim.gear + 1);
+    this.q('gear').textContent = gearTxt;
+    touchUi.setGear(gearTxt);
     const raceT = this.goT ? Math.max(0, this.t - this.goT) : 0;
     this.q('time').textContent = this.goT && this.phase !== 'pace' ? (P.finished ? P.elapsed : raceT).toFixed(3) : '0.000';
     if (N) {
@@ -550,7 +556,7 @@ export class Race {
       ctx.restore();
     }
     // mini progress bar
-    const pw = Math.min(360, W - 40), px = (W - pw) / 2, py = H - 26;
+    const pw = Math.min(360, W - 40), px = (W - pw) / 2, py = touchUi.active ? 84 : H - 26;
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(px, py, pw, 8);
     for (const d of this.drivers) {
       ctx.fillStyle = d.isPlayer ? '#ff2a3a' : '#c0c4cc';
@@ -600,6 +606,7 @@ export class Race {
     this.engineP?.stop(); this.engineN?.stop();
     this.engineP = this.engineN = null;
     this.hud?.remove();
+    touchUi.setRace('');
     audio.music(null);
   }
 }

@@ -192,6 +192,83 @@ await step('save + reload', async () => {
   const ok = await p.evaluate(() => window.__rfg.game.s?.player.name);
   if (ok !== 'Tester') throw new Error('save did not load');
 });
+
+// ---------------- phone controls (separate touch context) ----------------
+await step('phone controls', async () => {
+  const mctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const m = await mctx.newPage(); m.setDefaultTimeout(6000);
+  m.on('pageerror', e => errs.push('mobile pageerror: ' + e.message));
+  m.on('console', x => { if (x.type() === 'error' && !/Failed to load resource/.test(x.text())) errs.push('mobile console: ' + x.text()); });
+  await m.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+  await m.goto(URL, { waitUntil: 'domcontentloaded' });
+  await m.waitForFunction(() => window.__rfg);
+  await m.tap('text=New Game'); await m.fill('[data-name]', 'Phone'); await m.tap('text=Hit the streets'); await m.waitForTimeout(600);
+  const expect = (c, msg) => { if (!c) throw new Error(msg); };
+  // pointer helper: fire at an element (centre by default, or an offset in px)
+  const fire = (sel, type, id = 1, dx = 0, dy = 0) => m.evaluate(([sel, type, id, dx, dy]) => {
+    const el = document.querySelector(sel), r = el.getBoundingClientRect();
+    el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, pointerType: 'touch', isPrimary: id === 1, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 + dy }));
+  }, [sel, type, id, dx, dy]);
+  const st = () => m.evaluate(() => { const w = window.__rfg.app.world; return { inCar: w.inCar, fx: w.foot.x, fz: w.foot.z, cx: w.vehicle?.x, cz: w.vehicle?.z, h: w.vehicle?.h, v: w.vehicle?.speed, gear: w.vehicle?.sim.gear, ctx: document.getElementById('touch').dataset.ctx }; });
+  const vis = sel => m.evaluate(sel => { const e = document.querySelector(sel); return !!e && e.offsetParent !== null; }, sel);
+  expect(await vis('#touch .tc-stick'), 'joystick not visible while walking');
+  expect(!(await vis('#touch .tc-pedal')), 'pedals visible while walking');
+  // give the player a car parked next to them
+  await m.evaluate(async () => { const { newCar } = await import('./js/core/state.js'); const s = window.__rfg.game.s; const c = newCar('ford_mustang_gt_s650_2024'); s.cars.push(c); s.activeCar = c.uid; const w = window.__rfg.app.world; w.refreshCar(); w.vehicle.x = w.foot.x + 2; w.vehicle.z = w.foot.z; });
+  // joystick pushes the player, not the car
+  let a = await st();
+  await fire('#touch .tc-stick', 'pointerdown', 1);
+  await fire('#touch .tc-stick', 'pointermove', 1, 0, -40);
+  await m.waitForTimeout(500);
+  await fire('#touch .tc-stick', 'pointerup', 1, 0, -40);
+  let b2 = await st();
+  expect(Math.hypot(b2.fx - a.fx, b2.fz - a.fz) > 0.4, 'joystick did not walk the player');
+  expect(Math.hypot(b2.cx - a.cx, b2.cz - a.cz) < 0.01, 'joystick moved the parked car');
+  // get in
+  await m.evaluate(() => { const w = window.__rfg.app.world; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; });
+  await fire('.tc-foot-btns [data-tap="enterExit"]', 'pointerdown'); await fire('.tc-foot-btns [data-tap="enterExit"]', 'pointerup');
+  await m.waitForTimeout(300);
+  let c = await st();
+  expect(c.inCar && c.ctx === 'car', 'GET IN did not put the player in the car');
+  expect(await vis('#touch .tc-pedal') && await vis('#touch .tc-arrow') && await vis('#touch .tc-shifter'), 'pedals / arrows / shift knob not visible in the car');
+  expect(!(await vis('#touch .tc-stick')), 'joystick still visible in the car');
+  // gas pedal drives; steering arrow turns it (two fingers at once)
+  a = await st();
+  await fire('#touch .tc-gas', 'pointerdown', 1);
+  await m.waitForTimeout(700);
+  await fire('#touch .tc-arrow:not(.tc-right)', 'pointerdown', 2);
+  await m.waitForTimeout(700);
+  await fire('#touch .tc-arrow:not(.tc-right)', 'pointerup', 2);
+  b2 = await st();
+  expect(b2.v > 3 && Math.hypot(b2.cx - a.cx, b2.cz - a.cz) > 2, 'gas pedal did not move the car');
+  expect(Math.abs(b2.h - a.h) > 0.05, 'left arrow did not steer while gas was held');
+  await fire('#touch .tc-gas', 'pointerup', 1);
+  // brake pedal slows it
+  const v0 = (await st()).v;
+  await fire('#touch .tc-brake', 'pointerdown', 3); await m.waitForTimeout(900); await fire('#touch .tc-brake', 'pointerup', 3);
+  expect((await st()).v < v0 - 1, 'brake pedal did not slow the car');
+  // shift knob: manual mode, drag it up -> upshift
+  await m.evaluate(async () => { (await import('./js/core/save.js')).settings.transmission = 'manual'; });
+  await m.evaluate(() => { const w = window.__rfg.app.world; w.vehicle.vx = w.vehicle.vz = 0; w.vehicle.sim.v = 0; w.vehicle.sim.gear = 0; });
+  const g0 = (await st()).gear;
+  await fire('#touch .tc-shifter', 'pointerdown', 4);
+  await fire('#touch .tc-shifter', 'pointermove', 4, 0, -30);
+  await fire('#touch .tc-shifter', 'pointerup', 4, 0, -30);
+  await m.waitForTimeout(700);
+  expect((await st()).gear === g0 + 1, `shift knob drag up did not upshift (gear ${g0} -> ${(await st()).gear})`);
+  // ... and tap the knob to flip auto/manual
+  await fire('#touch [data-sknob]', 'pointerdown', 5); await fire('#touch [data-sknob]', 'pointerup', 5);
+  expect(await m.evaluate(async () => (await import('./js/core/save.js')).settings.transmission) === 'auto', 'tapping the knob did not switch to automatic');
+  // get out
+  await m.evaluate(() => { const w = window.__rfg.app.world; w.vehicle.vx = w.vehicle.vz = 0; w.vehicle.sim.v = 0; });
+  await fire('#touch .tc-row [data-tap="enterExit"]', 'pointerdown'); await fire('#touch .tc-row [data-tap="enterExit"]', 'pointerup');
+  await m.waitForTimeout(300);
+  c = await st();
+  expect(!c.inCar && c.ctx === 'foot', 'GET OUT did not put the player on foot');
+  expect(await vis('#touch .tc-stick') && !(await vis('#touch .tc-pedal')), 'controls did not switch back to walking');
+  await mctx.close();
+});
+
 console.log(errs.length ? '\nERRORS:\n' + errs.join('\n') : '\nno errors');
 await b.close();
 process.exit(errs.length ? 1 : 0);

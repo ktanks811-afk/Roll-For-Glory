@@ -7,7 +7,8 @@ import { settings } from '../core/save.js';
 import { LOCATIONS, districtAt } from '../data/world.js';
 import { currentStep, CHAPTERS } from '../data/story.js';
 import { MPH } from '../sim/powertrain.js';
-import { input, isTouchDevice } from '../core/input.js';
+import { input, touch, isTouchDevice } from '../core/input.js';
+import { touchUi } from './touch.js';
 import { audio } from '../core/audio.js';
 
 const HELP = {
@@ -25,17 +26,15 @@ export class Hud {
         <div class="hud-clock"><span data-time></span><small data-day></small></div>
         <div class="hud-place" data-place></div>
         <div class="hud-objective" data-obj></div>
+        <div class="hud-mini"><canvas width="200" height="200" data-mini></canvas><div class="mini-n">N</div></div>
       </div>
       <div class="hud-tr">
         <div class="hud-money"><span data-cash></span><small data-bank></small></div>
         <div class="hud-rep"><span data-tier></span><div class="bar thin"><div data-repbar></div></div></div>
         <div class="hud-heat" data-heat>${'<i></i>'.repeat(5)}</div>
         <div class="hud-pursuit hidden" data-pursuit><b data-ptitle></b><div class="bar thin"><div data-pbar></div></div></div>
-      </div>
-      <div class="hud-radio" data-radio></div>
-      <div class="hud-prompt hidden" data-prompt></div>
-      <div class="hud-mini"><canvas width="200" height="200" data-mini></canvas><div class="mini-n">N</div></div>
-      <div class="hud-dash hidden" data-dash>
+        <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom">⌕</button><button class="hud-btn" data-tp="phone" aria-label="Phone">☎</button></div>
+        <div class="hud-dash hidden" data-dash>
         <div class="dash-speed"><b data-speed>0</b><small data-unit>MPH</small></div>
         <div class="dash-gear" data-gear>N</div>
         <div class="dash-tach"><div data-rpm></div><i data-redline></i></div>
@@ -43,6 +42,9 @@ export class Hud {
         <div class="dash-row" data-nosrow><span>NOS</span><div class="bar thin nos"><div data-nos></div></div></div>
         <div class="dash-car" data-carname></div>
       </div>
+      </div>
+      <div class="hud-radio" data-radio></div>
+      <div class="hud-prompt hidden" data-prompt></div>
       <div class="hud-help" data-help></div>
     `;
     this.q = s => this.root.querySelector(`[data-${s}]`);
@@ -50,6 +52,7 @@ export class Hud {
     this.last = 0;
     this.radioLines = [];
     this.helpCtx = null;
+    this.root.querySelectorAll('[data-tp]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); touch.press(b.dataset.tp); }));
   }
 
   radio(text) {
@@ -102,7 +105,7 @@ export class Hud {
     if (ctx !== this.helpCtx) {
       this.helpCtx = ctx;
       const help = this.q('help');
-      help.textContent = isTouchDevice() ? '' : HELP[ctx];
+      help.textContent = touchUi.active ? '' : HELP[ctx];
       help.classList.remove('fade');
       clearTimeout(this.helpT);
       this.helpT = setTimeout(() => help.classList.add('fade'), 9000);
@@ -110,9 +113,10 @@ export class Hud {
     // prompt
     const pr = this.q('prompt');
     const parts = [];
-    if (w.nearLoc) parts.push(`<kbd>${w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
-    if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push('<kbd>F</kbd> Get in');
-    else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push('<kbd>F</kbd> Get out');
+    const tch = touchUi.active;
+    if (w.nearLoc) parts.push(`<kbd>${tch ? 'USE' : w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
+    if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${tch ? 'GET IN' : 'F'}</kbd> ${tch ? 'your car' : 'Get in'}`);
+    else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push(`<kbd>${tch ? 'GET OUT' : 'F'}</kbd> ${tch ? '' : 'Get out'}`);
     const prompt = parts.join(' &nbsp;·&nbsp; ');
     pr.innerHTML = prompt; pr.classList.toggle('hidden', !prompt);
     // dash
@@ -123,7 +127,9 @@ export class Hud {
       const kmh = settings.units === 'kmh';
       this.q('speed').textContent = Math.round(v.speed * (kmh ? 3.6 : MPH));
       this.q('unit').textContent = kmh ? 'KM/H' : 'MPH';
-      this.q('gear').textContent = v.rev < 0 ? 'R' : v.sim.shiftT > 0 ? '–' : v.model.asp === 'ev' ? 'D' : String(v.sim.gear + 1);
+      const gearTxt = v.rev < 0 ? 'R' : v.sim.shiftT > 0 ? '–' : v.model.asp === 'ev' ? 'D' : String(v.sim.gear + 1);
+      this.q('gear').textContent = gearTxt;
+      touchUi.setGear(gearTxt);
       const rpmPct = v.model.asp === 'ev' ? v.speed / 70 : v.sim.rpm / v.spec.redline;
       this.q('rpm').style.width = `${Math.min(100, rpmPct * 100)}%`;
       this.q('rpm').classList.toggle('hot', rpmPct > 0.9);
