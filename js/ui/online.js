@@ -1,5 +1,5 @@
 // Online free roam screen: join a room, see who's around, chat, leave.
-// While online the police stay out of it — it's free roam.
+// The police stay active online: your own city cops chase you as usual.
 
 import { openPanel, bind, esc, toast } from './dom.js';
 import { game, activeCar, modelOf, levels, tierOf } from '../core/state.js';
@@ -33,7 +33,7 @@ export function openOnline(app) {
   const panel = openPanel((root, h) => {
     const st = online.status;
     if (st === 'on') {
-      root.innerHTML = `<div class="p-head"><h1>Online · Free Roam<small>Room ${esc(online.room)} · <span data-count></span> · police are off</small></h1><button class="btn x" data-action="close">×</button></div>
+      root.innerHTML = `<div class="p-head"><h1>Online · Free Roam<small>Room ${esc(online.room)} · <span data-count></span> · police are active</small></h1><button class="btn x" data-action="close">×</button></div>
         <div class="p-body"><div class="split"><div>
           <div class="section-title" style="margin-top:0">Racers around</div>
           <div class="list" data-peers></div>
@@ -58,7 +58,7 @@ export function openOnline(app) {
     const busy = st === 'connecting';
     root.innerHTML = `<div class="p-head"><h1>Online · Free Roam<small>Cruise Port Solace with other players</small></h1><button class="btn x" data-action="close">×</button></div>
       <div class="p-body" style="max-width:560px">
-        <p>Join a room and every racer in it shares your map live — see their cars, hear their horns, watch their flames, and chat. It's free roam: no police, no story pressure. Your career, money and car come with you.</p>
+        <p>Join a room and every racer in it shares your map live — see their cars, hear their horns, watch their flames, and chat. The police are still on patrol, so keep it clean — or lose them with friends watching. Your career, money and car come with you.</p>
         <label class="field"><span>Room code (share it with friends)</span><input class="input" data-room maxlength="20" value="${esc(online.room || DEFAULT_ROOM)}" ${busy ? 'disabled' : ''}></label>
         <p class="small muted">Playing as <b>${esc(s.player.name)}</b>${activeCar(s) ? ` in your ${esc(carName(modelOf(activeCar(s)), activeCar(s).year))}` : ''}. Other players can see your name, car and position — nothing else. Nothing is stored on a server.</p>
         ${st === 'error' ? `<p class="small" style="color:#ff6270">⚠ ${esc(online.error)}. Check your connection and try again.</p>` : ''}
@@ -72,7 +72,7 @@ export function openOnline(app) {
         const room = root.querySelector('[data-room]').value;
         h.refresh();
         const ok = await online.join(room, me);
-        if (ok) { toast(`Online — room ${online.room}. Free roam, police off.`, 'good'); h.refresh(); } else h.refresh();
+        if (ok) { toast(`Online — room ${online.room}. Free roam — the police are active.`, 'good'); h.refresh(); } else h.refresh();
       },
     });
   }, { onClose: () => { unsub?.(); } });

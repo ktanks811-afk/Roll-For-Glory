@@ -262,9 +262,9 @@ await step('online free roam', async () => {
   if (seen.length !== 1) throw new Error('tab 1 does not see exactly one other racer');
   if (Math.hypot(seen[0].x - (pos.x + 9), seen[0].z - (pos.z - 3)) > 4) throw new Error('remote car is in the wrong place');
   await snap('22-online');
-  // free roam: heat is cleared and offences ignored
+  // police stay active online: heat is not wiped, and an offence still raises it
   const heat = await p.evaluate(() => window.__rfg.game.s.heat);
-  if (heat !== 0) throw new Error('police heat not cleared while online');
+  if (!(heat > 2)) throw new Error('police heat was cleared while online');
   // chat + honk reach the other tab
   await p.evaluate(() => { window.__rfg.online.say('hello <b>there</b>'); window.__rfg.online.honk(); });
   await p2.waitForTimeout(400);

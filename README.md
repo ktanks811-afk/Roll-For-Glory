@@ -61,7 +61,7 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   Roam). Join a room code (default `PORT-SOLACE`; share your own with friends)
   and everyone in the room shares the map live: their cars with the real
   paint/parts, name tags, minimap dots, horns, 2-step flames, and chat. Police
-  are off while you're online. It uses Supabase Realtime *broadcast* only — no
+  stay active online: your own city's cops chase you as usual. It uses Supabase Realtime *broadcast* only — no
   tables, no accounts, nothing stored — and all incoming data is sanitised.
   Cars don't collide online, and the clock/weather are per player. For testing
   without a server, open `?net=local` in two tabs of the same browser.

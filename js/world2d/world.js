@@ -130,8 +130,6 @@ export class World {
     if (this.inCar && !this.vehicle) this.inCar = false;
     if (this.inCar && this.vehicle) this.updateDriving(dt);
     else this.updateFoot(dt);
-    // online free roam: the cops stay out of it
-    if (online.active) { this.offence = null; if (this.police.phase !== 'none' || s.heat > 0) this.police.reset(this); }
     this.updateOnline(dt);
 
     // traffic + police
