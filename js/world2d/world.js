@@ -158,9 +158,12 @@ export class World {
     const base = (window.innerWidth < 700 ? 7.5 : 11) * [1, 0.55, 1.5][this.zoomLevel ?? 0];
     const targetZoom = this.inCar ? base / (1 + spd / 48) : base * 1.2;
     this.cam.zoom += (targetZoom - this.cam.zoom) * Math.min(1, dt * 2);
-    const tx = focus.x + vx * 0.7, tz = focus.z + vz * 0.7;
-    this.cam.x += (tx - this.cam.x) * Math.min(1, dt * 5);
-    this.cam.z += (tz - this.cam.z) * Math.min(1, dt * 5);
+    // Keep the car near the middle of the screen at any speed: only a whisker
+    // of look-ahead, and a follow fast enough that the lag cancels it out.
+    const tx = focus.x + vx * 0.1, tz = focus.z + vz * 0.1;
+    const follow = this.inCar ? 1 - Math.exp(-dt * 12) : Math.min(1, dt * 5);
+    this.cam.x += (tx - this.cam.x) * follow;
+    this.cam.z += (tz - this.cam.z) * follow;
 
     // gps
     this.gpsT -= dt;
