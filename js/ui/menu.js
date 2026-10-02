@@ -35,7 +35,7 @@ export class MenuBackdrop {
     this.t = 0;
     this.x = -600;
     this.traffic = new TrafficSystem(this.map.roads);
-    this.heroes = HERO.map(([id, v], i) => ({ model: CAR_BY_ID[id], sprite: carSprite(CAR_BY_ID[id].body, v, { tires: 3 }), x: -640 - i * 14, z: HWY_Z + [3.6, 7.6, 11.6, 3.6][i], v: 36 + i * 1.5, neon: v.neon }));
+    this.heroes = HERO.map(([id, v], i) => ({ model: CAR_BY_ID[id], sprite: carSprite(CAR_BY_ID[id], v, { tires: 3 }), x: -640 - i * 14, z: HWY_Z + [3.6, 7.6, 11.6, 3.6][i], v: 36 + i * 1.5, neon: v.neon }));
   }
   update(dt) {
     this.t += dt;

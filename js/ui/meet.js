@@ -223,7 +223,7 @@ function drawLot(cv, present, car, t, fx = { flame: 0, revving: false }) {
     const top = i % 2 === 0;
     const x = 110 + Math.floor(i / 2) * 140 + (top ? 0 : 70);
     const y = top ? 72 : 228;
-    const sp = carSprite(c.m.body, c.v, c.lv, c.cond);
+    const sp = carSprite(c.m, c.v, c.lv, c.cond);
     const k = 9 / sp.px;
     if (c.v.neon && c.v.neon !== 'none') {
       const gr = g.createRadialGradient(x, y, 0, x, y, 60);
@@ -232,7 +232,7 @@ function drawLot(cv, present, car, t, fx = { flame: 0, revving: false }) {
     }
     const shake = c.mine && fx.revving ? (Math.random() - 0.5) * 1.2 : 0;
     g.save(); g.translate(x + shake, y); g.rotate(top ? Math.PI : 0);
-    if (c.mine && fx.flame > 0.04) { g.save(); g.scale(9, 9); drawFlameJets(g, c.m.body, c.v, fx.flame); g.restore(); }
+    if (c.mine && fx.flame > 0.04) { g.save(); g.scale(9, 9); drawFlameJets(g, c.m, c.v, fx.flame); g.restore(); }
     g.scale(k, k);
     g.drawImage(sp.canvas, -sp.canvas.width / 2, -sp.canvas.height / 2); g.restore();
     if (c.mine) { g.fillStyle = '#ff2a3a'; g.font = 'bold 14px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillText('YOU', x, top ? 140 : 168); }

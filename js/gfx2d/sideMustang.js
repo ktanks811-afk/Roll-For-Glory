@@ -16,21 +16,21 @@ import { CALIPER_COLORS } from '../data/parts.js';
 export const SIDE_VIEW_CARS = new Set(['ford_mustang_gt_s650_2024', 'ford_mustang_dark_horse_2024']);
 export const hasSideView = modelId => SIDE_VIEW_CARS.has(modelId);
 
-export const LW = 330, LH = 132;              // logical pixels
+export const LW = 990, LH = 396;              // logical pixels
 const K = LW / 1983;
 const GROUND = 700;                           // y of the road in reference px
 const TIRE_R = 143;                           // overall tyre radius
 const FRONT_X = 412, REAR_X = 1510;
 
 // ----- colour helpers -----
-const hex = c => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); const n = m ? parseInt(m[1], 16) : 0x888888; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
-const rgb = ([r, g, b], a = 1) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
-const mix = (c, to, t) => c.map((v, i) => v + (to[i] - v) * t);
-const lighten = (c, t) => mix(c, [255, 255, 255], t);
-const darken = (c, t) => mix(c, [0, 0, 0], t);
+export const hex = c => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); const n = m ? parseInt(m[1], 16) : 0x888888; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+export const rgb = ([r, g, b], a = 1) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
+export const mix = (c, to, t) => c.map((v, i) => v + (to[i] - v) * t);
+export const lighten = (c, t) => mix(c, [255, 255, 255], t);
+export const darken = (c, t) => mix(c, [0, 0, 0], t);
 
-function poly(g, pts) { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); }
-function fillPoly(g, pts, fill) { poly(g, pts); g.fillStyle = fill; g.fill(); }
+export function poly(g, pts) { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); }
+export function fillPoly(g, pts, fill) { poly(g, pts); g.fillStyle = fill; g.fill(); }
 
 const BODY = [[52, 560], [48, 480], [60, 410], [92, 372], [110, 364], [260, 318], [400, 292], [560, 276], [668, 274], [706, 268], [880, 205], [990, 135], [1060, 124], [1330, 128], [1400, 165], [1500, 200], [1620, 242], [1722, 262], [1745, 258], [1905, 246], [1902, 268], [1860, 292], [1905, 305], [1916, 400], [1926, 500], [1916, 565], [1860, 600], [1700, 614], [1350, 610], [580, 612], [250, 614], [90, 610], [60, 590]];
 const FRONT_WINDOW = [[872, 298], [1000, 182], [1012, 175], [1250, 196], [1245, 298]];
@@ -202,8 +202,8 @@ function paintDecals(g, v) {
 // --- wheels ---
 function wheelRimFraction(size) { return Math.max(0.5, Math.min(0.8, 0.54 + (size - 17) * 0.045)); }
 
-function drawWheel(g, cx, cy, v, size, offset, caliper, kind) {
-  const R = TIRE_R + (offset === 'poke' ? 4 : offset === 'stock' ? -3 : 0);
+export function drawWheel(g, cx, cy, v, size, offset, caliper, kind, R0 = TIRE_R) {
+  const R = R0 * (1 + (offset === 'poke' ? 0.028 : offset === 'stock' ? -0.02 : 0));
   const rimR = R * wheelRimFraction(size);
   // tyre
   g.fillStyle = '#0b0b0d'; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
@@ -243,14 +243,14 @@ function drawWheel(g, cx, cy, v, size, offset, caliper, kind) {
   g.restore();
 }
 
-function wheelArch(g, cx, cy, v, flare) {
+export function wheelArch(g, cx, cy, v, flare, TIRE_R = 143) {
   const base = hex(v.paint);
   g.save();
   // dark well
   g.fillStyle = '#050506'; g.beginPath(); g.arc(cx, cy, TIRE_R + 24 + flare, Math.PI * 1.02, Math.PI * 1.98); g.lineTo(cx + TIRE_R + 24 + flare, cy); g.lineTo(cx - TIRE_R - 24 - flare, cy); g.closePath(); g.fill();
   g.restore();
 }
-function archLip(g, cx, cy, v, flare) {
+export function archLip(g, cx, cy, v, flare, TIRE_R = 143) {
   const base = hex(v.paint);
   g.strokeStyle = rgb(darken(base, 0.35)); g.lineWidth = 12 + flare * 0.3;
   g.beginPath(); g.arc(cx, cy, TIRE_R + 28 + flare, Math.PI * 1.04, Math.PI * 1.96); g.stroke();
@@ -259,7 +259,7 @@ function archLip(g, cx, cy, v, flare) {
 }
 
 // --- engine bay cut-away ---
-function drawEngineBay(g, v, lv) {
+export function drawEngineBay(g, v, lv) {
   // bay: cut out of the front end
   fillPoly(g, [[96, 372], [668, 276], [668, 560], [150, 560], [92, 470]], '#1b1d22');
   g.strokeStyle = '#2a2c33'; g.lineWidth = 4; poly(g, [[96, 372], [668, 276], [668, 560], [150, 560], [92, 470]]); g.stroke();
@@ -311,7 +311,7 @@ export function drawSideMustang(canvas, opts) {
   const off = opts.layers || {};
   const on = k => off[k] !== false;
   canvas.width = LW; canvas.height = LH;
-  const g = canvas.getContext('2d', { willReadFrequently: true });
+  const g = canvas.getContext('2d');
   g.clearRect(0, 0, LW, LH);
   g.imageSmoothingEnabled = false;
   g.save(); g.scale(K, K);
@@ -353,9 +353,5 @@ export function drawSideMustang(canvas, opts) {
   g.restore();
   g.restore();
 
-  // crisp pixels: no half-transparent edges
-  const img = g.getImageData(0, 0, LW, LH), d = img.data;
-  for (let i = 3; i < d.length; i += 4) d[i] = d[i] > 110 ? 255 : 0;
-  g.putImageData(img, 0, 0);
   return canvas;
 }

@@ -3,7 +3,7 @@
 // grip, so cars understeer, slide and drift depending on tires and build.
 
 import { newSim, stepSim, shiftUp, shiftDown } from '../sim/powertrain.js';
-import { DIMS } from '../gfx2d/carSprite.js';
+import { dimsFor } from '../gfx2d/carSprite.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const G = 9.81;
@@ -15,7 +15,7 @@ const HANDBRAKE_DECEL = 5.2;
 export class Vehicle {
   constructor(car, model, spec, x, z, h) {
     this.car = car; this.model = model; this.spec = spec;
-    this.dims = DIMS[model.body] || DIMS.sedan;
+    this.dims = dimsFor(model);
     this.x = x; this.z = z; this.h = h;
     this.vx = 0; this.vz = 0;
     this.sim = newSim(spec, { v: 0 });

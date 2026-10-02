@@ -294,7 +294,7 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 
 /* garage showroom: side-view pixel car */
 .showroom .sr-stage { background: linear-gradient(#6c6f74 0%, #50535a 62%, #2c2e33 62.2%, #1c1d21 100%); border: 1px solid var(--line2); border-radius: 8px; padding: 14px 10px 0; }
-.showroom canvas { width: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; aspect-ratio: 330 / 132; }
+.showroom canvas { width: 100%; display: block; aspect-ratio: 990 / 396; }
 
 /* minimap: bigger, ringed, tappable */
 .hud-mini { width: 196px !important; height: 196px !important; pointer-events: auto; cursor: pointer; border: 3px solid #23262d !important; box-shadow: 0 0 0 1.5px rgba(255,255,255,.18), 0 8px 24px rgba(0,0,0,.7) !important; background: #0c0d10; touch-action: none; }

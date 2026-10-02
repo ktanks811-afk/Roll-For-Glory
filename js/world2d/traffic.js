@@ -3,7 +3,7 @@
 // near the player exist; the rest of the city is simulated by not existing.
 
 import { CARS } from '../data/cars.js';
-import { carSprite, DIMS } from '../gfx2d/carSprite.js';
+import { carSprite, dimsFor } from '../gfx2d/carSprite.js';
 import { signalState } from './render.js';
 import { ROAD_W } from '../data/world.js';
 
@@ -15,10 +15,10 @@ export class TrafficCar {
   constructor(roads, edge, dir, s, lane, opts = {}) {
     this.roads = roads;
     this.model = opts.model || pick(COMMON);
-    this.dims = DIMS[this.model.body];
+    this.dims = dimsFor(this.model);
     this.color = opts.color || pick(COLORS);
     this.police = !!opts.police;
-    this.sprite = carSprite(this.model.body, { paint: this.police ? '#f2f2f2' : this.color, wheels: 'steel', tint: 'light' }, {}, null, { police: this.police });
+    this.sprite = carSprite(this.model, { paint: this.police ? '#f2f2f2' : this.color, wheels: 'steel', tint: 'light' }, {}, null, { police: this.police });
     this.edge = edge; this.dir = dir; this.s = s; this.lane = lane;
     this.drv = 0.85 + Math.random() * 0.25;
     this.v = edge.speed * this.drv * 0.8;

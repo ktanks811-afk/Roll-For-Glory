@@ -31,7 +31,7 @@ export function drawThumb(cv, model, visual, parts, cond) {
   g.fillStyle = grd; g.fillRect(0, 0, w, h);
   g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 2;
   for (let x = -w; x < w * 2; x += w / 3) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + w * 0.15, h); g.stroke(); }
-  const sp = carSprite(model.body, visual, partLevels(parts || {}), cond);
+  const sp = carSprite(model, visual, partLevels(parts || {}), cond);
   const scale = Math.min(w * 0.9 / sp.canvas.height, h * 0.8 / sp.canvas.width);
   g.save(); g.translate(w / 2, h / 2); g.rotate(Math.PI / 2);
   g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(-sp.canvas.width * scale * 0.42 + 6, -sp.canvas.height * scale * 0.45 + 6, sp.canvas.width * scale * 0.84, sp.canvas.height * scale * 0.9);

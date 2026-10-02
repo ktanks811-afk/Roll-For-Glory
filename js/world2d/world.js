@@ -6,7 +6,7 @@ import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, 
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
 import { PoliceSystem } from './police.js';
-import { carSprite, drawCar, DIMS } from '../gfx2d/carSprite.js';
+import { carSprite, drawCar, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
@@ -97,7 +97,7 @@ export class World {
   refreshCarSprite() {
     if (!this.vehicle) return;
     const car = this.vehicle.car;
-    this.carSpriteImg = carSprite(CAR_BY_ID[car.modelId].body, car.visual, levels(car), car.cond, { crewColor: this.s.crew?.color });
+    this.carSpriteImg = carSprite(CAR_BY_ID[car.modelId], car.visual, levels(car), car.cond, { crewColor: this.s.crew?.color });
   }
   // Called after parts/repairs so the drive matches the build.
   refreshCar() {
@@ -216,7 +216,7 @@ export class World {
   // Sprite for another player's car (cached until their build changes).
   peerSprite(p) {
     const key = JSON.stringify([p.model.id, p.visual, p.levels]);
-    if (p.spriteKey !== key) { p.sprite = carSprite(p.model.body, p.visual, p.levels, null); p.spriteKey = key; }
+    if (p.spriteKey !== key) { p.sprite = carSprite(p.model, p.visual, p.levels, null); p.spriteKey = key; }
     return p.sprite;
   }
 
@@ -225,7 +225,7 @@ export class World {
     const peers = online.list().filter(p => !p.fresh && p.x > v.x0 - 8 && p.x < v.x1 + 8 && p.z > v.z0 - 8 && p.z < v.z1 + 8);
     for (const p of peers) {
       if (p.inCar) {
-        this.drawShadow(ctx, p.x, p.z, p.h, DIMS[p.model.body] || DIMS.sedan);
+        this.drawShadow(ctx, p.x, p.z, p.h, dimsFor(p.model));
         drawCar(ctx, this.peerSprite(p), cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom);
       } else {
         drawPerson(ctx, cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom, { top: '#3a6bff' }, p.sp ? p.walk : 0);
@@ -239,7 +239,7 @@ export class World {
     for (const p of peers) {
       if (!p.inCar || p.flame < 0.04) continue;
       ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h); ctx.scale(cam.zoom, cam.zoom);
-      drawFlameJets(ctx, p.model.body, p.visual, p.flame);
+      drawFlameJets(ctx, p.model, p.visual, p.flame);
       ctx.restore();
     }
   }
@@ -590,8 +590,8 @@ export class World {
         if (!model) continue;
         const key = car.uid + JSON.stringify([car.visual, levels(car), (car.cond?.body ?? 100) | 0]);
         let spr = this.garageSprites.get(key);
-        if (!spr) { spr = carSprite(model.body, car.visual, levels(car), car.cond, { crewColor: st.crew?.color }); this.garageSprites.set(key, spr); }
-        out.push({ x: bay.x, z: bay.z, h: bay.h, sprite: spr, dims: DIMS[model.body] || DIMS.sedan, garage: g.id, car });
+        if (!spr) { spr = carSprite(model, car.visual, levels(car), car.cond, { crewColor: st.crew?.color }); this.garageSprites.set(key, spr); }
+        out.push({ x: bay.x, z: bay.z, h: bay.h, sprite: spr, dims: dimsFor(model), garage: g.id, car });
       }
     }
     this.garageCars = out;
@@ -787,7 +787,7 @@ export class World {
     if (this.vehicle && this.inCar && this.flame > 0.04) {
       const pv = this.vehicle;
       ctx.save(); ctx.translate(cam.sx(pv.x), cam.sy(pv.z)); ctx.rotate(pv.h); ctx.scale(cam.zoom, cam.zoom);
-      drawFlameJets(ctx, pv.model.body, pv.car.visual, this.flame);
+      drawFlameJets(ctx, pv.model, pv.car.visual, this.flame);
       ctx.restore();
     }
     if (livePeers.length) { this.drawPeerFlames(ctx, livePeers); this.drawPeerTags(ctx, livePeers); }

@@ -99,16 +99,25 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   about 30 game days, can be upgraded to level 3, and the big ones need rep.
   Random inspection fines, break-ins and viral days keep it interesting, and
   getting busted can cost you a job.
-- **Side-view showroom (Mustang).** Garage → Showroom shows the Ford Mustang GT
-  (S650) and Dark Horse in side-view pixel art, built from separate layers:
-  base body, paint and finish (gloss, matte, metallic, pearl, chrome), front and
-  rear wheels (six styles), brake calipers (colour follows your brake stage),
-  exhaust tips, spoiler, front and rear bumpers, side skirts, headlights and
-  taillights, window tint, hood, decals and liveries, underglow, ride height
-  (lowers with suspension stages), wheel size (17–22") and offset (stock / flush /
-  poke). Tick a layer to hide it, hit Change to jump to that part in PartsHub, or
-  open the hood to see the engine bay: supercharger, turbo, intake, intercooler,
-  long-tube headers, nitrous line. Other cars still use the overhead view.
+- **Side-view showroom (every car).** Garage → Showroom shows your car in HD
+  side view, built from separate layers: base body, paint and finish (gloss,
+  matte, metallic, pearl, chrome), front and rear wheels (six styles), brake
+  calipers (colour follows your brake stage), exhaust tips, spoiler, front and
+  rear bumpers, side skirts, headlights and taillights, window tint, hood,
+  decals and liveries, underglow, ride height (lowers with suspension stages),
+  wheel size (17–22") and offset (stock / flush / poke). Tick a layer to hide
+  it, hit Change to jump to that part in PartsHub, or open the hood to see the
+  engine bay: supercharger, turbo, intake, intercooler, long-tube headers,
+  nitrous line. The Mustang GT and Dark Horse keep their hand-traced art; every
+  other car is drawn from its own design sheet.
+- **Every car is its own shape.** `js/data/carShapes.js` holds a design sheet
+  per car: real length, width, height and wheelbase, a roofline archetype
+  (sedan, fastback, hatch, notchback, muscle, long-hood roadster, mid-engine,
+  rear-engine 911, wagon, crossover, boxy SUV, pickup) and the details that
+  make it recognisable: doors, convertible, factory wing, headlight and
+  taillight style, roof rails, hood scoop, side intakes, lift. The showroom and
+  the HD overhead world sprites are both built from it, and the same real size
+  drives collisions, so a Raptor is a lot bigger than a Civic.
 - **Engine sound that matches the car.** Every car's engine note is built from
   its real firing pattern: cross-plane V8s lope (Mustang, Camaro, Hellcat),
   flat-plane V8s scream (Corvette Z06 C8, Ferrari, McLaren), inline-6s are

@@ -5,7 +5,7 @@
 // helicopter at level 5.
 
 import { CAR_BY_ID } from '../data/cars.js';
-import { carSprite, DIMS } from '../gfx2d/carSprite.js';
+import { carSprite, dimsFor } from '../gfx2d/carSprite.js';
 import { TrafficCar } from './traffic.js';
 import { collideCircle, lineOfSight } from './map.js';
 import { LOC_BY_ID, TUNNEL, HWY_Z, HWY_W } from '../data/world.js';
@@ -22,8 +22,8 @@ let unitSeq = 12;
 class Unit {
   constructor(model, x, z, h) {
     this.model = model;
-    this.dims = DIMS[model.body];
-    this.sprite = carSprite(model.body, { paint: '#f2f2f2' }, {}, null, { police: true });
+    this.dims = dimsFor(model);
+    this.sprite = carSprite(model, { paint: '#f2f2f2' }, {}, null, { police: true });
     this.x = x; this.z = z; this.h = h; this.v = 0;
     this.id = unitSeq++;
     this.mode = 'pursuit';

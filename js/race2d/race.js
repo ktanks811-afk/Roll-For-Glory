@@ -3,7 +3,7 @@
 // reaction time, shift accuracy and nitrous habits from its skill.
 
 import { newSim, stepSim, shiftUp, shiftDown, bestGearFor, wheelRpm, DIST, MPH } from '../sim/powertrain.js';
-import { carSprite, drawCar, DIMS } from '../gfx2d/carSprite.js';
+import { carSprite, drawCar, dimsFor } from '../gfx2d/carSprite.js';
 import { CARS } from '../data/cars.js';
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
@@ -32,8 +32,8 @@ class Driver {
   constructor({ name, car, model, spec, visual, levels, cond, isPlayer, skill = 0.6 }) {
     Object.assign(this, { name, car, model, spec, visual, isPlayer, skill });
     this.flame = 0; this.flameCount = 0;
-    this.dims = DIMS[model.body];
-    this.sprite = carSprite(model.body, visual, levels, cond);
+    this.dims = dimsFor(model);
+    this.sprite = carSprite(model, visual, levels, cond);
     this.lane = 0; this.x = 0; this.y = 0;
     this.sim = null;
     this.finished = false; this.time = null; this.trap = 0;
@@ -114,7 +114,7 @@ export class Race {
     const pool = CARS.filter(c => !c.market && c.msrp < 60000);
     const m = pool[Math.floor(Math.random() * pool.length)];
     const lane = Math.floor(Math.random() * th.lanes);
-    this.traffic.push({ model: m, dims: DIMS[m.body], sprite: carSprite(m.body, { paint: ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4'][Math.floor(Math.random() * 6)] }, {}), lane, x: this.laneX(lane), y, v: 24 + Math.random() * 6, targetLane: lane });
+    this.traffic.push({ model: m, dims: dimsFor(m), sprite: carSprite(m, { paint: ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4'][Math.floor(Math.random() * 6)] }, {}), lane, x: this.laneX(lane), y, v: 24 + Math.random() * 6, targetLane: lane });
   }
 
   // ---------------------------------------------------------------- update
@@ -583,7 +583,7 @@ export class Race {
     for (const d of this.drivers) {
       if (d.flame < 0.04) continue;
       ctx.save(); ctx.translate(SX(d.x), SY(d.y)); ctx.scale(z, z);
-      drawFlameJets(ctx, d.model.body, d.visual, d.flame);
+      drawFlameJets(ctx, d.model, d.visual, d.flame);
       ctx.restore();
     }
     // mini progress bar

@@ -8,7 +8,8 @@ import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, part
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { buildSpec, dynoCurve, metrics, MPH } from '../sim/powertrain.js';
 import { launchRpmSetting } from '../sim/twostep.js';
-import { drawSideMustang, hasSideView } from '../gfx2d/sideMustang.js';
+import { drawSideCar } from '../gfx2d/sideCar.js';
+import { shapeOf } from '../data/carShapes.js';
 import { soundProfile, noiseDb, LEGAL_DB } from '../sim/sound.js';
 import { emit } from '../core/events.js';
 import { drawThumb, sellCar } from './marketplace.js';
@@ -226,15 +227,8 @@ function looks(body, h, app, st, s, car, m) {
   });
 }
 
-// ---------------- showroom: side-view pixel car built from layers ----------------
+// ---------------- showroom: side-view car built from layers (every car) ----------------
 function showroom(body, h, app, st, s, car, m) {
-  if (!hasSideView(car.modelId)) {
-    body.innerHTML = `<div class="garage"><div class="garage-view"><canvas width="640" height="360" data-car></canvas></div><div>
-      <p>The side-view showroom is built for the <b>Ford Mustang GT (S650)</b> and <b>Dark Horse</b> so far — every part you install shows up on the car, layer by layer.</p>
-      <p class="small muted">Your ${esc(carName(m, car.year))} still shows in the overhead view. More cars are coming.</p></div></div>`;
-    drawThumb(body.querySelector('[data-car]'), m, car.visual, car.parts, car.cond);
-    return;
-  }
   const v = car.visual, lv = levels(car);
   const can = st.mode !== 'readOnly';
   st.layers ??= {};
@@ -244,8 +238,8 @@ function showroom(body, h, app, st, s, car, m) {
   const rows = [
     ['body', 'Base body', esc(carName(m, car.year)), null],
     ['paint', 'Paint / material', `${esc(v.finish)} ${swatch(v.paint)}`, 'paint'],
-    ['wheels', 'Front wheels', `${esc(v.wheels)} ${swatch(v.wheelColor)} ${v.wheelSize || 19}"`, 'wheels'],
-    ['wheels', 'Rear wheels', `${esc(v.wheels)} ${swatch(v.wheelColor)} ${v.wheelSize || 19}"`, 'wheels'],
+    ['wheels', 'Front wheels', `${esc(v.wheels)} ${swatch(v.wheelColor)} ${v.wheelSize || shapeOf(m).rim || 19}"`, 'wheels'],
+    ['wheels', 'Rear wheels', `${esc(v.wheels)} ${swatch(v.wheelColor)} ${v.wheelSize || shapeOf(m).rim || 19}"`, 'wheels'],
     ['calipers', 'Brake calipers', `${['Stock grey', 'Grey', 'Red', 'Yellow', 'Orange'][Math.min(4, lv.brakes || 0)]} · ${esc(part('brakes'))}`, 'brakes'],
     ['exhaust', 'Exhaust', `${esc(part('exhaust'))} · ${esc(v.exhaustTips)} tips`, 'exhaust'],
     ['spoiler', 'Spoiler', nameOf('spoiler', v.spoiler), 'spoiler'],
@@ -264,20 +258,20 @@ function showroom(body, h, app, st, s, car, m) {
   body.innerHTML = `<div class="showroom"><div class="sr-stage"><canvas data-side></canvas></div>
     <div class="row" style="gap:8px;margin:10px 0;flex-wrap:wrap">
       <button class="btn btn-sm ${st.engineView ? 'btn-primary' : ''}" data-action="engine">${st.engineView ? '🔧 Close the hood' : '🔧 Open the hood'}</button>
-      <span class="small muted">Wheel size</span>${[17, 18, 19, 20, 21, 22].map(n => `<button class="btn btn-sm ${(+v.wheelSize || 19) === n ? 'btn-primary' : ''}" data-action="wsize" data-n="${n}" ${can ? '' : 'disabled'}>${n}"</button>`).join('')}
+      <span class="small muted">Wheel size</span>${[17, 18, 19, 20, 21, 22].map(n => `<button class="btn btn-sm ${(+v.wheelSize || shapeOf(m).rim || 19) === n ? 'btn-primary' : ''}" data-action="wsize" data-n="${n}" ${can ? '' : 'disabled'}>${n}"</button>`).join('')}
       <span class="small muted">Offset</span>${['stock', 'flush', 'poke'].map(o => `<button class="btn btn-sm ${(v.offset || 'flush') === o ? 'btn-primary' : ''}" data-action="offset" data-o="${o}" ${can ? '' : 'disabled'}>${o}</button>`).join('')}
     </div>
     <p class="small muted">Wheel size and offset are a $180 wheel-and-tire fitting each time. Tick a layer to show or hide it; Change opens the parts shop for that part.</p>
     <div class="list">${rows.map(([key, label, val, cat], i) => `<div class="li"><label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer"><input type="checkbox" data-layer="${layerKey(key)}" ${st.layers[layerKey(key)] === false ? '' : 'checked'}><span class="grow"><span class="t">${label}</span><br><span class="s">${val}</span></span></label>
       ${cat ? `<button class="btn btn-sm" data-action="change" data-cat="${cat}">Change</button>` : ''}</div>`).join('')}</div></div>`;
   const cv = body.querySelector('[data-side]');
-  const draw = () => drawSideMustang(cv, { visual: car.visual, levels: levels(car), cond: car.cond, showEngine: !!st.engineView, layers: st.layers });
+  const draw = () => drawSideCar(cv, { model: m, visual: car.visual, levels: levels(car), cond: car.cond, showEngine: !!st.engineView, layers: st.layers });
   draw();
   body.querySelectorAll('[data-layer]').forEach(cb => cb.onchange = () => { st.layers[cb.dataset.layer] = cb.checked; draw(); });
   const fit = async (what, apply) => { if (!spend(s, 180, 'Wheel & tire fitting')) return; apply(); app.world?.refreshCar(); h.refresh(); };
   bind(body, {
     engine: () => { st.engineView = !st.engineView; h.refresh(); },
-    wsize: d => { if ((+v.wheelSize || 19) !== +d.n) fit('size', () => { v.wheelSize = String(d.n); }); },
+    wsize: d => { if ((+v.wheelSize || shapeOf(m).rim || 19) !== +d.n) fit('size', () => { v.wheelSize = String(d.n); }); },
     offset: d => { if ((v.offset || 'flush') !== d.o) fit('offset', () => { v.offset = d.o; }); },
     change: async d => { const { openPartsHub } = await import('./partshub.js'); openPartsHub(app, { cat: d.cat }); },
   });

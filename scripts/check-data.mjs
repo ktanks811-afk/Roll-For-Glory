@@ -15,6 +15,8 @@ import { SERVERS, SERVER_CAP } from '../js/net/online.js';
 import { Vehicle } from '../js/world2d/vehicle.js';
 import { buildMap, collideCircle } from '../js/world2d/map.js';
 import { PROPERTIES } from '../js/data/world.js';
+import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
+import { sideGeo } from '../js/gfx2d/sideCar.js';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
 let fails = 0;
@@ -255,6 +257,29 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (l.type !== 'gas' && !bs.some(b => b.side === l.side)) bad(`${l.id}: building front does not face the street`);
   }
   for (const l of LOCATIONS) if ((l.type === 'roll' || l.type === 'drag') && !map.buildings.some(b => b.kind === 'gantry' && b.loc === l.id)) bad(`${l.id} has no start gantry`);
+}
+
+// ---- every car has its own design sheet, and it describes a real car ----
+{
+  for (const c of CARS) {
+    if (!hasShape(c.id)) { bad(`${c.id} has no design sheet in carShapes.js`); continue; }
+    const sh = shapeOf(c), d = dimsOf(c);
+    if (!(sh.L > 3.5 && sh.L < 6.1 && sh.W > 1.6 && sh.W < 2.25 && sh.H > 1.05 && sh.H < 2.1)) bad(`${c.id} odd size ${sh.L}x${sh.W}x${sh.H}`);
+    if (!(sh.WB / sh.L > 0.5 && sh.WB / sh.L < 0.68)) bad(`${c.id} wheelbase ${sh.WB} of ${sh.L}`);
+    if (!(sh.fo > sh.tr && sh.ro > sh.tr)) bad(`${c.id} wheels hang off the car (fo ${sh.fo.toFixed(2)}, ro ${sh.ro.toFixed(2)})`);
+    if (!(sh.xCowl < sh.xA && sh.xA < sh.xC && sh.xC <= sh.xD && sh.xD < 1)) bad(`${c.id} roofline fractions out of order`);
+    if (!(d.L === sh.L && d.W === sh.W)) bad(`${c.id} dimsOf mismatch`);
+    const geo = sideGeo(sh);
+    if (!geo.pts.every(p => Number.isFinite(p.x + p.y + p.r)) || !Number.isFinite(geo.fx + geo.rx + geo.cy + geo.R)) bad(`${c.id} side geometry is not finite`);
+    if (!(geo.fx < geo.rx && geo.R > 20 && geo.R < 200)) bad(`${c.id} side wheel placement`);
+    if (geo.frontLow.x >= geo.rearLow.x) bad(`${c.id} greenhouse collapsed`);
+    // truck/SUV/sports sanity: pickups are the long ones, supercars the low ones
+    if (sh.arch === 'P' && sh.L < 4.7) bad(`${c.id} pickup too short`);
+    if (sh.arch === 'X' && sh.H > 1.3) bad(`${c.id} mid-engine car too tall`);
+  }
+  const s1 = shapeOf(CAR_BY_ID.honda_civic_ex_1996), s2 = shapeOf(CAR_BY_ID.ford_f_150_raptor_2021);
+  if (!(s2.L > s1.L * 1.3 && s2.W > s1.W)) bad('a Raptor should be much bigger than a Civic');
+  if (shapeOf(CAR_BY_ID.ford_mustang_gt_s650_2024).arch === shapeOf(CAR_BY_ID.chevrolet_corvette_stingray_c8_2020).arch) bad('Mustang and C8 share a roofline archetype');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

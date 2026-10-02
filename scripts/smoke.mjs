@@ -235,15 +235,16 @@ await step('burnout: gas + brake, no 2-step', async () => {
   await p.evaluate(async () => {
     const st = await import('./js/core/state.js'); const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
     const w = window.__rfg.app.world, s = window.__rfg.game.s; const c = s.cars.find(c => c.uid === s.activeCar);
+    const w0 = window.__rfg.app.world; try { w0.police.reset(w0); } catch {} document.querySelectorAll('.modal-back').forEach(m => m.remove()); w0.paused = false; { const s0 = window.__rfg.game.s; const c0 = s0.cars.find(c => c.uid === s0.activeCar); if (c0) c0.fuel = 1; }
     delete c.parts.twostep; w.vehicle.setSpec(st.carSpec(c)); w.inCar = true; w.paused = false;
     const v = w.vehicle; v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; w.skids.length = 0; w.smoke.length = 0; if (w.limiter) w.limiter.flames = 0;
   });
   await p.keyboard.down('KeyW'); await p.keyboard.down('KeyS'); await p.waitForTimeout(2200);
-  const r = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; return { burning: v.burning, slip: +v.sim.slip.toFixed(2), speed: +v.speed.toFixed(2), skids: w.skids.length, smoke: w.smoke.length, flames: w.limiter?.flames || 0, rpm: Math.round(v.sim.rpm), redline: v.spec.redline }; });
+  const r = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; return { car: v.model.id, drive: v.spec.drive, fuel: +v.car.fuel.toFixed(2), rev: v.rev, ts: v.spec.twoStep, burning: v.burning, slip: +v.sim.slip.toFixed(2), speed: +v.speed.toFixed(2), skids: w.skids.length, smoke: w.smoke.length, flames: w.limiter?.flames || 0, rpm: Math.round(v.sim.rpm), redline: v.spec.redline }; });
   await snap('burnout');
   await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW');
   console.log('     burnout', JSON.stringify(r));
-  if (!r.burning || r.slip < 0.5) throw new Error('gas + brake did not start a burnout');
+  if (!r.burning || r.slip < 0.5) throw new Error('gas + brake did not start a burnout ' + JSON.stringify(r));
   if (r.skids < 10 || r.smoke < 3) throw new Error('burnout left no marks or smoke');
   if (r.flames !== 0) throw new Error('flames without a 2-step');
   if (r.speed > 4) throw new Error('burnout drove away at ' + r.speed);
@@ -253,6 +254,7 @@ await step('burnout: gas + brake, no 2-step', async () => {
 await step('drive-in garage', async () => {
   const q = await p.evaluate(async () => {
     const st = await import('./js/core/state.js'); const { openPlace } = await import('./js/ui/places.js');
+    const w0 = window.__rfg.app.world; try { w0.police.reset(w0); } catch {} document.querySelectorAll('.modal-back').forEach(m => m.remove()); w0.paused = false; { const s0 = window.__rfg.game.s; const c0 = s0.cars.find(c => c.uid === s0.activeCar); if (c0) c0.fuel = 1; }
     const w = window.__rfg.app.world, s = window.__rfg.game.s;
     for (const id of ['honda_s2000_ap2_2004', 'acura_nsx_type_s_2022']) s.cars.push(st.newCar(id));
     const g = w.map.garages.find(q => q.id === s.home);
@@ -270,9 +272,9 @@ await step('drive-in garage', async () => {
   await p.keyboard.down('KeyS'); await p.waitForTimeout(300); await p.keyboard.up('KeyS');
   const roofIn = await p.evaluate(() => window.__rfg.app.world.map.garages.find(g => g.id === window.__rfg.game.s.home).roof.a);
   console.log('     garage', JSON.stringify({ outside, inside, roofIn }));
-  if (!outside.hint || !/garage/i.test(outside.hint)) throw new Error('no drive-in prompt outside the garage');
+  if (!outside.hint || !/garage/i.test(outside.hint)) throw new Error('no drive-in prompt outside the garage ' + JSON.stringify(outside));
   if (outside.roof < 0.95) throw new Error('roof should be solid from outside');
-  if (!inside.in) throw new Error('driving through the door did not put the car inside the garage');
+  if (!inside.in) throw new Error('driving through the door did not put the car inside the garage ' + JSON.stringify(inside) + ' ' + JSON.stringify(await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; return { car: v.model.id, x: v.x, z: v.z, h: v.h, sp: v.speed, fuel: v.car.fuel }; })));
   if (roofIn > 0.2) throw new Error('roof did not fade away inside the garage: ' + roofIn);
   if (inside.cars < 1) throw new Error('your other cars are not parked in the garage');
   // leave: roof comes back
@@ -495,7 +497,7 @@ await step('noise + traffic stop', async () => {
   // a stock-exhaust car is not bothered
   await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; const c = s.cars.find(c => c.uid === s.activeCar); delete c.parts.exhaust; w.refreshCar(); });
   await p.keyboard.down('KeyW'); await p.waitForTimeout(1500); const quiet = await W(); await p.keyboard.up('KeyW');
-  if (quiet.att > 0.05 || quiet.phase !== 'none') throw new Error('a street-legal car should not draw attention for noise');
+  if (quiet.att > 0.05 || quiet.phase !== 'none') throw new Error('a street-legal car should not draw attention for noise ' + JSON.stringify(quiet));
 });
 
 // ---------------- side-view showroom (layered Mustang) ----------------
@@ -510,7 +512,7 @@ await step('showroom (side-view Mustang)', async () => {
   await p.waitForSelector('[data-side]');
   const a = await hash();
   console.log('     showroom canvas', JSON.stringify({ w: a.w, h: a.hgt, solid: a.solid }));
-  if (a.w !== 330 || a.solid < 6000) throw new Error('showroom Mustang did not draw');
+  if (a.w !== 990 || a.solid < 20000) throw new Error('showroom Mustang did not draw');
   await snap('27-showroom');
   // every layer is separate: hiding wheels changes the picture
   await p.click('[data-layer="wheels"]'); const b = await hash();
@@ -534,8 +536,34 @@ await step('showroom (side-view Mustang)', async () => {
   await p.keyboard.press('Escape');
   await p.evaluate(async () => { const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home', tab: 'showroom' }); });
   await p.waitForTimeout(200);
-  if (await p.$('[data-side]')) throw new Error('a Civic should not get the Mustang side view');
+  await p.waitForSelector('[data-side]');
+  const civic = await hash();
+  if (civic.w !== 1320 || civic.solid < 40000 || civic.h === f2.h) throw new Error('a Civic should get its own HD side view: ' + JSON.stringify(civic));
+  await snap('29-showroom-civic');
+  await p.click('[data-layer="wheels"]'); const civicNoWheels = await hash(); if (civicNoWheels.h === civic.h) throw new Error('Civic wheels layer does nothing');
   await p.keyboard.press('Escape');
+});
+
+// ---------------- every car: own side view + overhead sprite ----------------
+await step('every car draws (side view + overhead)', async () => {
+  const r = await p.evaluate(async () => {
+    const { CARS } = await import('./js/data/cars.js'); const { drawSideCar } = await import('./js/gfx2d/sideCar.js'); const { carSprite } = await import('./js/gfx2d/carSprite.js');
+    const bad = [], sig = new Set(); let n = 0;
+    for (const m of CARS) {
+      const v = { paint: '#c41b1b', finish: 'gloss', wheels: 'five', wheelColor: '#c0c4c8', tint: 'light', spoiler: 'none', headlights: 'led', taillights: 'stock' };
+      try {
+        const c = document.createElement('canvas'); drawSideCar(c, { model: m, visual: v, levels: {}, cond: {} });
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let solid = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) solid++;
+        const sp = carSprite(m, v, {}, null); const sd = sp.canvas.getContext('2d').getImageData(0, 0, sp.canvas.width, sp.canvas.height).data; let ss = 0; for (let i = 3; i < sd.length; i += 4) if (sd[i] > 200) ss++;
+        if (solid < 30000 || ss < 1500) bad.push(m.id + ' side ' + solid + ' top ' + ss);
+        sig.add(Math.round(solid / 500) + ':' + sp.canvas.width + 'x' + sp.canvas.height); n++;
+      } catch (e) { bad.push(m.id + ': ' + e.message); }
+    }
+    return { n, bad: bad.slice(0, 5), distinct: sig.size };
+  });
+  console.log('     all cars', JSON.stringify(r));
+  if (r.bad.length) throw new Error('cars failed to draw: ' + r.bad.join('; '));
+  if (r.distinct < 60) throw new Error('cars look too alike: ' + r.distinct + ' distinct silhouettes');
 });
 
 // ---------------- side hustles: passive income ----------------

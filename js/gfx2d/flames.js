@@ -2,7 +2,7 @@
 // the car's centre, rotates to its heading (0 = facing up) and scales to
 // pixels-per-metre, so the jets always point out the back of the car.
 
-import { DIMS } from './carSprite.js';
+import { dimsFor } from './carSprite.js';
 
 // Same tip layout as the car sprite, so flames come out of the real tips.
 export function exhaustTipX(visual, width) {
@@ -12,7 +12,7 @@ export function exhaustTipX(visual, width) {
 
 export function drawFlameJets(ctx, bodyStyle, visual, intensity) {
   if (intensity < 0.04) return;
-  const d = DIMS[bodyStyle] || DIMS.sedan;
+  const d = dimsFor(bodyStyle);
   const y0 = d.L / 2 + 0.06;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
