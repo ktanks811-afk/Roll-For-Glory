@@ -503,8 +503,15 @@ await step('online free roam', async () => {
   await p2.close();
 });
 
-// ---------------- online crews (two tabs, same-browser transport) ----------------
+// ---------------- online crews (permanent, database-backed; two tabs, local database) ----------------
 await step('online crews', async () => {
+  const setup = async (pg, uid) => pg.evaluate(async uid => {
+    const r = window.__rfg; r.online.kindOverride = 'local'; const s = r.game.s;
+    s.onlineCrew = null; s.crewPending = null; s.cash += 20000; s.uid = uid; s.crewKey = uid + 'key';
+    r.app.world.paused = false;
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    localStorage.removeItem('rfg-localcrews');
+  }, uid);
   const mk = async name => {
     const pg = await p.context().newPage(); pg.setDefaultTimeout(8000);
     pg.on('pageerror', e => errs.push(name + ' pageerror: ' + e.message));
@@ -515,60 +522,69 @@ await step('online crews', async () => {
     await pg.waitForTimeout(500);
     await pg.click('.menu button:has-text("Continue")');
     await pg.waitForTimeout(800);
-    await pg.evaluate(async () => { const r = window.__rfg; r.online.kindOverride = 'local'; r.game.s.onlineCrew = null; r.game.s.cash += 20000; r.app.world.paused = false; });
     return pg;
   };
   const q = await mk('crewB');
-  await p.evaluate(async () => { const r = window.__rfg; r.online.kindOverride = 'local'; r.game.s.onlineCrew = null; r.game.s.cash += 20000; r.app.world.paused = false; const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await setup(p, 'uidAAAAAAA1'); await setup(q, 'uidBBBBBBB2');
   const openApp = pg => pg.evaluate(async () => { const { openPhone } = await import('./js/ui/phone.js'); openPhone('ocrew', window.__rfg.app); });
-  const wait = async (pg, fn, arg, ms = 8000) => { await pg.waitForFunction(fn, arg, { timeout: ms }); };
-  const lob = pg => pg.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); return { st: lobby.status, dir: lobby.directory().map(g => ({ n: g.name, t: g.tag, open: g.open, c: g.members.length })), req: lobby.requests.length, chat: lobby.chat.map(c => c.text), crew: window.__rfg.game.s.onlineCrew && { n: window.__rfg.game.s.onlineCrew.name, r: window.__rfg.game.s.onlineCrew.role } }; });
-  // tab A founds a crew
+  const crewOf = pg => pg.evaluate(() => { const c = window.__rfg.game.s.onlineCrew; return c && { n: c.name, r: c.role, open: c.open }; });
+  const db = (pg, fn, ...a) => pg.evaluate(async ([fn, a]) => { const { crewdb } = await import('./js/net/crewdb.js'); const s = window.__rfg.game.s; const r = await crewdb()[fn]({ uid: s.uid, tok: s.crewKey, name: s.player.name, rep: 0 }, ...a); return r ?? null; }, [fn, a]);
+  const refresh = pg => pg.evaluate(async () => (await import('./js/ui/ocrew.js')).refreshCrew({ chat: true }));
+  // tab A founds a crew from the phone app
   await openApp(p);
-  await wait(p, async () => (await import('./js/net/crews.js')).lobby.status === 'on');
+  await p.waitForSelector('button[data-action="tab"][data-id="create"]').catch(async e => { throw new Error('crew app did not render: ' + (await p.evaluate(() => document.body.innerText.slice(0, 300).replace(/\s+/g, ' ')))); });
   await p.click('button[data-action="tab"][data-id="create"]');
   await p.fill('[data-f="name"]', 'Night Shift'); await p.fill('[data-f="tag"]', 'nsft'); await p.fill('[data-f="motto"]', 'We only go left');
   await p.click('button[data-action="create"]');
   await p.waitForFunction(() => window.__rfg.game.s.onlineCrew?.role === 'leader');
-  const created = await lob(p);
-  if (created.crew?.n !== 'Night Shift') throw new Error('crew was not created ' + JSON.stringify(created));
-  // tab B sees it in the live directory and joins (open crew)
+  // the crew is permanent: it is still listed with nobody online (A's live link closed)
+  await p.evaluate(async () => (await import('./js/net/crews.js')).lobby.disconnect());
+  const list = await db(q, 'list');
+  if (!list.some(g => g.tag === 'NSFT' && g.members === 1)) throw new Error('crew not stored ' + JSON.stringify(list));
+  // duplicate name / tag are refused
+  const dup = await q.evaluate(async () => { const { crewdb } = await import('./js/net/crewdb.js'); const s = window.__rfg.game.s; try { await crewdb().create({ uid: s.uid, tok: s.crewKey, name: 'B', rep: 0 }, { id: 'zzzzzzzz', name: 'night shift', tag: 'QQ', color: '#fff', motto: '', open: true }); return 'created'; } catch (e) { return e.message; } });
+  if (!/taken/i.test(dup)) throw new Error('duplicate crew name allowed: ' + dup);
+  // tab B opens the app, sees it and joins (open crew)
   await openApp(q);
-  await wait(q, async () => (await import('./js/net/crews.js')).lobby.directory().some(g => g.tag === 'NSFT'), null, 10000);
   await q.waitForSelector('button[data-action="join"]');
   await q.click('button[data-action="join"]');
   await q.waitForFunction(() => window.__rfg.game.s.onlineCrew?.role === 'member');
-  // crew chat both ways
-  await q.evaluate(async () => (await import('./js/net/crews.js')).lobby.say('yo crew'));
-  await wait(p, async () => (await import('./js/net/crews.js')).lobby.chat.some(c => c.text === 'yo crew'));
-  await p.evaluate(async () => (await import('./js/net/crews.js')).lobby.say('welcome'));
-  await wait(q, async () => (await import('./js/net/crews.js')).lobby.chat.some(c => c.text === 'welcome'));
-  // an outsider-forged kick (bad signature) does nothing
-  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.send({ k: 'cmd', c: 'kick', crew: window.__rfg.game.s.onlineCrew.id, to: '*', ts: Date.now(), nz: 'forged01', sig: 'AAAA' }); });
-  await p.waitForTimeout(600);
-  if ((await lob(q)).crew?.r !== 'member') throw new Error('a forged kick removed a member');
-  // leader goes invite-only; B leaves and has to ask
-  await p.evaluate(async () => { const c = window.__rfg.game.s.onlineCrew; c.open = false; (await import('./js/ui/ocrew.js')).syncLobby(); });
-  await q.evaluate(async () => { window.__rfg.game.s.onlineCrew = null; (await import('./js/ui/ocrew.js')).syncLobby(); });
-  await wait(q, async () => { const g = (await import('./js/net/crews.js')).lobby.directory().find(x => x.tag === 'NSFT'); return g && !g.open; }, null, 8000);
-  await q.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.request(lobby.directory().find(g => g.tag === 'NSFT')); });
-  await wait(p, async () => (await import('./js/net/crews.js')).lobby.requests.length === 1);
-  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); await lobby.accept(lobby.requests[0].id); });
-  await q.waitForFunction(() => window.__rfg.game.s.onlineCrew?.name === 'Night Shift', null, { timeout: 8000 });
-  // the leader kicks them
-  const bId = await q.evaluate(async () => (await import('./js/net/crews.js')).lobby.id);
-  await p.evaluate(async id => (await import('./js/net/crews.js')).lobby.kick(id), bId);
-  await q.waitForFunction(() => !window.__rfg.game.s.onlineCrew, null, { timeout: 8000 });
-  // rejoin (invite-only again), then disband
-  await q.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.request(lobby.directory().find(g => g.tag === 'NSFT')); });
-  await wait(p, async () => (await import('./js/net/crews.js')).lobby.requests.length === 1);
-  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); await lobby.accept(lobby.requests[0].id); });
-  await q.waitForFunction(() => window.__rfg.game.s.onlineCrew?.name === 'Night Shift', null, { timeout: 8000 });
-  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); await lobby.disband(); window.__rfg.game.s.onlineCrew = null; (await import('./js/ui/ocrew.js')).syncLobby(); });
-  await q.waitForFunction(() => !window.__rfg.game.s.onlineCrew, null, { timeout: 8000 });
-  // tags show up on peers in the game servers
-  await q.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.disconnect(); });
-  await p.evaluate(async () => { const { lobby } = await import('./js/net/crews.js'); lobby.disconnect(); });
+  // crew chat is saved and readable by the other member later
+  await q.evaluate(async () => { const { crewdb } = await import('./js/net/crewdb.js'); const s = window.__rfg.game.s; await crewdb().say({ uid: s.uid, tok: s.crewKey, name: s.player.name, rep: 0 }, 'yo crew'); });
+  const hist = await db(p, 'chat');
+  if (!hist.some(m => m.text === 'yo crew')) throw new Error('chat history not saved');
+  // a stranger's wrong key cannot act as the leader
+  const bad = await p.evaluate(async () => { const { crewdb } = await import('./js/net/crewdb.js'); const s = window.__rfg.game.s; try { await crewdb().kick({ uid: s.uid, tok: 'WRONG', name: 'x', rep: 0 }, 'uidBBBBBBB2'); return 'ok'; } catch (e) { return e.message; } });
+  if (bad === 'ok') throw new Error('kick with a wrong key worked');
+  const members = await p.evaluate(async () => { const { crewdb } = await import('./js/net/crewdb.js'); return crewdb().members(window.__rfg.game.s.onlineCrew.id); });
+  if (members.length !== 2) throw new Error('expected 2 members, got ' + members.length);
+  // leader goes invite-only; B leaves, then has to ask; the leader accepts
+  await db(p, 'edit', 'We only go left', false);
+  await db(q, 'leave'); await refresh(q);
+  if (await crewOf(q)) throw new Error('B still shows a crew after leaving');
+  const cid = (await db(q, 'list')).find(g => g.tag === 'NSFT').id;
+  const joinErr = await q.evaluate(async cid => { const { crewdb } = await import('./js/net/crewdb.js'); const s = window.__rfg.game.s; try { await crewdb().join({ uid: s.uid, tok: s.crewKey, name: 'B', rep: 0 }, cid); return 'joined'; } catch (e) { return e.message; } }, cid);
+  if (!/invite/i.test(joinErr)) throw new Error('joined an invite-only crew: ' + joinErr);
+  await db(q, 'request', cid); await refresh(q);
+  if (await q.evaluate(() => window.__rfg.game.s.crewPending) !== cid) throw new Error('pending request not tracked');
+  await refresh(p);
+  const pend = await db(p, 'pending');
+  if (pend.length !== 1) throw new Error('leader sees ' + pend.length + ' requests');
+  await db(p, 'decide', pend[0].uid, true); await refresh(q);
+  if ((await crewOf(q))?.n !== 'Night Shift') throw new Error('accepted member did not get the crew');
+  // kick, then rejoin, then disband
+  await db(p, 'kick', 'uidBBBBBBB2'); await refresh(q);
+  if (await crewOf(q)) throw new Error('kicked member still in the crew');
+  await db(q, 'request', cid); await db(p, 'decide', 'uidBBBBBBB2', true); await refresh(q);
+  if (!(await crewOf(q))) throw new Error('could not rejoin');
+  await db(p, 'disband'); await refresh(q); await refresh(p);
+  if ((await crewOf(q)) || (await crewOf(p))) throw new Error('disband left people in the crew');
+  if ((await db(q, 'list')).some(g => g.tag === 'NSFT')) throw new Error('disbanded crew still listed');
+  // the name and tag are free again
+  await q.evaluate(async () => { const { crewdb } = await import('./js/net/crewdb.js'); const s = window.__rfg.game.s; await crewdb().create({ uid: s.uid, tok: s.crewKey, name: 'B', rep: 0 }, { id: 'newcrew1', name: 'Night Shift', tag: 'NSFT', color: '#fff', motto: '', open: true }); });
+  await p.evaluate(() => localStorage.removeItem('rfg-localcrews'));
+  await p.evaluate(async () => { (await import('./js/net/crews.js')).lobby.disconnect(); });
+  await q.evaluate(async () => { (await import('./js/net/crews.js')).lobby.disconnect(); });
   await q.close();
 });
 
