@@ -8,7 +8,9 @@ first car on Marketplace, bolt on real parts from real brands, run roll races
 on the highway and passes at the drag strip, keep ahead of the cops, and work
 your way up to the underground legends.
 
-Play it: https://ktanks811-afk.github.io/roll-for-glory/
+Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
+
+(The site is served from the `gh-pages` branch — push updates to both `main` and `gh-pages`.)
 
 ## What's in it
 
