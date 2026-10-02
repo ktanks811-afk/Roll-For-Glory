@@ -263,7 +263,7 @@ await step('online free roam', async () => {
   await pump(p); await pump(p2);
   // compare against where tab 2's car really is (it may have been nudged out of a building)
   const near = async () => { const t = await p2.evaluate(() => { const v = window.__rfg.app.world.vehicle; return [v.x, v.z]; }); return p.evaluate(([px, pz]) => window.__rfg.online.list().map(o => ({ name: o.name, car: o.model.id, x: o.x, z: o.z, d: Math.hypot(o.x - px, o.z - pz) })), t); };
-  for (let i = 0; i < 40; i++) { await p.waitForTimeout(250); const l = await near(); if (l.length === 1 && l[0].d < 4) break; }   // slow frame rates ease the car in slowly
+  for (let i = 0; i < 40; i++) { await p.waitForTimeout(250); const l = await near(); if (l.length === 1 && l[0].d < 4) break; }
   const seen = await near();
   console.log('     tab1 sees', JSON.stringify(seen), 'me', JSON.stringify(pos));
   if (seen.length !== 1) throw new Error('tab 1 does not see exactly one other racer');
@@ -366,58 +366,43 @@ await step('noise + traffic stop', async () => {
   if (quiet.att > 0.05 || quiet.phase !== 'none') throw new Error('a street-legal car should not draw attention for noise');
 });
 
-// ---------------- showroom: the Mustang built from the real part pictures ----------------
-await step('showroom (real part pictures)', async () => {
-  const hash = sel => p.evaluate(sel => { const c = document.querySelector(sel); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0, solid = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3]) solid++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7 + d[i + 3]) | 0; } return { h, solid, w: c.width }; }, sel);
+// ---------------- side-view showroom (layered Mustang) ----------------
+await step('showroom (side-view Mustang)', async () => {
+  const hash = () => p.evaluate(() => { const c = document.querySelector('[data-side]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0, solid = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3]) solid++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7 + d[i + 3]) | 0; } return { h, solid, w: c.width, hgt: c.height }; });
   await p.evaluate(async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
     const { newCar } = await import('./js/core/state.js'); const { openGarage } = await import('./js/ui/garage.js');
-    const r = window.__rfg, s = r.game.s; const c = newCar('ford_mustang_gt_s650_2024'); s.cars.push(c); s.activeCar = c.uid; s.cash += 60000; r.app.world.refreshCar();
+    const r = window.__rfg, s = r.game.s; const c = newCar('ford_mustang_gt_s650_2024'); s.cars.push(c); s.activeCar = c.uid; s.cash += 5000; r.app.world.refreshCar();
     openGarage(r.app, { mode: 'home', tab: 'showroom' });
   });
   await p.waitForSelector('[data-side]');
-  const a = await hash('[data-side]');
-  console.log('     showroom canvas', JSON.stringify({ w: a.w, solid: a.solid }));
-  if (a.w !== 700 || a.solid < 30000) throw new Error('the Mustang body picture did not draw');
-  for (const v of ['front', 'rear', 'top']) if ((await hash('[data-' + v + ']')).solid < 2000) throw new Error(v + ' view did not draw');
+  const a = await hash();
+  console.log('     showroom canvas', JSON.stringify({ w: a.w, h: a.hgt, solid: a.solid }));
+  if (a.w !== 330 || a.solid < 6000) throw new Error('showroom Mustang did not draw');
   await snap('27-showroom');
-  // the pictures from the sheet are the options: wheels has nine designs + factory
-  const nWheel = await p.$$eval('.sr-opt img', els => els.length);
-  if (nWheel !== 9) throw new Error('expected 9 wheel pictures, saw ' + nWheel);
-  // buying a wheel design puts exactly that picture on the car
+  // every layer is separate: hiding wheels changes the picture
+  await p.click('[data-layer="wheels"]'); const b = await hash();
+  if (b.h === a.h) throw new Error('hiding the wheels changed nothing'); await p.click('[data-layer="wheels"]');
+  // wheel size costs a fitting fee and changes the car
   const cash0 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
-  await p.click('.sr-opt[data-i="2"]'); await p.waitForSelector('.modal'); await p.click('.modal .btn-primary'); await p.waitForTimeout(250);
-  const des = await p.evaluate(() => { const s = window.__rfg.game.s; return s.cars.find(c => c.uid === s.activeCar).visual.design?.wheels; });
-  const b = await hash('[data-side]');
-  if (des !== 2 || b.h === a.h) throw new Error('the bronze wheel did not get fitted (design ' + des + ')');
-  if (!((await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank)) < cash0)) throw new Error('fitting cost nothing');
-  // every picture category works: spoilers (side), front bumpers (front view), hoods (top view)
-  for (const [cat, view, i] of [['spoiler', 'side', 3], ['frontBumper', 'front', 2], ['hood', 'top', 2], ['mirrors', 'side', 4], ['emblem', 'side', 5], ['rearBumper', 'rear', 3]]) {
-    await p.click(`.sr-chip[data-c="${cat}"]`); await p.waitForTimeout(100);
-    const before = await hash('[data-' + view + ']');
-    await p.click(`.sr-opt[data-i="${i}"]`); await p.waitForSelector('.modal'); await p.click('.modal .btn-primary'); await p.waitForTimeout(250);
-    const after = await hash('[data-' + view + ']');
-    const got = await p.evaluate(cat => { const s = window.__rfg.game.s; return s.cars.find(c => c.uid === s.activeCar).visual.design?.[cat]; }, cat);
-    if (got !== i || after.h === before.h) throw new Error(cat + ' design ' + i + ' did not show in the ' + view + ' view');
-  }
-  await snap('28-showroom-parts');
-  // paint recolours the real body; wheel size and engine bay change the picture
-  await p.evaluate(() => { const s = window.__rfg.game.s, c = s.cars.find(x => x.uid === s.activeCar); c.visual.paint = '#1b4fc4'; });
-  await p.click('button[data-action="wsize"][data-n="21"]'); await p.waitForTimeout(200);
-  const c1 = await hash('[data-side]'); if (c1.h === b.h) throw new Error('paint and wheel size changed nothing');
-  await p.click('button[data-action="engine"]'); await p.waitForTimeout(200);
-  const e = await hash('[data-side]'); if (e.h === c1.h) throw new Error('open hood changed nothing');
-  await snap('29-showroom-engine');
+  await p.click('button[data-action="wsize"][data-n="21"]'); await p.waitForTimeout(150);
+  const c1 = await hash(), cash1 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  if (c1.h === a.h || !(cash1 < cash0)) throw new Error('wheel size did not change the car / cost nothing');
+  await p.click('button[data-action="offset"][data-o="poke"]'); await p.waitForTimeout(150);
+  // engine view
   await p.click('button[data-action="engine"]'); await p.waitForTimeout(150);
-  // putting the factory part back
-  await p.click('.sr-chip[data-c="spoiler"]'); await p.click('.sr-opt[data-action="restore"]'); await p.waitForTimeout(150);
-  if (await p.evaluate(() => { const s = window.__rfg.game.s; return s.cars.find(c => c.uid === s.activeCar).visual.design?.spoiler; }) != null) throw new Error('factory spoiler not restored');
+  const e = await hash(); if (e.h === c1.h) throw new Error('open hood changed nothing');
+  await snap('28-showroom-engine');
+  // paint + parts show up: a different paint changes the picture
+  await p.evaluate(() => { const s = window.__rfg.game.s, c = s.cars.find(x => x.uid === s.activeCar); c.visual.paint = '#1b4fc4'; c.visual.spoiler = 'gt'; c.parts.supercharger = 1; });
+  await p.click('button[data-action="engine"]'); await p.waitForTimeout(150);
+  const f2 = await hash(); if (f2.h === c1.h) throw new Error('paint + spoiler did not show');
   // other cars point you to the overhead view
   await p.evaluate(async () => { const { newCar } = await import('./js/core/state.js'); const s = window.__rfg.game.s; const c = newCar('honda_civic_ex_1996'); s.cars.push(c); s.activeCar = c.uid; });
   await p.keyboard.press('Escape');
   await p.evaluate(async () => { const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home', tab: 'showroom' }); });
-  await p.waitForTimeout(250);
-  if (await p.$('[data-side]')) throw new Error('a Civic should not get the Mustang pictures');
+  await p.waitForTimeout(200);
+  if (await p.$('[data-side]')) throw new Error('a Civic should not get the Mustang side view');
   await p.keyboard.press('Escape');
 });
 

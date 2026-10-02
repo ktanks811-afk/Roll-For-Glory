@@ -1,153 +1,261 @@
-// Side-view Mustang for the Garage showroom, built from the real pixel-art
-// parts (assets/mustang/parts/*.png, cut from the customization sheet):
-// the base body, and every part you install on top of it — wheels, calipers,
-// side skirts, spoilers, mirrors, door handles, emblems, headlights, tail
-// lights, exhaust tips — plus paint (the body is re-coloured), window tint,
-// ride height, wheel size and offset, livery and underglow.
+// Side-view pixel Mustang for the Garage showroom, built from separate layers
+// so every part you install shows up on the car:
 //
-// Parts that can't be seen from the side (hoods, roofs, trunks, bumpers,
-// grilles, plates) are drawn in the front / rear / top views instead.
+//   body · paint/finish · windows/tint · hood · front bumper/splitter · rear
+//   bumper/diffuser · side skirts · spoiler · headlights · taillights · exhaust
+//   tips · front wheels · rear wheels · brake calipers · wheel size & offset ·
+//   suspension (ride height) · decals/liveries · underglow · engine bay
+//
+// Geometry is drawn in the coordinates of the reference art (1983×793) and
+// scaled down onto a tiny canvas, then alpha-thresholded so the edges stay
+// crisp pixel art when the canvas is stretched up with `image-rendering:
+// pixelated`.
 
-import { CALIPER_COLORS, FX } from '../data/parts.js';
-import { designOfVisual } from '../data/mustangParts.js';
+import { CALIPER_COLORS } from '../data/parts.js';
 
 export const SIDE_VIEW_CARS = new Set(['ford_mustang_gt_s650_2024', 'ford_mustang_dark_horse_2024']);
 export const hasSideView = modelId => SIDE_VIEW_CARS.has(modelId);
 
-const BASE = 'assets/mustang/parts/';
-let PARTS = null, SIZES = null, loading = null;
-
-// Loads every part picture once.
-export function loadMustangParts() {
-  if (PARTS) return Promise.resolve(PARTS);
-  loading ??= (async () => {
-    SIZES = await (await fetch('assets/mustang/parts.json')).json();
-    const out = {};
-    await Promise.all(Object.keys(SIZES).map(name => new Promise((res, rej) => {
-      const im = new Image(); im.onload = () => { out[name] = im; res(); }; im.onerror = () => rej(new Error('missing part picture: ' + name)); im.src = BASE + name + '.png';
-    })));
-    PARTS = out; return out;
-  })();
-  return loading;
-}
-export const partsReady = () => !!PARTS;
-export const partPicture = name => PARTS?.[name];
-export const partUrl = name => BASE + name + '.png';
-
-// ----- layout, in pixels of the body picture (664 × 188) -----
-const OX = 18, OY = 8;                 // margin around the body
-export const LW = 700, LH = 236;       // canvas size
-const FRONT_X = 129, REAR_X = 505, WHEEL_Y = 163;       // wheel centres (body-local)
-const GROUND = 211;                    // road level (body-local)
-const WHEEL_SCALE = 1.0;               // 94 px tyre in a ~108 px arch
-const PX_PER_M = 139;
+export const LW = 330, LH = 132;              // logical pixels
+const K = LW / 1983;
+const GROUND = 700;                           // y of the road in reference px
+const TIRE_R = 143;                           // overall tyre radius
+const FRONT_X = 412, REAR_X = 1510;
 
 // ----- colour helpers -----
 const hex = c => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); const n = m ? parseInt(m[1], 16) : 0x888888; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 const rgb = ([r, g, b], a = 1) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
 const mix = (c, to, t) => c.map((v, i) => v + (to[i] - v) * t);
+const lighten = (c, t) => mix(c, [255, 255, 255], t);
 const darken = (c, t) => mix(c, [0, 0, 0], t);
+
 function poly(g, pts) { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); }
 function fillPoly(g, pts, fill) { poly(g, pts); g.fillStyle = fill; g.fill(); }
 
-// The sprite body is grey. Re-colour its paint pixels (not the outline, glass,
-// lights or badges) while keeping every bit of the shading.
-const recolorCache = new Map();
-function recolored(paint, finish) {
-  const key = paint + '|' + finish;
-  if (recolorCache.has(key)) return recolorCache.get(key);
-  const body = PARTS.body, mask = PARTS.bodypaint;
-  const c = document.createElement('canvas'); c.width = body.width; c.height = body.height;
-  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(body, 0, 0);
-  const m = document.createElement('canvas'); m.width = body.width; m.height = body.height;
-  const mg = m.getContext('2d', { willReadFrequently: true }); mg.drawImage(mask, 0, 0);
-  const img = g.getImageData(0, 0, c.width, c.height), d = img.data, md = mg.getImageData(0, 0, c.width, c.height).data;
-  const T = hex(paint);
-  let seed = 7;
-  for (let i = 0; i < d.length; i += 4) {
-    if (md[i + 3] === 0) continue;
-    const L = (d[i] + d[i + 1] + d[i + 2]) / 3;
-    let f = Math.max(0.4, Math.min(2.6, L / 42));
-    // light paints would blow out to pure white: blend toward a gentler curve as the paint gets lighter
-    const tb = Math.max(T[0], T[1], T[2]) / 255, w = tb * tb;
-    f = (1 - w) * f + w * Math.min(1.08, 0.5 + 0.62 * (L / 110));
-    if (finish === 'matte') f = 0.8 + 0.2 * f;
-    let r, gr, b;
-    if (finish === 'chrome') { const v = Math.max(40, Math.min(255, L * 2.1)); r = v * 0.95; gr = v; b = v * 1.06; }
-    else {
-      if (finish === 'metallic') { seed = (seed * 16807) % 2147483647; if (seed % 19 === 0) f *= 1.35; }
-      r = T[0] * f; gr = T[1] * f; b = T[2] * f;
-      if (finish === 'pearl') { const t = Math.max(0, Math.min(1, (f - 0.7) / 1.6)); r = r * (1 - t * 0.25) + 255 * t * 0.25; gr = gr * (1 - t * 0.2) + 150 * t * 0.2; b = b * (1 - t * 0.2) + 235 * t * 0.2; }
-    }
-    d[i] = Math.min(255, r); d[i + 1] = Math.min(255, gr); d[i + 2] = Math.min(255, b);
-  }
-  g.putImageData(img, 0, 0);
-  recolorCache.set(key, c);
-  return c;
-}
+const BODY = [[52, 560], [48, 480], [60, 410], [92, 372], [110, 364], [260, 318], [400, 292], [560, 276], [668, 274], [706, 268], [880, 205], [990, 135], [1060, 124], [1330, 128], [1400, 165], [1500, 200], [1620, 242], [1722, 262], [1745, 258], [1905, 246], [1902, 268], [1860, 292], [1905, 305], [1916, 400], [1926, 500], [1916, 565], [1860, 600], [1700, 614], [1350, 610], [580, 612], [250, 614], [90, 610], [60, 590]];
+const FRONT_WINDOW = [[872, 298], [1000, 182], [1012, 175], [1250, 196], [1245, 298]];
+const REAR_WINDOW = [[1272, 205], [1430, 236], [1478, 298], [1262, 298]];
 
-let glassCanvas = null;
-function glassLayer() {
-  if (glassCanvas) return glassCanvas;
-  const c = document.createElement('canvas'); c.width = PARTS.bodyglass.width; c.height = PARTS.bodyglass.height;
-  const g = c.getContext('2d'); g.fillStyle = '#10151c'; g.fillRect(0, 0, c.width, c.height);
-  g.globalCompositeOperation = 'destination-in'; g.drawImage(PARTS.bodyglass, 0, 0);
-  return (glassCanvas = c);
-}
-
-// Where each overlay part sits on the body picture: [x, y, width] (height follows the picture).
-const PLACE = {
-  mirror: [248, 50, 46],
-  handle: [367, 85, 44],
-  emblem: [196, 106, 30],
-  headlight: [26, 96, 72],
-  taillight: [606, 78, 50],
-  tip: [628, 163, 34],
-  skirt: [190, 163, 262, 25],     // [x, y, width, height]: the skirt pictures are squashed flat to fit the sill
-};
-// spoilers sit on the deck at the back; [x, bottom y, width]
-const SPOILER = [[560, 60, 96], [556, 62, 98], [560, 64, 92], [552, 64, 108]];
-const WINDOW_POLY = [[250, 77], [300, 40], [325, 31], [425, 29], [440, 40], [500, 62], [520, 76]];
-
-function put(g, name, x, y, w, anchorBottom = false) {
-  const im = PARTS[name]; if (!im) return;
-  const h = im.height * w / im.width;
-  g.drawImage(im, Math.round(x), Math.round(anchorBottom ? y - h : y), Math.round(w), Math.round(h));
-}
-
-function drawWheels(g, v, lv, design, size, offset, caliper, layers) {
-  const sc = WHEEL_SCALE * (0.9 + (size - 17) * 0.04) * (offset === 'poke' ? 1.04 : offset === 'stock' ? 0.97 : 1);
-  for (const cx of [FRONT_X, REAR_X]) {
-    const im = PARTS['wheel' + design]; if (!im) continue;
-    const w = im.width * sc, h = im.height * sc;
-    g.drawImage(im, Math.round(cx - w / 2), Math.round(WHEEL_Y - h / 2), Math.round(w), Math.round(h));
-    if (layers.calipers !== false && caliper) {
-      // the caliper shows between the spokes at the top-rear of the disc
-      g.save(); g.translate(cx, WHEEL_Y); g.scale(sc, sc);
-      g.fillStyle = caliper; poly(g, [[8, -34], [30, -24], [34, -4], [20, -14], [10, -22]]); g.fill();
-      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(14, -26, 9, 2);
-      g.restore();
-    }
+// deterministic sparkle for metallic paint
+function sparkle(g, color) {
+  let s = 91;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 160; i++) {
+    g.fillStyle = rgb(lighten(color, 0.55), 0.35 + rnd() * 0.3);
+    g.fillRect(100 + rnd() * 1800, 150 + rnd() * 440, 9, 9);
   }
 }
 
-function paintDecals(g, v, maskCanvas) {
+// ------------------------------------------------------------------ layers
+function paintBody(g, v, dropY) {
+  const base = hex(v.paint);
+  const finish = v.finish || 'gloss';
+  g.save();
+  poly(g, BODY); g.clip();
+  // base + lower shading in hard pixel bands
+  if (finish === 'chrome') {
+    const gr = g.createLinearGradient(0, 120, 0, 620);
+    gr.addColorStop(0, '#f4f6f8'); gr.addColorStop(0.45, '#9aa2ab'); gr.addColorStop(0.5, '#2c3036'); gr.addColorStop(0.62, '#8c939c'); gr.addColorStop(1, '#d6dade');
+    g.fillStyle = gr; g.fillRect(0, 0, 2000, 800);
+  } else {
+    g.fillStyle = rgb(base); g.fillRect(0, 0, 2000, 800);
+    g.fillStyle = rgb(darken(base, 0.18), 0.9); g.fillRect(0, 470, 2000, 200);                      // lower body
+    g.fillStyle = rgb(darken(base, 0.32), 0.9); g.fillRect(0, 565, 2000, 80);                        // rocker shadow
+    if (finish === 'pearl') { g.fillStyle = rgb(mix(base, [255, 120, 200], 0.35), 0.35); g.fillRect(0, 300, 2000, 90); g.fillStyle = rgb(mix(base, [120, 200, 255], 0.35), 0.3); g.fillRect(0, 390, 2000, 70); }
+    if (finish !== 'matte') {
+      g.fillStyle = rgb(lighten(base, 0.22), 0.85);                                                  // shoulder highlight
+      poly(g, [[705, 336], [1200, 322], [1700, 296], [1700, 318], [1200, 346], [705, 360]]); g.fill();
+      poly(g, [[110, 376], [400, 312], [668, 296], [668, 308], [400, 330], [120, 392]]); g.fill();   // hood highlight
+      g.fillStyle = rgb(lighten(base, 0.5), 0.55);
+      poly(g, [[1060, 132], [1320, 136], [1330, 150], [1060, 146]]); g.fill();                       // roof glint
+    } else {
+      g.fillStyle = rgb(lighten(base, 0.07), 0.8);
+      poly(g, [[705, 340], [1700, 306], [1700, 322], [705, 356]]); g.fill();
+    }
+    if (finish === 'metallic') sparkle(g, base);
+  }
+  g.restore();
+  // panel gaps and details, always dark
+  g.strokeStyle = 'rgba(10,10,12,0.85)'; g.lineWidth = 6; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(706, 340); g.lineTo(712, 588); g.moveTo(1250, 300); g.lineTo(1256, 560); g.stroke();   // door shut lines
+  g.beginPath(); g.moveTo(706, 340); g.quadraticCurveTo(690, 300, 700, 270); g.stroke();                         // fender line
+  g.lineWidth = 5; g.beginPath(); g.moveTo(1693 - 30, 360); g.arc(1693, 360, 30, Math.PI, Math.PI * 3); g.stroke();      // fuel door
+  fillPoly(g, [[1125, 352], [1230, 352], [1235, 378], [1130, 380]], rgb(darken(base, 0.55)));                    // handle
+  g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(1130, 352, 100, 5);
+}
+
+function paintWindows(g, v) {
+  const tint = { none: 0.55, light: 0.68, medium: 0.8, limo: 0.94 }[v.tint] ?? 0.55;
+  const glass = rgb([14, 20, 30], tint);
+  fillPoly(g, FRONT_WINDOW, glass); fillPoly(g, REAR_WINDOW, glass);
+  g.fillStyle = `rgba(150,170,190,${0.22 * (1 - tint)})`;
+  poly(g, [[930, 296], [1010, 196], [1050, 196], [980, 296]]); g.fill();
+  // pillars + roof trim
+  g.strokeStyle = 'rgba(8,8,10,0.9)'; g.lineWidth = 8; g.lineJoin = 'round';
+  poly(g, FRONT_WINDOW); g.stroke(); poly(g, REAR_WINDOW); g.stroke();
+  // mirror
+  fillPoly(g, [[812, 262], [886, 258], [892, 300], [816, 302]], '#16181c');
+  g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(820, 264, 60, 6);
+}
+
+function paintHood(g, v) {
+  const base = hex(v.paint), dark = rgb(darken(base, 0.55));
+  if (v.hood === 'cowl') fillPoly(g, [[470, 282], [640, 270], [668, 274], [650, 296], [490, 304]], dark);
+  if (v.hood === 'scoop') { fillPoly(g, [[380, 296], [560, 270], [610, 270], [610, 296], [440, 312]], rgb(darken(base, 0.2))); fillPoly(g, [[560, 276], [608, 272], [608, 292], [566, 296]], '#0a0a0c'); }
+  if (v.hood === 'vented') for (let i = 0; i < 5; i++) fillPoly(g, [[330 + i * 50, 318 - i * 7], [352 + i * 50, 316 - i * 7], [352 + i * 50, 326 - i * 7], [330 + i * 50, 328 - i * 7]], '#0a0a0c');
+}
+
+function paintFront(g, v) {
+  const base = hex(v.paint);
+  // lower intake + bumper
+  fillPoly(g, [[56, 470], [200, 520], [236, 596], [60, 590]], '#0e0f12');
+  g.strokeStyle = 'rgba(70,74,82,0.8)'; g.lineWidth = 3;
+  for (let y = 490; y < 590; y += 16) { g.beginPath(); g.moveTo(66, y); g.lineTo(200 + (y - 490) * 0.3, y + 14); g.stroke(); }
+  // grille opening + pony badge
+  fillPoly(g, [[58, 410], [150, 432], [140, 470], [56, 462]], '#101114');
+  g.fillStyle = '#7d828a'; g.fillRect(84, 436, 26, 14);
+  // marker light
+  fillPoly(g, [[230, 514], [248, 516], [246, 548], [230, 548]], '#ff9a1a');
+  // lip / splitter
+  if (v.frontBumper === 'sport') fillPoly(g, [[44, 600], [260, 618], [255, 634], [48, 622]], '#0a0a0c');
+  if (v.frontBumper === 'splitter') { fillPoly(g, [[30, 604], [300, 622], [296, 640], [30, 626]], '#0a0a0c'); g.fillStyle = rgb(hex('#ff2a3a'), 0.9); g.fillRect(34, 612, 250, 5); }
+  if (v.kit === 'street' || v.kit === 'wide') fillPoly(g, [[44, 598], [250, 616], [250, 628], [44, 614]], '#0a0a0c');
+  void base;
+}
+
+function paintRear(g, v) {
+  const base = hex(v.paint);
+  // diffuser + lower valance
+  fillPoly(g, [[1700, 540], [1922, 520], [1912, 580], [1862, 612], [1710, 616]], '#0e0f12');
+  g.strokeStyle = 'rgba(70,74,82,0.8)'; g.lineWidth = 3;
+  for (let x = 1730; x < 1900; x += 24) { g.beginPath(); g.moveTo(x, 548); g.lineTo(x + 6, 606); g.stroke(); }
+  if (v.rearBumper === 'diffuser') { fillPoly(g, [[1690, 596], [1930, 580], [1925, 640], [1700, 636]], '#0a0a0c'); for (let x = 1730; x < 1910; x += 28) fillPoly(g, [[x, 600], [x + 8, 598], [x + 14, 636], [x + 4, 636]], '#2a2d33'); }
+  if (v.rearBumper === 'sport') fillPoly(g, [[1700, 606], [1925, 590], [1920, 618], [1706, 626]], '#0a0a0c');
+  // marker
+  fillPoly(g, [[1676, 504], [1696, 504], [1698, 556], [1678, 556]], '#e0192e');
+  // exhaust tips
+  const tips = { single: [[1878, 600, 22]], dual: [[1852, 598, 20], [1900, 596, 20]], quad: [[1832, 598, 15], [1860, 598, 15], [1888, 596, 15], [1912, 594, 15]], cannon: [[1866, 590, 30]] }[v.exhaustTips || 'dual'] || [[1878, 600, 22]];
+  for (const [x, y, r] of tips) {
+    g.fillStyle = '#1a1c20'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+    g.fillStyle = '#b9bec6'; g.beginPath(); g.arc(x, y, r - 4, 0, 7); g.fill();
+    g.fillStyle = '#050506'; g.beginPath(); g.arc(x, y, r - 9, 0, 7); g.fill();
+  }
+  void base;
+}
+
+function paintSkirts(g, v) {
+  const base = hex(v.paint);
+  fillPoly(g, [[560, 572], [1350, 568], [1335, 612], [580, 614]], '#101114');                       // factory rocker trim
+  if (v.skirts === 'sport') fillPoly(g, [[560, 590], [1360, 586], [1350, 626], [572, 630]], rgb(darken(base, 0.7)));
+  if (v.skirts === 'aero') { fillPoly(g, [[540, 586], [1380, 580], [1368, 636], [552, 640]], '#0a0a0c'); g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillRect(560, 592, 800, 4); }
+  if (v.kit === 'street' || v.kit === 'wide') fillPoly(g, [[560, 596], [1360, 592], [1352, 628], [572, 632]], '#0a0a0c');
+}
+
+function paintSpoiler(g, v) {
+  const base = hex(v.paint);
+  const sp = v.spoiler;
+  if (sp === 'none') { fillPoly(g, [[1725, 258], [1860, 276], [1860, 288], [1725, 270]], rgb(darken(base, 0.1))); return; }   // plain deck
+  const body = rgb(darken(base, 0.45));
+  if (sp === 'lip') fillPoly(g, [[1730, 250], [1890, 244], [1894, 262], [1740, 266]], body);
+  if (sp === 'duck') fillPoly(g, [[1728, 236], [1905, 222], [1910, 254], [1738, 262]], body);
+  if (sp === 'gt') {
+    fillPoly(g, [[1700, 150], [1930, 134], [1936, 170], [1706, 186]], '#0c0d10');
+    g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(1710, 154, 210, 5);
+    fillPoly(g, [[1770, 186], [1790, 186], [1796, 262], [1774, 262]], '#0c0d10'); fillPoly(g, [[1850, 178], [1870, 176], [1874, 258], [1854, 258]], '#0c0d10');
+  }
+  if (sp === 'drag') { fillPoly(g, [[1700, 204], [1930, 190], [1934, 232], [1706, 246]], '#0c0d10'); fillPoly(g, [[1912, 150], [1936, 150], [1938, 232], [1914, 232]], '#0c0d10'); }
+}
+
+function paintLights(g, v) {
+  const head = { halogen: ['#ffe9b0', '#fff4d0'], xenon: ['#cfe4ff', '#f2f8ff'], led: ['#ffffff', '#ffffff'], yellow: ['#ffc21a', '#ffd966'] }[v.headlights] || ['#ffe9b0', '#fff4d0'];
+  fillPoly(g, [[108, 392], [244, 392], [252, 426], [128, 434]], '#101114');
+  g.fillStyle = head[0]; for (let i = 0; i < 3; i++) fillPoly(g, [[124 + i * 38, 398], [150 + i * 38, 398], [156 + i * 38, 412], [130 + i * 38, 412]], head[0]);
+  g.fillStyle = head[1]; g.fillRect(126, 416, 112, 5);
+  if (v.headlights === 'led' || v.headlights === 'xenon') { g.fillStyle = 'rgba(255,255,255,0.18)'; g.beginPath(); g.arc(120, 408, 70, 0, 7); g.fill(); }
+  // tail lights
+  const smoked = v.taillights === 'smoked', bar = v.taillights === 'bar';
+  const red = smoked ? '#6a0e16' : '#e0192e';
+  fillPoly(g, [[1812, 326], [1884, 328], [1894, 394], [1828, 388]], '#1a0b0d');
+  for (let i = 0; i < 3; i++) fillPoly(g, [[1818 + i * 22, 334 + i * 4], [1834 + i * 22, 334 + i * 4], [1838 + i * 22, 384], [1824 + i * 22, 382]], bar ? '#ff3b4a' : red);
+  if (bar) { g.fillStyle = '#ff6a74'; g.fillRect(1818, 350, 74, 7); }
+}
+
+function paintBadges(g) {
+  g.fillStyle = '#d8dbe0'; g.font = 'bold 40px sans-serif'; g.textBaseline = 'alphabetic';
+  g.fillText('5.0', 606, 418);
+}
+
+function paintDecals(g, v) {
   const col = rgb(hex(v.decalColor || '#f2f2f2'), 0.95);
-  const t = document.createElement('canvas'); t.width = LW; t.height = LH; const tg = t.getContext('2d');
-  tg.translate(OX, OY);
-  if (v.decal === 'stripes') { fillPoly(tg, [[50, 86], [215, 60], [215, 68], [52, 94]], col); fillPoly(tg, [[305, 40], [430, 34], [432, 42], [307, 48]], col); fillPoly(tg, [[520, 68], [600, 52], [600, 60], [522, 76]], col); }
-  if (v.decal === 'side') fillPoly(tg, [[60, 128], [620, 118], [620, 136], [60, 146]], col);
-  if (v.decal === 'number') { tg.fillStyle = '#f2f2f2'; tg.beginPath(); tg.arc(330, 118, 22, 0, 7); tg.fill(); tg.fillStyle = '#111'; tg.font = 'bold 28px sans-serif'; tg.textAlign = 'center'; tg.fillText('7', 330, 128); }
+  g.save(); poly(g, BODY); g.clip();
+  if (v.decal === 'stripes') { fillPoly(g, [[110, 366], [668, 276], [668, 294], [120, 384]], col); fillPoly(g, [[1000, 130], [1330, 134], [1330, 150], [1000, 146]], col); fillPoly(g, [[1620, 244], [1740, 262], [1740, 276], [1620, 258]], col); }
+  if (v.decal === 'side') { fillPoly(g, [[260, 520], [1900, 470], [1900, 500], [260, 548]], col); }
+  if (v.decal === 'number') { g.fillStyle = '#f2f2f2'; g.beginPath(); g.arc(960, 470, 60, 0, 7); g.fill(); g.fillStyle = '#111'; g.font = 'bold 78px sans-serif'; g.textAlign = 'center'; g.fillText('7', 960, 498); g.textAlign = 'left'; }
   if (v.decal === 'flames') {
-    tg.fillStyle = '#ff9a1a'; poly(tg, [[140, 168], [200, 130], [215, 148], [245, 118], [262, 144], [290, 120], [310, 150], [340, 168]]); tg.fill();
-    tg.fillStyle = '#e0192e'; poly(tg, [[150, 168], [205, 142], [218, 156], [245, 132], [260, 154], [290, 134], [304, 158], [330, 168]]); tg.fill();
+    g.fillStyle = '#ff9a1a'; poly(g, [[700, 560], [760, 420], [800, 470], [850, 380], [890, 450], [960, 360], [1000, 450], [1080, 400], [1100, 560]]); g.fill();
+    g.fillStyle = '#e0192e'; poly(g, [[720, 560], [770, 470], [810, 510], [850, 440], [900, 520], [960, 430], [1000, 520], [1070, 470], [1080, 560]]); g.fill();
   }
-  if (v.decal === 'crew') { fillPoly(tg, [[60, 120], [620, 110], [620, 124], [60, 134]], col); }
-  g.save(); g.globalCompositeOperation = 'source-over';
-  // only on the body's paint: mask the decal layer with the paint mask
-  const m = document.createElement('canvas'); m.width = LW; m.height = LH; const mg = m.getContext('2d');
-  mg.drawImage(t, 0, 0); mg.globalCompositeOperation = 'destination-in'; mg.drawImage(maskCanvas, OX, OY);
-  g.drawImage(m, 0, 0); g.restore();
+  if (v.decal === 'crew') { fillPoly(g, [[240, 500], [1900, 452], [1900, 480], [240, 530]], col); g.fillStyle = '#111'; g.fillRect(1320, 470, 80, 6); }
+  g.restore();
+}
+
+// --- wheels ---
+function wheelRimFraction(size) { return Math.max(0.5, Math.min(0.8, 0.54 + (size - 17) * 0.045)); }
+
+function drawWheel(g, cx, cy, v, size, offset, caliper, kind) {
+  const R = TIRE_R + (offset === 'poke' ? 4 : offset === 'stock' ? -3 : 0);
+  const rimR = R * wheelRimFraction(size);
+  // tyre
+  g.fillStyle = '#0b0b0d'; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+  g.strokeStyle = '#1b1c20'; g.lineWidth = 7; g.beginPath(); g.arc(cx, cy, R - 6, 0, 7); g.stroke();
+  // brake disc + caliper sit behind the spokes
+  g.fillStyle = '#5b5f66'; g.beginPath(); g.arc(cx, cy, rimR * 0.92, 0, 7); g.fill();
+  g.fillStyle = '#2b2d33'; g.beginPath(); g.arc(cx, cy, rimR * 0.62, 0, 7); g.fill();
+  const rim = hex(v.wheelColor || '#9aa0a8');
+  const style = v.wheels || 'steel';
+  g.save(); g.translate(cx, cy);
+  // caliper (behind the spokes, top-rear of the disc)
+  g.fillStyle = caliper; poly(g, [[rimR * 0.2, -rimR * 0.9], [rimR * 0.9, -rimR * 0.5], [rimR * 0.98, rimR * 0.1], [rimR * 0.5, -rimR * 0.3]]); g.fill();
+  g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(rimR * 0.52, -rimR * 0.62, rimR * 0.22, rimR * 0.05);
+  // rim barrel
+  g.strokeStyle = rgb(rim); g.lineWidth = Math.max(8, rimR * 0.1); g.beginPath(); g.arc(0, 0, rimR - 6, 0, 7); g.stroke();
+  const spokes = { five: 5, six: 6, split: 10, turbine: 8, mesh: 14, dish: 0, steel: 0 }[style] ?? 6;
+  g.fillStyle = rgb(rim); g.strokeStyle = rgb(rim); g.lineCap = 'round';
+  if (style === 'dish' || style === 'steel') {
+    g.fillStyle = rgb(darken(rim, 0.15)); g.beginPath(); g.arc(0, 0, rimR * 0.82, 0, 7); g.fill();
+    g.fillStyle = rgb(darken(rim, 0.45)); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; g.beginPath(); g.arc(Math.cos(a) * rimR * 0.5, Math.sin(a) * rimR * 0.5, rimR * 0.1, 0, 7); g.fill(); }
+  } else if (style === 'mesh') {
+    g.lineWidth = 7; for (let i = 0; i < spokes; i++) { const a = i / spokes * Math.PI * 2; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a) * rimR * 0.94, Math.sin(a) * rimR * 0.94); g.stroke(); }
+    g.lineWidth = 5; g.beginPath(); g.arc(0, 0, rimR * 0.6, 0, 7); g.stroke(); g.beginPath(); g.arc(0, 0, rimR * 0.35, 0, 7); g.stroke();
+  } else {
+    // spokes: V-shaped pairs like the stock 6-spoke, thick near the rim
+    for (let i = 0; i < spokes; i++) {
+      const a = i / spokes * Math.PI * 2 + (kind === 'rear' ? 0.2 : 0);
+      const tw = style === 'split' ? 0.07 : style === 'turbine' ? 0.12 : 0.17;
+      const ca = Math.cos(a), sa = Math.sin(a), cl = Math.cos(a + tw), sl = Math.sin(a + tw), cr = Math.cos(a - tw), sr = Math.sin(a - tw);
+      const sweep = style === 'turbine' ? 0.25 : 0;
+      poly(g, [[ca * rimR * 0.18, sa * rimR * 0.18], [Math.cos(a - sweep) * rimR * 0.5 + cr * 0, Math.sin(a - sweep) * rimR * 0.5], [cr * rimR * 0.94, sr * rimR * 0.94], [cl * rimR * 0.94, sl * rimR * 0.94], [Math.cos(a + sweep) * rimR * 0.5, Math.sin(a + sweep) * rimR * 0.5]]);
+      g.fill();
+    }
+  }
+  g.fillStyle = '#0a0a0c'; g.beginPath(); g.arc(0, 0, rimR * 0.2, 0, 7); g.fill();
+  g.fillStyle = '#6b6f78'; g.beginPath(); g.arc(0, 0, rimR * 0.1, 0, 7); g.fill();
+  g.restore();
+}
+
+function wheelArch(g, cx, cy, v, flare) {
+  const base = hex(v.paint);
+  g.save();
+  // dark well
+  g.fillStyle = '#050506'; g.beginPath(); g.arc(cx, cy, TIRE_R + 24 + flare, Math.PI * 1.02, Math.PI * 1.98); g.lineTo(cx + TIRE_R + 24 + flare, cy); g.lineTo(cx - TIRE_R - 24 - flare, cy); g.closePath(); g.fill();
+  g.restore();
+}
+function archLip(g, cx, cy, v, flare) {
+  const base = hex(v.paint);
+  g.strokeStyle = rgb(darken(base, 0.35)); g.lineWidth = 12 + flare * 0.3;
+  g.beginPath(); g.arc(cx, cy, TIRE_R + 28 + flare, Math.PI * 1.04, Math.PI * 1.96); g.stroke();
+  g.strokeStyle = rgb(lighten(base, 0.18), v.finish === 'matte' ? 0.2 : 0.6); g.lineWidth = 4;
+  g.beginPath(); g.arc(cx, cy, TIRE_R + 36 + flare, Math.PI * 1.1, Math.PI * 1.5); g.stroke();
 }
 
 // --- engine bay cut-away ---
@@ -156,7 +264,7 @@ function drawEngineBay(g, v, lv) {
   fillPoly(g, [[96, 372], [668, 276], [668, 560], [150, 560], [92, 470]], '#1b1d22');
   g.strokeStyle = '#2a2c33'; g.lineWidth = 4; poly(g, [[96, 372], [668, 276], [668, 560], [150, 560], [92, 470]]); g.stroke();
   // the hood swings up on its hinges at the cowl
-  const piv = [668, 276], th = 0.4, c = Math.cos(th), sn = Math.sin(th);
+  const piv = [668, 276], th = 0.55, c = Math.cos(th), sn = Math.sin(th);
   const rot = ([x, y]) => { const vx = x - piv[0], vy = y - piv[1]; return [piv[0] + vx * c - vy * sn, piv[1] + vx * sn + vy * c]; };
   const slab = [[110, 364], [668, 276], [668, 300], [130, 392]].map(rot);
   fillPoly(g, slab, rgb(darken(hex(v.paint), 0.1)));
@@ -196,125 +304,58 @@ function drawEngineBay(g, v, lv) {
   if (lv.nitrous > 0) { g.strokeStyle = '#3a6bff'; g.lineWidth = 7; g.beginPath(); g.moveTo(560, 470); g.bezierCurveTo(620, 480, 640, 420, 600, 400); g.stroke(); }
 }
 
-
 // ------------------------------------------------------------------ main
-// opts: { visual, levels, showEngine, layers:{name:false hides it}, parts }
+// opts: { visual, levels, cond, showEngine, layers: {name:false to hide} }
 export function drawSideMustang(canvas, opts) {
-  const v = opts.visual || {}, lv = opts.levels || {}, layers = opts.layers || {};
-  const on = k => layers[k] !== false;
+  const v = opts.visual || {}, lv = opts.levels || {};
+  const off = opts.layers || {};
+  const on = k => off[k] !== false;
   canvas.width = LW; canvas.height = LH;
   const g = canvas.getContext('2d', { willReadFrequently: true });
   g.clearRect(0, 0, LW, LH);
   g.imageSmoothingEnabled = false;
-  if (!PARTS) return canvas;
+  g.save(); g.scale(K, K);
 
   const size = +v.wheelSize || 19, offset = v.offset || 'flush';
-  const caliper = (CALIPER_COLORS[Math.min(4, lv.brakes || 0)] || null);
-  const dy = Math.round(FX.suspension.drop[Math.min(4, lv.suspension || 0)] * PX_PER_M);   // ride height
-  const des = cat => designOfVisual(v, cat);
-  const wheelDesign = des('wheels') ?? 4;
+  const caliper = CALIPER_COLORS[Math.min(4, lv.brakes || 0)] || '#3a3a3a';
+  const flare = v.kit === 'wide' ? 26 : 0;
+  const drop = [0, 9, 16, 22, 26][Math.min(4, lv.suspension || 0)];     // lower with suspension stages
 
-  g.save(); g.translate(OX, OY);
   // ground shadow + underglow
-  g.fillStyle = 'rgba(0,0,0,0.45)'; g.beginPath(); g.ellipse(332, GROUND + 3, 318, 9, 0, 0, 7); g.fill();
+  g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.ellipse(980, GROUND + 6, 960, 20, 0, 0, 7); g.fill();
   if (on('underglow') && v.neon && v.neon !== 'none') {
-    const gr = g.createRadialGradient(332, GROUND, 4, 332, GROUND, 300); gr.addColorStop(0, v.neon); gr.addColorStop(1, 'rgba(0,0,0,0)');
-    g.globalAlpha = 0.5; g.fillStyle = gr; g.beginPath(); g.ellipse(332, GROUND + 2, 300, 26, 0, 0, 7); g.fill(); g.globalAlpha = 1;
+    const gr = g.createRadialGradient(980, GROUND, 10, 980, GROUND, 900); gr.addColorStop(0, v.neon); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = 0.5; g.fillStyle = gr; g.beginPath(); g.ellipse(980, GROUND + 4, 900, 60, 0, 0, 7); g.fill(); g.globalAlpha = 1;
   }
-  // wheel wells are dark; wheels tuck in behind the body unless they poke out
-  const drawWells = () => { g.fillStyle = '#050506'; for (const cx of [FRONT_X, REAR_X]) { g.beginPath(); g.arc(cx, WHEEL_Y - 4 + dy, 56, 0, 7); g.fill(); } };
-  drawWells();
-  const wheelsBehind = offset !== 'poke' && !opts.showEngine;
-  if (on('wheels') && wheelsBehind) drawWheels(g, v, lv, wheelDesign, size, offset, caliper, layers);
 
-  // body (re-coloured), glass, tint
-  g.save(); g.translate(0, dy);
-  const tint = { none: 0.35, light: 0.55, medium: 0.72, limo: 0.9 }[v.tint] ?? 0.35;
-  g.drawImage(glassLayer(), 0, 0);                                         // see-through bits show the dark cabin
-  if (on('body')) {
-    const bc = recolored(v.paint || '#c41b1b', v.finish || 'gloss');
-    // a body-sized layer so the tint and decals stay inside the car
-    const lay = document.createElement('canvas'); lay.width = PARTS.body.width; lay.height = PARTS.body.height;
-    const lg = lay.getContext('2d'); lg.drawImage(bc, 0, 0);
-    if (on('windows')) { lg.globalCompositeOperation = 'source-atop'; fillPoly(lg, WINDOW_POLY, `rgba(2,4,8,${tint})`); lg.globalCompositeOperation = 'source-over'; }
-    g.drawImage(lay, 0, 0);
-  }
-  if (on('decals') && v.decal && v.decal !== 'none') { g.save(); g.translate(-OX, -OY); paintDecals(g, v, PARTS.bodypaint); g.restore(); }
-
-  // ----- parts on the body -----
-  const sk = des('skirts');
-  if (on('skirts') && sk != null && PARTS['skirt' + sk]) g.drawImage(PARTS['skirt' + sk], PLACE.skirt[0], PLACE.skirt[1], PLACE.skirt[2], PLACE.skirt[3]);
-  const sp = des('spoiler');
-  if (on('spoiler') && sp != null) { const [x, y, w] = SPOILER[sp] || SPOILER[0]; put(g, 'spoiler' + sp, x, y, w, true); }
-  const mi = des('mirrors');
-  if (on('mirrors') && mi != null) put(g, 'mirror' + mi, ...PLACE.mirror);
-  const ha = des('handles');
-  if (on('handles') && ha != null) put(g, 'handle' + ha, ...PLACE.handle);
-  const em = des('emblem');
-  if (on('emblem') && em != null) {
-    if (on('body')) { const bc = recolored(v.paint || '#c41b1b', v.finish || 'gloss'); g.drawImage(bc, 152, 104, 40, 20, 190, 102, 42, 22); }   // cover the factory badge with the panel beside it
-    put(g, ['emblem50w', 'emblem50r', 'emblempony0', 'emblempony1', 'emblemgt0', 'emblemgt1'][em], PLACE.emblem[0], PLACE.emblem[1] + 2, [26, 26, 34, 34, 30, 30][em]);
-  }
-  const hl = des('headlights');
-  if (on('lights') && hl != null) put(g, 'headlight' + hl, ...PLACE.headlight);
-  const tl = des('taillights');
-  if (on('lights') && tl != null) put(g, 'taillight' + tl, ...PLACE.taillight);
-  const tp = des('exhaustTips');
-  if (on('tips') && tp != null) put(g, 'tip' + tp, ...PLACE.tip);
+  // body layers ride lower on lowered suspension
+  g.save(); g.translate(0, drop);
+  if (flare) { const base = hex(v.paint); for (const cx of [FRONT_X, REAR_X]) { g.fillStyle = rgb(darken(base, 0.1)); g.beginPath(); g.arc(cx, 560, TIRE_R + 46, Math.PI * 0.98, Math.PI * 2.02); g.fill(); } }
+  if (on('body')) paintBody(g, v);
+  if (on('skirts')) paintSkirts(g, v);
+  if (on('windows')) paintWindows(g, v);
+  if (on('hood') && !opts.showEngine) paintHood(g, v);
+  if (on('front')) paintFront(g, v);
+  if (on('rear')) paintRear(g, v);
+  if (on('spoiler')) paintSpoiler(g, v);
+  if (on('lights')) paintLights(g, v);
+  paintBadges(g);
+  if (on('decals')) paintDecals(g, v);
+  // wheel wells (cut into the body), then the wheels sit in them at ground level
+  wheelArch(g, FRONT_X, 560 - 0, v, flare); wheelArch(g, REAR_X, 560 - 0, v, flare);
+  if (opts.showEngine) drawEngineBay(g, v, lv);
   g.restore();
 
-  if (on('wheels') && !wheelsBehind) drawWheels(g, v, lv, wheelDesign, size, offset, caliper, layers);
-
-  if (opts.showEngine) {
-    // engine bay cut-away drawn in the old reference coordinates (1983-wide), scaled onto this body
-    const k = 664 / 1874;
-    g.save(); g.translate(-52 * k, -124 * k + dy); g.scale(k, k);
-    drawEngineBay(g, v, lv);
-    g.restore();
-    if (on('wheels')) drawWheels(g, v, lv, wheelDesign, size, offset, caliper, layers);
-  }
+  const cy = GROUND - TIRE_R;
+  if (on('wheels')) { drawWheel(g, FRONT_X, cy, v, size, offset, caliper, 'front'); drawWheel(g, REAR_X, cy, v, size, offset, caliper, 'rear'); }
+  g.save(); g.translate(0, drop);
+  if (offset !== 'poke') { archLip(g, FRONT_X, 560, v, flare); archLip(g, REAR_X, 560, v, flare); }
+  g.restore();
   g.restore();
 
-  return canvas;
-}
-
-// ------------------------------------------------------------------ the other views
-// Front, rear and top views are built from the front / rear / top pictures, so the
-// parts you can't see from the side (bumpers, grilles, plates, hood, roof, trunk) still
-// show up on the car. Design 0 of each is the factory part.
-const pic = (cat, v, prefix) => `${prefix}${designOfVisual(v, cat) ?? 0}`;
-function fit(g, name, cx, y, w) { const im = PARTS[name]; if (!im) return 0; const h = im.height * w / im.width; g.drawImage(im, Math.round(cx - w / 2), Math.round(y), Math.round(w), Math.round(h)); return h; }
-
-export function drawFrontView(canvas, opts) {
-  const v = opts.visual || {};
-  canvas.width = 280; canvas.height = 128;
-  const g = canvas.getContext('2d'); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 280, 128);
-  if (!PARTS) return canvas;
-  g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.ellipse(140, 120, 120, 6, 0, 0, 7); g.fill();
-  const bn = pic('frontBumper', v, 'fbumper'), h = fit(g, bn, 140, 14, 248);
-  // the grille sits in the bumper's opening, the plate low on the splitter
-  fit(g, pic('grille', v, 'grille'), 140, 14 + h * 0.34, 132);
-  if (designOfVisual(v, 'plate') != null) fit(g, pic('plate', v, 'plate'), 140, 14 + h * 0.74, 44);
-  return canvas;
-}
-export function drawRearView(canvas, opts) {
-  const v = opts.visual || {};
-  canvas.width = 280; canvas.height = 128;
-  const g = canvas.getContext('2d'); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 280, 128);
-  if (!PARTS) return canvas;
-  g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.ellipse(140, 120, 110, 6, 0, 0, 7); g.fill();
-  const h = fit(g, pic('rearBumper', v, 'rbumper'), 140, 14, 232);
-  if (designOfVisual(v, 'plate') != null) fit(g, pic('plate', v, 'plate'), 140, 14 + h * 0.3, 54);
-  return canvas;
-}
-export function drawTopView(canvas, opts) {
-  const v = opts.visual || {};
-  canvas.width = 150; canvas.height = 250;
-  const g = canvas.getContext('2d'); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 150, 250);
-  if (!PARTS) return canvas;
-  let y = 4;
-  y += fit(g, pic('hood', v, 'hood'), 75, y, 138) + 4;
-  y += fit(g, pic('roof', v, 'roof'), 75, y, 134) + 4;
-  fit(g, pic('trunk', v, 'trunk'), 75, y, 112);
+  // crisp pixels: no half-transparent edges
+  const img = g.getImageData(0, 0, LW, LH), d = img.data;
+  for (let i = 3; i < d.length; i += 4) d[i] = d[i] > 110 ? 255 : 0;
+  g.putImageData(img, 0, 0);
   return canvas;
 }

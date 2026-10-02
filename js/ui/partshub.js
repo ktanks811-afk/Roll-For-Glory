@@ -13,9 +13,9 @@ import { installPart, pickColorFor } from './garage.js';
 import { audio } from '../core/audio.js';
 
 const PERF_CATS = ['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'ecu', 'transmission', 'clutch', 'diff', 'suspension', 'brakes', 'tires', 'weight', 'nitrous', 'twostep'];
-const VIS_CATS = ['wheels', 'paint', 'tint', 'spoiler', 'kit', 'frontBumper', 'rearBumper', 'skirts', 'hood', 'exhaustTips', 'headlights', 'taillights', 'decal', 'neon', 'interior', 'mirrors', 'handles', 'emblem', 'roof', 'trunk', 'grille', 'plate'];
+const VIS_CATS = ['wheels', 'paint', 'tint', 'spoiler', 'kit', 'frontBumper', 'rearBumper', 'skirts', 'hood', 'exhaustTips', 'headlights', 'taillights', 'decal', 'neon', 'interior'];
 const ICONS = { engine: '⚙', turbo: '🌀', supercharger: '🔩', intake: '🌬', exhaust: '💨', intercooler: '❄', fuel: '⛽', ecu: '💻', transmission: '⚙', clutch: '◎', diff: '⊕', suspension: '⇕', brakes: '⛔', tires: '◯', weight: '⚖', nitrous: '🧪', twostep: '🔥',
-  wheels: '◉', paint: '🎨', tint: '▦', spoiler: '⎺', kit: '▭', frontBumper: '▔', rearBumper: '▁', skirts: '═', hood: '▱', exhaustTips: '◍', headlights: '💡', taillights: '🔴', decal: '✦', neon: '✺', interior: '💺', mirrors: '◖', handles: '▬', emblem: '🐎', roof: '▭', trunk: '▤', grille: '▦', plate: '🪪' };
+  wheels: '◉', paint: '🎨', tint: '▦', spoiler: '⎺', kit: '▭', frontBumper: '▔', rearBumper: '▁', skirts: '═', hood: '▱', exhaustTips: '◍', headlights: '💡', taillights: '🔴', decal: '✦', neon: '✺', interior: '💺' };
 
 const view = { tab: 'shop', cat: 'turbo', brand: '', q: '', fitOnly: true, sort: 'pop' };
 
