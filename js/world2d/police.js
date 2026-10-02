@@ -54,6 +54,7 @@ export class PoliceSystem {
     this.seen = false;
     this.decayHold = 0;
     this.noiseAtt = 0;   // 0..1: how much attention a loud exhaust has drawn
+    this.suspicion = 0;  // builds while a cop watches you speed or burn rubber; a chase starts when it fills
     this.record = [];    // what you did since the last stop: [{ kind, text, fine }]
   }
   get level() { return Math.floor(clamp(this.s.heat, 0, 5.99)); }
@@ -69,11 +70,11 @@ export class PoliceSystem {
   }
 
   // Did any unit see the player this frame?
-  detect(px, pz) {
+  detect(px, pz, range = 115) {
     let seen = false;
     for (const c of this.allCars()) {
       const d = Math.hypot(c.x - px, c.z - pz);
-      if (d < 115 && lineOfSight(this.map, c.x, c.z, px, pz)) { seen = true; break; }
+      if (d < range && lineOfSight(this.map, c.x, c.z, px, pz)) { seen = true; break; }
     }
     if (!seen && this.heli) {
       const inTunnel = px > TUNNEL[0] && px < TUNNEL[1] && Math.abs(pz - HWY_Z) < HWY_W;
@@ -104,8 +105,8 @@ export class PoliceSystem {
 
     // ---- patrols (part of traffic) ----
     this.patrols = this.patrols.filter(c => Math.hypot(c.x - p.x, c.z - p.z) < 600);
-    const wantPatrol = this.phase === 'none' ? (w.inCity ? 3 : 1) : 0;
-    if (this.patrols.length < wantPatrol && Math.random() < dt * 0.5) {
+    const wantPatrol = this.phase === 'none' ? (w.inCity ? 2 : 1) : 0;
+    if (this.patrols.length < wantPatrol && Math.random() < dt * 0.25) {
       const c = w.traffic.spawnNear(p.x, p.z, 200, 450, { police: true, model: CAR_BY_ID[pick(PATROL_MODELS)] });
       if (c) { c.police = true; this.patrols.push(c); }
     }
@@ -116,11 +117,28 @@ export class PoliceSystem {
     if (this.seen) { this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz }; this.unseenT = 0; }
     else this.unseenT += dt;
 
-    // offences only count when a cop can see them (w.offence set by world)
-    if (this.seen && w.offence) {
-      this.addHeat(w.offence.heat, w.offence.text, w.hud);
-      this.note(w.offence);
-      if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') this.startChase(w);
+    // Offences only count when a cop is close enough to actually see them.
+    // Speeding and burnouts have to go on for a few seconds before anyone
+    // reacts; running a light or hitting something gets noticed at once.
+    const witnessed = p.inCar && (this.phase !== 'none' ? this.seen : this.detect(p.x, p.z, 65));
+    const o = w.offence;
+    if (witnessed && o) {
+      const gradual = o.kind === 'speeding' || o.kind === 'burnout';
+      if (this.phase === 'none' && gradual) {
+        this.suspicion += o.heat;
+        this.suspicionHold = 2;
+        if (this.suspicion >= 1) {
+          this.suspicion = 0;
+          this.addHeat(o.heat, o.text, w.hud); this.note(o); this.startChase(w);
+        }
+      } else {
+        this.addHeat(o.heat, o.text, w.hud);
+        this.note(o);
+        if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') this.startChase(w);
+      }
+    } else if (this.suspicion > 0) {
+      this.suspicionHold = (this.suspicionHold || 0) - dt;
+      if (this.suspicionHold <= 0) this.suspicion = Math.max(0, this.suspicion - dt * 0.3);
     }
 
     this.hear(dt, w);
@@ -219,7 +237,7 @@ export class PoliceSystem {
     const range = hearingRange(db);
     const near = this.allCars().some(c => Math.hypot(c.x - p.x, c.z - p.z) < range);
     const over = (db - LEGAL_DB) / 10;
-    this.noiseAtt = Math.min(1.2, this.noiseAtt + dt * 0.09 * (0.6 + over) * (near ? 1 : 0.35));
+    this.noiseAtt = Math.min(1.2, this.noiseAtt + dt * 0.05 * (0.6 + over) * (near ? 1 : 0.12));
     if (this.noiseAtt < 1) return;
     this.noiseAtt = 0;
     if (this.phase !== 'none') { this.note({ kind: 'noise', text: `Excessive exhaust noise — ${Math.round(db)} dB (limit ${LEGAL_DB}).`, fine: 400 }); return; }

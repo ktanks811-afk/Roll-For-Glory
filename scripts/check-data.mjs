@@ -281,5 +281,28 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!(s2.L > s1.L * 1.3 && s2.W > s1.W)) bad('a Raptor should be much bigger than a Civic');
   if (shapeOf(CAR_BY_ID.ford_mustang_gt_s650_2024).arch === shapeOf(CAR_BY_ID.chevrolet_corvette_stingray_c8_2020).arch) bad('Mustang and C8 share a roofline archetype');
 }
+
+// ---- police are patient: a few seconds of speeding in sight, not one frame ----
+{
+  const { PoliceSystem } = await import('../js/world2d/police.js');
+  const map = buildMap();
+  const st = createState({ name: 'T', age: 25, look: {}, story: false });
+  const P = new PoliceSystem(map, st);
+  const cop = { x: 20, z: 0, update() {}, police: true };
+  P.patrols = [cop];
+  const calls = [];
+  const w = { player: { x: 0, z: 0, vx: 0, vz: 0, speed: 30, h: 0, inCar: true, carName: 'x' }, inCity: false, traffic: { spawnNear() { return null; } }, trafficCtx: {}, hud: { radio() {} }, audio: { siren() {}, music() {} },
+    streetAt: () => 'Main St', districtAt: () => 'Downtown', liveDb: 70, offence: null };
+  P.startChase = () => calls.push('chase');
+  w.offence = { heat: 0.45 / 60, text: 'Speeding', kind: 'speeding', fine: 200 };
+  for (let i = 0; i < 60; i++) P.update(1 / 60, w);                 // 1 s of speeding right in front of a cop
+  if (calls.length) bad('one second of speeding should not start a chase');
+  for (let i = 0; i < 60 * 3; i++) P.update(1 / 60, w);
+  if (!calls.length) bad('sustained speeding in front of a cop should start a chase');
+  const P2 = new PoliceSystem(map, st); P2.patrols = [{ x: 200, z: 0, update() {}, police: true }]; P2.startChase = () => calls.push('far');
+  calls.length = 0;
+  for (let i = 0; i < 60 * 6; i++) P2.update(1 / 60, w);
+  if (calls.length) bad('a cop 200 m away should not see you speed');
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

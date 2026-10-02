@@ -155,8 +155,10 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   hit Set GPS: the route lights up on the map right away and the minimap picks
   it up. Tap any empty spot to drop a pin and navigate there. Your car, cops
   and other players show up too.
-- **Police.** Five heat levels. Patrols have to actually see you speeding,
-  running reds or hitting cars. Pursuit units drive in from precincts. When
+- **Police.** Five heat levels. A cop has to be close (about 65 m) and have
+  line of sight. Speeding (30+ mph over) and burnouts have to go on for a few
+  seconds before anyone reacts; running reds or hitting cars gets noticed at
+  once. Fewer patrols cruise the city and noise complaints build slowly. Pursuit units drive in from precincts. When
   they lose you they set up a search zone, and you need a cooldown to
   escape. Roadblocks and spike strips start at level 4, and a helicopter
   joins at level 5. Getting busted means fines and impound.

@@ -427,7 +427,7 @@ export class World {
     // ---- offences (only matter if a cop sees them) ----
     const edge = onRoad?.edge;
     const limit = edge ? (edge.kind === 'highway' ? 29 : edge.kind === 'desert' ? 24.6 : 15.6) : 15.6;
-    if (v.speed > limit + 9) this.setOffence(dt * (v.speed > limit + 20 ? 0.9 : 0.45), `Speeding — ${Math.round(v.speed * MPH)} in a ${Math.round(limit * MPH)}.`, undefined, 'speeding', 150 + Math.round(Math.max(0, (v.speed - limit) * MPH - 10) * 18));
+    if (v.speed > limit + 13) this.setOffence(dt * (v.speed > limit + 24 ? 0.9 : 0.45), `Speeding — ${Math.round(v.speed * MPH)} in a ${Math.round(limit * MPH)}.`, undefined, 'speeding', 150 + Math.round(Math.max(0, (v.speed - limit) * MPH - 10) * 18));
     if (v.sim.slip > 0.4 && v.speed < 8) this.setOffence(dt * 0.25, 'Exhibition of speed (burnout).', undefined, 'burnout', 450);
     // red lights
     const node = this.map.roads.nearestNode(v.x, v.z);
