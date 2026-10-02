@@ -57,6 +57,14 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   tighter and burn bigger. Flames come only from a 2-step: without one, gas +
   brake just revs into the limiter. It works on the drag strip, at street meets
   (Rev it) and when you're stopped on the street. Not for EVs.
+- **Online free roam.** Title screen → Play Online (or Pause → Online Free
+  Roam). Join a room code (default `PORT-SOLACE`; share your own with friends)
+  and everyone in the room shares the map live: their cars with the real
+  paint/parts, name tags, minimap dots, horns, 2-step flames, and chat. Police
+  are off while you're online. It uses Supabase Realtime *broadcast* only — no
+  tables, no accounts, nothing stored — and all incoming data is sanitised.
+  Cars don't collide online, and the clock/weather are per player. For testing
+  without a server, open `?net=local` in two tabs of the same browser.
 - **Police.** Five heat levels. Patrols have to actually see you speeding,
   running reds or hitting cars. Pursuit units drive in from precincts. When
   they lose you they set up a search zone, and you need a cooldown to

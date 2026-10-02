@@ -17,6 +17,8 @@ import { openPhone } from './phone.js';
 import { touchUi } from './touch.js';
 import { openGarage } from './garage.js';
 import { openRaceMenu } from './raceSetup.js';
+import { openOnline } from './online.js';
+import { online } from '../net/online.js';
 
 // ---------------- animated backdrop ----------------
 const HERO = [
@@ -77,6 +79,7 @@ export function showTitle(app) {
     <div class="title-tag">BUILD YOUR CAR. BUILD YOUR NAME. ROLL FOR GLORY.</div>
     <nav class="menu">
       <button data-action="continue" ${need ? 'disabled' : ''}>Continue${latest ? `<small>${esc(latest.name)} · Day ${latest.day} · ${fmtMoney(latest.cash)} · ${slotName(latest.slot)}</small>` : '<small>No saved career yet</small>'}</button>
+      <button data-action="online" ${need ? 'disabled' : ''}>Play Online<small>Free roam with other players</small></button>
       <button data-action="new">New Game</button>
       <button data-action="load">Load Game</button>
       <button data-action="garage" ${need ? 'disabled' : ''}>Garage</button>
@@ -99,6 +102,7 @@ export function showTitle(app) {
   };
   bind(t, {
     continue: () => resume(),
+    online: () => resume(() => openOnline(app)),
     new: () => openCreate(app),
     load: () => openSlots('load', app),
     garage: () => resume(() => openGarage(app)),
@@ -118,6 +122,7 @@ export function openPause(app) {
     root.innerHTML = `<div class="p-head"><h1>Paused<small>${esc(game.s.player.name)} · Day ${game.s.time.day}</small></h1><button class="btn x" data-action="close">×</button></div>
       <div class="p-body"><nav class="menu" style="width:100%;max-width:420px">
         <button data-action="close">Resume</button>
+        <button data-action="online">Online Free Roam<small>${online.active ? `Connected · room ${esc(online.room)}` : 'See other players on the map'}</small></button>
         <button data-action="save">Save Game<small>3 manual slots plus autosave</small></button>
         <button data-action="load">Load Game</button>
         <button data-action="settings">Settings</button>
@@ -126,6 +131,7 @@ export function openPause(app) {
       </nav></div>`;
     bind(root, {
       close: () => h.close(),
+      online: () => openOnline(app),
       save: () => openSlots('save', app),
       load: () => openSlots('load', app),
       settings: () => openSettings(app),

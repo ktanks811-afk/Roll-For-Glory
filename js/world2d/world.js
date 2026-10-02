@@ -10,7 +10,7 @@ import { carSprite, drawCar, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
-import { game, activeCar, carSpec, levels, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
+import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { settings, saveGame } from '../core/save.js';
@@ -18,6 +18,7 @@ import { emit } from '../core/events.js';
 import { MPH } from '../sim/powertrain.js';
 import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
+import { online } from '../net/online.js';
 
 let MAP = null;
 export function getMap() { if (!MAP) { MAP = buildMap(); MAP.lights = buildStreetLights(MAP); MAP.overview = renderOverview(MAP); } return MAP; }
@@ -129,6 +130,9 @@ export class World {
     if (this.inCar && !this.vehicle) this.inCar = false;
     if (this.inCar && this.vehicle) this.updateDriving(dt);
     else this.updateFoot(dt);
+    // online free roam: the cops stay out of it
+    if (online.active) { this.offence = null; if (this.police.phase !== 'none' || s.heat > 0) this.police.reset(this); }
+    this.updateOnline(dt);
 
     // traffic + police
     const inCity = Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000;
@@ -172,6 +176,67 @@ export class World {
     this.saveT += dt;
     if (this.saveT > 45) { this.saveT = 0; saveGame('auto', true); }
     this.ui.hud.update(this);
+  }
+
+  // ---------------------------------------------------------------- online
+  updateOnline(dt) {
+    if (!online.active) return;
+    const p = this.playerState();
+    const walking = !this.inCar && this.foot.moving;
+    // keep the car other players see up to date (parts, paint, damage-free look)
+    this.onlineMeT = (this.onlineMeT || 0) - dt;
+    if (this.onlineMeT <= 0) {
+      this.onlineMeT = 1;
+      const car = activeCar(this.s);
+      if (car) online.me = { name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n };
+    }
+    const speed = this.inCar ? (this.vehicle.rev < 0 ? -p.speed : p.speed) : walking ? 3 : 0;
+    online.tick(dt, { x: p.x, z: p.z, h: p.h, speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0 });
+  }
+
+  // Sprite for another player's car (cached until their build changes).
+  peerSprite(p) {
+    const key = JSON.stringify([p.model.id, p.visual, p.levels]);
+    if (p.spriteKey !== key) { p.sprite = carSprite(p.model.body, p.visual, p.levels, null); p.spriteKey = key; }
+    return p.sprite;
+  }
+
+  drawPeers(ctx, v) {
+    const cam = this.cam;
+    const peers = online.list().filter(p => !p.fresh && p.x > v.x0 - 8 && p.x < v.x1 + 8 && p.z > v.z0 - 8 && p.z < v.z1 + 8);
+    for (const p of peers) {
+      if (p.inCar) {
+        this.drawShadow(ctx, p.x, p.z, p.h, DIMS[p.model.body] || DIMS.sedan);
+        drawCar(ctx, this.peerSprite(p), cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom);
+      } else {
+        drawPerson(ctx, cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom, { top: '#3a6bff' }, p.sp ? p.walk : 0);
+      }
+    }
+    return peers;
+  }
+
+  drawPeerFlames(ctx, peers) {
+    const cam = this.cam;
+    for (const p of peers) {
+      if (!p.inCar || p.flame < 0.04) continue;
+      ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h); ctx.scale(cam.zoom, cam.zoom);
+      drawFlameJets(ctx, p.model.body, p.visual, p.flame);
+      ctx.restore();
+    }
+  }
+
+  drawPeerTags(ctx, peers) {
+    const cam = this.cam;
+    ctx.save();
+    ctx.font = '600 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const p of peers) {
+      const x = cam.sx(p.x), y = cam.sy(p.z) - (p.inCar ? 3.2 : 1.8) * cam.zoom;
+      const w = ctx.measureText(p.name).width + 14;
+      ctx.fillStyle = 'rgba(8,9,12,0.78)'; ctx.fillRect(x - w / 2, y - 9, w, 18);
+      ctx.fillStyle = '#ff2a3a'; ctx.fillRect(x - w / 2, y - 9, 2, 18);
+      ctx.fillStyle = '#f2f4f8'; ctx.fillText(p.name, x, y + 1);
+    }
+    ctx.restore();
   }
 
   vehicleMover() {
@@ -265,7 +330,7 @@ export class World {
       auto: settings.transmission === 'auto',
     }, { grip, drag: paved ? 0 : sand ? 2.2 : 1.6, noFuel });
     if (v.shifted) { v.shifted = false; audio.shift(); }
-    if (input.pressed('horn')) audio.horn();
+    if (input.pressed('horn')) { audio.horn(); online.honk(); }
     // gas + brake while stopped: rev it. With a 2-step it holds the launch rpm
     // and throws flames; without one it just revs into the limiter.
     if (!this.limiter || this.limiter.spec !== v.spec || this.limiter.car !== car) {
@@ -518,6 +583,8 @@ export class World {
     }
     if (!this.inCar) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
 
+    const livePeers = online.active ? this.drawPeers(ctx, v) : [];
+
     // smoke
     for (const sm of this.smoke) {
       ctx.fillStyle = sm.dark ? `rgba(40,40,40,${sm.a * sm.life / 2})` : `rgba(220,220,220,${sm.a * sm.life / 1.4})`;
@@ -542,6 +609,7 @@ export class World {
     if (night > 0.03) {
       const glows = [], blobs = [];
       const carsLit = cars.filter(c => c.x > v.x0 && c.x < v.x1 && c.z > v.z0 && c.z < v.z1).map(c => ({ x: c.x, z: c.z, h: c.h, lightsOn: true, beam: 22 }));
+      for (const p of livePeers) if (p.inCar) carsLit.push({ x: p.x, z: p.z, h: p.h, lightsOn: true, beam: 28 });
       if (this.vehicle && this.inCar && this.vehicle.car.cond.lights >= 20) carsLit.push({ x: this.vehicle.x, z: this.vehicle.z, h: this.vehicle.h, lightsOn: true, beam: 34 });
       const pulse = Math.sin(this.t * 14) > 0;
       for (const c of [...this.police.patrols.filter(p => this.police.active), ...this.police.units, ...this.police.blocks.flatMap(b => b.cars)]) {
@@ -594,6 +662,7 @@ export class World {
       drawFlameJets(ctx, pv.model.body, pv.car.visual, this.flame);
       ctx.restore();
     }
+    if (livePeers.length) { this.drawPeerFlames(ctx, livePeers); this.drawPeerTags(ctx, livePeers); }
     drawRain(ctx, cam, s.weather === 'rain' ? 1 : 0, dt);
     if (s.weather === 'fog') { ctx.fillStyle = 'rgba(180,185,195,0.28)'; ctx.fillRect(0, 0, W, H); }
     ctx.restore();

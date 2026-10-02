@@ -132,3 +132,7 @@ body.touch .race-sub { font-size: 14px; top: 44%; }
 
 /* a drag race has no lanes to change, so no steering arrows */
 #touch[data-race="drag"] .tc-arrows { display: none; }
+
+/* online free roam badge (all devices) */
+.hud-online { pointer-events: auto; margin-top: calc(var(--u, 1px) * 5); align-self: flex-start; background: rgba(10, 10, 12, .72); color: #3ddc84; border: 1px solid rgba(61, 220, 132, .45); border-radius: 999px; padding: calc(var(--u, 1px) * 3) calc(var(--u, 1px) * 9); font: 700 calc(var(--u, 1px) * 12) Rajdhani, sans-serif; letter-spacing: .04em; touch-action: none; }
+.hud-online.hidden { display: none; }

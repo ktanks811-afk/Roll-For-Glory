@@ -9,6 +9,8 @@ import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
+import { initOnline } from './ui/online.js';
+import { online } from './net/online.js';
 import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
 import { openPhone } from './ui/phone.js';
@@ -63,6 +65,7 @@ export function enterWorld() {
 }
 
 export function leaveWorld() {
+  online.leave();
   if (app.world) { app.world.destroy(); app.world = null; }
   if (app.hud) app.hud.show(false);
   touchUi.show(false);
@@ -199,7 +202,8 @@ async function boot() {
     showTitle(app);
     $('#boot').style.display = 'none';
     requestAnimationFrame(frame);
-    window.__rfg = { app, game, ui };
+    window.__rfg = { app, game, ui, online };
+    initOnline(app);
   } catch (e) {
     console.error(e);
     $('#boot-msg').textContent = 'Failed to start: ' + e.message;

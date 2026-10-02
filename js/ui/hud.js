@@ -10,6 +10,7 @@ import { MPH } from '../sim/powertrain.js';
 import { input, touch, isTouchDevice } from '../core/input.js';
 import { touchUi } from './touch.js';
 import { audio } from '../core/audio.js';
+import { online } from '../net/online.js';
 
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · P phone · M map · C zoom',
@@ -25,6 +26,7 @@ export class Hud {
       <div class="hud-tl">
         <div class="hud-clock"><span data-time></span><small data-day></small></div>
         <div class="hud-place" data-place></div>
+        <button class="hud-online hidden" data-online aria-label="Online players"></button>
         <div class="hud-objective" data-obj></div>
         <div class="hud-mini"><canvas width="200" height="200" data-mini></canvas><div class="mini-n">N</div></div>
       </div>
@@ -52,6 +54,7 @@ export class Hud {
     this.last = 0;
     this.radioLines = [];
     this.helpCtx = null;
+    this.q('online').addEventListener('pointerdown', async e => { e.preventDefault(); const { openOnline } = await import('./online.js'); const { app } = await import('../main.js'); openOnline(app); });
     this.root.querySelectorAll('[data-tp]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); touch.press(b.dataset.tp); }));
   }
 
@@ -77,6 +80,9 @@ export class Hud {
     const p = w.playerState();
     const street = w.streetAt(p.x, p.z);
     this.q('place').textContent = `${street ? street + ' · ' : ''}${districtAt(p.x, p.z)}`;
+    const ob = this.q('online');
+    ob.classList.toggle('hidden', !online.active);
+    if (online.active) ob.textContent = `🌐 ${online.room} · ${online.list().length + 1} online`;
     this.q('cash').textContent = fmtMoney(s.cash);
     this.q('bank').textContent = s.bank ? `Bank ${fmtMoney(s.bank)}` : '';
     const t = tierOf(s.rep), nt = nextTier(s.rep);
@@ -177,6 +183,13 @@ export class Hud {
       const [a, b] = m(w.police.lastSeen.x, w.police.lastSeen.z);
       g.strokeStyle = w.police.phase === 'cooldown' ? '#ffc800' : '#ff2a3a'; g.lineWidth = 2;
       g.beginPath(); g.arc(a, b, w.police.searchR * scale, 0, Math.PI * 2); g.stroke();
+    }
+    // other players
+    if (online.active) for (const o of online.list()) {
+      if (o.fresh) continue;
+      const [a, b] = m(o.x, o.z);
+      if (a < -8 || a > S + 8 || b < -8 || b > S + 8) continue;
+      g.fillStyle = '#3ddc84'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.arc(a, b, 4.5, 0, Math.PI * 2); g.fill(); g.stroke();
     }
     // your parked car
     if (w.vehicle && !w.inCar) { const [a, b] = m(w.vehicle.x, w.vehicle.z); g.fillStyle = '#4af'; g.fillRect(a - 3, b - 3, 6, 6); }

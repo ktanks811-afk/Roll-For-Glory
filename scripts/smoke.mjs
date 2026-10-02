@@ -8,7 +8,8 @@ const shots = !!process.env.SHOTS;
 import fs from 'fs'; if (shots) fs.mkdirSync(OUT, { recursive: true });
 const exe = fs.existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome') ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined;
 const b = await chromium.launch({ executablePath: exe });
-const p = await b.newPage({ viewport: { width: 1280, height: 760 } });
+const mainCtx = await b.newContext({ viewport: { width: 1280, height: 760 } });   // shared by the online test's second tab
+const p = await mainCtx.newPage();
 p.setDefaultTimeout(8000);
 const errs = [];
 p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push('console: ' + m.text()); });
@@ -188,7 +189,7 @@ await step('2-step flames (street + meet)', async () => {
   const world = () => p.evaluate(() => { const w = window.__rfg.app.world; return { inCar: w.inCar, flame: w.flame, flames: w.limiter?.flames || 0, rpm: Math.round(w.vehicle.sim?.rpm || 0), sp: w.vehicle.speed }; });
   await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; w.paused = false; });
   const rev = async ms => {
-    for (let i = 0; i < 80 && (await world()).sp > 0.8; i++) { await p.keyboard.down('KeyS'); await p.waitForTimeout(100); await p.keyboard.up('KeyS'); }
+    await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = 0; v.vz = 0; v.rev = 0; if (v.sim) v.sim.v = 0; });   // stopped, like a car parked at the lights
     await p.keyboard.down('KeyW'); await p.keyboard.down('KeyS'); await p.waitForTimeout(ms); const r = await world(); await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW'); await p.waitForTimeout(300); return r; };
   // 1. no 2-step: revs hard but never any flames
   await p.evaluate(() => { const s = window.__rfg.game.s; const c = s.cars.find(c => c.uid === s.activeCar); delete c.parts.twostep; });
@@ -231,6 +232,70 @@ await step('save + reload', async () => {
   await p.waitForTimeout(800);
   const ok = await p.evaluate(() => window.__rfg.game.s?.player.name);
   if (ok !== 'Tester') throw new Error('save did not load');
+});
+
+// ---------------- online free roam (two tabs, same-browser transport) ----------------
+await step('online free roam', async () => {
+  const p2 = await p.context().newPage(); p2.setDefaultTimeout(8000);
+  p2.on('pageerror', e => errs.push('p2 pageerror: ' + e.message));
+  p2.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push('p2 console: ' + m.text()); });
+  await p2.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+  await p2.goto(URL, { waitUntil: 'domcontentloaded' });
+  await p2.waitForFunction(() => window.__rfg, null, { timeout: 15000 });
+  await p2.waitForTimeout(500);
+  await p2.click('.menu button:has-text("Continue")');
+  await p2.waitForTimeout(800);
+  const join = pg => pg.evaluate(async () => {
+    const { meFromGame } = await import('./js/ui/online.js');
+    const r = window.__rfg; r.app.world.paused = false;
+    const ok = await r.online.join('smoke-room', meFromGame(), 'local');
+    return ok && r.online.active;
+  });
+  if (!(await join(p)) || !(await join(p2))) throw new Error('could not join the room');
+  // put tab 2's car + body right next to tab 1's player
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; window.__rfg.game.s.heat = 2.5; });
+  const pos = await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; return { x: v.x, z: v.z, h: v.h }; });
+  await p2.evaluate(pos => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.x = pos.x + 9; w.vehicle.z = pos.z - 3; w.vehicle.h = pos.h; }, pos);
+  await p.waitForTimeout(2200);
+  const seen = await p.evaluate(() => window.__rfg.online.list().map(o => ({ name: o.name, car: o.model.id, x: o.x, z: o.z })));
+  console.log('     tab1 sees', JSON.stringify(seen), 'me', JSON.stringify(pos));
+  if (seen.length !== 1) throw new Error('tab 1 does not see exactly one other racer');
+  if (Math.hypot(seen[0].x - (pos.x + 9), seen[0].z - (pos.z - 3)) > 4) throw new Error('remote car is in the wrong place');
+  await snap('22-online');
+  // free roam: heat is cleared and offences ignored
+  const heat = await p.evaluate(() => window.__rfg.game.s.heat);
+  if (heat !== 0) throw new Error('police heat not cleared while online');
+  // chat + honk reach the other tab
+  await p.evaluate(() => { window.__rfg.online.say('hello <b>there</b>'); window.__rfg.online.honk(); });
+  await p2.waitForTimeout(400);
+  const chat = await p2.evaluate(() => window.__rfg.online.chat.map(c => c.text));
+  if (!chat.some(t => t.includes('hello'))) throw new Error('chat did not arrive');
+  if (chat.some(t => t.includes('<'))) throw new Error('chat was not sanitised');
+  // hostile packets must not break anything
+  await p.evaluate(() => {
+    const ch = new BroadcastChannel('rfg:SMOKE-ROOM');
+    ch.postMessage({ k: 'h', id: 'evil1', n: '<img src=x onerror=alert(1)>'.repeat(5), m: '__proto__', v: { paint: 'url(javascript:1)' } });
+    ch.postMessage({ k: 'h', id: 'evil2', n: 'Eve', m: window.__rfg.game.s.cars[0].modelId, v: { paint: 'red;}</style><script>', plate: '<script>' }, l: { turbo: 99999 } });
+    ch.postMessage({ k: 's', id: 'evil2', x: 'NaN', z: Infinity, h: {}, v: 1e99, c: 1, f: -5 });
+    ch.postMessage(null); ch.postMessage('str'); ch.postMessage({ k: 's' });
+  });
+  await p.waitForTimeout(500);
+  const evil = await p.evaluate(() => window.__rfg.online.list().filter(o => o.id === 'evil2').map(o => ({ paint: o.visual.paint, plate: o.visual.plate, t: o.levels.turbo, name: o.name })));
+  console.log('     hostile peer sanitised to', JSON.stringify(evil));
+  if (evil.length && (evil[0].paint.includes('<') || evil[0].plate.includes('<') || evil[0].t > 4)) throw new Error('hostile data got through');
+  // the online panel opens and lists the other racer
+  await p.evaluate(async () => { const { openOnline } = await import('./js/ui/online.js'); openOnline(window.__rfg.app); });
+  await p.waitForTimeout(300);
+  if (!(await p.$('[data-peers] .li'))) throw new Error('online panel lists nobody');
+  await snap('23-online-panel');
+  await p.keyboard.press('Escape');
+  // leaving makes you vanish from the other tab
+  await p2.evaluate(() => window.__rfg.online.leave());
+  await p.waitForTimeout(300);
+  const gone = await p.evaluate(() => window.__rfg.online.list().filter(o => o.name !== 'Eve').length);
+  if (gone !== 0) throw new Error('left racer is still shown');
+  await p.evaluate(() => window.__rfg.online.leave());
+  await p2.close();
 });
 
 // ---------------- phone controls (separate touch context) ----------------
