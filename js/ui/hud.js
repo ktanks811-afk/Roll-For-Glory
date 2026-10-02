@@ -11,6 +11,7 @@ import { input, touch, isTouchDevice } from '../core/input.js';
 import { touchUi } from './touch.js';
 import { audio } from '../core/audio.js';
 import { online } from '../net/online.js';
+import { MiniMap } from './minimap.js';
 import { LEGAL_DB } from '../sim/sound.js';
 
 const HELP = {
@@ -52,7 +53,7 @@ export class Hud {
       <div class="hud-help" data-help></div>
     `;
     this.q = s => this.root.querySelector(`[data-${s}]`);
-    this.mini = this.q('mini').getContext('2d');
+    this.minimap = new MiniMap(this.q('mini'));
     this.last = 0;
     this.radioLines = [];
     this.helpCtx = null;
@@ -74,6 +75,7 @@ export class Hud {
 
   update(w) {
     const now = performance.now();
+    this.minimap.draw(w, w.playerState());   // every frame, so it turns smoothly
     if (now - this.last < 66) return;
     this.last = now;
     const s = game.s;
@@ -156,58 +158,6 @@ export class Hud {
       this.q('carname').textContent = `${v.car.year} ${v.model.model}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : ''}`;
     }
     this.renderRadio();
-    this.drawMinimap(w, p);
-  }
-
-  drawMinimap(w, p) {
-    const g = this.mini, S = 200;
-    const ov = w.map.overview;
-    const scale = 0.5;                // px per metre on the minimap
-    const span = S / scale;           // metres across
-    g.save();
-    g.fillStyle = '#0c0d10'; g.fillRect(0, 0, S, S);
-    const sx = (p.x - span / 2 - ov.x0) * ov.scale, sz = (p.z - span / 2 - ov.z0) * ov.scale;
-    g.imageSmoothingEnabled = true;
-    g.drawImage(ov.canvas, sx, sz, span * ov.scale, span * ov.scale, 0, 0, S, S);
-    const m = (x, z) => [(x - p.x) * scale + S / 2, (z - p.z) * scale + S / 2];
-    // gps
-    if (w.gpsPath && game.s.gps) {
-      g.strokeStyle = '#ff2a3a'; g.lineWidth = 3; g.beginPath();
-      w.gpsPath.forEach(([x, z], i) => { const [a, b] = m(x, z); i ? g.lineTo(a, b) : g.moveTo(a, b); }); g.stroke();
-    }
-    // places
-    g.font = '11px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (const l of LOCATIONS) {
-      const [a, b] = m(l.x, l.z);
-      if (a < -8 || a > S + 8 || b < -8 || b > S + 8) continue;
-      g.fillStyle = l.color; g.beginPath(); g.arc(a, b, 6, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#000'; g.fillText(ICON[l.icon] || '•', a, b + 1);
-    }
-    // cops
-    for (const u of [...w.police.units, ...w.police.patrols]) {
-      const [a, b] = m(u.x, u.z);
-      g.fillStyle = performance.now() % 400 < 200 ? '#ff2a3a' : '#2a6bff';
-      g.fillRect(a - 3, b - 3, 6, 6);
-    }
-    if (w.police.lastSeen && (w.police.phase === 'search' || w.police.phase === 'cooldown')) {
-      const [a, b] = m(w.police.lastSeen.x, w.police.lastSeen.z);
-      g.strokeStyle = w.police.phase === 'cooldown' ? '#ffc800' : '#ff2a3a'; g.lineWidth = 2;
-      g.beginPath(); g.arc(a, b, w.police.searchR * scale, 0, Math.PI * 2); g.stroke();
-    }
-    // other players
-    if (online.active) for (const o of online.list()) {
-      if (o.fresh) continue;
-      const [a, b] = m(o.x, o.z);
-      if (a < -8 || a > S + 8 || b < -8 || b > S + 8) continue;
-      g.fillStyle = '#3ddc84'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.arc(a, b, 4.5, 0, Math.PI * 2); g.fill(); g.stroke();
-    }
-    // your parked car
-    if (w.vehicle && !w.inCar) { const [a, b] = m(w.vehicle.x, w.vehicle.z); g.fillStyle = '#4af'; g.fillRect(a - 3, b - 3, 6, 6); }
-    // player arrow
-    g.translate(S / 2, S / 2); g.rotate(p.h);
-    g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 1.5;
-    g.beginPath(); g.moveTo(0, -8); g.lineTo(6, 6); g.lineTo(0, 3); g.lineTo(-6, 6); g.closePath(); g.fill(); g.stroke();
-    g.restore();
   }
 
   show(v) { this.root.classList.toggle('hidden', !v); }

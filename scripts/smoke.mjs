@@ -321,6 +321,32 @@ await step('online free roam', async () => {
   await p2.close();
 });
 
+// ---------------- minimap ----------------
+await step('minimap', async () => {
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await p.waitForTimeout(500);
+  const px = () => p.evaluate(() => { const c = document.querySelector('.hud-mini canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0, red = 0; for (let i = 0; i < d.length; i += 16) { if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; if (d[i] > 200 && d[i + 1] < 90) red++; } return { lit, red, w: c.width }; });
+  const a = await px();
+  console.log('     minimap', JSON.stringify(a));
+  if (a.w < 220) throw new Error('minimap canvas is too small');
+  if (a.lit < 1500) throw new Error('minimap is nearly empty');
+  // sharp tiles are built around you (not just the blurry overview)
+  const tiles = await p.evaluate(() => document.querySelector('.hud-mini') && window.__rfg.app.hud.minimap.tiles.size);
+  if (!(tiles >= 1)) throw new Error('no detailed map tiles were drawn');
+  // tapping cycles the view
+  const m0 = await p.evaluate(() => window.__rfg.app.hud.minimap.mode.name);
+  await p.dispatchEvent('.hud-mini', 'pointerdown'); await p.waitForTimeout(200);
+  const m1 = await p.evaluate(() => window.__rfg.app.hud.minimap.mode.name);
+  if (m0 === m1) throw new Error('tapping the minimap did not change the view');
+  for (let i = 0; i < 4; i++) await p.dispatchEvent('.hud-mini', 'pointerdown');
+  if ((await p.evaluate(() => window.__rfg.app.hud.minimap.mode.name)) !== m1) throw new Error('minimap views should loop');
+  // a destination shows up as a route + flag/arrow
+  await p.evaluate(async () => { const { LOC_BY_ID } = await import('./js/data/world.js'); const l = LOC_BY_ID.pier9; window.__rfg.app.world.setGps(l.x, l.z, 'Pier 9'); });
+  await p.waitForTimeout(1500);
+  const b = await px(); if (b.red <= a.red) throw new Error('GPS route not drawn on the minimap');
+  await p.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
+});
+
 // ---------------- loud exhaust → cops notice → traffic stop ----------------
 await step('noise + traffic stop', async () => {
   const W = () => p.evaluate(() => { const w = window.__rfg.app.world; return { db: Math.round(w.liveDb), sdb: Math.round(w.staticDb), phase: w.police.phase, att: +w.police.noiseAtt.toFixed(2), rec: w.police.record.map(r => r.kind), cash: window.__rfg.game.s.cash }; });

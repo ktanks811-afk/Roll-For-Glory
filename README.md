@@ -109,6 +109,14 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   and the officer writes up everything they saw: accept the citation or try to
   talk your way out (it can work — or cost you 40% more). Keep going and it
   becomes a pursuit.
+- **Minimap.** Sharp map tiles drawn from the real roads, buildings, parks and
+  water; it turns with your heading (you sit low in the circle so you can see
+  the road ahead), zooms out as you speed up, and shows the GPS route with a
+  flag, or an arrow on the rim with the distance when the destination is off
+  the map. Places are named when you're near, cops flash red and blue, chases
+  pulse around you, roadblocks show as red Xs, the helicopter and other
+  players show up, and the street name sits along the bottom. Tap it to switch
+  between heading-up (auto zoom), close, far and north-up.
 - **Police.** Five heat levels. Patrols have to actually see you speeding,
   running reds or hitting cars. Pursuit units drive in from precincts. When
   they lose you they set up a search zone, and you need a cooldown to
