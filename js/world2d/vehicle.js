@@ -100,7 +100,7 @@ export class Vehicle {
     const wb = this.dims.L * 0.6;
     const mu = clamp(spec.handling * (env.grip ?? 1), 0.25, 2.0) * 0.98;
     const speed = Math.abs(u0);
-    const rate = Math.abs(inp.steer) > Math.abs(this.steerIn) ? 10 : 14;     // turn in a bit slower than you unwind
+    const rate = 80;     // the wheel follows the stick/arrow instantly
     this.steerIn += clamp(inp.steer - this.steerIn, -rate * dt, rate * dt);
     const lock = clamp(0.1 / (1 + speed / 18) + 1.9 * mu * G * wb / (speed * speed + 30), 0.07, 0.58);   // arrow keys are all-or-nothing, so full lock has to bite at any speed
     let target = this.steerIn * lock;
@@ -111,7 +111,7 @@ export class Vehicle {
       target += clamp(-beta * w, -0.32, 0.32);
     }
     target = clamp(target, -0.6, 0.6);
-    this.steer += (target - this.steer) * Math.min(1, dt * 16);
+    this.steer += (target - this.steer) * Math.min(1, dt * 45);
     const d = this.steer;
 
     // ---- dynamics ----
@@ -138,6 +138,7 @@ export class Vehicle {
       rhoF = -Fx * (1 - rs) / (mu * Nf); rhoR = -Fx * rs / (mu * Nr);
     }
     const spin = this.sim.slip;
+    const spinNow = spin;
     if (spin > 0) {
       const lit = 0.7 + 0.3 * Math.min(1, spin);
       if (drive !== 'RWD') rhoF = Math.max(rhoF, lit * (drive === 'AWD' ? 0.65 : 1));
@@ -185,11 +186,26 @@ export class Vehicle {
       x += (u * Math.sin(hd) + v * Math.cos(hd)) * h;
       z += (-u * Math.cos(hd) + v * Math.sin(hd)) * h;
     }
+    // Turn assist: the instant you hold left or right the car should be turning
+    // as hard as the tires allow. If the tire model is lagging behind (front
+    // tires saturated, power-on push), add the missing yaw and swing the
+    // velocity round with it so the car actually changes direction.
+    let dTh = 0;
+    if (u > 1.2 && !burn && !inp.handbrake && this.rev >= 0 && Math.abs(inp.steer) > 0.05) {
+      const rMax = 0.9 * mu * G / Math.max(u, 4);
+      const want = clamp(u * Math.tan(d) / wb, -rMax, rMax);
+      if (Math.abs(want) > Math.abs(r) && want * (r || want) >= 0) {
+        const dr = (want - r) * Math.min(1, dt * 14) * (spinNow > 0.1 ? 0.55 : 0.9);
+        r += dr; dTh = dr * dt * 0 + dr * dt;
+      }
+    }
+    hd += dTh;
     this.h = hd; this.x = x; this.z = z;
     this.yawRate = r;
     const nfx = Math.sin(hd), nfz = -Math.cos(hd), nrx = Math.cos(hd), nrz = Math.sin(hd);
     this.vx = nfx * u + nrx * v;
     this.vz = nfz * u + nrz * v;
+    if (dTh) { const c = Math.cos(dTh), sn = Math.sin(dTh); const vx = this.vx * c - this.vz * sn, vz = this.vx * sn + this.vz * c; this.vx = vx; this.vz = vz; }
     if (this.rev >= 0) this.sim.v = Math.max(0, u);
     else this.rev = Math.min(0, u);
 

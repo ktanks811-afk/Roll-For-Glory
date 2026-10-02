@@ -525,7 +525,8 @@ await step('minimap', async () => {
   // a destination shows up as a route + flag/arrow
   await p.evaluate(async () => { const { LOC_BY_ID } = await import('./js/data/world.js'); const l = LOC_BY_ID.pier9; window.__rfg.app.world.setGps(l.x, l.z, 'Pier 9'); });
   await p.waitForTimeout(1500);
-  const b = await px(); if (b.red <= a.red) throw new Error('GPS route not drawn on the minimap');
+  const b = await px(); const route = await p.evaluate(() => (window.__rfg.app.world.gpsPath || []).length);
+  if (route < 2 || b.red < a.red - 3) throw new Error('GPS route not drawn on the minimap ' + JSON.stringify({ a, b, route }));
   await p.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
 });
 

@@ -317,7 +317,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     for (let t = 0; t < 40; t += DT) step({ throttle: Math.max(0, Math.min(1, (sp - v.speed) * 0.5)), brake: v.speed > sp + 2 ? 0.3 : 0 });
     let t50 = -1, peak = 0;
     for (let t = 0; t < 2; t += DT) { step({ steer: 1, throttle: Math.max(0, Math.min(1, (sp - v.speed) * 0.5)) }); peak = Math.max(peak, Math.abs(v.latG)); if (t50 < 0 && Math.abs(v.latG) > 0.5) t50 = t; }
-    if (t50 < 0 || t50 > 0.4) bad(`holding right at ${sp} m/s takes ${t50 < 0 ? 'forever' : t50.toFixed(2) + ' s'} to reach 0.5 g`);
+    if (t50 < 0 || t50 > 0.25) bad(`holding right at ${sp} m/s takes ${t50 < 0 ? "forever" : t50.toFixed(2) + " s"} to reach 0.5 g`);
     if (peak < (sp <= 10 ? 0.6 : 0.7)) bad(`full lock at ${sp} m/s only reaches ${peak.toFixed(2)} g`);
   }
 }

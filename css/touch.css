@@ -149,6 +149,7 @@ body.touch .race-sub { font-size: 14px; top: 44%; }
 
 /* weapons (only while a gun is out) */
 #touch .tc-gun, #touch .tc-fire { display: none; }
-#touch.armed .tc-gun, #touch.armed .tc-fire { display: flex; }
-#touch.has-gun .tc-gun[data-tap="draw"] { display: flex; }
+#touch.armed .tc-gun, #touch.armed .tc-fire { display: flex; align-items: center; justify-content: center; }
+#touch.has-gun .tc-gun[data-tap="draw"] { display: flex; align-items: center; justify-content: center; }
+#touch .tc-fire { width: calc(var(--u) * 68); height: calc(var(--u) * 68); }
 #touch .tc-fire { background: rgba(255,42,58,.55); border-color: #ff2a3a; font-weight: 800; }

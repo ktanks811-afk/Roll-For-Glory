@@ -68,7 +68,10 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   at once. So FWD pushes wide when you floor it mid-corner, RWD snaps its tail
   out, trail-braking rotates the car, the handbrake swings the rear, and
   grip, tires and suspension parts change how all of it feels. Steering lock
-  shrinks with speed and a light counter-steer assist catches slides.
+  shrinks with speed and a light counter-steer assist catches slides. Turning is
+  instant: the wheel follows the arrow or stick immediately, and a turn assist
+  adds the missing yaw if the front tires are pushing, so a held left or right
+  always turns the car as hard as the tires allow.
 - **Buildings, not circles.** Every shop, dealer, diner, precinct and gas
   station is a building with its front door and a striped awning on the street
   side, right behind the kerb marker, so you pull up to it. Race starts have
