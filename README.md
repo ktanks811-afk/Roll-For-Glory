@@ -242,7 +242,7 @@ in the car.
 
 | Driving | |
 | --- | --- |
-| Steer | ◀ ▶ arrows (bottom left) |
+| Steer | ◀ ▶ arrows (bottom left), or a steering wheel you drag round (Settings → Touch steering, or the STEER MODE button while driving) |
 | Gas / brake and reverse | GAS and BRAKE pedals (bottom right) |
 | Shift gears | Drag the shift knob up (upshift) or down (downshift) |
 | Automatic / manual | Tap the shift knob (shows A or M) |

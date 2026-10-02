@@ -820,6 +820,34 @@ await step('phone controls', async () => {
   // ... and tap the knob to flip auto/manual
   await fire('#touch [data-sknob]', 'pointerdown', 5); await fire('#touch [data-sknob]', 'pointerup', 5);
   expect(await m.evaluate(async () => (await import('./js/core/save.js')).settings.transmission) === 'auto', 'tapping the knob did not switch to automatic');
+  // steering wheel mode: arrows swap for a wheel you drag round; it springs back and the car turns
+  await fire('#touch [data-steermode]', 'pointerdown', 6); await fire('#touch [data-steermode]', 'pointerup', 6);
+  expect(await m.evaluate(async () => (await import('./js/core/save.js')).settings.steerMode) === 'wheel', 'STEER MODE button did not switch to the wheel');
+  expect(await vis('#touch .tc-wheel') && !(await vis('#touch .tc-arrow')), 'wheel mode should show the wheel and hide the arrows');
+  await m.evaluate(() => { const w = window.__rfg.app.world; const v = w.vehicle; v.vx = 0; v.vz = 0; v.sim.v = 0; v.h = 0; v.yawRate = 0; });
+  a = await st();
+  await fire('#touch .tc-gas', 'pointerdown', 1);
+  await m.waitForTimeout(500);
+  const wr = await m.evaluate(() => { const r = document.querySelector('[data-wheel]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, R: r.width * 0.4 }; });
+  const wfire = (type, x, y) => m.evaluate(([type, x, y]) => document.querySelector('[data-wheel]').dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 8, pointerType: 'touch', clientX: x, clientY: y })), [type, x, y]);
+  await wfire('pointerdown', wr.x, wr.y - wr.R);
+  for (let t = 0; t <= 1.0; t += 0.1) await wfire('pointermove', wr.x + Math.sin(t) * wr.R, wr.y - Math.cos(t) * wr.R);
+  const steerNow = await m.evaluate(async () => (await import('./js/core/input.js')).input.steer());
+  expect(steerNow > 0.4, 'dragging the wheel clockwise should steer right, got ' + steerNow);
+  await m.waitForTimeout(800);
+  b2 = await st();
+  expect(b2.h > a.h + 0.15, 'the wheel did not turn the car right (' + a.h + ' -> ' + b2.h + ')');
+  await wfire('pointerup', wr.x, wr.y);
+  await m.waitForTimeout(500);
+  expect(Math.abs(await m.evaluate(async () => (await import('./js/core/input.js')).input.steer())) < 0.05, 'the wheel did not spring back to centre');
+  // drag the other way
+  await wfire('pointerdown', wr.x, wr.y - wr.R);
+  for (let t = 0; t >= -1.0; t -= 0.1) await wfire('pointermove', wr.x + Math.sin(t) * wr.R, wr.y - Math.cos(t) * wr.R);
+  expect(await m.evaluate(async () => (await import('./js/core/input.js')).input.steer()) < -0.4, 'dragging the wheel anticlockwise should steer left');
+  await wfire('pointerup', wr.x, wr.y);
+  await fire('#touch .tc-gas', 'pointerup', 1);
+  await fire('#touch [data-steermode]', 'pointerdown', 6); await fire('#touch [data-steermode]', 'pointerup', 6);
+  expect(await vis('#touch .tc-arrow') && !(await vis('#touch .tc-wheel')), 'switching back should show the arrows');
   // get out
   await m.evaluate(() => { const w = window.__rfg.app.world; w.vehicle.vx = w.vehicle.vz = 0; w.vehicle.sim.v = 0; });
   await fire('#touch .tc-row [data-tap="enterExit"]', 'pointerdown'); await fire('#touch .tc-row [data-tap="enterExit"]', 'pointerup');

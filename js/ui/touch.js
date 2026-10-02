@@ -75,6 +75,36 @@ function wireShifter(box, knob) {
   box.addEventListener('pointercancel', end);
 }
 
+// Steering wheel: drag around its centre. It turns as far as your finger turns
+// it (up to about a third of a turn each way), and spins back to centre on release.
+function wireWheel(wheel, rot) {
+  const MAX = 1.75;   // radians of lock each way
+  let pid = null, cx = 0, cy = 0, last = 0, angle = 0, raf = 0;
+  const apply = () => { rot.style.transform = `rotate(${angle}rad)`; touch.axis('steer', Math.max(-1, Math.min(1, angle / MAX))); };
+  const ang = e => Math.atan2(e.clientY - cy, e.clientX - cx);
+  const spring = () => {
+    cancelAnimationFrame(raf);
+    const step = () => { angle *= 0.78; if (Math.abs(angle) < 0.01) angle = 0; apply(); if (angle) raf = requestAnimationFrame(step); };
+    raf = requestAnimationFrame(step);
+  };
+  wheel.addEventListener('pointerdown', e => {
+    e.preventDefault(); capture(wheel, e); pid = e.pointerId; cancelAnimationFrame(raf);
+    const r = wheel.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; last = ang(e);
+    buzz(8);
+  });
+  wheel.addEventListener('pointermove', e => {
+    if (e.pointerId !== pid) return;
+    const a = ang(e); let d = a - last;
+    if (d > Math.PI) d -= Math.PI * 2; else if (d < -Math.PI) d += Math.PI * 2;
+    last = a; angle = Math.max(-MAX, Math.min(MAX, angle + d)); apply();
+  });
+  const up = e => { if (e && e.pointerId !== pid) return; pid = null; spring(); };
+  wheel.addEventListener('pointerup', up);
+  wheel.addEventListener('pointercancel', up);
+  wheel.addEventListener('lostpointercapture', () => { if (pid !== null) up(); });
+  return () => { pid = null; cancelAnimationFrame(raf); angle = 0; rot.style.transform = ''; };
+}
+
 // Walking joystick.
 function wireStick(stick, knob) {
   let pid = null, cx = 0, cy = 0;
@@ -101,6 +131,7 @@ function wireStick(stick, knob) {
 
 function refreshMode() {
   if (!els.mode) return;
+  root.classList.toggle('wheel', settings.steerMode === 'wheel');
   const auto = settings.transmission === 'auto';
   els.mode.textContent = auto ? 'A' : 'M';
   root.classList.toggle('manual', !auto);
@@ -132,6 +163,14 @@ export const touchUi = {
         </div>
       </div>
       <div class="tc-drive">
+        <div class="tc-wheel" data-wheel aria-label="Steering wheel">
+          <svg viewBox="-50 -50 100 100"><g data-wheel-rot>
+            <circle r="42" fill="rgba(20,22,26,.55)" stroke="rgba(255,255,255,.75)" stroke-width="7"/>
+            <circle r="12" fill="rgba(255,255,255,.18)" stroke="rgba(255,255,255,.7)" stroke-width="2"/>
+            <path d="M-40 0H-12M12 0H40M0 12V40" stroke="rgba(255,255,255,.7)" stroke-width="6" stroke-linecap="round"/>
+            <rect x="-4" y="-47" width="8" height="12" rx="2" fill="#ffd23a"/>
+          </g></svg>
+        </div>
         <div class="tc-arrows">
           <button class="tc-btn tc-arrow" data-hold="left" aria-label="Steer left"><i></i></button>
           <button class="tc-btn tc-arrow tc-right" data-hold="right" aria-label="Steer right"><i></i></button>
@@ -149,6 +188,7 @@ export const touchUi = {
           <button class="tc-btn tc-round tc-sm tc-nos" data-hold="nitrous">NOS</button>
           <button class="tc-btn tc-round tc-sm tc-car-only" data-hold="handbrake">E-<br>BRK</button>
           <button class="tc-btn tc-round tc-sm tc-car-only" data-tap="horn">HORN</button>
+          <button class="tc-btn tc-round tc-sm tc-car-only" data-steermode>STEER<br>MODE</button>
           <button class="tc-btn tc-round tc-sm tc-car-only" data-tap="enterExit">GET<br>OUT</button>
           <button class="tc-btn tc-round tc-sm tc-car-only tc-use" data-tap="interact">USE</button>
         </div>
@@ -159,10 +199,12 @@ export const touchUi = {
     els.gear = root.querySelector('[data-gear]');
     els.mode = root.querySelector('[data-mode]');
     wireShifter(root.querySelector('[data-shifter]'), root.querySelector('[data-sknob]'));
+    const resetWheel = wireWheel(root.querySelector('[data-wheel]'), root.querySelector('[data-wheel-rot]'));
+    root.querySelector('[data-steermode]').addEventListener('pointerdown', e => { e.preventDefault(); settings.steerMode = settings.steerMode === 'wheel' ? 'arrows' : 'wheel'; saveSettings(); touchUi.refresh(); toast(settings.steerMode === 'wheel' ? 'Steering wheel — drag it left and right' : 'Steering arrows', 'info'); });
     const stopStick = wireStick(root.querySelector('[data-stick]'), root.querySelector('.tc-knob'));
     input.onContext(ctx => {
       root.dataset.ctx = ctx;
-      stopStick();
+      stopStick(); resetWheel();
       root.querySelectorAll('.on').forEach(n => n.classList.remove('on'));
     });
     refreshMode();

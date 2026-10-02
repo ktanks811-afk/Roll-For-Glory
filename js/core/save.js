@@ -83,7 +83,7 @@ function migrate(s) {
 
 // ---------------- settings ----------------
 const DEFAULT_SETTINGS = {
-  quality: 'medium', units: 'mph', transmission: 'auto', volume: 0.7, music: 0.5,
+  quality: 'medium', units: 'mph', transmission: 'auto', steerMode: 'arrows', volume: 0.7, music: 0.5,
   shake: true, showFps: false, miniMode: 0, touch: 'auto', invertCam: false,
 };
 export const settings = { ...DEFAULT_SETTINGS, ...(read('settings') || {}) };

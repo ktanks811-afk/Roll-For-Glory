@@ -230,6 +230,7 @@ export function openSettings(app) {
       <div class="p-body" style="max-width:640px">
         <label class="field"><span>Graphics quality</span>${opt('quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}</label>
         <label class="field"><span>Transmission</span>${opt('transmission', [['auto', 'Automatic'], ['manual', 'Manual (Q / E)']])}</label>
+        <label class="field"><span>Touch steering</span>${opt('steerMode', [['arrows', 'Arrows'], ['wheel', 'Steering wheel']])}</label>
         <label class="field"><span>Speed units</span>${opt('units', [['mph', 'MPH'], ['kmh', 'KM/H']])}</label>
         <label class="field"><span>Master volume — ${Math.round(settings.volume * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.volume}" data-range="volume" class="input"></label>
         <label class="field"><span>Music volume — ${Math.round(settings.music * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.music}" data-range="music" class="input"></label>
@@ -243,7 +244,7 @@ export function openSettings(app) {
         let v = d.v; if (v === 'true') v = true; if (v === 'false') v = false;
         settings[d.k] = v; saveSettings();
         if (d.k === 'quality') window.dispatchEvent(new Event('resize'));
-        if (d.k === 'touch') touchUi.refresh();
+        if (d.k === 'touch' || d.k === 'steerMode') touchUi.refresh();
         h.refresh();
       },
     });
