@@ -178,7 +178,8 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .acct-chip button { appearance: none; border: 1px solid var(--line2); background: var(--panel2); color: var(--text); border-radius: 999px; padding: 4px 10px; font: 700 12px var(--ui); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
 
 /* ---------- character creation ---------- */
-.create { display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+.create { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; }
+@media (max-height: 500px) { .create { grid-template-columns: 180px minmax(0, 1fr); gap: 12px; } }
 .create canvas { width: 100%; max-width: 300px; background: radial-gradient(ellipse at 50% 40%, #2a1418, #0c0c0f 70%); border-radius: 8px; border: 1px solid var(--line); }
 .opts { display: flex; flex-wrap: wrap; gap: 6px; }
 .opts button { padding: 6px 12px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--line2); color: var(--silver); font-weight: 700; cursor: pointer; text-transform: capitalize; }
@@ -204,6 +205,7 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .hud-heat.flash i.on { animation: flash .5s infinite alternate; }
 @keyframes flash { to { background: var(--blue); box-shadow: 0 0 8px var(--blue); } }
 .hud-warrant { margin-top: 5px; margin-left: auto; width: max-content; padding: 2px 8px; border: 1px solid var(--yellow); color: var(--yellow); background: rgba(10,10,12,.8); border-radius: 3px; font-family: var(--head); font-size: 11px; letter-spacing: .1em; white-space: nowrap; max-width: 100%; overflow: hidden; }
+.hud-disguise { margin-top: 5px; margin-left: auto; width: max-content; padding: 2px 8px; border: 1px solid #9aa0aa; color: #e8e8ea; background: rgba(10,10,12,.85); border-radius: 3px; font-family: var(--head); font-size: 11px; letter-spacing: .1em; white-space: nowrap; max-width: 100%; overflow: hidden; }
 .hud-warrant.felony { border-color: var(--red); color: #fff; background: rgba(224,25,46,.75); }
 .warrant-status { text-align: center; padding: 10px; margin-bottom: 6px; border-radius: 6px; font-family: var(--head); letter-spacing: .1em; background: rgba(43,217,107,.15); color: #2bd96b; }
 .warrant-status.on { background: rgba(224,25,46,.2); color: #ff5a6a; }

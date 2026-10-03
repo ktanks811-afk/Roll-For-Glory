@@ -996,6 +996,56 @@ await step('traffic stop: pull over, walk-up, drive off', async () => {
   await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.police.units.length = 0; });
 });
 
+// ---------------- ski mask + blackout fit: buy, pull down, rob unseen, get stopped ----------------
+await step('ski mask + blackout fit', async () => {
+  const clearModals = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await p.evaluate(async () => {
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    s.cash = 50000; s.warrants = []; s.citations = []; w.police.reset(w);
+    if (w.inCar) { w.vehicle.vx = w.vehicle.vz = 0; w.toggleCar(); }
+    if (w.inCar) throw new Error('could not get out of the car');
+    openPlace(LOC_BY_ID.surplus, window.__rfg.app);
+  });
+  await p.waitForTimeout(250);
+  if (!/Riverside Army Surplus/.test(await p.textContent('.p-head')) || !/Vortex Black Ski Mask/.test(await p.textContent('.p-body'))) throw new Error('surplus store does not sell the ski mask');
+  if (/Leather Racing Jacket/.test(await p.textContent('.p-body'))) throw new Error('surplus store shows Threadline stock');
+  await p.click('button:has-text("Buy the fit")'); await p.waitForTimeout(200);
+  let look = await p.evaluate(() => ({ ...window.__rfg.game.s.player.look, owned: window.__rfg.game.s.player.outfits }));
+  if (!look.owned.includes('skimask_black') || look.top !== 'fleece_black' || look.shoes !== 'kicks_blackout' || look.mask === 'skimask_black') throw new Error('blackout fit not bought/worn right ' + JSON.stringify(look));
+  await snap('28-surplus');
+  await clearModals(); await p.evaluate(() => { window.__rfg.app.world.paused = false; });
+  // V pulls the mask down; the HUD says how recognisable you are
+  await key('KeyV'); await p.waitForTimeout(300);
+  const tag = await p.evaluate(() => ({ mask: window.__rfg.game.s.player.look.mask, tag: document.querySelector('[data-disguise]')?.className + ':' + document.querySelector('[data-disguise]')?.textContent }));
+  if (tag.mask !== 'skimask_black' || /hidden/.test(tag.tag) || !/MASKED/.test(tag.tag)) throw new Error('mask toggle / HUD tag ' + JSON.stringify(tag));
+  await snap('29-masked');
+  // a masked robbery the witness can't ID: no robbery warrant; the same robbery unmasked: warrant
+  const rob = await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world, r0 = Math.random;
+    const go = () => { w.police.reset(w); s.heat = 1.5; w.police.startChase(w, true); w.police.dispatchRobbery(w, { name: 'Gas-N-Go', x: w.foot.x, z: w.foot.z }); w.police.escaped(w); return s.warrants.map(x => x.kind); };
+    Math.random = () => 0.4;
+    try {
+      w.police.disguise = 0.8; const masked = go(); s.warrants = [];
+      w.police.disguise = 0; const bare = go(); s.warrants = [];
+      return { masked, bare };
+    } finally { Math.random = r0; w.police.reset(w); }
+  });
+  if (rob.masked.includes('robbery') || !rob.bare.includes('robbery')) throw new Error('mask should keep a robbery off your record ' + JSON.stringify(rob));
+  // a patrol watching a masked person walk around stops them and the mask comes off
+  await p.evaluate(() => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    s.player.look.mask = 'skimask_black'; w.police.maskStopAt = -99; w.police.maskSus = 0;
+    const fake = { x: w.foot.x + 6, z: w.foot.z, police: true, id: 31 };
+    w.police.patrols.push(fake);
+    for (let i = 0; i < 6 && s.player.look.mask !== 'no_mask'; i++) w.police.maskWatch(1, w, s.player.look);
+    w.police.patrols = w.police.patrols.filter(c => c !== fake);
+  });
+  await p.waitForSelector('.modal h2:has-text("Stopped and questioned")');
+  if ((await p.evaluate(() => window.__rfg.game.s.player.look.mask)) !== 'no_mask') throw new Error('mask stop did not take the mask off');
+  await clearModals(); await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.paused = false; });
+});
+
 // ---------------- side-view showroom (layered Mustang) ----------------
 await step('showroom (side-view Mustang)', async () => {
   const hash = () => p.evaluate(() => { const c = document.querySelector('[data-side]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0, solid = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3]) solid++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7 + d[i + 3]) | 0; } return { h, solid, w: c.width, hgt: c.height }; });

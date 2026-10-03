@@ -21,7 +21,22 @@ export const CLOTHES = [
   { id: 'kicks_white', slot: 'shoes', style: 'kicks', color: '#f0f0f0', name: 'White Kicks', price: 90 },
   { id: 'kicks_red', slot: 'shoes', style: 'kicks', color: '#c41b1b', name: 'Red Racers', price: 120 },
   { id: 'boots_black', slot: 'shoes', style: 'boots', color: '#1a1a1a', name: 'Black Boots', price: 110 },
+  // Riverside Army Surplus: blackout gear. `conceal` is how much of your face
+  // a mask hides (core/disguise.js). Vortex is a made-up brand.
+  { id: 'no_mask', slot: 'mask', style: 'none', color: '#000000', name: 'No Mask', price: 0 },
+  { id: 'skimask_black', slot: 'mask', style: 'skimask', color: '#0c0c0d', name: 'Vortex Black Ski Mask', price: 35, conceal: 0.55, shop: 'surplus' },
+  { id: 'bandana_black', slot: 'mask', style: 'bandana', color: '#141414', name: 'Black Bandana (over the face)', price: 12, conceal: 0.3, shop: 'surplus' },
+  { id: 'fleece_black', slot: 'top', style: 'hoodie', color: '#0f0f10', name: 'Vortex Black Tech Fleece Hoodie', price: 120, shop: 'surplus' },
+  { id: 'joggers_black', slot: 'bottom', style: 'track', color: '#101011', name: 'Vortex Black Tech Fleece Joggers', price: 95, shop: 'surplus' },
+  { id: 'cargo_black', slot: 'bottom', style: 'cargo', color: '#18181a', name: 'Black Work Cargos', price: 60, shop: 'surplus' },
+  { id: 'kicks_blackout', slot: 'shoes', style: 'kicks', color: '#121212', name: 'Vortex Triple-Black Runners', price: 110, shop: 'surplus' },
+  { id: 'boots_tactical', slot: 'shoes', style: 'boots', color: '#141414', name: 'Black Tactical Boots', price: 140, shop: 'surplus' },
+  { id: 'beanie_black', slot: 'hat', style: 'beanie', color: '#121212', name: 'Black Watch Cap', price: 20, shop: 'surplus' },
 ];
+export const MASKS = CLOTHES.filter(c => c.slot === 'mask' && c.conceal);
+// The all-black fit the surplus store sells as one bundle (10% off).
+export const BLACKOUT_FIT = ['skimask_black', 'fleece_black', 'joggers_black', 'kicks_blackout'];
+export const BLACKOUT_DISCOUNT = 0.1;
 export const CLOTH_BY_ID = Object.fromEntries(CLOTHES.map(c => [c.id, c]));
 
 export const FOOD = [
@@ -37,5 +52,5 @@ export const HAIR_STYLES = ['short', 'buzz', 'long', 'curly', 'bun'];
 
 export function defaultLook() {
   return { skin: SKIN_TONES[2], hair: HAIR_COLORS[0], hairStyle: 'short', build: 1,
-    top: 'hoodie_black', bottom: 'jeans_blue', hat: 'no_hat', shoes: 'kicks_white' };
+    top: 'hoodie_black', bottom: 'jeans_blue', hat: 'no_hat', shoes: 'kicks_white', mask: 'no_mask' };
 }
