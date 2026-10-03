@@ -678,6 +678,7 @@ await step('carjacking', async () => {
     const r = w.map.roads.nearestOnRoad(120, -60);
     v.x = r.x; v.z = r.z; v.h = Math.atan2(r.edge.dx, -r.edge.dz); v.vx = v.vz = 0; v.sim.v = 0;
     w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; s.playTime = Math.max(s.playTime, 3600); s.carjack = { lastDay: -99, n: 0 };
+    if (v.car) v.car.cond.body = 100;   // earlier steps can leave it wrecked (body floors at 5), then the recovery damage can't show
     w.carjacks.jack = null; w.carjacks.rng = Math.random;
   });
   await calm(); await sit(); await p.waitForTimeout(200);
@@ -1419,6 +1420,54 @@ await step('showroom (side-view Mustang)', async () => {
   await snap('29-showroom-civic');
   await p.click('[data-layer="wheels"]'); const civicNoWheels = await hash(); if (civicNoWheels.h === civic.h) throw new Error('Civic wheels layer does nothing');
   await p.keyboard.press('Escape');
+});
+
+// ---------------- Vega Kustoms design studio + weekend car show ----------------
+await step('kustoms studio + car show', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await clear();
+  await p.evaluate(async () => {
+    const { newCar } = await import('./js/core/state.js'); const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const r = window.__rfg, s = r.game.s; const c = newCar('honda_civic_ex_1996'); s.cars.push(c); s.activeCar = c.uid; s.cash = 60000; r.app.world.refreshCar();
+    openPlace(LOC_BY_ID.vega_kustoms, r.app);
+  });
+  await p.click('[data-action="studio"]');
+  await p.waitForSelector('.ks [data-side]');
+  const score0 = +(await p.textContent('.ks-score b'));
+  // try on a color, rims and a widebody: nothing is charged until you build it
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.click('.ks-pick [data-action="paint"][data-c="#6b2bd1"]');
+  await p.click('.tabs button[data-id="rims"]'); await p.click('.ks-pick .ks-rim >> nth=27'); await p.click('.ks-pick [data-action="wsize"][data-n="18"]');
+  await p.click('.tabs button[data-id="kit"]'); await p.click('.ks-pick .ks-opt:has-text("Pandem")');
+  await p.click('.tabs button[data-id="tint"]'); await p.click('.ks-pick .ks-opt:has-text("LLumar")');
+  const mid = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, paint: window.__rfg.game.s.cars.find(c => c.uid === window.__rfg.game.s.activeCar).visual.paint }));
+  if (mid.cash !== cash0 || mid.paint === '#6b2bd1') throw new Error('trying parts on should not charge or change the car');
+  const score1 = +(await p.textContent('.ks-score b'));
+  if (!(score1 > score0 + 20)) throw new Error(`the show score should climb with the build (${score0} -> ${score1})`);
+  if (!/Respray|Basecoat|Wrap|Kandy|Metallic/i.test(await p.textContent('.ks-cart'))) throw new Error('a new color should add a respray to the bill');
+  await snap('30-kustoms-studio');
+  await p.click('[data-action="book"]'); await p.click('.modal button:has-text("Pay & build")'); await p.waitForTimeout(150);
+  const after = await p.evaluate(() => { const s = window.__rfg.game.s, v = s.cars.find(c => c.uid === s.activeCar).visual; return { cash: s.cash, paint: v.paint, kit: v.kit, tint: v.tint, size: v.wheelSize, rim: v.rim }; });
+  if (after.rim !== 'gw27' || after.paint !== '#6b2bd1' || after.kit !== 'wide' || after.tint !== 'medium' || after.size !== '18' || !(after.cash < cash0 - 6000)) throw new Error('build did not land: ' + JSON.stringify(after));
+  await clear();
+  // the show only runs on weekends
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const s = window.__rfg.game.s; s.time.day = 10; s.time.min = 12 * 60; openPlace(LOC_BY_ID.stockyards_show, window.__rfg.app); });
+  await p.waitForSelector('.modal h2:has-text("Stockyards Car Show")');
+  if (!/Saturday and Sunday/.test(await p.textContent('.modal-body'))) throw new Error('weekday visit should give the show times');
+  await clear();
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const s = window.__rfg.game.s; s.time.day = 13; s.time.min = 12 * 60; openPlace(LOC_BY_ID.stockyards_show, window.__rfg.app); });
+  await p.click('[data-action="enter"]');
+  await p.waitForSelector('.cs-lineup canvas');
+  await snap('31-car-show-lineup');
+  await p.click('[data-action="vote"] >> nth=0');
+  await p.waitForSelector('.cs-place', { timeout: 8000 });
+  await snap('32-car-show-results');
+  const res = await p.evaluate(() => { const s = window.__rfg.game.s; return { day: s.shows?.day, entered: s.shows?.entered, votes: [...document.querySelectorAll('[data-v]')].reduce((a, n) => a + +n.textContent, 0) }; });
+  if (res.day !== 13 || res.entered !== 1 || res.votes !== 241) throw new Error('car show did not run: ' + JSON.stringify(res));
+  await clear();
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.stockyards_show, window.__rfg.app); });
+  if (!/already showed today/.test(await p.textContent('.modal-body'))) throw new Error('one show per day');
+  await clear();
 });
 
 // ---------------- every car: own side view + overhead sprite ----------------

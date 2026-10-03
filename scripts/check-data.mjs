@@ -603,6 +603,55 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (dflt.wheelieF !== same.wheelieF || dflt.trac !== same.trac) bad('default drag shock settings are not neutral');
   if (!(buildSpec(camaro, { dragpack: 3 }, {}).handling < buildSpec(camaro, {}, {}).handling)) bad('front skinnies should cost cornering grip');
 }
+// ---- car shows: judging, entrants, crowd votes ----
+{
+  const CS = await import('../js/core/carshow.js');
+  const { defaultVisual: dv } = await import('../js/data/parts.js');
+  const { VISUAL_CATALOG } = await import('../js/data/catalog.js');
+  const civic = CAR_BY_ID.honda_civic_ex_1996;
+  const stock = CS.judge(civic, dv(civic), { body: 100 }, {});
+  const built = CS.judge(civic, { ...dv(civic), paint: '#6b2bd1', finish: 'pearl', wheels: 'six', wheelColor: '#c9a24a', wheelSize: '18', kit: 'wide', tint: 'medium', spoiler: 'lip', headlights: 'led' }, { body: 100 }, {});
+  if (!(built.total > stock.total + 40)) bad(`a full build should out-score stock (${built.total} vs ${stock.total})`);
+  const beat = CS.judge(civic, dv(civic), { body: 30 }, {});
+  if (!(beat.total < stock.total)) bad('a beat-up body should lose points');
+  const clown = CS.judge(civic, { ...dv(civic), finish: 'chrome', decal: 'flames', neon: '#ff1a2e', spoiler: 'gt' }, { body: 100 }, {});
+  if (!(clown.parts.cohesion < 0)) bad('every loud mod at once should hurt cohesion');
+  // every value the judges read is one Vega Kustoms sells (or a stock value)
+  const sold = new Set(VISUAL_CATALOG.map(p => p.value));
+  for (const tier of [1, 3, 5]) {
+    const es = CS.makeEntrants(tier);
+    if (es.length !== 5) bad(`car show tier ${tier} has ${es.length} entrants`);
+    for (const e of es) {
+      if (!CAR_BY_ID[e.modelId]) bad(`car show entrant ${e.id} drives an unknown car`);
+      for (const k of ['finish', 'kit', 'tint', 'spoiler', 'decal']) if (e.visual[k] !== dv(CAR_BY_ID[e.modelId])[k] && !sold.has(e.visual[k])) bad(`entrant ${e.name}: ${k} ${e.visual[k]} is not sold anywhere`);
+      if (!isFinite(CS.judge(CAR_BY_ID[e.modelId], e.visual, e.cond, e.levels).total)) bad(`entrant ${e.name} has no score`);
+    }
+  }
+  // the crowd: everyone votes once, the best build wins most of the time but not always
+  const field = CS.makeEntrants(2).map(e => ({ ...e, visual: { ...e.visual, decal: 'none', neon: 'none' } }));
+  field.push({ id: 'me', modelId: civic.id, visual: { ...dv(civic), paint: '#6b2bd1', finish: 'pearl', wheels: 'six', wheelColor: '#c9a24a', kit: 'wide', tint: 'medium', spoiler: 'lip', headlights: 'led', frontBumper: 'splitter', rearBumper: 'diffuser', skirts: 'aero', interior: '#7a1212' }, cond: { body: 100 }, levels: { turbo: 3, engine: 2 } });
+  const b = CS.crowdVote(field);
+  if (b.length !== CS.VOTERS || b.some(x => x < 0 || x >= field.length)) bad('every voter casts exactly one valid vote');
+  const t = CS.tally(b, field.length);
+  if (t.reduce((a, c) => a + c, 0) !== CS.VOTERS) bad('vote tally does not add up');
+  if (t.filter(x => x > 0).length < 2) bad('the crowd should split its votes');
+  if (!(CS.prizeFor(1, 3).cash > CS.prizeFor(2, 3).cash && CS.prizeFor(1, 4).cash > CS.prizeFor(1, 1).cash && CS.prizeFor(0, 1).cash === 0)) bad('car show prizes are off');
+  if (!CS.isShowTime({ day: 6, min: 12 * 60 }, 'Sat') || CS.isShowTime({ day: 6, min: 20 * 60 }, 'Sat') || CS.isShowTime({ day: 3, min: 12 * 60 }, 'Wed')) bad('car show hours are off');
+  if (!LOCATIONS.some(l => l.type === 'carshow')) bad('the car show needs a lot on the map');
+}
+// ---- Glitch rim pack: every rim is on the atlas and sold as a wheel ----
+{
+  const { RIMS, RIM_COLS } = await import('../js/data/rims.js');
+  const fs = await import('node:fs');
+  if (!fs.existsSync(new URL('../img/rims.webp', import.meta.url))) bad('rim atlas img/rims.webp is missing');
+  if (RIMS.length !== 44 || Math.ceil(RIMS.length / RIM_COLS) !== 4) bad('rim pack should be 44 wheels on a 4-row atlas');
+  for (const r of RIMS) {
+    const p = CATALOG.find(x => x.rim === r.id);
+    if (!p || p.cat !== 'wheels' || !p.visual) bad(`rim ${r.id} is not sold as a wheel`);
+    if (!['five', 'six', 'split', 'turbine', 'mesh', 'dish', 'steel'].includes(r.style)) bad(`rim ${r.id} has no fallback style`);
+  }
+  if (ITEM_BY_ID.vis_a5?.name !== 'Dial In 18" (set)' || ITEM_BY_ID.vis_ci?.cat !== 'interior') bad('adding rims moved older product ids (saves would break)');
+}
 // ---- street races: every leg runs on a real road, records are sane, pink slips have rules ----
 {
   const map = buildMap();

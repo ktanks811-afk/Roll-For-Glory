@@ -19,7 +19,7 @@ const MODES = [
   { name: 'HEADING UP · FAR', rot: true, zoom: 'far' },
   { name: 'NORTH UP', rot: false, zoom: 'auto' },
 ];
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', court: '⚖', meet: '●', flag: '⚑' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', court: '⚖', meet: '●', flag: '⚑', trophy: '♛' };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 

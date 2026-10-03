@@ -470,6 +470,40 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .click-row:hover { background: rgba(255,255,255,.03); }
 .pp-i { display: inline-block; margin-left: 6px; width: 18px; height: 18px; line-height: 16px; text-align: center; border-radius: 50%; border: 1px solid var(--line2); font-size: 11px; color: var(--dim); font-style: normal; }
 
+/* Vega Kustoms design studio */
+.ks .ks-preview { position: sticky; top: 0; align-self: start; z-index: 1; background: var(--panel); }
+.ks-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.ks-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; padding: 7px 9px; border-radius: var(--r); background: var(--panel2); border: 1px solid var(--line2); color: var(--silver); font-family: var(--ui); cursor: pointer; min-height: 44px; }
+.ks-opt b { font-size: 13.5px; color: var(--text); }
+.ks-opt small { font-size: 12px; color: var(--dim); line-height: 1.15; }
+.ks-opt span { font-size: 12.5px; font-weight: 700; color: var(--yellow); margin-top: 2px; }
+.ks-opt.on { border-color: var(--red); background: #2a1418; }
+.ks-score { font-size: 14px; color: var(--dim); }
+.ks-score b { font-size: 20px; color: var(--yellow); font-family: var(--head); }
+.ks-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; font-size: 12px; color: var(--dim); }
+.ks-bars div { display: grid; grid-template-columns: 92px 1fr 26px; align-items: center; gap: 6px; }
+.ks-bars i { display: block; height: 5px; border-radius: 3px; background: var(--yellow); }
+.ks-bars i.neg { background: var(--red); }
+.ks-bars b { text-align: right; color: var(--silver); }
+.ks-cart { margin-top: 10px; padding: 10px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--bg2); display: grid; gap: 4px; font-size: 13.5px; }
+.ks-cart > div { display: flex; justify-content: space-between; gap: 10px; }
+.ks-total { font-size: 16px; border-top: 1px solid var(--line); padding-top: 6px; margin-bottom: 6px; }
+.ks-total b { color: var(--yellow); }
+@media (max-width: 820px) { .ks .ks-preview { position: static; } }
+@media (max-height: 500px) { .ks .ks-preview { position: static; } .ks .ks-bars { display: none; } .ks .showroom canvas { max-height: 34vh; object-fit: contain; } }
+
+/* Car shows */
+.cs-lineup { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.cs-car { border: 1px solid var(--line2); border-radius: var(--r); background: var(--panel2); padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.cs-car canvas { width: 100%; display: block; border-radius: 4px; }
+.cs-car.me { border-color: var(--yellow); }
+.cs-car.voted { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+.cs-car .t { font-weight: 700; font-size: 14px; line-height: 1.15; }
+.cs-car .s { font-size: 12px; color: var(--dim); }
+.cs-car .row { gap: 4px; }
+.cs-votes { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.cs-votes .bar { flex: 1; }
+.cs-place { font-family: var(--head); font-weight: 700; color: var(--yellow); }
 /* phone home: status cards (FWPD, mission, GPS, latest text) */
 .phone-widgets { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 12px 14px 0; }
 .pw { display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; font: inherit; }
@@ -509,3 +543,7 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .mstop.done { opacity: .5; text-decoration: line-through; }
 .mc-job { font-size: 13px; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
 .hud-objective.job { border-left-color: #ffb020; }
+.ks-rims { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.ks-rim { align-items: center; text-align: center; }
+.ks-rim i { display: block; width: 56px; height: 56px; background: url(../img/rims.webp) 0 0 / 616px 224px no-repeat; margin-bottom: 3px; }
+.ks-rim small { font-size: 11.5px; }

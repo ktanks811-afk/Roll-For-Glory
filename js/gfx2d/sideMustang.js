@@ -10,6 +10,7 @@
 // scaled down onto a tiny canvas, then alpha-thresholded so the edges stay
 // crisp pixel art when the canvas is stretched up with `image-rendering:
 // pixelated`.
+import { drawRimSprite, rimHasTire } from './rimSprites.js';
 
 import { CALIPER_COLORS } from '../data/parts.js';
 
@@ -205,6 +206,7 @@ function wheelRimFraction(size) { return Math.max(0.5, Math.min(0.8, 0.54 + (siz
 export function drawWheel(g, cx, cy, v, size, offset, caliper, kind, R0 = TIRE_R) {
   const R = R0 * (1 + (offset === 'poke' ? 0.028 : offset === 'stock' ? -0.02 : 0));
   const rimR = R * wheelRimFraction(size);
+  if (v.rim && drawRimWheel(g, cx, cy, v, R, rimR, kind)) return;
   // tyre
   g.fillStyle = '#0b0b0d'; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
   g.strokeStyle = '#1b1c20'; g.lineWidth = 7; g.beginPath(); g.arc(cx, cy, R - 6, 0, 7); g.stroke();
@@ -241,6 +243,21 @@ export function drawWheel(g, cx, cy, v, size, offset, caliper, kind, R0 = TIRE_R
   g.fillStyle = '#0a0a0c'; g.beginPath(); g.arc(0, 0, rimR * 0.2, 0, 7); g.fill();
   g.fillStyle = '#6b6f78'; g.beginPath(); g.arc(0, 0, rimR * 0.1, 0, 7); g.fill();
   g.restore();
+}
+
+// A wheel from the Glitch rim pack (gfx2d/rimSprites.js). Sheet-2 wheels
+// carry their own tire, so they fill the whole tire circle.
+function drawRimWheel(g, cx, cy, v, R, rimR, kind) {
+  g.save(); g.translate(cx, cy); g.rotate(kind === 'rear' ? 0.35 : 0);
+  if (rimHasTire(v.rim)) {
+    g.fillStyle = '#0b0b0d'; g.beginPath(); g.arc(0, 0, R, 0, 7); g.fill();
+    const ok = drawRimSprite(g, v.rim, R * 1.02);
+    g.restore(); return ok;
+  }
+  g.fillStyle = '#0b0b0d'; g.beginPath(); g.arc(0, 0, R, 0, 7); g.fill();
+  g.strokeStyle = '#1b1c20'; g.lineWidth = 7; g.beginPath(); g.arc(0, 0, R - 6, 0, 7); g.stroke();
+  const ok = drawRimSprite(g, v.rim, rimR * 1.04);
+  g.restore(); return ok;
 }
 
 export function wheelArch(g, cx, cy, v, flare, TIRE_R = 143) {
