@@ -10,6 +10,7 @@ import { TrafficCar } from './traffic.js';
 import { collideCircle, lineOfSight } from './map.js';
 import { LOC_BY_ID, TUNNEL, HWY_Z, HWY_W } from '../data/world.js';
 import { LEGAL_DB, hearingRange } from '../sim/sound.js';
+import { hasWarrant, hasFelony } from '../core/warrants.js';
 
 const PATROL_MODELS = ['ford_crown_victoria_police_interceptor_2003', 'dodge_charger_scat_pack_2015', 'ford_explorer_xlt_2002', 'chevrolet_tahoe_lt_2007'];
 const INTERCEPTORS = ['dodge_charger_srt_hellcat_redeye_2021', 'ford_mustang_gt_s650_2024', 'chevrolet_camaro_ss_2016'];
@@ -59,6 +60,8 @@ export class PoliceSystem {
     this.gunHeat = 0;    // shots fired recently
     this.suspicion = 0;  // builds while a cop watches you speed or burn rubber; a chase starts when it fills
     this.record = [];    // what you did since the last stop: [{ kind, text, fine }]
+    this.recognise = 0;  // 0..1: a patrol running your plate / looking at your face while you have a warrant
+    this.eyesOn = false; // an officer has actually seen you during this pursuit
   }
   get level() { return Math.floor(clamp(this.s.heat, 0, 5.99)); }
   get active() { return this.phase === 'chase' || this.phase === 'search' || this.phase === 'cooldown' || this.phase === 'notice'; }
@@ -116,10 +119,14 @@ export class PoliceSystem {
     for (const c of this.patrols) c.update(dt, w.trafficCtx);
 
     // ---- detection ----
-    const watchable = p.inCar || !!w.combat?.armed || !!w.combat?.rob;
-    this.seen = watchable ? this.detect(p.x, p.z) : false;
-    if (this.seen) { this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz }; this.unseenT = 0; }
+    // With a warrant out, officers have your plate and your photo: they look
+    // harder (longer detection range) and recognise you even on foot.
+    const wanted = hasWarrant(s);
+    const watchable = p.inCar || !!w.combat?.armed || !!w.combat?.rob || (wanted && this.phase !== 'none');
+    this.seen = watchable ? this.detect(p.x, p.z, wanted ? 140 : 115) : false;
+    if (this.seen) { this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz }; this.unseenT = 0; if (this.phase !== 'none') this.eyesOn = true; }
     else this.unseenT += dt;
+    if (this.phase === 'none') this.recognition(dt, w, wanted);
 
     // Offences only count when a cop is close enough to actually see them.
     // Speeding and burnouts have to go on for a few seconds before anyone
@@ -248,6 +255,25 @@ export class PoliceSystem {
     }
   }
 
+  // A patrol near you runs your plate (in a car) or recognises your face (on
+  // foot, closer). Takes a few seconds of being watched; a felony warrant is
+  // a felony stop, everything else starts as a pull-over.
+  recognition(dt, w, wanted) {
+    if (!wanted) { this.recognise = 0; return; }
+    const p = w.player;
+    const range = p.inCar ? 70 : 28;
+    const near = this.patrols.some(c => Math.hypot(c.x - p.x, c.z - p.z) < range && lineOfSight(this.map, c.x, c.z, p.x, p.z));
+    this.recognise = near ? this.recognise + dt / (p.inCar ? 2.5 : 4) : Math.max(0, this.recognise - dt * 0.2);
+    if (this.recognise < 1) return;
+    this.recognise = 0;
+    const felony = hasFelony(this.s);
+    this.s.heat = Math.max(this.s.heat, felony ? 2 : 1);
+    this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz };
+    w.hud.radio(p.inCar ? `Plate hit: ${felony ? 'felony' : 'active'} warrant on file.` : `Subject on foot matches a ${felony ? 'felony ' : ''}warrant.`);
+    this.startChase(w, felony);
+    this.eyesOn = true;
+  }
+
   // Keep the worst of each kind of offence for the ticket.
   note(o) {
     if (!o.kind) return;
@@ -281,6 +307,7 @@ export class PoliceSystem {
 
   startChase(w, force = false) {
     if (this.phase === 'none') {
+      this.eyesOn = this.seen;
       this.phase = force || this.level >= 2 ? 'chase' : 'notice';
       w.hud.radio(this.phase === 'notice' ? 'FWPD: Pull over! (Stop to take the ticket, or run.)' : 'Pursuit initiated.');
       w.audio.siren(true, 0.6);
@@ -424,7 +451,10 @@ export class PoliceSystem {
 
   busted(w) {
     const lvl = Math.max(1, this.level);
-    if (this.phase === 'notice') {
+    if (this.phase === 'notice' && hasWarrant(this.s)) {
+      // you pulled over, but the officer runs your name: it's an arrest
+      w.onBusted(400, false, this.record.slice(), true);
+    } else if (this.phase === 'notice') {
       // you pulled over: a proper traffic stop
       const record = this.record.length ? this.record : [{ kind: 'reckless', text: 'Failure to maintain safe driving.', fine: 250 }];
       w.onTrafficStop(record);
@@ -434,8 +464,9 @@ export class PoliceSystem {
     this.reset(w);
   }
   escaped(w) {
+    const record = this.record;
     this.record = [];
-    w.onEscaped();
+    w.onEscaped(record, this.eyesOn);
     this.phase = 'none';
     this.decayHold = 20;
     w.audio.siren(false);

@@ -203,6 +203,10 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .hud-heat i.on { background: var(--red); box-shadow: 0 0 8px var(--red); }
 .hud-heat.flash i.on { animation: flash .5s infinite alternate; }
 @keyframes flash { to { background: var(--blue); box-shadow: 0 0 8px var(--blue); } }
+.hud-warrant { margin-top: 5px; margin-left: auto; width: max-content; padding: 2px 8px; border: 1px solid var(--yellow); color: var(--yellow); background: rgba(10,10,12,.8); border-radius: 3px; font-family: var(--head); font-size: 11px; letter-spacing: .1em; white-space: nowrap; max-width: 100%; overflow: hidden; }
+.hud-warrant.felony { border-color: var(--red); color: #fff; background: rgba(224,25,46,.75); }
+.warrant-status { text-align: center; padding: 10px; margin-bottom: 6px; border-radius: 6px; font-family: var(--head); letter-spacing: .1em; background: rgba(43,217,107,.15); color: #2bd96b; }
+.warrant-status.on { background: rgba(224,25,46,.2); color: #ff5a6a; }
 .hud-pursuit { margin-top: 8px; background: rgba(10,10,12,.85); border: 1px solid var(--red); padding: 6px 10px; border-radius: 4px; font-family: var(--head); font-size: 13px; letter-spacing: .08em; }
 .hud-pursuit .bar > div { background: var(--red); }
 .hud-pursuit.cooldown { border-color: var(--yellow); } .hud-pursuit.cooldown .bar > div { background: var(--yellow); }

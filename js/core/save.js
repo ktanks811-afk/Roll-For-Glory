@@ -6,6 +6,7 @@
 import { game } from './state.js';
 import { emit } from './events.js';
 import { ensure as ensureHustle, settleAway } from './hustle.js';
+import { ensureRecord } from './warrants.js';
 
 const PREFIX = 'rollforglory.';
 export const SLOTS = ['auto', 'slot1', 'slot2', 'slot3'];
@@ -110,6 +111,7 @@ function migrate(s) {
   for (const o of s.orders) for (const pid of o.items) s.partsBin.push({ pid, uid: Math.random().toString(36).slice(2) });
   s.orders = [];
   ensureHustle(s);
+  ensureRecord(s);
   settleAway(s);   // the businesses kept running while the game was closed
   return s;
 }

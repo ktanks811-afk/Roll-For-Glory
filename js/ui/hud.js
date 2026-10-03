@@ -47,6 +47,7 @@ export class Hud {
         <div class="hud-money"><span data-cash></span><small data-bank></small></div>
         <div class="hud-rep"><span data-tier></span><div class="bar thin"><div data-repbar></div></div></div>
         <div class="hud-heat" data-heat>${'<i></i>'.repeat(5)}</div>
+        <div class="hud-warrant hidden" data-warrant></div>
         <div class="hud-pursuit hidden" data-pursuit><b data-ptitle></b><div class="bar thin"><div data-pbar></div></div></div>
         <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom">⌕</button><button class="hud-btn" data-tp="phone" aria-label="Phone">☎</button></div>
         <div class="hud-dash hidden" data-dash>
@@ -133,6 +134,9 @@ export class Hud {
       n.className = i < lvl ? 'on' : i < s.heat ? 'part' : '';
     });
     this.q('heat').classList.toggle('flash', w.police.phase === 'chase');
+    const wr = this.q('warrant'), nw = s.warrants?.length || 0;
+    wr.classList.toggle('hidden', !nw);
+    if (nw) { const fel = s.warrants.some(x => x.felony); wr.textContent = `WARRANT${nw > 1 ? 'S ×' + nw : ''}`; wr.title = fel ? 'Felony warrant' : 'Warrant'; wr.classList.toggle('felony', fel); }
     const pp = this.q('pursuit');
     const ph = w.police.phase;
     pp.classList.toggle('hidden', ph === 'none');

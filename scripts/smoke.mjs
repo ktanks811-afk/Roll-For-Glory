@@ -796,6 +796,79 @@ await step('noise + traffic stop', async () => {
   if (quiet.att > 0.05 || quiet.phase !== 'none') throw new Error('a street-legal car should not draw attention for noise ' + JSON.stringify(quiet));
 });
 
+// ---------------- warrants: escape → plate hit → arrest; unpaid ticket → warrant ----------------
+await step('warrants', async () => {
+  const R = () => p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { warrants: (s.warrants || []).map(x => x.kind + (x.felony ? '!' : '')), citations: (s.citations || []).length, phase: w.police.phase, tag: document.querySelector('[data-warrant]')?.className + ':' + document.querySelector('[data-warrant]')?.textContent }; });
+  const clearModals = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  // 1. outrun a level-2 pursuit: a felony evading warrant goes out
+  await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    s.warrants = []; s.citations = []; s.cash = 50000; w.police.reset(w); w.paused = false;
+    s.heat = 2.3; w.police.startChase(w, true); w.police.eyesOn = true;
+    w.police.note({ kind: 'speeding', text: 'Speeding — 88 in a 45.', fine: 700 });
+    w.police.escaped(w);
+  });
+  await p.waitForTimeout(250);
+  let r = await R();
+  if (!r.warrants.includes('evading!') || !r.warrants.includes('speeding')) throw new Error('escaping a pursuit did not put out a warrant ' + JSON.stringify(r));
+  if (/hidden/.test(r.tag) || !/felony/.test(r.tag) || !/WARRANT/.test(r.tag)) throw new Error('HUD does not show the warrant ' + JSON.stringify(r));
+  // the warrant is in the save, so it follows the account to the next session
+  const saved = await p.evaluate(async () => { const { saveGame, loadGame } = await import('./js/core/save.js'); saveGame('auto', true); return (loadGame('auto')?.warrants || []).length; });
+  if (saved < 2) throw new Error('warrants were not saved: ' + saved);
+  await snap('25-warrant-hud');
+  // 2. a patrol next to you runs your plate: felony stop
+  const hit = await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world, pl = w.playerState();
+    w.police.reset(w); s.heat = 0;
+    const fake = { x: pl.x + 4, z: pl.z, police: true };
+    w.police.patrols.push(fake);
+    for (let i = 0; i < 4 && w.police.phase === 'none'; i++) w.police.recognition(1, w, true);
+    w.police.patrols = w.police.patrols.filter(c => c !== fake);
+    return { phase: w.police.phase, heat: s.heat, radio: document.querySelector('.hud-radio')?.textContent || '' };
+  });
+  if (hit.phase !== 'chase' || hit.heat < 2) throw new Error('a patrol next to a wanted car did not recognise it ' + JSON.stringify(hit));
+  // 3. pulling over with a warrant is an arrest, and it serves the warrant
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.phase = 'notice'; w.police.busted(w); });
+  await p.waitForSelector('.modal h2:has-text("BUSTED")');
+  if (!/active warrant/.test(await p.textContent('.modal')) || !/warrants? served/.test(await p.textContent('.modal'))) throw new Error('arrest modal does not mention the warrant');
+  await clearModals(); await p.evaluate(() => { window.__rfg.app.world.paused = false; }); await p.waitForTimeout(250);
+  r = await R();
+  if (r.warrants.length || !/hidden/.test(r.tag)) throw new Error('arrest did not clear the warrants ' + JSON.stringify(r));
+  // 4. sign a ticket instead of paying, miss the due date: warrant
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.police.phase = 'notice'; w.police.note({ kind: 'speeding', text: 'Speeding — 61 in a 40.', fine: 330 }); w.police.busted(w); });
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")');
+  await p.click('.modal button:has-text("pay within")');
+  await p.waitForSelector('.modal h2:has-text("Citation signed")');
+  await clearModals();
+  if ((await R()).citations !== 1) throw new Error('signed ticket not on the record');
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.time.day += 4; window.__rfg.app.world.ui.onNewDay(); });
+  r = await R();
+  if (!r.warrants.includes('fta') || r.citations) throw new Error('an overdue ticket did not become a warrant ' + JSON.stringify(r));
+  if (!(await p.evaluate(() => window.__rfg.game.s.messages[0]?.from === 'brenner'))) throw new Error('no message about the new warrant');
+  // 5. FWPD phone app lists it and pays it
+  await clearModals();
+  await key('KeyP'); await p.waitForTimeout(250);
+  await p.click('.app:has-text("FWPD")'); await p.waitForTimeout(200);
+  if (!/Failure to pay/.test(await p.textContent('.phone-screen'))) throw new Error('FWPD app does not list the warrant');
+  await snap('26-fwpd-app');
+  await p.click('.phone-screen button:has-text("Pay $")'); await p.waitForTimeout(200);
+  if ((await R()).warrants.length) throw new Error('paying in the app did not clear a misdemeanour warrant');
+  await clearModals();
+  // 6. a felony can't be paid off; turning yourself in at a precinct clears it
+  await p.evaluate(async () => {
+    const { warrantForEscape } = await import('./js/core/warrants.js'); const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const s = window.__rfg.game.s; warrantForEscape(s, [{ kind: 'robbery', text: 'Armed robbery — test.', fine: 6000 }], 3);
+    openPlace(LOC_BY_ID.pspd_central, window.__rfg.app);
+  });
+  await p.waitForTimeout(250);
+  await snap('27-precinct');
+  await p.click('button:has-text("Turn yourself in")');
+  await p.click('.modal button:has-text("Turn myself in")');
+  await p.waitForTimeout(200);
+  if ((await R()).warrants.length) throw new Error('turning yourself in did not clear the felony warrant');
+  await clearModals();
+});
+
 // ---------------- side-view showroom (layered Mustang) ----------------
 await step('showroom (side-view Mustang)', async () => {
   const hash = () => p.evaluate(() => { const c = document.querySelector('[data-side]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0, solid = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3]) solid++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7 + d[i + 3]) | 0; } return { h, solid, w: c.width, hgt: c.height }; });

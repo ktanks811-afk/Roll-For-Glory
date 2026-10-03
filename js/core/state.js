@@ -33,6 +33,8 @@ export function createState({ name, age, look, story = true }) {
     rep: 0,
     xp: 0,
     heat: 0,
+    citations: [],       // signed tickets not paid yet: { id, text, fine, due }
+    warrants: [],        // open warrants: { id, kind, text, fine, day, felony } (core/warrants.js)
     followers: 40,
     cars: [],
     activeCar: null,
