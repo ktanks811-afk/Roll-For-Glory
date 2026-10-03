@@ -176,10 +176,10 @@ export function modelOf(car) { return CAR_BY_ID[car.modelId]; }
 
 const specCache = new WeakMap();
 export function carSpec(car) {
-  const key = JSON.stringify([car.parts, car.cond, car.tune]);
+  const key = JSON.stringify([car.parts, car.cond, car.tune, car.visual?.spoiler]);
   const hit = specCache.get(car);
   if (hit && hit.key === key) return hit.spec;
-  const spec = buildSpec(CAR_BY_ID[car.modelId], partLevels(car.parts), car.cond, car.tune);
+  const spec = buildSpec(CAR_BY_ID[car.modelId], partLevels(car.parts), car.cond, car.tune, car.visual);
   specCache.set(car, { key, spec });
   return spec;
 }

@@ -13,6 +13,7 @@ import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
 import { initCrews } from './ui/ocrew.js';
 import { initOrientation } from './ui/orientation.js';
+import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
 import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
@@ -202,6 +203,7 @@ function frame(now) {
 async function boot() {
   try {
     getMap();
+    initGameFeel();
     touchUi.mount($('#touch'));
     initStory();
     app.backdrop = new MenuBackdrop();

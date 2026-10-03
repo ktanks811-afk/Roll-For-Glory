@@ -62,16 +62,39 @@ export class Hud {
     this.root.querySelectorAll('[data-tp]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); touch.press(b.dataset.tp); }));
   }
 
+  // Police radio: one dispatch call at a time, as a single line across the
+  // top of the screen. New calls wait their turn; repeats are dropped.
   radio(text) {
-    audio.radio();
-    this.radioLines.push({ text, t: performance.now() });
-    if (this.radioLines.length > 4) this.radioLines.shift();
+    const q = this.radioLines;
+    const cur = this.radioCur;
+    if ((cur && cur.text === text) || q.some(l => l.text === text)) return;
+    q.push({ text });
+    if (q.length > 3) q.splice(0, q.length - 3);   // stale calls give way to fresh ones
     this.renderRadio();
   }
   renderRadio() {
     const now = performance.now();
-    this.radioLines = this.radioLines.filter(l => now - l.t < 9000);
-    this.q('radio').innerHTML = this.radioLines.map(l => `<div><b>PSPD</b> ${esc(l.text)}</div>`).join('');
+    const cur = this.radioCur;
+    if (cur && now < cur.until) return;
+    const box = this.q('radio');
+    const next = this.radioLines.shift();
+    if (!next) {
+      if (cur) { this.radioCur = null; box.classList.remove('on'); }
+      return;
+    }
+    // long enough to read: ~2.5s plus a beat per word, capped
+    const words = next.text.split(/\s+/).length;
+    this.radioCur = { text: next.text, until: now + Math.min(6000, 2500 + words * 220) + (this.radioLines.length ? 0 : 600) };
+    audio.radio();
+    box.innerHTML = `<b>PSPD</b><span><i>${esc(next.text)}</i></span>`;
+    box.classList.remove('on'); void box.offsetWidth; box.classList.add('on');
+    // too long for one line on this screen: slide it along instead of wrapping
+    const sp = box.querySelector('span'), over = sp.scrollWidth - sp.clientWidth;
+    if (over > 4) {
+      const secs = 1.6 + over / 70;
+      sp.classList.add('scroll'); sp.style.setProperty('--scroll', `${-over}px`); sp.style.setProperty('--dur', `${secs + 1.6}s`);
+      this.radioCur.until += secs * 1000;
+    }
   }
 
   update(w) {

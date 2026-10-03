@@ -8,6 +8,7 @@ import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, part
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { buildSpec, dynoCurve, metrics, MPH } from '../sim/powertrain.js';
 import { launchRpmSetting } from '../sim/twostep.js';
+import { tuneSchema, tuneValue, PRESETS } from '../sim/tuning.js';
 import { drawSideCar } from '../gfx2d/sideCar.js';
 import { shapeOf } from '../data/carShapes.js';
 import { soundProfile, noiseDb, LEGAL_DB } from '../sim/sound.js';
@@ -333,42 +334,134 @@ function drawDyno(cv, spec, stock, prog) {
   g.fillStyle = '#e0192e'; g.fillText('■ Horsepower', L + 10, T + 14); g.fillStyle = '#c0c4cc'; g.fillText('■ Torque (lb-ft)', L + 120, T + 14);
 }
 
+// What each part of the setup costs to change: [shop $, DIY minutes]
+const TUNE_COST = {
+  engine: [300, 60, 'ECU map'], tc: [0, 15, 'Traction control'], gearing: [650, 240, 'Ring & pinion'], gears: [1400, 480, 'Gear set'],
+  susp: [180, 120, 'Suspension setup'], align: [140, 90, 'Alignment'], tires: [0, 10, 'Tire pressures'], brakes: [0, 15, 'Brake bias'],
+  diff: [250, 120, 'Diff setup'], aero: [0, 15, 'Wing angle'],
+};
+
 function tune(body, h, app, st, s, car, m) {
   const can = st.mode === 'home' || st.mode === 'perf';
   const lv = levels(car);
-  body.innerHTML = `<div style="max-width:640px">
-    <label class="field"><span>Final drive ratio — ${(m.fd * car.tune.finalDrive).toFixed(2)} (${car.tune.finalDrive > 1 ? 'shorter: quicker launch, lower top speed' : car.tune.finalDrive < 1 ? 'taller: higher top speed, softer launch' : 'factory'})</span>
-      <input type="range" min="0.85" max="1.15" step="0.01" value="${car.tune.finalDrive}" data-fd class="input" ${can ? '' : 'disabled'}></label>
-    <div class="kv" data-out></div>
-    <p class="small muted">${can ? 'Changes apply immediately. Swapping a ring & pinion for real costs $650 in parts and labor at Torque Temple — here we just charge you once you save.' : 'Go home or to Torque Temple to change gearing.'}</p>
-    <button class="btn btn-primary" data-action="save" ${can ? '' : 'disabled'}>Save gearing (${st.mode === 'perf' ? '$650' : 'DIY, 4h'})</button>
-    <div class="section-title">Launch</div>
+  const spec0 = carSpec(car);
+  const baseRl = buildSpec(m, lv, car.cond, {}, car.visual).redline;
+  const schema = tuneSchema(m, lv, car.visual, baseRl);
+  if (!st.draft || st.draft.uid !== car.uid) st.draft = { uid: car.uid, t: JSON.parse(JSON.stringify(car.tune || {})) };
+  const draft = st.draft.t;
+  const val = (it) => tuneValue(draft, it);
+  const row = (grp, it) => {
+    const v = val(it);
+    return `<label class="tune-row"><span class="tune-l">${esc(it.label)}<b data-v="${it.k}">${it.fmt(v)}</b><small>${esc(it.unit)}${it.ratio ? '' : ` · stock ${it.fmt(it.def)}`}</small></span>
+      <input type="range" min="${it.min}" max="${it.max}" step="${it.step}" value="${v}" data-k="${it.k}" class="input" ${can && !grp.lock ? '' : 'disabled'}></label>`;
+  };
+  const open = st.tuneOpen || (st.tuneOpen = new Set(['engine', 'gearing']));
+  const groupsHtml = schema.map(grp => `<details class="tune-grp" data-g="${grp.id}" ${open.has(grp.id) ? 'open' : ''}>
+      <summary>${grp.lock ? '🔒 ' : ''}${esc(grp.name)}<span class="tune-chg" data-chg="${grp.id}"></span></summary>
+      ${grp.lock ? `<p class="small muted">${esc(grp.lock)}</p>` : `<p class="small muted">${esc(grp.note)}</p>${grp.items.map(it => row(grp, it)).join('')}`}
+    </details>`).join('');
+  body.innerHTML = `<div class="tune">
+    <div class="tune-out" data-out></div>
+    <div data-warn></div>
+    <div class="tune-presets"><span class="small muted">Start from</span>${Object.entries(PRESETS).map(([id, p]) => `<button class="btn btn-sm" data-action="preset" data-id="${id}" ${can ? '' : 'disabled'}>${id === 'street' ? 'Stock' : p.label}</button>`).join('')}</div>
+    ${groupsHtml}
+    <details class="tune-grp" ${open.has('launch') ? 'open' : ''} data-g="launch"><summary>Launch control</summary>
     <p class="small">${lv.twostep ? `✅ 2-step installed (stage ${lv.twostep}). Hold gas + brake and it holds your launch rpm — and throws flames out the exhaust. Works on the drag strip, at meets and when you're stopped on the street.` : lv.ecu >= 2 ? '✅ Launch control enabled (ECU stage 2+). The drag strip holds your rpm on the line. Add a 2-step (PartsHub → Power Adders) for tighter holds and flames.' : '❌ No launch control. Install a 2-step (PartsHub → Power Adders) or get a Stage 2 tune for a rev limiter on the line. Plain gas + brake just revs — flames only come from a 2-step.'}</p>
     ${lv.twostep && m.asp !== 'ev' ? `<label class="field"><span>2-step launch rpm — <b data-ts-val></b></span>
-      <input type="range" min="2000" max="${Math.round(m.redline * 0.92)}" step="100" value="${Math.round(launchRpmSetting(carSpec(car), car))}" data-ts class="input" ${can ? '' : 'disabled'}></label>
-      <p class="small muted">Higher rpm = harder launch but easier to spin the tires. Turbo cars want it up where boost builds; stage ${lv.twostep} holds it within ±${FX.twostep.tol[lv.twostep]} rpm.</p>` : ''}</div>`;
+      <input type="range" min="2000" max="${Math.round(m.redline * 0.92)}" step="100" value="${Math.round(launchRpmSetting(spec0, car))}" data-ts class="input" ${can ? '' : 'disabled'}></label>
+      <p class="small muted">Higher rpm = harder launch but easier to spin the tires. Turbo cars want it up where boost builds; stage ${lv.twostep} holds it within ±${FX.twostep.tol[lv.twostep]} rpm.</p>` : ''}</details>
+    <div class="tune-save">
+      <p class="small muted" data-cost></p>
+      <div class="row"><button class="btn" data-action="revert" ${can ? '' : 'disabled'}>Undo changes</button><button class="btn btn-primary" data-action="save" ${can ? '' : 'disabled'}>Save tune</button></div>
+      ${can ? '' : '<p class="small muted">View only. Go home or to Torque Temple to change the setup.</p>'}
+    </div></div>`;
+  body.querySelectorAll('details[data-g]').forEach(d => d.addEventListener('toggle', () => { d.open ? open.add(d.dataset.g) : open.delete(d.dataset.g); }));
+
   const ts = body.querySelector('[data-ts]');
   if (ts) {
     const show = () => { body.querySelector('[data-ts-val]').textContent = `${ts.value} rpm`; };
-    ts.oninput = () => { car.tune.twoStepRpm = +ts.value; show(); };
+    ts.oninput = () => { car.tune.twoStepRpm = +ts.value; draft.twoStepRpm = +ts.value; show(); };
     show();
   }
-  const fd = body.querySelector('[data-fd]');
-  const orig = car.tune.finalDrive;
-  const out = () => {
-    car.tune.finalDrive = +fd.value;
-    const mt = carMetrics(car);
-    body.querySelector('[data-out]').innerHTML = `<span>0-60</span><span>${mt.zero60?.toFixed(2)}s</span><span>1/4 mile</span><span>${mt.quarter?.toFixed(2)}s @ ${Math.round(mt.quarterTrap)}</span><span>Top speed</span><span>${Math.round(mt.topSpeed)} mph</span>`;
+
+  // which groups differ from what's saved on the car
+  const changed = () => {
+    const out = [];
+    for (const grp of schema) {
+      if (grp.lock) continue;
+      const diff = grp.items.filter(it => Math.abs(val(it) - tuneValue(car.tune, it)) > 1e-9);
+      if (!diff.length) continue;
+      if (grp.id === 'gearing') {
+        if (diff.some(it => it.k === 'finalDrive')) out.push('gearing');
+        if (diff.some(it => it.k !== 'finalDrive')) out.push('gears');
+      } else out.push(grp.id);
+    }
+    return out;
   };
-  fd.oninput = out; out();
-  h.onClose = () => { if (car.tune.finalDrive !== orig && !h.saved) car.tune.finalDrive = orig; };
+  const cost = ch => ch.reduce((a, id) => ({ $: a.$ + TUNE_COST[id][0], min: a.min + TUNE_COST[id][1] }), { $: 0, min: 0 });
+
+  let raf = 0;
+  const out = () => {
+    raf = 0;
+    const sp = buildSpec(m, lv, car.cond, draft, car.visual);
+    const mt = metrics(sp), m0 = carMetrics(car);
+    const d = (a, b, lowerBetter, dp = 2) => { if (a == null || b == null) return ''; const x = a - b; if (Math.abs(x) < Math.pow(10, -dp) / 2) return ''; const good = lowerBetter ? x < 0 : x > 0; return ` <small class="dl" style="color:${good ? 'var(--green)' : 'var(--red2)'}">${x > 0 ? '+' : ''}${x.toFixed(dp)}</small>`; };
+    const bal = Math.max(-1, Math.min(1, (sp.balance || 0) * 4));
+    const balTxt = bal > 0.15 ? 'Oversteer' : bal < -0.15 ? 'Understeer' : 'Neutral';
+    const kn = sp.knock || 0;
+    body.querySelector('[data-out]').innerHTML = `
+      <div class="tune-figs">
+        <div><small>Power</small><b>${sp.hp}</b> hp${d(sp.hp, spec0.hp, false, 0)}</div>
+        <div><small>Torque</small><b>${sp.tq}</b> lb-ft${d(sp.tq, spec0.tq, false, 0)}</div>
+        <div><small>0-60</small><b>${mt.zero60?.toFixed(2) ?? '—'}</b>s${d(mt.zero60, m0.zero60, true)}</div>
+        <div><small>¼ mile</small><b>${mt.quarter?.toFixed(2) ?? '—'}</b>s${d(mt.quarter, m0.quarter, true)}</div>
+        <div><small>Top</small><b>${Math.round(mt.topSpeed)}</b> mph${d(mt.topSpeed, m0.topSpeed, false, 0)}</div>
+        <div><small>Grip</small><b>${(sp.handling / (spec0.handling || 1) * 100).toFixed(0)}</b>%</div>
+      </div>
+      <div class="tune-meters">
+        <div><small>Balance · <b>${balTxt}</b></small><div class="tune-bal"><i style="left:${50 + bal * 50}%"></i></div></div>
+        <div><small>Knock risk · <b style="color:${kn > 0.4 ? 'var(--red2)' : kn > 0 ? 'var(--yellow)' : 'var(--green)'}">${kn > 0.4 ? 'HIGH' : kn > 0 ? 'Some' : 'Safe'}</b>${sp.boostPsi ? ` · ${sp.boostPsi.toFixed(1)} psi` : ''} · limiter ${Math.round(sp.redline).toLocaleString()} rpm</small>${bar(kn * 100, kn > 0.4 ? 'hot' : '')}</div>
+      </div>`;
+    body.querySelector('[data-warn]').innerHTML = `${(sp.tuneWarnings || []).concat(sp.fuelLimited ? ['Injectors are maxed out. More boost won\'t make more power until you upgrade the fuel system.'] : []).map(w => `<p class="tune-warn">⚠ ${esc(w)}</p>`).join('')}`;
+    const ch = changed(), c = cost(ch);
+    body.querySelectorAll('[data-chg]').forEach(n => { n.textContent = ch.includes(n.dataset.chg) || (n.dataset.chg === 'gearing' && ch.includes('gears')) ? ' • changed' : ''; });
+    body.querySelector('[data-cost]').textContent = !ch.length ? 'No changes yet.' : `${ch.map(id => TUNE_COST[id][2]).join(', ')} — ${st.mode === 'perf' ? (c.$ ? `${fmtMoney(c.$)} at the shop` : 'free') : `DIY, ${c.min >= 60 ? `${(c.min / 60).toFixed(c.min % 60 ? 1 : 0)}h` : `${c.min} min`} of your time`}.`;
+  };
+  const queue = () => { if (!raf) raf = requestAnimationFrame(out); };
+  body.querySelectorAll('[data-k]').forEach(inp => {
+    const it = schema.flatMap(g => g.items).find(x => x.k === inp.dataset.k);
+    inp.oninput = () => {
+      draft[it.k] = +inp.value;
+      // single-adjustable dampers move bump and rebound together
+      if ((lv.suspension || 0) < 3 && (it.k === 'bumpF' || it.k === 'bumpR')) draft[it.k === 'bumpF' ? 'rebF' : 'rebR'] = +inp.value;
+      body.querySelector(`[data-v="${it.k}"]`).textContent = it.fmt(+inp.value);
+      queue();
+    };
+  });
+  out();
   bind(body, {
+    preset: dd => {
+      const p = PRESETS[dd.id];
+      for (const grp of schema) for (const it of grp.items) {
+        if (grp.lock) continue;
+        const keep = dd.id !== 'street' && (grp.id === 'engine' || /^g\d/.test(it.k));   // chassis presets leave your engine map and gear set alone
+        draft[it.k] = Math.max(it.min, Math.min(it.max, p.vals[it.k] ?? (keep ? val(it) : it.def)));
+      }
+      h.refresh();
+      toast(dd.id === 'street' ? 'Back to the stock setup. Save to keep it.' : `${p.label} setup loaded. Fine-tune it, then save.`, 'info');
+    },
+    revert: () => { st.draft = null; h.refresh(); },
     save: () => {
-      if (st.mode === 'perf') { if (!spend(s, 650, 'Ring & pinion swap')) return; }
-      else advanceTime(s, 240);
-      h.saved = true;
+      const ch = changed();
+      if (!ch.length) { toast('Nothing changed', 'info'); return; }
+      const c = cost(ch);
+      if (st.mode === 'perf') { if (c.$ && !spend(s, c.$, `Tuning: ${ch.map(id => TUNE_COST[id][2]).join(', ')}`)) return; }
+      else advanceTime(s, c.min);
+      car.tune = JSON.parse(JSON.stringify(draft));
+      st.draft = null;
       app.world?.refreshCar();
-      toast('Gearing saved', 'good');
+      toast('Tune saved', 'good');
+      h.refresh();
     },
   });
 }

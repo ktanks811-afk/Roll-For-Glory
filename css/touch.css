@@ -17,6 +17,7 @@
 #touch[data-ctx="race"] .tc-car-only { display: none; }
 
 /* shared look */
+#touch .tc-btn > *, #touch .tc-sknob > * { pointer-events: none; }   /* the label never becomes the touch target */
 #touch .tc-btn, #touch .tc-stick, #touch .tc-shifter { pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
 #touch .tc-btn {
   position: relative; padding: 0; color: #fff; font-family: var(--head); font-weight: 700; line-height: 1.05;
@@ -116,8 +117,7 @@ body.touch .hud-dash { position: relative; width: 100%; margin-top: calc(var(--u
 body.touch .dash-speed b { font-size: calc(var(--u, 1px) * 32); }
 body.touch .dash-gear { font-size: calc(var(--u, 1px) * 24); top: calc(var(--u, 1px) * 6); }
 body.touch .dash-car { display: none; }
-body.touch .hud-radio { width: 54vw; top: 36%; }
-body.touch .hud-radio div { font-size: 12px; }
+body.touch .hud-radio { font-size: calc(var(--u, 1px) * 12); padding: 4px 10px; max-width: max(180px, calc(100vw - 2 * var(--u, 1px) * 200)); }
 body.touch .hud-prompt { font-size: 14px; padding: 6px 12px; }
 body.touch .hud-prompt kbd { background: var(--red); border-color: var(--red); color: #fff; }
 

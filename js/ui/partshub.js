@@ -56,8 +56,8 @@ function hpGain(it, car) {
   const lv2 = { ...lv, [it.cat]: it.stage };
   if (it.cat === 'turbo') lv2.supercharger = 0;
   if (it.cat === 'supercharger') lv2.turbo = 0;
-  const hp = buildSpec(m, lv2, car.cond, car.tune).hp;
-  const out = { delta: hp - base, limited: buildSpec(m, lv2, car.cond, car.tune).fuelLimited };
+  const hp = buildSpec(m, lv2, car.cond, car.tune, car.visual).hp;
+  const out = { delta: hp - base, limited: buildSpec(m, lv2, car.cond, car.tune, car.visual).fuelLimited };
   gainCache.set(key, out);
   return out;
 }
