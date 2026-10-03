@@ -118,6 +118,7 @@ body.touch .dash-speed b { font-size: calc(var(--u, 1px) * 32); }
 body.touch .dash-gear { font-size: calc(var(--u, 1px) * 24); top: calc(var(--u, 1px) * 6); }
 body.touch .dash-car { display: none; }
 body.touch .hud-radio { font-size: calc(var(--u, 1px) * 12); padding: 4px 10px; max-width: max(180px, calc(100vw - 2 * var(--u, 1px) * 200)); }
+body.touch .hud-weapon { margin-top: calc(var(--u, 1px) * 8); padding: calc(var(--u, 1px) * 4) calc(var(--u, 1px) * 7); font-size: calc(var(--u, 1px) * 11); }
 body.touch .hud-prompt { font-size: 14px; padding: 6px 12px; }
 body.touch .hud-prompt kbd { background: var(--red); border-color: var(--red); color: #fff; }
 

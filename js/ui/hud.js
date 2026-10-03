@@ -47,9 +47,9 @@ export class Hud {
         <div class="dash-row" data-nosrow><span>NOS</span><div class="bar thin nos"><div data-nos></div></div></div>
         <div class="dash-car" data-carname></div>
       </div>
+        <div class="hud-weapon hidden" data-weapon></div>
       </div>
       <div class="hud-radio" data-radio></div>
-      <div class="hud-weapon hidden" data-weapon></div>
       <div class="hud-prompt hidden" data-prompt></div>
       <div class="hud-help" data-help></div>
     `;
@@ -155,11 +155,12 @@ export class Hud {
     if (w.nearLoc && !(cb && cb.armed)) parts.push(`<kbd>${tch ? 'USE' : w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
     if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${tch ? 'GET IN' : 'F'}</kbd> ${tch ? 'your car' : 'Get in'}`);
     else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push(`<kbd>${tch ? 'GET OUT' : 'F'}</kbd> ${tch ? '' : 'Get out'}`);
-    const wl = cb && !w.inCar ? cb.hudLine() : '';
+    const wl = cb && !w.inCar ? cb.hudLine(tch) : '';
     const wq = this.q('weapon');
     if (wq) {
       const hp = cb ? Math.round(cb.arms.hp) : 100, ar = cb ? Math.round(cb.arms.armor * 100) : 0;
-      const html = wl ? `🔫 ${wl}${hp < 100 ? ` &nbsp; ❤ ${hp}` : ''}${ar ? ` &nbsp; 🛡 ${ar}%` : ''}` : '';
+      const vit = `${hp < 100 ? `❤ ${hp}` : ''}${hp < 100 && ar ? ' &nbsp;' : ''}${ar ? `🛡 ${ar}%` : ''}`;
+      const html = wl ? `${wl}${vit ? `<div class="wp-stat">${vit}</div>` : ''}` : '';
       if (wq.dataset.h !== html) { wq.dataset.h = html; wq.innerHTML = html; }
       wq.classList.toggle('hidden', !html);
     }
