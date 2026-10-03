@@ -801,7 +801,7 @@ export class World {
           glows.push({ x: bx, z: bz, r: 4, color: 'rgba(255,0,0,1)', a: 0.8 });
         }
       }
-      if (this.police.heli) blobs.push({ x: this.police.heli.x, z: this.police.heli.z, r: 22, a: 1 });
+      if (this.police.heli) blobs.push({ x: this.police.heli.spot.x, z: this.police.heli.spot.z, r: 22, a: 1 });
       for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       drawLighting(ctx, cam, night, this.map.lights, { cars: carsLit, glows, blobs });
@@ -817,10 +817,16 @@ export class World {
       ctx.restore();
     }
     if (this.police.heli) {
+      // spotlight: a faint beam from Air One down to the pool of light on the target
+      const hl = this.police.heli, hx = cam.sx(hl.x), hy = cam.sy(hl.z), lx = cam.sx(hl.spot.x), ly = cam.sy(hl.spot.z), lr = 20 * cam.zoom;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      const g = ctx.createRadialGradient(cam.sx(this.police.heli.x), cam.sy(this.police.heli.z), 0, cam.sx(this.police.heli.x), cam.sy(this.police.heli.z), 20 * cam.zoom);
+      const ang = Math.atan2(ly - hy, lx - hx), nx = -Math.sin(ang), ny = Math.cos(ang);
+      const beam = ctx.createLinearGradient(hx, hy, lx, ly);
+      beam.addColorStop(0, 'rgba(255,255,230,0.12)'); beam.addColorStop(1, 'rgba(255,255,230,0.03)');
+      ctx.fillStyle = beam; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(lx + nx * lr * 0.6, ly + ny * lr * 0.6); ctx.lineTo(lx - nx * lr * 0.6, ly - ny * lr * 0.6); ctx.closePath(); ctx.fill();
+      const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
       g.addColorStop(0, 'rgba(255,255,230,0.25)'); g.addColorStop(1, 'rgba(255,255,230,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cam.sx(this.police.heli.x), cam.sy(this.police.heli.z), 20 * cam.zoom, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, lr, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
     // search zone
