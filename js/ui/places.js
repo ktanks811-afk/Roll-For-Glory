@@ -1,7 +1,7 @@
 // Every "press E" location in Fort Worth.
 
 import { openPanel, closePanel, closeAllPanels, bind, esc, toast, modal, confirm, bar } from './dom.js';
-import { game, fmtMoney, spend, earn, activeCar, carSpec, carValue, modelOf, newCar, garageCapacity, tierOf, isNight, hourOf, needsPremium, tankGallons, getCar, carMetrics } from '../core/state.js';
+import { game, fmtMoney, spend, earn, activeCar, carSpec, carValue, modelOf, newCar, garageCapacity, tierOf, isNight, hourOf, needsPremium, tankGallons, getCar, carMetrics, addRep } from '../core/state.js';
 import { CARS, CAR_BY_ID, carName, soldNew, MAKES, CURRENT_YEAR } from '../data/cars.js';
 import { PROPERTIES, LOC_BY_ID, GAS } from '../data/world.js';
 import { CLOTHES, CLOTH_BY_ID, FOOD } from '../data/shops.js';
@@ -18,6 +18,8 @@ import { emit } from '../core/events.js';
 import { saveGame } from '../core/save.js';
 import { openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
+import { recordHtml } from './record.js';
+import { payableTotal, warrantTotal, citationTotal, payFines, surrender, SURRENDER_DISCOUNT } from '../core/warrants.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -386,11 +388,28 @@ function police(loc, app, s) {
       ${w?.police.active ? '<p class="bad">You walked into a police station while they\'re looking for you. Bold.</p>' : ''}
       <div class="li"><div class="grow"><div class="t">Outstanding citations</div><div class="s">${heat > 0.05 ? `Your heat is ${heat.toFixed(1)}. Paying your tickets clears it.` : 'You\'re clean.'}</div></div>
         <button class="btn btn-sm btn-primary" data-action="pay" ${heat > 0.05 && !w?.police.active ? '' : 'disabled'}>Pay ${fmtMoney(fine)}</button></div>
+      <div class="section-title">Your record</div>
+      ${recordHtml(s)}
+      ${s.warrants.length || s.citations.length ? `<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+        ${payableTotal(s) ? `<button class="btn btn-sm" data-action="fines" ${w?.police.active ? 'disabled' : ''}>Pay tickets${s.warrants.some(x => !x.felony) ? ' + misdemeanours' : ''} · ${fmtMoney(payableTotal(s))}</button>` : ''}
+        <button class="btn btn-sm btn-primary" data-action="surrender">Turn yourself in · ${fmtMoney(Math.round((warrantTotal(s) + citationTotal(s)) * (1 - SURRENDER_DISCOUNT)))}</button></div>
+        <p class="small muted">Turning yourself in clears everything, felonies included, at 25% off. You spend a few hours being booked.</p>` : ''}
       <div class="section-title">Sgt. Hal Brenner</div>
       <p class="muted">"${s.stats.pursuitsEscaped > 2 ? `${esc(s.player.name)}. You've been busy. I've got a whiteboard now. You're on it.` : 'Street racing kills people. Take it to Ironline Dragway — it\'s legal there.'}"</p></div>`;
     bind(root, {
       close: () => h.close(),
       pay: () => { if (spend(s, fine, 'FWPD citations')) { s.heat = 0; toast('Record cleared', 'good'); h.refresh(); } },
+      fines: () => { const r = payFines(s); if (r.ok) { toast(`Paid ${fmtMoney(r.total)}`, 'good'); h.refresh(); } },
+      surrender: async () => {
+        const all = Math.round((warrantTotal(s) + citationTotal(s)) * (1 - SURRENDER_DISCOUNT));
+        if (!(await confirm('Turn yourself in?', `<p>You'll be booked, pay <b>${fmtMoney(all)}</b> and walk out a few hours later with a clean record.</p>`, 'Turn myself in'))) return;
+        const r = surrender(s);
+        if (!r.ok) return;
+        if (w?.police.active) w.police.reset(w);
+        advanceTime(s, 4 * 60);   // booked, processed, released
+        addRep(s, -15, 'Turned yourself in');
+        toast('Booked and released. Your record is clean.', 'good'); h.refresh();
+      },
     });
   });
 }

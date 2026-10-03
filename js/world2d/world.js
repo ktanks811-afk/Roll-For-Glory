@@ -23,6 +23,7 @@ import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
+import { serveAll, signCitation, warrantForEscape, CITATION_DAYS } from '../core/warrants.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -490,18 +491,22 @@ export class World {
     this.ui.toast('SPIKE STRIP! Tires are shredded — grip is gone.', 'bad');
   }
 
-  onBusted(fine, ticketOnly, record = []) {
+  // warrantStop: you pulled over for a ticket and the officer found your warrant
+  onBusted(fine, ticketOnly, record = [], warrantStop = false) {
     const s = this.s;
     fine += ticketOnly ? 0 : this.combat.onBusted(record);
+    // an arrest serves every open warrant and unpaid ticket, at full price
+    const nWarrants = ticketOnly ? 0 : (s.warrants?.length || 0);
+    const served = ticketOnly ? 0 : serveAll(s);
     const insured = s.insurance;
-    const total = Math.round(fine * (insured && !ticketOnly ? 0.75 : 1));
+    const total = Math.round(fine * (insured && !ticketOnly ? 0.75 : 1)) + served;
     if (!spend(s, total, ticketOnly ? 'FWPD traffic citation' : 'FWPD fines + impound')) {
       s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0;
     }
     if (!ticketOnly) { addRep(s, -60, 'Busted'); s.stats.busted++; }
     this.ui.modal(ticketOnly ? 'Pulled over' : 'BUSTED', ticketOnly
       ? `<p>The officer writes you a ticket for ${fmtMoney(total)}. "Slow it down out here."</p>`
-      : `<p>You're in cuffs. Your car spends the night in impound.</p><p>Fines, towing and impound: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>`);
+      : `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. Your car spends the night in impound.</p><p>Fines, towing and impound: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>${nWarrants ? `<p class="small muted">${nWarrants} warrant${nWarrants > 1 ? 's' : ''} served (${fmtMoney(served)} included). Your record is clean again.</p>` : ''}`);
     emit('busted', { fine: total });
   }
 
@@ -521,25 +526,33 @@ export class World {
     const list = () => items.map(r => `<div class="row" style="justify-content:space-between"><span>${esc(r.text)}</span><b>${fmtMoney(r.fine)}</b></div>`).join('');
     const pick = await this.ui.modal('Traffic stop',
       `<p class="muted">${esc(say)}</p><div style="margin:10px 0">${list()}</div><p><b>Total: ${fmtMoney(total)}</b></p>${hasNoise ? `<p class="small muted">Noise citation${priors ? ` (#${priors + 1}) — a third one gets the car impounded` : ''}. Quieter exhaust, quieter tickets.</p>` : ''}`,
-      [{ label: 'Accept the citation', primary: true, value: 'accept' }, { label: 'Try to talk your way out', value: 'argue' }]);
+      [{ label: 'Accept the citation', primary: true, value: 'accept' }, { label: `Sign it, pay within ${CITATION_DAYS} days`, value: 'sign' }, { label: 'Try to talk your way out', value: 'argue' }]);
     let note = '';
     if (pick === 'argue') {
       const chance = Math.max(0.05, 0.15 + tierOf(s.rep).n * 0.04 - priors * 0.05 - (hasNoise ? 0.05 : 0));
       if (Math.random() < chance) { total = 0; note = 'The officer sighs. "Just a warning this time. Get that fixed."'; }
       else { total = Math.round(total * 1.4); note = '"Now you\'re getting every violation I saw." Fines go up 40%.'; }
     }
-    if (total > 0 && !spend(s, total, 'FWPD traffic citation')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
-    this.ui.modal(total ? 'Citation issued' : 'Warning', `<p>${total ? `You paid <b>${fmtMoney(total)}</b>. ` : ''}${esc(note || '"Drive safe. Keep it under control."')}</p>`);
+    // Can't pay on the spot (or chose not to): sign for it. Leave it unpaid
+    // past the due date and it turns into a warrant.
+    let signed = null;
+    if (total > 0 && (pick === 'sign' || !spend(s, total, 'FWPD traffic citation'))) signed = signCitation(s, items, total);
+    this.ui.modal(signed ? 'Citation signed' : total ? 'Citation issued' : 'Warning', signed
+      ? `<p>You owe <b>${fmtMoney(total)}</b>, due by day ${signed.due}. Pay it at a precinct or in the FWPD app on your phone.</p><p class="small muted">Miss the date and it becomes a warrant for your arrest.</p>`
+      : `<p>${total ? `You paid <b>${fmtMoney(total)}</b>. ` : ''}${esc(note || '"Drive safe. Keep it under control."')}</p>`);
     emit('busted', { fine: total, ticket: true });
   }
 
-  onEscaped() {
+  // record: what they saw you do; seen: whether they ever got eyes on you
+  onEscaped(record = [], seen = true) {
     const s = this.s;
     s.stats.pursuitsEscaped++;
     const lvl = Math.max(1, Math.floor(s.heat));
     addRep(s, 80 * lvl, 'Escaped the cops');
     s.followers += 40 * lvl;
-    this.ui.toast(`ESCAPED! +${80 * lvl} rep. Heat will cool down if you lay low.`, 'good');
+    // they know who you are: a warrant goes out for the chase and anything they saw
+    const wr = warrantForEscape(s, seen ? record : record.filter(r => r.kind === 'robbery' || r.kind === 'shots' || r.kind === 'assault'), lvl, seen);
+    this.ui.toast(`ESCAPED! +${80 * lvl} rep.${wr.length ? ' A warrant is out for you — patrols will know your plate.' : ' Heat will cool down if you lay low.'}`, 'good');
     emit('pursuitEscaped', { level: lvl });
   }
 

@@ -8,6 +8,7 @@ import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
+import { citationsDue } from './core/warrants.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
@@ -144,6 +145,9 @@ function newDay() {
     const upkeep = s.properties.length > 1 ? 120 * (s.properties.length - 1) : 0;
     if (upkeep) spend(s, upkeep, 'Property taxes & utilities');
   }
+  // unpaid tickets past their due date become warrants
+  const late = citationsDue(s);
+  if (late.length) sendMessage(s, 'brenner', `You didn't pay your ticket${late.length > 1 ? 's' : ''}. There's a warrant out for you now (${fmtMoney(late.reduce((t, w) => t + w.fine, 0))} with the late fee). Pay it at a precinct or in the FWPD app before one of my officers runs your plate.`);
   // sponsor deals expire
   if (s.sponsor && s.sponsor.until < s.time.day) { sendMessage(s, s.sponsor.contact || 'kingpin', `Your ${s.sponsor.name} sponsorship ended.`); s.sponsor = null; }
   saveGame('auto', true);
