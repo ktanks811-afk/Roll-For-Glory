@@ -100,7 +100,7 @@ export function cornerSpeed(ang, mu, skill) {
 // motion from the same powertrain sim as the player. `d` is the driver
 // { spec, sim, s, skill, block (speed cap from traffic ahead, or Infinity) }.
 export function driveRoute(route, d, dt) {
-  const mu = (d.spec.mu || 1) * (d.wet ? 0.74 : 1);
+  const mu = (d.spec.mu || 1) * (d.wet || 1);   // wet = the weather's grip factor
   const brakeA = 6.5 * Math.min(1.25, mu) * (0.85 + 0.2 * d.skill);
   let want = d.block ?? Infinity;
   // look ahead at the next few corners

@@ -25,6 +25,7 @@ import { myHoods } from '../core/turf.js';
 import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
+import { wx } from '../core/weather.js';
 import { ensure as ensureMissions, now as missionNow, offerById, acceptMission, declineMission, abandonMission, pointGps, currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 
 const APPS = [
@@ -54,7 +55,7 @@ export function openPhone(appId, app) {
   const ph = openPanel((root, h) => {
     const s = game.s;
     root.innerHTML = `<div class="phone">
-      <div class="phone-status"><span>${gameTimeStr(s.time)}</span><span>${dayName(s.time)} · ${s.weather === 'rain' ? '🌧' : s.weather === 'fog' ? '🌫' : isNight(s.time) ? '🌙' : '☀'} · 5G ▮▮▮</span></div>
+      <div class="phone-status"><span>${gameTimeStr(s.time)}</span><span>${dayName(s.time)} · ${s.weather !== 'clear' ? wx(s).icon : isNight(s.time) ? '🌙' : '☀'} · 5G ▮▮▮</span></div>
       <div class="phone-screen" data-screen></div>
       <div class="phone-bar"><button data-phone-home title="Home"></button></div></div>`;
     const scr = root.querySelector('[data-screen]');

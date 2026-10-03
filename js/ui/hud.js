@@ -16,6 +16,7 @@ import { MiniMap } from './minimap.js';
 import { LEGAL_DB } from '../sim/sound.js';
 import { PULL_OVER_S } from '../world2d/police.js';
 import { masked, ownsMask, disguiseLabel } from '../core/disguise.js';
+import { wx, nightShift } from '../core/weather.js';
 import { currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 
 const HELP = {
@@ -125,7 +126,7 @@ export class Hud {
     this.last = now;
     const s = game.s;
     this.q('time').textContent = gameTimeStr(s.time);
-    this.q('day').textContent = `${dayName(s.time)} · Day ${s.time.day} · ${s.weather}`;
+    this.q('day').textContent = `${dayName(s.time)} · Day ${s.time.day} · ${wx(s).icon} ${wx(s).name}${nightShift(s.time) ? ' · 🚓 Night shift' : ''}`;
     const p = w.playerState();
     const street = w.streetAt(p.x, p.z);
     const turf = turfLabel(s, p.x, p.z);

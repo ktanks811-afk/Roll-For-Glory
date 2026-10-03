@@ -15,6 +15,8 @@ import { RevLimiter, launchRpmSetting, optimalLaunchRpm } from '../sim/twostep.j
 import { soundProfile } from '../sim/sound.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
+import { drawRain } from '../world2d/render.js';
+import { wx } from '../core/weather.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // instruction text: phone wording when the on-screen controls are showing
@@ -68,6 +70,11 @@ export class Race {
     this.p = new Driver({ ...opts.player, isPlayer: true });
     this.drivers = [this.p];
     if (opts.npc) { this.n = new Driver({ ...opts.npc, isPlayer: false }); this.drivers.push(this.n); }
+    // Wet street: both cars lose grip. The strip is prepped and stays dry.
+    const sky = wx(game.s);
+    this.rain = opts.road === 'strip' ? 0 : sky.rain;
+    this.storm = game.s.weather === 'storm' && this.rain > 0;
+    if (this.rain > 0) for (const d of this.drivers) d.spec = { ...d.spec, mu: d.spec.mu * sky.grip };
     if (this.isDrag) {
       this.p.lane = 0; this.p.x = laneX(0);
       if (this.n) { this.n.lane = 1; this.n.x = laneX(1); } else { this.p.lane = 0; }
@@ -95,6 +102,7 @@ export class Race {
       const n = Math.round((opts.trafficDensity ?? 0.4) * this.dist / 120);
       for (let i = 0; i < n; i++) this.spawnTraffic(80 + Math.random() * (this.dist + 300));
     }
+    if (this.rain > 0) this.sub += ` · ${this.storm ? '⛈ Flooded' : '🌧 Wet'} roads: ease on the gas`;
     this.cam = { y: this.p.y, zoom: 13 };
     this.engineP = audio.engine({ profile: soundProfile(this.p.model, this.p.spec.lv, this.p.car?.parts) });
     this.engineN = this.n ? audio.engine({ profile: soundProfile(this.n.model, this.n.spec.lv, this.n.car?.parts), volume: 0.65 }) : null;
@@ -595,6 +603,14 @@ export class Race {
       ctx.save(); ctx.translate(SX(d.x), SY(d.y)); ctx.scale(z, z);
       drawFlameJets(ctx, d.model, d.visual, d.flame);
       ctx.restore();
+    }
+    if (this.rain > 0) {
+      drawRain(ctx, { w: W, h: H }, this.rain, dt);
+      if (this.storm) {
+        this.boltT = (this.boltT ?? 3 + Math.random() * 6) - dt;
+        if (this.boltT <= 0) { this.bolt = 1; this.boltT = 5 + Math.random() * 10; audio.thunder?.(); }
+        if (this.bolt > 0) { ctx.fillStyle = `rgba(225,230,255,${0.45 * this.bolt})`; ctx.fillRect(0, 0, W, H); this.bolt = Math.max(0, this.bolt - dt * 4); }
+      }
     }
     // mini progress bar
     const pw = Math.min(360, W - 40), px = (W - pw) / 2, py = touchUi.active ? 84 : H - 26;

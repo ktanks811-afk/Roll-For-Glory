@@ -62,6 +62,22 @@ await step('new game', async () => {
   await snap('03-world');
 });
 await step('walk', async () => { await key('KeyW', 600); await key('KeyD', 300); });
+await step('weather + night shift', async () => {
+  const r = await p.evaluate(async () => {
+    const W = await import('./js/core/weather.js');
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    const saved = { weather: s.weather, min: s.time.min };
+    s.weather = 'storm'; s.time.min = 60;   // 1 AM in a thunderstorm
+    document.querySelectorAll('.modal-back').forEach(m => m.remove()); w.paused = false;
+    await new Promise(r => setTimeout(r, 500)); const hud = document.querySelector('[data-day]')?.textContent || '';
+    const out = { hud, grip: W.wx(s).grip, patrols: W.extraPatrols(s.time), night: W.nightShift(s.time), dark: w.darkness() };
+    s.time.min = 12 * 60; out.noon = W.nightShift(s.time);
+    out.chain = Array.from({ length: 200 }, () => W.nextWeather('clear')).every(x => W.WEATHER[x]);
+    Object.assign(s, { weather: saved.weather }); s.time.min = saved.min;
+    return out;
+  });
+  if (!(/Thunderstorm.*Night shift/.test(r.hud) && r.grip < 0.7 && r.patrols === 2 && r.night === 2 && r.noon === 0 && r.dark > 0.7 && r.chain)) throw new Error('weather/night rules off: ' + JSON.stringify(r));
+});
 await step('phone home', async () => { await key('KeyP'); await p.waitForTimeout(300); await snap('04-phone'); });
 for (const app of ['Messages', 'Contacts', 'Map', 'Bank', 'Throttle', 'Races', 'Ryde', 'Crew', 'My Cars', 'Journal']) {
   await step('app ' + app, async () => {
@@ -242,7 +258,8 @@ await step('street races: 1v1 for cash, pink slips, time trial', async () => {
   await p.keyboard.press('Enter'); await p.waitForSelector('.p-head h1:has-text("Sundance Square Sprint")');
   await p.click('[data-action=pick] >> nth=0');
   await p.evaluate(() => { const r = document.querySelector('[data-wager]'); r.value = 200; r.oninput(); });
-  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  // story steps pay out for beating some racers (Tiny: $300), so keep the story out of the payout check
+  const cash0 = await p.evaluate(() => { const s = window.__rfg.game.s; window.__storyWas = s.story.enabled; s.story.enabled = false; return s.cash + s.bank; });
   await p.click('text=Line up');
   // countdown: the car is held on the grid, the rival is beside you
   await p.waitForTimeout(1200); await snap('21-street-countdown');
@@ -253,7 +270,7 @@ await step('street races: 1v1 for cash, pink slips, time trial', async () => {
   await snap('22-street-race');
   await runIt();
   await p.waitForSelector('.p-head h1:has-text("YOU WIN")'); await snap('23-street-win');
-  const won = await p.evaluate(() => ({ money: window.__rfg.game.s.cash + window.__rfg.game.s.bank, best: window.__rfg.game.s.streetRecords?.sr_sundance, hud: !!document.querySelector('.sr-hud') }));
+  const won = await p.evaluate(() => ({ story: (window.__rfg.game.s.story.enabled = window.__storyWas), money: window.__rfg.game.s.cash + window.__rfg.game.s.bank, best: window.__rfg.game.s.streetRecords?.sr_sundance, hud: !!document.querySelector('.sr-hud') }));
   if (won.money !== cash0 + 200 || !won.best || won.hud) throw new Error('cash race payout wrong ' + JSON.stringify({ cash0, ...won }));
   await p.click('text=Back to the street');
   // pink slips, on a second car the rival's own model: lose it and it's gone
