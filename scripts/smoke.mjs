@@ -1420,7 +1420,7 @@ await step('gig shifts (delivery, ride, tow)', async () => {
   if (why.ok || !/warrant/.test(why.text)) throw new Error('a warrant did not block the shift: ' + why.text);
   const sus = await p.evaluate(async () => { const w = window.__rfg.app.world; w.gigs.start('delivery'); const { emit } = await import('./js/core/events.js'); window.__rfg.game.s.stats.busted++; emit('busted', { fine: 500 }); w.gigs.update(0.016); return { job: !!w.gigs.job, g: window.__rfg.game.s.gigs, why: w.gigs.blocked() }; });
   if (sus.job || sus.g.streak !== 0 || !/Suspended/.test(sus.why || '')) throw new Error('an arrest did not suspend you ' + JSON.stringify(sus));
-  await p.evaluate(() => { window.__rfg.game.s.gigs.suspended = 0; });
+  await p.evaluate(() => { window.__rfg.game.s.gigs.suspended = 0; const w = window.__rfg.app.world, v = w.vehicle; v.vx = v.vz = 0; v.sim.v = 0; if (w.inCar) w.toggleCar(); });   // back on foot for the next step
 });
 
 // ---------------- crew turf: claim open hoods, turf wars, defending, street tax ----------------
