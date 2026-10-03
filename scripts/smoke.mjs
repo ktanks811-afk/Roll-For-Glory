@@ -557,6 +557,7 @@ await step('carjacking', async () => {
   if (await p.evaluate(() => !!window.__rfg.app.world.carjacks.jack || !!document.querySelector('.modal h2'))) throw new Error('driving off did not shake the carjacker');
   // it is still rare: the gap between carjackings holds
   if (await p.evaluate(async () => (await import('./js/data/carjack.js')).canCarjack(window.__rfg.app.world.carjacks.context()))) throw new Error('another carjacking allowed the same day');
+  await p.evaluate(() => { const w = window.__rfg.app.world; window.__rfg.game.s.gps = null; w.gpsPath = null; });   // later steps expect no route
   await calm();
 });
 
