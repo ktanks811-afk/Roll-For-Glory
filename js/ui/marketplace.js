@@ -18,7 +18,7 @@ import { audio } from '../core/audio.js';
 const PRICE_FILTERS = [[3000, 'Under $3k'], [5000, 'Under $5k'], [10000, 'Under $10k'], [25000, 'Under $25k'], [Infinity, 'Any price']];
 const DISTRICT_PTS = {
   'Arlington Heights': [-600, 100], 'Near Southside': [0, 620], Riverside: [600, -250], 'Lakeside': [650, 760], Stockyards: [0, -560],
-  Downtown: [0, 0], Eastgate: [450, 60], 'Chisholm Flats': [0, 1500],
+  Downtown: [0, 0], Eastgate: [450, 60], 'Chisholm Flats': [0, 1500], 'Stop Six': [1700, -400],
 };
 
 let filt = { price: 5000, q: '', make: '', sort: 'new', manual: false };

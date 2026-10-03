@@ -17,7 +17,7 @@ export class Camera {
 const COLORS = {
   grass: '#2f3a26', city: '#5d5f63', sand: '#c2a172', asphalt: '#2c2d31', asphaltHwy: '#26272b', line: '#e9e9e2',
   yellow: '#e8c21a', water: '#1d3b52', river: '#244861', park: '#3c5a30', yard: '#4a6338', parking: '#323338', gas: '#77797e',
-  plaza: '#9a6a52', trail: '#b59a6a', lane: '#36373c', dirt: '#6e5b42', sand: '#d9c493', pond: '#2b5d7a', court: '#a85a35', lot: '#4a4b50', junk: '#5b5348',
+  track: '#a0503a', gridiron: '#3f7a34', plaza: '#9a6a52', trail: '#b59a6a', lane: '#36373c', dirt: '#6e5b42', sand: '#d9c493', pond: '#2b5d7a', court: '#a85a35', lot: '#4a4b50', junk: '#5b5348',
 };
 
 export function buildStreetLights(map) {
@@ -135,6 +135,11 @@ export function drawLots(ctx, cam, items) {
       ctx.fillStyle = '#e8c21a'; ctx.fillRect(x + w / 2 - 0.3 * z, y, 0.6 * z, h);
     }
     if (l.kind === 'field' && z > 0.5) drawCropRows(ctx, cam, l);
+    if (l.kind === 'gridiron' && z > 0.8) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = Math.max(1, 0.15 * z);
+      ctx.strokeRect(x, y, w, h);
+      ctx.beginPath(); for (let s = 10; s < l.w; s += 10) { ctx.moveTo(x + s * z, y); ctx.lineTo(x + s * z, y + h); } ctx.stroke();
+    }
     if (l.kind === 'court' && z > 1) {
       ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(1, 0.15 * z);
       ctx.strokeRect(x + z, y + z, w - 2 * z, h - 2 * z);
@@ -367,6 +372,10 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
     if ((b.kind === 'house' || b.kind === 'barn') && z > 1.4) {
       ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath();
       ctx.moveTo(x0 + ox, y0 + oy + d / 2); ctx.lineTo(x0 + ox + w, y0 + oy + d / 2); ctx.stroke();
+    }
+    if (b.kind === 'church' && z > 0.8) {
+      const cx = x0 + ox + w / 2, cy = y0 + oy + d * 0.3, s = Math.min(w, d) * 0.3;
+      ctx.fillStyle = '#f2e6b0'; ctx.fillRect(cx - s * 0.12, cy - s / 2, s * 0.24, s); ctx.fillRect(cx - s * 0.38, cy - s * 0.2, s * 0.76, s * 0.22);
     }
     if (b.kind === 'solar' && z > 1) {
       ctx.strokeStyle = 'rgba(150,180,230,0.35)';

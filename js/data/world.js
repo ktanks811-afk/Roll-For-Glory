@@ -22,7 +22,7 @@ export function districtAt(x, z) {
   if (z < -1000) return 'Loop 820';
   if (z > DESERT_Z) return 'Chisholm Flats';
   if (x < -1000) return z < -100 ? 'Cross Timbers' : 'Benbrook Hills';
-  if (x > SEA_X) return z > 300 ? 'Lake Worth' : 'Lake Worth Shore';
+  if (x > SEA_X) return z > 190 ? 'Lake Worth' : z > -1000 ? 'Stop Six' : 'Lake Worth Shore';
   if (Math.abs(x) <= 300 && Math.abs(z) <= 300) return 'Downtown';
   if (x > 300) return z > 600 ? 'Lakeside' : 'Riverside Industrial';
   if (x < -300) return 'Arlington Heights';

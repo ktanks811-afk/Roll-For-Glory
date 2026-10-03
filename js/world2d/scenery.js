@@ -13,7 +13,7 @@ import { BACKROAD } from './map.js';
 import { GRID, HWY_Z, HWY_W, DESERT_Z, SEA_X, RIVER_X, TUNNEL, LOCATIONS, districtAt } from '../data/world.js';
 
 const HOUSE_ROOFS = ['#6b3a2e', '#3f4a5a', '#5a4632', '#2f3b2f', '#6e6e6e', '#7a4b3a', '#4a3a4a', '#585048', '#3a4f5f'];
-const SHORE_ROOFS = ['#d7d2c4', '#8fa6b3', '#c9b38f', '#6f8f9a', '#b8574a', '#e0ddd2'];
+const SIX_ROOFS = ['#5a4632', '#6e6e6e', '#3f4a5a', '#7a4b3a', '#4a3a4a', '#585048', '#8a7a62', '#2f3b2f', '#6b3a2e'];
 const MID_ROOFS = ['#5a5148', '#4d4b52', '#5e5a55', '#45474f', '#6a5f52', '#504a45'];
 const IND_ROOFS = ['#6b6f75', '#5d6167', '#7a7e83', '#4f5358'];
 const CAR_COLORS = ['#c41b1b', '#1b4fc4', '#e8e8e8', '#222326', '#8a8d93', '#2f6b3a', '#d9b21b', '#5a2a6a', '#b8b8bc', '#6a3a22', '#0f2a4a'];
@@ -226,15 +226,47 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
     }
   }
 
-  // ---------------- Lake Worth shore: beach houses, a beach and a lighthouse ----------------
-  for (const c of [-600, -150]) {
-    lane({ x: 908, z: c - 4.5, w: 2620 - 908 + 4.5, d: 9 });
-    houseRow('x', c, 4.5, -1, 930, 2600, { roofs: SHORE_ROOFS, depth: 34, pitch: 30 });
-    houseRow('x', c, 4.5, 1, 930, 2600, { roofs: SHORE_ROOFS, depth: 34, pitch: 30 });
+  // ---------------- Stop Six: the historic east side ----------------
+  // Tight streets of small single-family homes, corner stores and churches
+  // at the crossings, Dunbar High with its football field, and Cobb Park.
+  const SIX_EW = [-750, -600, -450, -300, -150, 0], SIX_NS = [1500, 2100], SIX_X1 = 2620;
+  for (const c of SIX_EW) lane({ x: 908, z: c - 4.5, w: SIX_X1 - 908 + 4.5, d: 9 });
+  for (const c of SIX_NS) lane({ x: c - 4.5, z: -754.5, w: 9, d: 759 });
+  lane({ x: SIX_X1 - 4.5, z: -754.5, w: 9, d: 945 });
+  // Dunbar High School
+  addB({ x: 1010, z: -990, w: 120, d: 44, h: 12, color: '#8a4a32', kind: 'landmark', label: 'Dunbar High School', labelColor: '#e8c21a' }, 0);
+  lot({ x: 1145, z: -995, w: 130, d: 76, kind: 'track' });
+  lot({ x: 1155, z: -985, w: 110, d: 56, kind: 'gridiron' });
+  addB({ x: 1160, z: -916, w: 100, d: 5, h: 3, color: '#9aa0a8', kind: 'crate' }, 0);   // bleachers
+  parkCars(lot({ x: 1010, z: -936, w: 120, d: 104, kind: 'parking' }), 0.35);
+  lot({ x: 1150, z: -898, w: 28, d: 15, kind: 'court' }); lot({ x: 1185, z: -898, w: 28, d: 15, kind: 'court' });
+  addB({ x: 1225, z: -900, w: 45, d: 30, h: 8, color: '#7a4a32', kind: 'store' }, 0.5);   // gym
+  for (let x = 1290; x < 1380; x += 9) tree(x, -985 + R(0, 150), R(3, 5));
+  // Cobb Park
+  cityPark({ x: 1970, z: -990, w: 640, d: 165 });
+  for (let k = 0; k < 60; k++) tree(R(1975, 2605), R(-985, -830), R(3, 6));
+  addB({ x: 2270, z: -925, w: 18, d: 10, h: 4, color: '#6a5a4a', kind: 'store', label: 'Cobb Park', labelColor: '#9fe870' }, 0.5);
+  // corner stores and churches where the streets cross
+  for (const x of [...SIX_NS, SIX_X1]) for (const z of SIX_EW) {
+    const r = rnd(), sx = rnd() < 0.5 ? -1 : 1, sz = rnd() < 0.5 ? -1 : 1;
+    if (r < 0.4) {
+      const w = 15, d = 12, bx = sx > 0 ? x + 8 : x - 8 - w, bz = sz > 0 ? z + 14 : z - 14 - d;
+      if (addB({ x: bx, z: bz, w, d, h: 4.5, color: pick(['#c8b28a', '#8a8d93', '#b8574a', '#5a6a7a']), kind: 'store' }, 0.5))
+        lot({ x: bx, z: sz > 0 ? z + 5.5 : z - 13.5, w, d: 8, kind: 'lot' });
+    } else if (r < 0.7) {
+      const w = 16, d = 26, bx = sx > 0 ? x + 9 : x - 9 - w, bz = sz > 0 ? z + 9 : z - 9 - d;
+      addB({ x: bx, z: bz, w, d, h: 9, color: pick(['#e8e2d8', '#8a3b2a', '#d7d2c4', '#7a4a32']), kind: 'church' }, 0.5);
+    }
   }
-  lane({ x: 2620 - 4.5, z: -604.5, w: 9, d: 820 });
-  houseRow('z', 2620, 4.5, 1, -580, 180, { roofs: SHORE_ROOFS, depth: 34, pitch: 30 });
-  houseRow('z', 2620, 4.5, -1, -180, 180, { roofs: SHORE_ROOFS, depth: 34, pitch: 30 });
+  const SIX = { roofs: SIX_ROOFS, depth: 64, pitch: 21, small: true };
+  const cuts = [920, ...SIX_NS, SIX_X1];
+  for (const c of SIX_EW) for (let k = 0; k < cuts.length - 1; k++) {
+    const from = cuts[k] + (k ? 6 : 6), to = cuts[k + 1] - 6;
+    houseRow('x', c, 4.5, -1, from, to, SIX); houseRow('x', c, 4.5, 1, from, to, SIX);
+  }
+  houseRow('z', SIX_X1, 4.5, 1, -745, 180, { ...SIX, depth: 34 });
+
+  // ---------------- Lake Worth: a beach and a lighthouse ----------------
   lot({ x: SEA_X + 10, z: 196, w: 3200 - SEA_X - 10, d: 54, kind: 'sand' });
   for (let x = SEA_X + 30; x < 3180; x += 34) tree(x + R(-4, 4), 212 + R(-4, 4), 3, 'palm');
   for (let x = SEA_X + 40; x < 3120; x += R(14, 30)) {   // umbrellas and towels
@@ -247,8 +279,8 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
   buildings.push({ x: 1700, z: 250, w: 12, d: 160, h: 1, color: '#6b5a44', kind: 'pier', noCollide: true });
   addB({ x: 3150, z: 200, w: 12, d: 12, h: 26, color: '#f2f2f2', kind: 'lighthouse', round: true }, 0);
   // the open ground between the shore streets
-  for (const band of [{ z: -1325, d: 325 }, { z: -1000, d: 350 }, { z: -555, d: 360 }, { z: -105, d: 300 }]) {
-    for (let x = 1000; x < 3200; x += 200) {
+  for (const band of [{ z: -1325, d: 325, x0: 1000 }, { z: -1000, d: 400, x0: 2660 }, { z: -600, d: 400, x0: 2660 }, { z: -200, d: 390, x0: 2660 }]) {
+    for (let x = band.x0; x < 3200; x += 200) {
       const cell = { x: x + 10, z: band.z + 10, w: 180, d: band.d - 20 };
       if (blocked(cell, 0)) { forest(cell, 0.4); continue; }
       const r = rnd();
@@ -442,7 +474,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
         for (let k = 0; k < 3; k++) { const p = pt(u + R(3, pitch - 3), half + R(4, depth - 3)); tree(p.x, p.z, R(2.5, 4)); }
         continue;
       }
-      const hw = R(12, Math.min(16, pitch - 6)), hd = R(10, 13), set = half + R(5, 8);
+      const hw = st.small ? R(9, Math.min(12, pitch - 5)) : R(12, Math.min(16, pitch - 6)), hd = st.small ? R(8, 10) : R(10, 13), set = half + R(5, 8);
       const off = u + R(1.5, pitch - hw - 1.5);
       const house = { ...rect(off, off + hw, set, set + hd), h: R(5, 8), color: pick(st.roofs), kind: 'house' };
       lot({ ...yard, kind: 'yard' });
