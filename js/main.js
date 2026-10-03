@@ -15,6 +15,8 @@ import { initCrews } from './ui/ocrew.js';
 import { initOrientation } from './ui/orientation.js';
 import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
+import { auth } from './net/auth.js';
+import { showAuth } from './ui/account.js';
 import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
 import { openPhone } from './ui/phone.js';
@@ -223,10 +225,15 @@ async function boot() {
     touchUi.mount($('#touch'));
     initStory();
     app.backdrop = new MenuBackdrop();
-    showTitle(app);
+    const signedIn = await auth.restore();
+    if (signedIn.recovery) showAuth(app, { mode: 'newpass', onDone: () => showTitle(app) });
+    else if (signedIn.linkError) showAuth(app, { mode: 'login', note: signedIn.linkError, onDone: () => showTitle(app) });
+    else showTitle(app);
+    // Logged out from somewhere else (password changed, etc.): back to the log-in screen once off the streets.
+    auth.onChange(u => { if (!u && app.mode === 'title') showTitle(app); });
     hideBoot();
     requestAnimationFrame(frame);
-    window.__rfg = { app, game, ui, online };
+    window.__rfg = { app, game, ui, online, auth };
     initOnline(app);
     initCrews(app);
     initOrientation();
