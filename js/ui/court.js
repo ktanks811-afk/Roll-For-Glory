@@ -10,7 +10,7 @@ import { sendMessage } from '../core/story.js';
 import { saveGame } from '../core/save.js';
 import { ensure as ensureHustle } from '../core/hustle.js';
 import {
-  CLASSES, BOND_FEE, DOCKET, STORAGE_PER_DAY, FACILITY, IMPOUND_LOT, impoundFee,
+  CLASSES, BOND_FEE, DOCKET, STORAGE_PER_DAY, FACILITY, IMPOUND_LOT,
   ensureJustice, openCase, topClass, isFelonyCase, priorScore, courtName, fmtCourt, bailFor, postBond, courtStatus,
   pleaOffer, convictChance, lawyerFee, dismissChance, resolveCase, describe, payFine, gameMinutes, realDaysFor, fmtDays,
 } from '../core/justice.js';
@@ -266,7 +266,7 @@ export async function release(app, { booking = false } = {}) {
     if (w.cam) { w.cam.x = w.foot.x; w.cam.z = w.foot.z; }
   }
   s.heat = 0;
-  const held = activeCar(s)?.impound ? ` Your car is in the impound lot at the Central Precinct (${fmtMoney(impoundFee(s))} to get it out).` : '';
+  const held = activeCar(s)?.impound ? ` Your car is in the impound lot at the Central Precinct. Sign it out inside, no charge.` : '';
   toast((booking ? 'Released on bond.' : 'Released.') + (held || (booking ? ' Your car was towed home.' : ' Your car is back at home.')), 'info');
 }
 
