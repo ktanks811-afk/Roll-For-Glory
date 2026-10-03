@@ -867,6 +867,73 @@ await step('warrants', async () => {
   await p.waitForTimeout(200);
   if ((await R()).warrants.length) throw new Error('turning yourself in did not clear the felony warrant');
   await clearModals();
+// ---------------- traffic stop: 10 s to pull over, officer walks up, drive off = chase ----------------
+await step('traffic stop: pull over, walk-up, drive off', async () => {
+  const P = () => p.evaluate(() => { const w = window.__rfg.app.world, po = w.police; return { phase: po.phase, pullT: +po.pullT.toFixed(1), step: po.stop?.step || null, officer: po.officer ? { x: po.officer.x, z: po.officer.z } : null, rec: po.record.map(r => r.kind), heat: +window.__rfg.game.s.heat.toFixed(2), title: document.querySelector('[data-ptitle]')?.textContent || '' }; });
+  // lit up while sitting still, with the unit already close behind
+  const light = () => p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { Unit } = await import('./js/world2d/police.js'); const { CAR_BY_ID } = await import('./js/data/cars.js');
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle, po = w.police;
+    po.reset(w); po.patrols.length = 0; po.units.length = 0; s.heat = 0; s.warrants = []; w.paused = false; w.inCar = true;
+    // parked on a long straight downtown, facing along the road
+    const e = w.map.roads.edges.filter(e => e.len > 160).sort((a, b) => Math.hypot(a.ax, a.az) - Math.hypot(b.ax, b.az))[0];
+    v.x = e.ax + e.dx * 110 - e.dz * 2.5; v.z = e.az + e.dz * 110 + e.dx * 2.5; v.h = Math.atan2(e.dx, -e.dz);
+    v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; v.yawRate = 0; w.traffic.cars.length = 0;
+    const fx = Math.sin(v.h), fz = -Math.cos(v.h);
+    po.units.push(new Unit(CAR_BY_ID.ford_crown_victoria_police_interceptor_2003, v.x - fx * 30, v.z - fz * 30, v.h));
+    po.note({ kind: 'speeding', text: 'Speeding — 52 mph in a 35.', fine: 300 });
+    po.startChase(w);
+  });
+  await light();
+  const lit = await P();
+  console.log('     lit up', JSON.stringify(lit));
+  if (lit.phase !== 'notice' || !(lit.pullT > 9)) throw new Error('no 10 second pull-over countdown ' + JSON.stringify(lit));
+  if (!/PULL OVER — 1?\d+s/.test(lit.title)) throw new Error('HUD does not count down the pull-over: ' + lit.title);
+  await snap('28-pull-over');
+  // sitting still counts as pulling over; the unit parks behind and the officer walks to the window
+  let walk = null;
+  for (let i = 0; i < 80 && !walk; i++) { await p.waitForTimeout(100); const s = await P(); if (s.step === 'walk' && s.officer) walk = s; }
+  if (!walk) throw new Error('officer never got out ' + JSON.stringify(await P()) + JSON.stringify(await p.evaluate(() => { const w = window.__rfg.app.world, u = w.police.stop?.unit, v = w.vehicle; return { u: u && { x: u.x, z: u.z, h: u.h, v: u.v }, v: { x: v.x, z: v.z, h: v.h }, st: w.police.stop && { x: w.police.stop.x, z: w.police.stop.z, h: w.police.stop.h, t: w.police.stop.t } }; })));
+  const parked = await p.evaluate(() => { const w = window.__rfg.app.world, u = w.police.stop.unit, v = w.vehicle; const fx = Math.sin(v.h), fz = -Math.cos(v.h); return { behind: -((u.x - v.x) * fx + (u.z - v.z) * fz), side: Math.abs((u.x - v.x) * Math.cos(v.h) + (u.z - v.z) * Math.sin(v.h)) }; });
+  console.log('     unit parked', JSON.stringify(parked));
+  if (!(parked.behind > 5 && parked.behind < 11 && parked.side < 2)) throw new Error('unit did not park behind the car ' + JSON.stringify(parked));
+  await p.waitForTimeout(900);
+  await snap('29-officer-walking');
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")', { timeout: 12000 });
+  const win = await p.evaluate(() => { const w = window.__rfg.app.world, o = w.police.officer, v = w.vehicle; const rx = Math.cos(v.h), rz = Math.sin(v.h); return { left: -((o.x - v.x) * rx + (o.z - v.z) * rz), d: Math.hypot(o.x - v.x, o.z - v.z) }; });
+  console.log('     officer at window', JSON.stringify(win));
+  if (!(win.left > 0.8 && win.d < 3)) throw new Error('officer is not at the driver window ' + JSON.stringify(win));
+  await snap('30-ticket-at-window');
+  await p.click('.modal button:has-text("Accept the citation")');
+  await p.waitForSelector('.modal h2:has-text("Citation issued")'); await p.click('.modal button');
+  const done = await P();
+  if (done.phase !== 'none' || done.heat !== 0) throw new Error('stop did not end after taking the ticket ' + JSON.stringify(done));
+
+  // driving off while the officer walks up: chase
+  await light();
+  for (let i = 0; i < 80; i++) { await p.waitForTimeout(100); if ((await P()).step === 'walk') break; }
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(900); await p.keyboard.up('KeyW');
+  const ran = await P();
+  console.log('     drove off', JSON.stringify(ran));
+  if (ran.phase !== 'chase' || !ran.rec.includes('evading')) throw new Error('driving off the stop did not start a chase ' + JSON.stringify(ran));
+  if (await p.isVisible('.modal-back')) throw new Error('ticket shown after driving off');
+
+  // pulling off from the window instead of taking the ticket: chase
+  await light();
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")', { timeout: 12000 });
+  await p.click('.modal button:has-text("Pull off")');
+  const off = await P();
+  if (off.phase !== 'chase' || !off.rec.includes('evading')) throw new Error('pulling off from the window did not start a chase ' + JSON.stringify(off));
+
+  // never stopping: the countdown runs out and it's a pursuit
+  await light();
+  await p.evaluate(() => { window.__rfg.app.world.police.pullT = 0.6; });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1200); await p.keyboard.up('KeyW');
+  const fail = await P();
+  console.log('     failed to yield', JSON.stringify(fail));
+  if (fail.phase !== 'chase') throw new Error('not pulling over in time did not start a chase ' + JSON.stringify(fail));
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.police.units.length = 0; });
 });
 
 // ---------------- side-view showroom (layered Mustang) ----------------
