@@ -11,7 +11,7 @@ import { carSprite, drawCar, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
-import { engineStress } from '../sim/tuning.js';
+import { engineStress, engineMessage } from '../sim/engine.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
 import { input } from '../core/input.js';
 import { esc } from '../ui/dom.js';
@@ -346,7 +346,7 @@ export class World {
     const sand = !paved && v.z > DESERT_Z;
     let grip = paved ? 1 : sand ? 0.62 : 0.72;
     if (s.weather === 'rain') grip *= 0.74;
-    const noFuel = car.fuel <= 0.0005;
+    const noFuel = car.fuel <= 0.0005 || !!car.engineBlown;   // a blown motor makes no power either
     v.update(dt, {
       throttle: input.axis('throttle'), brake: input.axis('brake'), steer: input.steer(),
       handbrake: input.held('handbrake'), nitrous: input.held('nitrous'),
@@ -368,7 +368,7 @@ export class World {
     this.flame = lr.flame;
     if (revving) { v.sim.rpm = lr.rpm; v.rev = 0; }   // gas + brake beats the reverse gear creeping in
     if (lr.bang) { audio.pop(); if (settings.shake) this.cam.shake = Math.max(this.cam.shake, 0.12); }
-    if (noFuel && input.axis('throttle') > 0 && !this.fuelWarned) { this.fuelWarned = true; this.ui.toast('Out of gas! Call roadside assistance from your phone (Bank → Roadside) or push it to a station.', 'bad'); }
+    if (noFuel && !car.engineBlown && input.axis('throttle') > 0 && !this.fuelWarned) { this.fuelWarned = true; this.ui.toast('Out of gas! Call roadside assistance from your phone (Bank → Roadside) or push it to a station.', 'bad'); }
 
     // buildings / water
     for (const c of v.circles()) {
@@ -405,7 +405,11 @@ export class World {
     // tire wear from wheelspin
     if (v.sim.slip > 0.2) car.cond.tires = Math.max(1, car.cond.tires - dt * 0.6 * v.sim.slip);
     // an aggressive tune knocks (or floats the valves) at wide-open throttle
-    if (engineStress(car, v.spec, thr, v.sim.rpm, dt)) this.ui.toast('Engine is knocking. Back the tune off in Garage → Tune.', 'bad');
+    const eng = engineStress(car, v.spec, thr, v.sim.rpm, dt, v.sim.nosOn);
+    if (eng) {
+      this.ui.toast(engineMessage(eng, v.spec), eng === 'stress' ? 'info' : 'bad');
+      if (eng === 'blown') { audio.crash?.(1.2); v.setSpec(carSpec(car)); }
+    }
 
     // skid marks + smoke (burnouts light up the driven axle, slides light up the rears)
     const fwdBurn = v.burning && v.spec.drive === 'FWD';
@@ -425,7 +429,7 @@ export class World {
       if (this.skids.length > 1100) this.skids.splice(0, 100);
       if (this.smoke.length > 160) this.smoke.splice(0, this.smoke.length - 160);
     } else this.lastSkid = null;
-    if (car.cond.engine < 35 && Math.random() < dt * 6) {
+    if (car.cond.engine < 35 && Math.random() < dt * (car.engineBlown ? 18 : 6)) {
       this.smoke.push({ x: v.x + Math.sin(v.h) * v.dims.L * 0.4, z: v.z - Math.cos(v.h) * v.dims.L * 0.4, r: 0.8, life: 2, a: 0.4, dark: true });
     }
     for (const sm of this.smoke) { sm.life -= dt; sm.r += dt * 1.1; }

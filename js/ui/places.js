@@ -18,6 +18,7 @@ import { emit } from '../core/events.js';
 import { saveGame } from '../core/save.js';
 import { openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
+import { rebuildCost, resetEngineWarnings } from '../sim/engine.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -272,7 +273,7 @@ function repairCosts(car) {
     body: (100 - c.body) / 100 * (900 + lux * 0.03),
     lights: (100 - c.lights) / 100 * (300 + lux * 0.006),
     tires: c.tires < 99 ? (100 - c.tires) / 100 * (500 + lux * 0.004) : 0,
-    engine: (100 - c.engine) / 100 * (1800 + lux * 0.05),
+    engine: car.engineBlown ? rebuildCost(m) : (100 - c.engine) / 100 * (1800 + lux * 0.05),
     trans: (100 - c.trans) / 100 * (1400 + lux * 0.035),
   };
   for (const k in cost) cost[k] = Math.round(cost[k] / 5) * 5;
@@ -286,13 +287,14 @@ function repair(loc, app, s) {
     const costs = repairCosts(car);
     const ins = s.insurance ? 0.3 : 1;
     const total = Object.values(costs).reduce((a, b) => a + b, 0) * ins;
-    const names = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (replace set)', engine: 'Engine', trans: 'Transmission' };
+    const names = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (replace set)', engine: car.engineBlown ? '💥 Engine rebuild' : 'Engine', trans: 'Transmission' };
     root.innerHTML = head('Second Chance Collision', 'Body · mechanical · tires · we work with all insurers') + `<div class="p-body" style="max-width:720px">
+      ${car.engineBlown ? `<p class="bad"><b>Blown motor.</b> Spun a bearing and put a rod through the block. It needs a full rebuild before it'll run again.</p>` : ''}
       <p class="muted">${esc(carName(modelOf(car), car.year))}${s.insurance ? ' · <span class="good">Insurance covers 70%</span>' : ' · <span class="muted">Not insured (Bank app)</span>'}</p>
       <div class="list">${Object.entries(costs).map(([k, v]) => `<div class="li"><div style="width:150px">${names[k]}</div><div class="grow">${bar(car.cond[k], car.cond[k] < 40 ? 'red' : car.cond[k] < 70 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.cond[k])}%</span>
         <button class="btn btn-sm" data-action="fix" data-k="${k}" ${v > 0 ? '' : 'disabled'}>${v > 0 ? fmtMoney(v * ins) : 'OK'}</button></div>`).join('')}</div>
       <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn btn-primary" data-action="all" ${total > 0 ? '' : 'disabled'}>Fix everything · ${fmtMoney(total)}</button></div></div>`;
-    const fix = k => { car.cond[k] = 100; };
+    const fix = k => { car.cond[k] = 100; if (k === 'engine' && car.engineBlown) { car.engineBlown = false; resetEngineWarnings(car); toast('Engine rebuilt. Fix the build or it\'ll happen again.', 'good'); } };
     bind(root, {
       close: () => h.close(),
       fix: d => { if (spend(s, costs[d.k] * ins, `Repair: ${names[d.k]}`)) { fix(d.k); app.world?.refreshCar(); h.refresh(); } },
