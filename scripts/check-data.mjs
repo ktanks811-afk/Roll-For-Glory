@@ -353,6 +353,33 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   }
 }
 
+// ---- warrants: unpaid tickets, escapes, paying, surrendering ----
+{
+  const W = await import('../js/core/warrants.js');
+  const st = createState({ name: 'W', age: 25, look: {}, story: false });
+  st.cash = 20000; st.time.day = 4;
+  if (W.hasWarrant(st)) bad('a new career starts with a warrant');
+  W.signCitation(st, [{ kind: 'speeding', text: 'Speeding — 72 in a 45.', fine: 400 }], 400);
+  st.time.day = 4 + W.CITATION_DAYS; W.citationsDue(st);
+  if (W.hasWarrant(st) || st.citations.length !== 1) bad('a ticket turned into a warrant before its due date');
+  st.time.day++; const late = W.citationsDue(st);
+  if (late.length !== 1 || !W.hasWarrant(st) || W.hasFelony(st) || st.citations.length) bad('an overdue ticket should become a misdemeanour warrant');
+  if (st.warrants[0].fine !== 400 + W.FTA_FEE) bad('late fee not added to the warrant');
+  // outrunning a stop is a misdemeanour; a level-3 chase with a robbery is a felony
+  W.warrantForEscape(st, [{ kind: 'noise', text: 'loud', fine: 400 }], 1);
+  if (W.hasFelony(st) || !st.warrants.some(w => w.kind === 'evading') || st.warrants.some(w => w.kind === 'noise')) bad('fleeing a traffic stop should be a misdemeanour warrant (and noise stays a ticket)');
+  const quiet = createState({ name: 'Q', age: 25, look: {}, story: false });
+  if (W.warrantForEscape(quiet, [], 1, false).length) bad('no evading warrant when no officer ever saw you');
+  const payable = W.payableTotal(st);
+  W.warrantForEscape(st, [{ kind: 'robbery', text: 'Armed robbery — test.', fine: 6000 }], 3);
+  if (!W.hasFelony(st) || W.payableTotal(st) !== payable) bad('felony warrants must not be payable online');
+  const cash = st.cash, r = W.payFines(st);
+  if (!r.ok || cash - st.cash !== payable || st.warrants.some(w => !w.felony) || !W.hasFelony(st)) bad('paying fines should clear tickets + misdemeanours only');
+  const owed = W.warrantTotal(st), c2 = st.cash, sr = W.surrender(st);
+  if (!sr.ok || W.hasWarrant(st) || c2 - st.cash !== Math.round(owed * (1 - W.SURRENDER_DISCOUNT))) bad('turning yourself in should clear every warrant at 25% off');
+  W.warrantForEscape(st, [], 2);
+  if (W.serveAll(st) !== 2500 || W.hasWarrant(st)) bad('an arrest should serve every warrant');
+}
 // ---- weapons: every Glock, AR pistols, shopping rules ----
 {
   const models = new Set(GLOCKS.map(g => g.model));
