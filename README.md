@@ -235,6 +235,21 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   Pay tickets and misdemeanour warrants in the FWPD phone app or at a
   precinct; felony warrants clear only by turning yourself in at a precinct
   (25% off the fines) or by getting arrested (full price).
+- **Courts and jail.** Getting arrested for more than a ticket files a case
+  at the Tarrant County Courthouse downtown. Charges follow the Texas Penal
+  Code classes (Class B and A misdemeanours, state jail felony, 3rd, 2nd and
+  1st degree). A magistrate sets bail and a court date 2–3 game days out: sign
+  a free personal bond (first-time misdemeanours), post cash bail (refunded
+  when you show up), pay a bondsman 10%, or sit in jail until court (the time
+  counts toward your sentence). Show up between 8 AM and 5 PM on the day; miss
+  it and it's a bail-jumping warrant, your bail is forfeited and you won't get
+  bail again. At the hearing the DA offers a plea deal, or you go to trial
+  with a public defender or a paid lawyer. First-timers on misdemeanours get
+  deferred adjudication; felonies mean state jail or TDCJ, with parole (half
+  time for aggravated crimes). Priors make everything worse, and a new
+  conviction on probation revokes it. Time inside runs on a jail screen
+  (10 years ≈ two weeks of game time); you lose jobs if you're gone 2+ days
+  and pay impound storage. Unpaid fines are sat out at $150 a day.
 - **Masks and blackout gear.** Riverside Army Surplus sells a black ski mask
   (Vortex, a made-up brand), a bandana and all-black clothes, or the whole
   blackout fit as a set. Pull the mask down and up with **V** (or the MASK

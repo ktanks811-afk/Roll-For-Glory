@@ -50,6 +50,7 @@ export class Hud {
         <div class="hud-rep"><span data-tier></span><div class="bar thin"><div data-repbar></div></div></div>
         <div class="hud-heat" data-heat>${'<i></i>'.repeat(5)}</div>
         <div class="hud-warrant hidden" data-warrant></div>
+        <div class="hud-court hidden" data-court></div>
         <div class="hud-disguise hidden" data-disguise></div>
         <div class="hud-pursuit hidden" data-pursuit><b data-ptitle></b><div class="bar thin"><div data-pbar></div></div></div>
         <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom">⌕</button><button class="hud-btn" data-tp="phone" aria-label="Phone">☎</button></div>
@@ -141,6 +142,10 @@ export class Hud {
     const wr = this.q('warrant'), nw = s.warrants?.length || 0;
     wr.classList.toggle('hidden', !nw);
     if (nw) { const fel = s.warrants.some(x => x.felony); wr.textContent = `WARRANT${nw > 1 ? 'S ×' + nw : ''}`; wr.title = fel ? 'Felony warrant' : 'Warrant'; wr.classList.toggle('felony', fel); }
+    // your next court date, so you don't miss it
+    const cc = s.justice?.cases?.[0], ct = this.q('court'), showCourt = !!cc && !cc.fta && !cc.held;
+    ct.classList.toggle('hidden', !showCourt);
+    if (showCourt) { const today = cc.date.day === s.time.day; ct.textContent = today ? 'COURT TODAY · 9 AM' : `COURT · DAY ${cc.date.day} 9 AM`; ct.classList.toggle('today', today); }
     // masked on foot: how recognisable you are right now
     const dg = this.q('disguise'), mk = !w.inCar && masked(s.player.look);
     dg.classList.toggle('hidden', !mk);

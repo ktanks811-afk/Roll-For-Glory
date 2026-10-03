@@ -21,7 +21,9 @@ import { openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
 import { rebuildCost, resetEngineWarnings } from '../sim/engine.js';
 import { recordHtml } from './record.js';
-import { payableTotal, warrantTotal, citationTotal, payFines, surrender, SURRENDER_DISCOUNT } from '../core/warrants.js';
+import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
+import { openCourthouse, book } from './court.js';
+import { charge, fileCase } from '../core/justice.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -42,6 +44,7 @@ const HANDLERS = {
   dealer, usedlot, perf, visual, repair, gas, food, clothing,
   realty: (loc, app, s) => realty(loc, app, s),
   police,
+  court: (loc, app) => openCourthouse(loc, app),
   meet: (loc, app, s) => {
     if (!isNight(s.time)) { modal(loc.name, `<p>Empty lot. A security guard on a golf cart. Meets start after <b>8 PM</b>.</p><p class="muted small">Tip: sleep at home until night.</p>`); return; }
     if (!activeCar(s)) { modal(loc.name, '<p>You can\'t roll up to a car meet on foot. Get a car.</p>'); return; }
@@ -409,22 +412,30 @@ function police(loc, app, s) {
       ${recordHtml(s)}
       ${s.warrants.length || s.citations.length ? `<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
         ${payableTotal(s) ? `<button class="btn btn-sm" data-action="fines" ${w?.police.active ? 'disabled' : ''}>Pay tickets${s.warrants.some(x => !x.felony) ? ' + misdemeanours' : ''} · ${fmtMoney(payableTotal(s))}</button>` : ''}
-        <button class="btn btn-sm btn-primary" data-action="surrender">Turn yourself in · ${fmtMoney(Math.round((warrantTotal(s) + citationTotal(s)) * (1 - SURRENDER_DISCOUNT)))}</button></div>
-        <p class="small muted">Turning yourself in clears everything, felonies included, at 25% off. You spend a few hours being booked.</p>` : ''}
+        <button class="btn btn-sm btn-primary" data-action="surrender">Turn yourself in${surrenderTotal(s) ? ` · ${fmtMoney(surrenderTotal(s))}` : ''}</button></div>
+        <p class="small muted">Turning yourself in clears tickets and misdemeanour warrants at 25% off.${hasFelony(s) ? ' Felony warrants get filed at the Tarrant County Courthouse: you\'re booked, bail is set low because you came in on your own, and you get a court date.' : ' You spend a few hours being booked.'}</p>` : ''}
       <div class="section-title">Sgt. Hal Brenner</div>
       <p class="muted">"${s.stats.pursuitsEscaped > 2 ? `${esc(s.player.name)}. You've been busy. I've got a whiteboard now. You're on it.` : 'Street racing kills people. Take it to Ironline Dragway — it\'s legal there.'}"</p></div>`;
     bind(root, {
       close: () => h.close(),
       pay: () => { if (spend(s, fine, 'FWPD citations')) { s.heat = 0; toast('Record cleared', 'good'); h.refresh(); } },
       fines: () => { const r = payFines(s); if (r.ok) { toast(`Paid ${fmtMoney(r.total)}`, 'good'); h.refresh(); } },
+      courtgps: () => { const l = LOC_BY_ID.courthouse; w?.setGps(l.x, l.z, l.name); h.close(); },
       surrender: async () => {
-        const all = Math.round((warrantTotal(s) + citationTotal(s)) * (1 - SURRENDER_DISCOUNT));
-        if (!(await confirm('Turn yourself in?', `<p>You'll be booked, pay <b>${fmtMoney(all)}</b> and walk out a few hours later with a clean record.</p>`, 'Turn myself in'))) return;
+        const all = surrenderTotal(s), fel = hasFelony(s);
+        if (!(await confirm('Turn yourself in?', `<p>You'll be booked${all ? ` and pay <b>${fmtMoney(all)}</b> in fines` : ''}.${fel ? ' Your felony warrants become a case at the Tarrant County Courthouse, with low bail and a court date.' : ' You walk out a few hours later with a clean record.'}</p>`, 'Turn myself in'))) return;
         const r = surrender(s);
         if (!r.ok) return;
         if (w?.police.active) w.police.reset(w);
-        advanceTime(s, 4 * 60);   // booked, processed, released
         addRep(s, -15, 'Turned yourself in');
+        const { charges } = charge(r.felonies, 0.6);
+        if (charges.length || r.skipped) {
+          const c = fileCase(s, charges, { surrender: true });
+          h.close();
+          await book(app, c);
+          return;
+        }
+        advanceTime(s, 4 * 60);   // booked, processed, released
         toast('Booked and released. Your record is clean.', 'good'); h.refresh();
       },
     });
