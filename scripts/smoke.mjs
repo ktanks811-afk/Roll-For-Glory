@@ -926,6 +926,65 @@ await step('phone map (places + GPS)', async () => {
 });
 
 // ---------------- loud exhaust → cops notice → traffic stop ----------------
+// ---------------- phone: status cards, texted missions, chat threads ----------------
+await step('phone missions (text offer → stops → paid)', async () => {
+  const reset = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await reset();
+  // Rosa texts a parts run
+  const o = await p.evaluate(async () => {
+    const { offerMission, ensure } = await import('./js/core/missions.js');
+    const s = window.__rfg.game.s, w = window.__rfg.app.world; ensure(s).active = null; s.gps = null; w.gpsPath = null;
+    if (w.vehicle) w.inCar = true;
+    const o = offerMission(s, { force: true, kind: 'parts' });
+    return { id: o.id, from: s.messages[0].from, act: s.messages[0].action };
+  });
+  if (o.from !== 'rosa' || o.act?.type !== 'mission') throw new Error('no mission text from Rosa ' + JSON.stringify(o));
+  // home screen shows the offer + FWPD status
+  await key('KeyP'); await p.waitForTimeout(250);
+  const home = await p.textContent('.phone-widgets');
+  if (!/FWPD status/.test(home) || !/1 offer/.test(home)) throw new Error('home status cards missing: ' + home);
+  await snap('32-phone-home-cards');
+  // Messages is a list of conversations; Rosa's thread has the job
+  await p.click('.app:has-text("Messages")'); await p.waitForTimeout(200);
+  await p.click('.convo:has-text("Rosa")'); await p.waitForTimeout(200);
+  if (!(await p.$('.bubble [data-action="maccept"]'))) throw new Error('no Take the job button in the thread');
+  await snap('33-messages-thread');
+  await p.click('.bubble [data-action="maccept"]'); await p.waitForTimeout(200);
+  let r = await p.evaluate(() => { const s = window.__rfg.game.s; return { a: s.missions.active, gps: s.gps?.label, obj: document.querySelector('[data-obj]')?.textContent || '' }; });
+  if (!r.a || r.a.stage !== 0 || !/Parts run/.test(r.gps || '')) throw new Error('accepting did not start the job / set GPS ' + JSON.stringify(r));
+  await p.waitForTimeout(300);
+  r.obj = await p.evaluate(() => document.querySelector('[data-obj]')?.textContent || '');
+  if (!/Parts run/.test(r.obj)) throw new Error('HUD does not show the mission: ' + r.obj);
+  // the Missions app and the map both show it
+  await key('KeyP'); await p.waitForTimeout(200);
+  await p.click('.app:has-text("Missions")'); await p.waitForTimeout(200);
+  if (!/On the job/.test(await p.textContent('.phone-screen'))) throw new Error('Missions app does not show the active job');
+  await snap('34-missions-app');
+  await reset();
+  // drive to each stop: pickup, then Torque Temple
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  for (let i = 0; i < 2; i++) {
+    await p.evaluate(async () => {
+      const { currentStop } = await import('./js/core/missions.js');
+      const s = window.__rfg.game.s, w = window.__rfg.app.world, l = currentStop(s), v = w.vehicle;
+      v.x = l.x; v.z = l.z; v.vx = v.vz = 0; w.cam.x = l.x; w.cam.z = l.z;
+    });
+    await p.waitForTimeout(300);
+  }
+  r = await p.evaluate(() => { const s = window.__rfg.game.s; return { a: s.missions.active, done: s.missions.done, cash: s.cash, last: s.messages[0] }; });
+  if (r.a || r.done !== 1 || !(r.cash > cash0) || r.last.from !== 'rosa') throw new Error('finishing the run did not pay ' + JSON.stringify({ a: !!r.a, done: r.done, d: r.cash - cash0, from: r.last.from }));
+  // a run that runs out of time fails
+  await p.evaluate(async () => {
+    const { offerMission, acceptMission } = await import('./js/core/missions.js');
+    const s = window.__rfg.game.s, o = offerMission(s, { force: true, kind: 'ride' }); acceptMission(s, o.id, window.__rfg.app.world);
+    s.missions.active.deadline = s.time.day * 1440 + s.time.min - 1;
+  });
+  await p.waitForTimeout(200);
+  r = await p.evaluate(() => { const s = window.__rfg.game.s; return { a: !!s.missions.active, failed: s.missions.failed }; });
+  if (r.a || r.failed !== 1) throw new Error('a late mission did not fail ' + JSON.stringify(r));
+  await p.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
+});
+
 await step('noise + traffic stop', async () => {
   const W = () => p.evaluate(() => { const w = window.__rfg.app.world; return { db: Math.round(w.liveDb), sdb: Math.round(w.staticDb), phase: w.police.phase, att: +w.police.noiseAtt.toFixed(2), rec: w.police.record.map(r => r.kind), cash: window.__rfg.game.s.cash }; });
   await p.evaluate(async () => {

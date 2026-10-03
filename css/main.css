@@ -497,3 +497,42 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .cs-votes { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .cs-votes .bar { flex: 1; }
 .cs-place { font-family: var(--head); font-weight: 700; color: var(--yellow); }
+/* phone home: status cards (FWPD, mission, GPS, latest text) */
+.phone-widgets { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 12px 14px 0; }
+.pw { display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; font: inherit; }
+.pw small { color: var(--dim); font-size: 11px; font-weight: 700; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pw b { font-family: var(--head); font-size: 14px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pw span { color: var(--silver); font-size: 12px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.pw-ok { border-color: rgba(43,217,107,.45); } .pw-ok b { color: #2bd96b; }
+.pw-bad { border-color: rgba(224,25,46,.7); background: rgba(224,25,46,.14); } .pw-bad b { color: #ff5a6a; }
+.pw-job { border-color: rgba(255,176,32,.6); } .pw-job b { color: #ffb020; }
+.pw-hot { border-color: rgba(255,106,26,.8); background: rgba(255,106,26,.12); } .pw-hot b { color: #ff8a3a; }
+.pw-wide { grid-column: 1 / -1; } .pw-wide span { -webkit-line-clamp: 2; }
+
+/* messages: conversation list + chat thread */
+.convo.unread .t { color: #fff; }
+.convo .s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.convo-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.convo-meta small { color: var(--dim); font-size: 11px; }
+.convo-meta .badge { background: var(--red); color: #fff; border-radius: 10px; font-size: 11px; padding: 1px 6px; }
+.app-head .avatar { width: 26px; height: 26px; font-size: 13px; }
+.chat { display: flex; flex-direction: column; gap: 6px; }
+.chat-day { align-self: center; color: var(--dim); font-size: 11px; font-weight: 700; letter-spacing: .06em; margin: 6px 0 2px; }
+.bubble { align-self: flex-start; max-width: 86%; padding: 8px 11px; border-radius: 16px 16px 16px 4px; background: #24262d; }
+.bubble.unread { box-shadow: 0 0 0 1px var(--red); }
+.bubble p { margin: 0; font-size: 15px; line-height: 1.35; color: var(--text); }
+.bubble small { display: block; text-align: right; color: var(--dim); font-size: 10px; margin-top: 3px; }
+.bubble-act { margin-top: 6px; gap: 6px; flex-wrap: wrap; }
+
+/* missions app */
+.mission { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); margin-bottom: 8px; }
+.mission.on { border-color: rgba(255,176,32,.6); }
+.mission.hot { border-color: rgba(255,106,26,.8); }
+.mission p { margin: 6px 0; color: var(--silver); }
+.mclock { font-family: var(--head); font-size: 20px; font-weight: 700; color: #ffb020; }
+.mstop { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--silver); padding: 2px 0; }
+.mstop b { width: 18px; height: 18px; border-radius: 9px; background: var(--panel2); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; }
+.mstop.now b { background: #ffb020; color: #000; } .mstop.now span { color: #fff; font-weight: 700; }
+.mstop.done { opacity: .5; text-decoration: line-through; }
+.mc-job { font-size: 13px; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+.hud-objective.job { border-left-color: #ffb020; }
