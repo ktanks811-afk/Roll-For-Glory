@@ -5,6 +5,7 @@
 import { FX, PERF_IDS } from '../data/parts.js';
 import { WHEEL_R } from '../data/cars.js';
 import { tuneEffects } from './tuning.js';
+import { engineLoad } from './engine.js';
 
 const HP_W = 745.7;
 const LBFT_NM = 1.3558;
@@ -40,6 +41,7 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}, visual = {}) 
   mult *= tf.boostMult;
 
   const fuelCap = FX.fuel.cap[L('fuel')];
+  const rawMult = mult;
   const fuelLimited = mult > fuelCap;
   if (fuelLimited) mult = fuelCap;
 
@@ -96,6 +98,9 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}, visual = {}) 
     knock: tf.knock, overRev: tf.overRev, boostPsi: tf.boost, balance: tf.balance, tuneWarnings: tf.warnings,
     curveRedline: redline,
   };
+  // will the motor live? (supporting mods vs the power it's making)
+  const load = engineLoad({ model, lv: spec.lv, ratio: mult * tf.mapMult, rawMult, fuelCap, fuelLimited, knock: tf.knock, overRev: tf.overRev, nosHp: spec.nosHp });
+  spec.engineRisk = load.risk; spec.engineNosRisk = load.nosRisk; spec.engineReasons = load.reasons; spec.engineLevel = load.level; spec.engineLimit = load.limit;
   fitCurve(spec);
   if (tf.redline) { spec.redline = tf.redline; figures(spec); }
   spec.shiftRpm = computeShiftPoints(spec);

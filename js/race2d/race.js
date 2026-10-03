@@ -13,7 +13,7 @@ import { $, el, esc } from '../ui/dom.js';
 import { touchUi } from '../ui/touch.js';
 import { RevLimiter, launchRpmSetting, optimalLaunchRpm } from '../sim/twostep.js';
 import { soundProfile } from '../sim/sound.js';
-import { engineStress } from '../sim/tuning.js';
+import { engineStress, engineMessage } from '../sim/engine.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -213,9 +213,12 @@ export class Race {
     if (inp.up && shiftUp(P.spec, P.sim)) audio.shift();
     if (inp.down) shiftDown(P.spec, P.sim);
     P.thr = inp.throttle;
-    stepSim(P.spec, P.sim, { throttle: inp.throttle, brake: inp.brake, nitrous: inp.nitrous, auto: inp.auto, launchRpm: P.launchRpm }, dt);
+    stepSim(P.spec, P.sim, { throttle: P.car?.engineBlown ? 0 : inp.throttle, brake: inp.brake, nitrous: inp.nitrous, auto: inp.auto, launchRpm: P.launchRpm }, dt);
     if (P.sim.gear > 0 || P.sim.v > 8) P.launchRpm = null;
-    if (engineStress(P.car, P.spec, inp.throttle, P.sim.rpm, dt)) this.flash('KNOCK', 'Detonation. Your tune is hurting the engine.');
+    const eng = engineStress(P.car, P.spec, inp.throttle, P.sim.rpm, dt, P.sim.nosOn);
+    if (eng === 'blown') this.flash('BLOWN', 'You blew the motor.');
+    else if (eng === 'critical') this.flash('KNOCK', 'Engine is about to let go!');
+    else if (eng === 'warn') this.flash('KNOCK', 'Rod knock. Back off.');
     P.y += P.sim.v * dt;
     P.x += (this.laneX(P.lane) - P.x) * Math.min(1, dt * 4);
     if (P.sim.nosOn && !P.nosSnd) { audio.nos(); P.nosSnd = true; }

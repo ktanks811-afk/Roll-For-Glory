@@ -79,7 +79,7 @@ export function modal(title, html, buttons = [{ label: 'OK', primary: true }]) {
     $('#modals').appendChild(m);
     m.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { audio.click(); m.remove(); resolve(buttons[+b.dataset.i].value ?? +b.dataset.i); });
     const first = m.querySelector('.btn-primary') || m.querySelector('button');
-    first?.focus();
+    first?.focus({ preventScroll: true });   // long modals open at the top on a phone
   });
 }
 

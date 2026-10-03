@@ -306,6 +306,49 @@ await step('tuning: engine map, chassis setup, knock', async () => {
   if (!r.same) throw new Error('an untouched tune changed the car');
   if (r.groups < 8 || !/changed/.test(r.changed) || r.saved !== 20) throw new Error('tune tab did not edit + save');
 });
+await step('part profiles + blowing the motor', async () => {
+  const r = await p.evaluate(async () => {
+    const st = await import('./js/core/state.js');
+    const { engineStress } = await import('./js/sim/engine.js');
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
+    const s = window.__rfg.game.s, car = s.cars.find(c => c.uid === s.activeCar);
+    const saved = JSON.parse(JSON.stringify({ parts: car.parts, cond: car.cond }));
+    // tap a part in Garage → Performance: its profile opens
+    const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home', tab: 'parts' });
+    await new Promise(r => setTimeout(r, 150));
+    document.querySelector('.click-row[data-cat="turbo"]').click();
+    await new Promise(r => setTimeout(r, 100));
+    const prof = document.querySelector('.modal .pp');
+    const profile = !!prof && /turbocharger/i.test(prof.textContent) && /Supporting mods/i.test(prof.textContent);
+    document.querySelectorAll('.modal-back').forEach(m => m.remove()); closeAllPanels();
+    // a big turbo with no tune / fuel / internals: stressed, then blown
+    Object.assign(car.parts, { turbo: 4, ecu: null, fuel: null, engine: null, intercooler: null, supercharger: null });
+    car.cond.engine = 100; delete car.engineBlown;
+    const spec = st.carSpec(car);
+    const evs = []; let t = 0;
+    while (!car.engineBlown && t < 400) { const e = engineStress(car, spec, 1, spec.redline * 0.8, 0.05); if (e) evs.push(e); t += 0.05; }
+    // stock: never hurt
+    const stock = st.carSpec({ ...car, parts: {}, cond: { ...car.cond, engine: 100 } }).engineRisk;
+    // rebuild at the repair shop
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    s.cash += 50000;
+    openPlace?.(LOC_BY_ID.second_chance, window.__rfg.app);
+    await new Promise(r => setTimeout(r, 150));
+    const shopTxt = document.querySelector('#panels')?.textContent || '';
+    document.querySelector('[data-action="fix"][data-k="engine"]')?.click();
+    await new Promise(r => setTimeout(r, 100));
+    const after = { blown: !!car.engineBlown, eng: car.cond.engine };
+    closeAllPanels();
+    car.parts = saved.parts; car.cond = saved.cond; delete car.engineBlown; window.__rfg.app.world.refreshCar();
+    return { profile, risk: spec.engineRisk, level: spec.engineLevel.id, evs, secs: +t.toFixed(1), stock, rebuildShown: /rebuild/i.test(shopTxt), after };
+  });
+  console.log('     engine', JSON.stringify(r));
+  if (!r.profile) throw new Error('tapping a part did not open its profile');
+  if (r.stock !== 0) throw new Error('a stock engine is at risk');
+  if (r.level !== 'danger' || !r.evs.includes('stress') || !r.evs.includes('warn') || !r.evs.includes('blown')) throw new Error('unsupported big turbo did not warn and then blow');
+  if (r.evs.indexOf('stress') > r.evs.indexOf('blown')) throw new Error('no warning before the engine blew');
+  if (!r.rebuildShown || r.after.blown || r.after.eng !== 100) throw new Error('repair shop did not rebuild the blown engine');
+});
 await step('police dispatch: one line at a time', async () => {
   const r = await p.evaluate(async () => {
     const h = window.__rfg.app.world.hud;

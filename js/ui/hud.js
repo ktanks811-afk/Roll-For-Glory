@@ -58,6 +58,7 @@ export class Hud {
         <div class="dash-gear" data-gear>N</div>
         <div class="dash-tach"><div data-rpm></div><i data-redline></i></div>
         <div class="dash-row"><span>FUEL</span><div class="bar thin"><div data-fuel></div></div></div>
+        <div class="dash-row hidden" data-engrow><span>ENG</span><div class="bar thin"><div data-eng></div></div></div>
         <div class="dash-row hidden" data-noiserow><span>NOISE</span><b data-noise>—</b></div>
         <div class="dash-row" data-nosrow><span>NOS</span><div class="bar thin nos"><div data-nos></div></div></div>
         <div class="dash-car" data-carname></div>
@@ -222,6 +223,11 @@ export class Hud {
       this.q('rpm').classList.toggle('hot', rpmPct > 0.9);
       this.q('fuel').style.width = `${v.car.fuel * 100}%`;
       this.q('fuel').classList.toggle('low', v.car.fuel < 0.15);
+      // engine health: shows once the build is hurting it (or it's worn / blown)
+      const eh = v.car.engineBlown ? 0 : v.car.cond.engine;
+      this.q('engrow').classList.toggle('hidden', !(v.spec.engineRisk > 0 || v.spec.engineNosRisk > 0 || eh < 70) || v.model.asp === 'ev');
+      this.q('eng').style.width = `${eh}%`;
+      this.q('eng').classList.toggle('low', eh < 35);
       // exhaust noise: only worth showing once the car is loud enough to matter
       const nr = this.q('noiserow'), loud = (w.staticDb || 0) > LEGAL_DB - 8;
       nr.classList.toggle('hidden', !loud);

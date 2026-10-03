@@ -420,3 +420,24 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .tune-save p { margin: 0 0 6px; }
 @media (max-width: 620px) { .tune-figs { grid-template-columns: repeat(3, minmax(0, 1fr)); } .tune-figs b { font-size: 16px; } }
 @media (max-height: 500px) { .tune-out { padding: 5px 10px; } .tune-figs b { font-size: 15px; } .tune-figs small { font-size: 10px; } .tune-meters { margin-top: 3px; } .tune-meters small { font-size: 11px; margin-bottom: 2px; } .tune-save { position: static; } }
+
+/* ---------- part profile ---------- */
+.pp p { margin: 0 0 6px; line-height: 1.35; }
+.pp-sec { margin-top: 10px; }
+.pp-h { font-family: var(--head); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-bottom: 4px; }
+.pp-prod { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.pp-prod .brand { color: var(--dim); font-size: 13px; } .pp-prod .name { font-family: var(--head); font-size: 18px; font-weight: 700; }
+.pp-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.pp-stages { margin: 0; padding-left: 0; list-style: none; }
+.pp-stages li { padding: 3px 8px; border-left: 3px solid var(--line2); margin-bottom: 2px; font-size: 14px; color: var(--dim); }
+.pp-stages li.on { border-color: var(--red); color: var(--text); background: rgba(224,25,46,.08); }
+.pp-danger { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--red); border-radius: 6px; background: rgba(224,25,46,.1); font-size: 14px; }
+.pp-needs > div { padding: 2px 0; }
+.pp-eng { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pp-eng small { display: block; font-size: 11px; color: var(--dim2); text-transform: uppercase; letter-spacing: .05em; }
+.pp-eng b { font-family: var(--head); font-size: 16px; }
+.pp-reasons { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; }
+.pp-reasons li { margin-bottom: 6px; }
+.click-row { cursor: pointer; }
+.click-row:hover { background: rgba(255,255,255,.03); }
+.pp-i { display: inline-block; margin-left: 6px; width: 18px; height: 18px; line-height: 16px; text-align: center; border-radius: 50%; border: 1px solid var(--line2); font-size: 11px; color: var(--dim); font-style: normal; }
