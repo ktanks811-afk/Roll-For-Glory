@@ -145,6 +145,7 @@ const T = {
   dodge_neon_srt_4_2003: ['S', 4.37, 1.71, 1.39, 2.64, { lights: 'swept', tl: 'wrap', wing: 'big' }],
   dodge_charger_sxt_2011: ['S', 5.09, 1.90, 1.48, 3.05, { lights: 'slim', tl: 'bar', xA: .45, xC: .70, xD: .82, deck: .76, belt: .68 }],
   dodge_charger_scat_pack_2015: ['S', 5.10, 1.90, 1.48, 3.05, { lights: 'slim', tl: 'bar', xA: .45, xC: .70, xD: .82, deck: .76, belt: .68, wing: 'lip' }],
+  dodge_charger_srt_hellcat_widebody_2020: ['S', 5.10, 2.03, 1.46, 3.05, { lights: 'slim', tl: 'bar', xA: .45, xC: .70, xD: .82, deck: .76, belt: .68, wing: 'lip', scoop: true, tr: .36 }],
   dodge_charger_srt_hellcat_redeye_2021: ['S', 5.28, 1.95, 1.48, 3.05, { lights: 'slim', tl: 'bar', xA: .45, xC: .70, xD: .82, deck: .76, belt: .68, wing: 'lip', scoop: true }],
   dodge_challenger_r_t_2015: ['M', 5.02, 1.92, 1.45, 2.95, { lights: 'round', tl: 'bar', xCowl: .34, xA: .49, xC: .70, xD: .84, hoodF: .60, scoop: true }],
   dodge_challenger_srt_hellcat_2015: ['M', 5.02, 1.92, 1.45, 2.95, { lights: 'round', tl: 'bar', xCowl: .34, xA: .49, xC: .70, xD: .84, hoodF: .60, scoop: true, wing: 'lip' }],

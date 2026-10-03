@@ -7,6 +7,7 @@
 
 import { CALIPER_COLORS } from '../data/parts.js';
 import { shapeOf, dimsOf } from '../data/carShapes.js';
+import { artOf, paintedArt } from './carArt.js';
 
 export const SPRITE_PX = 24; // pixels per metre in the cached sprite (HD)
 
@@ -109,12 +110,13 @@ export function spriteKey(style, v, lv, cond) {
 // style: a car model (preferred) or a body class string.
 // v: visual object, lv: performance stage levels, cond: condition (for damage)
 export function carSprite(style, v = {}, lv = {}, cond = null, opts = {}) {
-  const key = spriteKey(style, v, lv, cond) + (opts.police ? 'P' : '') + (opts.taxi ? 'T' : '');
+  const art = style && typeof style === 'object' ? artOf(style.id) : null;
+  const key = spriteKey(style, v, lv, cond) + (opts.police ? 'P' : '') + (opts.taxi ? 'T' : '') + (art ? 'A' : '');
   if (cache.has(key)) return cache.get(key);
   const sh = shapeOf(style && typeof style === 'object' ? style : { id: 'body:' + style, body: style });
-  const S = SPRITE_PX;
-  const wide = v.kit === 'wide';
-  const W = sh.W + (wide ? 0.16 : 0), L = sh.L;
+  const S = art ? SPRITE_PX * 2 : SPRITE_PX;   // hand-drawn art keeps its detail when shown big
+  const wide = v.kit === 'wide' && !art;
+  const W = art ? sh.L * art.top.w / art.top.h : sh.W + (wide ? 0.16 : 0), L = sh.L;
   const pad = 0.8;
   const c = document.createElement('canvas');
   c.width = Math.ceil((W + pad * 2) * S);
@@ -130,6 +132,8 @@ export function carSprite(style, v = {}, lv = {}, cond = null, opts = {}) {
   const { xCowl, xA, xC, xD } = sh;
   const arch = sh.arch;
   const bodyW = W - (wide ? 0.16 : 0);
+
+  if (art) return artSprite({ art, c, g, key, v, lv, cond, opts, sh, W, L, pad, S, paint, finish });
 
   // ---- tires (under the body) ----
   const tl = lv.tires || 0;
@@ -425,6 +429,76 @@ export function carSprite(style, v = {}, lv = {}, cond = null, opts = {}) {
     g.strokeStyle = 'rgba(200,200,200,0.4)'; g.lineWidth = 0.02;
     for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(-bodyW / 2 + 0.05, y(0.3 + i * 0.08)); g.lineTo(-bodyW / 2 + 0.3, y(0.33 + i * 0.08)); g.stroke(); }
   }
+
+  const out = { canvas: c, L, W, pad, px: S };
+  cache.set(key, out);
+  if (cache.size > 500) cache.delete(cache.keys().next().value);
+  return out;
+}
+
+// Cars with their own top-down art (gfx2d/carArt.js): the art is the body,
+// repainted to the car's colour; graphics go on the paint only, and aero,
+// exhaust, light bars and damage go on top like on every other car.
+function artSprite({ art, c, g, key, v, lv, cond, opts, sh, W, L, pad, S, paint, finish }) {
+  const pa = paintedArt(art.top, v);
+  const bodyW = sh.W;
+  g.drawImage(pa.full, -W / 2, -L / 2, W, L);
+  // graphics: only where there is car, then the glass and trim go back on top
+  g.save(); g.globalCompositeOperation = 'source-atop';
+  const dc = v.decalColor || '#f2f2f2';
+  if (v.decal === 'stripes') { g.fillStyle = dc; for (const s of [-1, 1]) g.fillRect(s * 0.13 - 0.08, -L / 2, 0.16, L); }
+  if (v.decal === 'side' || v.decal === 'crew') { g.fillStyle = v.decal === 'crew' ? (opts.crewColor || dc) : dc; for (const s of [-1, 1]) g.fillRect(s * (bodyW / 2 - 0.1) - 0.04, -L / 2 + L * 0.06, 0.08, L * 0.88); }
+  if (v.decal === 'number') {
+    g.fillStyle = '#f2f2f2'; g.beginPath(); g.arc(0, 0, 0.32, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#111'; g.font = 'bold 0.4px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String((v.plate || '7').replace(/\D/g, '').slice(-2) || '7'), 0, 0.02);
+  }
+  if (v.decal === 'flames') {
+    for (let i = -2; i <= 2; i++) {
+      const gr = g.createLinearGradient(0, -L / 2, 0, -L / 2 + L * 0.3);
+      gr.addColorStop(0, dc); gr.addColorStop(1, 'rgba(255,190,0,0)'); g.fillStyle = gr;
+      g.beginPath(); g.moveTo(i * 0.18 - 0.08, -L / 2 + 0.1); g.quadraticCurveTo(i * 0.22, -L / 2 + L * 0.2, i * 0.12 + 0.05, -L / 2 + L * 0.32);
+      g.quadraticCurveTo(i * 0.2 + 0.1, -L / 2 + L * 0.16, i * 0.18 + 0.08, -L / 2 + 0.1); g.fill();
+    }
+  }
+  if (opts.police) { g.fillStyle = '#0d0d0d'; g.fillRect(-W / 2, -L / 2 + L * 0.3, W, L * 0.45); }
+  g.restore();
+  g.drawImage(pa.fixed, -W / 2, -L / 2, W, L);
+
+  // aero + exhaust
+  if (v.frontBumper === 'splitter') { g.fillStyle = '#1c1d22'; rrect(g, -bodyW / 2 + 0.05, -L / 2 - 0.12, bodyW - 0.1, 0.14, 0.05); g.fill(); }
+  const wing = { gt: 'big', drag: 'huge' }[v.spoiler];
+  if (wing) {
+    const ww = wing === 'huge' ? bodyW + 0.05 : bodyW - 0.1, depth = wing === 'huge' ? 0.4 : 0.26, wy = L / 2 - (wing === 'huge' ? 0.5 : 0.45);
+    g.fillStyle = wing === 'huge' ? '#1c1d22' : shade(paint, -0.2); rrect(g, -ww / 2, wy, ww, depth, 0.04); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(-ww / 2 + 0.05, wy + 0.03, ww - 0.1, 0.03);
+    g.fillStyle = '#0a0a0a'; for (const s of [-1, 1]) g.fillRect(s * ww / 2 - (s > 0 ? 0.05 : 0), wy - 0.04, 0.05, depth + 0.08);
+  }
+  if (v.rearBumper === 'diffuser') { g.fillStyle = '#1c1d22'; g.fillRect(-bodyW / 2 + 0.25, L / 2, bodyW - 0.5, 0.1); }
+  const tips = { single: [-0.55], dual: [-0.6, 0.6], quad: [-0.68, -0.52, 0.52, 0.68], cannon: [-0.38, 0.38] }[v.exhaustTips || 'dual'] || [-0.6, 0.6];
+  const tipR = 0.05 + (lv.exhaust || 0) * 0.008 + (v.exhaustTips === 'cannon' ? 0.04 : 0);
+  for (const x of tips) {
+    const tx = x * (bodyW / 2) / 0.9;
+    g.fillStyle = '#1a1c20'; g.beginPath(); g.arc(tx, L / 2, tipR + 0.012, 0, Math.PI * 2); g.fill();
+    g.fillStyle = (lv.exhaust || 0) >= 4 ? '#8a7fc0' : '#c9ccd1'; g.beginPath(); g.arc(tx, L / 2, tipR, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#050506'; g.beginPath(); g.arc(tx, L / 2, tipR * 0.5, 0, Math.PI * 2); g.fill();
+  }
+  if (opts.police) { g.fillStyle = '#d01515'; g.fillRect(-0.55, -0.08, 0.5, 0.16); g.fillStyle = '#1e5bff'; g.fillRect(0.05, -0.08, 0.5, 0.16); }
+  if (opts.taxi) { g.fillStyle = '#ffd23a'; rrect(g, -0.25, -0.08, 0.5, 0.16, 0.04); g.fill(); }
+
+  // damage
+  const body = cond?.body ?? 100;
+  if (body < 75) {
+    g.strokeStyle = 'rgba(30,30,30,0.7)'; g.lineWidth = 0.03;
+    g.beginPath(); g.moveTo(-bodyW / 2 + 0.2, -L / 2 + 0.3); g.lineTo(-bodyW / 2 + 0.5, -L / 2 + 0.12); g.lineTo(-bodyW / 2 + 0.7, -L / 2 + 0.3); g.stroke();
+    g.fillStyle = 'rgba(40,36,32,0.55)'; g.beginPath(); g.ellipse(bodyW / 2 - 0.25, 0, 0.12, 0.5, 0, 0, Math.PI * 2); g.fill();
+  }
+  if (body < 45) {
+    g.fillStyle = 'rgba(40,36,32,0.65)';
+    g.beginPath(); g.ellipse(-bodyW / 4, -L / 2 + 0.2, 0.45, 0.15, 0.2, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(bodyW / 5, L / 2 - 0.2, 0.4, 0.14, -0.2, 0, Math.PI * 2); g.fill();
+  }
+  if ((cond?.lights ?? 100) < 20) { g.fillStyle = 'rgba(20,20,20,0.85)'; for (const s of [-1, 1]) g.fillRect(s * (bodyW / 2 - 0.3) - 0.22, -L / 2 + 0.05, 0.44, 0.12); }
 
   const out = { canvas: c, L, W, pad, px: S };
   cache.set(key, out);
