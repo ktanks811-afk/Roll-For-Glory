@@ -12,7 +12,7 @@ import { ensure as ensureHustle } from '../core/hustle.js';
 import {
   CLASSES, BOND_FEE, DOCKET, STORAGE_PER_DAY, FACILITY,
   ensureJustice, openCase, topClass, isFelonyCase, priorScore, courtName, fmtCourt, bailFor, postBond, courtStatus,
-  pleaOffer, convictChance, lawyerFee, dismissChance, resolveCase, describe, payFine, gameMinutes, realDaysFor, fmtDays, fileCase, charge,
+  pleaOffer, convictChance, lawyerFee, dismissChance, resolveCase, describe, payFine, gameMinutes, realDaysFor, fmtDays,
 } from '../core/justice.js';
 
 const COURT = () => LOC_BY_ID.courthouse;
