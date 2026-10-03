@@ -5,9 +5,16 @@ import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, LOCATIONS } fro
 import { BACKROAD } from './map.js';
 
 export class Camera {
-  constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; }
+  constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; this.rot = 0; this.vw = 1; this.vh = 1; }
   sx(x) { return (x - this.x) * this.zoom + this.w / 2; }
   sy(z) { return (z - this.z) * this.zoom + this.h / 2; }
+  // Real screen position of a world point, for things drawn outside the
+  // rotated chase-camera layer (world drawing is rotated by `rot` about the
+  // screen centre; with rot = 0 this is just sx/sy).
+  screen(x, z) {
+    const lx = (x - this.x) * this.zoom, lz = (z - this.z) * this.zoom, c = Math.cos(this.rot), s = Math.sin(this.rot);
+    return [this.vw / 2 + lx * c - lz * s, this.vh / 2 + lx * s + lz * c];
+  }
   view(pad = 40) {
     const hw = this.w / 2 / this.zoom + pad, hh = this.h / 2 / this.zoom + pad;
     return { x0: this.x - hw, z0: this.z - hh, x1: this.x + hw, z1: this.z + hh };

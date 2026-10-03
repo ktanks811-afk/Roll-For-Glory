@@ -28,6 +28,7 @@ const COMMON = {
   phone: ['KeyP', 'Tab'],
   map: ['KeyM'],
   camera: ['KeyC'],
+  view: ['KeyV'],
   pause: ['Escape'],
   enterExit: ['KeyF'],
 };

@@ -142,6 +142,10 @@ export class World {
     if (input.pressed('map')) { this.ui.openPhone('map'); return; }
     if (input.pressed('pause')) { this.ui.openPause(); return; }
     if (input.pressed('camera')) this.zoomLevel = ((this.zoomLevel ?? 1) + 1) % 3;
+    if (input.pressed('view')) {
+      settings.camMode = settings.camMode === 'chase' ? 'top' : 'chase';
+      this.ui.toast(settings.camMode === 'chase' ? 'Third-person camera' : 'Top-down camera', 'info');
+    }
 
     const p = this.playerState();
     this.offence = null;
@@ -181,7 +185,15 @@ export class World {
     this.cam.zoom += (targetZoom - this.cam.zoom) * Math.min(1, dt * 2);
     // Keep the car near the middle of the screen at any speed: only a whisker
     // of look-ahead, and a follow fast enough that the lag cancels it out.
-    const tx = focus.x + vx * 0.1, tz = focus.z + vz * 0.1;
+    // Third-person (chase) camera: the world turns so the car always points up
+    // the screen, and the view is pushed ahead so you see more road than
+    // what's behind you. On foot, or with the top-down view, rot eases to 0.
+    const cam = this.cam, chase = settings.camMode === 'chase' && this.inCar && this.vehicle;
+    let dRot = (chase ? -this.vehicle.h : 0) - cam.rot; dRot = Math.atan2(Math.sin(dRot), Math.cos(dRot));
+    cam.rot += dRot * Math.min(1, dt * (chase ? 7 : 5));
+    this.camLead = (this.camLead || 0) + ((chase ? 1 : 0) - (this.camLead || 0)) * Math.min(1, dt * 4);
+    const lead = this.camLead * (cam.vh || 600) * 0.2 / cam.zoom;   // car sits in the lower part of the screen
+    const tx = focus.x + vx * 0.1 - Math.sin(cam.rot) * lead, tz = focus.z + vz * 0.1 - Math.cos(cam.rot) * lead;
     const follow = this.inCar ? 1 - Math.exp(-dt * 12) : Math.min(1, dt * 5);
     this.cam.x += (tx - this.cam.x) * follow;
     this.cam.z += (tz - this.cam.z) * follow;
@@ -252,12 +264,15 @@ export class World {
     ctx.save();
     ctx.font = '600 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const p of peers) {
-      const x = cam.sx(p.x), y = cam.sy(p.z) - (p.inCar ? 3.2 : 1.8) * cam.zoom;
       const label = p.crew ? `[${p.crew.tag}] ${p.name}` : p.name;
       const w = ctx.measureText(label).width + 14;
+      ctx.save();
+      ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(-cam.rot);   // keep tags upright in the chase camera
+      const x = 0, y = -(p.inCar ? 3.2 : 1.8) * cam.zoom;
       ctx.fillStyle = 'rgba(8,9,12,0.78)'; ctx.fillRect(x - w / 2, y - 9, w, 18);
       ctx.fillStyle = p.crew ? p.crew.color : '#ff2a3a'; ctx.fillRect(x - w / 2, y - 9, 3, 18);
       ctx.fillStyle = '#f2f4f8'; ctx.fillText(label, x, y + 1);
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -630,11 +645,16 @@ export class World {
   draw(ctx, W, H, dt) {
     const s = this.s;
     const cam = this.cam;
-    cam.w = W; cam.h = H;
+    // Chase camera: draw the world into a square big enough that rotating it
+    // about the screen centre never shows an empty corner.
+    const rotated = Math.abs(cam.rot) > 0.002, D = rotated ? Math.ceil(Math.hypot(W, H)) : 0;
+    cam.vw = W; cam.vh = H;
+    cam.w = rotated ? D : W; cam.h = rotated ? D : H;
     let shakeX = 0, shakeY = 0;
     if (cam.shake > 0) { shakeX = (Math.random() - 0.5) * cam.shake * 14; shakeY = (Math.random() - 0.5) * cam.shake * 14; cam.shake = Math.max(0, cam.shake - dt * 2.5); }
     ctx.save();
     ctx.translate(shakeX, shakeY);
+    if (rotated) { ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.translate(-D / 2, -D / 2); }
     drawGround(ctx, cam);
     drawWater(ctx, cam, this.map, this.t);
     const v = cam.view(60);
@@ -642,7 +662,7 @@ export class World {
     drawLots(ctx, cam, items);
     drawRoads(ctx, cam, this.map, this.signalT);
     drawSkids(ctx, cam, this.skids);
-    if (s.weather === 'rain') { ctx.fillStyle = 'rgba(40,60,90,0.12)'; ctx.fillRect(0, 0, W, H); }
+    if (s.weather === 'rain') { ctx.fillStyle = 'rgba(40,60,90,0.12)'; ctx.fillRect(0, 0, cam.w, cam.h); }
 
     // gps path
     if (this.gpsPath && s.gps) {
@@ -803,13 +823,14 @@ export class World {
       ctx.restore();
     }
     if (livePeers.length) { this.drawPeerFlames(ctx, livePeers); this.drawPeerTags(ctx, livePeers); }
+    if (rotated) { ctx.restore(); cam.w = W; cam.h = H; }   // rain and fog are screen effects: not rotated
     drawRain(ctx, cam, s.weather === 'rain' ? 1 : 0, dt);
     if (s.weather === 'fog') { ctx.fillStyle = 'rgba(180,185,195,0.28)'; ctx.fillRect(0, 0, W, H); }
     ctx.restore();
 
     // GPS arrow at screen edge
     if (s.gps) {
-      const gx = cam.sx(s.gps.x), gy = cam.sy(s.gps.z);
+      const [gx, gy] = cam.screen(s.gps.x, s.gps.z);
       if (gx < 0 || gx > W || gy < 0 || gy > H) {
         const a = Math.atan2(gy - H / 2, gx - W / 2);
         const r = Math.min(W, H) / 2 - 40;

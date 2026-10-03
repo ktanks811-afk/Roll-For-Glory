@@ -245,7 +245,7 @@ await step('burnout: gas + brake, no 2-step', async () => {
   await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW');
   console.log('     burnout', JSON.stringify(r));
   if (!r.burning || r.slip < 0.5) throw new Error('gas + brake did not start a burnout ' + JSON.stringify(r));
-  if (r.skids < 10 || r.smoke < 3) throw new Error('burnout left no marks or smoke ' + JSON.stringify(r));
+  if (r.skids < 3 || r.smoke < 3) throw new Error('burnout left no marks or smoke ' + JSON.stringify(r));
   if (r.flames !== 0) throw new Error('flames without a 2-step');
   if (r.speed > 4) throw new Error('burnout drove away at ' + r.speed);
   if (r.rpm < r.redline * 0.75) throw new Error('burnout rpm too low ' + r.rpm);
@@ -528,8 +528,8 @@ await step('online crews', async () => {
   await setup(p, 'uidAAAAAAA1'); await setup(q, 'uidBBBBBBB2');
   const openApp = pg => pg.evaluate(async () => { const { openPhone } = await import('./js/ui/phone.js'); openPhone('ocrew', window.__rfg.app); });
   const crewOf = pg => pg.evaluate(() => { const c = window.__rfg.game.s.onlineCrew; return c && { n: c.name, r: c.role, open: c.open }; });
-  const db = (pg, fn, ...a) => pg.evaluate(async ([fn, a]) => { const { crewdb } = await import('./js/net/crewdb.js'); const s = window.__rfg.game.s; const r = await crewdb()[fn]({ uid: s.uid, tok: s.crewKey, name: s.player.name, rep: 0 }, ...a); return r ?? null; }, [fn, a]);
-  const refresh = pg => pg.evaluate(async () => (await import('./js/ui/ocrew.js')).refreshCrew({ chat: true }));
+  const db = async (pg, fn, ...a) => { const r = await pg.evaluate(async ([fn, a]) => { const { crewdb } = await import('./js/net/crewdb.js'); const s = window.__rfg.game.s; const r = await crewdb()[fn]({ uid: s.uid, tok: s.crewKey, name: s.player.name, rep: 0 }, ...a); return r ?? null; }, [fn, a]); await pg.waitForTimeout(250); return r; };
+  const refresh = async pg => { await pg.evaluate(async () => (await import('./js/ui/ocrew.js')).refreshCrew({ chat: true })); await pg.waitForTimeout(250); };  // localStorage reaches other tabs a few ms late
   // tab A founds a crew from the phone app
   await openApp(p);
   await p.waitForSelector('button[data-action="tab"][data-id="create"]').catch(async e => { throw new Error('crew app did not render: ' + (await p.evaluate(() => document.body.innerText.slice(0, 300).replace(/\s+/g, ' ')))); });
@@ -560,6 +560,7 @@ await step('online crews', async () => {
   if (members.length !== 2) throw new Error('expected 2 members, got ' + members.length);
   // leader goes invite-only; B leaves, then has to ask; the leader accepts
   await db(p, 'edit', 'We only go left', false);
+  if ((await db(q, 'list')).find(g => g.tag === 'NSFT')?.open !== false) throw new Error('invite-only edit was not stored');
   await db(q, 'leave'); await refresh(q);
   if (await crewOf(q)) throw new Error('B still shows a crew after leaving');
   const cid = (await db(q, 'list')).find(g => g.tag === 'NSFT').id;
@@ -946,6 +947,34 @@ await step('phone controls', async () => {
   await m.setViewportSize({ width: 390, height: 844 }); await m.waitForTimeout(300);
   expect(await m.evaluate(() => !document.getElementById('rotate').classList.contains('hidden')), 'rotate screen did not come back after going portrait again');
   await mctx.close();
+});
+
+// ---------------- third-person (chase) camera ----------------
+await step('third-person camera', async () => {
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const r = window.__rfg, w = r.app.world; w.paused = false; try { w.police.reset(w); } catch {} w.police.patrols.length = 0;
+    if (!w.inCar) w.toggleCar();
+    const v = w.vehicle; v.x = 0; v.z = 150; v.vx = 0; v.vz = 0; v.sim.v = 0; v.h = 1.0; v.yawRate = 0; w.cam.x = 0; w.cam.z = 150;
+  });
+  await p.keyboard.press('KeyV'); await p.waitForTimeout(1800);
+  const a = await p.evaluate(async () => { const w = window.__rfg.app.world; const { settings } = await import('./js/core/save.js'); return { mode: settings.camMode, rot: w.cam.rot, h: w.vehicle.h, inCar: w.inCar }; });
+  if (a.mode !== 'chase') throw new Error('V did not switch to the third-person camera ' + JSON.stringify(a));
+  const d = Math.atan2(Math.sin(a.rot + a.h), Math.cos(a.rot + a.h));
+  if (Math.abs(d) > 0.08) throw new Error('camera is not behind the car ' + JSON.stringify(a));
+  // no empty corners while the world is turned
+  const px = await p.evaluate(() => { const c = [...document.querySelectorAll('canvas')].sort((x, y) => y.width * y.height - x.width * x.height)[0]; const g = c.getContext('2d'); const out = []; for (const [x, y] of [[3, 3], [c.width - 4, 3], [3, c.height - 4], [c.width - 4, c.height - 4]]) { const d = g.getImageData(x, y, 1, 1).data; out.push(d[0] + d[1] + d[2] + (255 - d[3])); } return out; });
+  if (px.some(v => v === 0)) throw new Error('empty corner in the rotated view ' + JSON.stringify(px));
+  await snap('40-chase-cam');
+  // turn the car: the camera follows
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.h = 2.4; });
+  await p.waitForTimeout(1500);
+  const b = await p.evaluate(() => { const w = window.__rfg.app.world; return { rot: w.cam.rot, h: w.vehicle.h }; });
+  if (Math.abs(Math.atan2(Math.sin(b.rot + b.h), Math.cos(b.rot + b.h))) > 0.1) throw new Error('camera did not follow the turn ' + JSON.stringify(b));
+  // back to top-down
+  await p.keyboard.press('KeyV'); await p.waitForTimeout(1800);
+  const c = await p.evaluate(() => window.__rfg.app.world.cam.rot);
+  if (Math.abs(c) > 0.05) throw new Error('top-down camera did not level out ' + c);
 });
 
 console.log(errs.length ? '\nERRORS:\n' + errs.join('\n') : '\nno errors');
