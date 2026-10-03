@@ -5,6 +5,7 @@ import { buildMap, collideCircle, onBackroad } from './map.js';
 import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, renderOverview, signalState } from './render.js';
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
+import { missionTick } from '../core/missions.js';
 import { PoliceSystem, OFFICER_LOOK } from './police.js';
 import { Combat } from './combat.js';
 import { Carjacks } from './carjack.js';
@@ -198,6 +199,9 @@ export class World {
     const follow = this.inCar ? 1 - Math.exp(-dt * 12) : Math.min(1, dt * 5);
     this.cam.x += (tx - this.cam.x) * follow;
     this.cam.z += (tz - this.cam.z) * follow;
+
+    // texted missions: stops, clock (before the GPS clears itself on arrival)
+    missionTick(this, p, (m, k) => this.ui.toast(m, k));
 
     // gps
     this.gpsT -= dt;

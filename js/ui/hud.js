@@ -17,6 +17,7 @@ import { LEGAL_DB } from '../sim/sound.js';
 import { PULL_OVER_S } from '../world2d/police.js';
 import { masked, ownsMask, disguiseLabel } from '../core/disguise.js';
 import { wx, nightShift } from '../core/weather.js';
+import { currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
@@ -178,9 +179,14 @@ export class Hud {
       this.q('navstreet').textContent = nav.turn === 'arrive' ? what : `${what} · ${navDist(nav.total, kmh)} to go`;
     }
     // objective
+    // a texted mission you're on takes the objective slot, with its clock
     const step = s.story.enabled ? currentStep(s.story) : null;
-    this.q('obj').innerHTML = step ? `<small>${esc(CHAPTERS[s.story.chapter].title)}</small>${esc(step.objective)}` : '';
-    this.q('obj').classList.toggle('hidden', !step);
+    const job = s.missions?.active, stop = job && currentStop(s);
+    const objHtml = job && stop ? `<small>📦 ${esc(job.title)} · <b class="${timeLeft(s) < 5 ? 'bad' : ''}">${fmtLeft(timeLeft(s))}</b></small>${esc(stopLabel(job))}: ${esc(stop.name)}`
+      : step ? `<small>${esc(CHAPTERS[s.story.chapter].title)}</small>${esc(step.objective)}` : '';
+    if (objHtml !== this.objHtml) { this.objHtml = objHtml; this.q('obj').innerHTML = objHtml; }
+    this.q('obj').classList.toggle('hidden', !objHtml);
+    this.q('obj').classList.toggle('job', !!job);
     // control hints follow what you're doing: walking or driving
     const ctx = w.inCar ? 'car' : 'foot';
     if (ctx !== this.helpCtx) {
