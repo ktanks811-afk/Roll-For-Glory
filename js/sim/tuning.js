@@ -13,6 +13,8 @@
 //   Brakes        front/rear bias needs a big brake kit with a bias valve.
 //   Differential  accel / decel lock needs a limited-slip diff.
 //   Aero          wing angle needs an adjustable GT wing.
+//   Drag launch   drag shock settings (drag pack stage 2+), power by gear
+//                 (needs an ECU tune), wheelie bar height (adjustable bars).
 //
 // Defaults are the factory (or as-installed) setup and are exactly neutral:
 // a car that has never been tuned drives and dynos the same as before.
@@ -102,6 +104,17 @@ export function tuneSchema(model, lv, visual = {}, redline = model.redline) {
       { k: 'diffAccel', label: 'Accel lock', unit: '%', min: 0, max: 100, step: 5, def: 45, fmt: v => Math.round(v) },
       { k: 'diffDecel', label: 'Decel lock', unit: '%', min: 0, max: 100, step: 5, def: 25, fmt: v => Math.round(v) },
     ]);
+  const dp = lv.dragpack || 0, wbar = lv.wheeliebar || 0;
+  g('drag', 'Drag launch', !dp && !wbar ? 'Install a drag pack (PartsHub → Drag Packs) to set the car up for launching.' : null,
+    'A drag pack hooks so hard the front end can come up. Too much and the car wheelies and loses time (or stands straight up). Tune it out: stiffer front extension and rear compression slow the weight transfer, less power in 1st and 2nd, a lower launch rpm, or wheelie bars set lower. Loosen them back up for more bite.', [
+      dp >= 2 && { k: 'frontExt', label: 'Front shock extension (drag shocks)', unit: 'clicks · 1 loose', min: 1, max: 10, step: 1, def: 5, fmt: v => Math.round(v) },
+      dp >= 2 && { k: 'rearComp', label: 'Rear shock compression (drag shocks)', unit: 'clicks · 1 soft', min: 1, max: 10, step: 1, def: 5, fmt: v => Math.round(v) },
+      !ev && lv.ecu >= 1 && { k: 'pwr1', label: asp === 'turbo' ? 'Boost by gear: 1st' : 'Torque management: 1st gear', unit: '% power', min: 50, max: 100, step: 1, def: 100, fmt: v => Math.round(v) },
+      !ev && lv.ecu >= 1 && { k: 'pwr2', label: asp === 'turbo' ? 'Boost by gear: 2nd' : 'Torque management: 2nd gear', unit: '% power', min: 50, max: 100, step: 1, def: 100, fmt: v => Math.round(v) },
+      wbar >= 2 && { k: 'barHeight', label: 'Wheelie bar height', unit: 'in off the ground', min: 1, max: 8, step: 0.5, def: 4, fmt: f1 },
+    ]);
+  if (dp && dp < 2) groups[groups.length - 1].note += ' Adjustable drag shocks come with a Stage 2+ drag pack.';
+  if (dp && !lv.ecu) groups[groups.length - 1].note += ' Power by gear needs an ECU tune.';
   g('aero', 'Aero', visual.spoiler !== 'gt' ? 'Needs an adjustable GT wing (PartsHub → Wings & Spoilers).' : null,
     'More angle = more rear downforce at speed, and more drag.', [
       { k: 'wing', label: 'Wing angle', unit: '°', min: 0, max: 14, step: 1, def: 6, fmt: v => Math.round(v) },
@@ -135,6 +148,7 @@ export function tuneEffects(model, lv, tune = {}, visual = {}, redline = model.r
     trac: 1, handling: 1, gripF: 1, gripR: 1, hcg: 0.52, stiff: 1, turnIn: 1,
     brakeShift: 0, brakeG: 1, diffPow: 0, diffLift: 0, downforce: 0, dragArea: 0, crr: 0.013,
     boost: val.boost ?? 0, values: val,
+    liftK: 1, noseRate: 1, gearPwr: [1, 1], barH: lv.wheeliebar ? 4 : null,
   };
   const rearDriven = model.drive !== 'FWD', frontDriven = model.drive !== 'RWD';
 
@@ -230,6 +244,19 @@ export function tuneEffects(model, lv, tune = {}, visual = {}, redline = model.r
   fx.trac *= 1 + 0.0012 * (val.diffAccel - def.diffAccel);
   fx.diffPow = 0.002 * (val.diffAccel - def.diffAccel);
   fx.diffLift = 0.002 * (val.diffDecel - def.diffDecel);
+
+  // ---- drag launch ----
+  // loose front extension / soft rear compression throw weight onto the
+  // rear tires faster: more bite, and the nose comes up sooner
+  if (val.frontExt != null) {
+    const fe = 5 - val.frontExt, rc = 5 - val.rearComp;
+    fx.trac *= 1 + 0.008 * fe + 0.012 * rc;
+    fx.liftK = 1 + 0.04 * fe + 0.02 * rc;
+    fx.noseRate = 1 + 0.08 * fe;
+  }
+  if (val.pwr1 != null) fx.gearPwr = [val.pwr1 / 100, val.pwr2 / 100];
+  if (val.barHeight != null) fx.barH = val.barHeight;
+  if (val.barHeight != null && val.barHeight < 2) warn.push('Wheelie bars that low hit the track and lift the rear tires off the ground. Expect it to spin.');
 
   // ---- aero (a GT wing is downforce whether or not you touch it) ----
   if (visual.spoiler === 'gt') {

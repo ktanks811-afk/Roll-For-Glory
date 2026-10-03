@@ -104,6 +104,8 @@ export class Vehicle {
     this.steerIn += clamp(inp.steer - this.steerIn, -rate * dt, rate * dt);
     const lock = clamp((0.1 / (1 + speed / 18) + 1.9 * mu * G * wb / (speed * speed + 30)) * (spec.turnIn || 1), 0.07, 0.58 * Math.max(1, spec.turnIn || 1));   // arrow keys are all-or-nothing, so full lock has to bite at any speed
     let target = this.steerIn * lock;
+    // front tires in the air (drag pack wheelie) can't steer
+    if (this.sim.pitch > 0.08) target *= Math.max(0, 1 - this.sim.pitch * 2.5);
     // a touch of counter-steer help so a slide is catchable on a thumb stick
     const beta = Math.atan2(vy, Math.max(2, Math.abs(u0)));
     if (u0 > 3.5 && Math.abs(beta) > 0.1 && !burn) {

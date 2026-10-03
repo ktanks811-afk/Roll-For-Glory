@@ -8,7 +8,7 @@ import { TrafficSystem } from './traffic.js';
 import { PoliceSystem, OFFICER_LOOK } from './police.js';
 import { Combat } from './combat.js';
 import { Carjacks } from './carjack.js';
-import { carSprite, drawCar, dimsFor, DIMS } from '../gfx2d/carSprite.js';
+import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
@@ -415,6 +415,9 @@ export class World {
     // tire wear from wheelspin
     if (v.sim.slip > 0.2) car.cond.tires = Math.max(1, car.cond.tires - dt * 0.6 * v.sim.slip);
     // an aggressive tune knocks (or floats the valves) at wide-open throttle
+    // drag pack wheelies: warn once per pull when it stands up
+    if (v.sim.standing && !this.wheelieWarned) { this.wheelieWarned = true; this.ui.toast('Wheelie! Front end is way up. Lift to set it down. Tune it out in Garage → Tune → Drag launch.', 'bad'); }
+    if (v.sim.pitch === 0 && v.sim.v < 2) this.wheelieWarned = false;
     const eng = engineStress(car, v.spec, thr, v.sim.rpm, dt, v.sim.nosOn);
     if (eng) {
       this.ui.toast(engineMessage(eng, v.spec), eng === 'stress' ? 'info' : 'bad');
@@ -769,7 +772,7 @@ export class World {
     if (this.vehicle) {
       const pv = this.vehicle;
       this.drawShadow(ctx, pv.x, pv.z, pv.h, pv.dims);
-      drawCar(ctx, this.carSpriteImg, cam.sx(pv.x), cam.sy(pv.z), pv.h, cam.zoom);
+      drawCarPitched(ctx, this.carSpriteImg, cam.sx(pv.x), cam.sy(pv.z), pv.h, cam.zoom, pv.sim.pitch, pv.dims.L, !!pv.spec.barH);
       if (pv.sim.nosOn && this.inCar) {
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
         const bx = pv.x - Math.sin(pv.h) * (pv.dims.L / 2 + 0.6), bz = pv.z + Math.cos(pv.h) * (pv.dims.L / 2 + 0.6);

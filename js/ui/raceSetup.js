@@ -235,8 +235,10 @@ function results(app, cfg, r) {
         ${['half', 'mile'].includes(cfg.dist) ? row('1/2 mile ET', sp.half, ns.half, 'low') + row('1/2 MPH', sp.halfMph, ns.halfMph, 'high') : ''}
         ${row(isDrag ? 'Elapsed time' : 'Time to finish', P.time, N.time, 'low')}${row('Trap speed (mph)', P.trap, N.trap, 'high')}
         ${row('Top speed (mph)', P.peak, N.peak, 'high')}${row('Shifts', P.shifts, N.shifts)}${row('Wheelspin (s)', P.spin, N.spin)}
+        ${P.wheelie || N.wheelie ? row('Wheelie (in)', P.wheelie || '—', N.wheelie || '—') : ''}
         ${P.crashes || N.crashes ? row('Traffic hits', P.crashes, N.crashes) : ''}</table>
         ${r.margin != null && npc && !r.voided ? `<p class="muted small">Margin: ${r.margin.toFixed(3)}s.</p>` : ''}
+        ${P.stoodUp ? '<p class="small warn">Your car stood up on the bumper. Tune it out in Garage → Tune → Drag launch, or add wheelie bars.</p>' : P.wheelie > 13 ? '<p class="small warn">Big wheelie cost you time. Stiffer drag shocks or less power in 1st will keep the nose down.</p>' : ''}
         ${r.tired > 0.02 ? `<p class="small warn">You were tired: +${r.tired.toFixed(3)}s on your reaction. Eat or sleep.</p>` : ''}
       </div><div>
         ${npc ? `<div class="li"><span class="avatar" style="background:${npc.color}">${esc(npc.name[0])}</span><div class="grow"><div class="t">${esc(npc.name)}</div><div class="s">"${esc(line)}"</div></div></div>` : ''}

@@ -8,9 +8,10 @@ import { fmtMoney, modelOf, levels } from '../core/state.js';
 import { ITEM_BY_ID, CATEGORY_NAMES, fits, fitNote } from '../data/catalog.js';
 import { PERF_IDS, partLabel } from '../data/parts.js';
 import { PART_INFO, PART_ICONS, supportCheck } from '../data/partInfo.js';
-import { buildSpec } from '../sim/powertrain.js';
+import { buildSpec, launchCheck } from '../sim/powertrain.js';
+import { launchRpmSetting } from '../sim/twostep.js';
 
-const NEED_NAMES = { ecu: 'Tune / ECU', fuel: 'Fuel system', intercooler: 'Intercooler', engine: 'Forged internals (Engine stage 2+)' };
+const NEED_NAMES = { dragpack: 'Drag pack', ecu: 'Tune / ECU', fuel: 'Fuel system', intercooler: 'Intercooler', engine: 'Forged internals (Engine stage 2+)' };
 
 export function partProfileHtml({ cat, pid, car }) {
   const it = pid ? ITEM_BY_ID[pid] : null;
@@ -49,7 +50,32 @@ export function partProfileHtml({ cat, pid, car }) {
         ${reasons.length ? `<ul class="pp-reasons">${reasons.map(r => `<li>${r.nos ? '<b>On nitrous:</b> ' : ''}${esc(r.text)}<br><span class="muted">Fix: ${esc(r.fix)}</span></li>`).join('')}</ul>` : '<p class="small good">The motor will live with this build.</p>'}`);
     }
   }
+  if (car && m && (cat === 'dragpack' || cat === 'wheeliebar' || cat === 'tires')) html += launchHtml(cat, it, car, m, lv);
   return html + '</div>';
+}
+
+// Launch check: run this car (with the part, if it's a product) off the line
+// at full throttle and say whether it hooks, spins or wheelies.
+const VERDICT = {
+  hooks: ['good', 'Hooks clean', 'Leaves straight and flat.'],
+  spin: ['bad', 'Spins the tires', 'More power than grip off the line.'],
+  wheelie: ['good', 'Small wheelie', 'Front comes up a few inches. That\'s the fast way to leave.'],
+  big: ['warn', 'Big wheelie', 'Nose is way up and it\'s losing time. Tune it out.'],
+  stands: ['bad', 'Stands up', 'Way too much. You have to lift or it stands on the bumper.'],
+};
+function launchHtml(cat, it, car, m, lv) {
+  const lv2 = it && fits(it, m) ? { ...lv, [cat]: it.stage } : lv;
+  const sp = buildSpec(m, lv2, car.cond, car.tune, car.visual);
+  const r = launchCheck(sp, sp.twoStep ? launchRpmSetting(sp, car) : null);
+  const [cls, label, why] = VERDICT[r.verdict];
+  const color = cls === 'good' ? 'var(--green)' : cls === 'warn' ? '#ff8a1a' : 'var(--red2)';
+  const tip = r.verdict === 'big' || r.verdict === 'stands' ? (m.drive === 'RWD' && !lv2.wheeliebar ? ' Add wheelie bars, or stiffen the shocks / cut 1st-gear power in Garage → Tune → Drag launch.' : ' Garage → Tune → Drag launch: stiffer shocks, less power in 1st, or lower the bars.')
+    : r.verdict === 'spin' ? (lv2.dragpack ? ' Loosen the drag shocks or drop rear tire pressure for more bite.' : ' A drag pack fixes that.') : '';
+  return `<div class="pp-sec"><div class="pp-h">Launch check${it ? ' with this part' : ''}</div><div class="pp-eng">
+    <div><small>Off the line</small><b style="color:${color}">${label}</b></div>
+    <div><small>Front end</small><b>${r.inches ? `${r.inches}" up` : 'Down'}</b></div>
+    <div><small>60 ft</small><b>${r.sixtyFt ? r.sixtyFt.toFixed(2) + 's' : '—'}</b></div></div>
+    <p class="small muted">${esc(why + tip)}</p></div>`;
 }
 
 export function openPartProfile(opts) {

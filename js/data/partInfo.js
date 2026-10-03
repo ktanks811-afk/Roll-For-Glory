@@ -2,7 +2,7 @@
 // car, what each stage means, what it needs to live, and what it does here.
 // `needs` lists the supporting mods (category ids) a build should have.
 
-export const PART_ICONS = { engine: '⚙', turbo: '🌀', supercharger: '🔩', intake: '🌬', exhaust: '💨', intercooler: '❄', fuel: '⛽', ecu: '💻', transmission: '⚙', clutch: '◎', diff: '⊕', suspension: '⇕', brakes: '⛔', tires: '◯', weight: '⚖', nitrous: '🧪', twostep: '🔥',
+export const PART_ICONS = { engine: '⚙', turbo: '🌀', supercharger: '🔩', intake: '🌬', exhaust: '💨', intercooler: '❄', fuel: '⛽', ecu: '💻', transmission: '⚙', clutch: '◎', diff: '⊕', suspension: '⇕', brakes: '⛔', tires: '◯', dragpack: '🏁', wheeliebar: '⫠', weight: '⚖', nitrous: '🧪', twostep: '🔥',
   wheels: '◉', paint: '🎨', tint: '▦', spoiler: '⎺', kit: '▭', frontBumper: '▔', rearBumper: '▁', skirts: '═', hood: '▱', exhaustTips: '◍', headlights: '💡', taillights: '🔴', decal: '✦', neon: '✺', interior: '💺' };
 
 export const PART_INFO = {
@@ -105,6 +105,21 @@ export const PART_INFO = {
     stages: ['Stage 1: performance tires.', 'Stage 2: max-performance.', 'Stage 3: drag radials / R-comp.', 'Stage 4: slicks.'],
     needs: [],
     game: 'More grip for launching and cornering. Wheelspin wears them out, and bald tires get greasy.',
+  },
+  dragpack: {
+    what: 'A drag pack: wide drag radials or slicks on the drive wheels, skinny "front runner" tires up front, and on the bigger packs adjustable drag shocks and traction bars.',
+    how: 'Drag radials and slicks are soft, sticky rubber with sidewalls that wrinkle and plant on launch, so the car hooks instead of spinning. The shocks let the front rise and the rear squat so weight comes back onto the tires. Put enough power through all that grip and the front end keeps coming up: a wheelie. A little lift is fast. Too much and the car is going up instead of forward, and a big one can stand it straight up.',
+    stages: ['Stage 1: drag radials + skinnies.', 'Stage 2: radials, skinnies + adjustable drag shocks.', 'Stage 3: street slicks / traction bars + double-adjustable shocks.', 'Stage 4: pro slicks on beadlocks + race drag shocks.'],
+    needs: [],
+    danger: 'Big power on a drag pack wheelies. Tune it out in Garage → Tune → Drag launch: stiffer front shock extension and rear compression, less boost or power in 1st and 2nd gear, a lower 2-step launch rpm, or add wheelie bars. Skinnies also give up grip in corners.',
+    game: 'Hooks off the line so you don\'t spin. Rear-wheel-drive cars (and AWD with a lot of power) can wheelie. Front-drive cars just get the grip. Stage 2+ opens drag shock tuning.',
+  },
+  wheeliebar: {
+    what: 'Wheelie bars: two arms off the back of the car with small wheels that catch the rear bumper before the nose goes too high.',
+    how: 'The bars let the front come up a few inches, which is the fast way to launch, then stop it there. Set them too high and it still wheelies. Set them too low and the bars hit the track and lift weight off the rear tires, so it spins.',
+    stages: ['Stage 1: bolt-on, fixed height.', 'Stage 2: adjustable height.', 'Stage 3: chromoly, adjustable.', 'Stage 4: pro bars with shocks.'],
+    needs: ['dragpack'],
+    game: 'Caps how high the front can go so you can stay in it. Rear-wheel drive only. Stage 2+ lets you set the height in Garage → Tune → Drag launch.',
   },
   weight: {
     what: 'Weight reduction: carbon panels, lightweight seats, stripped interior, lithium battery.',
