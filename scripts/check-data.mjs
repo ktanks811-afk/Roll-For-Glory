@@ -638,6 +638,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!(CS.prizeFor(1, 3).cash > CS.prizeFor(2, 3).cash && CS.prizeFor(1, 4).cash > CS.prizeFor(1, 1).cash && CS.prizeFor(0, 1).cash === 0)) bad('car show prizes are off');
   if (!CS.isShowTime({ day: 6, min: 12 * 60 }, 'Sat') || CS.isShowTime({ day: 6, min: 20 * 60 }, 'Sat') || CS.isShowTime({ day: 3, min: 12 * 60 }, 'Wed')) bad('car show hours are off');
   if (!LOCATIONS.some(l => l.type === 'carshow')) bad('the car show needs a lot on the map');
+}
 // ---- street races: every leg runs on a real road, records are sane, pink slips have rules ----
 {
   const map = buildMap();
