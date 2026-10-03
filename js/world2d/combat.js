@@ -394,12 +394,15 @@ export class Combat {
   }
 
   // ---------------------------------------------------------------- hud
-  hudLine() {
+  // two short rows for the side HUD card: the gun, then its ammo and state
+  hudLine(touch = false) {
     const gn = this.gun;
     if (!gn) return '';
     const { g, def } = gn;
-    if (def.melee) return `<b>${def.name}</b>`;
-    return `<b>${def.name}</b>${g.frt ? ' <small style="color:#ff5a5a">FRT</small>' : ''} ${this.jammed ? '<b style="color:#ff5a5a">JAMMED — R</b>' : ''} &nbsp; ${this.reload > 0 ? 'RELOADING…' : `${g.loaded}/${def.mag}`} <small>· ${this.arms.ammo[def.cal] || 0} ${def.cal}</small>${this.armed ? '' : ' <small>(holstered — G)</small>'}`;
+    const name = `<div class="wp-name"><b>${def.name}</b>${g.frt ? ' <small style="color:#ff5a5a">FRT</small>' : ''}</div>`;
+    const off = this.armed ? '' : ` <small class="wp-off">HOLSTERED${touch ? '' : ' — G'}</small>`;
+    if (def.melee) return off ? name + `<div class="wp-stat">${off.trim()}</div>` : name;
+    return name + `<div class="wp-stat">${this.jammed ? '<b style="color:#ff5a5a">JAMMED — R</b> ' : ''}<b>${this.reload > 0 ? 'RELOADING…' : `${g.loaded}/${def.mag}`}</b> <small>· ${this.arms.ammo[def.cal] || 0} ${def.cal}</small>${off}</div>`;
   }
   progress() {
     if (this.rob) return { v: this.rob.t / this.rob.dur, label: this.rob.cfg.what };
