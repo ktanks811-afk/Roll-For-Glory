@@ -867,6 +867,8 @@ await step('warrants', async () => {
   await p.waitForTimeout(200);
   if ((await R()).warrants.length) throw new Error('turning yourself in did not clear the felony warrant');
   await clearModals();
+});
+
 // ---------------- traffic stop: 10 s to pull over, officer walks up, drive off = chase ----------------
 await step('traffic stop: pull over, walk-up, drive off', async () => {
   const P = () => p.evaluate(() => { const w = window.__rfg.app.world, po = w.police; return { phase: po.phase, pullT: +po.pullT.toFixed(1), step: po.stop?.step || null, officer: po.officer ? { x: po.officer.x, z: po.officer.z } : null, rec: po.record.map(r => r.kind), heat: +window.__rfg.game.s.heat.toFixed(2), title: document.querySelector('[data-ptitle]')?.textContent || '' }; });
