@@ -9,12 +9,12 @@ import { LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
 import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { online } from '../net/online.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', meet: '●', flag: '⚑' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', meet: '●', flag: '⚑', trophy: '♛' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot'] },
   { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty'] },
-  { id: 'race', label: 'Races & meets', types: ['meet', 'drag', 'roll'] },
+  { id: 'race', label: 'Races & meets', types: ['meet', 'carshow', 'drag', 'roll'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food'] },
   { id: 'home', label: 'Home', types: ['home', 'property'] },
   { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
