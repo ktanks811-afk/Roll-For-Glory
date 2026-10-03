@@ -133,7 +133,10 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .empty { text-align: center; color: var(--dim); padding: 30px 10px; }
 
 /* ---------- title / menu ---------- */
-.title { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; overflow-y: auto; padding-top: 24px; padding-bottom: 44px; padding: 0 clamp(16px, 7vw, 110px); background: linear-gradient(90deg, rgba(5,5,7,.92) 0%, rgba(5,5,7,.6) 45%, rgba(5,5,7,0) 75%); }
+.title { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; overflow-y: auto; padding-top: 24px; padding-bottom: 44px; padding: 0 clamp(16px, 7vw, 110px); background: linear-gradient(90deg, rgba(5,5,7,.85) 0%, rgba(5,5,7,.5) 30%, rgba(5,5,7,0) 55%), url(../img/title.webp) center top / cover no-repeat #050506; }
+/* The cover art carries the logo: keep the text title for screen readers only and start the menu below the art's logo. */
+.title { justify-content: flex-start; padding-top: calc(max(100vh, 66.67vw) * .41); }
+.title .title-logo, .title .title-tag { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .title-logo { font-family: var(--head); font-weight: 700; font-style: italic; font-size: clamp(40px, min(8vw, 11vh), 104px); line-height: .9; letter-spacing: .02em; text-shadow: 0 6px 30px rgba(0,0,0,.8); }
 .title-logo span { color: var(--red); display: block; font-size: .45em; letter-spacing: .3em; margin: 6px 0 4px; }
 .title-tag { font-weight: 700; letter-spacing: .32em; color: var(--silver); font-size: clamp(11px, 1.6vw, 15px); margin: 12px 0 min(30px, 3vh); }
