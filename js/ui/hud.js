@@ -32,7 +32,7 @@ const navDist = (m, kmh) => kmh
   ? (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.max(10, Math.round(m / 10) * 10) + ' m')
   : (m >= 402 ? (m / 1609.34).toFixed(1) + ' mi' : Math.max(10, Math.round(m * 3.28084 / 50) * 50) + ' ft');
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', meet: '●', flag: '⚑' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', tow: '$', meet: '●', flag: '⚑' };
 
 export class Hud {
   constructor() {
@@ -43,6 +43,7 @@ export class Hud {
         <div class="hud-place" data-place></div>
         <button class="hud-online hidden" data-online aria-label="Online players"></button>
         <div class="hud-objective" data-obj></div>
+        <div class="hud-gig hidden" data-gig></div>
         <div class="hud-mini"><canvas width="200" height="200" data-mini></canvas><div class="mini-n">N</div></div>
       </div>
       <div class="hud-tr">
@@ -178,6 +179,10 @@ export class Hud {
     const step = s.story.enabled ? currentStep(s.story) : null;
     this.q('obj').innerHTML = step ? `<small>${esc(CHAPTERS[s.story.chapter].title)}</small>${esc(step.objective)}` : '';
     this.q('obj').classList.toggle('hidden', !step);
+    // the gig shift you're on
+    const gl = w.gigs?.hudLine(), gb = this.q('gig');
+    gb.classList.toggle('hidden', !gl);
+    if (gl) { const html = `<small>${esc(gl.title)}</small>${esc(gl.text)}`; if (gb.dataset.h !== html) { gb.dataset.h = html; gb.innerHTML = html; } gb.classList.toggle('late', gl.late); }
     // control hints follow what you're doing: walking or driving
     const ctx = w.inCar ? 'car' : 'foot';
     if (ctx !== this.helpCtx) {

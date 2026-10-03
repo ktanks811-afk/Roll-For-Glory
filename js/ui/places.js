@@ -44,6 +44,7 @@ const HANDLERS = {
   dealer, usedlot, perf, visual, repair, gas, food, clothing,
   realty: (loc, app, s) => realty(loc, app, s),
   police,
+  work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
   meet: (loc, app, s) => {
     if (!isNight(s.time)) { modal(loc.name, `<p>Empty lot. A security guard on a golf cart. Meets start after <b>8 PM</b>.</p><p class="muted small">Tip: sleep at home until night.</p>`); return; }

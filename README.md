@@ -113,6 +113,16 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   about 30 game days, can be upgraded to level 3, and the big ones need rep.
   Random inspection fines, break-ins and viral days keep it interesting, and
   getting busted can cost you a job.
+- **Gig shifts (legit work you drive).** Phone → Hustle → Shifts, or the Hook
+  & Haul Towing yard in Riverside Industrial. Delivery runs for Slice Brothers
+  Pizza (pick up at a diner, beat the clock to the door), Ryde passengers (the
+  rider walks to your car and rates you; hard stops, speeding and crashes cost
+  stars and the tip), and tow calls (stop next to a broken-down car, it hooks
+  to your dolly and trails behind you to the yard; over 60 it swings). Pay goes
+  to the bank and grows with your rep tier, tips come in cash, and every clean
+  shift in a row adds 5% (up to +50%). Staying legit is the point: an open
+  warrant fails the background check, a police chase pulls you off the job,
+  and an arrest suspends you for a day and wipes the streak.
 - **Side-view showroom (every car).** Garage → Showroom shows your car in HD
   side view, built from separate layers: base body, paint and finish (gloss,
   matte, metallic, pearl, chrome), front and rear wheels (six styles), brake
