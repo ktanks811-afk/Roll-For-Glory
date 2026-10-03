@@ -13,7 +13,7 @@ import { createState, newCar, game } from '../js/core/state.js';
 import * as H from '../js/core/hustle.js';
 import { SERVERS, SERVER_CAP } from '../js/net/online.js';
 import { Vehicle } from '../js/world2d/vehicle.js';
-import { GLOCKS, ARPS, WEAPONS, WEAPON_BY_ID, CAL, buyWeapon, buyAmmo, ensureArms, giveWeapon, minAge } from '../js/data/weapons.js';
+import { GLOCKS, ARPS, WEAPONS, WEAPON_BY_ID, CAL, buyWeapon, buyAmmo, ensureArms, giveWeapon, minAge, canFrt, toggleFrt } from '../js/data/weapons.js';
 import { spend } from '../js/core/state.js';
 import { buildMap, collideCircle } from '../js/world2d/map.js';
 import { PROPERTIES } from '../js/data/world.js';
@@ -380,6 +380,15 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (minAge(WEAPON_BY_ID.knife) !== 18 || minAge(g17) !== 21) bad('age gates');
   const poor = createState({ name: 'P', age: 30, look: {}, story: false }); poor.cash = 10;
   if (buyWeapon(poor, 'glock_17_g5', 0, spend).ok) bad('cannot buy without money');
+  // FRT drops into any firearm, not melee or the already-auto G18
+  for (const w of WEAPONS) if (canFrt(w) !== (!w.melee && !w.auto)) bad(`FRT fit wrong for ${w.id}`);
+  const ar = giveWeapon(st, 'arp_dd_mk18'), bat = giveWeapon(st, 'bat');
+  st.arms.frtKits = 1;
+  if (!toggleFrt(st, ar.uid).ok || !ar.frt || st.arms.frtKits !== 0) bad('FRT should install on an AR pistol');
+  if (toggleFrt(st, gun.uid).ok || gun.frt) bad('FRT installed with no kit left');
+  if (!toggleFrt(st, ar.uid).ok || ar.frt || st.arms.frtKits !== 1) bad('removing an FRT should return the kit');
+  if (toggleFrt(st, bat.uid).ok || bat.frt) bad('FRT on a bat');
+  if (!toggleFrt(st, gun.uid).ok || !gun.frt) bad('FRT should install on a Glock 19');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

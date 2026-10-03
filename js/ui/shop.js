@@ -6,7 +6,7 @@
 import { bind, esc, toast } from './dom.js';
 import { fmtMoney, spend, tierOf } from '../core/state.js';
 import { audio } from '../core/audio.js';
-import { GLOCKS, ARPS, MELEE, GEAR, CAL, AMMO_BOX, ammoBoxPrice, WEAPON_BY_ID, ensureArms, buyWeapon, buyAmmo, minAge } from '../data/weapons.js';
+import { GLOCKS, ARPS, MELEE, GEAR, CAL, AMMO_BOX, ammoBoxPrice, WEAPON_BY_ID, ensureArms, buyWeapon, buyAmmo, minAge, canFrt, toggleFrt } from '../data/weapons.js';
 
 const head = title => `<div class="app-head"><button class="back" data-action="back">‹ Back</button><h2>${esc(title)}</h2></div>`;
 const GLOCK_CALS = ['9mm', '.40 S&W', '10mm', '.45 ACP', '.380 ACP', '.357 SIG', '.45 GAP', '.22 LR'];
@@ -65,7 +65,7 @@ export function renderShop(scr, ctx) {
           <div class="s">${d.melee ? 'Melee' : `${g.loaded}/${d.mag} loaded · ${a.ammo[d.cal] || 0} ${d.cal} in reserve`}</div></div>
           <div style="text-align:right"><button class="btn btn-sm ${eq ? '' : 'btn-primary'}" data-action="equip" data-id="${g.uid}" ${eq ? 'disabled' : ''}>Equip</button>
           ${d.melee ? '' : `<button class="btn btn-sm" data-action="topoff" data-id="${g.uid}">Load</button>`}
-          ${d.make === 'Glock' && !d.auto ? (g.frt ? `<button class="btn btn-sm" data-action="frt" data-id="${g.uid}">Remove FRT</button>` : `<button class="btn btn-sm" data-action="frt" data-id="${g.uid}" ${(a.frtKits || 0) ? '' : 'disabled'}>Install FRT</button>`) : ''}
+          ${g.frt || canFrt(d) ? (g.frt ? `<button class="btn btn-sm" data-action="frt" data-id="${g.uid}">Remove FRT</button>` : `<button class="btn btn-sm" data-action="frt" data-id="${g.uid}" ${(a.frtKits || 0) ? '' : 'disabled'}>Install FRT</button>`) : ''}
           <button class="btn btn-sm" data-action="sell" data-id="${g.uid}">Sell ${fmtMoney(Math.round(d.price * 0.5))}</button></div></div>`;
       }).join('')}</div>` : '<div class="empty">No weapons yet. Browse Handguns or AR Pistols.</div>';
     body += `<p class="small muted">Stolen so far: ${fmtMoney(s.stats.stolen || 0)} in ${a.robberies} job${a.robberies === 1 ? '' : 's'}.</p>`;
@@ -87,9 +87,8 @@ export function renderShop(scr, ctx) {
     },
     equip: d => { a.equipped = d.id; toast('Equipped.', 'good'); rerender(); },
     frt: d => {
-      const g = a.guns.find(x => x.uid === d.id);
-      if (g.frt) { g.frt = false; a.frtKits = (a.frtKits || 0) + 1; toast('FRT removed — back to semi-auto.', 'info'); }
-      else if ((a.frtKits || 0) > 0) { g.frt = true; a.frtKits--; toast('FRT installed. Hold the trigger… and pray it doesn\'t jam.', 'good'); }
+      const r = toggleFrt(s, d.id);
+      toast(r.text, r.ok ? (a.guns.find(x => x.uid === d.id)?.frt ? 'good' : 'info') : 'bad');
       rerender();
     },
     topoff: d => {

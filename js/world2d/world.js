@@ -189,7 +189,7 @@ export class World {
 
     // gps
     this.gpsT -= dt;
-    if (s.gps && this.gpsT <= 0) { this.gpsT = 1; this.updateGps(); }
+    if (s.gps && this.gpsT <= 0) { this.gpsT = 0.4; this.updateGps(); }
     if (s.gps && Math.hypot(s.gps.x - p.x, s.gps.z - p.z) < 25) { this.ui.toast(`Arrived: ${s.gps.label}`, 'good'); s.gps = null; this.gpsPath = null; }
 
     // persist position
@@ -610,18 +610,55 @@ export class World {
     if (this.garageSprites.size > 40) this.garageSprites.clear();
   }
 
-  // The road route from where you are to (x, z): { path: [[x, z], …], meters }.
+  // The road route from where you are to (x, z): { path: [[x, z], …], names, meters }.
   routeTo(x, z) {
-    const p = this.playerState(), roads = this.map.roads;
-    const a = roads.nearestNode(p.x, p.z), b = roads.nearestNode(x, z);
-    const route = roads.route(a.id, b.id);
-    const path = route ? [[p.x, p.z], ...route.map(id => [roads.nodes[id].x, roads.nodes[id].z]), [x, z]] : [[p.x, p.z], [x, z]];
-    let meters = 0;
-    for (let i = 1; i < path.length; i++) meters += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
-    return { path, meters };
+    const p = this.playerState();
+    const heading = this.inCar && this.vehicle && this.vehicle.speed > 3 ? this.vehicle.h : null;
+    return this.map.roads.routeBetween(p.x, p.z, x, z, heading);
   }
   updateGps() {
-    this.gpsPath = this.routeTo(this.s.gps.x, this.s.gps.z).path;
+    const r = this.routeTo(this.s.gps.x, this.s.gps.z);
+    this.gpsPath = r.path; this.gpsNames = r.names;
+  }
+  // Where you are along the GPS route right now: the closest segment i
+  // (path[i-1] → path[i]), how far along it (t, 0–1) and how far off it (d).
+  gpsProgress() {
+    const path = this.gpsPath, p = this.playerState();
+    // stick to the road part of the route while you're on it (not the hop
+    // from where you were standing onto the road)
+    const best = roadOnly => {
+      let i = 1, t = 0, d = Infinity;
+      for (let k = 1; k < path.length; k++) {
+        if (roadOnly && this.gpsNames?.[k - 1] == null) continue;
+        const [ax, az] = path[k - 1], [bx, bz] = path[k], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+        const tk = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.z - az) * dz) / L2));
+        const dk = Math.hypot(ax + dx * tk - p.x, az + dz * tk - p.z);
+        if (dk < d - 0.01) { d = dk; i = k; t = tk; }
+      }
+      return { i, t, d, p };
+    };
+    const r = best(true);
+    return r.d < 12 ? r : best(false);
+  }
+  // Turn-by-turn: the next turn on the route and how far away it is, measured
+  // from where you are right now. { turn: 'left'|'right'|'uturn'|'arrive', dist, street, total }
+  navInfo() {
+    const path = this.gpsPath, s = this.s;
+    if (!path || !s.gps || path.length < 2) return null;
+    const { i: best, t: bt, d: bd } = this.gpsProgress();
+    const seg = i => Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+    let dist = bd + seg(best) * (1 - bt), total = 0, turn = null;
+    for (let i = best; i < path.length - 1; i++) {
+      // a corner is a turn when the road changes direction by more than ~35°
+      const [ax, az] = path[i - 1], [bx, bz] = path[i], [cx, cz] = path[i + 1];
+      const ix = bx - ax, iz = bz - az, ox = cx - bx, oz = cz - bz;
+      const ang = Math.atan2(ix * oz - iz * ox, ix * ox + iz * oz);
+      const onRoad = this.gpsNames?.[i - 1] != null && this.gpsNames?.[i] != null;   // not the hop on/off the road at either end
+      if (!turn && onRoad && Math.abs(ang) > 0.6) turn = { turn: Math.abs(ang) > 2.6 ? 'uturn' : ang > 0 ? 'right' : 'left', dist, street: this.gpsNames?.[i] || null };
+      dist += seg(i + 1);
+    }
+    total = dist;
+    return { ...(turn || { turn: 'arrive', dist: total, street: s.gps.label }), total, label: s.gps.label };
   }
   setGps(x, z, label) {
     this.s.gps = { x, z, label };
@@ -647,13 +684,7 @@ export class World {
     drawSkids(ctx, cam, this.skids);
     if (s.weather === 'rain') { ctx.fillStyle = 'rgba(40,60,90,0.12)'; ctx.fillRect(0, 0, W, H); }
 
-    // gps path
-    if (this.gpsPath && s.gps) {
-      ctx.strokeStyle = 'rgba(255,40,60,0.55)'; ctx.lineWidth = Math.max(3, 1.4 * cam.zoom); ctx.lineJoin = 'round';
-      ctx.setLineDash([2 * cam.zoom, 2 * cam.zoom]);
-      ctx.beginPath(); this.gpsPath.forEach(([x, z], i) => i ? ctx.lineTo(cam.sx(x), cam.sy(z)) : ctx.moveTo(cam.sx(x), cam.sy(z))); ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    this.drawGpsRoute(ctx, cam, 1);
     // police spike strips
     for (const b of this.police.blocks) {
       const sp = b.spikes;
@@ -774,6 +805,7 @@ export class World {
       for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       drawLighting(ctx, cam, night, this.map.lights, { cars: carsLit, glows, blobs });
+      this.drawGpsRoute(ctx, cam, night * 0.85, true);   // the route glows through the dark
     } else if (this.police.active) {
       // daytime light bars still flash
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -821,6 +853,58 @@ export class World {
         ctx.restore();
       }
     }
+  }
+
+  // The GPS route painted on the road: a dark casing, a bright red ribbon
+  // and white chevrons flowing toward the destination, plus a pulsing ring
+  // on the destination itself. `glow` redraws it additively after the night
+  // lighting so it stays readable in the dark.
+  drawGpsRoute(ctx, cam, alpha, glow = false) {
+    const full = this.gpsPath, g = this.s.gps;
+    if (!full || !g || alpha <= 0.01) return;
+    // start the line where you are now, not where the route was last worked out
+    const { i: k, t: kt, d: off, p } = this.gpsProgress();
+    const [ax0, az0] = full[k - 1], [bx0, bz0] = full[k];
+    const path = [[ax0 + (bx0 - ax0) * kt, az0 + (bz0 - az0) * kt], ...full.slice(k)];
+    if (off > 10) path.unshift([p.x, p.z]);
+    const z = cam.zoom, v = cam.view(20);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (glow) ctx.globalCompositeOperation = 'lighter';
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    const line = () => { ctx.beginPath(); path.forEach(([x, zz], i) => i ? ctx.lineTo(cam.sx(x), cam.sy(zz)) : ctx.moveTo(cam.sx(x), cam.sy(zz))); ctx.stroke(); };
+    if (!glow) { ctx.strokeStyle = 'rgba(30,0,6,0.55)'; ctx.lineWidth = Math.max(9, 4.2 * z); line(); }
+    ctx.strokeStyle = glow ? 'rgba(255,40,60,0.55)' : 'rgba(255,42,58,0.82)'; ctx.lineWidth = Math.max(5, 2.6 * z); line();
+    // chevrons every 7 m, sliding along the route (spaced from the
+    // destination end, so they don't jump when the route is refreshed)
+    let len = 0;
+    for (let i = 1; i < path.length; i++) len += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+    const gap = 7, cs = Math.max(4, 0.95 * z);
+    ctx.strokeStyle = glow ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.92)'; ctx.lineWidth = Math.max(2, 0.42 * z);
+    let along = (((len - this.t * 9) % gap) + gap) % gap;
+    for (let i = 1; i < path.length; i++) {
+      const [ax, az] = path[i - 1], [bx, bz] = path[i], L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.01) continue;
+      const ux = (bx - ax) / L, uz = (bz - az) / L;
+      const segVisible = !(Math.max(ax, bx) < v.x0 || Math.min(ax, bx) > v.x1 || Math.max(az, bz) < v.z0 || Math.min(az, bz) > v.z1);
+      if (segVisible) {
+        for (let d = along; d < L; d += gap) {
+          const x = cam.sx(ax + ux * d), y = cam.sy(az + uz * d);
+          ctx.beginPath();
+          ctx.moveTo(x - ux * cs - uz * cs * 0.8, y - uz * cs + ux * cs * 0.8);
+          ctx.lineTo(x, y);
+          ctx.lineTo(x - ux * cs + uz * cs * 0.8, y - uz * cs - ux * cs * 0.8);
+          ctx.stroke();
+        }
+      }
+      along = ((along - L) % gap + gap) % gap;
+    }
+    // destination ring
+    const gx = cam.sx(g.x), gy = cam.sy(g.z), pulse = (this.t * 0.8) % 1;
+    ctx.strokeStyle = `rgba(255,42,58,${(1 - pulse) * 0.9})`; ctx.lineWidth = Math.max(3, 0.5 * z);
+    ctx.beginPath(); ctx.arc(gx, gy, (3 + pulse * 6) * z, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,42,58,0.35)'; ctx.beginPath(); ctx.arc(gx, gy, 3 * z, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   drawShadow(ctx, x, z, h, dims) {
