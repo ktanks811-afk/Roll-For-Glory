@@ -205,6 +205,27 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 @keyframes flash { to { background: var(--blue); box-shadow: 0 0 8px var(--blue); } }
 .hud-warrant { margin-top: 5px; margin-left: auto; width: max-content; padding: 2px 8px; border: 1px solid var(--yellow); color: var(--yellow); background: rgba(10,10,12,.8); border-radius: 3px; font-family: var(--head); font-size: 11px; letter-spacing: .1em; white-space: nowrap; max-width: 100%; overflow: hidden; }
 .hud-warrant.felony { border-color: var(--red); color: #fff; background: rgba(224,25,46,.75); }
+.hud-court { margin-top: 5px; margin-left: auto; width: max-content; padding: 2px 8px; border: 1px solid #c9a68a; color: #e9cfb4; background: rgba(10,10,12,.8); border-radius: 3px; font-family: var(--head); font-size: 11px; letter-spacing: .1em; white-space: nowrap; max-width: 100%; overflow: hidden; }
+.hud-court.today { background: rgba(201,166,138,.85); color: #1a1208; animation: flash-court 1s infinite alternate; }
+@keyframes flash-court { to { background: rgba(201,166,138,.45); } }
+.charges { margin: 8px 0; display: grid; gap: 4px; }
+.charges > div { background: rgba(255,255,255,.04); border-left: 3px solid #c9a68a; padding: 5px 8px; border-radius: 3px; font-size: 14px; }
+.charge { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.charge b { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.offer { background: rgba(201,166,138,.12); border: 1px solid rgba(201,166,138,.4); border-radius: 6px; padding: 10px; margin: 8px 0 10px; }
+.docket { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid #c9a68a; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.docket.on { border-left-color: var(--green); } .docket.missed { border-left-color: var(--red); }
+.docket .t { font-family: var(--head); font-size: 17px; letter-spacing: .04em; margin: 2px 0; }
+.docket .s { margin: 6px 0 4px; }
+.jail-panel .panel-inner { width: min(560px, 100%); border-color: #ff8a1e; }
+.jail-head { background: repeating-linear-gradient(90deg, #17181d 0 22px, #0c0d10 22px 26px); }
+.jail { font-size: 14px; }
+.jail-id { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.jail-id .mug { width: 54px; height: 54px; border-radius: 6px; background: #ff8a1e; color: #1a0d00; display: flex; align-items: center; justify-content: center; font-family: var(--head); font-size: 28px; font-weight: 700; flex: none; }
+.jail-clock { font-family: var(--head); font-size: 30px; letter-spacing: .12em; margin-bottom: 6px; color: #ffb066; }
+.jail-log { display: grid; gap: 5px; }
+.jail-log > div { padding: 6px 8px; background: rgba(255,255,255,.04); border-radius: 4px; color: var(--silver); }
+.jail-log > div:first-child { color: var(--text); background: rgba(255,138,30,.12); }
 .warrant-status { text-align: center; padding: 10px; margin-bottom: 6px; border-radius: 6px; font-family: var(--head); letter-spacing: .1em; background: rgba(43,217,107,.15); color: #2bd96b; }
 .warrant-status.on { background: rgba(224,25,46,.2); color: #ff5a6a; }
 .hud-pursuit { margin-top: 8px; background: rgba(10,10,12,.85); border: 1px solid var(--red); padding: 6px 10px; border-radius: 4px; font-family: var(--head); font-size: 13px; letter-spacing: .08em; }

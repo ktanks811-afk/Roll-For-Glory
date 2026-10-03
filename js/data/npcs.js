@@ -179,6 +179,7 @@ export const PEOPLE = {
   manny:   { name: 'Manny Vega', role: 'Body & Paint · Vega Kustoms', color: '#d12a8a', bio: "Rosa's cousin. Paint, wheels, kits — if it shows, Manny does it." },
   kingpin: { name: 'Dre Holloway', role: 'Organizer · "Kingpin"', color: '#e8c21a', bio: 'Runs the meets. If there\'s a race worth watching, Dre set it up.' },
   brenner: { name: 'Sgt. Hal Brenner', role: 'FWPD Street Racing Task Force', color: '#1b4fc4', bio: 'Twenty years on the job. Has a whiteboard with your name on it now.' },
+  clerk:   { name: 'Tarrant County District Clerk', role: 'Courts · notices to appear', color: '#8a6d3b', bio: 'Automated court notices. Ignoring them is how warrants happen.' },
   priya:   { name: 'Priya Shah', role: 'Agent · Bayline Realty', color: '#1f8f3a', bio: 'Sells garages with houses attached.' },
   zed:     { name: 'Zed', role: 'Parts Vendor', color: '#6b2bd1', bio: 'Shows up at meets with a van. Don\'t ask where the parts come from — they\'re just discounted, okay?' },
 };

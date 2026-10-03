@@ -501,6 +501,7 @@ await step('Amazin\' shop + guns + robbery', async () => {
   const after = await p.evaluate(() => ({ guns: window.__rfg.game.s.arms.guns.length, drawn: window.__rfg.app.world.combat.drawn }));
   if (after.guns !== 0 || after.drawn) throw new Error('gun not confiscated ' + JSON.stringify(after));
   await p.click('.modal button'); await calm();
+  await p.evaluate(() => { window.__rfg.game.s.justice.cases = []; });   // the court step covers what happens next
 });
 
 await step('save + reload', async () => {
@@ -803,7 +804,7 @@ await step('warrants', async () => {
   // 1. outrun a level-2 pursuit: a felony evading warrant goes out
   await p.evaluate(() => {
     const s = window.__rfg.game.s, w = window.__rfg.app.world;
-    s.warrants = []; s.citations = []; s.cash = 50000; w.police.reset(w); w.paused = false;
+    s.warrants = []; s.citations = []; s.justice.cases = []; s.cash = 50000; w.police.reset(w); w.paused = false;
     s.heat = 2.3; w.police.startChase(w, true); w.police.eyesOn = true;
     w.police.note({ kind: 'speeding', text: 'Speeding — 88 in a 45.', fine: 700 });
     w.police.escaped(w);
@@ -831,7 +832,8 @@ await step('warrants', async () => {
   await p.evaluate(() => { const w = window.__rfg.app.world; w.police.phase = 'notice'; w.police.busted(w); });
   await p.waitForSelector('.modal h2:has-text("BUSTED")');
   if (!/active warrant/.test(await p.textContent('.modal')) || !/warrants? served/.test(await p.textContent('.modal'))) throw new Error('arrest modal does not mention the warrant');
-  await clearModals(); await p.evaluate(() => { window.__rfg.app.world.paused = false; }); await p.waitForTimeout(250);
+  if (!/Evading arrest/.test(await p.textContent('.modal'))) throw new Error('the felony warrant should be booked as a charge');
+  await clearModals(); await p.evaluate(() => { window.__rfg.app.world.paused = false; window.__rfg.game.s.justice.cases = []; }); await p.waitForTimeout(250);
   r = await R();
   if (r.warrants.length || !/hidden/.test(r.tag)) throw new Error('arrest did not clear the warrants ' + JSON.stringify(r));
   // 4. sign a ticket instead of paying, miss the due date: warrant
@@ -866,7 +868,105 @@ await step('warrants', async () => {
   await p.click('.modal button:has-text("Turn myself in")');
   await p.waitForTimeout(200);
   if ((await R()).warrants.length) throw new Error('turning yourself in did not clear the felony warrant');
+  // the felony goes to court: booked with a court date
+  await p.waitForSelector('.modal h2:has-text("Magistrate")');
+  if (!(await p.evaluate(() => window.__rfg.game.s.justice.cases[0]?.surrender))) throw new Error('turning yourself in on a felony should file a case');
   await clearModals();
+  await p.evaluate(() => { window.__rfg.game.s.justice.cases = []; });
+});
+
+// ---------------- courts: booking, bail, court date, plea / trial, jail sim, missing court ----------------
+await step('courts + jail', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  const J = () => p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { day: s.time.day, cases: s.justice.cases.map(c => ({ date: c.date, bond: c.bond.type, fta: c.fta, cls: c.charges.map(x => x.cls) })), conv: s.justice.convictions.length, probation: s.justice.probation, warrants: s.warrants.map(x => x.kind), inCar: w.inCar, foot: [Math.round(w.foot.x), Math.round(w.foot.z)], court: document.querySelector('[data-court]')?.className + ':' + document.querySelector('[data-court]')?.textContent }; });
+  const openCourt = () => p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.courthouse, window.__rfg.app); });
+  await clear();
+  // 1. busted after an armed robbery: booked, the magistrate sets bail and a court date
+  await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; s.citations = []; s.cash = 200000; s.time.min = 10 * 60;
+    w.police.reset(w); s.heat = 3; w.police.startChase(w, true); w.police.eyesOn = true;
+    w.police.record = [{ kind: 'robbery', text: 'Armed robbery — Amazin\' Mart.', fine: 6000 }, { kind: 'speeding', text: 'Speeding — 88 in a 45.', fine: 700 }];
+    w.police.busted(w);
+  });
+  await p.waitForSelector('.modal h2:has-text("BUSTED")');
+  if (!/Aggravated robbery/.test(await p.textContent('.modal'))) throw new Error('BUSTED modal does not list the charges');
+  await p.click('.modal button:has-text("See the magistrate")');
+  await p.waitForSelector('.modal h2:has-text("Magistrate")');
+  const mag = await p.textContent('.modal');
+  if (!/Bail is set at \$[\d,]+/.test(mag) || !/Court date: day \d+, 9:00 AM/.test(mag) || /personal bond/.test(mag)) throw new Error('magistrate modal: ' + mag.slice(0, 200));
+  await snap('28-magistrate');
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.click('.modal button:has-text("bondsman")'); await p.waitForTimeout(300);
+  let j = await J();
+  if (j.cases.length !== 1 || j.cases[0].bond !== 'surety' || !j.cases[0].cls.includes('F1') || j.cases[0].cls.includes('C')) throw new Error('case not filed right: ' + JSON.stringify(j));
+  if (j.inCar || Math.hypot(j.foot[0] + 75, j.foot[1] + 163) > 12) throw new Error('not released on foot at the courthouse: ' + JSON.stringify(j));
+  if (/hidden/.test(j.court) || !/COURT/.test(j.court)) throw new Error('HUD does not show the court date ' + j.court);
+  if ((await p.evaluate(() => window.__rfg.game.s.messages[0]?.from)) !== 'clerk') throw new Error('no notice to appear from the clerk');
+  if (cash0 - (await p.evaluate(() => window.__rfg.game.s.cash)) < 7000) throw new Error('the bondsman should charge 10% of the bail');
+  // 2. too early: come back on the day
+  await openCourt(); await p.waitForTimeout(200);
+  if (!/Your court date is/.test(await p.textContent('.panel'))) throw new Error('courthouse should say when to come back');
+  await clear();
+  // 3. court day: hearing, take the plea, prison, the jail sim runs the time
+  await p.evaluate(() => { const s = window.__rfg.game.s; const c = s.justice.cases[0]; s.time.day = c.date.day; s.time.min = 9 * 60; });
+  await p.waitForTimeout(150);
+  if (!/COURT TODAY/.test((await J()).court)) throw new Error('HUD should flag court today');
+  await openCourt(); await p.waitForTimeout(200);
+  await snap('29-courthouse');
+  await p.click('button:has-text("Check in for your hearing")');
+  await p.click('.modal button:has-text("Approach the bench")');
+  await p.waitForSelector('.modal h2:has-text("Plea")');
+  if (!/years TDCJ/.test(await p.textContent('.modal'))) throw new Error('aggravated robbery offer should be prison');
+  await snap('30-plea');
+  const day0 = (await J()).day;
+  await p.click('.modal button:has-text("Take the deal")');
+  await p.waitForSelector('.modal h2:has-text("Sentence")');
+  await p.click('.modal button:has-text("bailiff")');
+  await p.waitForSelector('.jail-clock'); await p.waitForTimeout(800);
+  await snap('31-jail');
+  await p.click('button:has-text("Skip to release")');
+  await p.click('button:has-text("Walk out")'); await p.waitForTimeout(250);
+  j = await J();
+  if (j.cases.length || j.conv < 2 || j.day - day0 < 5) throw new Error('prison: case closed, convictions on record, time passed ' + JSON.stringify(j));
+  if (j.inCar || Math.hypot(j.foot[0] + 75, j.foot[1] + 163) > 12) throw new Error('not released at the courthouse');
+  // 4. a misdemeanour with priors now: no free bond; miss court and it's a bail-jumping warrant
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.onBusted(400, false, [{ kind: 'hitrun', text: 'Hit-and-run collision.', fine: 650 }]); });
+  await p.click('.modal button:has-text("See the magistrate")');
+  await p.waitForSelector('.modal h2:has-text("Magistrate")');
+  if (/personal bond/.test(await p.textContent('.modal'))) throw new Error('felony priors should not get a personal bond');
+  await p.click('.modal button:has-text("Post cash bail")'); await p.waitForTimeout(250);
+  await p.evaluate(() => { const s = window.__rfg.game.s; const c = s.justice.cases[0]; s.time.day = c.date.day; s.time.min = 16 * 60 + 59; window.__rfg.ui.onHour(); s.time.min = 17 * 60 + 1; window.__rfg.ui.onHour(); });
+  j = await J();
+  if (!j.cases[0]?.fta || j.cases[0].bond !== 'forfeited' || !j.warrants.includes('bailjump')) throw new Error('missing court: ' + JSON.stringify(j));
+  // the court warrant can't be paid off in the app
+  const payable = await p.evaluate(async () => (await import('./js/core/warrants.js')).payableTotal(window.__rfg.game.s));
+  if (payable) throw new Error('a court warrant should not be payable');
+  // 5. turn yourself in to the court: no bail, heard today; go to trial with a public defender
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.time.day++; s.time.min = 10 * 60; });
+  await openCourt(); await p.waitForTimeout(200);
+  await snap('32-missed-court');
+  await p.click('button:has-text("Turn yourself in to the court")');
+  await p.click('.modal button:has-text("Turn myself in")');
+  await p.click('.modal button:has-text("Approach the bench")');
+  const plea = await p.waitForSelector('.modal h2:has-text("Plea"), .modal h2:has-text("Case dismissed")');
+  if (/Plea/.test(await plea.textContent())) {
+    await p.click('.modal button:has-text("Trial with a public defender")');
+    await p.waitForSelector('.modal h2:has-text("Verdict")');
+    await p.click('.modal button');
+    await p.waitForSelector('.modal h2:has-text("Sentence"), .modal h2:has-text("Not guilty")');
+    await p.click('.modal button');
+    if (await p.isVisible('.jail-clock')) { await p.click('button:has-text("Skip to release")'); await p.click('button:has-text("Walk out")'); }
+  } else await p.click('.modal button');
+  await p.waitForTimeout(250);
+  j = await J();
+  if (j.cases.length || j.warrants.length) throw new Error('court case should be over: ' + JSON.stringify(j));
+  // 6. the record shows in the FWPD app
+  await clear();
+  await p.evaluate(() => window.__rfg.ui.openPhone('fwpd')); await p.waitForTimeout(250);
+  if (!/Criminal history/.test(await p.textContent('.phone-screen'))) throw new Error('FWPD app should show the criminal history');
+  await clear();
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; });
 });
 
 // ---------------- side-view showroom (layered Mustang) ----------------

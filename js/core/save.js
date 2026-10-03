@@ -7,6 +7,7 @@ import { game } from './state.js';
 import { emit } from './events.js';
 import { ensure as ensureHustle, settleAway } from './hustle.js';
 import { ensureRecord } from './warrants.js';
+import { ensureJustice } from './justice.js';
 
 const PREFIX = 'rollforglory.';
 export const SLOTS = ['auto', 'slot1', 'slot2', 'slot3'];
@@ -112,6 +113,7 @@ function migrate(s) {
   s.orders = [];
   ensureHustle(s);
   ensureRecord(s);
+  ensureJustice(s);
   settleAway(s);   // the businesses kept running while the game was closed
   return s;
 }

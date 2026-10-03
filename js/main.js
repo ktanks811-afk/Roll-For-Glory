@@ -8,7 +8,9 @@ import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
-import { citationsDue } from './core/warrants.js';
+import { citationsDue, addWarrant } from './core/warrants.js';
+import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
+import { book } from './ui/court.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
@@ -55,6 +57,7 @@ export const ui = {
   onNewDay() { newDay(); },
   onMorning() { morning(); },
   onHour() { hourly(); },
+  book: c => book(app, c),
 };
 
 // ---------------- mode switching ----------------
@@ -103,6 +106,9 @@ export function toTitle() {
 function hourly() {
   const s = game.s;
   if (!s) return;
+  // the docket closed and you weren't in the courtroom
+  const fta = courtTick(s, addWarrant);
+  if (fta) sendMessage(s, 'clerk', `You failed to appear in ${courtName(fta.case)} (Cause No. ${fta.case.cause}). The judge issued a warrant for your arrest for bail jumping${fta.forfeited ? ` and your ${fmtMoney(fta.forfeited)} bail is forfeited` : ''}. Turn yourself in at the courthouse or a precinct.`, { action: { type: 'gps', loc: 'courthouse' } });
   maybeChallenge(s);
   // buyers message you about cars you have listed
   for (const ml of s.myListings) {
@@ -120,6 +126,9 @@ function hourly() {
 
 function morning() {
   const s = game.s;
+  // court today
+  const c = openCase(s);
+  if (c && !c.fta && !c.held && c.date.day === s.time.day) sendMessage(s, 'clerk', `Reminder: you're on today's docket in ${courtName(c)}, ${fmtCourt(c.date)}, Tarrant County Courthouse. Doors close at 5 PM.`, { action: { type: 'gps', loc: 'courthouse' } });
   // deliveries
   const arrived = s.orders.filter(o => o.arriveDay <= s.time.day);
   if (arrived.length) {
@@ -148,6 +157,9 @@ function newDay() {
   // unpaid tickets past their due date become warrants
   const late = citationsDue(s);
   if (late.length) sendMessage(s, 'brenner', `You didn't pay your ticket${late.length > 1 ? 's' : ''}. There's a warrant out for you now (${fmtMoney(late.reduce((t, w) => t + w.fine, 0))} with the late fee). Pay it at a precinct or in the FWPD app before one of my officers runs your plate.`);
+  // probation runs out
+  const pr = probationDay(s);
+  if (pr?.done) sendMessage(s, 'clerk', pr.deferred ? 'You completed deferred adjudication. Your case is dismissed and there is no conviction on your record.' : 'You completed your probation. Your supervision is discharged.');
   // sponsor deals expire
   if (s.sponsor && s.sponsor.until < s.time.day) { sendMessage(s, s.sponsor.contact || 'kingpin', `Your ${s.sponsor.name} sponsorship ended.`); s.sponsor = null; }
   saveGame('auto', true);

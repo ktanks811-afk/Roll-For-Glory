@@ -17,7 +17,7 @@ const CATS = [
   { id: 'race', label: 'Races & meets', types: ['meet', 'drag', 'roll'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food'] },
   { id: 'home', label: 'Home', types: ['home', 'property'] },
-  { id: 'police', label: 'Police', types: ['police'] },
+  { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
 ];
 const WHAT = {
   home: 'Your place: sleep, save, garage, change clothes.',
@@ -32,6 +32,7 @@ const WHAT = {
   clothing: 'Outfits and streetwear.',
   realty: 'Buy and sell properties.',
   police: 'FWPD precinct. Lay low when you have heat.',
+  court: 'Criminal courts. Show up on your court date or a warrant goes out.',
   meet: 'Street meet: racers to talk to, side bets, Zed\'s van, show your car.',
   drag: 'The drag strip: burnouts, the tree, timeslips.',
   roll: 'A roll-race road. Pick a rival and a wager.',

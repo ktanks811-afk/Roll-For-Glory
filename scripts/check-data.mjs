@@ -374,10 +374,111 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!W.hasFelony(st) || W.payableTotal(st) !== payable) bad('felony warrants must not be payable online');
   const cash = st.cash, r = W.payFines(st);
   if (!r.ok || cash - st.cash !== payable || st.warrants.some(w => !w.felony) || !W.hasFelony(st)) bad('paying fines should clear tickets + misdemeanours only');
-  const owed = W.warrantTotal(st), c2 = st.cash, sr = W.surrender(st);
-  if (!sr.ok || W.hasWarrant(st) || c2 - st.cash !== Math.round(owed * (1 - W.SURRENDER_DISCOUNT))) bad('turning yourself in should clear every warrant at 25% off');
+  W.signCitation(st, [{ kind: 'speeding', text: 'Speeding.', fine: 400 }], 400);
+  const c2 = st.cash, sr = W.surrender(st);
+  if (!sr.ok || W.hasWarrant(st) || st.citations.length || c2 - st.cash !== Math.round(400 * (1 - W.SURRENDER_DISCOUNT))) bad('turning yourself in should pay tickets at 25% off and clear every warrant');
+  if (!sr.felonies.some(f => f.kind === 'robbery')) bad('turning yourself in on a felony should hand it to the courts');
   W.warrantForEscape(st, [], 2);
   if (W.serveAll(st) !== 2500 || W.hasWarrant(st)) bad('an arrest should serve every warrant');
+}
+// ---- courts: charges, bail, court dates, pleas, trials, sentences, probation ----
+{
+  const J = await import('../js/core/justice.js');
+  const W = await import('../js/core/warrants.js');
+  const fresh = () => { const s = createState({ name: 'Court', age: 25, look: {}, story: false }); s.cash = 500000; s.time.day = 10; s.time.min = 9 * 60; return s; };
+  const rng0 = () => 0.5;
+  // tickets stay tickets; crimes go to court with Texas classes
+  const { charges, tickets } = J.charge([
+    { kind: 'speeding', text: 'Speeding — 88 in a 45.', fine: 700 },
+    { kind: 'robbery', text: 'Armed robbery — Amazin\' Mart.', fine: 6000 },
+    { kind: 'evading', text: 'Evading arrest (in a vehicle).' },
+    { kind: 'burnout', text: 'Exhibition of speed (burnout).', fine: 450 },
+  ]);
+  if (tickets.length !== 1 || tickets[0].kind !== 'speeding') bad('speeding should stay a fine-only ticket');
+  const cls = Object.fromEntries(charges.map(c => [c.text.split(' ')[0], c.cls]));
+  if (cls.Aggravated !== 'F1' || cls.Evading !== 'F3' || cls.Racing !== 'B') bad('charge classes: ' + JSON.stringify(cls));
+  if (J.classify({ kind: 'evading', text: 'Evading detention (fled a stop).' }).cls !== 'A') bad('evading on foot is a Class A');
+  // a first-time misdemeanour: free personal bond, court in 2 days, deferred adjudication on a plea
+  {
+    const s = fresh();
+    const c = J.fileCase(s, J.charge([{ kind: 'hitrun', text: 'Hit-and-run collision.' }]).charges);
+    if (c.date.day !== 12 || c.date.hour !== 9) bad('misdemeanour court date should be 2 days out at 9 AM');
+    const b = J.bailFor(s, c);
+    if (!b.pr || b.held || b.amount !== 500) bad('first-time Class B should get a personal bond: ' + JSON.stringify(b));
+    if (J.courtStatus(s, c) !== 'early') bad('court is not today yet');
+    s.time.day = 12; s.time.min = 10 * 60;
+    if (J.courtStatus(s, c) !== 'today') bad('court should be open on the day');
+    const offer = J.pleaOffer(s, c);
+    if (offer.kind !== 'deferred') bad('first-time misdemeanour plea should be deferred adjudication, got ' + offer.kind);
+    const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })), { plea: true });
+    if (J.openCase(s) || !s.justice.probation?.deferred || s.justice.convictions.length) bad('deferred adjudication: case closed, probation, no conviction');
+    s.time.day = s.justice.probation.until + 1;
+    if (!J.probationDay(s)?.done || s.justice.probation) bad('probation should end');
+  }
+  // a felony: real bail, 3 days out, missing court is bail jumping and forfeits cash bail
+  {
+    const s = fresh();
+    const c = J.fileCase(s, charges);
+    if (c.date.day !== 13 || !J.isFelonyCase(c)) bad('felony court date should be 3 days out');
+    const b = J.bailFor(s, c);
+    if (b.held || b.pr || b.amount < 75000) bad('aggravated robbery bail: ' + JSON.stringify(b));
+    const cash = s.cash;
+    if (!J.postBond(s, c, 'surety').ok || cash - s.cash !== Math.round(b.amount * J.BOND_FEE)) bad('a bondsman should cost 10%');
+    s.time.day = 13; s.time.min = 16 * 60;
+    if (J.courtTick(s, W.addWarrant)) bad('docket still open at 4 PM');
+    s.time.min = 17 * 60 + 5;
+    const f = J.courtTick(s, W.addWarrant);
+    if (!f || !c.fta || !s.warrants.some(w => w.kind === 'bailjump' && w.felony)) bad('missing court should issue a felony bail-jumping warrant');
+    if (!c.charges.some(x => /Bail jumping/.test(x.text))) bad('bail jumping should be added to the case');
+    if (!J.bailFor(s, c).held) bad('no bail after skipping court');
+    // arrested on it: the warrant is served, the case stays and gets a new date
+    const t = W.takeWarrants(s);
+    if (t.items.length || s.warrants.length) bad('a bail-jumping warrant should not be charged twice');
+    // pleading to aggravated robbery is prison, even for a first-timer, with parole at half
+    const offer = J.pleaOffer(s, c);
+    if (offer.kind !== 'jail' || offer.facility !== 'prison' || offer.days < 1825 || offer.served !== Math.round(offer.days * 0.5)) bad('aggravated robbery plea: ' + JSON.stringify(offer));
+    // trial is worse than the deal
+    const trial = J.sentence(s, c.charges, { plea: false, rng: rng0 });
+    if (trial.days <= offer.days) bad('a trial conviction should be worse than the plea deal');
+    J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })), { plea: true });
+    if (s.justice.convictions.length !== c.charges.length || J.priorScore(s) < 2) bad('convictions go on the record and count as priors');
+    // priors make the next one worse
+    const again = J.sentence(s, J.charge([{ kind: 'hitrun', text: 'Hit-and-run.' }]).charges, { plea: true });
+    if (again.kind !== 'jail' || again.facility !== 'county') bad('a misdemeanour with felony priors should mean county jail, got ' + again.kind);
+  }
+  // acquitted on everything: no conviction, cash bail back
+  {
+    const s = fresh();
+    const c = J.fileCase(s, J.charge([{ kind: 'shots', text: 'Discharging a firearm in public.' }]).charges);
+    J.postBond(s, c, 'cash');
+    const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: false })));
+    if (r.sentence.kind !== 'none' || r.refund !== c.bond.paid || r.refund <= 0 || s.justice.convictions.length) bad('acquittal: nothing on the record, bail refunded');
+  }
+  // a new conviction on probation revokes it
+  {
+    const s = fresh();
+    s.justice.probation = { until: 30, text: 'Racing on a highway.', deferred: false, suspended: { days: 90, cls: 'B' } };
+    const c = J.fileCase(s, J.charge([{ kind: 'brandish', text: 'Brandishing.' }]).charges);
+    if (!J.bailFor(s, c).held) bad('arrested on probation: held for revocation');
+    const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })), { plea: true });
+    if (!r.revoked || r.sentence.kind !== 'jail' || s.justice.probation) bad('probation should be revoked into jail time');
+  }
+  // time served counts; unpaid fines are sat out
+  {
+    const s = fresh();
+    const sent = J.sentence(s, [{ cls: 'A', text: 'x', evidence: 1 }, { cls: 'A', text: 'y', evidence: 1 }].map(x => x), { plea: false, rng: rng0 });
+    const c = J.fileCase(s, [{ cls: 'A', text: 'x', evidence: 1 }, { cls: 'A', text: 'y', evidence: 1 }]);
+    s.justice.convictions.push({ day: 1, text: 'p', cls: 'B' }, { day: 2, text: 'q', cls: 'B' });
+    const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })), { plea: false, rng: rng0, served: 10000 });
+    if (r.sentence.kind !== 'jail' || r.sentence.served !== 0) bad('time served should cover the sentence: ' + JSON.stringify(r.sentence));
+    s.cash = 100; s.bank = 0;
+    const f = J.payFine(s, 1000);
+    if (f.paid !== 100 || f.layout !== Math.ceil(900 / J.FINE_PER_DAY)) bad('an unpaid fine should be sat out in jail');
+  }
+  // time inside is compressed but still means something
+  if (J.gameMinutes(30) < 1440 || J.gameMinutes(3650) < 10 * 1440 || J.gameMinutes(3650) > 20 * 1440) bad('jail time compression');
+  if (Math.abs(J.realDaysFor(J.gameMinutes(400)) - 400) > 5) bad('time-served conversion should round-trip');
+  if (!LOCATIONS.some(l => l.id === 'courthouse' && l.type === 'court')) bad('the courthouse needs a door');
 }
 // ---- weapons: every Glock, AR pistols, shopping rules ----
 {

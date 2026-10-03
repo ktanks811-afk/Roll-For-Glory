@@ -23,7 +23,8 @@ import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
-import { serveAll, signCitation, warrantForEscape, CITATION_DAYS } from '../core/warrants.js';
+import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS } from '../core/warrants.js';
+import { charge, fileCase, openCase } from '../core/justice.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -491,23 +492,39 @@ export class World {
     this.ui.toast('SPIKE STRIP! Tires are shredded — grip is gone.', 'bad');
   }
 
-  // warrantStop: you pulled over for a ticket and the officer found your warrant
+  // warrantStop: you pulled over for a ticket and the officer found your warrant.
+  // Anything criminal (not just a ticket) is filed as a case at the Tarrant
+  // County Courthouse: the magistrate sets bail and a court date (ui/court.js).
   onBusted(fine, ticketOnly, record = [], warrantStop = false) {
     const s = this.s;
-    fine += ticketOnly ? 0 : this.combat.onBusted(record);
-    // an arrest serves every open warrant and unpaid ticket, at full price
-    const nWarrants = ticketOnly ? 0 : (s.warrants?.length || 0);
-    const served = ticketOnly ? 0 : serveAll(s);
-    const insured = s.insurance;
-    const total = Math.round(fine * (insured && !ticketOnly ? 0.75 : 1)) + served;
-    if (!spend(s, total, ticketOnly ? 'FWPD traffic citation' : 'FWPD fines + impound')) {
-      s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0;
+    if (ticketOnly) {
+      if (!spend(s, fine, 'FWPD traffic citation')) { s.bank -= Math.max(0, fine - s.cash - s.bank); s.cash = 0; }
+      this.ui.modal('Pulled over', `<p>The officer writes you a ticket for ${fmtMoney(fine)}. "Slow it down out here."</p>`);
+      emit('busted', { fine, ticket: true });
+      return;
     }
-    if (!ticketOnly) { addRep(s, -60, 'Busted'); s.stats.busted++; }
-    this.ui.modal(ticketOnly ? 'Pulled over' : 'BUSTED', ticketOnly
-      ? `<p>The officer writes you a ticket for ${fmtMoney(total)}. "Slow it down out here."</p>`
-      : `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. Your car spends the night in impound.</p><p>Fines, towing and impound: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>${nWarrants ? `<p class="small muted">${nWarrants} warrant${nWarrants > 1 ? 's' : ''} served (${fmtMoney(served)} included). Your record is clean again.</p>` : ''}`);
-    emit('busted', { fine: total });
+    fine += this.combat.onBusted(record);
+    // they chased you down: that's evading, on top of whatever they saw
+    const ph = this.police.phase, items = record.slice();
+    if (ph !== 'none' && ph !== 'notice' && ph !== 'stop' && this.police.eyesOn !== false && !items.some(r => r.kind === 'evading')) {
+      items.push(this.inCar && this.police.level >= 2 ? { kind: 'evading', text: 'Evading arrest (in a vehicle).' } : { kind: 'evading', text: 'Evading arrest.' });
+    }
+    // every open warrant and unpaid ticket comes off the board too
+    const wr = takeWarrants(s);
+    const now = charge(items, 0.85), old = charge(wr.items, 0.6);
+    const tickets = [...now.tickets, ...old.tickets].reduce((t, r) => t + (r.fine || 0), 0) + wr.tickets;
+    const insured = s.insurance;
+    const total = Math.round(fine * (insured ? 0.75 : 1)) + tickets;
+    if (!spend(s, total, 'FWPD fines + impound')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
+    addRep(s, -60, 'Busted'); s.stats.busted++;
+    const charges = [...now.charges, ...old.charges];
+    // a case you skipped court on comes back to life too
+    const c = charges.length || openCase(s)?.fta ? fileCase(s, charges) : null;
+    const list = c ? `<div class="charges">${c.charges.map(x => `<div>⚖ ${esc(x.text)}</div>`).join('')}</div>` : '';
+    this.ui.modal('BUSTED',
+      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. Your car goes to impound.</p><p>Towing, impound${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25% of the impound)' : ''}. Rep −60.</p>${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. You get your car back in the morning.</p>'}`,
+      [{ label: c ? 'See the magistrate' : 'OK', primary: true }]).then(() => { if (c) this.ui.book?.(c); });
+    emit('busted', { fine: total, charges: charges.length });
   }
 
   // You pulled over. The officer writes up everything they saw.
