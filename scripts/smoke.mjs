@@ -118,6 +118,21 @@ await step('night + police chase', async () => {
   await snap('10-night-chase');
   await p.evaluate(() => { window.__rfg.app.world.police.reset(window.__rfg.app.world); });
 });
+await step('helicopter circles instead of covering the car', async () => {
+  // Drop Air One straight on top of the car mid-chase: it must back off to its
+  // orbit and stay off the car while it drives.
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.time.min = 23 * 60; s.heat = 5.5; const w = window.__rfg.app.world; w.police.lastSeen = { x: w.vehicle.x, z: w.vehicle.z }; w.police.phase = 'chase'; });
+  await p.waitForFunction(() => window.__rfg.app.world.police.heli, null, { timeout: 3000 });
+  await p.evaluate(() => { const w = window.__rfg.app.world, h = w.police.heli; const v = w.vehicle; window.__heliFrom = { x: v.x, z: v.z, h: v.h }; h.x = w.vehicle.x + 1; h.z = w.vehicle.z; window.__heliMin = Infinity; window.__heliSpin = setInterval(() => { const ww = window.__rfg.app.world, hh = ww.police.heli; if (hh) window.__heliMin = Math.min(window.__heliMin, Math.hypot(hh.x - ww.vehicle.x, hh.z - ww.vehicle.z)); }, 16); });
+  await p.waitForTimeout(150);
+  await p.evaluate(() => { window.__heliMin = Infinity; });   // let the first frame push it out
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(3000); await p.keyboard.up('KeyW');
+  await snap('10b-heli-orbit');
+  const min = await p.evaluate(() => { clearInterval(window.__heliSpin); return window.__heliMin; });
+  // put the car back where it was so the later steps (burnout marks need tarmac) start from the same spot
+  await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, f = window.__heliFrom; w.police.reset(w); v.x = f.x; v.z = f.z; v.h = f.h; v.vx = v.vz = 0; v.sim.v = 0; });
+  if (!(min > 15)) throw new Error(`helicopter came within ${min.toFixed(1)} m of the car`);
+});
 await step('garage', async () => {
   await p.evaluate(async () => { const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home' }); });
   await p.waitForTimeout(300); await snap('11-garage');
