@@ -1409,6 +1409,81 @@ await step('hustle (jobs, business, rentals)', async () => {
   await p.keyboard.press('Escape');
 });
 
+// ---------------- crew turf: claim open hoods, turf wars, defending, street tax ----------------
+await step('crew turf', async () => {
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const s = window.__rfg.game.s;
+    s.crew = { name: 'Night Shift', color: '#2a7bff', logo: 'N', rep: 0, members: [], npcCrew: null };
+    const { openPhone } = await import('./js/ui/phone.js'); openPhone('turf', window.__rfg.app);
+  });
+  await p.waitForTimeout(250);
+  await snap('27-turf');
+  if (!(await p.$('.phone svg[aria-label="Turf map"]'))) throw new Error('no turf map');
+  if ((await p.$$('[data-hood]')).length !== 10) throw new Error('expected 10 neighborhoods');
+  if (!(await p.$('[data-hood="Stop Six"] button[data-action="claim"]'))) throw new Error('Stop Six is not open to claim');
+  if (!(await p.isVisible('[data-hood="Stockyards"]:has-text("Iron Saints")'))) throw new Error('Stockyards should start as Iron Saints turf');
+  // Claim: set the GPS, then rep the hood by driving in it
+  await p.click('[data-hood="Stop Six"] button[data-action="claim"]');
+  if (!/Stop Six/.test(await p.evaluate(() => window.__rfg.game.s.gps?.label || ''))) throw new Error('claim did not set GPS');
+  // the real thing: sitting in your car in Stop Six builds the claim, and the HUD says so
+  const pos = await p.evaluate(() => { const w = window.__rfg.app.world; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; return { x: w.vehicle.x, z: w.vehicle.z }; });
+  await p.waitForTimeout(150); await key('KeyF'); await p.waitForTimeout(200);
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.x = 1700; v.z = -400; v.vx = v.vz = v.speed = 0; });
+  await p.waitForTimeout(1600);
+  const live = await p.evaluate(() => ({ inCar: window.__rfg.app.world.inCar, claim: window.__rfg.game.s.turf.hoods['Stop Six'].claim, hud: document.querySelector('[data-hud="place"], .hud-place')?.textContent || '' }));
+  console.log('     turf live', JSON.stringify(live));
+  if (!live.inCar || !(live.claim > 0)) throw new Error('driving in Stop Six did not build the claim');
+  if (!/Stop Six · claiming/.test(live.hud)) throw new Error('HUD does not show the claim: ' + live.hud);
+  await p.evaluate(({ x, z }) => { const v = window.__rfg.app.world.vehicle; v.x = x; v.z = z; window.__rfg.game.s.turf.hoods['Stop Six'].claim = 0; }, pos);
+  const r = await p.evaluate(async () => {
+    const T = await import('./js/core/turf.js'); const s = window.__rfg.game.s, out = {};
+    T.presence(s, { x: 1700, z: -400, inCar: true }, 10);
+    out.part = s.turf.hoods['Stop Six'].claim;
+    out.label = T.turfLabel(s, 1700, -400);
+    T.presence(s, { x: 1700, z: -400, inCar: true }, 60);
+    out.owner = s.turf.hoods['Stop Six'].owner;
+    out.label2 = T.turfLabel(s, 1700, -400);
+    // on foot doesn't count
+    T.presence(s, { x: -1500, z: 450, inCar: false }, 60);
+    out.foot = s.turf.hoods['Benbrook Hills'].claim;
+    // turf war on Arlington Heights (Velvet Ghosts): two wins break their hold
+    out.block = T.warBlocked(s, 'Arlington Heights');
+    out.start = T.startWar(s, 'Arlington Heights');
+    const w = s.turf.war; out.war = !!w;
+    out.msg = s.messages[0]?.action?.challenge?.turf;
+    const { emit } = await import('./js/core/events.js');
+    emit('raceFinished', { won: true, npcId: w.npcId, wager: 0, type: 'roll', dist: 'half' });
+    out.hold = s.turf.hoods['Arlington Heights'].hold;
+    emit('raceFinished', { won: true, npcId: s.turf.war.npcId, wager: 0, type: 'roll', dist: 'half' });
+    out.ah = s.turf.hoods['Arlington Heights'].owner;
+    // a rival moves on Stop Six and you lose the race: it's theirs
+    const a = T.attack(s, 'Stop Six'); out.attacker = a?.crew;
+    emit('raceFinished', { won: false, npcId: a.npcId, wager: 0, type: 'roll', dist: 'half' });
+    out.lost = s.turf.hoods['Stop Six'].owner;
+    // the morning take: Arlington Heights pays its street tax
+    const money0 = s.cash + s.bank; s.time.day += 1; T.catchUp(s); out.take = s.cash + s.bank - money0;
+    return out;
+  });
+  console.log('     turf', JSON.stringify(r));
+  if (!(r.part > 0 && r.part < 100) || !/claiming/.test(r.label)) throw new Error('claim progress not tracked');
+  if (r.owner !== 'me' || r.label2 !== 'your turf') throw new Error('Stop Six not claimed');
+  if (r.foot !== 0) throw new Error('claimed on foot');
+  if (r.block || r.start || !r.war || r.msg !== 'Arlington Heights') throw new Error('turf war did not start: ' + r.block + r.start);
+  if (r.hold !== 50 || r.ah !== 'me') throw new Error('turf war wins did not take the hood');
+  if (!r.attacker || r.lost !== r.attacker) throw new Error('losing the defense did not lose the hood');
+  if (r.take !== 700) throw new Error('street tax wrong: ' + r.take);
+  // the app shows it all
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); const { openPhone } = await import('./js/ui/phone.js'); openPhone('turf', window.__rfg.app); });
+  await p.waitForTimeout(200);
+  await snap('28-turf-held');
+  if (!(await p.$('[data-hood="Arlington Heights"] .tag-green'))) throw new Error('Arlington Heights not shown as yours');
+  // leaving the crew gives your turf up
+  const after = await p.evaluate(async () => { const T = await import('./js/core/turf.js'); const s = window.__rfg.game.s; s.crew = null; T.ensureTurf(s); return s.turf.hoods['Arlington Heights'].owner; });
+  if (after !== null) throw new Error('turf kept after leaving the crew');
+  await p.keyboard.press('Escape');
+});
+
 // ---------------- engine sounds: each car's note matches its engine ----------------
 await step('engine sounds', async () => {
   const r = await p.evaluate(async () => {

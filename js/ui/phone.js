@@ -19,6 +19,8 @@ import { audio } from '../core/audio.js';
 import { renderHustle } from './hustle.js';
 import { renderShop } from './shop.js';
 import { renderOcrew } from './ocrew.js';
+import { renderTurf } from './turf.js';
+import { myHoods } from '../core/turf.js';
 import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
@@ -37,6 +39,7 @@ const APPS = [
   { id: 'shop', name: "Amazin'", icon: '📦', bg: '#ff9900' },
   { id: 'crew', name: 'Crew', icon: '👥', bg: '#3a3d46' },
   { id: 'ocrew', name: 'Online Crew', icon: '🌐', bg: '#2a7bff' },
+  { id: 'turf', name: 'Turf', icon: '🚩', bg: '#7a1414' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
   { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
@@ -89,6 +92,7 @@ const RENDER = {};
 RENDER.hustle = renderHustle;
 RENDER.shop = renderShop;
 RENDER.ocrew = renderOcrew;
+RENDER.turf = renderTurf;
 
 // ---------------- messages ----------------
 RENDER.messages = (scr, ctx) => {
@@ -311,8 +315,9 @@ RENDER.crew = (scr, ctx) => {
       <div class="section-title">Crew standings</div>
       <div class="list">${[{ name: s.crew.name, rep: s.crew.rep, color: s.crew.color, me: true }, ...rivals.map(([, c]) => c)].sort((a, b) => b.rep - a.rep).map((c, i) => `<div class="li"><b>#${i + 1}</b><span class="avatar" style="background:${c.color};width:18px;height:18px"></span><div class="grow"><div class="t">${esc(c.name)}${c.me ? ' (yours)' : ''}</div></div><b>${c.rep.toLocaleString()}</b></div>`).join('')}</div>
       <p class="small muted">Crew rep grows when you or your members win races. Beat rival crew members to take their rep.</p>
-      <button class="btn btn-danger btn-sm" data-action="leave">Leave crew</button></div>`;
+      <div class="row" style="gap:6px"><button class="btn btn-sm btn-primary" data-action="turf">🚩 Turf · ${myHoods(s).length} hood${myHoods(s).length === 1 ? '' : 's'}</button><button class="btn btn-danger btn-sm" data-action="leave">Leave crew</button></div></div>`;
     wire(scr, ctx, {
+      turf: () => ctx.go('turf'),
       recruit: d => { s.crew.members.push(d.id); toast(`${RACER_BY_ID[d.id].name} joined ${s.crew.name}`, 'good'); ctx.h.refresh(); },
       leave: async () => { if (await confirm('Leave crew?', '<p>You lose crew rep and members.</p>', 'Leave', true)) { s.crew = null; ctx.h.refresh(); } },
     });
