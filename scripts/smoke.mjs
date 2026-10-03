@@ -1002,7 +1002,7 @@ await step('phone missions (text offer → stops → paid)', async () => {
   // Rosa texts a parts run
   const o = await p.evaluate(async () => {
     const { offerMission, ensure } = await import('./js/core/missions.js');
-    const s = window.__rfg.game.s, w = window.__rfg.app.world; ensure(s).active = null; s.gps = null; w.gpsPath = null;
+    const s = window.__rfg.game.s, w = window.__rfg.app.world; ensure(s).active = null; ensure(s).offers = []; s.gps = null; w.gpsPath = null;   // hourly texts may already have queued a random offer
     if (w.vehicle) w.inCar = true;
     const o = offerMission(s, { force: true, kind: 'parts' });
     return { id: o.id, from: s.messages[0].from, act: s.messages[0].action };
