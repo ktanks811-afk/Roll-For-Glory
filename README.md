@@ -210,6 +210,16 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   mug them (witnesses may call 911). Get busted after a robbery or with an FRT
   and you lose the gun and a lot of cash. Health, armor and a hospital bill
   exist if a clerk gets you.
+- **Carjackings.** Rarely (at most once every three in-game days, and
+  mostly at night), when you sit still in your car in the city, a man in a
+  ski mask walks up to your window with a pistol. Pull off before he gets
+  there and he's gone. If he reaches you, you choose: **give it up** (he may
+  take your cash too, and the cops find the car abandoned a couple of minutes
+  later, beat up and low on gas, with your GPS set to it), **floor it**
+  (usually works, but he may shoot and you can still lose the car), **pull
+  your gun** if you carry one with ammo (usually keeps the car, but shots
+  bring the cops, self-defense or not) or **fight him for it** barehanded
+  (the worst odds). Getting shot costs health and can put you in the ER.
 - **Police.** Five heat levels. A cop has to be close (about 65 m) and have
   line of sight. Speeding (30+ mph over) and burnouts have to go on for a few
   seconds before anyone reacts; running reds or hitting cars gets noticed at

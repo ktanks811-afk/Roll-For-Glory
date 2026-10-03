@@ -7,6 +7,7 @@ import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
 import { PoliceSystem, OFFICER_LOOK } from './police.js';
 import { Combat } from './combat.js';
+import { Carjacks } from './carjack.js';
 import { carSprite, drawCar, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
@@ -62,6 +63,7 @@ export class World {
     this.trafficCtx = { signalT: 0, others: [] };
     this.audio = audio;
     this.combat = new Combat(this);
+    this.carjacks = new Carjacks(this);
     this.spawnPlayer();
   }
 
@@ -73,7 +75,8 @@ export class World {
     const home = LOC_BY_ID[s.home] || LOC_BY_ID.eastgate_studio;
     const car = activeCar(s);
     const pos = s.pos;
-    if (car && s.carPos) {
+    if (car?.stolen) { /* carjacked: it turns up when the cops find it */ }
+    else if (car && s.carPos) {
       this.placeCar(car, s.carPos.x, s.carPos.z, s.carPos.h);
     } else if (car) {
       const sp = this.homeSpot(home);
@@ -106,7 +109,7 @@ export class World {
   // Called after parts/repairs so the drive matches the build.
   refreshCar() {
     const car = activeCar(this.s);
-    if (!car) { this.vehicle = null; return; }
+    if (!car || car.stolen) { this.vehicle = null; this.inCar = false; return; }
     if (!this.vehicle || this.vehicle.car !== car) {
       // a different car comes out of the home garage
       const home = LOC_BY_ID[this.s.home];
@@ -151,6 +154,7 @@ export class World {
     if (this.inCar && this.vehicle) this.updateDriving(dt);
     else this.updateFoot(dt);
     this.combat.update(dt);
+    this.carjacks.update(dt);
     this.updateOnline(dt);
 
     // traffic + police
@@ -610,7 +614,7 @@ export class World {
     if (this.garageT > 0) return;
     this.garageT = 0.5;
     const st = this.s;
-    const others = st.cars.filter(c => c.uid !== st.activeCar);
+    const others = st.cars.filter(c => c.uid !== st.activeCar && !c.stolen);
     const order = [...new Set([st.home, ...st.properties])].map(id => this.map.garages.find(g => g.id === id)).filter(Boolean);
     const out = [];
     let k = 0;
@@ -748,6 +752,7 @@ export class World {
     if (cop) drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
     if (!this.inCar) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
     this.combat.draw(ctx, cam);
+    this.carjacks.draw(ctx, cam);
 
     const livePeers = online.active ? this.drawPeers(ctx, v) : [];
 

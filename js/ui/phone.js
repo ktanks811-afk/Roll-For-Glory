@@ -349,7 +349,7 @@ RENDER.garage = (scr, ctx) => {
   const s = ctx.s;
   scr.innerHTML = head('My Cars') + `<div class="app-body"><div class="list">${s.cars.map(c => {
     const m = modelOf(c), mt = carMetrics(c);
-    return `<div class="li"><div class="grow"><div class="t">${esc(carName(m, c.year))} ${c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : ''}</div><div class="s">${Math.round(c.miles).toLocaleString()} mi · ${mt.cls} ${mt.pi} · worth ~${fmtMoney(carValue(c))}</div></div></div>`;
+    return `<div class="li"><div class="grow"><div class="t">${esc(carName(m, c.year))} ${c.stolen ? '<span class="tag tag-red">Stolen</span>' : c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : ''}</div><div class="s">${Math.round(c.miles).toLocaleString()} mi · ${mt.cls} ${mt.pi} · worth ~${fmtMoney(carValue(c))}</div></div></div>`;
   }).join('') || '<div class="empty">No cars yet. Try Marketplace.</div>'}</div>
   <p class="small muted">Switch cars, install parts and tune at your home garage. Torque Temple and Vega Kustoms can install anything.</p>
   <div class="row"><button class="btn btn-sm" data-action="home">📍 Home</button><button class="btn btn-sm" data-action="view" ${s.cars.length ? '' : 'disabled'}>View specs</button></div></div>`;
