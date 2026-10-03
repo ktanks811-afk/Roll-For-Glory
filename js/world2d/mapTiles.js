@@ -8,7 +8,7 @@ import { BACKROAD } from './map.js';
 
 export const TILE = 400;          // metres per tile
 export const TS = 1.0;            // tile resolution, pixels per metre
-const LOT_COLOR = { park: '#27402a', yard: '#2c3828', parking: '#363840', gas: '#3d3f45', strip: '#4a4b50',
+export const LOT_COLOR = { park: '#27402a', yard: '#2c3828', parking: '#363840', gas: '#3d3f45', strip: '#4a4b50',
   track: '#6a3a2a', gridiron: '#2f5a28', plaza: '#6a4a3e', trail: '#7a6a4a', lane: '#7d828c', dirt: '#5e5040', field: '#34421f', sand: '#a8956a', pond: '#16405e', court: '#5a3a2a', lot: '#3d3f45', junk: '#45403a' };
 
 export function buildTile(map, i, j) {
