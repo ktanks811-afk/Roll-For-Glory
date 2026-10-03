@@ -92,6 +92,7 @@ function C(make, model, trim, y0, y1, cls, msrp, hp, tq, kg, drive, asp, engine,
     redline, peakTqRpm: Math.round(redline * peak), body, color,
     wf: x.wf ?? (body === 'super' ? 0.42 : drive === 'FWD' ? 0.61 : drive === 'AWD' ? 0.57 : 0.53),
     cd, area, grip: x.grip ?? clsGrip + modern, lim: x.lim || null,
+    lastCall: !!x.lastCall,
     rarity: msrp > 400000 || (x.market || 0) > 400000 ? 5 : msrp > 150000 || (x.market || 0) > 90000 ? 4 : msrp > 60000 || x.market ? 3 : msrp > 30000 ? 2 : 1,
   };
 }
@@ -218,6 +219,7 @@ export const CARS = [
   C('dodge', 'Neon', 'SRT-4', 2003, 2005, 'Tuner', 21000, 230, 250, 1340, 'FWD', 'turbo', '2.4L Turbo I4', '5MT', 6200, 'sedan', '#e8c21a', { market: 12000 }),
   C('dodge', 'Charger', 'SXT', 2011, 2014, 'Sedan', 28000, 292, 260, 1800, 'RWD', 'na', '3.6L Pentastar V6', '5AT', 6400, 'sedan', '#24262b'),
   C('dodge', 'Charger', 'Scat Pack', 2015, 2023, 'Muscle', 47000, 485, 475, 1900, 'RWD', 'na', '6.4L 392 HEMI V8', '8AT', 6400, 'sedan', '#e8641a'),
+  C('dodge', 'Charger', 'SRT Hellcat Widebody', 2020, 2023, 'Muscle', 81000, 717, 650, 2080, 'RWD', 'sc', '6.2L Supercharged HEMI V8', '8AT', 6200, 'sedan', '#f2f2f2', { lastCall: true, grip: 1.04, lim: 196 }),
   C('dodge', 'Charger', 'SRT Hellcat Redeye', 2021, 2023, 'Muscle', 85000, 797, 707, 2050, 'RWD', 'sc', '6.2L Supercharged HEMI V8', '8AT', 6500, 'sedan', '#c41b1b'),
   C('dodge', 'Challenger', 'R/T', 2015, 2023, 'Muscle', 38000, 375, 410, 1880, 'RWD', 'na', '5.7L HEMI V8', '6MT', 5800, 'muscle', '#e8641a'),
   C('dodge', 'Challenger', 'SRT Hellcat', 2015, 2023, 'Muscle', 68000, 717, 656, 2000, 'RWD', 'sc', '6.2L Supercharged HEMI V8', '8AT', 6500, 'muscle', '#24262b'),
@@ -316,5 +318,6 @@ export function carName(model, year) {
   return `${y}${MAKES[model.make]} ${model.model}${model.trim ? ' ' + model.trim : ''}`;
 }
 
-// Is it still sold new? (Dealers only stock current models.)
-export function soldNew(model) { return model.years[1] >= CURRENT_YEAR - 1; }
+// Is it still sold new? (Dealers only stock current models, plus the odd
+// last-of-the-line car still sitting on the lot.)
+export function soldNew(model) { return model.years[1] >= CURRENT_YEAR - 1 || model.lastCall; }
