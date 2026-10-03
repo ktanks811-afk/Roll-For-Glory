@@ -177,6 +177,13 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .hud-radio span i { display: inline-block; font-style: normal; }
 .hud-radio span.scroll i { animation: radio-scroll var(--dur, 4s) linear forwards; }
 @keyframes radio-scroll { 0%, 25% { transform: none; } 90%, 100% { transform: translateX(var(--scroll)); } }
+.hud-nav { position: absolute; left: 50%; top: max(8px, env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: min(380px, calc(100vw - 2 * 240px)); min-width: 170px; background: rgba(10,10,12,.88); border: 1px solid rgba(255,42,58,.6); border-left: 4px solid var(--red); padding: 6px 14px 6px 10px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.55); pointer-events: none; }
+.hud-nav svg { flex: none; width: 34px; height: 34px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.hud-nav div { min-width: 0; }
+.hud-nav b { display: block; font-family: var(--head); font-size: 22px; line-height: 1; }
+.hud-nav small { display: block; font-size: 12px; font-weight: 600; color: var(--silver); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-nav[data-turn="arrive"] { border-left-color: var(--green); }
+#hud.nav-on .hud-radio.on { transform: translate(-50%, 58px); }
 .hud-weapon { position: absolute; left: 50%; bottom: 186px; transform: translateX(-50%); background: rgba(10,10,12,.88); border: 1px solid #5a2a2a; padding: 5px 14px; border-radius: 16px; font-weight: 700; font-size: 15px; white-space: nowrap; }
 .hud-prompt { position: absolute; left: 50%; bottom: 140px; transform: translateX(-50%); background: rgba(10,10,12,.9); border: 1px solid var(--line2); padding: 8px 16px; border-radius: 20px; font-weight: 700; font-size: 16px; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
 .hud-mini { position: fixed; left: 12px; bottom: 12px; width: 170px; height: 170px; border-radius: 50%; overflow: hidden; border: 2px solid var(--line2); box-shadow: 0 6px 20px rgba(0,0,0,.6); }
