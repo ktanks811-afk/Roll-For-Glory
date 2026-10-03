@@ -190,6 +190,17 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Escape' && panelOpen() && !modalOpen()) { e.preventDefault(); closePanel(topPanel()); }
 });
 
+// Swiping home or taking a call on iPhone: iOS may never bring the app back,
+// so save right away, and let go of every held pedal / wheel / key so the car
+// isn't still flooring it when you return.
+function onBackground() {
+  touchUi.releaseAll?.();
+  window.dispatchEvent(new Event('blur'));
+  if (app.mode === 'world' && app.world && game.s) saveGame('auto', true);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) onBackground(); });
+window.addEventListener('pagehide', onBackground);
+
 // ---------------- loop ----------------
 let last = performance.now();
 let fpsT = 0, frames = 0, fps = 0;

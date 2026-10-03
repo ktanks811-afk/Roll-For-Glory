@@ -83,6 +83,9 @@
   box-shadow: 0 4px 10px rgba(0, 0, 0, .6); pointer-events: none; transition: transform .12s;
 }
 #touch .tc-shifter.on .tc-sknob { transition: none; background: radial-gradient(circle at 35% 28%, #fff, #c8ccd2 55%, #8b9098); }
+#touch.shift-now .tc-sknob { background: radial-gradient(circle at 35% 28%, #fff4f4, #ff5a5a 55%, #a3101e); box-shadow: 0 0 calc(var(--u) * 16) rgba(255, 60, 60, .9); animation: tc-shift-pulse .25s ease-in-out infinite alternate; }
+#touch.shift-now .tc-plus { color: var(--green); opacity: 1; }
+@keyframes tc-shift-pulse { to { box-shadow: 0 0 calc(var(--u) * 4) rgba(255, 60, 60, .5); } }
 #touch .tc-sknob b { font-size: calc(var(--u) * 19); line-height: 1; }
 #touch .tc-sknob small { font-size: calc(var(--u) * 9); font-weight: 700; letter-spacing: .05em; opacity: .75; }
 
