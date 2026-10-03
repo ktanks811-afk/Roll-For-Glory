@@ -231,6 +231,51 @@ await step('2-step flames (street + meet)', async () => {
   if (!(await p.$('[data-ts]'))) throw new Error('no 2-step rpm slider in Garage → Tune');
   await p.keyboard.press('Escape');
 });
+await step('tuning: engine map, chassis setup, knock', async () => {
+  const r = await p.evaluate(async () => {
+    const { buildSpec, metrics } = await import('./js/sim/powertrain.js');
+    const { CAR_BY_ID } = await import('./js/data/cars.js');
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
+    const m = CAR_BY_ID.toyota_mr2_turbo_sw20_1991;
+    const lv = { ecu: 3, turbo: 2, fuel: 3, suspension: 3, diff: 2 };
+    const base = buildSpec(m, lv, {}, {}), boosted = buildSpec(m, lv, {}, { boost: 24 }), cooked = buildSpec(m, lv, {}, { boost: 31, timing: 8, afr: 13.5 });
+    const drag = buildSpec(m, lv, {}, { pressR: 18, diffAccel: 90, rebF: 3, bumpR: 3 });
+    const untouched = buildSpec(m, lv, {}, {}), legacy = buildSpec(m, lv, {}, { finalDrive: 1 });
+    // the garage tab: change boost, save
+    const s = window.__rfg.game.s, car = s.cars.find(c => c.uid === s.activeCar);
+    const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home', tab: 'tune' });
+    await new Promise(r => setTimeout(r, 200));
+    const groups = document.querySelectorAll('.tune-grp').length;
+    const tp = document.querySelector('[data-k="pressR"]'); tp.value = 20; tp.dispatchEvent(new Event('input'));
+    await new Promise(r => requestAnimationFrame(() => setTimeout(r, 50)));
+    const changed = document.querySelector('[data-chg="tires"]').textContent;
+    document.querySelector('.tune [data-action="save"]').click();
+    const saved = car.tune.pressR;
+    closeAllPanels();
+    return { base: base.hp, boosted: boosted.hp, knock0: base.knock, knock1: boosted.knock, knock2: cooked.knock, cookedHp: cooked.hp, trac: [base.trac, drag.trac], same: untouched.hp === legacy.hp && metrics(untouched).quarter === metrics(legacy).quarter, groups, changed, saved };
+  });
+  console.log('     tune', JSON.stringify(r));
+  if (!(r.boosted > r.base)) throw new Error('more boost made no more power');
+  if (r.knock0 !== 0 || !(r.knock2 > 0.5)) throw new Error('knock risk wrong');
+  if (!(r.trac[1] > r.trac[0])) throw new Error('drag setup gave no extra launch traction');
+  if (!r.same) throw new Error('an untouched tune changed the car');
+  if (r.groups < 8 || !/changed/.test(r.changed) || r.saved !== 20) throw new Error('tune tab did not edit + save');
+});
+await step('police dispatch: one line at a time', async () => {
+  const r = await p.evaluate(async () => {
+    const h = window.__rfg.app.world.hud;
+    h.radioCur = null; h.radioLines.length = 0;
+    h.radio('Dispatch: first call.'); h.radio('Dispatch: second call.'); h.radio('Dispatch: second call.');
+    const e = document.querySelector('.hud-radio');
+    await new Promise(r => setTimeout(r, 400));
+    const b2 = e.getBoundingClientRect();
+    return { text: e.textContent, queued: h.radioLines.length, top: b2.top, h: b2.height };
+  });
+  console.log('     radio', JSON.stringify(r));
+  if (!/first call/.test(r.text) || /second/.test(r.text)) throw new Error('dispatch shows more than one call at once');
+  if (r.queued !== 1) throw new Error('duplicate dispatch call was queued');
+  if (r.top > 40 || r.h > 40) throw new Error('dispatch is not one line at the top');
+});
 await step('burnout: gas + brake, no 2-step', async () => {
   await p.evaluate(async () => {
     const st = await import('./js/core/state.js'); const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
@@ -945,6 +990,27 @@ await step('phone controls', async () => {
   expect(await m.evaluate(() => document.getElementById('rotate').classList.contains('hidden')), 'rotate screen shown in landscape');
   await m.setViewportSize({ width: 390, height: 844 }); await m.waitForTimeout(300);
   expect(await m.evaluate(() => !document.getElementById('rotate').classList.contains('hidden')), 'rotate screen did not come back after going portrait again');
+  // a long press on the gas pedal is a held pedal, not a text selection / copy menu
+  {
+    await m.setViewportSize({ width: 844, height: 390 }); await m.waitForTimeout(300);   // landscape, the way it's played
+    const cdp = await mctx.newCDPSession(m);
+    if (!(await m.evaluate(() => window.__rfg.app.world.inCar))) { await fire('.tc-foot-btns [data-tap="enterExit"]', 'pointerdown'); await fire('.tc-foot-btns [data-tap="enterExit"]', 'pointerup'); await m.waitForTimeout(400); }
+    await m.evaluate(() => { window.__cm = []; document.addEventListener('contextmenu', e => window.__cm.push(e.defaultPrevented)); });
+    const g = await m.evaluate(() => { const e = document.querySelector('#touch .tc-gas'); if (!e || e.offsetParent === null) return null; const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    expect(g, 'gas pedal not on screen for the long-press test');
+    {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: g.x, y: g.y, id: 7 }] });
+      await m.waitForTimeout(1200);
+      const held = await m.evaluate(([x, y]) => ({ at: document.elementFromPoint(x, y)?.className, sel: String(window.getSelection()), on: document.querySelector('#touch .tc-gas').classList.contains('on'), cm: window.__cm }), [g.x, g.y]);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      console.log('     long-press gas', JSON.stringify(held));
+      expect(held.sel === '', 'long-pressing the gas selected text');
+      expect(held.on, 'gas pedal let go during a long press');
+      expect(held.cm.every(Boolean), 'long press opened a context menu');
+    }
+    const css = await m.evaluate(() => { const cs = getComputedStyle(document.querySelector('#touch .tc-gas span')); return cs.webkitUserSelect || cs.userSelect; });
+    expect(css === 'none', 'pedal label is selectable');
+  }
   await mctx.close();
 });
 

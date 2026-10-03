@@ -42,8 +42,17 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   parts: intercooler, blower through the hood, drag radials, calipers,
   exhaust tips and the nitrous bottle.
 - **Garage.** A spec sheet, condition, value, a dyno with your power and
-  torque curves against the factory curves, final-drive tuning and your car
-  collection.
+  torque curves against the factory curves, and your car collection.
+- **Tuning (Garage → Tune).** Set the car up the way a real tuner would, with
+  live 0-60, quarter-mile, top speed, grip, balance and knock readouts:
+  boost, ignition timing, WOT air/fuel ratio, rev limiter and traction
+  control; final drive and individual gear ratios; ride height, spring
+  rates, bump/rebound damping and sway bars; camber and toe; tire pressures;
+  brake bias; diff accel/decel lock; and wing angle. Each needs the hardware
+  that makes it adjustable in real life (a stock ECU is locked, lowering
+  springs aren't adjustable, an open diff has nothing to set). Push the
+  engine map too far and it knocks: power drops and the engine wears every
+  time you go wide open. Stock, Drag, Track and Drift presets to start from.
 - **Roll racing.** Choose an opponent, road, roll speed (30–70 mph),
   distance (⅛ mile to 1 mile) and a wager. Go on the third honk. Traffic,
   lane changes, drafting, nitrous and manual or automatic shifting are all in.

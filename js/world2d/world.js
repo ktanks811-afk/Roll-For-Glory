@@ -11,6 +11,7 @@ import { carSprite, drawCar, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
+import { engineStress } from '../sim/tuning.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
 import { input } from '../core/input.js';
 import { esc } from '../ui/dom.js';
@@ -403,6 +404,8 @@ export class World {
     if (car.fuel > 0.2) { this.lowFuelWarned = false; this.fuelWarned = false; }
     // tire wear from wheelspin
     if (v.sim.slip > 0.2) car.cond.tires = Math.max(1, car.cond.tires - dt * 0.6 * v.sim.slip);
+    // an aggressive tune knocks (or floats the valves) at wide-open throttle
+    if (engineStress(car, v.spec, thr, v.sim.rpm, dt)) this.ui.toast('Engine is knocking. Back the tune off in Garage → Tune.', 'bad');
 
     // skid marks + smoke (burnouts light up the driven axle, slides light up the rears)
     const fwdBurn = v.burning && v.spec.drive === 'FWD';
