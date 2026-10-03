@@ -477,7 +477,7 @@ function drawGarageRoof(ctx, b, rx, ry, w, d, z, showLabels) {
 }
 
 // Shopfront on the street side of a landmark: awning, glass, doors, props.
-const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e' };
+const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e', carshow: '#e8c21a' };
 function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
   const side = b.side, ns = side === 'N' || side === 'S';
   const len = ns ? w : d;

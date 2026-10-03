@@ -105,12 +105,12 @@ export function buildMap() {
     const t = loc.type;
     if (t === 'home' || t === 'property') { garageBlock(loc, x0, z0, x1, z1); return; }
     const side = loc.side;
-    const big = t === 'dealer' || t === 'usedlot' || t === 'meet' || t === 'police' || t === 'perf';
+    const big = t === 'dealer' || t === 'usedlot' || t === 'meet' || t === 'carshow' || t === 'police' || t === 'perf';
     const ns = side === 'N' || side === 'S';
     // bw runs along x, bd along z
     let along = big ? (ns ? W * 0.6 : D * 0.6) : (ns ? W * 0.45 : D * 0.45);
     let depth = big ? (ns ? D * 0.45 : W * 0.45) : (ns ? D * 0.4 : W * 0.4);
-    if (t === 'meet') { along = (ns ? W : D) * 0.35; depth = (ns ? D : W) * 0.25; }
+    if (t === 'meet' || t === 'carshow') { along = (ns ? W : D) * 0.35; depth = (ns ? D : W) * 0.25; }
     const bw = ns ? along : depth, bd = ns ? depth : along;
     let bx = loc.x - bw / 2, bz = loc.z - bd / 2;
     if (side === 'S') bz = z1 - bd - SETBACK;
@@ -118,7 +118,7 @@ export function buildMap() {
     else if (side === 'E') bx = x1 - bw - SETBACK;
     else bx = x0 + SETBACK;
     const color = { dealer: '#d9dde2', usedlot: '#8a7a5a', perf: '#3a3a3a', visual: '#3a2a3a', repair: '#3d4452',
-      gas: '#e8e8e8', food: '#7a2e24', clothing: '#2a2a3a', realty: '#2f4a3a', police: '#24324a', meet: '#3a3a3a' }[t] || '#444';
+      gas: '#e8e8e8', food: '#7a2e24', clothing: '#2a2a3a', realty: '#2f4a3a', police: '#24324a', meet: '#3a3a3a', carshow: '#4a3a1a' }[t] || '#444';
     if (t === 'gas') {
       lots.push({ x: x0 + 2, z: z0 + 2, w: W - 4, d: D - 4, kind: 'gas' });
       // canopy over the pumps right at the kerb, shop behind it
@@ -132,7 +132,7 @@ export function buildMap() {
       buildings.push({ x: cx, z: cz, w: cw, d: cd, h: 6, color: '#e9e9e9', kind: 'canopy', noCollide: true, label: 'GAS', loc: loc.id });
       return;
     }
-    if (t === 'meet' || t === 'dealer' || t === 'usedlot' || t === 'perf' || t === 'repair' || t === 'police') {
+    if (t === 'meet' || t === 'carshow' || t === 'dealer' || t === 'usedlot' || t === 'perf' || t === 'repair' || t === 'police') {
       lots.push({ x: x0 + 2, z: z0 + 2, w: W - 4, d: D - 4, kind: 'parking' });
     }
     buildings.push({ x: bx, z: bz, w: bw, d: bd, h: t === 'police' ? 22 : big ? 12 : 9, color, kind: 'landmark', label: loc.name.split(' (')[0], labelColor: loc.color, loc: loc.id, shop: t, side, accent: loc.color });

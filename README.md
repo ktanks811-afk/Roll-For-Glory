@@ -41,6 +41,17 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   Kustoms. Every visual mod shows up on the car. So do big performance
   parts: intercooler, blower through the hood, drag radials, calipers,
   exhaust tips and the nitrous bottle.
+- **Vega Kustoms design studio.** Try paint (any color, gloss to chrome),
+  rims (style, color, size and stance), tint, body kits, wings, hoods,
+  lights, underglow, graphics and interiors on your car with a live side and
+  top view before you spend anything. One bill covers parts, labor and tax,
+  and a live show score tells you what the judges would think.
+- **Car shows at the Stockyards.** Saturdays and Sundays, 10 AM to 6 PM.
+  Enter your build against five others (street regulars and local builds:
+  slab, JDM, muscle, euro and stance), look over every car, cast your
+  People's Choice vote, then watch 240 voters split the crowd. Each voter has
+  a taste, so the best build usually wins but not always. Top three take
+  cash, rep and a trophy.
 - **Garage.** A spec sheet, condition, value, a dyno with your power and
   torque curves against the factory curves, and your car collection.
 - **Tuning (Garage → Tune).** Set the car up the way a real tuner would, with
