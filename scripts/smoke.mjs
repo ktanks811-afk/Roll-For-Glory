@@ -291,12 +291,11 @@ await step('places', async () => {
 });
 await step('hellcat widebody art', async () => {
   const r = await p.evaluate(async () => {
-    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
-    const { closeAllPanels } = await import('./js/ui/dom.js');
-    openPlace(LOC_BY_ID.auto_row, window.__rfg.app);
-    await new Promise(res => setTimeout(res, 250));
-    const listed = [...document.querySelectorAll('.card h3')].some(h => /Charger SRT Hellcat Widebody/.test(h.textContent));
-    closeAllPanels();
+    // checked from data, not by opening the lot, so no game time passes here
+    const { LOC_BY_ID } = await import('./js/data/world.js');
+    const { CAR_BY_ID: C, soldNew } = await import('./js/data/cars.js');
+    const hc = C.dodge_charger_srt_hellcat_widebody_2020;
+    const listed = !!hc && soldNew(hc) && LOC_BY_ID.auto_row.makes.includes(hc.make);
     const { hasArt } = await import('./js/gfx2d/carArt.js');
     const { drawSideCar } = await import('./js/gfx2d/sideCar.js');
     const { carSprite } = await import('./js/gfx2d/carSprite.js');
