@@ -648,8 +648,9 @@ await step('Amazin\' shop + guns + robbery', async () => {
   await p.keyboard.press('KeyR'); await p.waitForTimeout(2300);
   if ((await p.evaluate(() => window.__rfg.app.world.combat.gun.g.loaded)) !== 15) throw new Error('reload did not fill the mag');
   await calm();
-  // robbery: press E at the register; make the outcome deterministic
-  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  // robbery: press E at the register; make the outcome deterministic. Midday, so
+  // the clock can't roll past midnight and lift the store's alert mid-test.
+  const cash0 = await p.evaluate(() => { const s = window.__rfg.game.s; s.time.min = 12 * 60; return s.cash; });
   await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
   if (!(await p.evaluate(() => !!window.__rfg.app.world.combat.rob))) throw new Error('E at a store with a gun out did not start a robbery');
   await p.evaluate(() => { const r = window.__rfg.app.world.combat.rob; r.fightAt = 0; r.alarm = true; r.alarmAt = 1; r.dur = 3; r.pay = 500; });
