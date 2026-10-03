@@ -32,6 +32,8 @@ function effectText(it, car) {
   const L = it.stage;
   switch (it.cat) {
     case 'tires': return `Grip +${Math.round((FX.tires.mu[L] - 1) * 100)}%`;
+    case 'dragpack': return `Launch grip +${Math.round((FX.dragpack.launch[L] - 1) * 100)}% · may wheelie${FX.dragpack.shocks[L] ? ' · adjustable drag shocks' : ''}`;
+    case 'wheeliebar': return FX.wheeliebar.adjust[L] ? 'Catches wheelies · adjustable height' : 'Catches wheelies · fixed height';
     case 'weight': return `−${Math.round((1 - FX.weight.mult[L]) * (car ? modelOf(car).kg : 1500))} kg`;
     case 'transmission': return `Shifts ${FX.transmission.shift[L].toFixed(2)}s`;
     case 'clutch': return `Holds ${FX.clutch.cap[L]}× stock torque`;

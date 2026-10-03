@@ -446,4 +446,32 @@ export function drawCar(ctx, sprite, x, y, rot, scale) {
   ctx.restore();
 }
 
+// A car mid-wheelie seen from above: the nose rises toward the camera, so
+// the body looks shorter (pivoting on the rear axle) and its shadow on the
+// ground shows out in front. pitch 0 = flat, 1 = standing up. lenM = car length (m).
+// bars: draw wheelie bars off the back.
+export function drawCarPitched(ctx, sprite, x, y, rot, scale, pitch, lenM, bars = false) {
+  const a = Math.min(1.4, pitch || 0) * 0.6;   // radians, ~35° at pitch 1
+  if (bars) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    const r = lenM / 2 * scale, w = 0.55 * scale, l = 1.5 * scale;
+    ctx.strokeStyle = '#9aa0a8'; ctx.lineWidth = Math.max(1.5, 0.09 * scale);
+    for (const sx of [-w, w]) { ctx.beginPath(); ctx.moveTo(sx * 0.7, r - 0.2 * scale); ctx.lineTo(sx, r + l); ctx.stroke(); }
+    ctx.fillStyle = '#1a1a1a';
+    for (const sx of [-w, w]) ctx.fillRect(sx - 0.12 * scale, r + l - 0.18 * scale, 0.24 * scale, 0.36 * scale);
+    ctx.restore();
+  }
+  if (a <= 0.001) { drawCar(ctx, sprite, x, y, rot, scale); return; }
+  const k = scale / sprite.px;
+  const half = sprite.canvas.height / 2;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.translate(0, half * k);          // pivot on the rear
+  ctx.scale(k * (1 + 0.12 * Math.sin(a)), k * Math.cos(a));
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(sprite.canvas, -sprite.canvas.width / 2, -sprite.canvas.height);
+  ctx.restore();
+}
+
 export function caliperColor(level) { return CALIPER_COLORS[level] || '#3a3a3a'; }

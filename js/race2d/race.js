@@ -3,7 +3,7 @@
 // reaction time, shift accuracy and nitrous habits from its skill.
 
 import { newSim, stepSim, shiftUp, shiftDown, bestGearFor, wheelRpm, DIST, MPH } from '../sim/powertrain.js';
-import { carSprite, drawCar, dimsFor } from '../gfx2d/carSprite.js';
+import { carSprite, drawCar, drawCarPitched, dimsFor } from '../gfx2d/carSprite.js';
 import { CARS } from '../data/cars.js';
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
@@ -215,6 +215,9 @@ export class Race {
     P.thr = inp.throttle;
     stepSim(P.spec, P.sim, { throttle: P.car?.engineBlown ? 0 : inp.throttle, brake: inp.brake, nitrous: inp.nitrous, auto: inp.auto, launchRpm: P.launchRpm }, dt);
     if (P.sim.gear > 0 || P.sim.v > 8) P.launchRpm = null;
+    // drag pack wheelies
+    if (P.sim.standing && !P.stoodUp) { P.stoodUp = true; this.flash('WHEELIE!', T('Way too much! Let off the GAS to set it down', 'Way too much! Lift off W to set it down')); }
+    else if (P.sim.pitch > 0.15 && !P.wheelied) { P.wheelied = true; if (P.sim.pitch < 0.5) this.flash('WHEELIE', 'Front end up'); }
     const eng = engineStress(P.car, P.spec, inp.throttle, P.sim.rpm, dt, P.sim.nosOn);
     if (eng === 'blown') this.flash('BLOWN', 'You blew the motor.');
     else if (eng === 'critical') this.flash('KNOCK', 'Engine is about to let go!');
@@ -231,6 +234,8 @@ export class Race {
     let thr = go ? 1 : this.isDrag ? 0 : 0.25;
     // traction management: good drivers feather wheelspin
     if (go && N.sim.slip > 0.35 && Math.random() < N.skill) thr = 0.75;
+    // and pedal a wheelie back down
+    if (go && N.sim.pitch > 0.6) thr = 0.55;
     N.thr = thr;
     // shifting with human error
     if (N.sim.shiftT <= 0 && N.sim.gear < N.spec.gears.length - 1) {
@@ -553,7 +558,7 @@ export class Race {
     for (const d of this.drivers) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(SX(d.x) - d.dims.W / 2 * z + 0.3 * z, SY(d.y) - d.dims.L / 2 * z + 0.4 * z, d.dims.W * z, d.dims.L * z);
-      drawCar(ctx, d.sprite, SX(d.x), SY(d.y), 0, z);
+      drawCarPitched(ctx, d.sprite, SX(d.x), SY(d.y), 0, z, d.sim.pitch, d.dims.L, !!d.spec.barH);
       if (d.sim.nosOn) {
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
         const g = ctx.createRadialGradient(SX(d.x), SY(d.y - d.dims.L / 2 - 0.8), 0, SX(d.x), SY(d.y - d.dims.L / 2 - 0.8), 2 * z);
@@ -648,5 +653,5 @@ export class Race {
 }
 
 function summary(d) {
-  return { name: d.name, rt: d.rt, time: d.time, elapsed: d.elapsed, trap: d.trap, splits: d.splits, redLight: d.redLight, finished: d.finished, crashes: d.crashes || 0, shifts: d.sim.shifts, spin: d.sim.spinTime, peak: d.sim.peakV * MPH };
+  return { name: d.name, rt: d.rt, time: d.time, elapsed: d.elapsed, trap: d.trap, splits: d.splits, redLight: d.redLight, finished: d.finished, crashes: d.crashes || 0, shifts: d.sim.shifts, spin: d.sim.spinTime, peak: d.sim.peakV * MPH, wheelie: Math.round((d.sim.maxPitch || 0) * 30), stoodUp: !!d.stoodUp };
 }

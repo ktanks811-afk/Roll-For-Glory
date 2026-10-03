@@ -6,7 +6,7 @@ import { CATALOG, ITEM_BY_ID, fits } from '../js/data/catalog.js';
 import { RACERS } from '../js/data/npcs.js';
 import { LOCATIONS } from '../js/data/world.js';
 import { generateListings } from '../js/data/market.js';
-import { buildSpec, metrics } from '../js/sim/powertrain.js';
+import { buildSpec, metrics, launchCheck } from '../js/sim/powertrain.js';
 import { partLevels } from '../js/data/parts.js';
 import { RevLimiter } from '../js/sim/twostep.js';
 import { createState, newCar, game } from '../js/core/state.js';
@@ -577,6 +577,30 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (let i = 0; i < 200; i++) { const o = resolveCarjack('give', rng); if (o.wallet < 0 || o.wallet > 0.6) bad('wallet share out of range'); if (o.keep) bad('kept car after giving it up'); }
   const jc = newCar(CARS[0].id); jc.nos = 3; strippedCar(jc, rng);
   if (!(jc.cond.body < 100 && jc.fuel <= 0.15 && jc.nos === 0)) bad('a recovered car comes back beat up and low on gas ' + JSON.stringify({ c: jc.cond, f: jc.fuel, n: jc.nos }));
+}
+// drag packs: max launch grip, and enough power makes the car wheelie until it's tuned out
+{
+  const camaro = CAR_BY_ID.chevrolet_camaro_ss_2016;
+  if (!CATALOG.some(p => p.cat === 'dragpack' && fits(p, civic))) bad('no drag pack fits a Civic');
+  if (CATALOG.some(p => p.cat === 'wheeliebar' && fits(p, civic))) bad('wheelie bars fit a front-drive car');
+  if (!CATALOG.some(p => p.cat === 'wheeliebar' && fits(p, camaro))) bad('no wheelie bars fit a Camaro');
+  for (const c of CARS) if (launchCheck(buildSpec(c, {}, {})).maxPitch > 0) bad(`stock ${c.id} wheelies`);
+  const big = { turbo: 4, ecu: 3, fuel: 4, engine: 4, intercooler: 3 };
+  const noPack = launchCheck(buildSpec(camaro, big, {}));
+  const pack = launchCheck(buildSpec(camaro, { ...big, dragpack: 4 }, {}));
+  const tuned = launchCheck(buildSpec(camaro, { ...big, dragpack: 4 }, {}, { frontExt: 10, rearComp: 10, pwr1: 75 }));
+  const bars = launchCheck(buildSpec(camaro, { ...big, dragpack: 4, wheeliebar: 2 }, {}));
+  const mild = launchCheck(buildSpec(camaro, { intake: 1, exhaust: 1, dragpack: 2 }, {}));
+  const fwd = launchCheck(buildSpec(civic, { turbo: 4, ecu: 3, fuel: 4, engine: 4, intercooler: 3, dragpack: 4 }, {}));
+  if (!(pack.spin < noPack.spin * 0.6)) bad(`drag pack barely cut wheelspin (${noPack.spin.toFixed(2)}s -> ${pack.spin.toFixed(2)}s)`);
+  if (!(pack.maxPitch > 0.45)) bad(`a 1400 hp Camaro on a drag pack should wheelie hard (pitch ${pack.maxPitch.toFixed(2)})`);
+  if (!(tuned.maxPitch < 0.1)) bad(`stiff drag shocks + 1st-gear power cut didn't tune the wheelie out (${tuned.maxPitch.toFixed(2)})`);
+  if (!(bars.maxPitch <= 0.4)) bad(`wheelie bars didn't catch the wheelie (${bars.maxPitch.toFixed(2)})`);
+  if (mild.maxPitch > 0 || mild.spin > 0.1) bad('a mild build on a drag pack should just hook');
+  if (fwd.maxPitch > 0) bad('a front-drive car wheelied');
+  const dflt = buildSpec(camaro, { dragpack: 2 }, {}), same = buildSpec(camaro, { dragpack: 2 }, {}, { frontExt: 5, rearComp: 5 });
+  if (dflt.wheelieF !== same.wheelieF || dflt.trac !== same.trac) bad('default drag shock settings are not neutral');
+  if (!(buildSpec(camaro, { dragpack: 3 }, {}).handling < buildSpec(camaro, {}, {}).handling)) bad('front skinnies should cost cornering grip');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);
