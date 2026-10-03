@@ -9,6 +9,7 @@ import { missionTick } from '../core/missions.js';
 import { PoliceSystem, OFFICER_LOOK } from './police.js';
 import { Combat } from './combat.js';
 import { Carjacks } from './carjack.js';
+import { StreetRaces } from './streetRace.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
@@ -68,6 +69,7 @@ export class World {
     this.audio = audio;
     this.combat = new Combat(this);
     this.carjacks = new Carjacks(this);
+    this.races = new StreetRaces(this);
     this.spawnPlayer();
   }
 
@@ -160,6 +162,7 @@ export class World {
     else this.updateFoot(dt);
     this.combat.update(dt);
     this.carjacks.update(dt);
+    this.races.update(dt);
     this.updateOnline(dt);
 
     // traffic + police
@@ -171,7 +174,7 @@ export class World {
       signalT: this.signalT, px: p.x, pz: p.z, density, inCity, night: isNight(s.time),
       weatherSlow: isWet(s) || s.weather === 'fog' ? 0.8 : 1,
       movers: this.vehicle ? [this.vehicleMover()] : [],
-      extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars()],
+      extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars()],
     });
     this.traffic.update(dt, this.trafficCtx);
     this.police.update(dt, this);
@@ -401,14 +404,15 @@ export class World {
       }
     }
     // traffic + police cars
-    for (const o of [...this.traffic.cars, ...this.police.patrols, ...this.police.units]) {
+    for (const o of [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.races.cars()]) {
       const d = Math.hypot(o.x - v.x, o.z - v.z);
       const rr = (v.dims.W + (o.dims?.W || 1.9)) / 2 + 0.9;
       if (d < rr) {
         const nx = (v.x - o.x) / (d || 1), nz = (v.z - o.z) / (d || 1);
         const imp = v.bounce(nx, nz, rr - d);
         if (o.hit) o.hit(imp); else o.v *= 0.5;
-        if (imp > 2.5) {
+        if (imp > 2.5 && o.rival) this.onCrash(imp, 'car');   // trading paint with your rival is racing, not a hit-and-run
+        else if (imp > 2.5) {
           this.onCrash(imp, o.police ? 'police' : 'car');
           this.setOffence(o.police || this.police.units.includes(o) ? 1.5 : 0.8, o.police ? 'Assault on an officer with a vehicle!' : 'Hit-and-run collision.', 'crash', o.police ? 'assault' : 'hitrun', o.police ? 2500 : 650);
         }
@@ -524,6 +528,7 @@ export class World {
   // County Courthouse: the magistrate sets bail and a court date (ui/court.js).
   onBusted(fine, ticketOnly, record = [], warrantStop = false) {
     const s = this.s;
+    this.races.cancel('cops');
     if (ticketOnly) {
       if (!spend(s, fine, 'FWPD traffic citation')) { s.bank -= Math.max(0, fine - s.cash - s.bank); s.cash = 0; }
       this.ui.modal('Pulled over', `<p>The officer writes you a ticket for ${fmtMoney(fine)}. "Slow it down out here."</p>`);
@@ -663,6 +668,7 @@ export class World {
     if (inside) best = inside.loc;   // anywhere inside counts as being at the door
     if (this.inCar && this.vehicle && this.vehicle.speed > 4 && !inside) best = null;
     if (inside && this.inCar && this.vehicle.speed > 6) best = null;
+    if (this.races.active) best = null;
     this.nearLoc = best;
     if (input.pressed('interact')) {
       if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
@@ -772,6 +778,7 @@ export class World {
     if (isWet(s)) { ctx.fillStyle = `rgba(40,60,90,${0.12 * wx(s).rain})`; ctx.fillRect(0, 0, W, H); }
 
     this.drawGpsRoute(ctx, cam, 1);
+    this.races.drawRoute(ctx, cam);
     // police spike strips
     for (const b of this.police.blocks) {
       const sp = b.spikes;
@@ -789,7 +796,7 @@ export class World {
       else drawPerson(ctx, cam.sx(pd.x), cam.sy(pd.z), pd.cower ? Math.PI : 0, cam.zoom, { top: pd.color, skin: '#c68e65', hair: '#222' }, pd.cower ? 0 : this.t * 6 * pd.sp);
     }
     // cars
-    const cars = [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.police.blocks.flatMap(b => b.cars)];
+    const cars = [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.police.blocks.flatMap(b => b.cars), ...this.races.cars()];
     const night = this.darkness();
     for (const c of cars) {
       if (c.x < v.x0 || c.x > v.x1 || c.z < v.z0 || c.z > v.z1) continue;
@@ -897,6 +904,7 @@ export class World {
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       drawLighting(ctx, cam, night, this.map.lights, { cars: carsLit, glows, blobs });
       this.drawGpsRoute(ctx, cam, night * 0.85, true);   // the route glows through the dark
+      this.races.drawRoute(ctx, cam, night * 0.7, true);
     } else if (this.police.active) {
       // daytime light bars still flash
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -952,6 +960,7 @@ export class World {
         ctx.restore();
       }
     }
+    this.races.drawOverlay(ctx, W, H);
   }
 
   // The GPS route painted on the road: a dark casing, a bright red ribbon
@@ -1042,6 +1051,7 @@ export class World {
   }
 
   destroy() {
+    this.races.destroy();
     if (this.engine) this.engine.stop();
     audio.siren(false);
     audio.music(null);

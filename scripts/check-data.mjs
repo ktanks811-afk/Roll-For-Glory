@@ -20,6 +20,7 @@ import { PROPERTIES } from '../js/data/world.js';
 import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
 import { sideGeo } from '../js/gfx2d/sideCar.js';
 import { CARJACK, canCarjack, carjackChance, carjackChoices, resolveCarjack, strippedCar } from '../js/data/carjack.js';
+import { STREET_RACES, raceRoute, courseRecord, cornerSpeed, pinkSlipCheck } from '../js/data/streetRaces.js';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
 let fails = 0;
@@ -265,7 +266,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (near > 12) bad(`${l.id}: nearest building is ${near.toFixed(0)} m from the marker`);
     if (l.type !== 'gas' && !bs.some(b => b.side === l.side)) bad(`${l.id}: building front does not face the street`);
   }
-  for (const l of LOCATIONS) if ((l.type === 'roll' || l.type === 'drag') && !map.buildings.some(b => b.kind === 'gantry' && b.loc === l.id)) bad(`${l.id} has no start gantry`);
+  for (const l of LOCATIONS) if ((l.type === 'roll' || l.type === 'drag' || l.type === 'sprint') && !map.buildings.some(b => b.kind === 'gantry' && b.loc === l.id)) bad(`${l.id} has no start gantry`);
 }
 
 // ---- filler scenery stays off the roads and away from businesses and race starts ----
@@ -601,6 +602,35 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const dflt = buildSpec(camaro, { dragpack: 2 }, {}), same = buildSpec(camaro, { dragpack: 2 }, {}, { frontExt: 5, rearComp: 5 });
   if (dflt.wheelieF !== same.wheelieF || dflt.trac !== same.trac) bad('default drag shock settings are not neutral');
   if (!(buildSpec(camaro, { dragpack: 3 }, {}).handling < buildSpec(camaro, {}, {}).handling)) bad('front skinnies should cost cornering grip');
+}
+// ---- street races: every leg runs on a real road, records are sane, pink slips have rules ----
+{
+  const map = buildMap();
+  const ids = new Set();
+  for (const ev of STREET_RACES) {
+    if (ids.has(ev.id)) bad(`duplicate street race ${ev.id}`);
+    ids.add(ev.id);
+    if (!RACERS.some(r => r.id === ev.record)) bad(`${ev.id}: record holder ${ev.record} is not a racer`);
+    const r = raceRoute(ev);
+    for (let i = 1; i < r.pts.length; i++) {
+      const [ax, az] = r.pts[i - 1], [bx, bz] = r.pts[i];
+      if (ax !== bx && az !== bz) bad(`${ev.id}: leg ${i} is not along one street`);
+      for (let t = 0; t <= 1; t += 0.05) if (!map.roads.onRoad(ax + (bx - ax) * t, az + (bz - az) * t)) { bad(`${ev.id}: leg ${i} leaves the road`); break; }
+    }
+    if (r.length < 1200) bad(`${ev.id} is only ${r.length.toFixed(0)} m`);
+    const last = r.checkpoints[r.checkpoints.length - 1];
+    if (!last || last.s !== r.length) bad(`${ev.id}: the last checkpoint is not the finish`);
+    const rec = courseRecord(ev);
+    if (!(rec.time > 15 && rec.time < 240)) bad(`${ev.id}: course record ${rec.time}s`);
+    if (courseRecord(ev).time !== rec.time) bad(`${ev.id}: course record is not stable`);
+  }
+  if (!(cornerSpeed(Math.PI / 2, 1, 0.5) < cornerSpeed(0.6, 1, 0.5))) bad('a 90° corner should be slower than a kink');
+  if (!(cornerSpeed(Math.PI / 2, 1.2, 0.5) > cornerSpeed(Math.PI / 2, 0.9, 0.5))) bad('stickier tires should corner faster');
+  const fair = { myPi: 400, theirPi: 420, myValue: 9000, theirValue: 12000, freeSlots: 1, stolen: false };
+  if (pinkSlipCheck(fair)) bad('an even pink-slip race was refused');
+  if (!pinkSlipCheck({ ...fair, freeSlots: 0 })) bad('pink slips allowed with a full garage');
+  if (!pinkSlipCheck({ ...fair, myPi: 600 })) bad('pink slips allowed against a much slower car');
+  if (!pinkSlipCheck({ ...fair, myValue: 2000 })) bad('pink slips allowed with a junker against a nice car');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);
