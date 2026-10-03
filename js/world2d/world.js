@@ -28,7 +28,7 @@ import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
-import { charge, fileCase, openCase, impoundFee, IMPOUND_LOT } from '../core/justice.js';
+import { charge, fileCase, openCase, IMPOUND_LOT } from '../core/justice.js';
 import { toggleMask, masked } from '../core/disguise.js';
 import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
 
@@ -340,7 +340,7 @@ export class World {
   }
 
   // Busted: the car is towed to the impound lot and locked until you pay the
-  // release fee at the Central Precinct (ui/places.js). You're let go there.
+  // you sign it out at the Central Precinct (ui/places.js), free. You're let go there.
   impound() {
     const s = this.s, car = activeCar(s);
     if (!car || car.stolen) return;
@@ -367,7 +367,7 @@ export class World {
       if (this.engine) { this.engine.stop(); this.engine = null; }
     } else if (this.vehicle) {
       if (Math.hypot(this.vehicle.x - this.foot.x, this.vehicle.z - this.foot.z) < 4.5) {
-        if (this.vehicle.car.impound) { this.ui.toast(`Impounded. Pay the ${fmtMoney(impoundFee(this.s))} release fee inside the Central Precinct`, 'bad'); return; }
+        if (this.vehicle.car.impound) { this.ui.toast(`Impounded. Sign it out inside the Central Precinct`, 'bad'); return; }
         this.inCar = true;
         input.setContext('car');
         this.restartEngineSound();
@@ -591,7 +591,7 @@ export class World {
     this.impound();
     const list = c ? `<div class="charges">${c.charges.map(x => `<div>⚖ ${esc(x.text)}</div>`).join('')}</div>` : '';
     this.ui.modal('BUSTED',
-      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. Your car gets towed to the impound lot behind the FWPD Central Precinct.</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p><p class="small muted">To get the car back, go to the Central Precinct and pay the ${fmtMoney(impoundFee(s))} release fee.</p>${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. They let you go at the precinct.</p>'}`,
+      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. Your car gets towed to the impound lot behind the FWPD Central Precinct.</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p><p class="small muted">To get the car back, go into the Central Precinct and sign it out. No charge.</p>${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. They let you go at the precinct.</p>'}`,
       [{ label: c ? 'See the magistrate' : 'OK', primary: true }]).then(() => { if (c) this.ui.book?.(c); });
     emit('busted', { fine: total, charges: charges.length });
   }

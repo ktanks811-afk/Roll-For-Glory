@@ -26,7 +26,7 @@ import { rebuildCost, resetEngineWarnings } from '../sim/engine.js';
 import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
 import { openCourthouse, book } from './court.js';
-import { charge, fileCase, impoundFee, IMPOUND_LOT } from '../core/justice.js';
+import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -416,8 +416,8 @@ function police(loc, app, s) {
     const held = s.cars.filter(c => c.impound);
     root.innerHTML = head(loc.name, 'Fort Worth Police Department') + `<div class="p-body" style="max-width:640px">
       ${w?.police.active ? '<p class="bad">You walked into a police station while they\'re looking for you. Bold.</p>' : ''}
-      ${held.length ? `<div class="li"><div class="grow"><div class="t">Impound lot</div><div class="s">${held.map(c => esc(carName(modelOf(c), c.year))).join(', ')} ${held.length > 1 ? 'are' : 'is'} ${loc.id === IMPOUND_LOT ? 'out back' : 'at the Central Precinct lot'}. Release fee ${fmtMoney(impoundFee(s))}${held.length > 1 ? ' each' : ''}.</div></div>
-        ${loc.id === IMPOUND_LOT ? `<button class="btn btn-sm btn-primary" data-action="release" ${w?.police.active ? 'disabled' : ''}>Get it out · ${fmtMoney(impoundFee(s) * held.length)}</button>` : '<button class="btn btn-sm" data-action="lotgps">GPS</button>'}</div>` : ''}
+      ${held.length ? `<div class="li"><div class="grow"><div class="t">Impound lot</div><div class="s">${held.map(c => esc(carName(modelOf(c), c.year))).join(', ')} ${held.length > 1 ? 'are' : 'is'} ${loc.id === IMPOUND_LOT ? 'out back' : 'at the Central Precinct lot'}. Sign ${held.length > 1 ? 'them' : 'it'} out here, no charge.</div></div>
+        ${loc.id === IMPOUND_LOT ? `<button class="btn btn-sm btn-primary" data-action="release" ${w?.police.active ? 'disabled' : ''}>Get it out</button>` : '<button class="btn btn-sm" data-action="lotgps">GPS</button>'}</div>` : ''}
       <div class="li"><div class="grow"><div class="t">Outstanding citations</div><div class="s">${heat > 0.05 ? `Your heat is ${heat.toFixed(1)}. Paying your tickets clears it.` : 'You\'re clean.'}</div></div>
         <button class="btn btn-sm btn-primary" data-action="pay" ${heat > 0.05 && !w?.police.active ? '' : 'disabled'}>Pay ${fmtMoney(fine)}</button></div>
       <div class="section-title">Your record</div>
@@ -433,7 +433,6 @@ function police(loc, app, s) {
       pay: () => { if (spend(s, fine, 'FWPD citations')) { s.heat = 0; toast('Record cleared', 'good'); h.refresh(); } },
       fines: () => { const r = payFines(s); if (r.ok) { toast(`Paid ${fmtMoney(r.total)}`, 'good'); h.refresh(); } },
       release: () => {
-        if (!spend(s, impoundFee(s) * held.length, 'Impound release')) return;
         for (const c of held) delete c.impound;
         toast(`Released. Your car${held.length > 1 ? 's are' : ' is'} in the lot out front`, 'good'); h.refresh();
       },

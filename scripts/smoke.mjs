@@ -706,14 +706,16 @@ await step('Amazin\' shop + guns + robbery', async () => {
   if (after.guns !== 0 || after.drawn) throw new Error('gun not confiscated ' + JSON.stringify(after));
   await p.click('.modal button'); await calm();
   await p.evaluate(() => { window.__rfg.game.s.justice.cases = []; });   // the court step covers what happens next
-  // the car is on the impound lot, locked until the release fee is paid at the Central Precinct
+  // the car is on the impound lot, locked until you sign it out at the Central Precinct (free)
   const lot = await p.evaluate(() => { const w = window.__rfg.app.world; const v = w.vehicle; w.foot.x = v.x + 2; w.foot.z = v.z; return { held: !!v.car.impound }; });
   if (!lot.held) throw new Error('busted car was not impounded');
   await key('KeyF'); await p.waitForTimeout(200);
   if (await p.evaluate(() => window.__rfg.app.world.inCar)) throw new Error('drove an impounded car');
-  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); window.__rfg.game.s.cash += 1000; openPlace(LOC_BY_ID.pspd_central, window.__rfg.app); });
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.pspd_central, window.__rfg.app); });
+  const lotCash = await p.evaluate(() => window.__rfg.game.s.cash);
   await p.click('button[data-action="release"]');
-  if (await p.evaluate(() => !!window.__rfg.app.world.vehicle.car.impound)) throw new Error('paying the release fee did not free the car');
+  if (await p.evaluate(c => window.__rfg.game.s.cash !== c, lotCash)) throw new Error('getting a car out of impound cost money');
+  if (await p.evaluate(() => !!window.__rfg.app.world.vehicle.car.impound)) throw new Error('signing out the car did not free it');
   await calm();
   await key('KeyF'); await p.waitForTimeout(200);
   if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get in the car after paying the impound');
