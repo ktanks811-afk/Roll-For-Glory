@@ -82,7 +82,7 @@ export class World {
       const sp = this.homeSpot(home);
       this.placeCar(car, sp.x, sp.z, sp.h);
     }
-    if (pos && pos.inCar && this.vehicle) { this.inCar = true; }
+    if (pos && pos.inCar && this.vehicle) { this.inCar = true; this.restartEngineSound(); }   // loaded a save sat in the car: start it up
     else {
       this.inCar = false;
       this.foot.x = pos?.x ?? home.x; this.foot.z = pos?.z ?? home.z; this.foot.h = pos?.h ?? home.face;
