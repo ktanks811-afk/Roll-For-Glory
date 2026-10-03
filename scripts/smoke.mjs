@@ -309,7 +309,7 @@ await step('part profiles + blowing the motor', async () => {
     await new Promise(r => setTimeout(r, 100));
     const after = { blown: !!car.engineBlown, eng: car.cond.engine };
     closeAllPanels();
-    Object.assign(car.parts, saved.parts); Object.assign(car.cond, saved.cond); window.__rfg.app.world.refreshCar();
+    car.parts = saved.parts; car.cond = saved.cond; delete car.engineBlown; window.__rfg.app.world.refreshCar();
     return { profile, risk: spec.engineRisk, level: spec.engineLevel.id, evs, secs: +t.toFixed(1), stock, rebuildShown: /rebuild/i.test(shopTxt), after };
   });
   console.log('     engine', JSON.stringify(r));
