@@ -246,21 +246,6 @@ export function tuneEffects(model, lv, tune = {}, visual = {}, redline = model.r
   return fx;
 }
 
-// Engine wear from knock / over-revving while you're on it. Returns true the
-// moment the engine starts knocking (for a warning).
-const knockT = new WeakMap();   // seconds since the last knock, per car (kept out of the save)
-export function engineStress(car, spec, throttle, rpm, dt) {
-  if (!car?.cond || !spec) return false;
-  let hurt = 0;
-  if (spec.knock > 0 && throttle > 0.7 && rpm > spec.redline * 0.55) hurt += spec.knock * 2.2;
-  if (spec.overRev > 0 && rpm > spec.redline - 300) hurt += spec.overRev * 3;
-  if (!hurt) { knockT.set(car, Math.max(0, (knockT.get(car) || 0) - dt)); return false; }
-  car.cond.engine = Math.max(5, car.cond.engine - hurt * dt);
-  const first = !(knockT.get(car) > 0);
-  knockT.set(car, 4);
-  return first;
-}
-
 // One-tap starting points. Only touches what this car can adjust.
 export const PRESETS = {
   street: { label: 'Street', vals: {} },

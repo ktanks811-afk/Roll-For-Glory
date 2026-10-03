@@ -16,6 +16,7 @@ import { collideCircle, lineOfSight } from './map.js';
 import { LOC_BY_ID, TUNNEL, HWY_Z, HWY_W } from '../data/world.js';
 import { LEGAL_DB, hearingRange } from '../sim/sound.js';
 import { hasWarrant, hasFelony } from '../core/warrants.js';
+import { concealment, masked } from '../core/disguise.js';
 
 const PATROL_MODELS = ['ford_crown_victoria_police_interceptor_2003', 'dodge_charger_scat_pack_2015', 'ford_explorer_xlt_2002', 'chevrolet_tahoe_lt_2007'];
 const INTERCEPTORS = ['dodge_charger_srt_hellcat_redeye_2021', 'ford_mustang_gt_s650_2024', 'chevrolet_camaro_ss_2016'];
@@ -76,6 +77,11 @@ export class PoliceSystem {
     this.record = [];    // what you did since the last stop: [{ kind, text, fine }]
     this.recognise = 0;  // 0..1: a patrol running your plate / looking at your face while you have a warrant
     this.eyesOn = false; // an officer has actually seen you during this pursuit
+    this.disguise = 0;   // 0..1: how hard you are to recognise right now (on foot, core/disguise.js)
+    this.chaseDisguise = 1; // the least disguised they saw you during this pursuit
+    this.footOnly = true;   // this pursuit never saw you in a car (no plate to run)
+    this.maskSus = 0;    // 0..1: a patrol watching someone walk around in a ski mask
+    this.maskStopAt = -99;
   }
   get level() { return Math.floor(clamp(this.s.heat, 0, 5.99)); }
   get active() { return this.phase !== 'none'; }
@@ -138,11 +144,17 @@ export class PoliceSystem {
     // With a warrant out, officers have your plate and your photo: they look
     // harder (longer detection range) and recognise you even on foot.
     const wanted = hasWarrant(s);
+    const look = s.player?.look;
+    this.disguise = p.inCar ? 0 : concealment(look, (w.darkness?.() || 0) > 0.4);
     const watchable = p.inCar || !!w.combat?.armed || !!w.combat?.rob || (wanted && this.phase !== 'none');
     this.seen = watchable ? this.detect(p.x, p.z, wanted ? 140 : 115) : false;
-    if (this.seen) { this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz }; this.unseenT = 0; if (this.phase !== 'none') this.eyesOn = true; }
+    if (this.seen) {
+      this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz }; this.unseenT = 0;
+      if (this.phase !== 'none') { this.eyesOn = true; this.chaseDisguise = Math.min(this.chaseDisguise, this.disguise); if (p.inCar) this.footOnly = false; }
+    }
     else this.unseenT += dt;
     if (this.phase === 'none') this.recognition(dt, w, wanted);
+    if (this.phase === 'none') this.maskWatch(dt, w, look);
 
     // Offences only count when a cop is close enough to actually see them.
     // Speeding and burnouts have to go on for a few seconds before anyone
@@ -294,7 +306,9 @@ export class PoliceSystem {
   recognition(dt, w, wanted) {
     if (!wanted) { this.recognise = 0; return; }
     const p = w.player;
-    const range = p.inCar ? 70 : 28;
+    // a covered face can't be matched to a mugshot; a plate always can
+    const range = p.inCar ? 70 : masked(this.s.player?.look) ? 0 : 28 * (1 - this.disguise);
+    if (range < 5) { this.recognise = Math.max(0, this.recognise - dt * 0.2); return; }
     const near = this.patrols.some(c => Math.hypot(c.x - p.x, c.z - p.z) < range && lineOfSight(this.map, c.x, c.z, p.x, p.z));
     this.recognise = near ? this.recognise + dt / (p.inCar ? 2.5 : 4) : Math.max(0, this.recognise - dt * 0.2);
     if (this.recognise < 1) return;
@@ -307,12 +321,31 @@ export class PoliceSystem {
     this.eyesOn = true;
   }
 
-  // Keep the worst of each kind of offence for the ticket.
+  // Someone walking around in a ski mask with no reason to: a patrol that
+  // watches it for a few seconds pulls up and questions them (world.onMaskStop).
+  maskWatch(dt, w, look) {
+    const p = w.player;
+    const busy = p.inCar || !masked(look) || w.combat?.rob || w.combat?.mug || w.t - this.maskStopAt < 45;
+    const near = !busy && this.patrols.some(c => Math.hypot(c.x - p.x, c.z - p.z) < 35 && lineOfSight(this.map, c.x, c.z, p.x, p.z));
+    this.maskSus = near ? this.maskSus + dt / 4 : Math.max(0, this.maskSus - dt * 0.3);
+    if (this.maskSus < 1) return;
+    this.maskSus = 0; this.maskStopAt = w.t;
+    w.hud.radio(`Unit ${this.patrols[0]?.id || 14}: out with a subject in a ski mask on ${w.streetAt(p.x, p.z) || 'foot'}.`);
+    w.onMaskStop?.();
+  }
+
+  // Keep the worst of each kind of offence for the ticket. A crime done on
+  // foot remembers how disguised you were (the least, if you did it twice):
+  // that decides whether the warrant can name you.
   note(o) {
     if (!o.kind) return;
+    const conceal = o.kind === 'noise' ? 0 : this.disguise;
     const have = this.record.find(r => r.kind === o.kind);
-    if (!have) this.record.push({ kind: o.kind, text: o.text, fine: o.fine || 250 });
-    else if ((o.fine || 0) > have.fine) { have.fine = o.fine; have.text = o.text; }
+    if (!have) this.record.push({ kind: o.kind, text: o.text, fine: o.fine || 250, conceal });
+    else {
+      if ((o.fine || 0) > have.fine) { have.fine = o.fine; have.text = o.text; }
+      have.conceal = Math.min(have.conceal ?? 0, conceal);
+    }
   }
 
   // Loud exhausts get noticed. Anyone within earshot (no line of sight needed)
@@ -341,6 +374,8 @@ export class PoliceSystem {
   startChase(w, force = false) {
     if (this.phase === 'none') {
       this.eyesOn = this.seen;
+      this.chaseDisguise = this.seen ? this.disguise : 1;
+      this.footOnly = !w.player.inCar;
       this.phase = force || this.level >= 2 ? 'chase' : 'notice';
       if (this.phase === 'notice') {
         this.pullT = PULL_OVER_S; this.stillT = 0;
@@ -465,7 +500,7 @@ export class PoliceSystem {
     if (this.gunHeat < 0.8) return;
     this.gunHeat = 0;
     const p = w.player;
-    this.addHeat(kind === 'hit' ? 1.2 : 0.7, melee ? 'Assault reported.' : 'Shots fired!', w.hud);
+    this.addHeat((kind === 'hit' ? 1.2 : 0.7) * this.vague(), melee ? 'Assault reported.' : 'Shots fired!', w.hud);
     this.note({ kind: 'shots', text: melee ? 'Assault with a weapon.' : 'Discharging a firearm in public.', fine: kind === 'hit' ? 4000 : 1800 });
     this.lastSeen = { x: p.x, z: p.z, vx: 0, vz: 0 };
     if (this.phase === 'none') {
@@ -481,11 +516,14 @@ export class PoliceSystem {
     const p = w.player;
     if (!mugging) w.hud.radio(`Dispatch: 211 in progress at ${loc.name}. Silent alarm. All units respond.`);
     else w.hud.radio('Dispatch: caller reports an armed mugging. Units responding.');
-    this.addHeat(mugging ? 0.9 : 1.6, 'Armed robbery.', w.hud);
+    this.addHeat((mugging ? 0.9 : 1.6) * this.vague(), masked(this.s.player?.look) ? 'Armed robbery, masked suspect.' : 'Armed robbery.', w.hud);
     this.note({ kind: 'robbery', text: mugging ? 'Armed mugging.' : `Armed robbery — ${loc.name}.`, fine: mugging ? 4000 : 6000 });
     this.lastSeen = { x: loc.x ?? p.x, z: loc.z ?? p.z, vx: 0, vz: 0 };
     if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') { this.startChase(w, true); this.unseenT = -8; }
   }
+
+  // A vague description ("someone in black, mask on") puts less heat on you.
+  vague() { return 1 - 0.3 * this.disguise; }
 
   busted(w) {
     const lvl = Math.max(1, this.level);
@@ -640,7 +678,9 @@ export class PoliceSystem {
   escaped(w) {
     const record = this.record;
     this.record = [];
-    w.onEscaped(record, this.eyesOn);
+    // Got away on foot in a disguise: they chased someone, but not a name.
+    const anon = this.eyesOn && this.footOnly && Math.random() < this.chaseDisguise;
+    w.onEscaped(record, this.eyesOn && !anon);
     this.phase = 'none';
     this.decayHold = 20;
     w.audio.siren(false);

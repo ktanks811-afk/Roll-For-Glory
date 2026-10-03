@@ -12,7 +12,7 @@ import { carSprite, drawCar, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
-import { engineStress } from '../sim/tuning.js';
+import { engineStress, engineMessage } from '../sim/engine.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
 import { input } from '../core/input.js';
 import { esc } from '../ui/dom.js';
@@ -24,8 +24,9 @@ import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
-import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS } from '../core/warrants.js';
+import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
 import { charge, fileCase, openCase } from '../core/justice.js';
+import { toggleMask, masked } from '../core/disguise.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -148,6 +149,7 @@ export class World {
     if (input.pressed('map')) { this.ui.openPhone('map'); return; }
     if (input.pressed('pause')) { this.ui.openPause(); return; }
     if (input.pressed('camera')) this.zoomLevel = ((this.zoomLevel ?? 1) + 1) % 3;
+    if (input.pressed('mask')) this.toggleMask();
 
     const p = this.playerState();
     this.offence = null;
@@ -355,7 +357,7 @@ export class World {
     const sand = !paved && v.z > DESERT_Z;
     let grip = paved ? 1 : sand ? 0.62 : 0.72;
     if (s.weather === 'rain') grip *= 0.74;
-    const noFuel = car.fuel <= 0.0005;
+    const noFuel = car.fuel <= 0.0005 || !!car.engineBlown;   // a blown motor makes no power either
     v.update(dt, {
       throttle: input.axis('throttle'), brake: input.axis('brake'), steer: input.steer(),
       handbrake: input.held('handbrake'), nitrous: input.held('nitrous'),
@@ -377,7 +379,7 @@ export class World {
     this.flame = lr.flame;
     if (revving) { v.sim.rpm = lr.rpm; v.rev = 0; }   // gas + brake beats the reverse gear creeping in
     if (lr.bang) { audio.pop(); if (settings.shake) this.cam.shake = Math.max(this.cam.shake, 0.12); }
-    if (noFuel && input.axis('throttle') > 0 && !this.fuelWarned) { this.fuelWarned = true; this.ui.toast('Out of gas! Call roadside assistance from your phone (Bank → Roadside) or push it to a station.', 'bad'); }
+    if (noFuel && !car.engineBlown && input.axis('throttle') > 0 && !this.fuelWarned) { this.fuelWarned = true; this.ui.toast('Out of gas! Call roadside assistance from your phone (Bank → Roadside) or push it to a station.', 'bad'); }
 
     // buildings / water
     for (const c of v.circles()) {
@@ -414,7 +416,11 @@ export class World {
     // tire wear from wheelspin
     if (v.sim.slip > 0.2) car.cond.tires = Math.max(1, car.cond.tires - dt * 0.6 * v.sim.slip);
     // an aggressive tune knocks (or floats the valves) at wide-open throttle
-    if (engineStress(car, v.spec, thr, v.sim.rpm, dt)) this.ui.toast('Engine is knocking. Back the tune off in Garage → Tune.', 'bad');
+    const eng = engineStress(car, v.spec, thr, v.sim.rpm, dt, v.sim.nosOn);
+    if (eng) {
+      this.ui.toast(engineMessage(eng, v.spec), eng === 'stress' ? 'info' : 'bad');
+      if (eng === 'blown') { audio.crash?.(1.2); v.setSpec(carSpec(car)); }
+    }
 
     // skid marks + smoke (burnouts light up the driven axle, slides light up the rears)
     const fwdBurn = v.burning && v.spec.drive === 'FWD';
@@ -434,7 +440,7 @@ export class World {
       if (this.skids.length > 1100) this.skids.splice(0, 100);
       if (this.smoke.length > 160) this.smoke.splice(0, this.smoke.length - 160);
     } else this.lastSkid = null;
-    if (car.cond.engine < 35 && Math.random() < dt * 6) {
+    if (car.cond.engine < 35 && Math.random() < dt * (car.engineBlown ? 18 : 6)) {
       this.smoke.push({ x: v.x + Math.sin(v.h) * v.dims.L * 0.4, z: v.z - Math.cos(v.h) * v.dims.L * 0.4, r: 0.8, life: 2, a: 0.4, dark: true });
     }
     for (const sm of this.smoke) { sm.life -= dt; sm.r += dt * 1.1; }
@@ -580,8 +586,34 @@ export class World {
     s.followers += 40 * lvl;
     // they know who you are: a warrant goes out for the chase and anything they saw
     const wr = warrantForEscape(s, seen ? record : record.filter(r => r.kind === 'robbery' || r.kind === 'shots' || r.kind === 'assault'), lvl, seen);
-    this.ui.toast(`ESCAPED! +${80 * lvl} rep.${wr.length ? ' A warrant is out for you — patrols will know your plate.' : ' Heat will cool down if you lay low.'}`, 'good');
+    const anon = wr.unidentified ? ` Nobody could ID you behind the mask${wr.unidentified > 1 ? ` (${wr.unidentified} crimes)` : ''}.` : '';
+    this.ui.toast(`ESCAPED! +${80 * lvl} rep.${wr.length ? ' A warrant is out for you — patrols will know your plate.' : ' Heat will cool down if you lay low.'}${anon}`, 'good');
     emit('pursuitEscaped', { level: lvl });
+  }
+
+  // Pull the mask down or up (V / the MASK button). Never in a car.
+  toggleMask() {
+    if (this.inCar) return;
+    const on = toggleMask(this.s);
+    if (on === null) { this.ui.toast('You don\'t own a mask. Riverside Army Surplus sells them.', 'info'); return; }
+    audio.click();
+    this.ui.toast(on ? 'Mask down. Witnesses won\'t see your face, but cops notice a ski mask.' : 'Mask off.', 'info');
+  }
+
+  // A patrol stopped you for walking around masked: the mask comes off and
+  // they run your name. A warrant makes it an arrest.
+  async onMaskStop() {
+    const s = this.s;
+    s.player.maskStash = s.player.look.mask; s.player.look.mask = 'no_mask';
+    if (hasWarrant(s)) {
+      this.police.phase = 'notice';
+      this.onBusted(400, false, this.police.record.slice(), true);
+      this.police.reset(this);
+      return;
+    }
+    s.heat = Math.max(s.heat, 0.5);
+    this.police.decayHold = 25;
+    await this.ui.modal('Stopped and questioned', `<p class="muted">"Evening. Take the mask off for me... Any reason you're walking around dressed like that?"</p><p>The officer runs your name. You're clean, so they let you go: "Lose the mask. People call us about it."</p><p class="small muted">Masks keep witnesses from naming you during a crime, but wearing one on the street gets you looked at. Pull it down right before (V or MASK) and off right after.</p>`);
   }
 
   updatePoliceAudio() {

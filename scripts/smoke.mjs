@@ -306,6 +306,49 @@ await step('tuning: engine map, chassis setup, knock', async () => {
   if (!r.same) throw new Error('an untouched tune changed the car');
   if (r.groups < 8 || !/changed/.test(r.changed) || r.saved !== 20) throw new Error('tune tab did not edit + save');
 });
+await step('part profiles + blowing the motor', async () => {
+  const r = await p.evaluate(async () => {
+    const st = await import('./js/core/state.js');
+    const { engineStress } = await import('./js/sim/engine.js');
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
+    const s = window.__rfg.game.s, car = s.cars.find(c => c.uid === s.activeCar);
+    const saved = JSON.parse(JSON.stringify({ parts: car.parts, cond: car.cond }));
+    // tap a part in Garage → Performance: its profile opens
+    const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home', tab: 'parts' });
+    await new Promise(r => setTimeout(r, 150));
+    document.querySelector('.click-row[data-cat="turbo"]').click();
+    await new Promise(r => setTimeout(r, 100));
+    const prof = document.querySelector('.modal .pp');
+    const profile = !!prof && /turbocharger/i.test(prof.textContent) && /Supporting mods/i.test(prof.textContent);
+    document.querySelectorAll('.modal-back').forEach(m => m.remove()); closeAllPanels();
+    // a big turbo with no tune / fuel / internals: stressed, then blown
+    Object.assign(car.parts, { turbo: 4, ecu: null, fuel: null, engine: null, intercooler: null, supercharger: null });
+    car.cond.engine = 100; delete car.engineBlown;
+    const spec = st.carSpec(car);
+    const evs = []; let t = 0;
+    while (!car.engineBlown && t < 400) { const e = engineStress(car, spec, 1, spec.redline * 0.8, 0.05); if (e) evs.push(e); t += 0.05; }
+    // stock: never hurt
+    const stock = st.carSpec({ ...car, parts: {}, cond: { ...car.cond, engine: 100 } }).engineRisk;
+    // rebuild at the repair shop
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    s.cash += 50000;
+    openPlace?.(LOC_BY_ID.second_chance, window.__rfg.app);
+    await new Promise(r => setTimeout(r, 150));
+    const shopTxt = document.querySelector('#panels')?.textContent || '';
+    document.querySelector('[data-action="fix"][data-k="engine"]')?.click();
+    await new Promise(r => setTimeout(r, 100));
+    const after = { blown: !!car.engineBlown, eng: car.cond.engine };
+    closeAllPanels();
+    car.parts = saved.parts; car.cond = saved.cond; delete car.engineBlown; window.__rfg.app.world.refreshCar();
+    return { profile, risk: spec.engineRisk, level: spec.engineLevel.id, evs, secs: +t.toFixed(1), stock, rebuildShown: /rebuild/i.test(shopTxt), after };
+  });
+  console.log('     engine', JSON.stringify(r));
+  if (!r.profile) throw new Error('tapping a part did not open its profile');
+  if (r.stock !== 0) throw new Error('a stock engine is at risk');
+  if (r.level !== 'danger' || !r.evs.includes('stress') || !r.evs.includes('warn') || !r.evs.includes('blown')) throw new Error('unsupported big turbo did not warn and then blow');
+  if (r.evs.indexOf('stress') > r.evs.indexOf('blown')) throw new Error('no warning before the engine blew');
+  if (!r.rebuildShown || r.after.blown || r.after.eng !== 100) throw new Error('repair shop did not rebuild the blown engine');
+});
 await step('police dispatch: one line at a time', async () => {
   const r = await p.evaluate(async () => {
     const h = window.__rfg.app.world.hud;
@@ -1096,6 +1139,56 @@ await step('traffic stop: pull over, walk-up, drive off', async () => {
   console.log('     failed to yield', JSON.stringify(fail));
   if (fail.phase !== 'chase') throw new Error('not pulling over in time did not start a chase ' + JSON.stringify(fail));
   await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.police.units.length = 0; });
+});
+
+// ---------------- ski mask + blackout fit: buy, pull down, rob unseen, get stopped ----------------
+await step('ski mask + blackout fit', async () => {
+  const clearModals = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await p.evaluate(async () => {
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    s.cash = 50000; s.warrants = []; s.citations = []; w.police.reset(w);
+    if (w.inCar) { w.vehicle.vx = w.vehicle.vz = 0; w.toggleCar(); }
+    if (w.inCar) throw new Error('could not get out of the car');
+    openPlace(LOC_BY_ID.surplus, window.__rfg.app);
+  });
+  await p.waitForTimeout(250);
+  if (!/Riverside Army Surplus/.test(await p.textContent('.p-head')) || !/Vortex Black Ski Mask/.test(await p.textContent('.p-body'))) throw new Error('surplus store does not sell the ski mask');
+  if (/Leather Racing Jacket/.test(await p.textContent('.p-body'))) throw new Error('surplus store shows Threadline stock');
+  await p.click('button:has-text("Buy the fit")'); await p.waitForTimeout(200);
+  let look = await p.evaluate(() => ({ ...window.__rfg.game.s.player.look, owned: window.__rfg.game.s.player.outfits }));
+  if (!look.owned.includes('skimask_black') || look.top !== 'fleece_black' || look.shoes !== 'kicks_blackout' || look.mask === 'skimask_black') throw new Error('blackout fit not bought/worn right ' + JSON.stringify(look));
+  await snap('28-surplus');
+  await clearModals(); await p.evaluate(() => { window.__rfg.app.world.paused = false; });
+  // V pulls the mask down; the HUD says how recognisable you are
+  await key('KeyV'); await p.waitForTimeout(300);
+  const tag = await p.evaluate(() => ({ mask: window.__rfg.game.s.player.look.mask, tag: document.querySelector('[data-disguise]')?.className + ':' + document.querySelector('[data-disguise]')?.textContent }));
+  if (tag.mask !== 'skimask_black' || /hidden/.test(tag.tag) || !/MASKED/.test(tag.tag)) throw new Error('mask toggle / HUD tag ' + JSON.stringify(tag));
+  await snap('29-masked');
+  // a masked robbery the witness can't ID: no robbery warrant; the same robbery unmasked: warrant
+  const rob = await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world, r0 = Math.random;
+    const go = () => { w.police.reset(w); s.heat = 1.5; w.police.startChase(w, true); w.police.dispatchRobbery(w, { name: 'Gas-N-Go', x: w.foot.x, z: w.foot.z }); w.police.escaped(w); return s.warrants.map(x => x.kind); };
+    Math.random = () => 0.4;
+    try {
+      w.police.disguise = 0.8; const masked = go(); s.warrants = [];
+      w.police.disguise = 0; const bare = go(); s.warrants = [];
+      return { masked, bare };
+    } finally { Math.random = r0; w.police.reset(w); }
+  });
+  if (rob.masked.includes('robbery') || !rob.bare.includes('robbery')) throw new Error('mask should keep a robbery off your record ' + JSON.stringify(rob));
+  // a patrol watching a masked person walk around stops them and the mask comes off
+  await p.evaluate(() => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    s.player.look.mask = 'skimask_black'; w.police.maskStopAt = -99; w.police.maskSus = 0;
+    const fake = { x: w.foot.x + 6, z: w.foot.z, police: true, id: 31 };
+    w.police.patrols.push(fake);
+    for (let i = 0; i < 6 && s.player.look.mask !== 'no_mask'; i++) w.police.maskWatch(1, w, s.player.look);
+    w.police.patrols = w.police.patrols.filter(c => c !== fake);
+  });
+  await p.waitForSelector('.modal h2:has-text("Stopped and questioned")');
+  if ((await p.evaluate(() => window.__rfg.game.s.player.look.mask)) !== 'no_mask') throw new Error('mask stop did not take the mask off');
+  await clearModals(); await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.paused = false; });
 });
 
 // ---------------- side-view showroom (layered Mustang) ----------------

@@ -36,7 +36,7 @@ export function addWarrant(s, w) {
   ensureRecord(s);
   const have = s.warrants.find(x => x.kind === w.kind && x.text === w.text);
   if (have) { have.fine += w.fine; have.felony ||= !!w.felony; return have; }
-  const item = { id: uid('wr'), day: s.time.day, felony: false, ...w };
+  const item = { id: uid('wr'), day: s.time.day, felony: false, evidence: '', ...w };
   s.warrants.push(item);
   emit('warrant', { added: item });
   return item;
@@ -63,15 +63,22 @@ export function citationsDue(s) {
 // You got away. Whatever they saw you do, plus the evading charge, goes on a warrant.
 // seen: false when no officer ever got eyes on you (a dispatch that never
 // found you), so there is nobody you evaded.
-export function warrantForEscape(s, record = [], level = 1, seen = true) {
+// A crime committed in a mask (r.conceal, see core/disguise.js) only becomes
+// a warrant if the witnesses or cameras can still tell it was you; the rest
+// stay open cases against an unknown suspect. `evidence` says what ties a
+// warrant to you, for the day it goes in front of a judge.
+export function warrantForEscape(s, record = [], level = 1, seen = true, rng = Math.random) {
   const felonyCrime = record.some(r => FELONY_KINDS.has(r.kind));
   const out = [];
+  out.unidentified = 0;
   if (seen) out.push(addWarrant(s, level >= 2 || felonyCrime
-    ? { kind: 'evading', text: 'Evading arrest (in a vehicle).', fine: 1500 + 500 * level, felony: true }
-    : { kind: 'evading', text: 'Evading detention (fled a stop).', fine: 600 }));
+    ? { kind: 'evading', text: 'Evading arrest (in a vehicle).', fine: 1500 + 500 * level, felony: true, evidence: 'Officers ran your plate' }
+    : { kind: 'evading', text: 'Evading detention (fled a stop).', fine: 600, evidence: 'Officers ran your plate' }));
   for (const r of record) {
     if (r.kind === 'noise' || r.kind === 'evading') continue;
-    out.push(addWarrant(s, { kind: r.kind, text: r.text, fine: r.fine || 250, felony: FELONY_KINDS.has(r.kind) }));
+    if (r.conceal > 0 && rng() < r.conceal) { out.unidentified++; s.stats && (s.stats.unsolved = (s.stats.unsolved || 0) + 1); continue; }
+    out.push(addWarrant(s, { kind: r.kind, text: r.text, fine: r.fine || 250, felony: FELONY_KINDS.has(r.kind),
+      evidence: r.conceal > 0 ? 'A witness picked you out despite the disguise' : 'Witnesses and cameras got your face' }));
   }
   return out;
 }
@@ -79,10 +86,13 @@ export function warrantForEscape(s, record = [], level = 1, seen = true) {
 // An arrest: every warrant and unpaid ticket comes off the board. Returns the
 // offences for the booking officer (core/justice.js charge() sorts them into
 // court charges and fines), the fine-only total, and how many warrants that was.
+// How strong the State's case on a warrant is (0..1), from what tied it to you.
+const strength = w => /disguise/i.test(w.evidence || '') ? 0.5 : /plate/i.test(w.evidence || '') ? 0.7 : /face|camera/i.test(w.evidence || '') ? 0.75 : 0.6;
+
 export function takeWarrants(s) {
   ensureRecord(s);
   const n = s.warrants.length;
-  const items = s.warrants.filter(w => w.kind !== 'bailjump').map(w => ({ kind: w.kind, text: w.text, fine: w.fine, felony: w.felony, evidence: 0.6 }));
+  const items = s.warrants.filter(w => w.kind !== 'bailjump').map(w => ({ kind: w.kind, text: w.text, fine: w.fine, felony: w.felony, evidence: strength(w) }));
   const tickets = citationTotal(s);
   s.warrants = []; s.citations = [];
   if (n) emit('warrant', { cleared: n });
@@ -129,5 +139,5 @@ export function surrender(s) {
   s.warrants = []; s.citations = [];
   if (n) emit('warrant', { cleared: n });
   s.heat = 0;
-  return { ok: true, total, felonies: felonies.map(w => ({ kind: w.kind, text: w.text, felony: true, evidence: 0.6 })), skipped };
+  return { ok: true, total, felonies: felonies.map(w => ({ kind: w.kind, text: w.text, felony: true, evidence: strength(w) })), skipped };
 }

@@ -250,6 +250,14 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   conviction on probation revokes it. Time inside runs on a jail screen
   (10 years ≈ two weeks of game time); you lose jobs if you're gone 2+ days
   and pay impound storage. Unpaid fines are sat out at $150 a day.
+- **Masks and blackout gear.** Riverside Army Surplus sells a black ski mask
+  (Vortex, a made-up brand), a bandana and all-black clothes, or the whole
+  blackout fit as a set. Pull the mask down and up with **V** (or the MASK
+  button on a phone). A crime done in a mask and all black, especially at
+  night, often can't be tied to you: no warrant, less heat, and patrols
+  can't match your face. Plates still give you away. Walking around masked
+  for no reason gets you stopped and questioned, and with a warrant that
+  stop is an arrest.
 - **Life stuff.** A big city with day/night and weather, traffic that stops
   at signals, pedestrians, fuel, gas prices, insurance, repairs, food and
   energy, clothes, properties with garage space, a rideshare app, a bank

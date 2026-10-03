@@ -11,11 +11,12 @@ import { buildSpec } from '../sim/powertrain.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { installPart, pickColorFor } from './garage.js';
 import { audio } from '../core/audio.js';
+import { PART_ICONS } from '../data/partInfo.js';
+import { openPartProfile } from './partProfile.js';
 
 const PERF_CATS = ['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'ecu', 'transmission', 'clutch', 'diff', 'suspension', 'brakes', 'tires', 'weight', 'nitrous', 'twostep'];
 const VIS_CATS = ['wheels', 'paint', 'tint', 'spoiler', 'kit', 'frontBumper', 'rearBumper', 'skirts', 'hood', 'exhaustTips', 'headlights', 'taillights', 'decal', 'neon', 'interior'];
-const ICONS = { engine: '⚙', turbo: '🌀', supercharger: '🔩', intake: '🌬', exhaust: '💨', intercooler: '❄', fuel: '⛽', ecu: '💻', transmission: '⚙', clutch: '◎', diff: '⊕', suspension: '⇕', brakes: '⛔', tires: '◯', weight: '⚖', nitrous: '🧪', twostep: '🔥',
-  wheels: '◉', paint: '🎨', tint: '▦', spoiler: '⎺', kit: '▭', frontBumper: '▔', rearBumper: '▁', skirts: '═', hood: '▱', exhaustTips: '◍', headlights: '💡', taillights: '🔴', decal: '✦', neon: '✺', interior: '💺' };
+const ICONS = PART_ICONS;
 
 const view = { tab: 'shop', cat: 'turbo', brand: '', q: '', fitOnly: true, sort: 'pop' };
 
@@ -115,8 +116,8 @@ function renderShop(body, h, s, car, cats, counts, store, app) {
         const eff = (gain ? `${gain.delta >= 0 ? '+' : ''}${gain.delta} hp${gain.limited ? ' (fuel-limited!)' : ''}` : effectText(p, car)) + (gain && p.cat === 'exhaust' ? ` · ${effectText(p, car)}` : '');
         const isOn = installed.has(p.id);
         const price = Math.round(p.price * mult);
-        return `<div class="li prod"><div class="prod-img">${ICONS[p.cat]}</div>
-          <div class="grow"><div class="brand">${esc(p.brand)}</div><div class="name">${esc(p.name)}</div>
+        return `<div class="li prod click-row" data-action="profile" data-id="${p.id}"><div class="prod-img">${ICONS[p.cat]}</div>
+          <div class="grow"><div class="brand">${esc(p.brand)}</div><div class="name">${esc(p.name)} <i class="pp-i">i</i></div>
             <div class="row small" style="gap:6px;margin-top:2px">${p.visual ? '' : `<span class="stage stage-${p.stage}">STAGE ${p.stage}</span>`}${eff ? `<span class="${gain && gain.delta > 0 ? 'good' : 'muted'}">${esc(eff)}</span>` : ''}
             <span class="muted">· ${p.labor}h install</span>${!ok ? `<span class="bad">· ${esc(fitNote(p, m))}</span>` : ''}${isOn ? '<span class="tag tag-green">Installed</span>' : ''}</div></div>
           <div style="text-align:right"><div class="price" style="font-family:var(--head);font-size:20px;font-weight:700">${fmtMoney(price)}</div>
@@ -131,6 +132,7 @@ function renderShop(body, h, s, car, cats, counts, store, app) {
   body.querySelector('[data-sort]').onchange = e => { view.sort = e.target.value; h.refresh(); };
   const fit = body.querySelector('[data-fit]'); if (fit) fit.onchange = () => { view.fitOnly = fit.checked; h.refresh(); };
   bind(body, {
+    profile: d => openPartProfile({ pid: d.id, car }),
     cat: d => { view.cat = d.c; view.q = ''; view.brand = ''; h.refresh(); body.querySelector('.shop-main')?.scrollTo(0, 0); },
     clearq: () => { view.q = ''; h.refresh(); },
     add: d => { s.cart.push(d.id); audio.buy(); toast(`Added ${ITEM_BY_ID[d.id].brand} ${ITEM_BY_ID[d.id].name}`, 'good'); h.refresh(); },
@@ -187,5 +189,6 @@ function renderOrders(body, h, s) {
 }
 
 function renderBin(body, h, s) {
-  body.innerHTML = `<div class="p-body">${s.partsBin.length ? `<div class="list">${s.partsBin.map(b => { const p = ITEM_BY_ID[b.pid]; return `<div class="li"><div class="prod-img">${ICONS[p.cat]}</div><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)}</div><div class="s">${CATEGORY_NAMES[p.cat]} · ${p.labor}h install${p.labor > 6 || p.shopOnly ? ' (shop install)' : ''}</div></div></div>`; }).join('')}</div><p class="small muted">Install these from your Garage at home, or at Torque Temple / Vega Kustoms.</p>` : '<div class="empty">No uninstalled parts. Parts you order show up here instantly.</div>'}</div>`;
+  body.innerHTML = `<div class="p-body">${s.partsBin.length ? `<div class="list">${s.partsBin.map(b => { const p = ITEM_BY_ID[b.pid]; return `<div class="li click-row" data-action="profile" data-id="${p.id}"><div class="prod-img">${ICONS[p.cat]}</div><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)} <i class="pp-i">i</i></div><div class="s">${CATEGORY_NAMES[p.cat]} · ${p.labor}h install${p.labor > 6 || p.shopOnly ? ' (shop install)' : ''}</div></div></div>`; }).join('')}</div><p class="small muted">Install these from your Garage at home, or at Torque Temple / Vega Kustoms.</p>` : '<div class="empty">No uninstalled parts. Parts you order show up here instantly.</div>'}</div>`;
+  bind(body, { profile: d => openPartProfile({ pid: d.id, car: activeCar(s) }) });
 }
