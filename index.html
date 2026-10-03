@@ -17,6 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="img/loading.webp" type="image/webp">
 <link rel="stylesheet" href="css/main.css">
 <link rel="stylesheet" href="css/touch.css">
 </head>
@@ -29,10 +30,20 @@
   <div id="modals"></div>
   <div id="toasts"></div>
   <div id="boot" class="boot">
-    <div class="boot-logo">ROLL <span>FOR</span> GLORY</div>
-    <div class="boot-msg" id="boot-msg">Loading Port Solace…</div>
+    <img class="boot-art" src="img/loading.webp" alt="Murda Worth Street Racing" fetchpriority="high" decoding="async">
+    <div class="boot-bottom">
+      <div class="boot-bar"><i id="boot-fill"></i></div>
+      <div class="boot-msg" id="boot-msg">Loading Port Solace…</div>
+    </div>
   </div>
   <noscript><div class="boot"><div class="boot-msg">Murda Worth Street Racing needs JavaScript turned on.</div></div></noscript>
+  <script>
+    // Ease the loading bar toward 90% while the game's modules download; boot() fills the rest.
+    (function () {
+      var f = document.getElementById('boot-fill'), w = 0;
+      window.__bootTick = setInterval(function () { w += (90 - w) * 0.07; f.style.width = w + '%'; }, 100);
+    })();
+  </script>
   <script type="module" src="js/main.js"></script>
   <script>
     // Opening index.html straight off disk blocks ES modules. Say so instead
