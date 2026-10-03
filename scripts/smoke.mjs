@@ -258,7 +258,8 @@ await step('street races: 1v1 for cash, pink slips, time trial', async () => {
   await p.keyboard.press('Enter'); await p.waitForSelector('.p-head h1:has-text("Sundance Square Sprint")');
   await p.click('[data-action=pick] >> nth=0');
   await p.evaluate(() => { const r = document.querySelector('[data-wager]'); r.value = 200; r.oninput(); });
-  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  // story steps pay out for beating some racers (Tiny: $300), so keep the story out of the payout check
+  const cash0 = await p.evaluate(() => { const s = window.__rfg.game.s; window.__storyWas = s.story.enabled; s.story.enabled = false; return s.cash + s.bank; });
   await p.click('text=Line up');
   // countdown: the car is held on the grid, the rival is beside you
   await p.waitForTimeout(1200); await snap('21-street-countdown');
@@ -269,7 +270,7 @@ await step('street races: 1v1 for cash, pink slips, time trial', async () => {
   await snap('22-street-race');
   await runIt();
   await p.waitForSelector('.p-head h1:has-text("YOU WIN")'); await snap('23-street-win');
-  const won = await p.evaluate(() => ({ money: window.__rfg.game.s.cash + window.__rfg.game.s.bank, best: window.__rfg.game.s.streetRecords?.sr_sundance, hud: !!document.querySelector('.sr-hud') }));
+  const won = await p.evaluate(() => ({ story: (window.__rfg.game.s.story.enabled = window.__storyWas), money: window.__rfg.game.s.cash + window.__rfg.game.s.bank, best: window.__rfg.game.s.streetRecords?.sr_sundance, hud: !!document.querySelector('.sr-hud') }));
   if (won.money !== cash0 + 200 || !won.best || won.hud) throw new Error('cash race payout wrong ' + JSON.stringify({ cash0, ...won }));
   await p.click('text=Back to the street');
   // pink slips, on a second car the rival's own model: lose it and it's gone
