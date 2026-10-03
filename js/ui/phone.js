@@ -89,7 +89,7 @@ RENDER.ocrew = renderOcrew;
 // ---------------- messages ----------------
 RENDER.messages = (scr, ctx) => {
   const s = ctx.s;
-  const who = id => id === 'marketplace' ? { name: 'Marketplace', color: '#1877f2' } : id === 'partshub' ? { name: 'PartsHub', color: '#e0192e' } : id === 'insurance' ? { name: 'Solace Mutual Insurance', color: '#1f8f3a' } : id === 'hustle' ? { name: 'Hustle', color: '#0f6b4f' } : contactInfo(id);
+  const who = id => id === 'marketplace' ? { name: 'Marketplace', color: '#1877f2' } : id === 'partshub' ? { name: 'PartsHub', color: '#e0192e' } : id === 'insurance' ? { name: 'Cowtown Mutual Insurance', color: '#1f8f3a' } : id === 'hustle' ? { name: 'Hustle', color: '#0f6b4f' } : contactInfo(id);
   scr.innerHTML = head('Messages') + `<div class="app-body">${s.messages.length ? s.messages.map(m => {
     const w = who(m.from);
     let action = '';
@@ -167,12 +167,12 @@ RENDER.bank = (scr, ctx) => {
   const s = ctx.s;
   const car = activeCar(s);
   const ins = Math.round(40 + s.cars.reduce((a, c) => a + carValue(c), 0) * 0.0022);
-  scr.innerHTML = head('Solace Credit Union') + `<div class="app-body">
+  scr.innerHTML = head('Cowtown Credit Union') + `<div class="app-body">
     <div class="stats-row"><div><div class="stat-lbl">Cash</div><div class="stat-big">${fmtMoney(s.cash)}</div></div><div><div class="stat-lbl">Checking</div><div class="stat-big">${fmtMoney(s.bank)}</div></div></div>
     <div class="row" style="margin:10px 0"><button class="btn btn-sm" data-action="dep">Deposit</button><button class="btn btn-sm" data-action="wd">Withdraw</button></div>
     <div class="stats-row"><div><div class="stat-lbl">Earned</div><b class="good">${fmtMoney(s.stats.earnings)}</b></div><div><div class="stat-lbl">Spent</div><b class="bad">${fmtMoney(s.stats.expenses)}</b></div><div><div class="stat-lbl">Net worth</div><b>${fmtMoney(s.cash + s.bank + s.cars.reduce((a, c) => a + carValue(c), 0))}</b></div></div>
     <div class="section-title">Insurance</div>
-    <div class="li"><div class="grow"><div class="t">Solace Mutual — Full coverage</div><div class="s">${fmtMoney(ins)}/week. Covers 70% of repairs and 25% of police impound fines.</div></div>
+    <div class="li"><div class="grow"><div class="t">Cowtown Mutual — Full coverage</div><div class="s">${fmtMoney(ins)}/week. Covers 70% of repairs and 25% of police impound fines.</div></div>
       <button class="btn btn-sm ${s.insurance ? '' : 'btn-primary'}" data-action="ins">${s.insurance ? 'Cancel' : 'Buy'}</button></div>
     <div class="section-title">Roadside</div>
     <div class="li"><div class="grow"><div class="t">Gas delivery (2 gal)</div><div class="s">$45 — when you're stranded</div></div><button class="btn btn-sm" data-action="gas" ${car ? '' : 'disabled'}>Call</button></div>
@@ -197,7 +197,7 @@ RENDER.bank = (scr, ctx) => {
 // ---------------- social ----------------
 const SPONSORS = [
   { at: 800, name: 'Volt Energy Drink', perWin: 150, days: 10, contact: 'kingpin' },
-  { at: 3000, name: 'Port Solace Tire & Wheel', perWin: 450, days: 14, contact: 'kingpin' },
+  { at: 3000, name: 'Cowtown Tire & Wheel', perWin: 450, days: 14, contact: 'kingpin' },
   { at: 12000, name: 'Nitro Brew Coffee Co.', perWin: 1200, days: 14, contact: 'kingpin' },
   { at: 50000, name: 'Apex Lubricants', perWin: 4500, days: 21, contact: 'kingpin' },
 ];

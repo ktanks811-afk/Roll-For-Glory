@@ -1,4 +1,4 @@
-// Port Solace PD. Patrol cars drive the streets like traffic. When they see
+// Fort Worth PD. Patrol cars drive the streets like traffic. When they see
 // you break the law, heat rises; pursuit units drive in from the precincts
 // and the edge of the area (nobody teleports next to you), search where you
 // were last seen, set roadblocks and spike strips at level 4 and bring the
@@ -16,6 +16,8 @@ const INTERCEPTORS = ['dodge_charger_srt_hellcat_redeye_2021', 'ford_mustang_gt_
 const UNIT_COUNT = [0, 1, 2, 4, 6, 8];
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// Air One's orbit radius and the ring it never comes inside, in metres.
+const HELI_ORBIT = 32, HELI_KEEPOUT = 24;
 
 let unitSeq = 12;
 
@@ -195,19 +197,43 @@ export class PoliceSystem {
     this.blocks = this.blocks.filter(b => Math.hypot(b.x - p.x, b.z - p.z) < 700 && (b.life -= dt) > 0);
 
     // ---- helicopter (level 5) ----
+    // Air One circles the target like a real pursuit helicopter: it holds an
+    // orbit around the player (or the search area) and keeps its spotlight on
+    // the target, but never flies over the car and hides it from view.
     if (lvl >= 5 && this.phase !== 'none' && !this.heli) {
       const ep = this.entryPoint(p.x, p.z);
-      this.heli = { x: ep.x, z: ep.z, rot: 0 };
+      this.heli = { x: ep.x, z: ep.z, rot: 0, spot: { x: p.x, z: p.z } };
       w.hud.radio('Air One overhead. Spotlight on.');
     }
     if (this.heli) {
-      const tx = this.phase === 'chase' && this.lastSeen ? p.x : (this.lastSeen?.x ?? p.x) + Math.cos(performance.now() / 3000) * this.searchR * 0.6;
-      const tz = this.phase === 'chase' && this.lastSeen ? p.z : (this.lastSeen?.z ?? p.z) + Math.sin(performance.now() / 3000) * this.searchR * 0.6;
-      const dx = tx - this.heli.x, dz = tz - this.heli.z, d = Math.hypot(dx, dz);
-      const sp = Math.min(d, 42 * dt);
-      if (d > 0.1) { this.heli.x += dx / d * sp; this.heli.z += dz / d * sp; }
-      this.heli.rot += dt * 25;
-      if (this.phase === 'none' || lvl < 5) { this.heli.leave = (this.heli.leave || 0) + dt; if (this.heli.leave > 6) this.heli = null; }
+      const hl = this.heli, chase = this.phase === 'chase' && this.lastSeen;
+      const t = performance.now() / 3000;
+      // where the light should be: on the car in a chase, sweeping the search area otherwise
+      const sx = chase ? p.x : (this.lastSeen?.x ?? p.x) + Math.cos(t) * this.searchR * 0.6;
+      const sz = chase ? p.z : (this.lastSeen?.z ?? p.z) + Math.sin(t) * this.searchR * 0.6;
+      const sd = Math.hypot(sx - hl.spot.x, sz - hl.spot.z), ssp = Math.min(sd, 60 * dt);
+      if (sd > 0.1) { hl.spot.x += (sx - hl.spot.x) / sd * ssp; hl.spot.z += (sz - hl.spot.z) / sd * ssp; }
+      // the orbit is centred on the player in a chase, on the light while searching
+      const cx = chase ? p.x : hl.spot.x, cz = chase ? p.z : hl.spot.z;
+      // fly by heading: close in (or back off) to the orbit radius while
+      // circling, plus the car's own motion so it keeps pace without ever
+      // cutting across the middle of the circle
+      const ox0 = hl.x - cx, oz0 = hl.z - cz, pd = Math.hypot(ox0, oz0) || 0.01;
+      const rx = ox0 / pd, rz = oz0 / pd;                  // outward from the centre
+      const vr = clamp((HELI_ORBIT - pd) * 1.5, -200, 30);  // radial correction
+      const vt = HELI_ORBIT * 0.35;                         // slow circle
+      let vx = rx * vr - rz * vt + (chase ? p.vx || 0 : 0), vz = rz * vr + rx * vt + (chase ? p.vz || 0 : 0);
+      const v = Math.hypot(vx, vz), vmax = Math.max(42, (p.speed || 0) + 25);
+      if (v > vmax) { vx *= vmax / v; vz *= vmax / v; }
+      hl.x += vx * dt; hl.z += vz * dt;
+      // hard rule: never closer to the player than the keep-out ring
+      const ox = hl.x - p.x, oz = hl.z - p.z, od = Math.hypot(ox, oz);
+      if (od < HELI_KEEPOUT) {
+        const a = od > 0.01 ? Math.atan2(oz, ox) : 0;
+        hl.x = p.x + Math.cos(a) * HELI_KEEPOUT; hl.z = p.z + Math.sin(a) * HELI_KEEPOUT;
+      }
+      hl.rot += dt * 25;
+      if (this.phase === 'none' || lvl < 5) { hl.leave = (hl.leave || 0) + dt; if (hl.leave > 6) this.heli = null; }
     }
 
     // ---- chatter ----
@@ -256,7 +282,7 @@ export class PoliceSystem {
   startChase(w, force = false) {
     if (this.phase === 'none') {
       this.phase = force || this.level >= 2 ? 'chase' : 'notice';
-      w.hud.radio(this.phase === 'notice' ? 'PSPD: Pull over! (Stop to take the ticket, or run.)' : 'Pursuit initiated.');
+      w.hud.radio(this.phase === 'notice' ? 'FWPD: Pull over! (Stop to take the ticket, or run.)' : 'Pursuit initiated.');
       w.audio.siren(true, 0.6);
       w.audio.music('pursuit');
     } else {

@@ -1,4 +1,4 @@
-// Every "press E" location in Port Solace.
+// Every "press E" location in Fort Worth.
 
 import { openPanel, closePanel, closeAllPanels, bind, esc, toast, modal, confirm, bar } from './dom.js';
 import { game, fmtMoney, spend, earn, activeCar, carSpec, carValue, modelOf, newCar, garageCapacity, tierOf, isNight, hourOf, needsPremium, tankGallons, getCar, carMetrics } from '../core/state.js';
@@ -74,7 +74,7 @@ function homeScreen(loc, app, s) {
         s.player.energy = 100;
         if (app.world) { app.world.police.s.heat = Math.max(0, app.world.police.s.heat - mins / 60 * 0.5); }
         saveGame('auto', true);
-        toast(to === 8 ? 'Good morning.' : 'Night falls on Port Solace.', 'info');
+        toast(to === 8 ? 'Good morning.' : 'Night falls on Fort Worth.', 'info');
         h.refresh();
       },
       wardrobe: () => wardrobe(app, s),
@@ -340,7 +340,7 @@ function food(loc, app, s) {
         if (f.item) s.inventory[f.item] = (s.inventory[f.item] || 0) + 1;
         s.player.energy = Math.min(100, s.player.energy + f.energy);
         advanceTime(s, 20);
-        if (Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Glory Highway on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
+        if (Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Loop 820 on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
         h.refresh();
       },
     });
@@ -382,7 +382,7 @@ function police(loc, app, s) {
     const w = app.world;
     const heat = s.heat;
     const fine = Math.round(heat * 350 / 10) * 10;
-    root.innerHTML = head(loc.name, 'Port Solace Police Department') + `<div class="p-body" style="max-width:640px">
+    root.innerHTML = head(loc.name, 'Fort Worth Police Department') + `<div class="p-body" style="max-width:640px">
       ${w?.police.active ? '<p class="bad">You walked into a police station while they\'re looking for you. Bold.</p>' : ''}
       <div class="li"><div class="grow"><div class="t">Outstanding citations</div><div class="s">${heat > 0.05 ? `Your heat is ${heat.toFixed(1)}. Paying your tickets clears it.` : 'You\'re clean.'}</div></div>
         <button class="btn btn-sm btn-primary" data-action="pay" ${heat > 0.05 && !w?.police.active ? '' : 'disabled'}>Pay ${fmtMoney(fine)}</button></div>
@@ -390,7 +390,7 @@ function police(loc, app, s) {
       <p class="muted">"${s.stats.pursuitsEscaped > 2 ? `${esc(s.player.name)}. You've been busy. I've got a whiteboard now. You're on it.` : 'Street racing kills people. Take it to Ironline Dragway — it\'s legal there.'}"</p></div>`;
     bind(root, {
       close: () => h.close(),
-      pay: () => { if (spend(s, fine, 'PSPD citations')) { s.heat = 0; toast('Record cleared', 'good'); h.refresh(); } },
+      pay: () => { if (spend(s, fine, 'FWPD citations')) { s.heat = 0; toast('Record cleared', 'good'); h.refresh(); } },
     });
   });
 }

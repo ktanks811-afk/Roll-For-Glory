@@ -61,7 +61,7 @@ export function openOnline(app) {
     const busy = st === 'connecting';
     const counts = ui.counts;
     const full = id => counts && counts[id] != null && counts[id] >= SERVER_CAP;
-    root.innerHTML = `<div class="p-head"><h1>Online · Servers<small>Pick a server and cruise Port Solace with other players</small></h1><button class="btn x" data-action="close">×</button></div>
+    root.innerHTML = `<div class="p-head"><h1>Online · Servers<small>Pick a server and cruise Fort Worth with other players</small></h1><button class="btn x" data-action="close">×</button></div>
       <div class="p-body" style="max-width:640px;margin:0 auto">
         <p class="small muted">Everyone on a server shares the map live — cars, horns, flames and chat. The police are still on patrol. Your career, money and car come with you. Playing as <b>${esc(s.player.name)}</b>${activeCar(s) ? ` in your ${esc(carName(modelOf(activeCar(s)), activeCar(s).year))}` : ''}; others only see your name, car and position.</p>
         ${st === 'error' ? `<p class="small" style="color:#ff6270">⚠ ${esc(online.error)}. ${/full/.test(online.error) ? 'Pick another server.' : 'Check your connection and try again.'}</p>` : ''}

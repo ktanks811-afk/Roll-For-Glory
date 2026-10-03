@@ -495,7 +495,7 @@ export class World {
     fine += ticketOnly ? 0 : this.combat.onBusted(record);
     const insured = s.insurance;
     const total = Math.round(fine * (insured && !ticketOnly ? 0.75 : 1));
-    if (!spend(s, total, ticketOnly ? 'PSPD traffic citation' : 'PSPD fines + impound')) {
+    if (!spend(s, total, ticketOnly ? 'FWPD traffic citation' : 'FWPD fines + impound')) {
       s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0;
     }
     if (!ticketOnly) { addRep(s, -60, 'Busted'); s.stats.busted++; }
@@ -528,7 +528,7 @@ export class World {
       if (Math.random() < chance) { total = 0; note = 'The officer sighs. "Just a warning this time. Get that fixed."'; }
       else { total = Math.round(total * 1.4); note = '"Now you\'re getting every violation I saw." Fines go up 40%.'; }
     }
-    if (total > 0 && !spend(s, total, 'PSPD traffic citation')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
+    if (total > 0 && !spend(s, total, 'FWPD traffic citation')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
     this.ui.modal(total ? 'Citation issued' : 'Warning', `<p>${total ? `You paid <b>${fmtMoney(total)}</b>. ` : ''}${esc(note || '"Drive safe. Keep it under control."')}</p>`);
     emit('busted', { fine: total, ticket: true });
   }
@@ -801,7 +801,7 @@ export class World {
           glows.push({ x: bx, z: bz, r: 4, color: 'rgba(255,0,0,1)', a: 0.8 });
         }
       }
-      if (this.police.heli) blobs.push({ x: this.police.heli.x, z: this.police.heli.z, r: 22, a: 1 });
+      if (this.police.heli) blobs.push({ x: this.police.heli.spot.x, z: this.police.heli.spot.z, r: 22, a: 1 });
       for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       drawLighting(ctx, cam, night, this.map.lights, { cars: carsLit, glows, blobs });
@@ -817,10 +817,16 @@ export class World {
       ctx.restore();
     }
     if (this.police.heli) {
+      // spotlight: a faint beam from Air One down to the pool of light on the target
+      const hl = this.police.heli, hx = cam.sx(hl.x), hy = cam.sy(hl.z), lx = cam.sx(hl.spot.x), ly = cam.sy(hl.spot.z), lr = 20 * cam.zoom;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      const g = ctx.createRadialGradient(cam.sx(this.police.heli.x), cam.sy(this.police.heli.z), 0, cam.sx(this.police.heli.x), cam.sy(this.police.heli.z), 20 * cam.zoom);
+      const ang = Math.atan2(ly - hy, lx - hx), nx = -Math.sin(ang), ny = Math.cos(ang);
+      const beam = ctx.createLinearGradient(hx, hy, lx, ly);
+      beam.addColorStop(0, 'rgba(255,255,230,0.12)'); beam.addColorStop(1, 'rgba(255,255,230,0.03)');
+      ctx.fillStyle = beam; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(lx + nx * lr * 0.6, ly + ny * lr * 0.6); ctx.lineTo(lx - nx * lr * 0.6, ly - ny * lr * 0.6); ctx.closePath(); ctx.fill();
+      const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
       g.addColorStop(0, 'rgba(255,255,230,0.25)'); g.addColorStop(1, 'rgba(255,255,230,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cam.sx(this.police.heli.x), cam.sy(this.police.heli.z), 20 * cam.zoom, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, lr, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
     // search zone
