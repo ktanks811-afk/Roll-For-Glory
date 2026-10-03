@@ -605,12 +605,19 @@ await step('carjacking', async () => {
 });
 
 await step('save + reload', async () => {
+  // saved while sitting in the car, so loading it back must start the engine sound
+  await p.evaluate(() => { const w = window.__rfg.app.world; if (!w.inCar) { w.vehicle.vx = w.vehicle.vz = 0; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; } });
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) { await key('KeyF'); await p.waitForTimeout(200); }
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get in the car before saving');
   await p.evaluate(async () => { const { saveGame } = await import('./js/core/save.js'); saveGame('slot1'); });
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(500);
   await p.click('.menu button:has-text("Continue")');
   await p.waitForTimeout(800);
   const ok = await p.evaluate(() => window.__rfg.game.s?.player.name);
   if (ok !== 'Tester') throw new Error('save did not load');
+  const w = await p.evaluate(() => { const w = window.__rfg.app.world; return { inCar: w.inCar, engine: !!w.engine }; });
+  if (w.inCar && !w.engine) throw new Error('loaded a save sat in the car but the engine is silent');
+  if (!w.inCar) throw new Error('save made in the car loaded on foot');
 });
 
 // ---------------- online free roam (two tabs, same-browser transport) ----------------
