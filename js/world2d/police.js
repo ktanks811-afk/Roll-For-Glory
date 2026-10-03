@@ -1,4 +1,4 @@
-// Port Solace PD. Patrol cars drive the streets like traffic. When they see
+// Fort Worth PD. Patrol cars drive the streets like traffic. When they see
 // you break the law, heat rises; pursuit units drive in from the precincts
 // and the edge of the area (nobody teleports next to you), search where you
 // were last seen, set roadblocks and spike strips at level 4 and bring the
@@ -256,7 +256,7 @@ export class PoliceSystem {
   startChase(w, force = false) {
     if (this.phase === 'none') {
       this.phase = force || this.level >= 2 ? 'chase' : 'notice';
-      w.hud.radio(this.phase === 'notice' ? 'PSPD: Pull over! (Stop to take the ticket, or run.)' : 'Pursuit initiated.');
+      w.hud.radio(this.phase === 'notice' ? 'FWPD: Pull over! (Stop to take the ticket, or run.)' : 'Pursuit initiated.');
       w.audio.siren(true, 0.6);
       w.audio.music('pursuit');
     } else {

@@ -132,7 +132,7 @@ export function deposit(s, amount) {
   amount = Math.min(Math.round(amount), s.cash);
   if (amount <= 0) return;
   s.cash -= amount; s.bank += amount;
-  log(s, 'Deposit to Solace Credit Union', 0);
+  log(s, 'Deposit to Cowtown Credit Union', 0);
 }
 export function withdraw(s, amount) {
   amount = Math.min(Math.round(amount), s.bank);

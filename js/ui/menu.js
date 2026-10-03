@@ -90,7 +90,7 @@ export function showTitle(app) {
       <button data-action="crew" ${need ? 'disabled' : ''}>Crew</button>
       <button data-action="settings">Settings</button>
     </nav>
-    <div class="title-foot">A fan-made street racing sim. Real car and parts brand names are used for flavor only — no affiliation or endorsement. Port Solace and its people are fictional.</div>
+    <div class="title-foot">A fan-made street racing sim. Real car and parts brand names are used for flavor only — no affiliation or endorsement. The city is a loose take on Fort Worth, TX; its people and businesses are fictional.</div>
   </div>`);
   root.appendChild(t);
   const resume = (then) => {

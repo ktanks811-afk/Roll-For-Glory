@@ -58,7 +58,7 @@ export function initStory() {
 
 export function beginStory(s) {
   if (s.story.enabled) startStep(s);
-  else sendMessage(s, 'jojo', 'Welcome to Port Solace! Free roam mode — no story, just you, your phone and the street. Check Marketplace for a first car.');
+  else sendMessage(s, 'jojo', 'Welcome to Fort Worth! Free roam mode — no story, just you, your phone and the street. Check Marketplace for a first car.');
 }
 
 // ---------------- racer challenges ----------------

@@ -1,4 +1,4 @@
-// Every character in Port Solace. Racers carry a full build so the race sim
+// Every character in Fort Worth. Racers carry a full build so the race sim
 // treats them exactly like the player; nothing about an opponent is faked.
 
 // Quick build presets: level per part. `focus` tilts which parts get love.
@@ -83,7 +83,7 @@ export const RACERS = [
     personality: 'Velvet Ghosts scout. Bored by everything except top speed.',
     lines: { intro: "The Ghosts are curious about you. That's rare.",
       greet: "Ciao.", theyWon: "S54. Eight-thousand rpm. Math.", theyLost: "Interesting. I'll tell Anton.",
-      rematch: "Glory Highway. Sixty roll.", taunt: "Did it come with the spoiler?" } },
+      rematch: "Loop 820. Sixty roll.", taunt: "Did it come with the spoiler?" } },
   { id: 'glitch', name: 'Ty Bishop', nick: 'Glitch', tier: 2, crew: null, color: '#1b4fc4',
     car: { model: 'mitsubishi_lancer_evolution_ix_mr_2006', year: 2006, parts: build(2, 'launch', { turbo: 2 }), visual: { paint: '#1b4fc4', wheels: 'mesh', spoiler: 'gt', decal: 'number' } },
     skill: 0.7, style: 'drag', focus: 'AWD launch specialist', money: 8000, rep: 2000,
@@ -127,7 +127,7 @@ export const RACERS = [
     personality: 'Dust Devils boss. Races barefoot. Nobody has asked why.',
     lines: { intro: "You want the desert, you go through me.",
       greet: "Howdy.", theyWon: "Eat my dust. Literally, it's everywhere.", theyLost: "Well I'll be.",
-      rematch: "Dust Line Road. Bring water.", taunt: "Nice paint. Shame about the sand." } },
+      rematch: "Chisholm Trail Pkwy. Bring water.", taunt: "Nice paint. Shame about the sand." } },
   { id: 'redline', name: 'Sienna Volkov', nick: 'Redline', tier: 3, crew: null, color: '#24262b',
     car: { model: 'dodge_charger_srt_hellcat_redeye_2021', year: 2022, parts: build(3, 'power', { supercharger: 2, nitrous: 1 }), visual: { paint: '#24262b', wheels: 'forged', tint: 'limo', decal: 'side', decalColor: '#c41b1b' } },
     skill: 0.74, style: 'roll', focus: 'Supercharged sedan', money: 45000, rep: 7000,
@@ -175,10 +175,10 @@ export const RACER_BY_ID = Object.fromEntries(RACERS.map(r => [r.id, r]));
 export const PEOPLE = {
   jojo:    { name: 'Jojo Mendez', role: 'Friend', color: '#13b3c4', bio: 'Your oldest friend. Knows everyone, owes most of them money.' },
   sal:     { name: 'Sal Marchetti', role: "Dealer · Rusty's Used Autos", color: '#c8b98a', bio: 'Sells cars that mostly run. Honest about the "mostly".' },
-  rosa:    { name: 'Rosa Vega', role: 'Mechanic · Torque Temple', color: '#e8641a', bio: 'Best wrench in Port Solace. Will not build you something stupid. Will build you something fast.' },
+  rosa:    { name: 'Rosa Vega', role: 'Mechanic · Torque Temple', color: '#e8641a', bio: 'Best wrench in Fort Worth. Will not build you something stupid. Will build you something fast.' },
   manny:   { name: 'Manny Vega', role: 'Body & Paint · Vega Kustoms', color: '#d12a8a', bio: "Rosa's cousin. Paint, wheels, kits — if it shows, Manny does it." },
   kingpin: { name: 'Dre Holloway', role: 'Organizer · "Kingpin"', color: '#e8c21a', bio: 'Runs the meets. If there\'s a race worth watching, Dre set it up.' },
-  brenner: { name: 'Sgt. Hal Brenner', role: 'PSPD Street Racing Task Force', color: '#1b4fc4', bio: 'Twenty years on the job. Has a whiteboard with your name on it now.' },
+  brenner: { name: 'Sgt. Hal Brenner', role: 'FWPD Street Racing Task Force', color: '#1b4fc4', bio: 'Twenty years on the job. Has a whiteboard with your name on it now.' },
   priya:   { name: 'Priya Shah', role: 'Agent · Bayline Realty', color: '#1f8f3a', bio: 'Sells garages with houses attached.' },
   zed:     { name: 'Zed', role: 'Parts Vendor', color: '#6b2bd1', bio: 'Shows up at meets with a van. Don\'t ask where the parts come from — they\'re just discounted, okay?' },
 };

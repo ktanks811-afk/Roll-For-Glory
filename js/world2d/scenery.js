@@ -1,8 +1,9 @@
-// Fills the empty ground around Port Solace: shrubs, hedges, pools and parked
+// Fills the empty ground around Fort Worth and gives it its landmarks:
+// Sundance Square, the courthouse, the Stockyards (pens, coliseum, honky-tonk)
+// and the Trinity River with its trail. Plus shrubs, hedges, pools and parked
 // cars inside the city blocks, street trees, a ring of buildings along the
-// outer streets, suburbs between the city and the highway, farms north of the
-// highway, a beach neighbourhood on the Eastern Shore and a little desert town
-// on Dust Line Road. It has its own seed, so the original city stays exactly
+// outer streets, suburbs between the city and Loop 820, farms north of the
+// loop, a Lake Worth beach neighbourhood and a little town on Chisholm Trail Pkwy. It has its own seed, so the original city stays exactly
 // as it was. Nothing new is placed on a road, a race start or a business.
 //
 // Side streets ("lanes") are drawn as lots: you can drive on them, but they
@@ -21,12 +22,40 @@ const SHRUB = ['#2f5a2a', '#3a6a30', '#2a4f26', '#44702f', '#355f3a'];
 const FLOWERS = ['#d12a8a', '#e8c21a', '#e8641a', '#f2f2f2', '#a01aff', '#ff4a5a'];
 const CROPS = ['#55682e', '#6b7a34', '#7d7a3a', '#4a6a2c', '#8a7a3e', '#5e7238'];
 
-export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, Grid, onBackroad }) {
+const BRICK = ['#8a3b2a', '#7a4a32', '#9a5a3a', '#6e3a2a', '#a0583a', '#8a6a4a'];
+
+export function addScenery({ roads, buildings, lots, trees, rocks, props, water, rng, Grid, onBackroad }) {
   const rnd = rng;
   const R = (a, b) => a + rnd() * (b - a);
   const pick = arr => arr[Math.floor(rnd() * arr.length)];
   const overlap = (a, b, pad = 0) => a.x - pad < b.x + b.w && a.x + a.w + pad > b.x && a.z - pad < b.z + b.d && a.z + a.d + pad > b.z;
   const inside = (x, z, r) => x >= r.x && x <= r.x + r.w && z >= r.z && z <= r.z + r.d;
+
+  // ---------------- Fort Worth landmarks: make room in their blocks ----------------
+  const blockRect = (i, j) => ({ x: GRID[i] + 14, z: GRID[j] + 14, w: 122, d: 122 });
+  const SQUARE = blockRect(6, 5), COURT = blockRect(5, 4), PENS = blockRect(6, 1), COLISEUM = blockRect(6, 2), HONKY = blockRect(7, 1);
+  for (const r of [SQUARE, COURT, PENS, COLISEUM, HONKY]) {
+    const inR = o => o.x >= r.x - 1 && o.z >= r.z - 1 && o.x + (o.w || 0) <= r.x + r.w + 1 && o.z + (o.d || 0) <= r.z + r.d + 1;
+    keep(buildings, b => b.loc || !inR(b)); keep(lots, l => !inR(l)); keep(trees, t => !inR(t));
+  }
+  // the Stockyards are low brick and timber, not mid-rises
+  for (const b of buildings) {
+    if (b.loc || districtAt(b.x + b.w / 2, b.z + b.d / 2) !== 'Stockyards') continue;
+    if (b.kind === 'midrise' || b.kind === 'store' || b.kind === 'tower') { b.color = pick(BRICK); b.h = Math.min(b.h, R(7, 15)); }
+  }
+  // Trinity River: north of Loop 820, joining the West Fork, bridges where the farm roads cross
+  const TRINITY = { x: RIVER_X + 45, z: -1745, w: 2650 - RIVER_X - 45, d: 60 };
+  const riverOut = [];
+  {
+    const gaps = [-1080, 540];
+    let x0 = TRINITY.x;
+    for (const gx of [...gaps, null]) {
+      const x1 = gx == null ? TRINITY.x + TRINITY.w : gx - 5;
+      const w = { x: x0, z: TRINITY.z, w: x1 - x0, d: TRINITY.d, kind: 'river' };
+      water.push(w); riverOut.push(w);
+      if (gx != null) { buildings.push({ x: gx - 7, z: TRINITY.z - 4, w: 14, d: TRINITY.d + 8, h: 1, color: '#8a8b8f', kind: 'pier', noCollide: true }); x0 = gx + 5; }
+    }
+  }
 
   // ---------------- what nothing may touch ----------------
   const roadGrid = new Grid(100);
@@ -46,6 +75,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
     { x: RIVER_X - 60, z: -3300, w: 120, d: 2330 },                      // river
     { x: SEA_X, z: 240, w: 2400, d: 3200 },                              // harbor / sea
     { x: TUNNEL[0] - 60, z: HWY_Z - 340, w: TUNNEL[1] - TUNNEL[0] + 120, d: 680 },   // tunnel hill
+    { x: TRINITY.x, z: TRINITY.z - 8, w: TRINITY.w, d: TRINITY.d + 16 },                 // Trinity River and its trail
   ];
   const lanes = [];   // side streets: houses and props stay off these too
   const keepGrid = new Grid(100);
@@ -60,7 +90,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
       }
     return false;
   };
-  const BR = { x: -2400, z: -720, w: 1520, d: 440 };   // Northridge Pass bounding box
+  const BR = { x: -2400, z: -720, w: 1520, d: 440 };   // Cross Timbers Pass bounding box
   const blocked = (r, pad = 0, solids = true) => {
     if (hits(roadGrid, r, pad) || hits(keepGrid, r, 0)) return true;
     if (overlap(r, BR, 30) && onBackroad(r.x + r.w / 2, r.z + r.d / 2, Math.hypot(r.w, r.d) / 2 + 7 + pad)) return true;
@@ -87,6 +117,8 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
   };
   const nearLocation = (x, z, r) => LOCATIONS.some(l => Math.hypot(l.x - x, l.z - z) < r);
 
+  landmarks();
+
   // ---------------- tidy-up: nothing grows in the sea ----------------
   const inSea = (x, z) => x > SEA_X - 4 && z > 246;
   keep(rocks, r => !(r.x + r.w > SEA_X - 4 && r.z + r.d > 246));
@@ -97,7 +129,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
   const cityLots = lots.slice();
   for (const l of cityLots) {
     if (l.kind === 'yard' && l.w < 40) backyard(l);
-    else if (l.kind === 'park') parkDetails(l);
+    else if (l.kind === 'park' && !l.lawn) parkDetails(l);
     else if (l.kind === 'parking' && !isLandmarkLot(l)) parkCars(l, 0.4);
   }
   for (const b of buildings.slice()) {
@@ -118,7 +150,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
   for (const e of roads.edges) {
     if (e.kind !== 'city' || Math.abs(e.az) > 900 || Math.abs(e.bz) > 900) continue;
     const dist = districtAt((e.ax + e.bx) / 2, (e.az + e.bz) / 2);
-    if (dist === 'Ironside Industrial' || dist === 'Harbor District') continue;
+    if (dist === 'Riverside Industrial' || dist === 'Lakeside') continue;
     const step = dist === 'Downtown' ? 18 : 24;
     for (let s = 20; s < e.len - 20; s += step) {
       for (const side of [-1, 1]) {
@@ -136,11 +168,11 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
     const from = GRID[k] + 14, to = GRID[k + 1] - 14, mid = (from + to) / 2;
     ringStrip('x', -900, -1, from, to, districtAt(mid, -950));   // north edge
     ringStrip('x', 900, 1, from, to, districtAt(mid, 950));      // south edge
-    ringStrip('z', -900, -1, from, to, 'Westbrook Residential'); // west edge
-    ringStrip('z', 900, 1, from, to, districtAt(950, mid) === 'Port Solace Harbor' ? 'Harbor District' : districtAt(940, mid));   // east edge
+    ringStrip('z', -900, -1, from, to, 'Arlington Heights'); // west edge
+    ringStrip('z', 900, 1, from, to, districtAt(950, mid) === 'Lake Worth' ? 'Lakeside' : districtAt(940, mid));   // east edge
   }
 
-  // ---------------- Glory Heights: suburbs between the city and the highway ----------------
+  // ---------------- North Side suburbs between the city and Loop 820 ----------------
   clearTrees({ x: -985, z: -1290, w: 1970, d: 305 });
   for (const c of [-1045, -1150, -1255]) {
     for (const [a, b] of [[-892, -8], [8, 892]]) {
@@ -173,7 +205,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
   // the far west, past the farms, is all forest
   for (let k = 0; k < 500; k++) { const x = R(-3250, -2700), z = R(-3250, HWY_Z - 40); if (!blocked({ x, z, w: 1, d: 1 }, 2, false)) tree(x, z, R(3, 6), 'pine'); }
 
-  // ---------------- West Hills: ranches, and cabins along Northridge Pass ----------------
+  // ---------------- West Hills: ranches, and cabins along Cross Timbers Pass ----------------
   for (let x = -3200; x < -1000; x += 200) for (let z = -950; z < 1000; z += 200) {
     const cell = { x: x + 10, z: z + 10, w: 180, d: 180 };
     if (overlap(cell, BR, 40) || blocked(cell, 0)) continue;
@@ -194,7 +226,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
     }
   }
 
-  // ---------------- Eastern Shore: beach houses, a beach and a lighthouse ----------------
+  // ---------------- Lake Worth shore: beach houses, a beach and a lighthouse ----------------
   for (const c of [-600, -150]) {
     lane({ x: 908, z: c - 4.5, w: 2620 - 908 + 4.5, d: 9 });
     houseRow('x', c, 4.5, -1, 930, 2600, { roofs: SHORE_ROOFS, depth: 34, pitch: 30 });
@@ -224,12 +256,12 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
     }
   }
 
-  // ---------------- Dust Flats: a little town on Dust Line Road ----------------
+  // ---------------- Chisholm Flats: a little town on Chisholm Trail Pkwy ----------------
   const town = [{ x: -260, z: 1780, w: 245, d: 620 }, { x: 14, z: 1985, w: 240, d: 420 }];
   for (const t of town) { keep(rocks, r => !overlap(r, t, 4)); keep(trees, tr => !inside(tr.x, tr.z, t)); }
   rebuildSolid();
   desertTown();
-  // solar farm east of Dust Line Road
+  // solar farm east of Chisholm Trail Pkwy
   for (let r = 0; r < 14; r++) for (let q = 0; q < 3; q++) {
     const p = { x: 320 + q * 110, z: 2200 + r * 18, w: 96, d: 7, h: 1.2, color: '#1d2a44', kind: 'solar' };
     if (!blocked(p, 1)) { p.fill = true; buildings.push(p); addSolid(p); }
@@ -261,7 +293,69 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
     return true;
   });
 
+  return { water: riverOut };
+
   // ================= builders =================
+
+  function landmarks() {
+    const put = b => { b.fill = true; buildings.push(b); addSolid(b); return b; };
+    // Sundance Square: brick plaza, fountain, brick buildings around the edge, cafe umbrellas
+    {
+      const r = SQUARE;
+      lot({ ...r, kind: 'plaza' });
+      put({ x: r.x + 4, z: r.z + 4, w: 40, d: 30, h: 22, color: '#8a3b2a', kind: 'midrise', label: 'Sundance Square', labelColor: '#e8c21a' });
+      put({ x: r.x + r.w - 44, z: r.z + 4, w: 40, d: 30, h: 16, color: '#9a5a3a', kind: 'midrise' });
+      put({ x: r.x + 4, z: r.z + r.d - 30, w: 34, d: 26, h: 18, color: '#7a4a32', kind: 'midrise' });
+      put({ x: r.x + r.w - 38, z: r.z + r.d - 30, w: 34, d: 26, h: 26, color: '#6e3a2a', kind: 'midrise' });
+      put({ x: r.x + r.w / 2 - 6, z: r.z + r.d / 2 - 6, w: 12, d: 12, h: 1.4, color: '#7fb8d8', kind: 'fountain', round: true });
+      for (let k = 0; k < 10; k++) {
+        const a = k / 10 * Math.PI * 2;
+        props.push({ k: 'umbrella', x: r.x + r.w / 2 + Math.cos(a) * 24, z: r.z + r.d / 2 + Math.sin(a) * 18, r: 1.6, c: pick(['#c41b1b', '#1b4fc4', '#2f6b3a', '#e8c21a']) });
+      }
+      for (let k = 0; k < 8; k++) shrub(r.x + 50 + k * 3.4, r.z + 36, 1.1);
+      for (let k = 0; k < 8; k++) shrub(r.x + 50 + k * 3.4, r.z + r.d - 36, 1.1);
+    }
+    // Tarrant County Courthouse: pink granite on a lawn
+    {
+      const r = COURT;
+      lot({ ...r, kind: 'park', lawn: true });
+      put({ x: r.x + 26, z: r.z + 30, w: 70, d: 56, h: 24, color: '#c9a68a', kind: 'landmark', label: 'Tarrant County Courthouse', labelColor: '#ffffff' });
+      put({ x: r.x + r.w / 2 - 7, z: r.z + 34, w: 14, d: 14, h: 34, color: '#d8c0a8', kind: 'dome', round: true });
+      for (let s = 6; s < r.w - 6; s += 8) { tree(r.x + s, r.z + 8, R(2.5, 3.5)); tree(r.x + s, r.z + r.d - 8, R(2.5, 3.5)); }
+    }
+    // Stockyards: cattle pens with fences, cows, a barn
+    {
+      const r = PENS;
+      lot({ ...r, kind: 'dirt' });
+      const pw = 28, pd = 36;
+      for (let a = 0; a < 4; a++) for (let b = 0; b < 3; b++) {
+        if (a === 0 && b === 0) continue;
+        const px = r.x + 3 + a * (pw + 2), pz = r.z + 3 + b * (pd + 3);
+        hedge({ x: px, z: pz, w: pw, d: 0.4, fence: true }); hedge({ x: px, z: pz + pd, w: pw, d: 0.4, fence: true });
+        hedge({ x: px, z: pz, w: 0.4, d: pd, fence: true }); hedge({ x: px + pw, z: pz, w: 0.4, d: pd - 6, fence: true });
+        const n = 3 + Math.floor(rnd() * 6);
+        for (let k = 0; k < n; k++) props.push({ k: 'cow', x: px + R(3, pw - 3), z: pz + R(3, pd - 3), r: 1.1, a: R(0, Math.PI), c: pick(['#5a3a22', '#2a2422', '#8a5a3a', '#e8e2d8', '#6a4a32']) });
+      }
+      put({ x: r.x + 4, z: r.z + 4, w: 24, d: 30, h: 9, color: '#8a2e24', kind: 'barn' });
+    }
+    // Cowtown Coliseum with its lot
+    {
+      const r = COLISEUM;
+      const pl = lot({ x: r.x, z: r.z + 66, w: r.w, d: r.d - 66, kind: 'parking' });
+      put({ x: r.x + 16, z: r.z + 6, w: 90, d: 54, h: 15, color: '#b8693f', kind: 'landmark', label: 'Cowtown Coliseum', labelColor: '#e8c21a' });
+      parkCars(pl, 0.5);
+    }
+    // a big honky-tonk on the north side
+    {
+      const r = HONKY;
+      const pl = lot({ x: r.x, z: r.z + 56, w: r.w, d: r.d - 56, kind: 'parking' });
+      put({ x: r.x + 6, z: r.z + 6, w: 110, d: 46, h: 10, color: '#5a4632', kind: 'landmark', label: 'Cowtown Honky-Tonk', labelColor: '#ff4a5a' });
+      parkCars(pl, 0.6);
+    }
+    // Trinity Trail along the south bank
+    lot({ x: TRINITY.x, z: TRINITY.z + TRINITY.d + 1, w: TRINITY.w, d: 3, kind: 'trail' });
+    for (let x = TRINITY.x + 10; x < TRINITY.x + TRINITY.w; x += R(14, 30)) tree(x, TRINITY.z + TRINITY.d + R(6, 12), R(3, 5));
+  }
 
   function rebuildSolid() { solid.map.clear(); buildings.forEach(addSolid); rocks.forEach(addSolid); }
 
@@ -377,10 +471,10 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, rng, G
       const a = c + dir * v0, b = c + dir * v1, lo = Math.min(a, b), hi = Math.max(a, b);
       return axis === 'x' ? { x: u0, z: lo, w: u1 - u0, d: hi - lo } : { x: lo, z: u0, w: hi - lo, d: u1 - u0 };
     };
-    if (district === 'Westbrook Residential') {
+    if (district === 'Arlington Heights') {
       houseRow(axis, c, 14, dir, from, to, { roofs: HOUSE_ROOFS, depth: 66, pitch: 30 });
       for (let k = 0; k < 4; k++) { const u = R(from + 4, to - 4), v = R(58, 78); tree(axis === 'x' ? u : c + dir * v, axis === 'x' ? c + dir * v : u, R(3, 5)); }
-    } else if (district === 'Ironside Industrial' || district === 'Harbor District') {
+    } else if (district === 'Riverside Industrial' || district === 'Lakeside') {
       const yard = lot({ ...rect(from + 2, to - 2, 16, 34), kind: 'parking' });
       const wh = { ...rect(from + 4, to - 4, 36, 36 + R(26, 40)), h: R(9, 16), color: pick(IND_ROOFS), kind: 'warehouse' };
       if (addB(wh)) { for (let k = 0; k < 6; k++) crate(wh); }

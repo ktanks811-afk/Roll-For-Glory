@@ -1,4 +1,4 @@
-// Draws Port Solace top-down: ground, roads, lots, buildings (with a
+// Draws Fort Worth top-down: ground, roads, lots, buildings (with a
 // parallax lean so they read as 3D), trees, night lighting and weather.
 
 import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, LOCATIONS } from '../data/world.js';
@@ -17,7 +17,7 @@ export class Camera {
 const COLORS = {
   grass: '#2f3a26', city: '#5d5f63', sand: '#c2a172', asphalt: '#2c2d31', asphaltHwy: '#26272b', line: '#e9e9e2',
   yellow: '#e8c21a', water: '#1d3b52', river: '#244861', park: '#3c5a30', yard: '#4a6338', parking: '#323338', gas: '#77797e',
-  lane: '#36373c', dirt: '#6e5b42', sand: '#d9c493', pond: '#2b5d7a', court: '#a85a35', lot: '#4a4b50', junk: '#5b5348',
+  plaza: '#9a6a52', trail: '#b59a6a', lane: '#36373c', dirt: '#6e5b42', sand: '#d9c493', pond: '#2b5d7a', court: '#a85a35', lot: '#4a4b50', junk: '#5b5348',
 };
 
 export function buildStreetLights(map) {
@@ -196,6 +196,10 @@ function drawProps(ctx, cam, items) {
       const r = p.r * z, cx = cam.sx(p.x), cy = cam.sy(p.z);
       ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(cx + 0.6 * z, cy + 0.7 * z, r, 0, Math.PI * 2); ctx.fill();
       for (let k = 0; k < 6; k++) { ctx.fillStyle = k % 2 ? '#f4f4f4' : p.c; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, k * Math.PI / 3, (k + 1) * Math.PI / 3); ctx.fill(); }
+    } else if (p.k === 'cow') {
+      const cx = cam.sx(p.x), cy = cam.sy(p.z);
+      ctx.fillStyle = p.c; ctx.beginPath(); ctx.ellipse(cx, cy, 1.3 * z, 0.7 * z, p.a, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + Math.cos(p.a) * 1.45 * z, cy + Math.sin(p.a) * 1.45 * z, 0.45 * z, 0, Math.PI * 2); ctx.fill();
     } else if (p.k === 'towel') {
       ctx.fillStyle = p.c; ctx.fillRect(x, y, w, h);
     } else if (p.k === 'bench') {
@@ -280,7 +284,7 @@ export function drawRoads(ctx, cam, map, signalT) {
       }
     }
   }
-  // Northridge Pass
+  // Cross Timbers Pass
   ctx.strokeStyle = COLORS.asphalt; ctx.lineWidth = 9 * z; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.beginPath(); BACKROAD.forEach(([x, zz], i) => i ? ctx.lineTo(cam.sx(x), cam.sy(zz)) : ctx.moveTo(cam.sx(x), cam.sy(zz))); ctx.stroke();
   ctx.strokeStyle = COLORS.yellow; ctx.lineWidth = Math.max(1, 0.15 * z); ctx.setLineDash([3 * z, 6 * z]); ctx.stroke(); ctx.setLineDash([]);

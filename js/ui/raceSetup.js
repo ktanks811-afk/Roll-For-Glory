@@ -46,7 +46,7 @@ export function openRaceMenu(app) {
   const s = game.s;
   openPanel((root, h) => {
     root.innerHTML = `<div class="p-head"><h1>Race</h1><button class="btn x" data-action="close">×</button></div><div class="p-body">
-      <p class="muted">Races happen at real spots in Port Solace. Set your GPS and drive there — or race whoever texts you a challenge.</p>
+      <p class="muted">Races happen at real spots in Fort Worth. Set your GPS and drive there — or race whoever texts you a challenge.</p>
       <div class="list">${LOCATIONS.filter(l => ['roll', 'drag', 'meet'].includes(l.type)).map(l => `<div class="li click" data-action="go" data-id="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${l.tier && tierOf(s.rep).n < l.tier ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'drag' ? 'Drag strip · ' : l.type === 'meet' ? 'Street meet · after 8 PM · ' : 'Roll racing · '}${esc(ROADS[l.road]?.desc || (l.type === 'drag' ? ROADS.strip.desc : 'Show cars, find racers, bet on races.'))}</div></div><span>📍</span></div>`).join('')}</div></div>`;
     bind(root, { close: () => h.close(), go: d => { const l = LOC_BY_ID[d.id]; app.world?.setGps(l.x, l.z, l.name); closeAllPanels(); } });
   });

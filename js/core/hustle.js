@@ -31,7 +31,7 @@ export const JOBS = [
 export const BIZ = [
   { id: 'taco',   name: 'Tailpipe Tacos',        icon: '🌮', price: 9000,    tier: 1, daily: 320,   blurb: 'A food truck that parks outside every meet.' },
   { id: 'wash',   name: 'Suds & Slides Car Wash', icon: '🧽', price: 18000,   tier: 2, daily: 630,   blurb: 'Hand wash, wax, and gossip.' },
-  { id: 'tow',    name: 'Port Solace Tow Yard',  icon: '🛻', price: 36000,   tier: 2, daily: 1260,  blurb: 'Impound fees are a beautiful thing.' },
+  { id: 'tow',    name: 'Cowtown Tow Yard',  icon: '🛻', price: 36000,   tier: 2, daily: 1260,  blurb: 'Impound fees are a beautiful thing.' },
   { id: 'detail', name: 'Gloss & Wrap Studio',   icon: '🎨', price: 62000,   tier: 3, daily: 2170,  blurb: 'Paint protection, wraps, ceramic coat.' },
   { id: 'parts',  name: 'PartsHub Storefront',   icon: '📦', price: 125000,  tier: 4, daily: 4375,  blurb: 'You resell the shop\'s own parts back to it.' },
   { id: 'shop',   name: 'Dyno & Performance Shop', icon: '🔧', price: 310000, tier: 4, daily: 10850, blurb: 'Dyno days, installs, tuning.' },
