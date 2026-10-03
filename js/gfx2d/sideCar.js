@@ -13,6 +13,7 @@
 import { CALIPER_COLORS } from '../data/parts.js';
 import { shapeOf } from '../data/carShapes.js';
 import { hex, rgb, mix, lighten, darken, poly, fillPoly, drawWheel, wheelArch, archLip, drawEngineBay, drawSideMustang } from './sideMustang.js';
+import { artOf, paintedArt } from './carArt.js';
 
 export const hasSideView = () => true;
 export const SW = 1320, SH = 528;             // canvas pixels (HD)
@@ -482,6 +483,7 @@ function engineBay(g, geo, v, lv) {
 export function drawSideCar(canvas, opts) {
   const model = opts.model;
   if (model && MUSTANG_ART.has(model.id)) return drawSideMustang(canvas, opts);
+  if (model && artOf(model.id)) return drawSideArt(canvas, opts, artOf(model.id));
   const v = opts.visual || {}, lv = opts.levels || {};
   const off = opts.layers || {};
   const on = k => off[k] !== false;
@@ -528,5 +530,79 @@ export function drawSideCar(canvas, opts) {
   if (offset !== 'poke') { archLip(g, geo.fx, geo.cy, v, flare, geo.R); archLip(g, geo.rx, geo.cy, v, flare, geo.R); }
   g.restore();
   g.restore();
+  return canvas;
+}
+
+// Cars with their own side art (gfx2d/carArt.js): the art is the body,
+// repainted to the car's colour, sitting on the game's wheels. Graphics go on
+// the paint only; wing, ride height, underglow and engine bay work as usual.
+function drawSideArt(canvas, opts, art) {
+  const model = opts.model;
+  const v = opts.visual || {}, lv = opts.levels || {};
+  const off = opts.layers || {};
+  const on = k => off[k] !== false;
+  const sh = shapeOf(model);
+  const geo = sideGeo(sh);
+  const { ppm } = geo;
+  canvas.width = SW; canvas.height = SH;
+  const g = canvas.getContext('2d');
+  g.clearRect(0, 0, SW, SH);
+
+  const pa = paintedArt(art.side, v);
+  const s = ppm * sh.L / pa.w;                   // art px -> drawing px
+  const R = 0.36 * ppm;                          // 20" wheel on a 275/40 tyre
+  const cy = GROUND - R;
+  const x0 = (REF_W - pa.w * s) / 2;
+  const y0 = cy - 4 * s - art.meta.archY * s;
+  const [fx, rx] = art.meta.wheels.map(x => x0 + x * s);
+  const size = +v.wheelSize || 20, offset = v.offset || 'flush';
+  const caliper = CALIPER_COLORS[Math.min(4, lv.brakes || 0)] || '#3a3a3a';
+  const drop = [0, 0.022, 0.04, 0.055, 0.066][Math.min(4, lv.suspension || 0)] * ppm;
+
+  g.save(); g.scale(K, K);
+  g.imageSmoothingEnabled = true;
+  const cxm = x0 + pa.w * s / 2, hw = pa.w * s / 2;
+  g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.ellipse(cxm, GROUND + 6, hw * 1.02, 20, 0, 0, 7); g.fill();
+  if (on('underglow') && v.neon && v.neon !== 'none') {
+    const gr = g.createRadialGradient(cxm, GROUND, 10, cxm, GROUND, hw); gr.addColorStop(0, v.neon); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = 0.5; g.fillStyle = gr; g.beginPath(); g.ellipse(cxm, GROUND + 4, hw, 60, 0, 0, 7); g.fill(); g.globalAlpha = 1;
+  }
+  // dark wheel wells, then the wheels; the body goes over both
+  g.save(); g.translate(0, drop);
+  wheelArch(g, fx, cy, v, 0, R); wheelArch(g, rx, cy, v, 0, R);
+  g.restore();
+  if (on('wheels')) { drawWheel(g, fx, cy, v, size, offset, caliper, 'front', R); drawWheel(g, rx, cy, v, size, offset, caliper, 'rear', R); }
+  g.restore();
+
+  // body on its own layer so graphics can be clipped to the paint
+  const b = document.createElement('canvas'); b.width = SW; b.height = SH;
+  const bg = b.getContext('2d');
+  bg.scale(K, K); bg.translate(0, drop); bg.imageSmoothingEnabled = true;
+  if (on('body')) bg.drawImage(pa.full, x0, y0, pa.w * s, pa.h * s);
+  if (on('decals') && v.decal && v.decal !== 'none') {
+    bg.save(); bg.globalCompositeOperation = 'source-atop';
+    const col = rgb(hex(v.decalColor || '#f2f2f2'), 0.95);
+    const X = px => x0 + px * s, Y = py => y0 + py * s;
+    if (v.decal === 'stripes') { bg.fillStyle = col; bg.fillRect(X(0), Y(105), pa.w * s, 9 * s); }
+    if (v.decal === 'side' || v.decal === 'crew') fillPoly(bg, [[X(60), Y(205)], [X(1100), Y(190)], [X(1100), Y(204)], [X(60), Y(219)]], col);
+    if (v.decal === 'number') { const nx = X(590), ny = Y(195); bg.fillStyle = '#f2f2f2'; bg.beginPath(); bg.arc(nx, ny, ppm * 0.17, 0, 7); bg.fill(); bg.fillStyle = '#111'; bg.font = `bold ${Math.round(ppm * 0.22)}px sans-serif`; bg.textAlign = 'center'; bg.fillText('7', nx, ny + ppm * 0.08); }
+    if (v.decal === 'flames') {
+      const fx0 = X(300), fx1 = X(780), yb = Y(270), yt = Y(150), spikes = 6, w = (fx1 - fx0) / spikes;
+      bg.fillStyle = '#ff9a1a'; bg.beginPath(); bg.moveTo(fx0, yb); for (let i = 0; i <= spikes; i++) { bg.lineTo(fx0 + i * w, i % 2 ? yb : lerp(yt, yb, 0.2 + (i % 3) * 0.12)); bg.lineTo(fx0 + (i + 0.5) * w, yb); } bg.closePath(); bg.fill();
+      bg.fillStyle = '#e0192e'; bg.beginPath(); bg.moveTo(fx0, yb); for (let i = 0; i <= spikes; i++) { bg.lineTo(fx0 + i * w + 4, i % 2 ? yb : lerp(yt, yb, 0.45 + (i % 3) * 0.1)); bg.lineTo(fx0 + (i + 0.5) * w, yb); } bg.closePath(); bg.fill();
+    }
+    bg.restore();
+    if (on('body')) bg.drawImage(pa.fixed, x0, y0, pa.w * s, pa.h * s);
+  }
+  // a wing on stands, if one is fitted (the factory lip is in the art)
+  const wing = { gt: 'big', drag: 'huge' }[v.spoiler];
+  if (on('spoiler') && wing) {
+    const ax = x0 + 1010 * s, ay = y0 + 92 * s, h = (wing === 'huge' ? 0.4 : 0.27) * ppm, chord = (wing === 'huge' ? 0.42 : 0.3) * ppm;
+    bg.fillStyle = '#121316';
+    bg.fillRect(ax + chord * 0.2, ay - h, 10, h); bg.fillRect(ax + chord * 0.7, ay - h, 10, h);
+    fillPoly(bg, [[ax - 10, ay - h - 4], [ax + chord + 10, ay - h - 14], [ax + chord + 14, ay - h + 6], [ax - 10, ay - h + 12]], wing === 'huge' ? '#1c1d22' : rgb(darken(hex(v.paint), 0.2)));
+  }
+  if (opts.showEngine) engineBay(bg, geo, v, lv);
+  g.drawImage(b, 0, 0);
   return canvas;
 }
