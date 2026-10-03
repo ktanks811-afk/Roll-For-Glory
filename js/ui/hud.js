@@ -13,6 +13,7 @@ import { audio } from '../core/audio.js';
 import { online } from '../net/online.js';
 import { MiniMap } from './minimap.js';
 import { LEGAL_DB } from '../sim/sound.js';
+import { PULL_OVER_S } from '../world2d/police.js';
 
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · G draw/holster gun · J/Space/click fire · R reload · P phone · M map · C zoom',
@@ -146,8 +147,12 @@ export class Hud {
     const ph = w.police.phase;
     pp.classList.toggle('hidden', ph === 'none');
     if (ph !== 'none') {
-      this.q('ptitle').textContent = ph === 'notice' ? 'PULL OVER' : ph === 'chase' ? 'PURSUIT' : ph === 'search' ? 'SEARCHING — LEAVE THE CIRCLE' : 'COOLDOWN — STAY HIDDEN';
-      const pct = ph === 'cooldown' ? (1 - w.police.cooldown / (14 + w.police.level * 5)) * 100 : ph === 'search' ? 100 - Math.min(100, w.police.unseenT * 5) : 100;
+      const stopStep = w.police.stop?.step;
+      this.q('ptitle').textContent = ph === 'notice' ? `PULL OVER — ${Math.max(0, Math.ceil(w.police.pullT))}s`
+        : ph === 'stop' ? (stopStep === 'walk' ? 'OFFICER WALKING UP' : stopStep === 'ticket' ? 'TAKE THE TICKET' : 'PULLED OVER — STAY PUT')
+        : ph === 'chase' ? 'PURSUIT' : ph === 'search' ? 'SEARCHING — LEAVE THE CIRCLE' : 'COOLDOWN — STAY HIDDEN';
+      const pct = ph === 'notice' ? Math.max(0, w.police.pullT) / PULL_OVER_S * 100
+        : ph === 'cooldown' ? (1 - w.police.cooldown / (14 + w.police.level * 5)) * 100 : ph === 'search' ? 100 - Math.min(100, w.police.unseenT * 5) : 100;
       this.q('pbar').style.width = `${pct}%`;
       pp.className = `hud-pursuit ${ph}`;
     }

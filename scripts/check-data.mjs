@@ -19,6 +19,7 @@ import { buildMap, collideCircle } from '../js/world2d/map.js';
 import { PROPERTIES } from '../js/data/world.js';
 import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
 import { sideGeo } from '../js/gfx2d/sideCar.js';
+import { CARJACK, canCarjack, carjackChance, carjackChoices, resolveCarjack, strippedCar } from '../js/data/carjack.js';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
 let fails = 0;
@@ -517,6 +518,31 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!toggleFrt(st, ar.uid).ok || ar.frt || st.arms.frtKits !== 1) bad('removing an FRT should return the kit');
   if (toggleFrt(st, bat.uid).ok || bat.frt) bad('FRT on a bat');
   if (!toggleFrt(st, gun.uid).ok || !gun.frt) bad('FRT should install on a Glock 19');
+}
+
+// carjackings: rare, only when it makes sense, and resisting is a real risk
+{
+  const ok = { inCar: true, stopped: true, inCity: true, policeActive: false, heat: 0, inGarage: false, busy: false, playTime: 3600, day: 10, lastDay: -99, night: true };
+  if (!canCarjack(ok)) bad('carjack should be possible stopped in the city at night');
+  for (const [k, v] of [['inCar', false], ['stopped', false], ['inCity', false], ['policeActive', true], ['heat', 2], ['inGarage', true], ['busy', true], ['playTime', 60], ['lastDay', 9]])
+    if (canCarjack({ ...ok, [k]: v })) bad(`carjack allowed with ${k}=${v}`);
+  // expected wait while sitting still: tens of minutes at night, over an hour by day
+  const night = 1 / carjackChance(ok, 1), day = 1 / carjackChance({ ...ok, night: false }, 1);
+  if (!(night >= 20 * 60 && day >= 60 * 60 && day > night)) bad(`carjacks are not rare enough (night every ${night | 0}s, day every ${day | 0}s stopped)`);
+  if (!(CARJACK.gapDays >= 2)) bad('carjacks need a gap of days between them');
+  if (carjackChoices(true).map(c => c.value).join() !== 'give,flee,gun') bad('armed carjack choices');
+  if (carjackChoices(false).map(c => c.value).join() !== 'give,flee,fight') bad('unarmed carjack choices');
+  // run each choice many times with a seeded rng
+  let seed = 7; const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const sim = ch => { const n = 4000; let keep = 0, hurt = 0, hurtAny = 0; for (let i = 0; i < n; i++) { const o = resolveCarjack(ch, rng); keep += o.keep; hurt += o.hurt; hurtAny += o.hurt > 0; } return { keep: keep / n, hurt: hurt / n, hurtAny: hurtAny / n }; };
+  const give = sim('give'), flee = sim('flee'), gun = sim('gun'), fight = sim('fight');
+  if (give.keep !== 0 || give.hurtAny !== 0) bad('giving up the car loses it and never hurts you ' + JSON.stringify(give));
+  if (!(flee.keep > 0.7 && flee.keep < 0.98 && flee.hurtAny > 0.2)) bad('fleeing usually works but can get you shot ' + JSON.stringify(flee));
+  if (!(gun.keep > 0.8 && gun.hurtAny > 0.3)) bad('pulling a gun usually keeps the car, at a cost ' + JSON.stringify(gun));
+  if (!(fight.keep > 0.2 && fight.keep < 0.4 && fight.hurt > gun.hurt)) bad('fighting barehanded is the worst gamble ' + JSON.stringify(fight));
+  for (let i = 0; i < 200; i++) { const o = resolveCarjack('give', rng); if (o.wallet < 0 || o.wallet > 0.6) bad('wallet share out of range'); if (o.keep) bad('kept car after giving it up'); }
+  const jc = newCar(CARS[0].id); jc.nos = 3; strippedCar(jc, rng);
+  if (!(jc.cond.body < 100 && jc.fuel <= 0.15 && jc.nos === 0)) bad('a recovered car comes back beat up and low on gas ' + JSON.stringify({ c: jc.cond, f: jc.fuel, n: jc.nos }));
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

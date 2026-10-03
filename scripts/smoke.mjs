@@ -504,6 +504,64 @@ await step('Amazin\' shop + guns + robbery', async () => {
   await p.evaluate(() => { window.__rfg.game.s.justice.cases = []; });   // the court step covers what happens next
 });
 
+// ---------------- carjacking ----------------
+await step('carjacking', async () => {
+  const calm = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; try { w.police.reset(w); } catch {} window.__rfg.game.s.heat = 0; w.paused = false; });
+  // sitting at a stop on a city street, an hour into the career
+  const sit = () => p.evaluate(() => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle;
+    const r = w.map.roads.nearestOnRoad(120, -60);
+    v.x = r.x; v.z = r.z; v.h = Math.atan2(r.edge.dx, -r.edge.dz); v.vx = v.vz = 0; v.sim.v = 0;
+    w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; s.playTime = Math.max(s.playTime, 3600); s.carjack = { lastDay: -99, n: 0 };
+    w.carjacks.jack = null; w.carjacks.rng = Math.random;
+  });
+  await calm(); await sit(); await p.waitForTimeout(200);
+  if (!(await p.evaluate(async () => (await import('./js/data/carjack.js')).canCarjack(window.__rfg.app.world.carjacks.context())))) {
+    throw new Error('a carjacking is not allowed stopped in the city ' + JSON.stringify(await p.evaluate(() => window.__rfg.app.world.carjacks.context())));
+  }
+  // he walks up to the window, then you choose
+  await p.evaluate(() => window.__rfg.app.world.carjacks.start());
+  if (!(await p.evaluate(() => !!window.__rfg.app.world.carjacks.jack))) throw new Error('carjacker did not appear');
+  await p.waitForSelector('.modal h2:has-text("Carjacking")', { timeout: 6000 });
+  await snap('40-carjack');
+  const labels = await p.$$eval('.modal-actions button', bs => bs.map(b => b.textContent));
+  if (labels.join() !== 'Give it up,Floor it,Fight him for it') throw new Error('carjack choices: ' + labels.join());
+  // give it up: the car drives off and is gone until the cops find it
+  const uid = await p.evaluate(() => window.__rfg.game.s.activeCar);
+  await p.click('.modal button:has-text("Give it up")');
+  await p.waitForSelector('.modal h2:has-text("Carjacked")');
+  const gone = await p.evaluate(uid => { const w = window.__rfg.app.world, c = window.__rfg.game.s.cars.find(c => c.uid === uid); return { veh: !!w.vehicle, inCar: w.inCar, stolen: !!c.stolen, away: !!w.carjacks.away, body: c.cond.body }; }, uid);
+  if (gone.veh || gone.inCar || !gone.stolen || !gone.away) throw new Error('car not taken ' + JSON.stringify(gone));
+  await p.click('.modal button'); await p.waitForTimeout(600);
+  await snap('41-carjack-driveoff');
+  await p.keyboard.press('KeyF'); await p.waitForTimeout(100);
+  if (await p.evaluate(() => window.__rfg.app.world.inCar)) throw new Error('got into a stolen car');
+  // the cops find it: back on the street, GPS set, a text from Brenner, beat up
+  await p.evaluate(uid => { window.__rfg.game.s.cars.find(c => c.uid === uid).stolen.foundAt = 0; }, uid);
+  await p.waitForTimeout(1300);
+  const found = await p.evaluate(uid => { const w = window.__rfg.app.world, s = window.__rfg.game.s, c = s.cars.find(c => c.uid === uid); return { veh: w.vehicle?.car === c, stolen: !!c.stolen, gps: s.gps?.label, msg: s.messages[0]?.from, body: c.cond.body, fuel: c.fuel }; }, uid);
+  if (!found.veh || found.stolen || !/stolen/i.test(found.gps || '') || found.msg !== 'brenner' || !(found.body < gone.body) || !(found.fuel <= 0.15)) throw new Error('stolen car not recovered ' + JSON.stringify(found));
+  // fight him for it (rigged to win): you keep the car and get rep
+  await calm(); await sit();
+  const rep0 = await p.evaluate(() => window.__rfg.game.s.rep);
+  await p.evaluate(() => { const c = window.__rfg.app.world.carjacks; c.rng = () => 0.1; c.start(); });
+  await p.waitForSelector('.modal h2:has-text("Carjacking")', { timeout: 6000 });
+  await p.click('.modal button:has-text("Fight him for it")');
+  await p.waitForSelector('.modal h2:has-text("You kept your car")');
+  const kept = await p.evaluate(() => { const w = window.__rfg.app.world; return { veh: !!w.vehicle, inCar: w.inCar, rep: window.__rfg.game.s.rep, runner: !!w.carjacks.runner }; });
+  if (!kept.veh || !kept.inCar || !(kept.rep > rep0) || !kept.runner) throw new Error('won the fight but lost the car ' + JSON.stringify(kept));
+  // pull off before he reaches the window: no confrontation
+  await calm(); await sit();
+  await p.evaluate(() => window.__rfg.app.world.carjacks.start());
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = Math.sin(v.h) * 12; v.vz = -Math.cos(v.h) * 12; v.sim.v = 12; });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(500); await p.keyboard.up('KeyW');
+  if (await p.evaluate(() => !!window.__rfg.app.world.carjacks.jack || !!document.querySelector('.modal h2'))) throw new Error('driving off did not shake the carjacker');
+  // it is still rare: the gap between carjackings holds
+  if (await p.evaluate(async () => (await import('./js/data/carjack.js')).canCarjack(window.__rfg.app.world.carjacks.context()))) throw new Error('another carjacking allowed the same day');
+  await p.evaluate(() => { const w = window.__rfg.app.world; window.__rfg.game.s.gps = null; w.gpsPath = null; });   // later steps expect no route
+  await calm();
+});
+
 await step('save + reload', async () => {
   await p.evaluate(async () => { const { saveGame } = await import('./js/core/save.js'); saveGame('slot1'); });
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(500);
@@ -967,6 +1025,75 @@ await step('courts + jail', async () => {
   if (!/Criminal history/.test(await p.textContent('.phone-screen'))) throw new Error('FWPD app should show the criminal history');
   await clear();
   await p.evaluate(() => { const s = window.__rfg.game.s; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; });
+});
+
+// ---------------- traffic stop: 10 s to pull over, officer walks up, drive off = chase ----------------
+await step('traffic stop: pull over, walk-up, drive off', async () => {
+  const P = () => p.evaluate(() => { const w = window.__rfg.app.world, po = w.police; return { phase: po.phase, pullT: +po.pullT.toFixed(1), step: po.stop?.step || null, officer: po.officer ? { x: po.officer.x, z: po.officer.z } : null, rec: po.record.map(r => r.kind), heat: +window.__rfg.game.s.heat.toFixed(2), title: document.querySelector('[data-ptitle]')?.textContent || '' }; });
+  // lit up while sitting still, with the unit already close behind
+  const light = () => p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { Unit } = await import('./js/world2d/police.js'); const { CAR_BY_ID } = await import('./js/data/cars.js');
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle, po = w.police;
+    po.reset(w); po.patrols.length = 0; po.units.length = 0; s.heat = 0; s.warrants = []; w.paused = false; w.inCar = true;
+    // parked on a long straight downtown, facing along the road
+    const e = w.map.roads.edges.filter(e => e.len > 160).sort((a, b) => Math.hypot(a.ax, a.az) - Math.hypot(b.ax, b.az))[0];
+    v.x = e.ax + e.dx * 110 - e.dz * 2.5; v.z = e.az + e.dz * 110 + e.dx * 2.5; v.h = Math.atan2(e.dx, -e.dz);
+    v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; v.yawRate = 0; w.traffic.cars.length = 0;
+    const fx = Math.sin(v.h), fz = -Math.cos(v.h);
+    po.units.push(new Unit(CAR_BY_ID.ford_crown_victoria_police_interceptor_2003, v.x - fx * 30, v.z - fz * 30, v.h));
+    po.note({ kind: 'speeding', text: 'Speeding — 52 mph in a 35.', fine: 300 });
+    po.startChase(w);
+  });
+  await light();
+  const lit = await P();
+  console.log('     lit up', JSON.stringify(lit));
+  if (lit.phase !== 'notice' || !(lit.pullT > 9)) throw new Error('no 10 second pull-over countdown ' + JSON.stringify(lit));
+  if (!/PULL OVER — 1?\d+s/.test(lit.title)) throw new Error('HUD does not count down the pull-over: ' + lit.title);
+  await snap('28-pull-over');
+  // sitting still counts as pulling over; the unit parks behind and the officer walks to the window
+  let walk = null;
+  for (let i = 0; i < 80 && !walk; i++) { await p.waitForTimeout(100); const s = await P(); if (s.step === 'walk' && s.officer) walk = s; }
+  if (!walk) throw new Error('officer never got out ' + JSON.stringify(await P()) + JSON.stringify(await p.evaluate(() => { const w = window.__rfg.app.world, u = w.police.stop?.unit, v = w.vehicle; return { u: u && { x: u.x, z: u.z, h: u.h, v: u.v }, v: { x: v.x, z: v.z, h: v.h }, st: w.police.stop && { x: w.police.stop.x, z: w.police.stop.z, h: w.police.stop.h, t: w.police.stop.t } }; })));
+  const parked = await p.evaluate(() => { const w = window.__rfg.app.world, u = w.police.stop.unit, v = w.vehicle; const fx = Math.sin(v.h), fz = -Math.cos(v.h); return { behind: -((u.x - v.x) * fx + (u.z - v.z) * fz), side: Math.abs((u.x - v.x) * Math.cos(v.h) + (u.z - v.z) * Math.sin(v.h)) }; });
+  console.log('     unit parked', JSON.stringify(parked));
+  if (!(parked.behind > 5 && parked.behind < 11 && parked.side < 2)) throw new Error('unit did not park behind the car ' + JSON.stringify(parked));
+  await p.waitForTimeout(900);
+  await snap('29-officer-walking');
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")', { timeout: 12000 });
+  const win = await p.evaluate(() => { const w = window.__rfg.app.world, o = w.police.officer, v = w.vehicle; const rx = Math.cos(v.h), rz = Math.sin(v.h); return { left: -((o.x - v.x) * rx + (o.z - v.z) * rz), d: Math.hypot(o.x - v.x, o.z - v.z) }; });
+  console.log('     officer at window', JSON.stringify(win));
+  if (!(win.left > 0.8 && win.d < 3)) throw new Error('officer is not at the driver window ' + JSON.stringify(win));
+  await snap('30-ticket-at-window');
+  await p.click('.modal button:has-text("Accept the citation")');
+  await p.waitForSelector('.modal h2:has-text("Citation issued")'); await p.click('.modal button');
+  const done = await P();
+  if (done.phase !== 'none' || done.heat !== 0) throw new Error('stop did not end after taking the ticket ' + JSON.stringify(done));
+
+  // driving off while the officer walks up: chase
+  await light();
+  for (let i = 0; i < 80; i++) { await p.waitForTimeout(100); if ((await P()).step === 'walk') break; }
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(900); await p.keyboard.up('KeyW');
+  const ran = await P();
+  console.log('     drove off', JSON.stringify(ran));
+  if (ran.phase !== 'chase' || !ran.rec.includes('evading')) throw new Error('driving off the stop did not start a chase ' + JSON.stringify(ran));
+  if (await p.isVisible('.modal-back')) throw new Error('ticket shown after driving off');
+
+  // pulling off from the window instead of taking the ticket: chase
+  await light();
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")', { timeout: 12000 });
+  await p.click('.modal button:has-text("Pull off")');
+  const off = await P();
+  if (off.phase !== 'chase' || !off.rec.includes('evading')) throw new Error('pulling off from the window did not start a chase ' + JSON.stringify(off));
+
+  // never stopping: the countdown runs out and it's a pursuit
+  await light();
+  await p.evaluate(() => { window.__rfg.app.world.police.pullT = 0.6; });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1200); await p.keyboard.up('KeyW');
+  const fail = await P();
+  console.log('     failed to yield', JSON.stringify(fail));
+  if (fail.phase !== 'chase') throw new Error('not pulling over in time did not start a chase ' + JSON.stringify(fail));
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.police.units.length = 0; });
 });
 
 // ---------------- side-view showroom (layered Mustang) ----------------

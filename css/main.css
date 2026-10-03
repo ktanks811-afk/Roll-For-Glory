@@ -232,6 +232,8 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .hud-pursuit .bar > div { background: var(--red); }
 .hud-pursuit.cooldown { border-color: var(--yellow); } .hud-pursuit.cooldown .bar > div { background: var(--yellow); }
 .hud-pursuit.notice { border-color: var(--blue); }
+.hud-pursuit.notice .bar > div { background: var(--blue); transition: width .2s linear; }
+.hud-pursuit.stop { border-color: var(--blue); } .hud-pursuit.stop .bar > div { background: var(--blue); }
 .hud-radio { position: absolute; left: 50%; top: max(8px, env(safe-area-inset-top, 0px)); transform: translate(-50%, -140%); max-width: max(200px, min(560px, calc(100vw - 2 * 230px))); min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; background: rgba(10,10,12,.86); border: 1px solid rgba(42,123,255,.55); border-left: 3px solid var(--blue); padding: 5px 12px; font-size: 14px; font-weight: 600; line-height: 1.2; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.5); opacity: 0; transition: transform .25s ease, opacity .25s ease; pointer-events: none; }
 .hud-radio.on { transform: translate(-50%, 0); opacity: 1; }
 .hud-radio b { flex: none; color: var(--blue); font-family: var(--head); letter-spacing: .06em; }
