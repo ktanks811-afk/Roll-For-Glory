@@ -14,7 +14,7 @@ const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot'] },
   { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty'] },
-  { id: 'race', label: 'Races & meets', types: ['meet', 'drag', 'roll'] },
+  { id: 'race', label: 'Races & meets', types: ['meet', 'drag', 'roll', 'sprint'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food'] },
   { id: 'home', label: 'Home', types: ['home', 'property'] },
   { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
@@ -36,6 +36,7 @@ const WHAT = {
   meet: 'Street meet: racers to talk to, side bets, Zed\'s van, show your car.',
   drag: 'The drag strip: burnouts, the tree, timeslips.',
   roll: 'A roll-race road. Pick a rival and a wager.',
+  sprint: 'A street race start line: 1v1 for cash or pink slips, or a run at the course record.',
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const shortName = n => n.replace(/\s*\(.*?\)\s*/g, ' ').trim();
