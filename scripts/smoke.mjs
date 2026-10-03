@@ -1371,6 +1371,7 @@ await step('crew turf', async () => {
   if (!(await p.isVisible('[data-hood="Stockyards"]:has-text("Iron Saints")'))) throw new Error('Stockyards should start as Iron Saints turf');
   // Claim: set the GPS, then rep the hood by driving in it
   await p.click('[data-hood="Stop Six"] button[data-action="claim"]');
+  if (!/Stop Six/.test(await p.evaluate(() => window.__rfg.game.s.gps?.label || ''))) throw new Error('claim did not set GPS');
   // the real thing: sitting in your car in Stop Six builds the claim, and the HUD says so
   const pos = await p.evaluate(() => { const w = window.__rfg.app.world; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; return { x: w.vehicle.x, z: w.vehicle.z }; });
   await p.waitForTimeout(150); await key('KeyF'); await p.waitForTimeout(200);
@@ -1383,7 +1384,6 @@ await step('crew turf', async () => {
   await p.evaluate(({ x, z }) => { const v = window.__rfg.app.world.vehicle; v.x = x; v.z = z; window.__rfg.game.s.turf.hoods['Stop Six'].claim = 0; }, pos);
   const r = await p.evaluate(async () => {
     const T = await import('./js/core/turf.js'); const s = window.__rfg.game.s, out = {};
-    out.gps = s.gps?.label;
     T.presence(s, { x: 1700, z: -400, inCar: true }, 10);
     out.part = s.turf.hoods['Stop Six'].claim;
     out.label = T.turfLabel(s, 1700, -400);
@@ -1412,7 +1412,6 @@ await step('crew turf', async () => {
     return out;
   });
   console.log('     turf', JSON.stringify(r));
-  if (!/Stop Six/.test(r.gps || '')) throw new Error('claim did not set GPS');
   if (!(r.part > 0 && r.part < 100) || !/claiming/.test(r.label)) throw new Error('claim progress not tracked');
   if (r.owner !== 'me' || r.label2 !== 'your turf') throw new Error('Stop Six not claimed');
   if (r.foot !== 0) throw new Error('claimed on foot');
