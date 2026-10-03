@@ -15,6 +15,7 @@ import { openCreate } from './create.js';
 import { enterWorld, toTitle } from '../main.js';
 import { openPhone } from './phone.js';
 import { touchUi } from './touch.js';
+import { isTouchDevice } from '../core/input.js';
 import { openGarage } from './garage.js';
 import { openRaceMenu } from './raceSetup.js';
 import { openOnline } from './online.js';
@@ -159,6 +160,7 @@ export function showControls() {
       <span>Shift gears</span><span>Drag the shift knob up / down</span><span>Auto / manual</span><span>Tap the knob (A / M)</span>
       <span>Nitrous · e-brake · horn</span><span>NOS · E-BRK · HORN</span>
       <span>Gas stations, races, shops</span><span>USE</span><span>Get out (slow down first)</span><span>GET OUT</span></div>
+      <p class="muted small" style="margin-top:10px">Move or resize any button: Settings → Edit button layout.</p>
       <div class="section-title">Top right</div><div class="kv"><span>☰</span><span>Menu &amp; save</span><span>⌕</span><span>Zoom the map</span><span>☎</span><span>Phone</span></div>
       <p class="muted small" style="margin-top:10px">Drag race: hold BRAKE + GAS for a burnout, ease on the GAS to roll up and stage, hold both against the brake, and let go of BRAKE on green. Gas + brake while stopped (or at a meet) just revs the engine — with a 2-step installed it holds the launch rpm and shoots flames.</p>`);
     return;
@@ -245,10 +247,12 @@ export function openSettings(app) {
         <label class="field"><span>Camera view (driving) — V</span>${opt('camMode', [['top', 'Top-down'], ['chase', 'Third person']])}</label>
         <label class="field"><span>Camera shake</span>${opt('shake', [[true, 'On'], [false, 'Off']])}</label>
         <label class="field"><span>Touch controls</span>${opt('touch', [['auto', 'Auto'], ['on', 'Always'], ['off', 'Off']])}</label>
+        ${settings.touch === 'on' || (settings.touch === 'auto' && isTouchDevice()) ? `<label class="field"><span>Touch button layout</span><div class="opts"><button data-action="editTouch">Edit button layout</button></div></label>` : ''}
         <label class="field"><span>FPS counter</span>${opt('showFps', [[true, 'On'], [false, 'Off']])}</label>
       </div>`;
     bind(root, {
       close: () => h.close(),
+      editTouch: () => touchUi.edit(),
       set: d => {
         let v = d.v; if (v === 'true') v = true; if (v === 'false') v = false;
         settings[d.k] = v; saveSettings();

@@ -1943,6 +1943,29 @@ await step('phone controls', async () => {
     expect(box.r <= box.l + 1, 'turn banner overlaps the money / dash column');
     await m.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
   }
+  // button layout editor: drag the gas pedal somewhere else and make it bigger, save, reset
+  {
+    await m.evaluate(async () => { const { openSettings } = await import('./js/ui/menu.js'); openSettings(window.__rfg.app); });
+    await m.tap('text=Edit button layout');
+    expect(await m.evaluate(() => document.getElementById('touch').classList.contains('editing')), 'layout editor did not open');
+    const before = await m.evaluate(() => { const r = document.querySelector('#touch .tc-gas').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width }; });
+    await fire('#touch .tc-gas', 'pointerdown', 3);
+    const pressed = await m.evaluate(() => document.querySelector('#touch .tc-gas').classList.contains('on'));
+    await m.evaluate(() => { const t = document.getElementById('touch'); t.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 3, pointerType: 'touch', clientX: 150, clientY: 400 })); t.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 3, pointerType: 'touch', clientX: 150, clientY: 400 })); });
+    await m.evaluate(() => { const r = document.querySelector('[data-esize]'); r.value = '1.3'; r.dispatchEvent(new Event('input', { bubbles: true })); });
+    await m.tap('#touch [data-eact="save"]');
+    const after = await m.evaluate(() => { const r = document.querySelector('#touch .tc-gas').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, saved: JSON.parse(localStorage.getItem('rollforglory.settings')).touchLayout, editing: document.getElementById('touch').classList.contains('editing') }; });
+    console.log('     layout editor', JSON.stringify({ before, after }));
+    expect(!pressed, 'dragging in the editor pressed the gas');
+    expect(!after.editing, 'editor did not close on Save');
+    expect(Math.abs(after.x - before.x) > 40 && after.w > before.w * 1.2, 'gas pedal did not move / grow');
+    expect(after.saved && Object.values(after.saved)[0]?.gas?.s === 1.3, 'layout not saved');
+    await m.evaluate(() => window.__rfg.app && document.querySelector('#panels .panel') && import('./js/ui/dom.js').then(d => d.closeAllPanels()));
+    await m.evaluate(async () => { const { touchUi } = await import('./js/ui/touch.js'); touchUi.edit(); });
+    await m.tap('#touch [data-eact="reset"]'); await m.tap('#touch [data-eact="save"]');
+    const reset = await m.evaluate(() => { const r = document.querySelector('#touch .tc-gas').getBoundingClientRect(); return { x: r.left, w: r.width }; });
+    expect(Math.abs(reset.x - before.x) < 2 && Math.abs(reset.w - before.w) < 2, 'Reset did not put the gas pedal back');
+  }
   await mctx.close();
 });
 
