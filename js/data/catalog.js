@@ -3,6 +3,7 @@
 // pushes the car in the simulation; see FX in parts.js. `labor` is shop hours
 // to install. `makes` restricts fitment to listed brands; `eng` to engines
 // whose description matches.
+import { RIM_PRODUCTS } from './rims.js';
 
 const ICE_ONLY = new Set(['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'transmission', 'clutch', 'nitrous', 'twostep']);
 const JDM = ['honda', 'acura', 'toyota', 'lexus', 'scion', 'nissan', 'infiniti', 'mazda', 'subaru', 'mitsubishi'];
@@ -378,6 +379,31 @@ export const PERF_CATALOG = [
     ['Goodyear', 'Eagle Racing Slicks', 1550, 4, 1],
   ]),
 
+  // ---------------- Drag packs (rear drag radials / slicks + front skinnies) ----------------
+  ...cat('dragpack', [
+    ['Mickey Thompson', 'ET Street R Radials + Front Runner Skinnies', 1650, 1, 2],
+    ['Nitto', 'NT555RII Drag Radials + NT555 Front Runners', 1550, 1, 2],
+    ['Weld Racing', 'S71 Drag Pack (wheels + M/T radials + skinnies)', 2900, 1, 2],
+    ['Race Star Industries', '92 Drag Star Drag Pack + Drag Shocks', 2400, 2, 4],
+    ['Viking Performance', 'Drag Pack: Radials, Skinnies + Double-Adjustable Shocks', 2650, 2, 5],
+    ['QA1', 'Drag Pack: Radials, Skinnies + Drag Shocks', 2900, 2, 5],
+    ['Calvert Racing', 'CalTracs Bars + Drag Radials + Skinnies Pack', 3400, 3, 6],
+    ['Weld Racing', 'RT-S S71 Beadlock Drag Pack + ET Street Slicks', 3900, 3, 6],
+    ['Strange Engineering', 'Drag Pack: Slicks + Double-Adjustable Shocks', 4200, 3, 6],
+    ['Weld Racing', 'V-Series Beadlock Pro Drag Pack + M&H Slicks', 5600, 4, 8],
+    ['Santhuff\'s', 'Pro Drag Pack: Slicks + Coilover Drag Shocks', 6200, 4, 8],
+    ['Menscer Motorsports', 'Pro Mod Drag Pack: Slicks + Triple-Adjustable Shocks', 7400, 4, 8],
+  ]),
+
+  // ---------------- Wheelie bars ----------------
+  ...cat('wheeliebar', [
+    ['Lakewood', 'Bolt-On Wheelie Bars (fixed height)', 520, 1, 4, { drive: ['RWD'] }],
+    ['Competition Engineering', 'Bolt-In Adjustable Wheelie Bars', 690, 2, 5, { drive: ['RWD'] }],
+    ['Chris Alston\'s Chassisworks', 'Adjustable Wheelie Bar Kit', 980, 2, 6, { drive: ['RWD'] }],
+    ['Racecraft', 'Chromoly Adjustable Wheelie Bars', 1350, 3, 6, { drive: ['RWD'] }],
+    ['Competition Engineering', 'Pro Wheelie Bars w/ Shock Absorbers', 1800, 4, 8, { drive: ['RWD'] }],
+  ]),
+
   // ---------------- Weight reduction ----------------
   ...cat('weight', [
     ['Odyssey', 'PC680 Lightweight Battery', 210, 1, 0.5],
@@ -565,6 +591,8 @@ export const VISUAL_CATALOG = [
     ['Alcantara (OEM+)', 'Navy Alcantara Interior', 2400, '#1d2a44', { labor: 8 }],
     ['Katzkin', 'Leather Interior (Black)', 1750, '#111111', { labor: 6 }],
   ]),
+  // Glitch rim pack (data/rims.js). Kept last so older product ids don't move.
+  ...vis('wheels', RIM_PRODUCTS),
 ];
 
 export const CATALOG = [...PERF_CATALOG, ...VISUAL_CATALOG];
@@ -575,7 +603,7 @@ export const CATEGORY_NAMES = {
   engine: 'Engine Internals', turbo: 'Turbochargers & Kits', supercharger: 'Superchargers', intake: 'Intake',
   exhaust: 'Exhaust', intercooler: 'Intercoolers & Water/Meth', fuel: 'Fuel System', ecu: 'Tuning & ECUs',
   transmission: 'Transmission', clutch: 'Clutch', diff: 'Differential & Rear End', suspension: 'Suspension',
-  brakes: 'Brakes', tires: 'Tires', weight: 'Weight Reduction & Seats', nitrous: 'Nitrous', twostep: '2-Step Launch Control',
+  brakes: 'Brakes', tires: 'Tires', dragpack: 'Drag Packs', wheeliebar: 'Wheelie Bars', weight: 'Weight Reduction & Seats', nitrous: 'Nitrous', twostep: '2-Step Launch Control',
   wheels: 'Wheels', paint: 'Paint, Wraps & PPF', tint: 'Window Tint', spoiler: 'Wings & Spoilers', kit: 'Body Kits',
   frontBumper: 'Front Lips & Splitters', rearBumper: 'Rear Diffusers', skirts: 'Side Skirts', hood: 'Hoods',
   exhaustTips: 'Exhaust Tips', headlights: 'Headlights', taillights: 'Tail Lights', decal: 'Graphics & Stripes',
@@ -590,6 +618,7 @@ export function fits(item, model) {
   if (item.makes && !item.makes.includes(model.make)) return false;
   if (item.eng && !item.eng.test(model.engine)) return false;
   if (item.asp && item.asp !== model.asp) return false;
+  if (item.drive && !item.drive.includes(model.drive)) return false;
   if (item.maxYear && model.years[1] > item.maxYear) return false;
   if (item.minYear && model.years[1] < item.minYear) return false;
   if (model.asp === 'ev' && ICE_ONLY.has(item.cat)) return false;
@@ -605,12 +634,13 @@ export function fitNote(item, model) {
   if (item.maxYear && model.years[1] > item.maxYear) return 'Needs an older ignition system — this car is ECU-controlled';
   if (item.minYear && model.years[1] < item.minYear) return 'Needs a newer, ECU-flashable car';
   if (item.asp) return 'Turbo cars only';
+  if (item.drive) return 'Rear-wheel-drive cars only';
   return 'Does not fit';
 }
 
 export function shippingFor(subtotal, items) {
   if (subtotal >= 1500) return 0;
-  const heavy = items.some(i => ['transmission', 'engine', 'diff', 'tires', 'wheels', 'kit'].includes(i.cat));
+  const heavy = items.some(i => ['transmission', 'engine', 'diff', 'tires', 'dragpack', 'wheels', 'kit'].includes(i.cat));
   return heavy ? 89 : subtotal > 0 ? 14.99 : 0;
 }
 

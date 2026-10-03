@@ -76,7 +76,7 @@ const PERKS = [
 const FIRST = ['Mike', 'Jose', 'Tasha', 'DeShawn', 'Kevin', 'Maria', 'Tyler', 'Brittany', 'Luis', 'Kim', 'Andre', 'Jessica', 'Rob', 'Nguyen', 'Carlos',
   'Aaliyah', 'Dave', 'Priya', 'Jake', 'Marcus', 'Sam', 'Lupe', 'Trevor', 'Ashley', 'Omar', 'Hank', 'Destiny', 'Chris', 'Tony', 'Fatima'];
 const LAST = ['R.', 'M.', 'Johnson', 'G.', 'Smith', 'L.', 'Williams', 'T.', 'Nguyen', 'Garcia', 'B.', 'Davis', 'Hernandez', 'K.', 'Brown', 'P.'];
-const DISTRICTS = ['Westbrook', 'Southside', 'Ironside', 'Harbor District', 'Midtown', 'Downtown', 'Eastgate', 'Dust Flats'];
+const DISTRICTS = ['Arlington Heights', 'Near Southside', 'Riverside', 'Lakeside', 'Stockyards', 'Downtown', 'Eastgate', 'Chisholm Flats', 'Stop Six'];
 const OPENERS = [
   'Runs and drives.', 'Daily driver, never left me stranded.', 'Selling because I got a company car.', 'Moving out of state, need it gone.',
   'Wife says it has to go.', 'Upgraded to a truck.', 'Project car I never finished.', 'Bought it to flip.', 'Second owner.',

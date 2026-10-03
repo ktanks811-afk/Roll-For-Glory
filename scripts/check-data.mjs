@@ -6,19 +6,21 @@ import { CATALOG, ITEM_BY_ID, fits } from '../js/data/catalog.js';
 import { RACERS } from '../js/data/npcs.js';
 import { LOCATIONS } from '../js/data/world.js';
 import { generateListings } from '../js/data/market.js';
-import { buildSpec, metrics } from '../js/sim/powertrain.js';
+import { buildSpec, metrics, launchCheck } from '../js/sim/powertrain.js';
 import { partLevels } from '../js/data/parts.js';
 import { RevLimiter } from '../js/sim/twostep.js';
 import { createState, newCar, game } from '../js/core/state.js';
 import * as H from '../js/core/hustle.js';
 import { SERVERS, SERVER_CAP } from '../js/net/online.js';
 import { Vehicle } from '../js/world2d/vehicle.js';
-import { GLOCKS, ARPS, WEAPONS, WEAPON_BY_ID, CAL, buyWeapon, buyAmmo, ensureArms, giveWeapon, minAge } from '../js/data/weapons.js';
+import { GLOCKS, ARPS, WEAPONS, WEAPON_BY_ID, CAL, buyWeapon, buyAmmo, ensureArms, giveWeapon, minAge, canFrt, toggleFrt } from '../js/data/weapons.js';
 import { spend } from '../js/core/state.js';
 import { buildMap, collideCircle } from '../js/world2d/map.js';
 import { PROPERTIES } from '../js/data/world.js';
 import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
 import { sideGeo } from '../js/gfx2d/sideCar.js';
+import { CARJACK, canCarjack, carjackChance, carjackChoices, resolveCarjack, strippedCar } from '../js/data/carjack.js';
+import { STREET_RACES, raceRoute, courseRecord, cornerSpeed, pinkSlipCheck } from '../js/data/streetRaces.js';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
 let fails = 0;
@@ -264,7 +266,31 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (near > 12) bad(`${l.id}: nearest building is ${near.toFixed(0)} m from the marker`);
     if (l.type !== 'gas' && !bs.some(b => b.side === l.side)) bad(`${l.id}: building front does not face the street`);
   }
-  for (const l of LOCATIONS) if ((l.type === 'roll' || l.type === 'drag') && !map.buildings.some(b => b.kind === 'gantry' && b.loc === l.id)) bad(`${l.id} has no start gantry`);
+  for (const l of LOCATIONS) if ((l.type === 'roll' || l.type === 'drag' || l.type === 'sprint') && !map.buildings.some(b => b.kind === 'gantry' && b.loc === l.id)) bad(`${l.id} has no start gantry`);
+}
+
+// ---- filler scenery stays off the roads and away from businesses and race starts ----
+{
+  const t0 = performance.now();
+  const map = buildMap();
+  const ms = performance.now() - t0;
+  if (ms > 1500) bad(`buildMap took ${ms.toFixed(0)} ms`);
+  if (map.buildings.length < 2500 || map.props.length < 4000) bad(`map looks empty: ${map.buildings.length} buildings, ${map.props.length} props`);
+  const ROADKINDS = new Set(['gantry', 'canopy', 'pier', 'roof']);
+  for (const b of map.buildings) {
+    if (b.noCollide || ROADKINDS.has(b.kind) || b.loc) continue;
+    for (const e of map.roads.edges) {
+      const h = e.width / 2;
+      if (b.x < Math.max(e.ax, e.bx) + h && b.x + b.w > Math.min(e.ax, e.bx) - h && b.z < Math.max(e.az, e.bz) + h && b.z + b.d > Math.min(e.az, e.bz) - h) { bad(`${b.kind} at ${b.x.toFixed(0)},${b.z.toFixed(0)} sits on ${e.name}`); break; }
+    }
+    if (!b.fill) continue;
+    for (const l of LOCATIONS) {
+      const dx = Math.max(b.x - l.x, 0, l.x - (b.x + b.w)), dz = Math.max(b.z - l.z, 0, l.z - (b.z + b.d));
+      if (Math.hypot(dx, dz) < 15) bad(`${b.kind} at ${b.x.toFixed(0)},${b.z.toFixed(0)} crowds ${l.id}`);
+    }
+  }
+  // every race start and business marker is reachable: nothing solid on it
+  for (const l of LOCATIONS) if (collideCircle(map, l.x, l.z, 1.5)) bad(`${l.id} marker is blocked`);
 }
 
 // ---- every car has its own design sheet, and it describes a real car ----
@@ -328,6 +354,168 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   }
 }
 
+// ---- warrants: unpaid tickets, escapes, paying, surrendering ----
+{
+  const W = await import('../js/core/warrants.js');
+  const st = createState({ name: 'W', age: 25, look: {}, story: false });
+  st.cash = 20000; st.time.day = 4;
+  if (W.hasWarrant(st)) bad('a new career starts with a warrant');
+  W.signCitation(st, [{ kind: 'speeding', text: 'Speeding — 72 in a 45.', fine: 400 }], 400);
+  st.time.day = 4 + W.CITATION_DAYS; W.citationsDue(st);
+  if (W.hasWarrant(st) || st.citations.length !== 1) bad('a ticket turned into a warrant before its due date');
+  st.time.day++; const late = W.citationsDue(st);
+  if (late.length !== 1 || !W.hasWarrant(st) || W.hasFelony(st) || st.citations.length) bad('an overdue ticket should become a misdemeanour warrant');
+  if (st.warrants[0].fine !== 400 + W.FTA_FEE) bad('late fee not added to the warrant');
+  // outrunning a stop is a misdemeanour; a level-3 chase with a robbery is a felony
+  W.warrantForEscape(st, [{ kind: 'noise', text: 'loud', fine: 400 }], 1);
+  if (W.hasFelony(st) || !st.warrants.some(w => w.kind === 'evading') || st.warrants.some(w => w.kind === 'noise')) bad('fleeing a traffic stop should be a misdemeanour warrant (and noise stays a ticket)');
+  const quiet = createState({ name: 'Q', age: 25, look: {}, story: false });
+  if (W.warrantForEscape(quiet, [], 1, false).length) bad('no evading warrant when no officer ever saw you');
+  const payable = W.payableTotal(st);
+  W.warrantForEscape(st, [{ kind: 'robbery', text: 'Armed robbery — test.', fine: 6000 }], 3);
+  if (!W.hasFelony(st) || W.payableTotal(st) !== payable) bad('felony warrants must not be payable online');
+  const cash = st.cash, r = W.payFines(st);
+  if (!r.ok || cash - st.cash !== payable || st.warrants.some(w => !w.felony) || !W.hasFelony(st)) bad('paying fines should clear tickets + misdemeanours only');
+  W.signCitation(st, [{ kind: 'speeding', text: 'Speeding.', fine: 400 }], 400);
+  const c2 = st.cash, sr = W.surrender(st);
+  if (!sr.ok || W.hasWarrant(st) || st.citations.length || c2 - st.cash !== Math.round(400 * (1 - W.SURRENDER_DISCOUNT))) bad('turning yourself in should pay tickets at 25% off and clear every warrant');
+  if (!sr.felonies.some(f => f.kind === 'robbery')) bad('turning yourself in on a felony should hand it to the courts');
+  W.warrantForEscape(st, [], 2);
+  if (W.serveAll(st) !== 2500 || W.hasWarrant(st)) bad('an arrest should serve every warrant');
+}
+// ---- courts: charges, bail, court dates, pleas, trials, sentences, probation ----
+{
+  const J = await import('../js/core/justice.js');
+  const W = await import('../js/core/warrants.js');
+  const fresh = () => { const s = createState({ name: 'Court', age: 25, look: {}, story: false }); s.cash = 500000; s.time.day = 10; s.time.min = 9 * 60; return s; };
+  const rng0 = () => 0.5;
+  // tickets stay tickets; crimes go to court with Texas classes
+  const { charges, tickets } = J.charge([
+    { kind: 'speeding', text: 'Speeding — 88 in a 45.', fine: 700 },
+    { kind: 'robbery', text: 'Armed robbery — Amazin\' Mart.', fine: 6000 },
+    { kind: 'evading', text: 'Evading arrest (in a vehicle).' },
+    { kind: 'burnout', text: 'Exhibition of speed (burnout).', fine: 450 },
+  ]);
+  if (tickets.length !== 1 || tickets[0].kind !== 'speeding') bad('speeding should stay a fine-only ticket');
+  const cls = Object.fromEntries(charges.map(c => [c.text.split(' ')[0], c.cls]));
+  if (cls.Aggravated !== 'F1' || cls.Evading !== 'F3' || cls.Racing !== 'B') bad('charge classes: ' + JSON.stringify(cls));
+  if (J.classify({ kind: 'evading', text: 'Evading detention (fled a stop).' }).cls !== 'A') bad('evading on foot is a Class A');
+  // a first-time misdemeanour: free personal bond, court in 2 days, deferred adjudication on a plea
+  {
+    const s = fresh();
+    const c = J.fileCase(s, J.charge([{ kind: 'hitrun', text: 'Hit-and-run collision.' }]).charges);
+    if (c.date.day !== 12 || c.date.hour !== 9) bad('misdemeanour court date should be 2 days out at 9 AM');
+    const b = J.bailFor(s, c);
+    if (!b.pr || b.held || b.amount !== 500) bad('first-time Class B should get a personal bond: ' + JSON.stringify(b));
+    if (J.courtStatus(s, c) !== 'early') bad('court is not today yet');
+    s.time.day = 12; s.time.min = 10 * 60;
+    if (J.courtStatus(s, c) !== 'today') bad('court should be open on the day');
+    const offer = J.pleaOffer(s, c);
+    if (offer.kind !== 'deferred') bad('first-time misdemeanour plea should be deferred adjudication, got ' + offer.kind);
+    const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })), { plea: true });
+    if (J.openCase(s) || !s.justice.probation?.deferred || s.justice.convictions.length) bad('deferred adjudication: case closed, probation, no conviction');
+    s.time.day = s.justice.probation.until + 1;
+    if (!J.probationDay(s)?.done || s.justice.probation) bad('probation should end');
+  }
+  // a felony: real bail, 3 days out, missing court is bail jumping and forfeits cash bail
+  {
+    const s = fresh();
+    const c = J.fileCase(s, charges);
+    if (c.date.day !== 13 || !J.isFelonyCase(c)) bad('felony court date should be 3 days out');
+    const b = J.bailFor(s, c);
+    if (b.held || b.pr || b.amount < 75000) bad('aggravated robbery bail: ' + JSON.stringify(b));
+    const cash = s.cash;
+    if (!J.postBond(s, c, 'surety').ok || cash - s.cash !== Math.round(b.amount * J.BOND_FEE)) bad('a bondsman should cost 10%');
+    s.time.day = 13; s.time.min = 16 * 60;
+    if (J.courtTick(s, W.addWarrant)) bad('docket still open at 4 PM');
+    s.time.min = 17 * 60 + 5;
+    const f = J.courtTick(s, W.addWarrant);
+    if (!f || !c.fta || !s.warrants.some(w => w.kind === 'bailjump' && w.felony)) bad('missing court should issue a felony bail-jumping warrant');
+    if (!c.charges.some(x => /Bail jumping/.test(x.text))) bad('bail jumping should be added to the case');
+    if (!J.bailFor(s, c).held) bad('no bail after skipping court');
+    // arrested on it: the warrant is served, the case stays and gets a new date
+    const t = W.takeWarrants(s);
+    if (t.items.length || s.warrants.length) bad('a bail-jumping warrant should not be charged twice');
+    // pleading to aggravated robbery is prison, even for a first-timer, with parole at half
+    const offer = J.pleaOffer(s, c);
+    if (offer.kind !== 'jail' || offer.facility !== 'prison' || offer.days < 1825 || offer.served !== Math.round(offer.days * 0.5)) bad('aggravated robbery plea: ' + JSON.stringify(offer));
+    // trial is worse than the deal
+    const trial = J.sentence(s, c.charges, { plea: false, rng: rng0 });
+    if (trial.days <= offer.days) bad('a trial conviction should be worse than the plea deal');
+    J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })), { plea: true });
+    if (s.justice.convictions.length !== c.charges.length || J.priorScore(s) < 2) bad('convictions go on the record and count as priors');
+    // priors make the next one worse
+    const again = J.sentence(s, J.charge([{ kind: 'hitrun', text: 'Hit-and-run.' }]).charges, { plea: true });
+    if (again.kind !== 'jail' || again.facility !== 'county') bad('a misdemeanour with felony priors should mean county jail, got ' + again.kind);
+  }
+  // acquitted on everything: no conviction, cash bail back
+  {
+    const s = fresh();
+    const c = J.fileCase(s, J.charge([{ kind: 'shots', text: 'Discharging a firearm in public.' }]).charges);
+    J.postBond(s, c, 'cash');
+    const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: false })));
+    if (r.sentence.kind !== 'none' || r.refund !== c.bond.paid || r.refund <= 0 || s.justice.convictions.length) bad('acquittal: nothing on the record, bail refunded');
+  }
+  // a new conviction on probation revokes it
+  {
+    const s = fresh();
+    s.justice.probation = { until: 30, text: 'Racing on a highway.', deferred: false, suspended: { days: 90, cls: 'B' } };
+    const c = J.fileCase(s, J.charge([{ kind: 'brandish', text: 'Brandishing.' }]).charges);
+    if (!J.bailFor(s, c).held) bad('arrested on probation: held for revocation');
+    const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })), { plea: true });
+    if (!r.revoked || r.sentence.kind !== 'jail' || s.justice.probation) bad('probation should be revoked into jail time');
+  }
+  // time served counts; unpaid fines are sat out
+  {
+    const s = fresh();
+    const sent = J.sentence(s, [{ cls: 'A', text: 'x', evidence: 1 }, { cls: 'A', text: 'y', evidence: 1 }].map(x => x), { plea: false, rng: rng0 });
+    const c = J.fileCase(s, [{ cls: 'A', text: 'x', evidence: 1 }, { cls: 'A', text: 'y', evidence: 1 }]);
+    s.justice.convictions.push({ day: 1, text: 'p', cls: 'B' }, { day: 2, text: 'q', cls: 'B' });
+    const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })), { plea: false, rng: rng0, served: 10000 });
+    if (r.sentence.kind !== 'jail' || r.sentence.served !== 0) bad('time served should cover the sentence: ' + JSON.stringify(r.sentence));
+    s.cash = 100; s.bank = 0;
+    const f = J.payFine(s, 1000);
+    if (f.paid !== 100 || f.layout !== Math.ceil(900 / J.FINE_PER_DAY)) bad('an unpaid fine should be sat out in jail');
+  }
+  // time inside is compressed but still means something
+  if (J.gameMinutes(30) < 1440 || J.gameMinutes(3650) < 10 * 1440 || J.gameMinutes(3650) > 20 * 1440) bad('jail time compression');
+  if (Math.abs(J.realDaysFor(J.gameMinutes(400)) - 400) > 5) bad('time-served conversion should round-trip');
+  if (!LOCATIONS.some(l => l.id === 'courthouse' && l.type === 'court')) bad('the courthouse needs a door');
+}
+// ---- disguises: ski mask + all black keeps witnesses from naming you ----
+{
+  const D = await import('../js/core/disguise.js');
+  const W = await import('../js/core/warrants.js');
+  const { CLOTHES, CLOTH_BY_ID, BLACKOUT_FIT } = await import('../js/data/shops.js');
+  for (const c of CLOTHES) if (!['top', 'bottom', 'hat', 'shoes', 'mask'].includes(c.slot)) bad(`clothing ${c.id} has an unknown slot ${c.slot}`);
+  for (const id of BLACKOUT_FIT) if (!CLOTH_BY_ID[id] || CLOTH_BY_ID[id].shop !== 'surplus') bad(`blackout fit item ${id} is not sold at the surplus store`);
+  if (!LOCATIONS.some(l => l.shop === 'surplus' && l.type === 'clothing')) bad('no store sells the ski mask');
+  if (CLOTHES.some(c => /nike/i.test(c.name))) bad('use the made-up brand, not a real trademark');
+  const plain = { top: 'tee_white', bottom: 'jeans_blue', shoes: 'kicks_white', hat: 'no_hat', mask: 'no_mask' };
+  const black = { ...plain, top: 'fleece_black', bottom: 'joggers_black', shoes: 'kicks_blackout' };
+  const full = { ...black, mask: 'skimask_black' };
+  if (D.concealment(plain) !== 0) bad('a plain outfit should not hide you');
+  if (!D.allBlack(black) || D.masked(black)) bad('all-black detection is off');
+  if (!(D.concealment(black) > 0 && D.concealment(black) < D.concealment(black, true))) bad('all black should help, and help more at night');
+  if (!(D.concealment(full, true) >= 0.85 && D.concealment(full) > D.concealment({ ...plain, mask: 'skimask_black' }))) bad('mask + all black at night should be close to unrecognisable');
+  if (D.concealment({ ...plain, top: 'hoodie_black', bottom: 'jeans_black', shoes: 'boots_black' }) !== D.concealment(black)) bad('the black clothes Threadline already sells should count as black');
+  // a robbery done fully masked at night leaves no warrant when the witness can't ID; unmasked always does
+  const st = createState({ name: 'M', age: 25, look: {}, story: false });
+  const rob = conceal => [{ kind: 'robbery', text: 'Armed robbery — test.', fine: 6000, conceal }];
+  let wr = W.warrantForEscape(st, rob(D.concealment(full, true)), 1, false, () => 0.5);
+  if (wr.length || wr.unidentified !== 1 || W.hasWarrant(st)) bad('a masked robbery nobody could ID should not become a warrant');
+  wr = W.warrantForEscape(st, rob(D.concealment(full, true)), 1, false, () => 0.99);
+  if (wr.length !== 1 || !/despite the disguise/.test(st.warrants[0].evidence)) bad('a witness who does pick you out should still put out a warrant');
+  W.serveAll(st);
+  wr = W.warrantForEscape(st, rob(0), 1, false, () => 0);
+  if (wr.length !== 1 || !st.warrants[0].evidence) bad('an unmasked robbery should always become a warrant with evidence');
+  // pulling the mask down and up remembers which one
+  const ms = createState({ name: 'K', age: 25, look: { ...plain }, story: false });
+  if (D.toggleMask(ms) !== null) bad('toggling a mask you do not own should do nothing');
+  ms.player.outfits.push('bandana_black', 'skimask_black');
+  D.toggleMask(ms); ms.player.look.mask = 'skimask_black'; D.toggleMask(ms);
+  if (D.masked(ms.player.look) || D.toggleMask(ms) !== true || ms.player.look.mask !== 'skimask_black') bad('mask toggle should put back the last mask worn');
+}
 // ---- weapons: every Glock, AR pistols, shopping rules ----
 {
   const models = new Set(GLOCKS.map(g => g.model));
@@ -356,6 +544,142 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (minAge(WEAPON_BY_ID.knife) !== 18 || minAge(g17) !== 21) bad('age gates');
   const poor = createState({ name: 'P', age: 30, look: {}, story: false }); poor.cash = 10;
   if (buyWeapon(poor, 'glock_17_g5', 0, spend).ok) bad('cannot buy without money');
+  // FRT drops into any firearm, not melee or the already-auto G18
+  for (const w of WEAPONS) if (canFrt(w) !== (!w.melee && !w.auto)) bad(`FRT fit wrong for ${w.id}`);
+  const ar = giveWeapon(st, 'arp_dd_mk18'), bat = giveWeapon(st, 'bat');
+  st.arms.frtKits = 1;
+  if (!toggleFrt(st, ar.uid).ok || !ar.frt || st.arms.frtKits !== 0) bad('FRT should install on an AR pistol');
+  if (toggleFrt(st, gun.uid).ok || gun.frt) bad('FRT installed with no kit left');
+  if (!toggleFrt(st, ar.uid).ok || ar.frt || st.arms.frtKits !== 1) bad('removing an FRT should return the kit');
+  if (toggleFrt(st, bat.uid).ok || bat.frt) bad('FRT on a bat');
+  if (!toggleFrt(st, gun.uid).ok || !gun.frt) bad('FRT should install on a Glock 19');
+}
+
+// carjackings: rare, only when it makes sense, and resisting is a real risk
+{
+  const ok = { inCar: true, stopped: true, inCity: true, policeActive: false, heat: 0, inGarage: false, busy: false, playTime: 3600, day: 10, lastDay: -99, night: true };
+  if (!canCarjack(ok)) bad('carjack should be possible stopped in the city at night');
+  for (const [k, v] of [['inCar', false], ['stopped', false], ['inCity', false], ['policeActive', true], ['heat', 2], ['inGarage', true], ['busy', true], ['playTime', 60], ['lastDay', 9]])
+    if (canCarjack({ ...ok, [k]: v })) bad(`carjack allowed with ${k}=${v}`);
+  // expected wait while sitting still: tens of minutes at night, over an hour by day
+  const night = 1 / carjackChance(ok, 1), day = 1 / carjackChance({ ...ok, night: false }, 1);
+  if (!(night >= 20 * 60 && day >= 60 * 60 && day > night)) bad(`carjacks are not rare enough (night every ${night | 0}s, day every ${day | 0}s stopped)`);
+  if (!(CARJACK.gapDays >= 2)) bad('carjacks need a gap of days between them');
+  if (carjackChoices(true).map(c => c.value).join() !== 'give,flee,gun') bad('armed carjack choices');
+  if (carjackChoices(false).map(c => c.value).join() !== 'give,flee,fight') bad('unarmed carjack choices');
+  // run each choice many times with a seeded rng
+  let seed = 7; const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const sim = ch => { const n = 4000; let keep = 0, hurt = 0, hurtAny = 0; for (let i = 0; i < n; i++) { const o = resolveCarjack(ch, rng); keep += o.keep; hurt += o.hurt; hurtAny += o.hurt > 0; } return { keep: keep / n, hurt: hurt / n, hurtAny: hurtAny / n }; };
+  const give = sim('give'), flee = sim('flee'), gun = sim('gun'), fight = sim('fight');
+  if (give.keep !== 0 || give.hurtAny !== 0) bad('giving up the car loses it and never hurts you ' + JSON.stringify(give));
+  if (!(flee.keep > 0.7 && flee.keep < 0.98 && flee.hurtAny > 0.2)) bad('fleeing usually works but can get you shot ' + JSON.stringify(flee));
+  if (!(gun.keep > 0.8 && gun.hurtAny > 0.3)) bad('pulling a gun usually keeps the car, at a cost ' + JSON.stringify(gun));
+  if (!(fight.keep > 0.2 && fight.keep < 0.4 && fight.hurt > gun.hurt)) bad('fighting barehanded is the worst gamble ' + JSON.stringify(fight));
+  for (let i = 0; i < 200; i++) { const o = resolveCarjack('give', rng); if (o.wallet < 0 || o.wallet > 0.6) bad('wallet share out of range'); if (o.keep) bad('kept car after giving it up'); }
+  const jc = newCar(CARS[0].id); jc.nos = 3; strippedCar(jc, rng);
+  if (!(jc.cond.body < 100 && jc.fuel <= 0.15 && jc.nos === 0)) bad('a recovered car comes back beat up and low on gas ' + JSON.stringify({ c: jc.cond, f: jc.fuel, n: jc.nos }));
+}
+// drag packs: max launch grip, and enough power makes the car wheelie until it's tuned out
+{
+  const camaro = CAR_BY_ID.chevrolet_camaro_ss_2016;
+  if (!CATALOG.some(p => p.cat === 'dragpack' && fits(p, civic))) bad('no drag pack fits a Civic');
+  if (CATALOG.some(p => p.cat === 'wheeliebar' && fits(p, civic))) bad('wheelie bars fit a front-drive car');
+  if (!CATALOG.some(p => p.cat === 'wheeliebar' && fits(p, camaro))) bad('no wheelie bars fit a Camaro');
+  for (const c of CARS) if (launchCheck(buildSpec(c, {}, {})).maxPitch > 0) bad(`stock ${c.id} wheelies`);
+  const big = { turbo: 4, ecu: 3, fuel: 4, engine: 4, intercooler: 3 };
+  const noPack = launchCheck(buildSpec(camaro, big, {}));
+  const pack = launchCheck(buildSpec(camaro, { ...big, dragpack: 4 }, {}));
+  const tuned = launchCheck(buildSpec(camaro, { ...big, dragpack: 4 }, {}, { frontExt: 10, rearComp: 10, pwr1: 75 }));
+  const bars = launchCheck(buildSpec(camaro, { ...big, dragpack: 4, wheeliebar: 2 }, {}));
+  const mild = launchCheck(buildSpec(camaro, { intake: 1, exhaust: 1, dragpack: 2 }, {}));
+  const fwd = launchCheck(buildSpec(civic, { turbo: 4, ecu: 3, fuel: 4, engine: 4, intercooler: 3, dragpack: 4 }, {}));
+  if (!(pack.spin < noPack.spin * 0.6)) bad(`drag pack barely cut wheelspin (${noPack.spin.toFixed(2)}s -> ${pack.spin.toFixed(2)}s)`);
+  if (!(pack.maxPitch > 0.45)) bad(`a 1400 hp Camaro on a drag pack should wheelie hard (pitch ${pack.maxPitch.toFixed(2)})`);
+  if (!(tuned.maxPitch < 0.1)) bad(`stiff drag shocks + 1st-gear power cut didn't tune the wheelie out (${tuned.maxPitch.toFixed(2)})`);
+  if (!(bars.maxPitch <= 0.4)) bad(`wheelie bars didn't catch the wheelie (${bars.maxPitch.toFixed(2)})`);
+  if (mild.maxPitch > 0 || mild.spin > 0.1) bad('a mild build on a drag pack should just hook');
+  if (fwd.maxPitch > 0) bad('a front-drive car wheelied');
+  const dflt = buildSpec(camaro, { dragpack: 2 }, {}), same = buildSpec(camaro, { dragpack: 2 }, {}, { frontExt: 5, rearComp: 5 });
+  if (dflt.wheelieF !== same.wheelieF || dflt.trac !== same.trac) bad('default drag shock settings are not neutral');
+  if (!(buildSpec(camaro, { dragpack: 3 }, {}).handling < buildSpec(camaro, {}, {}).handling)) bad('front skinnies should cost cornering grip');
+}
+// ---- car shows: judging, entrants, crowd votes ----
+{
+  const CS = await import('../js/core/carshow.js');
+  const { defaultVisual: dv } = await import('../js/data/parts.js');
+  const { VISUAL_CATALOG } = await import('../js/data/catalog.js');
+  const civic = CAR_BY_ID.honda_civic_ex_1996;
+  const stock = CS.judge(civic, dv(civic), { body: 100 }, {});
+  const built = CS.judge(civic, { ...dv(civic), paint: '#6b2bd1', finish: 'pearl', wheels: 'six', wheelColor: '#c9a24a', wheelSize: '18', kit: 'wide', tint: 'medium', spoiler: 'lip', headlights: 'led' }, { body: 100 }, {});
+  if (!(built.total > stock.total + 40)) bad(`a full build should out-score stock (${built.total} vs ${stock.total})`);
+  const beat = CS.judge(civic, dv(civic), { body: 30 }, {});
+  if (!(beat.total < stock.total)) bad('a beat-up body should lose points');
+  const clown = CS.judge(civic, { ...dv(civic), finish: 'chrome', decal: 'flames', neon: '#ff1a2e', spoiler: 'gt' }, { body: 100 }, {});
+  if (!(clown.parts.cohesion < 0)) bad('every loud mod at once should hurt cohesion');
+  // every value the judges read is one Vega Kustoms sells (or a stock value)
+  const sold = new Set(VISUAL_CATALOG.map(p => p.value));
+  for (const tier of [1, 3, 5]) {
+    const es = CS.makeEntrants(tier);
+    if (es.length !== 5) bad(`car show tier ${tier} has ${es.length} entrants`);
+    for (const e of es) {
+      if (!CAR_BY_ID[e.modelId]) bad(`car show entrant ${e.id} drives an unknown car`);
+      for (const k of ['finish', 'kit', 'tint', 'spoiler', 'decal']) if (e.visual[k] !== dv(CAR_BY_ID[e.modelId])[k] && !sold.has(e.visual[k])) bad(`entrant ${e.name}: ${k} ${e.visual[k]} is not sold anywhere`);
+      if (!isFinite(CS.judge(CAR_BY_ID[e.modelId], e.visual, e.cond, e.levels).total)) bad(`entrant ${e.name} has no score`);
+    }
+  }
+  // the crowd: everyone votes once, the best build wins most of the time but not always
+  const field = CS.makeEntrants(2).map(e => ({ ...e, visual: { ...e.visual, decal: 'none', neon: 'none' } }));
+  field.push({ id: 'me', modelId: civic.id, visual: { ...dv(civic), paint: '#6b2bd1', finish: 'pearl', wheels: 'six', wheelColor: '#c9a24a', kit: 'wide', tint: 'medium', spoiler: 'lip', headlights: 'led', frontBumper: 'splitter', rearBumper: 'diffuser', skirts: 'aero', interior: '#7a1212' }, cond: { body: 100 }, levels: { turbo: 3, engine: 2 } });
+  const b = CS.crowdVote(field);
+  if (b.length !== CS.VOTERS || b.some(x => x < 0 || x >= field.length)) bad('every voter casts exactly one valid vote');
+  const t = CS.tally(b, field.length);
+  if (t.reduce((a, c) => a + c, 0) !== CS.VOTERS) bad('vote tally does not add up');
+  if (t.filter(x => x > 0).length < 2) bad('the crowd should split its votes');
+  if (!(CS.prizeFor(1, 3).cash > CS.prizeFor(2, 3).cash && CS.prizeFor(1, 4).cash > CS.prizeFor(1, 1).cash && CS.prizeFor(0, 1).cash === 0)) bad('car show prizes are off');
+  if (!CS.isShowTime({ day: 6, min: 12 * 60 }, 'Sat') || CS.isShowTime({ day: 6, min: 20 * 60 }, 'Sat') || CS.isShowTime({ day: 3, min: 12 * 60 }, 'Wed')) bad('car show hours are off');
+  if (!LOCATIONS.some(l => l.type === 'carshow')) bad('the car show needs a lot on the map');
+}
+// ---- Glitch rim pack: every rim is on the atlas and sold as a wheel ----
+{
+  const { RIMS, RIM_COLS } = await import('../js/data/rims.js');
+  const fs = await import('node:fs');
+  if (!fs.existsSync(new URL('../img/rims.webp', import.meta.url))) bad('rim atlas img/rims.webp is missing');
+  if (RIMS.length !== 44 || Math.ceil(RIMS.length / RIM_COLS) !== 4) bad('rim pack should be 44 wheels on a 4-row atlas');
+  for (const r of RIMS) {
+    const p = CATALOG.find(x => x.rim === r.id);
+    if (!p || p.cat !== 'wheels' || !p.visual) bad(`rim ${r.id} is not sold as a wheel`);
+    if (!['five', 'six', 'split', 'turbine', 'mesh', 'dish', 'steel'].includes(r.style)) bad(`rim ${r.id} has no fallback style`);
+  }
+  if (ITEM_BY_ID.vis_a5?.name !== 'Dial In 18" (set)' || ITEM_BY_ID.vis_ci?.cat !== 'interior') bad('adding rims moved older product ids (saves would break)');
+}
+// ---- street races: every leg runs on a real road, records are sane, pink slips have rules ----
+{
+  const map = buildMap();
+  const ids = new Set();
+  for (const ev of STREET_RACES) {
+    if (ids.has(ev.id)) bad(`duplicate street race ${ev.id}`);
+    ids.add(ev.id);
+    if (!RACERS.some(r => r.id === ev.record)) bad(`${ev.id}: record holder ${ev.record} is not a racer`);
+    const r = raceRoute(ev);
+    for (let i = 1; i < r.pts.length; i++) {
+      const [ax, az] = r.pts[i - 1], [bx, bz] = r.pts[i];
+      if (ax !== bx && az !== bz) bad(`${ev.id}: leg ${i} is not along one street`);
+      for (let t = 0; t <= 1; t += 0.05) if (!map.roads.onRoad(ax + (bx - ax) * t, az + (bz - az) * t)) { bad(`${ev.id}: leg ${i} leaves the road`); break; }
+    }
+    if (r.length < 1200) bad(`${ev.id} is only ${r.length.toFixed(0)} m`);
+    const last = r.checkpoints[r.checkpoints.length - 1];
+    if (!last || last.s !== r.length) bad(`${ev.id}: the last checkpoint is not the finish`);
+    const rec = courseRecord(ev);
+    if (!(rec.time > 15 && rec.time < 240)) bad(`${ev.id}: course record ${rec.time}s`);
+    if (courseRecord(ev).time !== rec.time) bad(`${ev.id}: course record is not stable`);
+  }
+  if (!(cornerSpeed(Math.PI / 2, 1, 0.5) < cornerSpeed(0.6, 1, 0.5))) bad('a 90° corner should be slower than a kink');
+  if (!(cornerSpeed(Math.PI / 2, 1.2, 0.5) > cornerSpeed(Math.PI / 2, 0.9, 0.5))) bad('stickier tires should corner faster');
+  const fair = { myPi: 400, theirPi: 420, myValue: 9000, theirValue: 12000, freeSlots: 1, stolen: false };
+  if (pinkSlipCheck(fair)) bad('an even pink-slip race was refused');
+  if (!pinkSlipCheck({ ...fair, freeSlots: 0 })) bad('pink slips allowed with a full garage');
+  if (!pinkSlipCheck({ ...fair, myPi: 600 })) bad('pink slips allowed against a much slower car');
+  if (!pinkSlipCheck({ ...fair, myValue: 2000 })) bad('pink slips allowed with a junker against a nice car');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

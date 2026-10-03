@@ -33,6 +33,9 @@ export function createState({ name, age, look, story = true }) {
     rep: 0,
     xp: 0,
     heat: 0,
+    citations: [],       // signed tickets not paid yet: { id, text, fine, due }
+    warrants: [],        // open warrants: { id, kind, text, fine, day, felony } (core/warrants.js)
+    justice: { cases: [], convictions: [], probation: null },   // court cases, criminal history (core/justice.js)
     followers: 40,
     cars: [],
     activeCar: null,
@@ -132,7 +135,7 @@ export function deposit(s, amount) {
   amount = Math.min(Math.round(amount), s.cash);
   if (amount <= 0) return;
   s.cash -= amount; s.bank += amount;
-  log(s, 'Deposit to Solace Credit Union', 0);
+  log(s, 'Deposit to Cowtown Credit Union', 0);
 }
 export function withdraw(s, amount) {
   amount = Math.min(Math.round(amount), s.bank);
@@ -176,10 +179,10 @@ export function modelOf(car) { return CAR_BY_ID[car.modelId]; }
 
 const specCache = new WeakMap();
 export function carSpec(car) {
-  const key = JSON.stringify([car.parts, car.cond, car.tune]);
+  const key = JSON.stringify([car.parts, car.cond, car.tune, car.visual?.spoiler]);
   const hit = specCache.get(car);
   if (hit && hit.key === key) return hit.spec;
-  const spec = buildSpec(CAR_BY_ID[car.modelId], partLevels(car.parts), car.cond, car.tune);
+  const spec = buildSpec(CAR_BY_ID[car.modelId], partLevels(car.parts), car.cond, car.tune, car.visual);
   specCache.set(car, { key, spec });
   return spec;
 }

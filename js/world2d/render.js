@@ -1,8 +1,9 @@
-// Draws Port Solace top-down: ground, roads, lots, buildings (with a
+// Draws Fort Worth top-down: ground, roads, lots, buildings (with a
 // parallax lean so they read as 3D), trees, night lighting and weather.
 
 import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, LOCATIONS } from '../data/world.js';
 import { BACKROAD } from './map.js';
+import { LOT_COLOR } from './mapTiles.js';
 
 export class Camera {
   constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; this.rot = 0; this.vw = 1; this.vh = 1; }
@@ -24,6 +25,7 @@ export class Camera {
 const COLORS = {
   grass: '#2f3a26', city: '#5d5f63', sand: '#c2a172', asphalt: '#2c2d31', asphaltHwy: '#26272b', line: '#e9e9e2',
   yellow: '#e8c21a', water: '#1d3b52', river: '#244861', park: '#3c5a30', yard: '#4a6338', parking: '#323338', gas: '#77797e',
+  track: '#a0503a', gridiron: '#3f7a34', plaza: '#9a6a52', trail: '#b59a6a', lane: '#36373c', dirt: '#6e5b42', sand: '#d9c493', pond: '#2b5d7a', court: '#a85a35', lot: '#4a4b50', junk: '#5b5348',
 };
 
 export function buildStreetLights(map) {
@@ -112,7 +114,12 @@ export function drawLots(ctx, cam, items) {
     if (it.type !== 'l') continue;
     const l = it.o;
     const x = cam.sx(l.x), y = cam.sy(l.z), w = l.w * z, h = l.d * z;
-    ctx.fillStyle = COLORS[l.kind] || '#444';
+    ctx.fillStyle = l.kind === 'field' ? l.c : COLORS[l.kind] || '#444';
+    if (l.kind === 'pond') {
+      ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(150,200,220,0.35)'; ctx.lineWidth = Math.max(1, 0.5 * z); ctx.stroke();
+      continue;
+    }
     if (l.kind === 'strip') ctx.fillStyle = '#4b4c50';
     if (l.kind === 'drive') ctx.fillStyle = '#8b8d91';
     if (l.kind === 'garagefloor') ctx.fillStyle = '#6c6e73';
@@ -135,10 +142,98 @@ export function drawLots(ctx, cam, items) {
       ctx.fillStyle = '#fff'; ctx.fillRect(x, y + h - 30 * z, w, 0.6 * z);
       ctx.fillStyle = '#e8c21a'; ctx.fillRect(x + w / 2 - 0.3 * z, y, 0.6 * z, h);
     }
+    if (l.kind === 'field' && z > 0.5) drawCropRows(ctx, cam, l);
+    if (l.kind === 'gridiron' && z > 0.8) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = Math.max(1, 0.15 * z);
+      ctx.strokeRect(x, y, w, h);
+      ctx.beginPath(); for (let s = 10; s < l.w; s += 10) { ctx.moveTo(x + s * z, y); ctx.lineTo(x + s * z, y + h); } ctx.stroke();
+    }
+    if (l.kind === 'court' && z > 1) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(1, 0.15 * z);
+      ctx.strokeRect(x + z, y + z, w - 2 * z, h - 2 * z);
+      ctx.beginPath(); ctx.moveTo(x + w / 2, y + z); ctx.lineTo(x + w / 2, y + h - z);
+      ctx.moveTo(x + w / 2 + 1.8 * z, y + h / 2); ctx.arc(x + w / 2, y + h / 2, 1.8 * z, 0, Math.PI * 2); ctx.stroke();
+    }
     if (l.kind === 'park' && z > 1) {
       ctx.strokeStyle = 'rgba(200,190,160,0.35)'; ctx.lineWidth = 2 * z;
       ctx.beginPath(); ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2); ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h); ctx.stroke();
     }
+  }
+  drawProps(ctx, cam, items);
+}
+
+// Furrows across a field, only where the field is on screen.
+function drawCropRows(ctx, cam, l) {
+  const v = cam.view(0);
+  const ax = Math.max(l.x, v.x0), az = Math.max(l.z, v.z0), bx = Math.min(l.x + l.w, v.x1), bz = Math.min(l.z + l.d, v.z1);
+  if (ax >= bx || az >= bz) return;
+  ctx.strokeStyle = 'rgba(0,0,0,0.16)'; ctx.lineWidth = Math.max(1, 0.9 * cam.zoom);
+  ctx.beginPath();
+  if (l.dir === 'x') for (let zz = l.z + Math.ceil((az - l.z) / 3) * 3; zz < bz; zz += 3) { ctx.moveTo(cam.sx(ax), cam.sy(zz)); ctx.lineTo(cam.sx(bx), cam.sy(zz)); }
+  else for (let xx = l.x + Math.ceil((ax - l.x) / 3) * 3; xx < bx; xx += 3) { ctx.moveTo(cam.sx(xx), cam.sy(az)); ctx.lineTo(cam.sx(xx), cam.sy(bz)); }
+  ctx.stroke();
+}
+
+// Ground-level detail: hedges, fences, pools, flowerbeds, benches, and
+// bushes batched by colour so a street full of them is a handful of fills.
+function drawProps(ctx, cam, items) {
+  const z = cam.zoom;
+  if (z < 0.6) return;
+  const bushes = new Map();
+  for (const it of items) {
+    if (it.type !== 'p') continue;
+    const p = it.o;
+    if (p.k === 'shrub' || p.k === 'sage') { let a = bushes.get(p.c); if (!a) bushes.set(p.c, a = []); a.push(p); continue; }
+    const x = cam.sx(p.x), y = cam.sy(p.z), w = p.w * z, h = p.d * z;
+    if (p.k === 'hedge') {
+      if (p.fence) { ctx.fillStyle = '#8a8f96'; ctx.fillRect(x, y, Math.max(1, w), Math.max(1, h)); continue; }
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(x + 0.3 * z, y + 0.3 * z, w, h);
+      ctx.fillStyle = '#2a4a24'; ctx.fillRect(x, y, w, h);
+    } else if (p.k === 'pool') {
+      ctx.fillStyle = '#d8d4c8'; ctx.fillRect(x - 0.5 * z, y - 0.5 * z, w + z, h + z);
+      ctx.fillStyle = '#3fa9d6'; ctx.fillRect(x, y, w, h);
+      if (z > 1.5) { ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(x + w * 0.15, y + h * 0.25, w * 0.45, Math.max(1, 0.18 * z)); }
+    } else if (p.k === 'flowers') {
+      ctx.fillStyle = '#4a3a2a';
+      if (p.round) { ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2); ctx.fill(); }
+      else ctx.fillRect(x, y, w, h);
+      if (z > 1.5) {
+        ctx.fillStyle = p.c;
+        const s = Math.max(1, 0.35 * z);
+        for (let a = 0.4; a < p.w - 0.2; a += 0.8) for (let b = 0.4; b < p.d - 0.2; b += 0.8) {
+          if (p.round && Math.hypot(a - p.w / 2, b - p.d / 2) > p.w / 2 - 0.3) continue;
+          ctx.fillRect(x + a * z - s / 2, y + b * z - s / 2, s, s);
+        }
+      }
+    } else if (p.k === 'umbrella') {
+      const r = p.r * z, cx = cam.sx(p.x), cy = cam.sy(p.z);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(cx + 0.6 * z, cy + 0.7 * z, r, 0, Math.PI * 2); ctx.fill();
+      for (let k = 0; k < 6; k++) { ctx.fillStyle = k % 2 ? '#f4f4f4' : p.c; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, k * Math.PI / 3, (k + 1) * Math.PI / 3); ctx.fill(); }
+    } else if (p.k === 'cow') {
+      const cx = cam.sx(p.x), cy = cam.sy(p.z);
+      ctx.fillStyle = p.c; ctx.beginPath(); ctx.ellipse(cx, cy, 1.3 * z, 0.7 * z, p.a, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + Math.cos(p.a) * 1.45 * z, cy + Math.sin(p.a) * 1.45 * z, 0.45 * z, 0, Math.PI * 2); ctx.fill();
+    } else if (p.k === 'towel') {
+      ctx.fillStyle = p.c; ctx.fillRect(x, y, w, h);
+    } else if (p.k === 'bench') {
+      ctx.fillStyle = '#7a5a3a'; ctx.fillRect(x, y, w, h);
+    }
+  }
+  if (!bushes.size) return;
+  const all = [];
+  for (const a of bushes.values()) for (const p of a) all.push(p);
+  ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath();
+  for (const p of all) { const x = cam.sx(p.x) + p.r * 0.35 * z, y = cam.sy(p.z) + p.r * 0.35 * z; ctx.moveTo(x + p.r * z, y); ctx.arc(x, y, p.r * z, 0, Math.PI * 2); }
+  ctx.fill();
+  for (const [c, a] of bushes) {
+    ctx.fillStyle = c; ctx.beginPath();
+    for (const p of a) { const x = cam.sx(p.x), y = cam.sy(p.z); ctx.moveTo(x + p.r * z, y); ctx.arc(x, y, p.r * z, 0, Math.PI * 2); }
+    ctx.fill();
+  }
+  if (z > 2) {
+    ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.beginPath();
+    for (const p of all) { const x = cam.sx(p.x) - p.r * 0.3 * z, y = cam.sy(p.z) - p.r * 0.3 * z, r = p.r * 0.45 * z; ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
+    ctx.fill();
   }
 }
 
@@ -202,7 +297,7 @@ export function drawRoads(ctx, cam, map, signalT) {
       }
     }
   }
-  // Northridge Pass
+  // Cross Timbers Pass
   ctx.strokeStyle = COLORS.asphalt; ctx.lineWidth = 9 * z; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.beginPath(); BACKROAD.forEach(([x, zz], i) => i ? ctx.lineTo(cam.sx(x), cam.sy(zz)) : ctx.moveTo(cam.sx(x), cam.sy(zz))); ctx.stroke();
   ctx.strokeStyle = COLORS.yellow; ctx.lineWidth = Math.max(1, 0.15 * z); ctx.setLineDash([3 * z, 6 * z]); ctx.stroke(); ctx.setLineDash([]);
@@ -242,6 +337,8 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
     const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
     const ox = cx * b.h * k, oy = cy * b.h * k;
     if (b.kind === 'roof') { drawGarageRoof(ctx, b, x0 + ox, y0 + oy, w, d, z, showLabels); continue; }
+    if (b.kind === 'parked') { drawParked(ctx, b, x0, y0, w, d, z); continue; }
+    if (b.round) { drawRound(ctx, b, x0, y0, ox, oy, w, d, z, night); continue; }
     // shadow
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(x0 + b.h * 0.25 * z * 0.4, y0 + b.h * 0.3 * z * 0.4, w, d);
@@ -280,9 +377,17 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
       ctx.fillRect(x0 + ox + w * 0.6, y0 + oy + d * 0.55, w * 0.22, d * 0.22);
       if (b.h > 140) { ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.arc(x0 + ox + w / 2, y0 + oy + d / 2, Math.min(w, d) * 0.18, 0, Math.PI * 2); ctx.stroke(); }
     }
-    if (b.kind === 'house' && z > 1.4) {
+    if ((b.kind === 'house' || b.kind === 'barn') && z > 1.4) {
       ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath();
       ctx.moveTo(x0 + ox, y0 + oy + d / 2); ctx.lineTo(x0 + ox + w, y0 + oy + d / 2); ctx.stroke();
+    }
+    if (b.kind === 'church' && z > 0.8) {
+      const cx = x0 + ox + w / 2, cy = y0 + oy + d * 0.3, s = Math.min(w, d) * 0.3;
+      ctx.fillStyle = '#f2e6b0'; ctx.fillRect(cx - s * 0.12, cy - s / 2, s * 0.24, s); ctx.fillRect(cx - s * 0.38, cy - s * 0.2, s * 0.76, s * 0.22);
+    }
+    if (b.kind === 'solar' && z > 1) {
+      ctx.strokeStyle = 'rgba(150,180,230,0.35)';
+      ctx.beginPath(); for (let s = 3; s < b.w; s += 3) { ctx.moveTo(x0 + ox + s * z, y0 + oy); ctx.lineTo(x0 + ox + s * z, y0 + oy + d); } ctx.stroke();
     }
     if (b.kind === 'warehouse' && z > 1.2) {
       ctx.strokeStyle = 'rgba(255,255,255,0.08)';
@@ -300,6 +405,44 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
       ctx.fillStyle = b.labelColor || '#fff';
       ctx.fillText(b.label.toUpperCase(), tx, ty + 1);
     }
+  }
+}
+
+// A parked car (or a rig, when it's long) seen from above.
+function drawParked(ctx, b, x, y, w, h, z) {
+  const along = w > h, len = along ? w : h, wid = along ? h : w;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(x + 0.3 * z, y + 0.4 * z, w, h);
+  // u along the car from its front end, v across it
+  const r = (u0, u1, v0, v1) => along ? [x + u0, y + v0, u1 - u0, v1 - v0] : [x + v0, y + u0, v1 - v0, u1 - u0];
+  const box = (q, c) => { ctx.fillStyle = c; ctx.fillRect(q[0], q[1], q[2], q[3]); };
+  if (len > 8 * z) {                                    // tractor + trailer
+    box(r(0, len, 0, wid), '#d8d8dc');
+    box(r(0, 3.4 * z, 0, wid), b.color);
+    box(r(1.6 * z, 2.4 * z, wid * 0.12, wid * 0.88), 'rgba(20,30,40,0.85)');
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1; ctx.strokeRect(...r(3.8 * z, len, 0, wid));
+    return;
+  }
+  box(r(0, len, 0, wid), b.color);
+  box(r(len * 0.24, len * 0.38, wid * 0.12, wid * 0.88), 'rgba(20,30,40,0.85)');
+  box(r(len * 0.72, len * 0.82, wid * 0.16, wid * 0.84), 'rgba(20,30,40,0.75)');
+  if (z > 2) box(r(len * 0.38, len * 0.72, wid * 0.14, wid * 0.86), 'rgba(255,255,255,0.08)');
+}
+
+// Silos, water towers, the lighthouse: a cylinder leaning away like the walls do.
+function drawRound(ctx, b, x0, y0, ox, oy, w, d, z, night) {
+  const r = w / 2, cx = x0 + r, cy = y0 + d / 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.arc(cx + b.h * 0.1 * z, cy + b.h * 0.12 * z, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = shadeHex(b.color, -0.35); ctx.lineWidth = w; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + ox, cy + oy); ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+  if (b.kind === 'lighthouse') {
+    ctx.fillStyle = '#c41b1b'; ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r * 0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = night > 0.3 ? '#fff3c4' : '#e8e2c8'; ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r * 0.3, 0, Math.PI * 2); ctx.fill();
+  } else if (z > 1) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r * 0.55, 0, Math.PI * 2); ctx.stroke();
   }
 }
 
@@ -341,7 +484,7 @@ function drawGarageRoof(ctx, b, rx, ry, w, d, z, showLabels) {
 }
 
 // Shopfront on the street side of a landmark: awning, glass, doors, props.
-const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e' };
+const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e', carshow: '#e8c21a' };
 function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
   const side = b.side, ns = side === 'N' || side === 'S';
   const len = ns ? w : d;
@@ -558,9 +701,10 @@ export function renderOverview(map, scale = 0.12) {
   g.fillStyle = '#7d6a4c'; g.fillRect(0, sy(DESERT_Z), c.width, c.height);
   g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
   g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
+  for (const l of map.lots) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
   for (const w of map.water) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
   g.fillStyle = 'rgba(80,90,100,0.9)';
-  for (const b of map.buildings) g.fillRect(sx(b.x), sy(b.z), Math.max(1, b.w * scale), Math.max(1, b.d * scale));
+  for (const b of map.buildings) if (b.kind !== 'parked') g.fillRect(sx(b.x), sy(b.z), Math.max(1, b.w * scale), Math.max(1, b.d * scale));
   for (const e of map.roads.edges) {
     g.strokeStyle = e.kind === 'highway' ? '#e8c21a' : e.kind === 'desert' ? '#c9b48a' : '#c8cad0';
     g.lineWidth = Math.max(1.5, e.width * scale * (e.kind === 'highway' ? 1 : 1.4));

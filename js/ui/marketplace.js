@@ -17,8 +17,8 @@ import { audio } from '../core/audio.js';
 
 const PRICE_FILTERS = [[3000, 'Under $3k'], [5000, 'Under $5k'], [10000, 'Under $10k'], [25000, 'Under $25k'], [Infinity, 'Any price']];
 const DISTRICT_PTS = {
-  Westbrook: [-600, 100], Southside: [0, 620], Ironside: [600, -250], 'Harbor District': [650, 760], Midtown: [0, -560],
-  Downtown: [0, 0], Eastgate: [450, 60], 'Dust Flats': [0, 1500],
+  'Arlington Heights': [-600, 100], 'Near Southside': [0, 620], Riverside: [600, -250], 'Lakeside': [650, 760], Stockyards: [0, -560],
+  Downtown: [0, 0], Eastgate: [450, 60], 'Chisholm Flats': [0, 1500], 'Stop Six': [1700, -400],
 };
 
 let filt = { price: 5000, q: '', make: '', sort: 'new', manual: false };
@@ -62,7 +62,7 @@ function renderBrowse(scr, ctx) {
       <button class="${filt.manual ? 'on' : ''}" data-action="manual">Manual</button></div>
     <div class="mp-filters"><select class="input" data-make style="width:auto;padding:4px 8px;font-size:13px"><option value="">All makes</option>${makes.map(m => `<option value="${m}" ${filt.make === m ? 'selected' : ''}>${MAKES[m]}</option>`).join('')}</select>
       <select class="input" data-sort style="width:auto;padding:4px 8px;font-size:13px">${[['new', 'Newest'], ['low', 'Price: low'], ['high', 'Price: high'], ['miles', 'Lowest miles']].map(([v, l]) => `<option value="${v}" ${filt.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-    <div style="padding:0 12px;font-size:13px;color:#b0b3b8">Vehicles near Port Solace · ${list.length} results · cash ${fmtMoney(s.cash + s.bank)}</div>
+    <div style="padding:0 12px;font-size:13px;color:#b0b3b8">Vehicles near Fort Worth · ${list.length} results · cash ${fmtMoney(s.cash + s.bank)}</div>
     <div class="mp-grid">${list.map(l => `<div class="mp-item" data-action="open" data-id="${l.id}"><canvas width="220" height="220" data-thumb="${l.id}"></canvas>
       <div class="p">${fmtMoney(l.price)}</div><div class="t">${esc(l.title_)}</div><div class="l">${Math.round(l.miles / 1000)}K miles · ${esc(l.district)}</div></div>`).join('') || '<div class="empty" style="grid-column:span 2">Nothing matches. Try a higher price filter.</div>'}</div></div>`;
   for (const cv of scr.querySelectorAll('[data-thumb]')) {

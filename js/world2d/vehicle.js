@@ -102,8 +102,10 @@ export class Vehicle {
     const speed = Math.abs(u0);
     const rate = 80;     // the wheel follows the stick/arrow instantly
     this.steerIn += clamp(inp.steer - this.steerIn, -rate * dt, rate * dt);
-    const lock = clamp(0.1 / (1 + speed / 18) + 1.9 * mu * G * wb / (speed * speed + 30), 0.07, 0.58);   // arrow keys are all-or-nothing, so full lock has to bite at any speed
+    const lock = clamp((0.1 / (1 + speed / 18) + 1.9 * mu * G * wb / (speed * speed + 30)) * (spec.turnIn || 1), 0.07, 0.58 * Math.max(1, spec.turnIn || 1));   // arrow keys are all-or-nothing, so full lock has to bite at any speed
     let target = this.steerIn * lock;
+    // front tires in the air (drag pack wheelie) can't steer
+    if (this.sim.pitch > 0.08) target *= Math.max(0, 1 - this.sim.pitch * 2.5);
     // a touch of counter-steer help so a slide is catchable on a thumb stick
     const beta = Math.atan2(vy, Math.max(2, Math.abs(u0)));
     if (u0 > 3.5 && Math.abs(beta) > 0.1 && !burn) {
@@ -119,12 +121,13 @@ export class Vehicle {
     const A = wb * (1 - wf), B = wb * wf;                      // CG to front / rear axle
     const Iz = m * wb * wb * 0.24;
     const Nf0 = m * G * wf, Nr0 = m * G * (1 - wf);
-    const stiff = clamp(9 + 3.5 * (spec.handling - 1), 7, 14);
+    const stiff = clamp(clamp(9 + 3.5 * (spec.handling - 1), 7, 14) * (spec.stiffAdj || 1), 6, 16);
     const axRaw = (u1 - u0) / Math.max(dt, 1e-4);
     this.ax += (axRaw - this.ax) * Math.min(1, dt * 7);
     const ax = clamp(this.ax, -1.3 * G, 1.0 * G);
-    const Nf = clamp(Nf0 - m * ax * HCG / wb, 0.3 * Nf0, 1.8 * Nf0);
-    const Nr = m * G - Nf;
+    const hcg = spec.hcg || HCG;
+    const Nf = clamp(Nf0 - m * ax * hcg / wb, 0.3 * Nf0, 1.8 * Nf0);
+    const Nr = m * G - Nf + (spec.downforce || 0) * u0 * u0;   // a GT wing pushes the rear down at speed
     // how much of each tire's grip the throttle / brakes are already using
     const Fx = m * ax;
     const drive = spec.drive;
@@ -134,7 +137,7 @@ export class Vehicle {
       rhoF = Fx * sh / (mu * Nf); rhoR = Fx * (1 - sh) / (mu * Nr);
     } else {
       // brake bias follows the load (a proportioning valve), so the rears don't lock first
-      const rs = clamp(0.85 * Nr / (m * G), 0.1, 0.35);
+      const rs = clamp(0.85 * Nr / (m * G) + (spec.brakeShift || 0), 0.05, 0.5);   // + brake bias from the tune
       rhoF = -Fx * (1 - rs) / (mu * Nf); rhoR = -Fx * rs / (mu * Nr);
     }
     // Good tires: power and brakes barely eat into cornering grip, and the car stays planted.
@@ -158,8 +161,16 @@ export class Vehicle {
     rhoF = Math.min(1, rhoF); rhoR = Math.min(1, rhoR);
     // tires hold a little less per kilo when heavily loaded; fronts give up first
     const loadF = 1 - 0.1 * (Nf / Nf0 - 1), loadR = 1 - 0.1 * (Nr / Nr0 - 1);
-    const peakF = 0.93 * mu * Nf * loadF * Math.max(0.2, Math.sqrt(1 - rhoF * rhoF));
-    const peakR = mu * Nr * loadR * Math.max(0.2, Math.sqrt(1 - rhoR * rhoR)) * rearLock;
+    const peakF0 = 0.93 * mu * Nf * loadF * Math.max(0.2, Math.sqrt(1 - rhoF * rhoF));
+    const peakR0 = mu * Nr * loadR * Math.max(0.2, Math.sqrt(1 - rhoR * rhoR)) * rearLock;
+    // chassis setup: axle balance from springs / bars / camber / pressures,
+    // and the diff: accel lock lets go of the driven axle under power,
+    // decel lock plants the rear (and resists turn-in) off throttle
+    const pull = Fx > 0 ? Math.min(1, Fx / (mu * m * G * 0.5)) : 0;
+    let dF = spec.gripF || 1, dR = spec.gripR || 1;
+    if (spec.diffPow && pull) { if (drive === 'FWD') dF *= 1 - spec.diffPow * pull; else dR *= 1 - spec.diffPow * pull * (drive === 'AWD' ? 0.5 : 1); }
+    if (spec.diffLift && Fx <= 0) { dR *= 1 + spec.diffLift * 0.5; dF *= 1 - spec.diffLift * 0.3; }
+    const peakF = peakF0 * dF, peakR = peakR0 * dR;
 
     const n = Math.max(1, Math.ceil(dt / SUBSTEP));
     const h = dt / n;

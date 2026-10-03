@@ -20,7 +20,7 @@ const FIRST = ['Danny', 'Rico', 'Shay', 'Malik', 'Trina', 'Jace', 'Lex', 'Bo', '
 const NICKS = ['Boost', 'Lowride', 'Two-Step', 'Clutch', 'Redline', 'Smoke', 'Turbo', 'Bandit', 'Lucky', 'Ghost', 'Spool', 'Nitro'];
 
 // A random street racer whose car is roughly as quick as yours.
-function streetRacer(s) {
+export function streetRacer(s) {
   const car = activeCar(s);
   const myPi = carMetrics(car).pi;
   const pool = CARS.filter(c => !c.market || Math.random() < 0.3).map(c => ({ c, pi: metrics(buildSpec(c, {}, {})).pi })).filter(x => Math.abs(x.pi - myPi) < 140 && x.c.msrp < 400000);
@@ -46,8 +46,8 @@ export function openRaceMenu(app) {
   const s = game.s;
   openPanel((root, h) => {
     root.innerHTML = `<div class="p-head"><h1>Race</h1><button class="btn x" data-action="close">×</button></div><div class="p-body">
-      <p class="muted">Races happen at real spots in Port Solace. Set your GPS and drive there — or race whoever texts you a challenge.</p>
-      <div class="list">${LOCATIONS.filter(l => ['roll', 'drag', 'meet'].includes(l.type)).map(l => `<div class="li click" data-action="go" data-id="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${l.tier && tierOf(s.rep).n < l.tier ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'drag' ? 'Drag strip · ' : l.type === 'meet' ? 'Street meet · after 8 PM · ' : 'Roll racing · '}${esc(ROADS[l.road]?.desc || (l.type === 'drag' ? ROADS.strip.desc : 'Show cars, find racers, bet on races.'))}</div></div><span>📍</span></div>`).join('')}</div></div>`;
+      <p class="muted">Races happen at real spots in Fort Worth. Set your GPS and drive there — or race whoever texts you a challenge.</p>
+      <div class="list">${LOCATIONS.filter(l => ['roll', 'drag', 'meet', 'sprint'].includes(l.type)).map(l => `<div class="li click" data-action="go" data-id="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${l.tier && tierOf(s.rep).n < l.tier ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'drag' ? 'Drag strip · ' : l.type === 'meet' ? 'Street meet · after 8 PM · ' : l.type === 'sprint' ? 'Street race · ' : 'Roll racing · '}${esc(l.type === 'sprint' ? 'Cash or pink slips across Fort Worth.' : ROADS[l.road]?.desc || (l.type === 'drag' ? ROADS.strip.desc : 'Show cars, find racers, bet on races.'))}</div></div><span>📍</span></div>`).join('')}</div></div>`;
     bind(root, { close: () => h.close(), go: d => { const l = LOC_BY_ID[d.id]; app.world?.setGps(l.x, l.z, l.name); closeAllPanels(); } });
   });
 }
@@ -60,6 +60,7 @@ export function openRaceSetup(app, { type, loc, npcId = null, wager = null }) {
   if (w && (!w.inCar)) { modal(loc.name, touchUi.active ? '<p>Get in your car first (tap GET IN next to it), then pull up here and tap USE.</p>' : '<p>Get in your car first (F), then pull up here and press Enter.</p>'); return; }
   if (w && w.police.active) { modal('Not now', '<p>Nobody is lining up with the cops on your tail. Lose them first.</p>'); return; }
   if (car.fuel < 0.05) { modal('Out of gas', '<p>You\'re running on fumes. Fill up first.</p>'); return; }
+  if (car.engineBlown) { modal('Blown motor', '<p>Your engine is blown. Get it towed to Second Chance Collision for a rebuild (Bank → Roadside → Tow).</p>'); return; }
   const tier = tierOf(s.rep).n;
   const isDrag = type === 'drag';
   const roadKey = isDrag ? 'strip' : loc.road;
@@ -234,8 +235,10 @@ function results(app, cfg, r) {
         ${['half', 'mile'].includes(cfg.dist) ? row('1/2 mile ET', sp.half, ns.half, 'low') + row('1/2 MPH', sp.halfMph, ns.halfMph, 'high') : ''}
         ${row(isDrag ? 'Elapsed time' : 'Time to finish', P.time, N.time, 'low')}${row('Trap speed (mph)', P.trap, N.trap, 'high')}
         ${row('Top speed (mph)', P.peak, N.peak, 'high')}${row('Shifts', P.shifts, N.shifts)}${row('Wheelspin (s)', P.spin, N.spin)}
+        ${P.wheelie || N.wheelie ? row('Wheelie (in)', P.wheelie || '—', N.wheelie || '—') : ''}
         ${P.crashes || N.crashes ? row('Traffic hits', P.crashes, N.crashes) : ''}</table>
         ${r.margin != null && npc && !r.voided ? `<p class="muted small">Margin: ${r.margin.toFixed(3)}s.</p>` : ''}
+        ${P.stoodUp ? '<p class="small warn">Your car stood up on the bumper. Tune it out in Garage → Tune → Drag launch, or add wheelie bars.</p>' : P.wheelie > 13 ? '<p class="small warn">Big wheelie cost you time. Stiffer drag shocks or less power in 1st will keep the nose down.</p>' : ''}
         ${r.tired > 0.02 ? `<p class="small warn">You were tired: +${r.tired.toFixed(3)}s on your reaction. Eat or sleep.</p>` : ''}
       </div><div>
         ${npc ? `<div class="li"><span class="avatar" style="background:${npc.color}">${esc(npc.name[0])}</span><div class="grow"><div class="t">${esc(npc.name)}</div><div class="s">"${esc(line)}"</div></div></div>` : ''}

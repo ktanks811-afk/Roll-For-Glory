@@ -44,6 +44,7 @@ export const CONTEXTS = {
     draw: ['KeyG'],
     fire: ['KeyJ', 'Space'],
     reload: ['KeyR'],
+    mask: ['KeyV'],
   },
   car: {
     ...COMMON, ...MOVE_X,

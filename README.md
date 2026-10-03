@@ -1,6 +1,6 @@
-# Roll for Glory
+# Murda Worth Street Racing
 
-**Build your car. Build your name. Roll for Glory.**
+**Build your car. Build your name.**
 
 A 2D top-down open-world street racing life sim that runs in the browser. You
 show up in Port Solace with $4,500 and no car. Find a tired, high-mileage
@@ -41,9 +41,29 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   Kustoms. Every visual mod shows up on the car. So do big performance
   parts: intercooler, blower through the hood, drag radials, calipers,
   exhaust tips and the nitrous bottle.
+- **Vega Kustoms design studio.** Try paint (any color, gloss to chrome),
+  rims (style, color, size and stance), tint, body kits, wings, hoods,
+  lights, underglow, graphics and interiors on your car with a live side and
+  top view before you spend anything. One bill covers parts, labor and tax,
+  and a live show score tells you what the judges would think.
+- **Car shows at the Stockyards.** Saturdays and Sundays, 10 AM to 6 PM.
+  Enter your build against five others (street regulars and local builds:
+  slab, JDM, muscle, euro and stance), look over every car, cast your
+  People's Choice vote, then watch 240 voters split the crowd. Each voter has
+  a taste, so the best build usually wins but not always. Top three take
+  cash, rep and a trophy.
 - **Garage.** A spec sheet, condition, value, a dyno with your power and
-  torque curves against the factory curves, final-drive tuning and your car
-  collection.
+  torque curves against the factory curves, and your car collection.
+- **Tuning (Garage → Tune).** Set the car up the way a real tuner would, with
+  live 0-60, quarter-mile, top speed, grip, balance and knock readouts:
+  boost, ignition timing, WOT air/fuel ratio, rev limiter and traction
+  control; final drive and individual gear ratios; ride height, spring
+  rates, bump/rebound damping and sway bars; camber and toe; tire pressures;
+  brake bias; diff accel/decel lock; and wing angle. Each needs the hardware
+  that makes it adjustable in real life (a stock ECU is locked, lowering
+  springs aren't adjustable, an open diff has nothing to set). Push the
+  engine map too far and it knocks: power drops and the engine wears every
+  time you go wide open. Stock, Drag, Track and Drift presets to start from.
 - **Roll racing.** Choose an opponent, road, roll speed (30–70 mph),
   distance (⅛ mile to 1 mile) and a wager. Go on the third honk. Traffic,
   lane changes, drafting, nitrous and manual or automatic shifting are all in.
@@ -165,6 +185,19 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   hit Set GPS: the route lights up on the map right away and the minimap picks
   it up. Tap any empty spot to drop a pin and navigate there. Your car, cops
   and other players show up too.
+- **Phone home screen.** Status cards up top show your FWPD status
+  (warrants, unpaid tickets), the mission you're on with its clock, where the
+  GPS is taking you, and your latest unread text. Tap any card to jump to it.
+  Messages is a list of conversations; open one to read it as a chat and
+  answer offers right in the thread.
+- **Missions by text.** Every few hours (once you have a car) someone you know
+  texts you a job: Rosa needs a parts run, Manny's paint got dropped at the
+  wrong place, Jojo needs a ride, Dre wants a sponsor driven to a meet (tier
+  2), and Zed has a hot duffel bag (tier 2, pays best, but the pickup draws
+  police heat and getting busted ends it). Take it in Messages or Phone →
+  Missions. The GPS walks you through each stop, the HUD shows the clock,
+  and the map numbers the stops. Make the last drop in time to get paid and
+  earn rep; run out of time, bail, or get busted and you lose some rep.
 - **Online crews (permanent).** Phone → Online Crew. Found a crew ($1,500 for
   jackets: name, 2–4 letter tag, colour, motto, open or invite-only) or join
   one that other real players run. Crews are stored in the Supabase project
@@ -183,6 +216,19 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   leaving are soft deletes. `?net=local` swaps the database for a
   same-browser copy of the same rules, which is what the smoke test uses. The
   older single-player Crew app (NPC crews) is still there.
+- **Crew turf.** Phone → Turf (or the Turf button in the Crew app). Every
+  Fort Worth neighborhood belongs to a crew: Iron Saints run the Stockyards
+  (North Side) and Riverside, Midnight Static the Near Southside and
+  Lakeside, Velvet Ghosts Arlington Heights, Dust Devils Cross Timbers and
+  Chisholm Flats, Apex Syndicate Downtown. Stop Six and Benbrook Hills start
+  open. With a crew (your own, or an NPC crew you joined), drive around an
+  open hood for about 45 seconds to claim it; the HUD shows the progress. A
+  rival's hood takes a turf war: their members text you challenge races, and
+  each win knocks their hold down by half until it breaks. Every morning your
+  hoods pay street tax ($300 to $1,200 a day each, a 40% cut if you're a
+  member rather than the founder), and rival crews sometimes move on one:
+  beat their racer within two days or lose it. Leaving your crew gives its
+  turf up. Rules live in `js/core/turf.js`, the app in `js/ui/turf.js`.
 - **Guns, robberies and the Amazin' app.** Phone → Amazin' (a same-minute
   delivery store) sells **every Glock model and generation** (61 entries:
   G17 through G48, G17L, G19X, G30S, G40 MOS, G43X and more, with real calibers
@@ -206,6 +252,16 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   mug them (witnesses may call 911). Get busted after a robbery or with an FRT
   and you lose the gun and a lot of cash. Health, armor and a hospital bill
   exist if a clerk gets you.
+- **Carjackings.** Rarely (at most once every three in-game days, and
+  mostly at night), when you sit still in your car in the city, a man in a
+  ski mask walks up to your window with a pistol. Pull off before he gets
+  there and he's gone. If he reaches you, you choose: **give it up** (he may
+  take your cash too, and the cops find the car abandoned a couple of minutes
+  later, beat up and low on gas, with your GPS set to it), **floor it**
+  (usually works, but he may shoot and you can still lose the car), **pull
+  your gun** if you carry one with ammo (usually keeps the car, but shots
+  bring the cops, self-defense or not) or **fight him for it** barehanded
+  (the worst odds). Getting shot costs health and can put you in the ER.
 - **Police.** Five heat levels. A cop has to be close (about 65 m) and have
   line of sight. Speeding (30+ mph over) and burnouts have to go on for a few
   seconds before anyone reacts; running reds or hitting cars gets noticed at
@@ -213,6 +269,37 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   they lose you they set up a search zone, and you need a cooldown to
   escape. Roadblocks and spike strips start at level 4, and a helicopter
   joins at level 5. Getting busted means fines and impound.
+- **Warrants.** Escape a pursuit, or get away with a robbery or a shooting,
+  and a warrant goes out in your name. Tickets you sign for instead of paying
+  are due in 3 game days; miss the date and they become a warrant too. Open
+  warrants stay with your account's save. While you have one, patrols run
+  your plate and recognise you on foot, and a traffic stop becomes an arrest.
+  Pay tickets and misdemeanour warrants in the FWPD phone app or at a
+  precinct; felony warrants clear only by turning yourself in at a precinct
+  (25% off the fines) or by getting arrested (full price).
+- **Courts and jail.** Getting arrested for more than a ticket files a case
+  at the Tarrant County Courthouse downtown. Charges follow the Texas Penal
+  Code classes (Class B and A misdemeanours, state jail felony, 3rd, 2nd and
+  1st degree). A magistrate sets bail and a court date 2–3 game days out: sign
+  a free personal bond (first-time misdemeanours), post cash bail (refunded
+  when you show up), pay a bondsman 10%, or sit in jail until court (the time
+  counts toward your sentence). Show up between 8 AM and 5 PM on the day; miss
+  it and it's a bail-jumping warrant, your bail is forfeited and you won't get
+  bail again. At the hearing the DA offers a plea deal, or you go to trial
+  with a public defender or a paid lawyer. First-timers on misdemeanours get
+  deferred adjudication; felonies mean state jail or TDCJ, with parole (half
+  time for aggravated crimes). Priors make everything worse, and a new
+  conviction on probation revokes it. Time inside runs on a jail screen
+  (10 years ≈ two weeks of game time); you lose jobs if you're gone 2+ days
+  and pay impound storage. Unpaid fines are sat out at $150 a day.
+- **Masks and blackout gear.** Riverside Army Surplus sells a black ski mask
+  (Vortex, a made-up brand), a bandana and all-black clothes, or the whole
+  blackout fit as a set. Pull the mask down and up with **V** (or the MASK
+  button on a phone). A crime done in a mask and all black, especially at
+  night, often can't be tied to you: no warrant, less heat, and patrols
+  can't match your face. Plates still give you away. Walking around masked
+  for no reason gets you stopped and questioned, and with a warrant that
+  stop is an arrest.
 - **Life stuff.** A big city with day/night and weather, traffic that stops
   at signals, pedestrians, fuel, gas prices, insurance, repairs, food and
   energy, clothes, properties with garage space, a rideshare app, a bank

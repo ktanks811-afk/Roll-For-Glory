@@ -1,10 +1,11 @@
-// Every "press E" location in Port Solace.
+// Every "press E" location in Fort Worth.
 
 import { openPanel, closePanel, closeAllPanels, bind, esc, toast, modal, confirm, bar } from './dom.js';
-import { game, fmtMoney, spend, earn, activeCar, carSpec, carValue, modelOf, newCar, garageCapacity, tierOf, isNight, hourOf, needsPremium, tankGallons, getCar, carMetrics } from '../core/state.js';
+import { game, fmtMoney, spend, earn, activeCar, carSpec, carValue, modelOf, newCar, garageCapacity, tierOf, isNight, hourOf, needsPremium, tankGallons, getCar, carMetrics, addRep } from '../core/state.js';
 import { CARS, CAR_BY_ID, carName, soldNew, MAKES, CURRENT_YEAR } from '../data/cars.js';
 import { PROPERTIES, LOC_BY_ID, GAS } from '../data/world.js';
-import { CLOTHES, CLOTH_BY_ID, FOOD } from '../data/shops.js';
+import { CLOTHES, CLOTH_BY_ID, FOOD, BLACKOUT_FIT, BLACKOUT_DISCOUNT } from '../data/shops.js';
+import { concealment, disguiseLabel } from '../core/disguise.js';
 import { partLevels } from '../data/parts.js';
 import { marketValue, makeListing, roundPrice } from '../data/market.js';
 import { metrics, buildSpec } from '../sim/powertrain.js';
@@ -12,12 +13,20 @@ import { drawThumb } from './marketplace.js';
 import { openGarage, advanceTime } from './garage.js';
 import { openPartsHub } from './partshub.js';
 import { openRaceSetup } from './raceSetup.js';
+import { openStreetRace } from './streetRaceSetup.js';
 import { openMeet } from './meet.js';
+import { openKustoms } from './kustoms.js';
+import { openCarShow } from './carshow.js';
 import { drawPortrait } from '../gfx2d/person.js';
 import { emit } from '../core/events.js';
 import { saveGame } from '../core/save.js';
 import { openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
+import { rebuildCost, resetEngineWarnings } from '../sim/engine.js';
+import { recordHtml } from './record.js';
+import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
+import { openCourthouse, book } from './court.js';
+import { charge, fileCase } from '../core/justice.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -38,13 +47,16 @@ const HANDLERS = {
   dealer, usedlot, perf, visual, repair, gas, food, clothing,
   realty: (loc, app, s) => realty(loc, app, s),
   police,
+  court: (loc, app) => openCourthouse(loc, app),
   meet: (loc, app, s) => {
     if (!isNight(s.time)) { modal(loc.name, `<p>Empty lot. A security guard on a golf cart. Meets start after <b>8 PM</b>.</p><p class="muted small">Tip: sleep at home until night.</p>`); return; }
     if (!activeCar(s)) { modal(loc.name, '<p>You can\'t roll up to a car meet on foot. Get a car.</p>'); return; }
     openMeet(loc, app);
   },
+  carshow: (loc, app) => openCarShow(loc, app),
   roll: (loc, app, s) => openRaceSetup(app, { type: 'roll', loc }),
   drag: (loc, app, s) => openRaceSetup(app, { type: 'drag', loc }),
+  sprint: (loc, app) => openStreetRace(app, loc),
 };
 
 // ---------------- home / safehouse ----------------
@@ -74,7 +86,7 @@ function homeScreen(loc, app, s) {
         s.player.energy = 100;
         if (app.world) { app.world.police.s.heat = Math.max(0, app.world.police.s.heat - mins / 60 * 0.5); }
         saveGame('auto', true);
-        toast(to === 8 ? 'Good morning.' : 'Night falls on Port Solace.', 'info');
+        toast(to === 8 ? 'Good morning.' : 'Night falls on Fort Worth.', 'info');
         h.refresh();
       },
       wardrobe: () => wardrobe(app, s),
@@ -83,25 +95,39 @@ function homeScreen(loc, app, s) {
   });
 }
 
-function wardrobe(app, s, shop = false) {
+// shop: the clothing store you walked into (null = your own wardrobe).
+// Threadline sells streetwear; Riverside Army Surplus sells the blackout gear.
+function wardrobe(app, s, shop = null) {
+  const owns = id => id === 'no_mask' || s.player.outfits.includes(id);
+  const surplus = shop?.shop === 'surplus';
   openPanel((root, h) => {
     const look = s.player.look;
-    const items = shop ? CLOTHES.filter(c => c.price > 0 || !s.player.outfits.includes(c.id)) : CLOTHES.filter(c => s.player.outfits.includes(c.id));
-    root.innerHTML = head(shop ? 'Threadline Streetwear' : 'Wardrobe', shop ? 'New drops every week. Look the part.' : 'What you own') + `<div class="p-body"><div class="create">
-      <div><canvas width="300" height="300" data-p></canvas></div>
-      <div>${['top', 'bottom', 'hat', 'shoes'].map(slot => `<div class="section-title">${slot}</div><div class="list">${items.filter(c => c.slot === slot).map(c => {
-        const owned = s.player.outfits.includes(c.id);
+    look.mask ??= 'no_mask';
+    const items = shop ? CLOTHES.filter(c => (c.shop || null) === (shop.shop || null) && (c.price > 0 || !owns(c.id))) : CLOTHES.filter(c => owns(c.id));
+    const fit = BLACKOUT_FIT.map(id => CLOTH_BY_ID[id]), fitNeed = fit.filter(c => !owns(c.id));
+    const fitPrice = Math.round(fitNeed.reduce((t, c) => t + c.price, 0) * (1 - BLACKOUT_DISCOUNT) * 1.0725);
+    const night = isNight(s.time), cn = concealment(look, night);
+    const sub = surplus ? 'Workwear, cold-weather gear, no questions asked.' : shop ? 'New drops every week. Look the part.' : 'What you own';
+    root.innerHTML = head(shop ? shop.name : 'Wardrobe', sub) + `<div class="p-body"><div class="create">
+      <div><canvas width="300" height="300" data-p></canvas>
+        <div class="li"><span>🕶</span><div class="grow"><div class="t">${disguiseLabel(cn)}</div><div class="s">${Math.round(cn * 100)}% chance a witness can't name you ${night ? 'tonight' : 'in daylight'}. ${look.mask !== 'no_mask' ? 'Cops notice a mask on the street.' : 'A mask and all black works best, at night.'}</div></div></div></div>
+      <div>${surplus ? `<div class="section-title">Full blackout fit</div><div class="li"><span class="swatch" style="background:#0c0c0d;width:22px;height:22px"></span><div class="grow"><div class="t">Ski mask, fleece hoodie, joggers, runners</div><div class="s">${fitNeed.length ? `${fmtMoney(fitPrice)} with tax · 10% off as a set` : 'You own the whole fit'}</div></div>
+        ${fitNeed.length ? `<button class="btn btn-sm btn-primary" data-action="fit">Buy the fit</button>` : `<button class="btn btn-sm" data-action="wearfit">Wear it</button>`}</div>` : ''}
+      ${['mask', 'top', 'bottom', 'hat', 'shoes'].map(slot => { const list = items.filter(c => c.slot === slot); return list.length ? `<div class="section-title">${slot}</div><div class="list">${list.map(c => {
+        const owned = owns(c.id);
         const wearing = look[slot] === c.id;
         const locked = c.tier && tierOf(s.rep).n < c.tier;
         return `<div class="li"><span class="swatch" style="background:${c.color};width:22px;height:22px"></span><div class="grow"><div class="t">${esc(c.name)}</div><div class="s">${owned ? 'Owned' : fmtMoney(c.price)}${locked ? ` · Tier ${c.tier}` : ''}</div></div>
           ${wearing ? '<span class="tag tag-green">Wearing</span>' : owned ? `<button class="btn btn-sm" data-action="wear" data-id="${c.id}">Wear</button>` : `<button class="btn btn-sm btn-primary" data-action="buy" data-id="${c.id}" ${locked ? 'disabled' : ''}>Buy</button>`}</div>`;
-      }).join('')}</div>`).join('')}</div></div></div>`;
+      }).join('')}</div>` : ''; }).join('')}</div></div></div>`;
     const cv = root.querySelector('[data-p]');
     drawPortrait(cv.getContext('2d'), 300, 300, look);
     bind(root, {
       close: () => h.close(),
       wear: d => { look[CLOTH_BY_ID[d.id].slot] = d.id; h.refresh(); },
-      buy: d => { const c = CLOTH_BY_ID[d.id]; if (!spend(s, c.price * 1.0725, `Threadline: ${c.name}`)) return; s.player.outfits.push(c.id); look[c.slot] = c.id; s.followers += Math.round(c.price / 40); h.refresh(); },
+      buy: d => { const c = CLOTH_BY_ID[d.id]; if (!spend(s, c.price * 1.0725, `${shop?.name || 'Threadline'}: ${c.name}`)) return; s.player.outfits.push(c.id); if (c.slot !== 'mask') look[c.slot] = c.id; else toast('In your pocket. Pull it down with V (or MASK) when it\'s time.', 'info'); s.followers += Math.round(c.price / 40); h.refresh(); },
+      fit: () => { if (!spend(s, fitPrice, `${shop.name}: blackout fit`)) return; for (const c of fitNeed) s.player.outfits.push(c.id); for (const c of fit) if (c.slot !== 'mask') look[c.slot] = c.id; toast('All black. The mask is in your pocket: pull it down with V (or MASK) when it\'s time.', 'good'); h.refresh(); },
+      wearfit: () => { for (const c of fit) if (c.slot !== 'mask') look[c.slot] = c.id; h.refresh(); },
     });
   });
 }
@@ -253,11 +279,14 @@ function visual(loc, app, s) {
     root.innerHTML = head('Vega Kustoms', 'Manny Vega · paint, wraps, wheels, body') + `<div class="p-body">
       <p class="muted">Manny: "Fast is Rosa's job. Looking fast is mine."</p>
       <div class="grid">
+        <div class="card click" data-action="studio"><h3>✨ Design studio</h3><p class="muted small">Try paint, rims, tint, body kits and more on your car before you pay. See what show judges would score it.</p></div>
         <div class="card click" data-action="counter"><h3>🎨 Paint, wraps & body</h3><p class="muted small">Respray, wraps, widebody kits, wheels, aero — installed today.</p></div>
         <div class="card click" data-action="booth"><h3>🔧 Install your parts</h3><p class="muted small">Bring visual parts you bought online.</p></div>
-      </div></div>`;
+      </div>
+      <p class="small muted">Manny: "Car show at the Stockyards every Saturday and Sunday, 10 to 6. Win it and people will know the shop."</p></div>`;
     bind(root, {
       close: () => h.close(),
+      studio: () => { if (!activeCar(s)) { toast('Bring a car to the booth first', 'info'); return; } openKustoms(app); },
       counter: () => openPartsHub(app, { store: 'visual' }),
       booth: () => openGarage(app, { mode: 'visual', tab: 'install' }),
     });
@@ -272,7 +301,7 @@ function repairCosts(car) {
     body: (100 - c.body) / 100 * (900 + lux * 0.03),
     lights: (100 - c.lights) / 100 * (300 + lux * 0.006),
     tires: c.tires < 99 ? (100 - c.tires) / 100 * (500 + lux * 0.004) : 0,
-    engine: (100 - c.engine) / 100 * (1800 + lux * 0.05),
+    engine: car.engineBlown ? rebuildCost(m) : (100 - c.engine) / 100 * (1800 + lux * 0.05),
     trans: (100 - c.trans) / 100 * (1400 + lux * 0.035),
   };
   for (const k in cost) cost[k] = Math.round(cost[k] / 5) * 5;
@@ -286,13 +315,14 @@ function repair(loc, app, s) {
     const costs = repairCosts(car);
     const ins = s.insurance ? 0.3 : 1;
     const total = Object.values(costs).reduce((a, b) => a + b, 0) * ins;
-    const names = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (replace set)', engine: 'Engine', trans: 'Transmission' };
+    const names = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (replace set)', engine: car.engineBlown ? '💥 Engine rebuild' : 'Engine', trans: 'Transmission' };
     root.innerHTML = head('Second Chance Collision', 'Body · mechanical · tires · we work with all insurers') + `<div class="p-body" style="max-width:720px">
+      ${car.engineBlown ? `<p class="bad"><b>Blown motor.</b> Spun a bearing and put a rod through the block. It needs a full rebuild before it'll run again.</p>` : ''}
       <p class="muted">${esc(carName(modelOf(car), car.year))}${s.insurance ? ' · <span class="good">Insurance covers 70%</span>' : ' · <span class="muted">Not insured (Bank app)</span>'}</p>
       <div class="list">${Object.entries(costs).map(([k, v]) => `<div class="li"><div style="width:150px">${names[k]}</div><div class="grow">${bar(car.cond[k], car.cond[k] < 40 ? 'red' : car.cond[k] < 70 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.cond[k])}%</span>
         <button class="btn btn-sm" data-action="fix" data-k="${k}" ${v > 0 ? '' : 'disabled'}>${v > 0 ? fmtMoney(v * ins) : 'OK'}</button></div>`).join('')}</div>
       <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn btn-primary" data-action="all" ${total > 0 ? '' : 'disabled'}>Fix everything · ${fmtMoney(total)}</button></div></div>`;
-    const fix = k => { car.cond[k] = 100; };
+    const fix = k => { car.cond[k] = 100; if (k === 'engine' && car.engineBlown) { car.engineBlown = false; resetEngineWarnings(car); toast('Engine rebuilt. Fix the build or it\'ll happen again.', 'good'); } };
     bind(root, {
       close: () => h.close(),
       fix: d => { if (spend(s, costs[d.k] * ins, `Repair: ${names[d.k]}`)) { fix(d.k); app.world?.refreshCar(); h.refresh(); } },
@@ -340,14 +370,14 @@ function food(loc, app, s) {
         if (f.item) s.inventory[f.item] = (s.inventory[f.item] || 0) + 1;
         s.player.energy = Math.min(100, s.player.energy + f.energy);
         advanceTime(s, 20);
-        if (Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Glory Highway on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
+        if (Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Loop 820 on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
         h.refresh();
       },
     });
   });
 }
 
-function clothing(loc, app, s) { wardrobe(app, s, true); }
+function clothing(loc, app, s) { wardrobe(app, s, loc); }
 
 function realty(loc, app, s, focusId) {
   openPanel((root, h) => {
@@ -382,15 +412,40 @@ function police(loc, app, s) {
     const w = app.world;
     const heat = s.heat;
     const fine = Math.round(heat * 350 / 10) * 10;
-    root.innerHTML = head(loc.name, 'Port Solace Police Department') + `<div class="p-body" style="max-width:640px">
+    root.innerHTML = head(loc.name, 'Fort Worth Police Department') + `<div class="p-body" style="max-width:640px">
       ${w?.police.active ? '<p class="bad">You walked into a police station while they\'re looking for you. Bold.</p>' : ''}
       <div class="li"><div class="grow"><div class="t">Outstanding citations</div><div class="s">${heat > 0.05 ? `Your heat is ${heat.toFixed(1)}. Paying your tickets clears it.` : 'You\'re clean.'}</div></div>
         <button class="btn btn-sm btn-primary" data-action="pay" ${heat > 0.05 && !w?.police.active ? '' : 'disabled'}>Pay ${fmtMoney(fine)}</button></div>
+      <div class="section-title">Your record</div>
+      ${recordHtml(s)}
+      ${s.warrants.length || s.citations.length ? `<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+        ${payableTotal(s) ? `<button class="btn btn-sm" data-action="fines" ${w?.police.active ? 'disabled' : ''}>Pay tickets${s.warrants.some(x => !x.felony) ? ' + misdemeanours' : ''} · ${fmtMoney(payableTotal(s))}</button>` : ''}
+        <button class="btn btn-sm btn-primary" data-action="surrender">Turn yourself in${surrenderTotal(s) ? ` · ${fmtMoney(surrenderTotal(s))}` : ''}</button></div>
+        <p class="small muted">Turning yourself in clears tickets and misdemeanour warrants at 25% off.${hasFelony(s) ? ' Felony warrants get filed at the Tarrant County Courthouse: you\'re booked, bail is set low because you came in on your own, and you get a court date.' : ' You spend a few hours being booked.'}</p>` : ''}
       <div class="section-title">Sgt. Hal Brenner</div>
       <p class="muted">"${s.stats.pursuitsEscaped > 2 ? `${esc(s.player.name)}. You've been busy. I've got a whiteboard now. You're on it.` : 'Street racing kills people. Take it to Ironline Dragway — it\'s legal there.'}"</p></div>`;
     bind(root, {
       close: () => h.close(),
-      pay: () => { if (spend(s, fine, 'PSPD citations')) { s.heat = 0; toast('Record cleared', 'good'); h.refresh(); } },
+      pay: () => { if (spend(s, fine, 'FWPD citations')) { s.heat = 0; toast('Record cleared', 'good'); h.refresh(); } },
+      fines: () => { const r = payFines(s); if (r.ok) { toast(`Paid ${fmtMoney(r.total)}`, 'good'); h.refresh(); } },
+      courtgps: () => { const l = LOC_BY_ID.courthouse; w?.setGps(l.x, l.z, l.name); h.close(); },
+      surrender: async () => {
+        const all = surrenderTotal(s), fel = hasFelony(s);
+        if (!(await confirm('Turn yourself in?', `<p>You'll be booked${all ? ` and pay <b>${fmtMoney(all)}</b> in fines` : ''}.${fel ? ' Your felony warrants become a case at the Tarrant County Courthouse, with low bail and a court date.' : ' You walk out a few hours later with a clean record.'}</p>`, 'Turn myself in'))) return;
+        const r = surrender(s);
+        if (!r.ok) return;
+        if (w?.police.active) w.police.reset(w);
+        addRep(s, -15, 'Turned yourself in');
+        const { charges } = charge(r.felonies, 0.6);
+        if (charges.length || r.skipped) {
+          const c = fileCase(s, charges, { surrender: true });
+          h.close();
+          await book(app, c);
+          return;
+        }
+        advanceTime(s, 4 * 60);   // booked, processed, released
+        toast('Booked and released. Your record is clean.', 'good'); h.refresh();
+      },
     });
   });
 }

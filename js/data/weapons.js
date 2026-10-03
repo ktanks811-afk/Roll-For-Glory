@@ -124,7 +124,7 @@ export const ammoBoxPrice = cal => Math.round(CAL[cal].per * AMMO_BOX * 100) / 1
 
 export const GEAR = [
   { id: 'vest', name: 'Level IIIA body armor', price: 380, blurb: 'Soaks up damage from a shot (wears out as it takes hits).' },
-  { id: 'frt', name: 'Forced-reset trigger (FRT)', price: 380, blurb: 'Install it on a Glock (My gear) and it fires full-auto while you hold the trigger. Sometimes it jams, sometimes it dumps a burst, and cops treat it as a machine gun. 21+.' },
+  { id: 'frt', name: 'Forced-reset trigger (FRT)', price: 380, blurb: 'Install it on any gun you own (My gear) and it fires full-auto while you hold the trigger. Sometimes it jams, sometimes it dumps a burst, and cops treat it as a machine gun. 21+.' },
   { id: 'holster', name: 'Concealed carry holster', price: 60, blurb: 'Keeps your pistol out of sight until you draw it: nobody reacts to a holstered gun.' },
 ];
 
@@ -139,6 +139,21 @@ export function ensureArms(s) {
   return a;
 }
 export const frtKits = s => ensureArms(s).frtKits || 0;
+
+// FRT fits any firearm (Glocks and AR pistols); melee has no trigger and the
+// Glock 18 is already full-auto.
+export const canFrt = def => !!def && !def.melee && !def.auto;
+
+// Install or pull the FRT on one of the player's guns. Returns { ok, text }.
+export function toggleFrt(s, uid) {
+  const a = ensureArms(s), g = a.guns.find(x => x.uid === uid), def = g && WEAPON_BY_ID[g.id];
+  if (!g) return { ok: false, text: 'That gun is gone.' };
+  if (g.frt) { g.frt = false; a.frtKits = (a.frtKits || 0) + 1; return { ok: true, text: `FRT removed from the ${def.name}. Back to semi-auto.` }; }
+  if (!canFrt(def)) return { ok: false, text: def.melee ? 'No trigger on that.' : 'Already full-auto.' };
+  if (!(a.frtKits > 0)) return { ok: false, text: 'No FRT kit. Buy one under Gear.' };
+  g.frt = true; a.frtKits--;
+  return { ok: true, text: `FRT dropped in the ${def.name}. Hold the trigger… and pray it doesn't jam.` };
+}
 export const equippedGun = s => { const a = ensureArms(s); return a.guns.find(g => g.uid === a.equipped) || null; };
 
 let n = 0;

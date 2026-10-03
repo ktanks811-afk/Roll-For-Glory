@@ -17,6 +17,7 @@
 #touch[data-ctx="race"] .tc-car-only { display: none; }
 
 /* shared look */
+#touch .tc-btn > *, #touch .tc-sknob > * { pointer-events: none; }   /* the label never becomes the touch target */
 #touch .tc-btn, #touch .tc-stick, #touch .tc-shifter { pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
 #touch .tc-btn {
   position: relative; padding: 0; color: #fff; font-family: var(--head); font-weight: 700; line-height: 1.05;
@@ -116,8 +117,13 @@ body.touch .hud-dash { position: relative; width: 100%; margin-top: calc(var(--u
 body.touch .dash-speed b { font-size: calc(var(--u, 1px) * 32); }
 body.touch .dash-gear { font-size: calc(var(--u, 1px) * 24); top: calc(var(--u, 1px) * 6); }
 body.touch .dash-car { display: none; }
-body.touch .hud-radio { width: 54vw; top: 36%; }
-body.touch .hud-radio div { font-size: 12px; }
+body.touch .hud-nav { gap: calc(var(--u, 1px) * 8); min-width: 0; max-width: calc(100vw - 2 * var(--u, 1px) * 196); padding: calc(var(--u, 1px) * 4) calc(var(--u, 1px) * 10) calc(var(--u, 1px) * 4) calc(var(--u, 1px) * 8); }
+body.touch .hud-nav svg { width: calc(var(--u, 1px) * 28); height: calc(var(--u, 1px) * 28); }
+body.touch .hud-nav b { font-size: calc(var(--u, 1px) * 18); }
+body.touch .hud-nav small { font-size: calc(var(--u, 1px) * 11); }
+body.touch #hud.nav-on .hud-radio.on { transform: translate(-50%, calc(var(--u, 1px) * 46)); }
+body.touch .hud-radio { font-size: calc(var(--u, 1px) * 12); padding: 4px 10px; max-width: max(180px, calc(100vw - 2 * var(--u, 1px) * 200)); }
+body.touch .hud-weapon { margin-top: calc(var(--u, 1px) * 8); padding: calc(var(--u, 1px) * 4) calc(var(--u, 1px) * 7); font-size: calc(var(--u, 1px) * 11); }
 body.touch .hud-prompt { font-size: 14px; padding: 6px 12px; }
 body.touch .hud-prompt kbd { background: var(--red); border-color: var(--red); color: #fff; }
 
@@ -151,6 +157,9 @@ body.touch .race-sub { font-size: 14px; top: 44%; }
 #touch .tc-gun, #touch .tc-fire { display: none; }
 #touch.armed .tc-gun, #touch.armed .tc-fire { display: flex; align-items: center; justify-content: center; }
 #touch.has-gun .tc-gun[data-tap="draw"] { display: flex; align-items: center; justify-content: center; }
+#touch .tc-mask { display: none; }
+#touch.has-mask .tc-mask { display: flex; align-items: center; justify-content: center; }
+#touch.masked .tc-mask { background: rgba(10,10,12,.85); border-color: #fff; }
 #touch .tc-fire { width: calc(var(--u) * 68); height: calc(var(--u) * 68); }
 #touch .tc-fire { background: rgba(255,42,58,.55); border-color: #ff2a3a; font-weight: 800; }
 

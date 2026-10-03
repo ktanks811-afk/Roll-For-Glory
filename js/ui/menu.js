@@ -3,7 +3,7 @@
 
 import { $, el, esc, openPanel, closePanel, closeAllPanels, modal, confirm, toast, bind } from './dom.js';
 import { game, fmtMoney } from '../core/state.js';
-import { SLOTS, slotInfo, slotName, saveGame, loadGame, latestSlot, deleteSlot, exportSave, importSave, settings, saveSettings } from '../core/save.js';
+import { setSaveOwner, SLOTS, slotInfo, slotName, saveGame, loadGame, latestSlot, deleteSlot, exportSave, importSave, settings, saveSettings } from '../core/save.js';
 import { audio } from '../core/audio.js';
 import { getMap } from '../world2d/world.js';
 import { Camera, drawGround, drawWater, drawLots, drawRoads, drawBuildings, drawTrees, drawLighting } from '../world2d/render.js';
@@ -19,6 +19,8 @@ import { openGarage } from './garage.js';
 import { openRaceMenu } from './raceSetup.js';
 import { openOnline } from './online.js';
 import { online } from '../net/online.js';
+import { auth } from '../net/auth.js';
+import { showAuth, accountChip } from './account.js';
 
 // ---------------- animated backdrop ----------------
 const HERO = [
@@ -70,13 +72,17 @@ export class MenuBackdrop {
 // ---------------- title ----------------
 export function showTitle(app) {
   closeAllPanels();
+  // No account, no game: the log-in screen comes first.
+  if (!auth.user) { setSaveOwner(null); showAuth(app, { onDone: () => showTitle(app) }); return; }
+  const moved = setSaveOwner(auth.user.id);
+  if (moved) toast(`Your saved career is now linked to ${auth.user.username}`, 'good');
   const latest = latestSlot();
   const need = !latest;
   const root = $('#screen');
   root.innerHTML = '';
   const t = el(`<div class="title">
-    <div class="title-logo">ROLL<span>FOR</span>GLORY</div>
-    <div class="title-tag">BUILD YOUR CAR. BUILD YOUR NAME. ROLL FOR GLORY.</div>
+    <div class="title-logo">MURDA WORTH<span>STREET RACING</span></div>
+    <div class="title-tag">BUILD YOUR CAR. BUILD YOUR NAME.</div>
     <nav class="menu">
       <button data-action="continue" ${need ? 'disabled' : ''}>Continue${latest ? `<small>${esc(latest.name)} · Day ${latest.day} · ${fmtMoney(latest.cash)} · ${slotName(latest.slot)}</small>` : '<small>No saved career yet</small>'}</button>
       <button data-action="online" ${need ? 'disabled' : ''}>Play Online<small>Free roam with other players</small></button>
@@ -90,9 +96,11 @@ export function showTitle(app) {
       <button data-action="crew" ${need ? 'disabled' : ''}>Crew</button>
       <button data-action="settings">Settings</button>
     </nav>
-    <div class="title-foot">A fan-made street racing sim. Real car and parts brand names are used for flavor only — no affiliation or endorsement. Port Solace and its people are fictional.</div>
+    <div class="title-foot">A fan-made street racing sim. Real car and parts brand names are used for flavor only — no affiliation or endorsement. The city is a loose take on Fort Worth, TX; its people and businesses are fictional.</div>
   </div>`);
   root.appendChild(t);
+  const chip = accountChip(() => showTitle(app));
+  if (chip) t.appendChild(chip);
   const resume = (then) => {
     const s = loadGame(latest.slot);
     if (!s) { toast('That save could not be read', 'bad'); return; }
@@ -204,7 +212,7 @@ export function openSlots(mode, app) {
       export: () => {
         const blob = new Blob([exportSave()], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `roll-for-glory-${game.s.player.name.replace(/\W+/g, '_')}-day${game.s.time.day}.json`; a.click();
+        a.download = `murda-worth-${game.s.player.name.replace(/\W+/g, '_')}-day${game.s.time.day}.json`; a.click();
       },
       import: () => {
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';

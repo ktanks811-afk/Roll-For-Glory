@@ -3,19 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Roll for Glory</title>
-<meta name="description" content="Build your car. Build your name. Roll for Glory. A 2D open-world street racing life sim.">
+<title>Murda Worth Street Racing</title>
+<meta name="description" content="Build your car. Build your name. A 2D open-world street racing life sim.">
 <meta name="theme-color" content="#0a0a0c">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="img/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="img/icon-180.png" sizes="180x180">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Murda Worth Street Racing">
+<meta property="og:description" content="Build your car. Build your name. A 2D open-world street racing life sim.">
+<meta property="og:url" content="https://ktanks811-afk.github.io/Roll-For-Glory/">
+<meta property="og:image" content="https://ktanks811-afk.github.io/Roll-For-Glory/img/cover.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="800">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Murda Worth">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="screen-orientation" content="landscape">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="img/loading.webp" type="image/webp">
 <link rel="stylesheet" href="css/main.css">
 <link rel="stylesheet" href="css/touch.css">
 </head>
@@ -28,11 +38,27 @@
   <div id="modals"></div>
   <div id="toasts"></div>
   <div id="boot" class="boot">
-    <div class="boot-logo">ROLL <span>FOR</span> GLORY</div>
-    <div class="boot-msg" id="boot-msg">Loading Port Solace…</div>
+    <img class="boot-art" src="img/loading.webp" alt="Murda Worth Street Racing" fetchpriority="high" decoding="async">
+    <div class="boot-bottom">
+      <div class="boot-bar"><i id="boot-fill"></i></div>
+      <div class="boot-msg" id="boot-msg">Loading Fort Worth…</div>
+    </div>
   </div>
-  <noscript><div class="boot"><div class="boot-msg">Roll for Glory needs JavaScript turned on.</div></div></noscript>
+  <noscript><div class="boot"><div class="boot-msg">Murda Worth Street Racing needs JavaScript turned on.</div></div></noscript>
+  <script>
+    // Ease the loading bar toward 90% while the game's modules download; boot() fills the rest.
+    (function () {
+      var f = document.getElementById('boot-fill'), w = 0;
+      window.__bootTick = setInterval(function () { w += (90 - w) * 0.07; f.style.width = w + '%'; }, 100);
+    })();
+  </script>
   <script type="module" src="js/main.js"></script>
+  <script>
+    // Always load the latest version of the game (see sw.js).
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    }
+  </script>
   <script>
     // Opening index.html straight off disk blocks ES modules. Say so instead
     // of sitting on "Loading…" forever.

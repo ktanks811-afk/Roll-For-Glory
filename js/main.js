@@ -7,13 +7,21 @@ import { touchUi } from './ui/touch.js';
 import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
+import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
+import { citationsDue, addWarrant } from './core/warrants.js';
+import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
+import { book } from './ui/court.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
 import { initCrews } from './ui/ocrew.js';
+import { initTurf } from './core/turf.js';
 import { initOrientation } from './ui/orientation.js';
+import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
+import { auth } from './net/auth.js';
+import { showAuth } from './ui/account.js';
 import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
 import { openPhone } from './ui/phone.js';
@@ -51,6 +59,7 @@ export const ui = {
   onNewDay() { newDay(); },
   onMorning() { morning(); },
   onHour() { hourly(); },
+  book: c => book(app, c),
 };
 
 // ---------------- mode switching ----------------
@@ -99,7 +108,11 @@ export function toTitle() {
 function hourly() {
   const s = game.s;
   if (!s) return;
+  // the docket closed and you weren't in the courtroom
+  const fta = courtTick(s, addWarrant);
+  if (fta) sendMessage(s, 'clerk', `You failed to appear in ${courtName(fta.case)} (Cause No. ${fta.case.cause}). The judge issued a warrant for your arrest for bail jumping${fta.forfeited ? ` and your ${fmtMoney(fta.forfeited)} bail is forfeited` : ''}. Turn yourself in at the courthouse or a precinct.`, { action: { type: 'gps', loc: 'courthouse' } });
   maybeChallenge(s);
+  offerMission(s);
   // buyers message you about cars you have listed
   for (const ml of s.myListings) {
     const car = s.cars.find(c => c.uid === ml.carUid);
@@ -116,6 +129,9 @@ function hourly() {
 
 function morning() {
   const s = game.s;
+  // court today
+  const c = openCase(s);
+  if (c && !c.fta && !c.held && c.date.day === s.time.day) sendMessage(s, 'clerk', `Reminder: you're on today's docket in ${courtName(c)}, ${fmtCourt(c.date)}, Tarrant County Courthouse. Doors close at 5 PM.`, { action: { type: 'gps', loc: 'courthouse' } });
   // deliveries
   const arrived = s.orders.filter(o => o.arriveDay <= s.time.day);
   if (arrived.length) {
@@ -141,6 +157,12 @@ function newDay() {
     const upkeep = s.properties.length > 1 ? 120 * (s.properties.length - 1) : 0;
     if (upkeep) spend(s, upkeep, 'Property taxes & utilities');
   }
+  // unpaid tickets past their due date become warrants
+  const late = citationsDue(s);
+  if (late.length) sendMessage(s, 'brenner', `You didn't pay your ticket${late.length > 1 ? 's' : ''}. There's a warrant out for you now (${fmtMoney(late.reduce((t, w) => t + w.fine, 0))} with the late fee). Pay it at a precinct or in the FWPD app before one of my officers runs your plate.`);
+  // probation runs out
+  const pr = probationDay(s);
+  if (pr?.done) sendMessage(s, 'clerk', pr.deferred ? 'You completed deferred adjudication. Your case is dismissed and there is no conviction on your record.' : 'You completed your probation. Your supervision is discharged.');
   // sponsor deals expire
   if (s.sponsor && s.sponsor.until < s.time.day) { sendMessage(s, s.sponsor.contact || 'kingpin', `Your ${s.sponsor.name} sponsorship ended.`); s.sponsor = null; }
   saveGame('auto', true);
@@ -199,18 +221,41 @@ function frame(now) {
 }
 
 // ---------------- boot ----------------
+// Fill the loading bar, keep the loading art up for a beat (tap skips), then fade it out.
+const BOOT_MIN_MS = 1600;
+function hideBoot() {
+  const el = $('#boot');
+  clearInterval(window.__bootTick);
+  $('#boot-fill').style.width = '100%';
+  $('#boot-msg').textContent = 'Ready';
+  let gone = false;
+  const go = () => {
+    if (gone) return; gone = true;
+    el.classList.add('done');
+    setTimeout(() => { el.style.display = 'none'; }, 400);
+  };
+  el.addEventListener('pointerdown', go, { once: true });
+  setTimeout(go, Math.max(300, BOOT_MIN_MS - performance.now()));
+}
 async function boot() {
   try {
     getMap();
+    initGameFeel();
     touchUi.mount($('#touch'));
     initStory();
     app.backdrop = new MenuBackdrop();
-    showTitle(app);
-    $('#boot').style.display = 'none';
+    const signedIn = await auth.restore();
+    if (signedIn.recovery) showAuth(app, { mode: 'newpass', onDone: () => showTitle(app) });
+    else if (signedIn.linkError) showAuth(app, { mode: 'login', note: signedIn.linkError, onDone: () => showTitle(app) });
+    else showTitle(app);
+    // Logged out from somewhere else (password changed, etc.): back to the log-in screen once off the streets.
+    auth.onChange(u => { if (!u && app.mode === 'title') showTitle(app); });
+    hideBoot();
     requestAnimationFrame(frame);
-    window.__rfg = { app, game, ui, online };
+    window.__rfg = { app, game, ui, online, auth };
     initOnline(app);
     initCrews(app);
+    initTurf(app);
     initOrientation();
   } catch (e) {
     console.error(e);

@@ -2,8 +2,10 @@
 // the dyno. One source of truth: if a part adds power here, it shows up in
 // the dyno chart, the 0-60 figure, the drag strip and the highway alike.
 
-import { FX } from '../data/parts.js';
+import { FX, PERF_IDS } from '../data/parts.js';
 import { WHEEL_R } from '../data/cars.js';
+import { tuneEffects } from './tuning.js';
+import { engineLoad } from './engine.js';
 
 const HP_W = 745.7;
 const LBFT_NM = 1.3558;
@@ -13,13 +15,14 @@ export const MPH = 2.23694; // m/s -> mph
 export const DIST = { eighth: 201.17, quarter: 402.34, half: 804.67, mile: 1609.34 };
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const TC_SLIP = [0, 0.3, 0.18, 0.1, 0.05, 0.02];
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
 
 // ---------------------------------------------------------------------------
 // Spec: factory figures + installed parts + condition -> numbers the sim uses
 // ---------------------------------------------------------------------------
-export function buildSpec(model, parts = {}, cond = {}, tune = {}) {
+export function buildSpec(model, parts = {}, cond = {}, tune = {}, visual = {}) {
   const L = k => parts[k] || 0;
   let mult = FX.engine.hp[L('engine')] * FX.intake.hp[L('intake')] * FX.exhaust.hp[L('exhaust')] * FX.ecu.hp[L('ecu')];
   let asp = model.asp;
@@ -32,16 +35,21 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}) {
     asp = 'sc'; boostLevel = L('supercharger');
   }
   if (asp !== 'na') mult *= FX.intercooler.hp[L('intercooler')];
+  const baseRedline = model.redline + FX.engine.redline[L('engine')] + FX.ecu.redline[L('ecu')];
+  // Garage → Tune: boost, timing, AFR, gearing, chassis setup (neutral if untouched)
+  const tf = tuneEffects(model, Object.fromEntries(PERF_IDS.map(k => [k, L(k)])), tune || {}, visual || {}, baseRedline);
+  mult *= tf.boostMult;
 
   const fuelCap = FX.fuel.cap[L('fuel')];
+  const rawMult = mult;
   const fuelLimited = mult > fuelCap;
   if (fuelLimited) mult = fuelCap;
 
   const c = k => (cond[k] ?? 100) / 100;
   const engHealth = c('engine') < 0.25 ? 0.55 : 0.7 + 0.3 * c('engine');
 
-  const hp = model.hp * mult * engHealth;
-  const redline = model.redline + FX.engine.redline[L('engine')] + FX.ecu.redline[L('ecu')];
+  const hp = model.hp * mult * engHealth * tf.mapMult;
+  const redline = baseRedline;
 
   let shiftBase = FX.transmission.shift[L('transmission')];
   const code = model.transCode || '';
@@ -62,16 +70,16 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}) {
   const spec = {
     id: model.id, body: model.body, drive: model.drive, asp, boostLevel,
     hpTarget: hp,
-    tqTarget: model.tq * LBFT_NM * mult * engHealth,
+    tqTarget: model.tq * LBFT_NM * mult * engHealth * tf.mapMult,
     redline, idle: model.asp === 'ev' ? 0 : 850,
     lim: model.lim && L('ecu') < 2 ? model.lim / 2.23694 : null,
     peakTqRpm: Math.min(model.peakTqRpm, redline * 0.85) * (asp === 'turbo' && model.asp !== 'turbo' ? 0.85 : 1),
     spoolRpm: asp === 'turbo' ? redline * (0.34 + 0.035 * Math.max(0, boostLevel - 1)) : 0,
     spoolTime: asp === 'turbo' ? 0.25 + 0.07 * boostLevel : 0,
     mass: model.kg * FX.weight.mult[L('weight')] + (L('nitrous') ? 14 : 0),
-    mu, trac: FX.diff.trac[L('diff')] * FX.suspension.trac[L('suspension')],
+    mu, trac: FX.diff.trac[L('diff')] * FX.suspension.trac[L('suspension')] * tf.trac,
     wf: model.wf ?? 0.54, driveFrac, eff: model.drive === 'AWD' ? 0.8 : model.drive === 'FWD' ? 0.88 : 0.86,
-    gears: model.gears.slice(), fd: model.fd * (tune.finalDrive || 1),
+    gears: model.gears.map((g, i) => g * (tf.gearMult[i] ?? 1)), fd: model.fd * tf.fd,
     wheelR: WHEEL_R[model.body] || 0.32,
     cd: model.cd, area: model.area,
     shiftTime,
@@ -80,20 +88,43 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}) {
     lv: { ...parts },
     twoStep: L('twostep'),
     launchControl: L('twostep') >= 1,
-    brakeG: 0.85 * FX.brakes.force[L('brakes')],
-    handling: FX.suspension.handling[L('suspension')] * mu,
+    brakeG: 0.85 * FX.brakes.force[L('brakes')] * tf.brakeG,
+    handling: FX.suspension.handling[L('suspension')] * mu * tf.handling * FX.dragpack.handling[L('dragpack')],
     fuelLimited,
+    // chassis setup read by the open-world handling model
+    gripF: tf.gripF, gripR: tf.gripR, hcg: tf.hcg, stiffAdj: tf.stiff, turnIn: tf.turnIn,
+    brakeShift: tf.brakeShift, diffPow: tf.diffPow, diffLift: tf.diffLift,
+    downforce: tf.downforce, dragArea: tf.dragArea, crr: tf.crr, tc: tf.tc,
+    knock: tf.knock, overRev: tf.overRev, boostPsi: tf.boost, balance: tf.balance, tuneWarnings: tf.warnings,
+    curveRedline: redline,
   };
+  // Drag pack + wheelies. The front lifts once the drive force times the
+  // weight-transfer factor beats the weight on the front tires. AWD front
+  // tires pull the nose down, FWD can't wheelie at all.
+  spec.launchGrip = FX.dragpack.launch[L('dragpack')];
+  const k = (model.drive === 'RWD' ? 0.38 : model.drive === 'AWD' ? 0.24 : 0) * (1 + FX.dragpack.transfer[L('dragpack')]) * tf.liftK;
+  spec.wheelieF = k > 0 ? spec.mass * G * spec.wf / k : null;
+  spec.noseRate = tf.noseRate;
+  // as the weight comes back the drag radials / slicks plant harder
+  spec.plant = model.drive === 'FWD' ? 0 : FX.dragpack.transfer[L('dragpack')] * 1.2 * tf.liftK;
+  spec.gearPwr = tf.gearPwr;
+  spec.barCap = L('wheeliebar') && model.drive === 'RWD' ? 0.06 + 0.07 * tf.barH : null;
+  spec.barH = spec.barCap ? tf.barH : null;
+  // will the motor live? (supporting mods vs the power it's making)
+  const load = engineLoad({ model, lv: spec.lv, ratio: mult * tf.mapMult, rawMult, fuelCap, fuelLimited, knock: tf.knock, overRev: tf.overRev, nosHp: spec.nosHp });
+  spec.engineRisk = load.risk; spec.engineNosRisk = load.nosRisk; spec.engineReasons = load.reasons; spec.engineLevel = load.level; spec.engineLimit = load.limit;
   fitCurve(spec);
+  if (tf.redline) { spec.redline = tf.redline; figures(spec); }
   spec.shiftRpm = computeShiftPoints(spec);
   return spec;
 }
 
 // Torque shape, normalized so its peak is 1 (at full boost).
 function shape(spec, rpm, fEnd) {
-  const r = rpm / spec.redline;
-  const pt = spec.peakTqRpm / spec.redline;
-  const idleR = spec.idle / spec.redline;
+  const rl = spec.curveRedline || spec.redline;
+  const r = rpm / rl;
+  const pt = spec.peakTqRpm / rl;
+  const idleR = spec.idle / rl;
   if (spec.asp === 'ev') return r < pt ? 1 : Math.max(0.05, pt / r);
   const fLow = spec.asp === 'sc' ? 0.82 : spec.asp === 'turbo' ? 0.78 : 0.64;
   let f;
@@ -131,7 +162,11 @@ function fitCurve(spec) {
     spec.fEnd = (lo + hi) / 2;
   }
   spec.tpk = tpk;
-  // display figures straight off the curve
+  figures(spec);
+}
+
+// display figures straight off the curve
+function figures(spec) {
   let maxT = 0, maxP = 0, maxPRpm = 0, maxTRpm = 0;
   for (let rpm = 1000; rpm <= spec.redline; rpm += 50) {
     const t = torqueAt(spec, rpm);
@@ -207,7 +242,7 @@ export function newSim(spec, opts = {}) {
     x: 0, v, gear, rpm: Math.max(spec.idle, wheelRpm(spec, v, gear)),
     shiftT: 0, pendingGear: gear, boost: v > 1 ? 0.6 : 0, nos: spec.nosSecs, nosOn: false,
     slip: 0, spinTime: 0, limiter: false, tireTemp: opts.tireTemp ?? 0.5,
-    launchHeld: 0, t: 0, shifts: 0, missedShift: 0, peakV: v, draft: 0,
+    launchHeld: 0, t: 0, shifts: 0, missedShift: 0, peakV: v, draft: 0, pitch: 0, maxPitch: 0, standing: false,
   };
 }
 
@@ -253,6 +288,7 @@ export function stepSim(spec, s, input, dt) {
   s.limiter = rpm >= spec.redline;
   let tq = s.limiter ? 0 : torqueAt(spec, rpm) * throttle;
   if (spec.asp === 'turbo') tq *= 0.62 + 0.38 * s.boost / Math.max(0.01, throttle || 1);
+  if (spec.gearPwr && s.gear < 2) tq *= spec.gearPwr[s.gear];   // boost by gear / torque management
   if (clutchSlipping) tq = Math.min(tq, spec.clutchCap);
 
   let fDrive = s.shiftT > 0 || (spec.lim && s.v > spec.lim) ? 0 : tq * ratio * spec.eff / spec.wheelR;
@@ -266,8 +302,19 @@ export function stepSim(spec, s, input, dt) {
 
   // Traction: tire temp (from burnouts) helps, speed adds a little downforce.
   const tempF = 0.9 + 0.22 * Math.min(1, s.tireTemp);
-  const fTrac = spec.mu * spec.trac * G * spec.mass * spec.driveFrac * tempF * (1 + s.v * 0.0012);
+  const down = (spec.downforce || 0) * s.v * s.v * (spec.drive === 'FWD' ? 0.2 : 1);
+  // a drag pack's soft rubber hooks hardest off the line and fades with speed
+  const launchF = 1 + ((spec.launchGrip || 1) - 1) * (0.3 + 0.7 * Math.exp(-s.v / 22));
+  let fTrac = spec.mu * spec.trac * (G * spec.mass * spec.driveFrac + down) * tempF * (1 + s.v * 0.0012) * launchF;
+  if (spec.plant) fTrac *= 1 + spec.plant * clamp((s.fx || 0) / (spec.mass * G), 0, 1.5);
+  // wheelie bars set too low (or a wheelie past the bars) carry weight off the rear tires
+  const lift0 = spec.wheelieF ? Math.min(fDrive, fTrac) / spec.wheelieF - 1 : -1;
+  if (spec.barCap && lift0 * 4 > spec.barCap) fTrac *= 1 - clamp((lift0 * 4 - spec.barCap) * 0.25, 0, 0.3);
+  // a perfect driver feathers the front end down when there are no bars to catch it
+  if (input.perfect && spec.wheelieF && !spec.barCap && fDrive > spec.wheelieF * 1.04) fDrive = spec.wheelieF * 1.04;
   if (input.perfect && fDrive > fTrac * 1.03) fDrive = fTrac * 1.03;
+  // traction control: cuts power the moment the driven wheels start to spin
+  else if (spec.tc && !input.burnout && fDrive > fTrac * (1 + TC_SLIP[spec.tc])) fDrive = fTrac * (1 + TC_SLIP[spec.tc]);
 
   let fx = fDrive;
   if (fDrive > fTrac) {
@@ -281,8 +328,22 @@ export function stepSim(spec, s, input, dt) {
   }
   s.tireTemp = Math.max(0.3, s.tireTemp - dt * 0.004);
 
-  const aero = 0.5 * RHO * spec.cd * spec.area * s.v * s.v * (1 - (s.draft || 0));
-  const roll = s.v > 0.1 ? spec.mass * G * 0.013 : 0;
+  // Wheelie: pitch 0 = all four down, ~0.3 = a few inches (the good kind),
+  // 1+ = standing on the bumper. While the nose is up some of the push goes
+  // into lifting it instead of forward, and standing up costs nearly all of it.
+  const lift = spec.wheelieF ? fx / spec.wheelieF - 1 : -1;
+  let want = lift > 0 ? Math.min(1.6, lift * 4) : 0;
+  if (spec.barCap) want = Math.min(want, spec.barCap);
+  const pr = s.pitch || 0;
+  s.pitch = pr + (want - pr) * Math.min(1, dt * (want > pr ? 2.6 * (spec.noseRate || 1) : 3.2));
+  if (s.pitch < 0.004) s.pitch = 0;
+  if (s.pitch > (s.maxPitch || 0)) s.maxPitch = s.pitch;
+  s.standing = s.pitch > 1;
+  if (s.pitch > 0) fx *= s.standing ? 0.35 : 1 - 0.3 * s.pitch;
+  s.fx = fx;
+
+  const aero = (0.5 * RHO * spec.cd * spec.area + (spec.dragArea || 0) * 0.5 * RHO) * s.v * s.v * (1 - (s.draft || 0));
+  const roll = s.v > 0.1 ? spec.mass * G * (spec.crr || 0.013) : 0;
   const brakeF = s.v > 0.05 ? brake * spec.brakeG * G * spec.mass : 0;
   const engineBrake = throttle < 0.05 && s.v > 1 && s.shiftT <= 0 ? ratio * 4 : 0;
 
@@ -306,7 +367,7 @@ export function stepSim(spec, s, input, dt) {
 // ---------------------------------------------------------------------------
 const metricCache = new Map();
 export function metrics(spec) {
-  const key = JSON.stringify([spec.id, spec.hp, spec.tq, spec.mass, spec.mu, spec.trac, spec.shiftTime, spec.fd, spec.redline, spec.nosHp, spec.asp]);
+  const key = JSON.stringify([spec.id, spec.hp, spec.tq, spec.mass, spec.mu, spec.trac, spec.shiftTime, spec.fd, spec.gears, spec.redline, spec.tpk, spec.nosHp, spec.asp, spec.downforce, spec.dragArea, spec.crr, spec.tc, spec.launchGrip, spec.wheelieF, spec.barCap, spec.gearPwr]);
   if (metricCache.has(key)) return metricCache.get(key);
 
   const s = newSim(spec, { tireTemp: 0.6 });
@@ -341,4 +402,21 @@ export function perfIndexFrom(quarter) {
 }
 export function perfClass(pi) {
   return pi >= 900 ? 'S+' : pi >= 800 ? 'S' : pi >= 650 ? 'A' : pi >= 500 ? 'B' : pi >= 330 ? 'C' : 'D';
+}
+
+// A real launch, no driver aids: full throttle from the launch rpm for a few
+// seconds. Tells the garage whether the car hooks, spins or wheelies.
+export function launchCheck(spec, launchRpm) {
+  const s = newSim(spec, { tireTemp: 0.7 });
+  const dt = 1 / 120;
+  let spin = 0, sixtyFt = null;
+  launchRpm = launchRpm || (spec.asp === 'turbo' ? spec.redline * 0.62 : spec.redline * 0.48);
+  while (s.t < 3) {
+    stepSim(spec, s, { throttle: 1, auto: true, launchRpm: s.gear === 0 && s.v < 8 ? launchRpm : null }, dt);
+    if (s.slip > 0.15 && s.t < 2) spin += dt;
+    if (sixtyFt === null && s.x >= 18.29) sixtyFt = s.t;
+  }
+  const p = s.maxPitch;
+  const verdict = p > 1 ? 'stands' : p > 0.45 ? 'big' : p > 0.05 ? 'wheelie' : spin > 0.4 ? 'spin' : 'hooks';
+  return { maxPitch: p, inches: Math.round(p * 30), spin, sixtyFt, verdict };
 }

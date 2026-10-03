@@ -28,10 +28,12 @@ function applyVolume() {
   musicBus.gain.value = settings.music * 0.55;
 }
 
-// Browsers only allow audio after a gesture.
-['pointerdown', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, () => {
-  init(); if (ctx && ctx.state === 'suspended') ctx.resume();
-}, { passive: true }));
+// Browsers only allow audio after a gesture. iOS only counts the end of a
+// tap (touchend / click) as one, and leaves the context 'interrupted' after
+// the app was in the background, so try on every kind of tap until it runs.
+['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'keydown'].forEach(ev => window.addEventListener(ev, () => {
+  init(); if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
+}, { passive: true, capture: true }));
 
 function noiseSource() {
   const n = ctx.createBufferSource(); n.buffer = noiseBuf; n.loop = true; return n;

@@ -21,6 +21,8 @@ export const PERF = [
   { id: 'suspension', name: 'Suspension', group: 'Chassis' },
   { id: 'brakes', name: 'Brakes', group: 'Chassis' },
   { id: 'tires', name: 'Tires', group: 'Chassis' },
+  { id: 'dragpack', name: 'Drag Pack', group: 'Chassis' },
+  { id: 'wheeliebar', name: 'Wheelie Bars', group: 'Chassis' },
   { id: 'weight', name: 'Weight Reduction', group: 'Chassis' },
   { id: 'nitrous', name: 'Nitrous', group: 'Power Adders' },
   { id: 'twostep', name: '2-Step Launch Control', group: 'Power Adders' },
@@ -46,6 +48,15 @@ export const FX = {
   suspension:   { trac: [1, 1.02, 1.04, 1.07, 1.09], handling: [1, 1.08, 1.16, 1.24, 1.32], drop: [0, 0.025, 0.045, 0.06, 0.07] },
   brakes:       { force: [1, 1.12, 1.28, 1.45, 1.6] },
   tires:        { mu: [1, 1.08, 1.17, 1.32, 1.45], width: [0, 0.02, 0.04, 0.07, 0.09] },
+  // Drag pack: drag radials or slicks out back, skinny front runners, and
+  // (stage 2+) drag shocks. launch = extra bite off the line, fading with
+  // speed; handling = what the skinnies cost in corners; transfer = how much
+  // harder the soft sidewalls and shocks throw weight onto the rear (and
+  // lift the nose); shocks = adjustable drag shocks (stage 2+).
+  dragpack:     { launch: [1, 1.45, 1.6, 1.8, 2.0], handling: [1, 0.95, 0.92, 0.88, 0.85], transfer: [0, 0.12, 0.2, 0.26, 0.32], shocks: [0, 0, 1, 1, 1] },
+  // Wheelie bars: catch the car before the nose goes too high. adjust =
+  // height can be set in Garage → Tune (stage 2+).
+  wheeliebar:   { adjust: [0, 0, 1, 1, 1] },
   weight:       { mult: [1, 0.965, 0.93, 0.89, 0.85] },
   nitrous:      { hp: [0, 50, 100, 175, 250], secs: [0, 7, 7, 8, 9] },
   // 2-step: gas + brake holds the engine on a launch rev limiter. tol = how far

@@ -20,7 +20,7 @@ export function openCreate(app) {
     const sw = (key, list) => `<div class="opts">${list.map(c => `<span class="swatch ${look[key] === c ? 'on' : ''}" style="background:${c}" data-action="look" data-k="${key}" data-v="${c}"></span>`).join('')}</div>`;
     const btns = (key, list, label = x => x) => `<div class="opts">${list.map(v => `<button class="${look[key] === v ? 'on' : ''}" data-action="look" data-k="${key}" data-v="${v}">${esc(label(v))}</button>`).join('')}</div>`;
     const cloth = id => CLOTHES.find(c => c.id === id)?.name || id;
-    root.innerHTML = `<div class="p-head"><h1>New Career<small>Who's about to take over Port Solace?</small></h1><button class="btn x" data-action="close">×</button></div>
+    root.innerHTML = `<div class="p-head"><h1>New Career<small>Who's about to take over Fort Worth?</small></h1><button class="btn x" data-action="close">×</button></div>
       <div class="p-body"><div class="create">
         <div><canvas width="300" height="300" data-portrait></canvas>
           <p class="muted small">You start with $4,500, a phone, and a studio apartment in Eastgate. No car.</p></div>
