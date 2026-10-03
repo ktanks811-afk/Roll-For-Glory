@@ -13,6 +13,7 @@ import { drawThumb } from './marketplace.js';
 import { openGarage, advanceTime } from './garage.js';
 import { openPartsHub } from './partshub.js';
 import { openRaceSetup } from './raceSetup.js';
+import { openStreetRace } from './streetRaceSetup.js';
 import { openMeet } from './meet.js';
 import { openKustoms } from './kustoms.js';
 import { openCarShow } from './carshow.js';
@@ -55,6 +56,7 @@ const HANDLERS = {
   carshow: (loc, app) => openCarShow(loc, app),
   roll: (loc, app, s) => openRaceSetup(app, { type: 'roll', loc }),
   drag: (loc, app, s) => openRaceSetup(app, { type: 'drag', loc }),
+  sprint: (loc, app) => openStreetRace(app, loc),
 };
 
 // ---------------- home / safehouse ----------------

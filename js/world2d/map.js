@@ -256,7 +256,7 @@ export function buildMap() {
 
   // Race starts: a banner gantry over the road (or the strip) replaces the old floor ring.
   for (const l of LOCATIONS) {
-    if (l.block || (l.type !== 'roll' && l.type !== 'drag')) continue;
+    if (l.block || (l.type !== 'roll' && l.type !== 'drag' && l.type !== 'sprint')) continue;
     let cx = l.x, cz = l.z, span = 22, horiz = false;
     if (l.type === 'drag') { cx = 90; cz = l.z + 6; span = 46; }
     else {

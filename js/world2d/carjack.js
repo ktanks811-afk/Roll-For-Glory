@@ -35,7 +35,7 @@ export class Carjacks {
     const w = this.w, v = w.vehicle;
     return {
       inCar: w.inCar && !!v, stopped: !!v && v.speed < 1, inCity: w.inCity, policeActive: w.police.active,
-      heat: this.s.heat, inGarage: !!w.inGarage, busy: !!(this.jack || this.away || w.combat.rob),
+      heat: this.s.heat, inGarage: !!w.inGarage, busy: !!(this.jack || this.away || w.combat.rob || w.races?.active),
       playTime: this.s.playTime, day: this.s.time.day, lastDay: this.log.lastDay, night: isNight(this.s.time),
     };
   }
