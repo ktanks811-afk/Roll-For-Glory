@@ -9,6 +9,7 @@ import { CAR_BY_ID, carName } from '../data/cars.js';
 import { buildSpec, dynoCurve, metrics, MPH } from '../sim/powertrain.js';
 import { launchRpmSetting } from '../sim/twostep.js';
 import { tuneSchema, tuneValue, PRESETS } from '../sim/tuning.js';
+import { openPartProfile } from './partProfile.js';
 import { drawSideCar } from '../gfx2d/sideCar.js';
 import { shapeOf } from '../data/carShapes.js';
 import { soundProfile, noiseDb, LEGAL_DB } from '../sim/sound.js';
@@ -80,6 +81,11 @@ export function installPart(s, car, pid, { color, app } = {}) {
   emit('partInstalled', { pid, cat: p.cat });
   app?.world?.refreshCar();
   toast(`Installed: ${p.brand} ${p.name}`, 'good');
+  // warn straight away if the build is now hurting the motor
+  if (!p.visual) {
+    const sp = carSpec(car), lvl = sp.engineLevel;
+    if (lvl && (lvl.id === 'high' || lvl.id === 'danger')) setTimeout(() => toast(`⚠ Engine reliability: ${lvl.label}. Needs: ${(sp.engineReasons || []).map(r => r.fix).join(', ')}`, 'bad'), 400);
+  }
 }
 
 function render(root, h, app, st) {
@@ -127,6 +133,7 @@ function overview(body, h, app, st, s, car, m) {
         <span>Aspiration</span><span>${{ na: 'Naturally aspirated', turbo: 'Turbocharged', sc: 'Supercharged', ev: 'Electric' }[spec.asp]}</span>
         <span>Exhaust noise</span><span>${(() => { const db = noiseDb(m, car.parts); return `${Math.round(db)} dB at full throttle · ${db > LEGAL_DB ? '<b class="bad">over the 95 dB street limit — expect tickets</b>' : 'street legal'}`; })()}</span>
         <span>Redline</span><span>${spec.asp === 'ev' ? '—' : spec.redline.toLocaleString() + ' rpm'}</span>
+        ${spec.asp === 'ev' ? '' : `<span>Engine</span><span class="click-row" data-action="engine">${car.engineBlown ? '<b class="bad">💥 BLOWN — needs a rebuild</b>' : `<b style="color:${spec.engineLevel.color}">${esc(spec.engineLevel.label)}</b> · health ${Math.round(car.cond.engine)}%`} <i class="pp-i">i</i></span>`}
         <span>Odometer</span><span>${Math.round(car.miles).toLocaleString()} mi</span><span>Title</span><span class="${car.title !== 'Clean' ? 'bad' : ''}">${car.title}</span>
         <span>Fuel economy</span><span>${carMpg(car).toFixed(0)} ${m.asp === 'ev' ? 'MPGe' : 'mpg'}</span>
         <span>Fuel</span><span>${(car.fuel * tankGallons(car)).toFixed(1)} / ${tankGallons(car)} ${m.asp === 'ev' ? 'kWh' : 'gal'}</span>
@@ -141,7 +148,7 @@ function overview(body, h, app, st, s, car, m) {
       ${spec.nosSecs && st.mode !== 'readOnly' && st.mode !== 'visual' ? `<button class="btn btn-sm" data-action="refill" ${car.nos >= spec.nosSecs ? 'disabled' : ''}>Refill nitrous bottle (${fmtMoney(NITROUS_REFILL)})</button>` : ''}
     </div></div>`;
   drawThumb(body.querySelector('[data-car]'), m, car.visual, car.parts, car.cond);
-  bind(body, { refill: () => { if (spend(s, NITROUS_REFILL, 'Nitrous refill')) { car.nos = carSpec(car).nosSecs; app.world?.refreshCar(); h.refresh(); } } });
+  bind(body, { engine: () => openPartProfile({ cat: 'engine', car }), refill: () => { if (spend(s, NITROUS_REFILL, 'Nitrous refill')) { car.nos = carSpec(car).nosSecs; app.world?.refreshCar(); h.refresh(); } } });
 }
 
 function parts(body, h, app, st, s, car, m) {
@@ -150,11 +157,12 @@ function parts(body, h, app, st, s, car, m) {
     const v = car.parts[p.id];
     const it = typeof v === 'string' ? ITEM_BY_ID[v] : null;
     const lvl = partLevels(car.parts)[p.id];
-    return `<div class="li"><div style="width:130px" class="muted small">${p.name}</div><div class="grow"><div class="t">${esc(partLabel(car.parts, p.id))}</div><div class="s">${lvl ? `<span class="stage stage-${lvl}">STAGE ${lvl}</span>` : 'Factory'}</div></div>
+    return `<div class="li click-row" data-action="profile" data-cat="${p.id}"><div style="width:130px" class="muted small">${p.name} <i class="pp-i">i</i></div><div class="grow"><div class="t">${esc(partLabel(car.parts, p.id))}</div><div class="s">${lvl ? `<span class="stage stage-${lvl}">STAGE ${lvl}</span>` : 'Factory'}</div></div>
       ${it && canWork ? `<button class="btn btn-sm" data-action="remove" data-cat="${p.id}">Remove${st.mode === 'perf' ? ` (${fmtMoney(it.labor * LABOR_RATE * 0.6)})` : ''}</button>` : ''}</div>`;
   }).join('')}</div>
   <p class="small muted">Removed parts go back in your parts bin. Buy more on PartsHub (phone) — ${canWork ? 'install them in the Install tab.' : 'install at home or at Torque Temple.'}</p>`;
   bind(body, {
+    profile: d => openPartProfile({ cat: d.cat, car }),
     remove: async d => {
       const it = ITEM_BY_ID[car.parts[d.cat]];
       if (st.mode === 'home' && it.labor > 6) { modal('Too big a job', `<p>Pulling the ${esc(it.name)} is a ${it.labor}-hour job that needs a lift. Take it to Torque Temple.</p>`); return; }
@@ -177,11 +185,12 @@ function install(body, h, app, st, s, car, m) {
     const allowed = ok && (mode === 'perf' && !p.visual || mode === 'visual' && p.visual || mode === 'perf' && p.visual && !SHOP_ONLY.has(p.cat) || mode === 'home' && !shopOnly);
     const why = !ok ? fitNote(p, m) : mode === 'readOnly' ? 'Go home or to a shop to install' : mode === 'home' && shopOnly ? (SHOP_ONLY.has(p.cat) ? 'Needs a paint/body shop (Vega Kustoms)' : `${p.labor}h job — needs a lift (Torque Temple)`) : !allowed ? (p.visual ? 'Vega Kustoms installs this' : 'Torque Temple installs this') : '';
     const cost = mode === 'home' ? `DIY · ${p.labor}h of your time` : `${fmtMoney(p.labor * LABOR_RATE)} labor`;
-    return `<div class="li"><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)}</div><div class="s">${CATEGORY_NAMES[p.cat]}${p.visual ? '' : ` · Stage ${p.stage}`} · ${why ? `<span class="bad">${esc(why)}</span>` : cost}</div></div>
+    return `<div class="li click-row" data-action="profile" data-id="${p.id}"><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)} <i class="pp-i">i</i></div><div class="s">${CATEGORY_NAMES[p.cat]}${p.visual ? '' : ` · Stage ${p.stage}`} · ${why ? `<span class="bad">${esc(why)}</span>` : cost}</div></div>
       <button class="btn btn-sm btn-primary" data-action="inst" data-uid="${b.uid}" ${allowed && mode !== 'readOnly' ? '' : 'disabled'}>Install</button>
       <button class="btn btn-sm" data-action="sell" data-uid="${b.uid}" title="Sell used">Sell ${fmtMoney(p.price * 0.45)}</button></div>`;
   }).join('')}</div>` : '<div class="empty">Your parts bin is empty. Order parts on PartsHub — they arrive at home the next morning.</div>';
   bind(body, {
+    profile: d => openPartProfile({ pid: d.id, car }),
     inst: async d => {
       const b = s.partsBin.find(x => x.uid === d.uid);
       const p = ITEM_BY_ID[b.pid];

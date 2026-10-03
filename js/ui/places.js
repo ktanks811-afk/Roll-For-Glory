@@ -4,7 +4,8 @@ import { openPanel, closePanel, closeAllPanels, bind, esc, toast, modal, confirm
 import { game, fmtMoney, spend, earn, activeCar, carSpec, carValue, modelOf, newCar, garageCapacity, tierOf, isNight, hourOf, needsPremium, tankGallons, getCar, carMetrics, addRep } from '../core/state.js';
 import { CARS, CAR_BY_ID, carName, soldNew, MAKES, CURRENT_YEAR } from '../data/cars.js';
 import { PROPERTIES, LOC_BY_ID, GAS } from '../data/world.js';
-import { CLOTHES, CLOTH_BY_ID, FOOD } from '../data/shops.js';
+import { CLOTHES, CLOTH_BY_ID, FOOD, BLACKOUT_FIT, BLACKOUT_DISCOUNT } from '../data/shops.js';
+import { concealment, disguiseLabel } from '../core/disguise.js';
 import { partLevels } from '../data/parts.js';
 import { marketValue, makeListing, roundPrice } from '../data/market.js';
 import { metrics, buildSpec } from '../sim/powertrain.js';
@@ -18,6 +19,7 @@ import { emit } from '../core/events.js';
 import { saveGame } from '../core/save.js';
 import { openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
+import { rebuildCost, resetEngineWarnings } from '../sim/engine.js';
 import { recordHtml } from './record.js';
 import { payableTotal, warrantTotal, citationTotal, payFines, surrender, SURRENDER_DISCOUNT } from '../core/warrants.js';
 
@@ -85,25 +87,39 @@ function homeScreen(loc, app, s) {
   });
 }
 
-function wardrobe(app, s, shop = false) {
+// shop: the clothing store you walked into (null = your own wardrobe).
+// Threadline sells streetwear; Riverside Army Surplus sells the blackout gear.
+function wardrobe(app, s, shop = null) {
+  const owns = id => id === 'no_mask' || s.player.outfits.includes(id);
+  const surplus = shop?.shop === 'surplus';
   openPanel((root, h) => {
     const look = s.player.look;
-    const items = shop ? CLOTHES.filter(c => c.price > 0 || !s.player.outfits.includes(c.id)) : CLOTHES.filter(c => s.player.outfits.includes(c.id));
-    root.innerHTML = head(shop ? 'Threadline Streetwear' : 'Wardrobe', shop ? 'New drops every week. Look the part.' : 'What you own') + `<div class="p-body"><div class="create">
-      <div><canvas width="300" height="300" data-p></canvas></div>
-      <div>${['top', 'bottom', 'hat', 'shoes'].map(slot => `<div class="section-title">${slot}</div><div class="list">${items.filter(c => c.slot === slot).map(c => {
-        const owned = s.player.outfits.includes(c.id);
+    look.mask ??= 'no_mask';
+    const items = shop ? CLOTHES.filter(c => (c.shop || null) === (shop.shop || null) && (c.price > 0 || !owns(c.id))) : CLOTHES.filter(c => owns(c.id));
+    const fit = BLACKOUT_FIT.map(id => CLOTH_BY_ID[id]), fitNeed = fit.filter(c => !owns(c.id));
+    const fitPrice = Math.round(fitNeed.reduce((t, c) => t + c.price, 0) * (1 - BLACKOUT_DISCOUNT) * 1.0725);
+    const night = isNight(s.time), cn = concealment(look, night);
+    const sub = surplus ? 'Workwear, cold-weather gear, no questions asked.' : shop ? 'New drops every week. Look the part.' : 'What you own';
+    root.innerHTML = head(shop ? shop.name : 'Wardrobe', sub) + `<div class="p-body"><div class="create">
+      <div><canvas width="300" height="300" data-p></canvas>
+        <div class="li"><span>🕶</span><div class="grow"><div class="t">${disguiseLabel(cn)}</div><div class="s">${Math.round(cn * 100)}% chance a witness can't name you ${night ? 'tonight' : 'in daylight'}. ${look.mask !== 'no_mask' ? 'Cops notice a mask on the street.' : 'A mask and all black works best, at night.'}</div></div></div></div>
+      <div>${surplus ? `<div class="section-title">Full blackout fit</div><div class="li"><span class="swatch" style="background:#0c0c0d;width:22px;height:22px"></span><div class="grow"><div class="t">Ski mask, fleece hoodie, joggers, runners</div><div class="s">${fitNeed.length ? `${fmtMoney(fitPrice)} with tax · 10% off as a set` : 'You own the whole fit'}</div></div>
+        ${fitNeed.length ? `<button class="btn btn-sm btn-primary" data-action="fit">Buy the fit</button>` : `<button class="btn btn-sm" data-action="wearfit">Wear it</button>`}</div>` : ''}
+      ${['mask', 'top', 'bottom', 'hat', 'shoes'].map(slot => { const list = items.filter(c => c.slot === slot); return list.length ? `<div class="section-title">${slot}</div><div class="list">${list.map(c => {
+        const owned = owns(c.id);
         const wearing = look[slot] === c.id;
         const locked = c.tier && tierOf(s.rep).n < c.tier;
         return `<div class="li"><span class="swatch" style="background:${c.color};width:22px;height:22px"></span><div class="grow"><div class="t">${esc(c.name)}</div><div class="s">${owned ? 'Owned' : fmtMoney(c.price)}${locked ? ` · Tier ${c.tier}` : ''}</div></div>
           ${wearing ? '<span class="tag tag-green">Wearing</span>' : owned ? `<button class="btn btn-sm" data-action="wear" data-id="${c.id}">Wear</button>` : `<button class="btn btn-sm btn-primary" data-action="buy" data-id="${c.id}" ${locked ? 'disabled' : ''}>Buy</button>`}</div>`;
-      }).join('')}</div>`).join('')}</div></div></div>`;
+      }).join('')}</div>` : ''; }).join('')}</div></div></div>`;
     const cv = root.querySelector('[data-p]');
     drawPortrait(cv.getContext('2d'), 300, 300, look);
     bind(root, {
       close: () => h.close(),
       wear: d => { look[CLOTH_BY_ID[d.id].slot] = d.id; h.refresh(); },
-      buy: d => { const c = CLOTH_BY_ID[d.id]; if (!spend(s, c.price * 1.0725, `Threadline: ${c.name}`)) return; s.player.outfits.push(c.id); look[c.slot] = c.id; s.followers += Math.round(c.price / 40); h.refresh(); },
+      buy: d => { const c = CLOTH_BY_ID[d.id]; if (!spend(s, c.price * 1.0725, `${shop?.name || 'Threadline'}: ${c.name}`)) return; s.player.outfits.push(c.id); if (c.slot !== 'mask') look[c.slot] = c.id; else toast('In your pocket. Pull it down with V (or MASK) when it\'s time.', 'info'); s.followers += Math.round(c.price / 40); h.refresh(); },
+      fit: () => { if (!spend(s, fitPrice, `${shop.name}: blackout fit`)) return; for (const c of fitNeed) s.player.outfits.push(c.id); for (const c of fit) if (c.slot !== 'mask') look[c.slot] = c.id; toast('All black. The mask is in your pocket: pull it down with V (or MASK) when it\'s time.', 'good'); h.refresh(); },
+      wearfit: () => { for (const c of fit) if (c.slot !== 'mask') look[c.slot] = c.id; h.refresh(); },
     });
   });
 }
@@ -274,7 +290,7 @@ function repairCosts(car) {
     body: (100 - c.body) / 100 * (900 + lux * 0.03),
     lights: (100 - c.lights) / 100 * (300 + lux * 0.006),
     tires: c.tires < 99 ? (100 - c.tires) / 100 * (500 + lux * 0.004) : 0,
-    engine: (100 - c.engine) / 100 * (1800 + lux * 0.05),
+    engine: car.engineBlown ? rebuildCost(m) : (100 - c.engine) / 100 * (1800 + lux * 0.05),
     trans: (100 - c.trans) / 100 * (1400 + lux * 0.035),
   };
   for (const k in cost) cost[k] = Math.round(cost[k] / 5) * 5;
@@ -288,13 +304,14 @@ function repair(loc, app, s) {
     const costs = repairCosts(car);
     const ins = s.insurance ? 0.3 : 1;
     const total = Object.values(costs).reduce((a, b) => a + b, 0) * ins;
-    const names = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (replace set)', engine: 'Engine', trans: 'Transmission' };
+    const names = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (replace set)', engine: car.engineBlown ? '💥 Engine rebuild' : 'Engine', trans: 'Transmission' };
     root.innerHTML = head('Second Chance Collision', 'Body · mechanical · tires · we work with all insurers') + `<div class="p-body" style="max-width:720px">
+      ${car.engineBlown ? `<p class="bad"><b>Blown motor.</b> Spun a bearing and put a rod through the block. It needs a full rebuild before it'll run again.</p>` : ''}
       <p class="muted">${esc(carName(modelOf(car), car.year))}${s.insurance ? ' · <span class="good">Insurance covers 70%</span>' : ' · <span class="muted">Not insured (Bank app)</span>'}</p>
       <div class="list">${Object.entries(costs).map(([k, v]) => `<div class="li"><div style="width:150px">${names[k]}</div><div class="grow">${bar(car.cond[k], car.cond[k] < 40 ? 'red' : car.cond[k] < 70 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.cond[k])}%</span>
         <button class="btn btn-sm" data-action="fix" data-k="${k}" ${v > 0 ? '' : 'disabled'}>${v > 0 ? fmtMoney(v * ins) : 'OK'}</button></div>`).join('')}</div>
       <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn btn-primary" data-action="all" ${total > 0 ? '' : 'disabled'}>Fix everything · ${fmtMoney(total)}</button></div></div>`;
-    const fix = k => { car.cond[k] = 100; };
+    const fix = k => { car.cond[k] = 100; if (k === 'engine' && car.engineBlown) { car.engineBlown = false; resetEngineWarnings(car); toast('Engine rebuilt. Fix the build or it\'ll happen again.', 'good'); } };
     bind(root, {
       close: () => h.close(),
       fix: d => { if (spend(s, costs[d.k] * ins, `Repair: ${names[d.k]}`)) { fix(d.k); app.world?.refreshCar(); h.refresh(); } },
@@ -349,7 +366,7 @@ function food(loc, app, s) {
   });
 }
 
-function clothing(loc, app, s) { wardrobe(app, s, true); }
+function clothing(loc, app, s) { wardrobe(app, s, loc); }
 
 function realty(loc, app, s, focusId) {
   openPanel((root, h) => {
