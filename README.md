@@ -200,6 +200,19 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   leaving are soft deletes. `?net=local` swaps the database for a
   same-browser copy of the same rules, which is what the smoke test uses. The
   older single-player Crew app (NPC crews) is still there.
+- **Crew turf.** Phone → Turf (or the Turf button in the Crew app). Every
+  Fort Worth neighborhood belongs to a crew: Iron Saints run the Stockyards
+  (North Side) and Riverside, Midnight Static the Near Southside and
+  Lakeside, Velvet Ghosts Arlington Heights, Dust Devils Cross Timbers and
+  Chisholm Flats, Apex Syndicate Downtown. Stop Six and Benbrook Hills start
+  open. With a crew (your own, or an NPC crew you joined), drive around an
+  open hood for about 45 seconds to claim it; the HUD shows the progress. A
+  rival's hood takes a turf war: their members text you challenge races, and
+  each win knocks their hold down by half until it breaks. Every morning your
+  hoods pay street tax ($300 to $1,200 a day each, a 40% cut if you're a
+  member rather than the founder), and rival crews sometimes move on one:
+  beat their racer within two days or lose it. Leaving your crew gives its
+  turf up. Rules live in `js/core/turf.js`, the app in `js/ui/turf.js`.
 - **Guns, robberies and the Amazin' app.** Phone → Amazin' (a same-minute
   delivery store) sells **every Glock model and generation** (61 entries:
   G17 through G48, G17L, G19X, G30S, G40 MOS, G43X and more, with real calibers

@@ -16,6 +16,7 @@ import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, mod
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
 import { initCrews } from './ui/ocrew.js';
+import { initTurf } from './core/turf.js';
 import { initOrientation } from './ui/orientation.js';
 import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
@@ -254,6 +255,7 @@ async function boot() {
     window.__rfg = { app, game, ui, online, auth };
     initOnline(app);
     initCrews(app);
+    initTurf(app);
     initOrientation();
   } catch (e) {
     console.error(e);
