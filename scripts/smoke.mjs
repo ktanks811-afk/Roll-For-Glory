@@ -1029,6 +1029,23 @@ await step('phone controls', async () => {
     const css = await m.evaluate(() => { const cs = getComputedStyle(document.querySelector('#touch .tc-gas span')); return cs.webkitUserSelect || cs.userSelect; });
     expect(css === 'none', 'pedal label is selectable');
   }
+  // GPS while driving: the route follows the roads, a turn banner shows the next turn
+  {
+    await m.evaluate(() => { const w = window.__rfg.app.world; const v = w.vehicle; v.x = 4; v.z = 300; v.vx = v.vz = 0; v.sim.v = 0; v.h = 0; w.cam.x = 4; w.cam.z = 300; });
+    await m.evaluate(async () => { const { LOC_BY_ID } = await import('./js/data/world.js'); const l = LOC_BY_ID.torque_temple; window.__rfg.app.world.setGps(l.x, l.z, l.name); });
+    await m.waitForTimeout(400);
+    const nav = await m.evaluate(() => {
+      const w = window.__rfg.app.world, path = w.gpsPath, roads = w.map.roads, e = document.querySelector('[data-nav]');
+      const offRoad = path.slice(1, -1).filter(([x, z]) => !roads.onRoad(x, z)).length;
+      return { pts: path.length, offRoad, info: w.navInfo(), shown: !!e && e.offsetParent !== null && !e.classList.contains('hidden'), text: e?.textContent || '' };
+    });
+    console.log('     gps nav', JSON.stringify({ pts: nav.pts, offRoad: nav.offRoad, text: nav.text }));
+    expect(nav.pts > 3 && nav.offRoad === 0, 'GPS route does not follow the roads');
+    expect(nav.shown && /Turn (left|right)|U-turn/.test(nav.text) && /\d/.test(nav.text), 'no turn-by-turn banner while driving with GPS set: ' + nav.text);
+    const box = await m.evaluate(() => { const r = document.querySelector('[data-nav]').getBoundingClientRect(), q = document.querySelector('.hud-tr').getBoundingClientRect(); return { r: r.right, l: q.left }; });
+    expect(box.r <= box.l + 1, 'turn banner overlaps the money / dash column');
+    await m.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
+  }
   await mctx.close();
 });
 
