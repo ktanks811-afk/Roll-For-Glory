@@ -373,6 +373,7 @@ RENDER.fwpd = (scr, ctx) => {
     <button class="btn" style="width:100%;margin-top:6px" data-action="gps">📍 Nearest precinct</button></div>`;
   wire(scr, ctx, {
     pay: () => { const r = payFines(s); if (r.ok) { toast(`Paid ${fmtMoney(r.total)} to FWPD`, 'good'); ctx.h.refresh(); } },
+    courtgps: () => { const l = LOC_BY_ID.courthouse; w?.setGps(l.x, l.z, l.name); ctx.h.close(); },
     gps: () => {
       const p = w?.playerState(); if (!p) return;
       const l = ['pspd_central', 'pspd_harbor'].map(id => LOC_BY_ID[id]).sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];

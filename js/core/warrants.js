@@ -5,8 +5,9 @@
 // recognise you on sight, and a traffic stop ends in handcuffs.
 //
 // Warrants clear when you pay the fines (misdemeanours only, at a station or
-// in the FWPD app), turn yourself in at a station (everything, 25% off), or
-// get arrested (everything, at full price, on top of the arrest).
+// in the FWPD app), turn yourself in at a station (tickets and misdemeanours
+// 25% off; felonies get filed in court with a low bail), or get arrested
+// (everything becomes charges or fines; see core/justice.js).
 
 import { spend, fmtMoney, uid } from './state.js';
 import { emit } from './events.js';
@@ -26,10 +27,12 @@ export const hasWarrant = s => !!s?.warrants?.length;
 export const hasFelony = s => !!s?.warrants?.some(w => w.felony);
 export const warrantTotal = s => (s?.warrants || []).reduce((t, w) => t + w.fine, 0);
 export const citationTotal = s => (s?.citations || []).reduce((t, c) => t + c.fine, 0);
+// A court warrant (you skipped your court date) can't be paid off.
+export const payable = w => !w.felony && w.kind !== 'bailjump';
 // What paying (without surrendering) clears: unpaid tickets + misdemeanour warrants.
-export const payableTotal = s => citationTotal(s) + (s?.warrants || []).filter(w => !w.felony).reduce((t, w) => t + w.fine, 0);
+export const payableTotal = s => citationTotal(s) + (s?.warrants || []).filter(payable).reduce((t, w) => t + w.fine, 0);
 
-function addWarrant(s, w) {
+export function addWarrant(s, w) {
   ensureRecord(s);
   const have = s.warrants.find(x => x.kind === w.kind && x.text === w.text);
   if (have) { have.fine += w.fine; have.felony ||= !!w.felony; return have; }
@@ -80,6 +83,22 @@ export function warrantForEscape(s, record = [], level = 1, seen = true, rng = M
   return out;
 }
 
+// An arrest: every warrant and unpaid ticket comes off the board. Returns the
+// offences for the booking officer (core/justice.js charge() sorts them into
+// court charges and fines), the fine-only total, and how many warrants that was.
+// How strong the State's case on a warrant is (0..1), from what tied it to you.
+const strength = w => /disguise/i.test(w.evidence || '') ? 0.5 : /plate/i.test(w.evidence || '') ? 0.7 : /face|camera/i.test(w.evidence || '') ? 0.75 : 0.6;
+
+export function takeWarrants(s) {
+  ensureRecord(s);
+  const n = s.warrants.length;
+  const items = s.warrants.filter(w => w.kind !== 'bailjump').map(w => ({ kind: w.kind, text: w.text, fine: w.fine, felony: w.felony, evidence: strength(w) }));
+  const tickets = citationTotal(s);
+  s.warrants = []; s.citations = [];
+  if (n) emit('warrant', { cleared: n });
+  return { items, tickets, n };
+}
+
 // Everything on file is settled. Returns what it cost (not charged here).
 export function serveAll(s) {
   ensureRecord(s);
@@ -97,19 +116,28 @@ export function payFines(s) {
   if (!total) return { ok: false, total };
   if (!spend(s, total, 'FWPD fines (warrants + citations)')) return { ok: false, total };
   s.citations = [];
-  s.warrants = s.warrants.filter(w => w.felony);
+  s.warrants = s.warrants.filter(w => !payable(w));
   emit('warrant', { cleared: true });
   return { ok: true, total };
 }
 
-// Walk into a station and turn yourself in: everything clears, 25% off, a few
-// hours in a holding cell (the caller moves the clock).
+// What turning yourself in costs up front: tickets and misdemeanours, 25% off.
+export const surrenderTotal = s => Math.round(payableTotal(s) * (1 - SURRENDER_DISCOUNT));
+
+// Walk into a station and turn yourself in: tickets and misdemeanour warrants
+// are paid at 25% off; felony warrants (and a skipped court date) come back as
+// `felonies` for the caller to file in court. A few hours in a holding cell
+// (the caller moves the clock).
 export function surrender(s) {
   ensureRecord(s);
-  const total = Math.round((warrantTotal(s) + citationTotal(s)) * (1 - SURRENDER_DISCOUNT));
+  const total = surrenderTotal(s);
   if (!(s.warrants.length || s.citations.length)) return { ok: false, total: 0 };
-  if (!spend(s, total, 'FWPD — turned yourself in')) return { ok: false, total };
-  serveAll(s);
+  if (total && !spend(s, total, 'FWPD — turned yourself in')) return { ok: false, total };
+  const felonies = s.warrants.filter(w => w.felony && w.kind !== 'bailjump');
+  const skipped = s.warrants.some(w => w.kind === 'bailjump');
+  const n = s.warrants.length;
+  s.warrants = []; s.citations = [];
+  if (n) emit('warrant', { cleared: n });
   s.heat = 0;
-  return { ok: true, total };
+  return { ok: true, total, felonies: felonies.map(w => ({ kind: w.kind, text: w.text, felony: true, evidence: strength(w) })), skipped };
 }

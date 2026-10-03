@@ -80,6 +80,8 @@ export const LOCATIONS = [
   L('pier9', 'meet', 'Pier 9 Lot', 11, 11, 'W', { color: '#ff1a2e', icon: 'meet', tier: 1 }),
   L('kessler_lot', 'meet', 'Kessler Mall Lot', 2, 9, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
   L('old_foundry', 'meet', 'The Old Foundry', 10, 2, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
+  // on the lawn in front of the pink granite courthouse (block 5,4; scenery draws the building)
+  { id: 'courthouse', type: 'court', name: 'Tarrant County Courthouse', x: -75, z: -163, face: 0, color: '#c9a68a', icon: 'court' },
   { id: 'ironline', type: 'drag', name: 'Ironline Dragway', x: 34, z: 1260, face: Math.PI / 2, color: '#ff1a2e', icon: 'flag' },
   { id: 'glory_onramp', type: 'roll', name: 'Loop 820 On-Ramp', x: 12, z: -1180, face: Math.PI, color: '#ff1a2e', icon: 'flag', road: 'highway' },
   { id: 'ironside_start', type: 'roll', name: 'East Lancaster Runs', x: 312, z: 650, face: 0, color: '#ff1a2e', icon: 'flag', road: 'industrial' },
