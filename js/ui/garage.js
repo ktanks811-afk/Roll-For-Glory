@@ -40,7 +40,7 @@ export function advanceTime(s, minutes) {
 }
 
 export async function pickColorFor(p) {
-  if (!['paint', 'wheels', 'decal'].includes(p.cat)) return undefined;
+  if (!['paint', 'wheels', 'decal'].includes(p.cat) || p.rim) return undefined;
   const list = p.cat === 'wheels' ? WHEEL_COLORS : PAINT_SWATCHES;
   return new Promise(resolve => {
     const id = 'c' + Math.random().toString(36).slice(2);
@@ -61,7 +61,7 @@ export function installPart(s, car, pid, { color, app } = {}) {
   const p = ITEM_BY_ID[pid];
   if (p.visual) {
     if (p.cat === 'paint') { car.visual.finish = p.value; if (color) car.visual.paint = color; }
-    else if (p.cat === 'wheels') { car.visual.wheels = p.value; car.visual.wheelColor = color || p.color; }
+    else if (p.cat === 'wheels') { car.visual.wheels = p.value; car.visual.rim = p.rim || null; car.visual.wheelColor = p.rim ? p.color : color || p.color; }
     else car.visual[p.cat] = p.value;
     if (p.cat === 'decal' && color) car.visual.decalColor = color;
   } else {
