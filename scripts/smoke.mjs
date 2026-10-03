@@ -227,6 +227,60 @@ await step('roll race', async () => {
   await p.waitForTimeout(400); await snap('19-roll-result');
   await p.click('text=Back to the street');
 });
+await step('street races: 1v1 for cash, pink slips, time trial', async () => {
+  const w0 = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; return { x: v.x, z: v.z, h: v.h, uid: s.activeCar }; });
+  const toStart = id => p.evaluate(async id => {
+    const { LOC_BY_ID } = await import('./js/data/world.js'); const l = LOC_BY_ID[id]; const w = window.__rfg.app.world, v = w.vehicle;
+    window.__rfg.game.s.heat = 0; w.police.reset?.(w);
+    v.x = l.x; v.z = l.z; v.h = l.face; v.vx = v.vz = 0; v.sim.v = 0; w.inCar = true; w.cam.x = l.x; w.cam.z = l.z; w.paused = false;
+  }, id);
+  // through every checkpoint (the driving itself is covered by the other steps)
+  const runIt = async () => { for (let k = 0; k < 12; k++) { if (await p.evaluate(() => { const w = window.__rfg.app.world, r = w.races.race; if (!r) return true; if (r.phase !== 'race') return false; const c = r.route.checkpoints[r.next], v = w.vehicle; v.x = c.x; v.z = c.z; v.vx = v.vz = 0; return false; })) break; await p.waitForTimeout(250); } };
+  const waitStart = () => p.waitForFunction(() => window.__rfg.app.world.races.race?.phase === 'race', null, { timeout: 6000 });
+  // the start line is a place: Enter opens the setup
+  await toStart('sr_sundance'); await p.waitForTimeout(250);
+  await p.keyboard.press('Enter'); await p.waitForSelector('.p-head h1:has-text("Sundance Square Sprint")');
+  await p.click('[data-action=pick] >> nth=0');
+  await p.evaluate(() => { const r = document.querySelector('[data-wager]'); r.value = 200; r.oninput(); });
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  await p.click('text=Line up');
+  // countdown: the car is held on the grid, the rival is beside you
+  await p.waitForTimeout(1200); await snap('21-street-countdown');
+  const grid = await p.evaluate(() => { const w = window.__rfg.app.world, r = w.races.race; return { phase: r.phase, held: w.vehicle.speed < 0.1, rival: !!r.rival, hud: !!document.querySelector('.sr-hud') }; });
+  if (grid.phase !== 'count' || !grid.held || !grid.rival || !grid.hud) throw new Error('no countdown on the grid ' + JSON.stringify(grid));
+  await waitStart();
+  await p.waitForFunction(() => window.__rfg.app.world.races.race?.rival.s > 5, null, { timeout: 8000 }).catch(async () => { throw new Error('the rival never left the line ' + JSON.stringify(await p.evaluate(() => { const w = window.__rfg.app.world, r = w.races.race; return { s: r?.rival.s, v: r?.rival.sim.v, paused: w.paused, panels: document.querySelectorAll('#panels > *').length, modal: document.querySelector('.modal h2')?.textContent }; }))); });
+  await snap('22-street-race');
+  await runIt();
+  await p.waitForSelector('.p-head h1:has-text("YOU WIN")'); await snap('23-street-win');
+  const won = await p.evaluate(() => ({ money: window.__rfg.game.s.cash + window.__rfg.game.s.bank, best: window.__rfg.game.s.streetRecords?.sr_sundance, hud: !!document.querySelector('.sr-hud') }));
+  if (won.money !== cash0 + 200 || !won.best || won.hud) throw new Error('cash race payout wrong ' + JSON.stringify({ cash0, ...won }));
+  await p.click('text=Back to the street');
+  // pink slips, on a second car the rival's own model: lose it and it's gone
+  const keysModel = await p.evaluate(async () => (await import('./js/data/npcs.js')).RACER_BY_ID.keys.car.model);
+  await p.evaluate(async m => { const S = await import('./js/core/state.js'); const s = window.__rfg.game.s; if (!s.properties.includes('westside_house')) s.properties.push('westside_house'); const c = S.newCar(m); s.cars.push(c); s.activeCar = c.uid; const w = window.__rfg.app.world; w.inCar = false; w.vehicle = null; w.refreshCar(); }, keysModel);
+  await toStart('sr_magnolia'); await p.waitForTimeout(250);
+  await p.evaluate(async () => { const { openStreetRace } = await import('./js/ui/streetRaceSetup.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openStreetRace(window.__rfg.app, LOC_BY_ID.sr_magnolia, { npcId: 'keys' }); });
+  await p.click('[data-v=pinks]'); await snap('24-pink-slips');
+  if (!(await p.isVisible('text=Winner keeps both cars'))) throw new Error('pink slips not on offer against an even car');
+  const pinkUid = await p.evaluate(() => window.__rfg.game.s.activeCar);
+  await p.click('text=Line up'); await waitStart();
+  await p.evaluate(() => { const r = window.__rfg.app.world.races.race; r.rival.s = r.route.length - 1; });
+  await p.waitForSelector('.p-head h1:has-text("YOU LOST")', { timeout: 10000 });
+  const lost = await p.evaluate(uid => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { gone: !s.cars.some(c => c.uid === uid), onFoot: !w.inCar, active: s.activeCar }; }, pinkUid);
+  if (!lost.gone || !lost.onFoot || lost.active !== w0.uid) throw new Error('lost the pink slip but kept the car ' + JSON.stringify(lost));
+  await p.click('text=Back to the street');
+  // back in your own car where it was, then a solo run at the course record
+  await p.evaluate(w0 => { const w = window.__rfg.app.world, s = window.__rfg.game.s; s.activeCar = w0.uid; w.refreshCar(); const v = w.vehicle; v.x = w0.x; v.z = w0.z; v.h = w0.h; w.inCar = true; w.restartEngineSound(); }, w0);
+  await toStart('sr_stockyards'); await p.waitForTimeout(250);
+  await p.evaluate(async () => { const { openStreetRace } = await import('./js/ui/streetRaceSetup.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openStreetRace(window.__rfg.app, LOC_BY_ID.sr_stockyards); });
+  await p.click('[data-v=trial]');
+  if (!(await p.isVisible('text=Course record'))) throw new Error('no course record on the time trial');
+  await p.click('text=Start the clock'); await waitStart(); await runIt();
+  await p.waitForSelector('.p-head h1:has-text("NEW RECORD")');
+  await p.click('text=Back to the street');
+  await p.evaluate(w0 => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; v.x = w0.x; v.z = w0.z; v.h = w0.h; v.vx = v.vz = 0; v.sim.v = 0; s.heat = 0; w.police.reset?.(w); s.gps = null; w.gpsPath = null; }, w0);
+});
 await step('places', async () => {
   for (const id of ['eastgate_studio', 'auto_row', 'halo_exotics', 'rusty_used', 'torque_temple', 'vega_kustoms', 'second_chance', 'gas_westbrook', 'luckys', 'threadline', 'bayline', 'pspd_central', 'pier9']) {
     await p.evaluate(async id => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); window.__rfg.game.s.rep = 40000; openPlace(LOC_BY_ID[id], window.__rfg.app); }, id);

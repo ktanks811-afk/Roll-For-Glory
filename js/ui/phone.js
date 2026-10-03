@@ -6,6 +6,7 @@
 import { openPanel, closePanel, bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
 import { game, fmtMoney, gameTimeStr, dayName, tierOf, nextTier, racingLevel, activeCar, carValue, carMetrics, deposit, withdraw, spend, earn, addRep, addFollowers, modelOf, hourOf, isNight } from '../core/state.js';
 import { LOCATIONS, LOC_BY_ID, PROPERTIES, ROADS, districtAt } from '../data/world.js';
+import { STREET_RACE_BY_ID, fmtRaceTime } from '../data/streetRaces.js';
 import { RACER_BY_ID, CREWS, RACERS, PEOPLE, contactInfo } from '../data/npcs.js';
 import { CHAPTERS, currentStep } from '../data/story.js';
 import { carName, CAR_BY_ID } from '../data/cars.js';
@@ -344,7 +345,7 @@ RENDER.races = (scr, ctx) => {
   const s = ctx.s;
   const tier = tierOf(s.rep).n;
   const open = s.messages.filter(m => m.action?.type === 'challenge' && m.action.challenge.expires >= s.time.day);
-  const spots = LOCATIONS.filter(l => l.type === 'roll' || l.type === 'drag' || l.type === 'meet');
+  const spots = LOCATIONS.filter(l => l.type === 'roll' || l.type === 'drag' || l.type === 'meet' || l.type === 'sprint');
   scr.innerHTML = head('Races') + `<div class="app-body">
     <div class="stats-row"><div><div class="stat-lbl">Record</div><b>${s.stats.wins}W – ${s.stats.losses}L</b></div><div><div class="stat-lbl">Racing level</div><b>${racingLevel(s.xp)}</b></div><div><div class="stat-lbl">Best ET</div><b>${s.stats.bestEt ? s.stats.bestEt.toFixed(3) + 's' : '—'}</b></div></div>
     ${s.challenge ? `<div class="section-title">Accepted</div><div class="li"><div class="grow"><div class="t">${esc(RACER_BY_ID[s.challenge.npcId].name)} — ${s.challenge.type === 'drag' ? 'Drag' : s.challenge.roll + '-roll'} for ${fmtMoney(s.challenge.wager)}</div><div class="s">${esc(LOC_BY_ID[s.challenge.loc].name)}</div></div><button class="btn btn-sm" data-action="gps" data-loc="${s.challenge.loc}">📍</button></div>` : ''}
@@ -353,7 +354,7 @@ RENDER.races = (scr, ctx) => {
     <div class="section-title">Spots</div>
     <div class="list">${spots.map(l => {
       const locked = (l.tier || 1) > tier;
-      return `<div class="li click" data-action="gps" data-loc="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${locked ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'meet' ? 'Street meet · after 8 PM' : l.type === 'drag' ? 'Sanctioned drag strip · test & tune, bracket races' : 'Roll racing · ' + esc(ROADS[l.road]?.desc || '')}</div></div><span>📍</span></div>`;
+      return `<div class="li click" data-action="gps" data-loc="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${locked ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'meet' ? 'Street meet · after 8 PM' : l.type === 'drag' ? 'Sanctioned drag strip · test & tune, bracket races' : l.type === 'sprint' ? `Street race · ${STREET_RACE_BY_ID[l.race].kind === 'circuit' ? 'circuit' : 'sprint'} · ${s.streetRecords?.[l.race] ? 'your best ' + fmtRaceTime(s.streetRecords[l.race]) : 'cash or pink slips'}` : 'Roll racing · ' + esc(ROADS[l.road]?.desc || '')}</div></div><span>📍</span></div>`;
     }).join('')}</div></div>`;
   wire(scr, ctx, { gps: d => { const l = LOC_BY_ID[d.loc]; ctx.app.world?.setGps(l.x, l.z, l.name); ctx.h.close(); } });
 };
