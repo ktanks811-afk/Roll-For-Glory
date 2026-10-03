@@ -112,6 +112,7 @@ body.touch .hud-btns { display: flex; gap: calc(var(--u, 1px) * 6); justify-cont
 .hud-btn { pointer-events: auto; width: calc(var(--u, 1px) * 38); height: calc(var(--u, 1px) * 38); border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .28); background: rgba(10, 10, 12, .7); color: #fff; font-size: calc(var(--u, 1px) * 17); padding: 0; touch-action: none; }
 .hud-btn:active { background: rgba(255, 255, 255, .25); }
 body.touch .hud-mini { position: relative; width: calc(var(--u, 1px) * 92); height: calc(var(--u, 1px) * 92); margin-top: calc(var(--u, 1px) * 12); }
+body.touch .hud-gig { font-size: calc(var(--u, 1px) * 12); max-width: 100%; padding: 4px 8px; }
 body.touch .hud-objective { font-size: calc(var(--u, 1px) * 12); max-width: 100%; padding: 4px 8px; }
 body.touch .hud-dash { position: relative; width: 100%; margin-top: calc(var(--u, 1px) * 8); padding: calc(var(--u, 1px) * 6) calc(var(--u, 1px) * 9); }
 body.touch .dash-speed b { font-size: calc(var(--u, 1px) * 32); }

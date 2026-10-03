@@ -192,6 +192,9 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .hud-clock small { display: block; font-family: var(--ui); font-size: 12px; color: var(--silver); text-transform: capitalize; }
 .hud-place { font-size: 13px; color: var(--silver); text-shadow: 0 1px 4px #000; margin-top: 2px; }
 .hud-objective { margin-top: 10px; background: rgba(10,10,12,.78); border-left: 3px solid var(--red); padding: 6px 10px; font-weight: 700; font-size: 14px; max-width: 330px; border-radius: 0 4px 4px 0; }
+.hud-gig { margin-top: 6px; background: rgba(10,10,12,.78); border-left: 3px solid #f0a020; padding: 6px 10px; font-weight: 700; font-size: 14px; max-width: 330px; border-radius: 0 4px 4px 0; }
+.hud-gig small { display: block; color: #f0c060; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.hud-gig.late { border-left-color: var(--red); }
 .hud-objective small { display: block; color: var(--dim); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
 .hud-tr { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; text-align: right; width: 220px; }
 .hud-money { font-family: var(--head); font-size: 26px; font-weight: 700; color: #fff; text-shadow: 0 2px 6px #000; }
@@ -379,6 +382,7 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
   .hud-mini { width: 120px; height: 120px; }
   .hud-tr { width: 160px; } .hud-money { font-size: 20px; }
   .hud-objective { max-width: 200px; font-size: 12px; }
+  .hud-gig { max-width: 200px; font-size: 12px; }
   .hud-help { display: none; }
   .panel { padding: 0; } .panel-inner { border-radius: 0; border: none; }
   .p-body { padding: 12px; }
