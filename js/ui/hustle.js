@@ -1,24 +1,38 @@
-// Phone app: Hustle. Jobs, businesses and rentals that pay into your bank
-// every game day — even while you're away.
+// Phone app: Hustle. Shifts you drive yourself (delivery runs, Ryde riders,
+// tow calls), plus jobs, businesses and rentals that pay into your bank every
+// game day — even while you're away.
 
 import { bind, esc, toast, confirm } from './dom.js';
 import { fmtMoney, tierOf, carValue, modelOf, activeCar } from '../core/state.js';
 import { carName } from '../data/cars.js';
 import * as H from '../core/hustle.js';
+import * as G from '../core/gigs.js';
 
 const head = title => `<div class="app-head"><button class="back" data-action="back">‹ Back</button><h2>${esc(title)}</h2></div>`;
 
 export function renderHustle(scr, ctx) {
   const s = ctx.s, h = H.ensure(s), tier = tierOf(s.rep).n;
-  const tab = ctx.st.tab || 'jobs';
+  const tab = ctx.st.tab || 'shifts';
+  const w = ctx.app?.world, gigs = w?.gigs, g = G.ensure(s);
   const day = H.dailyIncome(s);
   const slots = H.jobSlots(tier);
   const done = (r) => { if (r.ok) toast(r.text, 'good'); else toast(r.text, 'bad'); ctx.h.refresh(); };
 
-  const tabs = [['jobs', `Jobs (${h.jobs.length}/${slots})`], ['biz', `Businesses (${Object.keys(h.biz).length})`], ['cars', `Rentals (${h.rentals.length}/${H.rentalSlots(s)})`]];
+  const tabs = [['shifts', `Shifts${gigs?.job ? ' (on one)' : ''}`], ['jobs', `Jobs (${h.jobs.length}/${slots})`], ['biz', `Businesses (${Object.keys(h.biz).length})`], ['cars', `Rentals (${h.rentals.length}/${H.rentalSlots(s)})`]];
   let body = '';
-  if (tab === 'jobs') {
-    body = `<p class="small muted">Take a job and the paycheck lands in your bank every day, after tax — no shifts to play. Better jobs unlock with rep; you can hold ${slots} at your level. Get busted and you might get fired.</p>
+  if (tab === 'shifts') {
+    const why = gigs ? gigs.blocked() : 'Get out on the street first.';
+    const j = gigs?.job, bonus = Math.round(G.streakBonus(s) * 100);
+    body = `<p class="small muted">Real shifts you drive yourself. Pay goes to your bank, tips come in cash. Every clean shift in a row adds ${Math.round(G.STREAK_STEP * 100)}% pay (up to +${Math.round(G.STREAK_MAX * 100)}%). Stay legit: an open warrant keeps you off the schedule, a police chase gets you pulled off the job, and an arrest suspends you and wipes the streak.</p>
+      <div class="stats-row"><div><div class="stat-lbl">Clean streak</div><b class="${g.streak ? 'good' : ''}">${g.streak}${bonus ? ` · +${bonus}% pay` : ''}</b></div><div><div class="stat-lbl">Shifts done</div><b>${g.done}</b></div><div><div class="stat-lbl">Earned</div><b>${fmtMoney(g.earned)}</b></div></div>
+      ${j ? `<div class="li"><div class="grow"><div class="t">${j.gig.icon} On a ${esc(j.gig.name.toLowerCase())} · ${fmtMoney(j.quoted)}</div><div class="s">${esc((j.stage === 'pickup' ? j.pickup : j.drop).label)}</div></div><button class="btn btn-sm" data-action="cancelgig">Quit shift</button></div>`
+        : why ? `<p class="small bad" data-gig-blocked>${esc(why)}</p>` : ''}
+      <div class="list">${G.GIGS.map(x => `<div class="li"><div class="grow"><div class="t">${x.icon} ${esc(x.name)}</div><div class="s"><b>${esc(x.co)}</b> — ${esc(x.blurb)}</div>
+        <div class="s"><b class="good">${fmtMoney(G.quote(s, x, 600))}–${fmtMoney(G.quote(s, x, 1500))}</b> a run</div></div>
+        <button class="btn btn-sm btn-primary" data-action="gig" data-id="${x.id}" ${why || j ? 'disabled' : ''}>Start</button></div>`).join('')}</div>
+      ${g.log.length ? `<div class="section-title">Recent shifts</div><div class="list">${g.log.slice(0, 6).map(l => `<div class="li"><div class="grow"><div class="t">${G.GIG_BY_ID[l.kind].icon} ${esc(G.GIG_BY_ID[l.kind].name)}</div><div class="s">Day ${l.day} · ${'★'.repeat(Math.round(l.stars))}${'☆'.repeat(5 - Math.round(l.stars))}</div></div><b class="good">+${fmtMoney(l.pay)}</b></div>`).join('')}</div>` : ''}`;
+  } else if (tab === 'jobs') {
+    body = `<p class="small muted">Take a job and the paycheck lands in your bank every day, after tax — no driving needed. Better jobs unlock with rep; you can hold ${slots} at your level. Get busted and you might get fired.</p>
       <div class="list">${H.JOBS.map(j => {
         const has = h.jobs.includes(j.id), locked = tier < j.tier;
         return `<div class="li"><div class="grow"><div class="t">${esc(j.name)}</div><div class="s"><b>${esc(j.co)}</b> — ${esc(j.blurb)}</div>
@@ -56,6 +70,8 @@ export function renderHustle(scr, ctx) {
   bind(scr, {
     back: () => ctx.go(null),
     tab: d => { ctx.st.tab = d.id; ctx.h.refresh(); },
+    gig: d => { const r = gigs.start(d.id); if (r.ok) { toast(r.text, 'good'); ctx.h.close(); } else done(r); },
+    cancelgig: async () => { if (await confirm('Quit this shift?', '<p>No pay for this run, and your clean-shift streak resets.</p>', 'Quit', true)) { gigs.cancel(); ctx.h.refresh(); } },
     hire: d => done(H.hire(s, d.id)),
     quit: async d => { if (await confirm('Quit this job?', `<p>You'll lose ${fmtMoney(Math.round(H.JOB_BY_ID[d.id].pay * 0.88))}/day.</p>`, 'Quit', true)) done(H.quit(s, d.id)); },
     buy: d => done(H.buyBiz(s, d.id)),

@@ -106,6 +106,7 @@ export function acceptMission(s, id, world) {
   const m = ensure(s);
   const o = offerById(s, id);
   if (!offerOpen(s, o)) return { ok: false, why: m.active ? 'Finish the job you already took first.' : 'That offer expired.' };
+  if (world?.gigs?.job) return { ok: false, why: 'Finish your shift first (Hustle → Shifts).' };
   m.offers = m.offers.filter(x => x.id !== id);
   const p = world?.playerState() || s.pos || { x: 0, z: 0 };
   const stops = o.stops.map(sid => LOC_BY_ID[sid]);
