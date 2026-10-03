@@ -21,6 +21,7 @@ import { renderOcrew } from './ocrew.js';
 import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
+import { wx } from '../core/weather.js';
 
 const APPS = [
   { id: 'messages', name: 'Messages', icon: '💬', bg: '#2bd96b' },
@@ -47,7 +48,7 @@ export function openPhone(appId, app) {
   const ph = openPanel((root, h) => {
     const s = game.s;
     root.innerHTML = `<div class="phone">
-      <div class="phone-status"><span>${gameTimeStr(s.time)}</span><span>${dayName(s.time)} · ${s.weather === 'rain' ? '🌧' : s.weather === 'fog' ? '🌫' : isNight(s.time) ? '🌙' : '☀'} · 5G ▮▮▮</span></div>
+      <div class="phone-status"><span>${gameTimeStr(s.time)}</span><span>${dayName(s.time)} · ${s.weather !== 'clear' ? wx(s).icon : isNight(s.time) ? '🌙' : '☀'} · 5G ▮▮▮</span></div>
       <div class="phone-screen" data-screen></div>
       <div class="phone-bar"><button data-phone-home title="Home"></button></div></div>`;
     const scr = root.querySelector('[data-screen]');

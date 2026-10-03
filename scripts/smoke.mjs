@@ -62,6 +62,22 @@ await step('new game', async () => {
   await snap('03-world');
 });
 await step('walk', async () => { await key('KeyW', 600); await key('KeyD', 300); });
+await step('weather + night shift', async () => {
+  const r = await p.evaluate(async () => {
+    const W = await import('./js/core/weather.js');
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    const saved = { weather: s.weather, min: s.time.min };
+    s.weather = 'storm'; s.time.min = 60;   // 1 AM in a thunderstorm
+    document.querySelectorAll('.modal-back').forEach(m => m.remove()); w.paused = false;
+    await new Promise(r => setTimeout(r, 500)); const hud = document.querySelector('[data-day]')?.textContent || '';
+    const out = { hud, grip: W.wx(s).grip, patrols: W.extraPatrols(s.time), night: W.nightShift(s.time), dark: w.darkness() };
+    s.time.min = 12 * 60; out.noon = W.nightShift(s.time);
+    out.chain = Array.from({ length: 200 }, () => W.nextWeather('clear')).every(x => W.WEATHER[x]);
+    Object.assign(s, { weather: saved.weather }); s.time.min = saved.min;
+    return out;
+  });
+  if (!(/Thunderstorm.*Night shift/.test(r.hud) && r.grip < 0.7 && r.patrols === 2 && r.night === 2 && r.noon === 0 && r.dark > 0.7 && r.chain)) throw new Error('weather/night rules off: ' + JSON.stringify(r));
+});
 await step('phone home', async () => { await key('KeyP'); await p.waitForTimeout(300); await snap('04-phone'); });
 for (const app of ['Messages', 'Contacts', 'Map', 'Bank', 'Throttle', 'Races', 'Ryde', 'Crew', 'My Cars', 'Journal']) {
   await step('app ' + app, async () => {

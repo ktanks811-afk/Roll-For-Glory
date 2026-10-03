@@ -17,6 +17,7 @@ import { LOC_BY_ID, TUNNEL, HWY_Z, HWY_W } from '../data/world.js';
 import { LEGAL_DB, hearingRange } from '../sim/sound.js';
 import { hasWarrant, hasFelony } from '../core/warrants.js';
 import { concealment, masked } from '../core/disguise.js';
+import { wx, extraPatrols, extraUnits } from '../core/weather.js';
 
 const PATROL_MODELS = ['ford_crown_victoria_police_interceptor_2003', 'dodge_charger_scat_pack_2015', 'ford_explorer_xlt_2002', 'chevrolet_tahoe_lt_2007'];
 const INTERCEPTORS = ['dodge_charger_srt_hellcat_redeye_2021', 'ford_mustang_gt_s650_2024', 'chevrolet_camaro_ss_2016'];
@@ -133,8 +134,10 @@ export class PoliceSystem {
 
     // ---- patrols (part of traffic) ----
     this.patrols = this.patrols.filter(c => Math.hypot(c.x - p.x, c.z - p.z) < 600);
-    const wantPatrol = this.phase === 'none' ? (w.inCity ? 2 : 1) : 0;
-    if (this.patrols.length < wantPatrol && Math.random() < dt * 0.25) {
+    // the night shift puts more cars out, and they show up faster
+    const night = extraPatrols(s.time);
+    const wantPatrol = this.phase === 'none' ? (w.inCity ? 2 : 1) + night : 0;
+    if (this.patrols.length < wantPatrol && Math.random() < dt * (0.25 + night * 0.15)) {
       const c = w.traffic.spawnNear(p.x, p.z, 200, 450, { police: true, model: CAR_BY_ID[pick(PATROL_MODELS)] });
       if (c) { c.police = true; this.patrols.push(c); }
     }
@@ -147,7 +150,8 @@ export class PoliceSystem {
     const look = s.player?.look;
     this.disguise = p.inCar ? 0 : concealment(look, (w.darkness?.() || 0) > 0.4);
     const watchable = p.inCar || !!w.combat?.armed || !!w.combat?.rob || (wanted && this.phase !== 'none');
-    this.seen = watchable ? this.detect(p.x, p.z, wanted ? 140 : 115) : false;
+    // rain, storms and fog cut how far an officer can make you out
+    this.seen = watchable ? this.detect(p.x, p.z, (wanted ? 140 : 115) * wx(s).sight) : false;
     if (this.seen) {
       this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz }; this.unseenT = 0;
       if (this.phase !== 'none') { this.eyesOn = true; this.chaseDisguise = Math.min(this.chaseDisguise, this.disguise); if (p.inCar) this.footOnly = false; }
@@ -228,7 +232,7 @@ export class PoliceSystem {
     }
 
     // ---- dispatch ----
-    const want = this.phase === 'none' ? 0 : this.phase === 'notice' || this.phase === 'stop' ? 1 : UNIT_COUNT[Math.max(1, lvl)];
+    const want = this.phase === 'none' ? 0 : this.phase === 'notice' || this.phase === 'stop' ? 1 : UNIT_COUNT[Math.max(1, lvl)] + (lvl >= 2 ? extraUnits(s.time) : 0);
     if (this.units.length < want && Math.random() < dt * 0.8) {
       const ep = this.entryPoint(p.x, p.z);
       const model = CAR_BY_ID[lvl >= 3 && Math.random() < 0.5 ? pick(INTERCEPTORS) : pick(PATROL_MODELS)];

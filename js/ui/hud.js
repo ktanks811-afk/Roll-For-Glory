@@ -15,6 +15,7 @@ import { MiniMap } from './minimap.js';
 import { LEGAL_DB } from '../sim/sound.js';
 import { PULL_OVER_S } from '../world2d/police.js';
 import { masked, ownsMask, disguiseLabel } from '../core/disguise.js';
+import { wx, nightShift } from '../core/weather.js';
 
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
@@ -122,7 +123,7 @@ export class Hud {
     this.last = now;
     const s = game.s;
     this.q('time').textContent = gameTimeStr(s.time);
-    this.q('day').textContent = `${dayName(s.time)} · Day ${s.time.day} · ${s.weather}`;
+    this.q('day').textContent = `${dayName(s.time)} · Day ${s.time.day} · ${wx(s).icon} ${wx(s).name}${nightShift(s.time) ? ' · 🚓 Night shift' : ''}`;
     const p = w.playerState();
     const street = w.streetAt(p.x, p.z);
     this.q('place').textContent = `${street ? street + ' · ' : ''}${districtAt(p.x, p.z)}`;

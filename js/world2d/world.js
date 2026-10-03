@@ -27,6 +27,7 @@ import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
 import { charge, fileCase, openCase } from '../core/justice.js';
 import { toggleMask, masked } from '../core/disguise.js';
+import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -167,7 +168,7 @@ export class World {
     const density = (hour > 1 && hour < 5 ? 0.35 : hour > 7 && hour < 9 || hour > 16 && hour < 19 ? 1.25 : 0.9) * (inCity ? 1 : 0.45) * (settings.quality === 'low' ? 0.6 : 1);
     Object.assign(this.trafficCtx, {
       signalT: this.signalT, px: p.x, pz: p.z, density, inCity, night: isNight(s.time),
-      weatherSlow: s.weather === 'rain' || s.weather === 'fog' ? 0.8 : 1,
+      weatherSlow: isWet(s) || s.weather === 'fog' ? 0.8 : 1,
       movers: this.vehicle ? [this.vehicleMover()] : [],
       extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars()],
     });
@@ -298,10 +299,16 @@ export class World {
 
   onHour() {
     const s = this.s;
-    if (Math.random() < 0.18) {
-      const r = Math.random();
-      const nw = r < 0.55 ? 'clear' : r < 0.75 ? 'cloudy' : r < 0.93 ? 'rain' : 'fog';
-      if (nw !== s.weather) { s.weather = nw; this.ui.toast(`Weather: ${nw === 'rain' ? 'rain moving in — roads are slick' : nw}`, 'info'); }
+    const nw = nextWeather(s.weather);
+    if (nw !== s.weather) { s.weather = nw; this.ui.toast(weatherToast(nw), isWet(s) ? 'bad' : 'info'); }
+    const shift = nightShift(s.time);
+    if (shift !== this.lastShift) {
+      if (this.lastShift != null) {
+        if (shift === 1 && !this.lastShift) this.ui.toast('🌙 FWPD night shift is out. More patrols on the streets.', 'bad');
+        else if (shift === 2) this.ui.toast('🚓 After midnight: patrols doubled up. Drive easy.', 'bad');
+        else if (!shift) this.ui.toast('☀ Sun\'s up. Night shift heading in.', 'info');
+      }
+      this.lastShift = shift;
     }
     if (Math.floor(s.time.min / 60) === 8) this.ui.onMorning();
     this.ui.onHour();
@@ -356,7 +363,7 @@ export class World {
     const paved = onRoad || (Math.abs(v.x) < 985 && Math.abs(v.z) < 985) || onBackroad(v.x, v.z, 6) || (v.x > 20 && v.x < 180 && v.z > 1150 && v.z < 1960);
     const sand = !paved && v.z > DESERT_Z;
     let grip = paved ? 1 : sand ? 0.62 : 0.72;
-    if (s.weather === 'rain') grip *= 0.74;
+    grip *= wx(s).grip;
     const noFuel = car.fuel <= 0.0005 || !!car.engineBlown;   // a blown motor makes no power either
     v.update(dt, {
       throttle: input.axis('throttle'), brake: input.axis('brake'), steer: input.steer(),
@@ -758,7 +765,7 @@ export class World {
     drawLots(ctx, cam, items);
     drawRoads(ctx, cam, this.map, this.signalT);
     drawSkids(ctx, cam, this.skids);
-    if (s.weather === 'rain') { ctx.fillStyle = 'rgba(40,60,90,0.12)'; ctx.fillRect(0, 0, W, H); }
+    if (isWet(s)) { ctx.fillStyle = `rgba(40,60,90,${0.12 * wx(s).rain})`; ctx.fillRect(0, 0, W, H); }
 
     this.drawGpsRoute(ctx, cam, 1);
     // police spike strips
@@ -925,7 +932,8 @@ export class World {
       ctx.restore();
     }
     if (livePeers.length) { this.drawPeerFlames(ctx, livePeers); this.drawPeerTags(ctx, livePeers); }
-    drawRain(ctx, cam, s.weather === 'rain' ? 1 : 0, dt);
+    drawRain(ctx, cam, wx(s).rain, dt);
+    if (s.weather === 'storm') this.lightning(ctx, W, H, dt);
     if (s.weather === 'fog') { ctx.fillStyle = 'rgba(180,185,195,0.28)'; ctx.fillRect(0, 0, W, H); }
     ctx.restore();
 
@@ -1004,6 +1012,19 @@ export class World {
     ctx.restore();
   }
 
+  // A storm throws a white flash across the whole screen now and then, with
+  // thunder rolling in a beat later.
+  lightning(ctx, W, H, dt) {
+    this.boltT = (this.boltT ?? 4 + Math.random() * 8) - dt;
+    if (this.boltT <= 0) { this.bolt = 1; this.boltT = 5 + Math.random() * 12; this.thunderT = 0.4 + Math.random() * 1.2; }
+    if (this.thunderT != null && (this.thunderT -= dt) <= 0) { this.thunderT = null; audio.thunder?.(); }
+    if (this.bolt > 0) {
+      ctx.fillStyle = `rgba(225,230,255,${0.55 * this.bolt * (Math.random() < 0.3 ? 0.4 : 1)})`;
+      ctx.fillRect(0, 0, W, H);
+      this.bolt = Math.max(0, this.bolt - dt * 4);
+    }
+  }
+
   darkness() {
     const h = hourOf(this.s.time);
     let d;
@@ -1011,7 +1032,8 @@ export class World {
     else if (h >= 18) d = (h - 18) / 3 * 0.78;
     else if (h < 7) d = (7 - h) / 2.5 * 0.78;
     else d = 0;
-    if (this.s.weather === 'rain' || this.s.weather === 'fog') d = Math.max(d, 0.18);
+    if (this.s.weather === 'storm') d = Math.max(d, 0.32);
+    else if (isWet(this.s) || this.s.weather === 'fog') d = Math.max(d, 0.18);
     return clamp(d, 0, 0.78);
   }
 
