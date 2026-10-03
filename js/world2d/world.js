@@ -9,6 +9,7 @@ import { missionTick } from '../core/missions.js';
 import { PoliceSystem, OFFICER_LOOK } from './police.js';
 import { Combat } from './combat.js';
 import { Carjacks } from './carjack.js';
+import { Gigs } from './gigs.js';
 import { StreetRaces } from './streetRace.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
@@ -69,6 +70,7 @@ export class World {
     this.audio = audio;
     this.combat = new Combat(this);
     this.carjacks = new Carjacks(this);
+    this.gigs = new Gigs(this);
     this.races = new StreetRaces(this);
     this.spawnPlayer();
   }
@@ -162,6 +164,7 @@ export class World {
     else this.updateFoot(dt);
     this.combat.update(dt);
     this.carjacks.update(dt);
+    this.gigs.update(dt);
     this.races.update(dt);
     this.updateOnline(dt);
 
@@ -209,7 +212,7 @@ export class World {
     // gps
     this.gpsT -= dt;
     if (s.gps && this.gpsT <= 0) { this.gpsT = 0.4; this.updateGps(); }
-    if (s.gps && Math.hypot(s.gps.x - p.x, s.gps.z - p.z) < 25) { this.ui.toast(`Arrived: ${s.gps.label}`, 'good'); s.gps = null; this.gpsPath = null; }
+    if (s.gps && !s.gps.gig && Math.hypot(s.gps.x - p.x, s.gps.z - p.z) < 25) { this.ui.toast(`Arrived: ${s.gps.label}`, 'good'); s.gps = null; this.gpsPath = null; }
 
     // persist position
     s.pos = { x: p.x, z: p.z, h: this.inCar ? this.vehicle.h : this.foot.h, inCar: this.inCar };
@@ -823,6 +826,7 @@ export class World {
     if (!this.inCar) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
     this.combat.draw(ctx, cam);
     this.carjacks.draw(ctx, cam);
+    this.gigs.draw(ctx, cam);
 
     const livePeers = online.active ? this.drawPeers(ctx, v) : [];
 
