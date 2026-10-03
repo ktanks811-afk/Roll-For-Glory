@@ -8,6 +8,10 @@
 // Everything uses pointer events with capture, so you can steer with one
 // thumb and work the pedals with the other, and drag races (brake + gas held
 // together) work. Layout and sizing live in css/touch.css.
+//
+// Players can move and resize every control (Settings → Edit button layout).
+// Their layout is saved per orientation in settings.touchLayout as offsets
+// from the default spot (fractions of the screen) plus a size.
 
 import { input, touch, isTouchDevice } from '../core/input.js';
 import { settings, saveSettings } from '../core/save.js';
@@ -108,11 +112,12 @@ function wireWheel(wheel, rot) {
 // Walking joystick.
 function wireStick(stick, knob) {
   let pid = null, cx = 0, cy = 0;
-  const R = () => stick.clientWidth * 0.36;
+  let sc = 1;   // the player may have resized the stick
+  const R = () => stick.clientWidth * sc * 0.36;
   const set = (dx, dy) => {
     const r = R(), d = Math.hypot(dx, dy) || 1, k = d > r ? r / d : 1;
     dx *= k; dy *= k;
-    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    knob.style.transform = `translate(${dx / sc}px, ${dy / sc}px)`;
     touch.axis('steer', dx / r);
     touch.axis('throttle', dy < -0.18 * r ? Math.min(1, -dy / r) : 0);   // up = forward
     touch.axis('brake', dy > 0.18 * r ? Math.min(1, dy / r) : 0);        // down = back
@@ -121,12 +126,129 @@ function wireStick(stick, knob) {
   stick.addEventListener('pointerdown', e => {
     e.preventDefault(); capture(stick, e); pid = e.pointerId;
     const r = stick.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2;
+    sc = r.width / (stick.clientWidth || r.width) || 1;
     set(e.clientX - cx, e.clientY - cy);
   });
   stick.addEventListener('pointermove', e => { if (e.pointerId === pid) set(e.clientX - cx, e.clientY - cy); });
   stick.addEventListener('pointerup', e => { if (e.pointerId === pid) stop(); });
   stick.addEventListener('pointercancel', e => { if (e.pointerId === pid) stop(); });
   return stop;
+}
+
+// ---------- custom layout ----------
+const orient = () => (innerHeight > innerWidth ? 'portrait' : 'landscape');
+let editing = null;      // { draft, ctx, sel, drag } while the layout editor is open
+
+function applyLayout(L = settings.touchLayout) {
+  if (!root) return;
+  const pos = (L && L[orient()]) || {};
+  root.querySelectorAll('[data-ed]').forEach(n => {
+    const p = pos[n.dataset.ed];
+    n.style.translate = p && (p.x || p.y) ? `${Math.round(p.x * innerWidth)}px ${Math.round(p.y * innerHeight)}px` : '';
+    n.style.scale = p && p.s && p.s !== 1 ? String(p.s) : '';
+  });
+}
+
+function editSpot(id) {
+  const o = orient(), d = editing.draft;
+  d[o] = d[o] || {};
+  return (d[o][id] = d[o][id] || { x: 0, y: 0, s: 1 });
+}
+
+function selectEdit(n) {
+  root.querySelectorAll('.tc-ed-sel').forEach(x => x.classList.remove('tc-ed-sel'));
+  editing.sel = n;
+  const r = root.querySelector('[data-esize]');
+  if (n) { n.classList.add('tc-ed-sel'); r.disabled = false; r.value = editSpot(n.dataset.ed).s; }
+  else r.disabled = true;
+}
+
+function setEditCtx(ctx) {
+  editing.ctx = ctx;
+  root.dataset.ctx = ctx;
+  root.querySelectorAll('[data-ectx]').forEach(b => b.classList.toggle('on', b.dataset.ectx === ctx));
+  selectEdit(null);
+}
+
+function closeEditor(save) {
+  if (!editing) return;
+  if (save) { settings.touchLayout = editing.draft; saveSettings(); toast('Button layout saved', 'good'); }
+  editing = null;
+  root.querySelector('.tc-edit')?.remove();
+  root.querySelectorAll('.tc-ed-sel').forEach(x => x.classList.remove('tc-ed-sel'));
+  root.classList.remove('editing');
+  root.dataset.ctx = input.context;
+  applyLayout();
+  apply();
+}
+
+function wireEditor() {
+  // Capture phase, so while editing a touch moves the control instead of pressing it.
+  const grab = e => {
+    if (!editing || e.target.closest('.tc-edit')) return;
+    e.stopPropagation(); e.preventDefault();
+    const n = e.target.closest('[data-ed]');
+    if (!n || editing.drag) return;
+    selectEdit(n); buzz(8);
+    const p = editSpot(n.dataset.ed), r = n.getBoundingClientRect();
+    editing.drag = { pid: e.pointerId, n, p, x0: e.clientX, y0: e.clientY, px: p.x, py: p.y, r };
+    try { root.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+  };
+  const move = e => {
+    const g = editing?.drag;
+    if (!g || e.pointerId !== g.pid) return;
+    e.stopPropagation();
+    const W = innerWidth, H = innerHeight;
+    const dx = Math.max(-g.r.left, Math.min(W - g.r.right, e.clientX - g.x0));
+    const dy = Math.max(-g.r.top, Math.min(H - g.r.bottom, e.clientY - g.y0));
+    g.p.x = g.px + dx / W; g.p.y = g.py + dy / H;
+    applyLayout(editing.draft);
+  };
+  const end = e => {
+    const g = editing?.drag;
+    if (!g || e.pointerId !== g.pid) return;
+    e.stopPropagation();
+    editing.drag = null;
+  };
+  root.addEventListener('pointerdown', grab, true);
+  root.addEventListener('pointermove', move, true);
+  root.addEventListener('pointerup', end, true);
+  root.addEventListener('pointercancel', end, true);
+  addEventListener('resize', () => { if (editing) selectEdit(null); applyLayout(editing ? editing.draft : undefined); });
+}
+
+function openEditor() {
+  if (!root || editing) return;
+  touchUi.releaseAll?.();
+  editing = { draft: JSON.parse(JSON.stringify(settings.touchLayout || {})), ctx: 'car', sel: null, drag: null };
+  root.classList.add('editing');
+  root.insertAdjacentHTML('beforeend', `
+    <div class="tc-edit">
+      <div class="tc-edit-row">
+        <button data-ectx="car">Driving</button><button data-ectx="foot">Walking</button>
+        <label class="tc-edit-size">Size <input type="range" min="0.6" max="1.6" step="0.05" value="1" data-esize disabled></label>
+      </div>
+      <div class="tc-edit-row">
+        <button data-eact="reset">Reset</button><button data-eact="cancel">Cancel</button><button class="tc-edit-save" data-eact="save">Save</button>
+      </div>
+      <div class="tc-edit-tip">Drag a button to move it. Tap one, then slide Size. Portrait and landscape are saved separately.</div>
+    </div>`);
+  const bar = root.querySelector('.tc-edit');
+  bar.addEventListener('pointerup', e => {   // not click: #touch blocks taps from turning into clicks
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.ectx) setEditCtx(b.dataset.ectx);
+    else if (b.dataset.eact === 'save') closeEditor(true);
+    else if (b.dataset.eact === 'cancel') closeEditor(false);
+    else if (b.dataset.eact === 'reset') { editing.draft = {}; selectEdit(null); applyLayout(editing.draft); toast('Back to the default layout — tap Save to keep it', 'info'); }
+  });
+  bar.querySelector('[data-esize]').addEventListener('input', e => {
+    if (!editing.sel) return;
+    editSpot(editing.sel.dataset.ed).s = +e.target.value;
+    applyLayout(editing.draft);
+  });
+  setEditCtx('car');
+  applyLayout(editing.draft);
+  apply();
 }
 
 function refreshMode() {
@@ -139,9 +261,9 @@ function refreshMode() {
 
 function apply() {
   if (!root) return;
-  const on = wanted && enabled;
+  const on = (wanted && enabled) || !!editing;
   root.classList.toggle('hidden', !on);
-  document.body.classList.toggle('touch', on);
+  document.body.classList.toggle('touch', wanted && enabled);
 }
 
 export const touchUi = {
@@ -152,19 +274,19 @@ export const touchUi = {
     root.dataset.ctx = input.context;
     root.innerHTML = `
       <div class="tc-foot">
-        <div class="tc-stick" data-stick><div class="tc-knob"></div></div>
+        <div class="tc-stick" data-stick data-ed="stick"><div class="tc-knob"></div></div>
         <div class="tc-foot-btns">
-          <button class="tc-btn tc-round tc-sm tc-gun" data-tap="reload">RE-<br>LOAD</button>
-          <button class="tc-btn tc-round tc-sm tc-gun" data-tap="draw">ARM</button>
-          <button class="tc-btn tc-round tc-sm tc-mask" data-tap="mask">MASK</button>
-          <button class="tc-btn tc-round tc-fire" data-hold="fire">FIRE</button>
-          <button class="tc-btn tc-round" data-hold="run">RUN</button>
-          <button class="tc-btn tc-round" data-tap="enterExit">GET<br>IN</button>
-          <button class="tc-btn tc-round tc-use" data-tap="interact">USE</button>
+          <button class="tc-btn tc-round tc-sm tc-gun" data-tap="reload" data-ed="reload">RE-<br>LOAD</button>
+          <button class="tc-btn tc-round tc-sm tc-gun" data-tap="draw" data-ed="draw">ARM</button>
+          <button class="tc-btn tc-round tc-sm tc-mask" data-tap="mask" data-ed="mask">MASK</button>
+          <button class="tc-btn tc-round tc-fire" data-hold="fire" data-ed="fire">FIRE</button>
+          <button class="tc-btn tc-round" data-hold="run" data-ed="run">RUN</button>
+          <button class="tc-btn tc-round" data-tap="enterExit" data-ed="getin">GET<br>IN</button>
+          <button class="tc-btn tc-round tc-use" data-tap="interact" data-ed="use">USE</button>
         </div>
       </div>
       <div class="tc-drive">
-        <div class="tc-wheel" data-wheel aria-label="Steering wheel">
+        <div class="tc-wheel" data-wheel data-ed="wheel" aria-label="Steering wheel">
           <svg viewBox="-50 -50 100 100"><g data-wheel-rot>
             <circle r="42" fill="rgba(20,22,26,.55)" stroke="rgba(255,255,255,.75)" stroke-width="7"/>
             <circle r="12" fill="rgba(255,255,255,.18)" stroke="rgba(255,255,255,.7)" stroke-width="2"/>
@@ -173,25 +295,25 @@ export const touchUi = {
           </g></svg>
         </div>
         <div class="tc-arrows">
-          <button class="tc-btn tc-arrow" data-hold="left" aria-label="Steer left"><i></i></button>
-          <button class="tc-btn tc-arrow tc-right" data-hold="right" aria-label="Steer right"><i></i></button>
+          <button class="tc-btn tc-arrow" data-hold="left" data-ed="left" aria-label="Steer left"><i></i></button>
+          <button class="tc-btn tc-arrow tc-right" data-hold="right" data-ed="right" aria-label="Steer right"><i></i></button>
         </div>
-        <div class="tc-shifter" data-shifter aria-label="Shift knob">
+        <div class="tc-shifter" data-shifter data-ed="shifter" aria-label="Shift knob">
           <span class="tc-plus">+</span>
           <div class="tc-sknob" data-sknob><b data-gear>1</b><small data-mode>A</small></div>
           <span class="tc-minus">−</span>
         </div>
         <div class="tc-pedals">
-          <button class="tc-btn tc-pedal tc-brake" data-hold="brake"><span>BRAKE</span></button>
-          <button class="tc-btn tc-pedal tc-gas" data-hold="throttle"><span>GAS</span></button>
+          <button class="tc-btn tc-pedal tc-brake" data-hold="brake" data-ed="brake"><span>BRAKE</span></button>
+          <button class="tc-btn tc-pedal tc-gas" data-hold="throttle" data-ed="gas"><span>GAS</span></button>
         </div>
         <div class="tc-row">
-          <button class="tc-btn tc-round tc-sm tc-nos" data-hold="nitrous">NOS</button>
-          <button class="tc-btn tc-round tc-sm tc-car-only" data-hold="handbrake">E-<br>BRK</button>
-          <button class="tc-btn tc-round tc-sm tc-car-only" data-tap="horn">HORN</button>
-          <button class="tc-btn tc-round tc-sm tc-car-only" data-steermode>STEER<br>MODE</button>
-          <button class="tc-btn tc-round tc-sm tc-car-only" data-tap="enterExit">GET<br>OUT</button>
-          <button class="tc-btn tc-round tc-sm tc-car-only tc-use" data-tap="interact">USE</button>
+          <button class="tc-btn tc-round tc-sm tc-nos" data-hold="nitrous" data-ed="nos">NOS</button>
+          <button class="tc-btn tc-round tc-sm tc-car-only" data-hold="handbrake" data-ed="ebrake">E-<br>BRK</button>
+          <button class="tc-btn tc-round tc-sm tc-car-only" data-tap="horn" data-ed="horn">HORN</button>
+          <button class="tc-btn tc-round tc-sm tc-car-only" data-steermode data-ed="steermode">STEER<br>MODE</button>
+          <button class="tc-btn tc-round tc-sm tc-car-only" data-tap="enterExit" data-ed="getout">GET<br>OUT</button>
+          <button class="tc-btn tc-round tc-sm tc-car-only tc-use" data-tap="interact" data-ed="caruse">USE</button>
         </div>
       </div>`;
     root.addEventListener('contextmenu', e => e.preventDefault());
@@ -203,7 +325,10 @@ export const touchUi = {
     const resetWheel = wireWheel(root.querySelector('[data-wheel]'), root.querySelector('[data-wheel-rot]'));
     root.querySelector('[data-steermode]').addEventListener('pointerdown', e => { e.preventDefault(); settings.steerMode = settings.steerMode === 'wheel' ? 'arrows' : 'wheel'; saveSettings(); touchUi.refresh(); toast(settings.steerMode === 'wheel' ? 'Steering wheel — drag it left and right' : 'Steering arrows', 'info'); });
     const stopStick = wireStick(root.querySelector('[data-stick]'), root.querySelector('.tc-knob'));
+    wireEditor();
+    applyLayout();
     input.onContext(ctx => {
+      if (editing) return;
       root.dataset.ctx = ctx;
       stopStick(); resetWheel();
       root.querySelectorAll('.on').forEach(n => n.classList.remove('on'));
@@ -212,6 +337,10 @@ export const touchUi = {
     this.releaseAll = () => { stopStick(); resetWheel(); touch.reset(); root.querySelectorAll('.on').forEach(n => n.classList.remove('on')); };
     refreshMode();
   },
+
+  // Move / resize the on-screen controls (opened from Settings).
+  edit() { openEditor(); },
+  get editing() { return !!editing; },
 
   // wanted = we're in the world or a race; the title screen has no controls.
   show(v) { wanted = v; this.refresh(); },
