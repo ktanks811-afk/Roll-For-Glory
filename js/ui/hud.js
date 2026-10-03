@@ -57,7 +57,7 @@ export class Hud {
         <div class="hud-court hidden" data-court></div>
         <div class="hud-disguise hidden" data-disguise></div>
         <div class="hud-pursuit hidden" data-pursuit><b data-ptitle></b><div class="bar thin"><div data-pbar></div></div></div>
-        <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom">⌕</button><button class="hud-btn" data-tp="phone" aria-label="Phone">☎</button></div>
+        <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom">⌕</button><button class="hud-btn" data-tp="view" aria-label="Camera view">🎥</button><button class="hud-btn" data-tp="phone" aria-label="Phone">☎</button></div>
         <div class="hud-dash hidden" data-dash>
         <div class="dash-speed"><b data-speed>0</b><small data-unit>MPH</small></div>
         <div class="dash-gear" data-gear>N</div>

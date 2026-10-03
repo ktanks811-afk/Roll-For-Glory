@@ -174,6 +174,11 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   and the officer writes up everything they saw: accept the citation or try to
   talk your way out (it can work — or cost you 40% more). Keep going and it
   becomes a pursuit.
+- **Third-person camera.** While driving, press **V** (or the 🎥 button, or
+  Settings → Camera view) to switch from the top-down view to a chase camera:
+  the world turns so your car always points up the screen, you sit low on the
+  screen so you see more road ahead, and it eases back to top-down when you get
+  out. It's a rotating 2D view, not full 3D. C / ⌕ still zooms.
 - **Minimap.** Sharp map tiles drawn from the real roads, buildings, parks and
   water; it turns with your heading (you sit low in the circle so you can see
   the road ahead), zooms out as you speed up, and shows the GPS route with a
@@ -372,7 +377,7 @@ in landscape from launch. On iPhone, where browsers can't lock rotation, a
 
 Multi-touch works, so you can steer with one thumb and work the pedals with
 the other. Drag races use BRAKE + GAS together, and so do burnouts and the 2-step (hold both pedals). Top right: ☰ menu and save,
-⌕ zoom, ☎ phone. It works in portrait and landscape.
+⌕ zoom, 🎥 camera view, ☎ phone. It works in portrait and landscape.
 
 ## Running it locally
 

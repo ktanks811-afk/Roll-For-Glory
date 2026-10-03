@@ -453,14 +453,16 @@ export class Combat {
   drawOverlay(ctx, cam) {
     const f = this.w.foot, z = cam.zoom;
     if (this.w.inCar) return;
-    const sx = cam.sx(f.x), sy = cam.sy(f.z);
+    const sx = 0, sy = 0;
     const pr = this.progress();
     if (pr) {
+      ctx.save(); ctx.translate(cam.sx(f.x), cam.sy(f.z)); ctx.rotate(-cam.rot);   // upright in the chase camera
       const bw = 3.2 * z, bx = sx - bw / 2, by = sy - 2.2 * z;
       ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx - 3, by - 3, bw + 6, 0.5 * z + 6);
       ctx.fillStyle = '#ff2a3a'; ctx.fillRect(bx, by, bw * Math.min(1, pr.v), 0.5 * z);
       ctx.fillStyle = '#fff'; ctx.font = `700 ${Math.max(10, 0.55 * z)}px Rajdhani, sans-serif`; ctx.textAlign = 'center';
       ctx.fillText(`Emptying the ${pr.label}…`, sx, by - 6);
+      ctx.restore();
     }
   }
 }

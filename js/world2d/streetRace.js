@@ -246,7 +246,7 @@ export class StreetRaces {
     }
     const c = r.route.checkpoints[r.next];
     if (c) {
-      const gx = cam.sx(c.x), gy = cam.sy(c.z);
+      const [gx, gy] = cam.screen(c.x, c.z);
       if (gx < 0 || gx > W || gy < 0 || gy > H) {
         const a = Math.atan2(gy - H / 2, gx - W / 2), rr = Math.min(W, H) / 2 - 56;
         ctx.save(); ctx.translate(W / 2 + Math.cos(a) * rr, H / 2 + Math.sin(a) * rr); ctx.rotate(a);
@@ -256,7 +256,7 @@ export class StreetRaces {
     }
     const d = r.rival;
     if (d) {
-      const x = cam.sx(d.x), y = cam.sy(d.z) - 3.4 * cam.zoom;
+      const [x, y0] = cam.screen(d.x, d.z), y = y0 - 3.4 * cam.zoom;
       if (x > -40 && x < W + 40 && y > -20 && y < H + 20) {
         ctx.font = '700 13px Rajdhani, sans-serif';
         const label = `${d.nick}`, wd = ctx.measureText(label).width + 14;

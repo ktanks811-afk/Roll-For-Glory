@@ -54,6 +54,7 @@ export const CONTEXTS = {
     shiftUp: ['KeyE', 'PageUp'],
     shiftDown: ['KeyQ', 'PageDown'],
     horn: ['KeyH'],
+    view: ['KeyV'],   // third-person / top-down camera (on foot V is the ski mask)
     interact: ['Enter'],
   },
   race: {
