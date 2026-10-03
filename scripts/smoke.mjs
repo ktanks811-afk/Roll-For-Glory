@@ -706,6 +706,17 @@ await step('Amazin\' shop + guns + robbery', async () => {
   if (after.guns !== 0 || after.drawn) throw new Error('gun not confiscated ' + JSON.stringify(after));
   await p.click('.modal button'); await calm();
   await p.evaluate(() => { window.__rfg.game.s.justice.cases = []; });   // the court step covers what happens next
+  // the car is on the impound lot, locked until the release fee is paid at the Central Precinct
+  const lot = await p.evaluate(() => { const w = window.__rfg.app.world; const v = w.vehicle; w.foot.x = v.x + 2; w.foot.z = v.z; return { held: !!v.car.impound }; });
+  if (!lot.held) throw new Error('busted car was not impounded');
+  await key('KeyF'); await p.waitForTimeout(200);
+  if (await p.evaluate(() => window.__rfg.app.world.inCar)) throw new Error('drove an impounded car');
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); window.__rfg.game.s.cash += 1000; openPlace(LOC_BY_ID.pspd_central, window.__rfg.app); });
+  await p.click('button[data-action="release"]');
+  if (await p.evaluate(() => !!window.__rfg.app.world.vehicle.car.impound)) throw new Error('paying the release fee did not free the car');
+  await calm();
+  await key('KeyF'); await p.waitForTimeout(200);
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get in the car after paying the impound');
 });
 
 // ---------------- carjacking ----------------
@@ -1207,6 +1218,7 @@ await step('warrants', async () => {
 
 // ---------------- courts: booking, bail, court date, plea / trial, jail sim, missing court ----------------
 await step('courts + jail', async () => {
+  await p.evaluate(() => { for (const c of window.__rfg.game.s.cars) delete c.impound; });   // an earlier arrest impounded the car
   const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
   const J = () => p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { day: s.time.day, cases: s.justice.cases.map(c => ({ date: c.date, bond: c.bond.type, fta: c.fta, cls: c.charges.map(x => x.cls) })), conv: s.justice.convictions.length, probation: s.justice.probation, warrants: s.warrants.map(x => x.kind), inCar: w.inCar, foot: [Math.round(w.foot.x), Math.round(w.foot.z)], court: document.querySelector('[data-court]')?.className + ':' + document.querySelector('[data-court]')?.textContent }; });
   const openCourt = () => p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.courthouse, window.__rfg.app); });
@@ -1301,6 +1313,7 @@ await step('courts + jail', async () => {
 
 // ---------------- traffic stop: 10 s to pull over, officer walks up, drive off = chase ----------------
 await step('traffic stop: pull over, walk-up, drive off', async () => {
+  await p.evaluate(() => { for (const c of window.__rfg.game.s.cars) delete c.impound; });   // an earlier arrest impounded the car
   const P = () => p.evaluate(() => { const w = window.__rfg.app.world, po = w.police; return { phase: po.phase, pullT: +po.pullT.toFixed(1), step: po.stop?.step || null, officer: po.officer ? { x: po.officer.x, z: po.officer.z } : null, rec: po.record.map(r => r.kind), heat: +window.__rfg.game.s.heat.toFixed(2), title: document.querySelector('[data-ptitle]')?.textContent || '' }; });
   // lit up while sitting still, with the unit already close behind
   const light = () => p.evaluate(async () => {
@@ -1370,6 +1383,7 @@ await step('traffic stop: pull over, walk-up, drive off', async () => {
 
 // ---------------- ski mask + blackout fit: buy, pull down, rob unseen, get stopped ----------------
 await step('ski mask + blackout fit', async () => {
+  await p.evaluate(() => { for (const c of window.__rfg.game.s.cars) delete c.impound; });   // an earlier arrest impounded the car
   const clearModals = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
   await p.evaluate(async () => {
     const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');

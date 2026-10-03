@@ -10,7 +10,7 @@ import { sendMessage } from '../core/story.js';
 import { saveGame } from '../core/save.js';
 import { ensure as ensureHustle } from '../core/hustle.js';
 import {
-  CLASSES, BOND_FEE, DOCKET, STORAGE_PER_DAY, FACILITY,
+  CLASSES, BOND_FEE, DOCKET, STORAGE_PER_DAY, FACILITY, IMPOUND_LOT, impoundFee,
   ensureJustice, openCase, topClass, isFelonyCase, priorScore, courtName, fmtCourt, bailFor, postBond, courtStatus,
   pleaOffer, convictChance, lawyerFee, dismissChance, resolveCase, describe, payFine, gameMinutes, realDaysFor, fmtDays,
 } from '../core/justice.js';
@@ -248,7 +248,7 @@ export function serveTime(app, { minutes, facility = 'county', title = 'Jail', l
 }
 
 // Out of custody: on foot in front of the courthouse (the jail is next door),
-// car towed home off the impound lot.
+// car on the impound lot behind the Central Precinct until you pay to get it out.
 export async function release(app, { booking = false } = {}) {
   const s = game.s, w = app.world;
   if (w) {
@@ -256,7 +256,7 @@ export async function release(app, { booking = false } = {}) {
     const l = COURT();
     const car = activeCar(s);
     if (car) {
-      const sp = w.homeSpot(LOC_BY_ID[s.home] || LOC_BY_ID.eastgate_studio);
+      const sp = w.homeSpot(car.impound ? LOC_BY_ID[IMPOUND_LOT] : LOC_BY_ID[s.home] || LOC_BY_ID.eastgate_studio);
       w.placeCar(car, sp.x, sp.z, sp.h);
       s.carPos = { x: sp.x, z: sp.z, h: sp.h };
     }
@@ -266,7 +266,8 @@ export async function release(app, { booking = false } = {}) {
     if (w.cam) { w.cam.x = w.foot.x; w.cam.z = w.foot.z; }
   }
   s.heat = 0;
-  toast(booking ? 'Released on bond. Your car was towed home.' : 'Released. Your car is back at home.', 'info');
+  const held = activeCar(s)?.impound ? ` Your car is in the impound lot at the Central Precinct (${fmtMoney(impoundFee(s))} to get it out).` : '';
+  toast((booking ? 'Released on bond.' : 'Released.') + (held || (booking ? ' Your car was towed home.' : ' Your car is back at home.')), 'info');
 }
 
 // What being locked up cost you: storage on the impounded car, and jobs
