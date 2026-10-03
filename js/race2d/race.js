@@ -471,6 +471,7 @@ export class Race {
     const gearTxt = P.sim.shiftT > 0 ? '–' : P.model.asp === 'ev' ? 'D' : String(P.sim.gear + 1);
     this.q('gear').textContent = gearTxt;
     touchUi.setGear(gearTxt);
+    touchUi.setShiftCue(this.goT && !P.finished && P.model.asp !== 'ev' && P.sim.shiftT <= 0 && P.sim.gear < P.spec.gears.length - 1 && P.sim.rpm > P.spec.redline * 0.92);
     const raceT = this.goT ? Math.max(0, this.t - this.goT) : 0;
     this.q('time').textContent = this.goT && this.phase !== 'pace' ? (P.finished ? P.elapsed : raceT).toFixed(3) : '0.000';
     if (N) {

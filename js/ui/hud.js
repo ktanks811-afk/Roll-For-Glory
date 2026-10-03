@@ -240,6 +240,7 @@ export class Hud {
       const rpmPct = v.model.asp === 'ev' ? v.speed / 70 : v.sim.rpm / v.spec.redline;
       this.q('rpm').style.width = `${Math.min(100, rpmPct * 100)}%`;
       this.q('rpm').classList.toggle('hot', rpmPct > 0.9);
+      touchUi.setShiftCue(v.rev >= 0 && v.model.asp !== 'ev' && v.sim.shiftT <= 0 && v.sim.gear < v.spec.gears.length - 1 && rpmPct > 0.92);
       this.q('fuel').style.width = `${v.car.fuel * 100}%`;
       this.q('fuel').classList.toggle('low', v.car.fuel < 0.15);
       // engine health: shows once the build is hurting it (or it's worn / blown)

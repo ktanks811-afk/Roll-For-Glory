@@ -12,13 +12,13 @@
 import { input, touch, isTouchDevice } from '../core/input.js';
 import { settings, saveSettings } from '../core/save.js';
 import { toast } from './dom.js';
+import { buzz } from './haptics.js';
 
 let root = null;
 let wanted = false;      // in the world or a race (not on the title screen)
 let enabled = false;     // settings + device say touch controls should show
 const els = {};
 
-const buzz = ms => { try { navigator.vibrate?.(ms); } catch { /* not supported */ } };
 const capture = (el, e) => { try { el.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ } };
 
 function holdButton(el, action) {
@@ -207,7 +207,9 @@ export const touchUi = {
       root.dataset.ctx = ctx;
       stopStick(); resetWheel();
       root.querySelectorAll('.on').forEach(n => n.classList.remove('on'));
+      root.classList.remove('shift-now');
     });
+    this.releaseAll = () => { stopStick(); resetWheel(); touch.reset(); root.querySelectorAll('.on').forEach(n => n.classList.remove('on')); };
     refreshMode();
   },
 
@@ -225,4 +227,10 @@ export const touchUi = {
   setRace(kind) { if (root) root.dataset.race = kind || ''; },
 
   setGear(text) { if (els.gear && els.gear.textContent !== text) els.gear.textContent = text; },
+
+  // Manual box near the limiter: the knob glows so you know to shift up.
+  setShiftCue(hot) {
+    const on = !!hot && settings.transmission !== 'auto';
+    if (root && root.classList.contains('shift-now') !== on) root.classList.toggle('shift-now', on);
+  },
 };
