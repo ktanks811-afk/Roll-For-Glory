@@ -330,6 +330,8 @@ await step('burnout: gas + brake, no 2-step', async () => {
     const v = w.vehicle; v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; w.skids.length = 0; w.smoke.length = 0; if (w.limiter) w.limiter.flames = 0;
   });
   await p.keyboard.down('KeyW'); await p.keyboard.down('KeyS'); await p.waitForTimeout(2200);
+  // skid marks are laid per frame, so a slow runner needs a moment longer
+  await p.waitForFunction(() => { const w = window.__rfg.app.world; return w.skids.length >= 10 && w.smoke.length >= 3; }, null, { timeout: 3000 }).catch(() => {});
   const r = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; return { car: v.model.id, drive: v.spec.drive, fuel: +v.car.fuel.toFixed(2), rev: v.rev, ts: v.spec.twoStep, burning: v.burning, slip: +v.sim.slip.toFixed(2), speed: +v.speed.toFixed(2), skids: w.skids.length, smoke: w.smoke.length, flames: w.limiter?.flames || 0, rpm: Math.round(v.sim.rpm), redline: v.spec.redline }; });
   await snap('burnout');
   await p.keyboard.up('KeyS'); await p.keyboard.up('KeyW');
