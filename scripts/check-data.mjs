@@ -11,6 +11,7 @@ import { partLevels } from '../js/data/parts.js';
 import { RevLimiter } from '../js/sim/twostep.js';
 import { createState, newCar, game } from '../js/core/state.js';
 import * as H from '../js/core/hustle.js';
+import * as GIG from '../js/core/gigs.js';
 import { SERVERS, SERVER_CAP } from '../js/net/online.js';
 import { Vehicle } from '../js/world2d/vehicle.js';
 import { GLOCKS, ARPS, WEAPONS, WEAPON_BY_ID, CAL, buyWeapon, buyAmmo, ensureArms, giveWeapon, minAge, canFrt, toggleFrt } from '../js/data/weapons.js';
@@ -602,6 +603,29 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const dflt = buildSpec(camaro, { dragpack: 2 }, {}), same = buildSpec(camaro, { dragpack: 2 }, {}, { frontExt: 5, rearComp: 5 });
   if (dflt.wheelieF !== same.wheelieF || dflt.trac !== same.trac) bad('default drag shock settings are not neutral');
   if (!(buildSpec(camaro, { dragpack: 3 }, {}).handling < buildSpec(camaro, {}, {}).handling)) bad('front skinnies should cost cornering grip');
+}
+// ---- gig shifts: driving well pays, driving badly costs you, staying clean is worth it ----
+{
+  const g = (k, r) => GIG.grade(k, 1000, { late: -30, dmg: 0, harsh: 0, speeding: 0, swing: 0, ...r });
+  const ontime = g('delivery', {}), late = g('delivery', { late: 60 }), smashed = g('delivery', { dmg: 10 });
+  if (!(ontime.pay + ontime.tip > late.pay + late.tip && late.pay > 0)) bad('a late delivery should pay less than an on-time one');
+  if (!(smashed.pay < ontime.pay && !smashed.tip)) bad('a smashed delivery should cost the tip and pay');
+  const smooth = g('ride', {}), rough = g('ride', { harsh: 4, speeding: 10 });
+  if (!(smooth.stars === 5 && rough.stars < 3 && rough.pay < smooth.pay && !rough.tip)) bad('Ryde stars do not follow how you drive');
+  const clean = g('tow', {}), swung = g('tow', { swing: 10, dmg: 8 });
+  if (!(swung.pay < clean.pay && swung.pay >= 400)) bad('tow pay should drop (not vanish) when the dolly swings');
+  const s = createState({ name: 'Gig', age: 25, look: {}, story: false });
+  const q0 = GIG.quote(s, 'delivery', 1000);
+  GIG.ensure(s).streak = 4;
+  if (GIG.quote(s, 'delivery', 1000) !== Math.round(q0 * 1.2)) bad('clean streak should add 5% a shift');
+  GIG.ensure(s).streak = 99;
+  if (GIG.streakBonus(s) !== GIG.STREAK_MAX) bad('clean streak bonus should cap');
+  s.warrants = [{ kind: 'fta', fine: 100 }];
+  if (!/warrant/.test(GIG.blocked(s) || '')) bad('a warrant should keep you off the schedule');
+  s.warrants = [];
+  s.gigs.suspended = s.time.day;
+  if (!/Suspended/.test(GIG.blocked(s) || '')) bad('an arrest should suspend you from shifts');
+  if (GIG.GIGS.some(x => !x.co || !x.icon || !(x.base > 0))) bad('a gig is missing its company, icon or pay');
 }
 // ---- car shows: judging, entrants, crowd votes ----
 {

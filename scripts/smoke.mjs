@@ -289,6 +289,27 @@ await step('places', async () => {
     await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
   }
 });
+await step('hellcat widebody art', async () => {
+  const r = await p.evaluate(async () => {
+    // checked from data, not by opening the lot, so no game time passes here
+    const { LOC_BY_ID } = await import('./js/data/world.js');
+    const { CAR_BY_ID: C, soldNew } = await import('./js/data/cars.js');
+    const hc = C.dodge_charger_srt_hellcat_widebody_2020;
+    const listed = !!hc && soldNew(hc) && LOC_BY_ID.auto_row.makes.includes(hc.make);
+    const { hasArt } = await import('./js/gfx2d/carArt.js');
+    const { drawSideCar } = await import('./js/gfx2d/sideCar.js');
+    const { carSprite } = await import('./js/gfx2d/carSprite.js');
+    const { CAR_BY_ID } = await import('./js/data/cars.js');
+    const m = CAR_BY_ID.dodge_charger_srt_hellcat_widebody_2020;
+    const red = cv => { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 120 && d[i + 1] < 60 && d[i + 2] < 60) n++; return n; };
+    const side = document.createElement('canvas'); drawSideCar(side, { model: m, visual: { paint: '#c41b1b', wheels: 'five' }, levels: {} });
+    const top = carSprite(m, { paint: '#c41b1b' }, {}, null).canvas;
+    return { listed, art: hasArt(m.id), side: red(side), top: red(top) };
+  });
+  if (!r.listed) throw new Error('Hellcat Widebody not on the Cowtown Auto Row lot');
+  if (!r.art) throw new Error('Hellcat Widebody art did not load');
+  if (r.side < 20000 || r.top < 1500) throw new Error('Hellcat Widebody paint not showing: ' + JSON.stringify(r));
+});
 await step('2-step flames (street + meet)', async () => {
   const world = () => p.evaluate(() => { const w = window.__rfg.app.world; return { inCar: w.inCar, flame: w.flame, flames: w.limiter?.flames || 0, rpm: Math.round(w.vehicle.sim?.rpm || 0), sp: w.vehicle.speed }; });
   await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; w.paused = false; });
@@ -627,8 +648,9 @@ await step('Amazin\' shop + guns + robbery', async () => {
   await p.keyboard.press('KeyR'); await p.waitForTimeout(2300);
   if ((await p.evaluate(() => window.__rfg.app.world.combat.gun.g.loaded)) !== 15) throw new Error('reload did not fill the mag');
   await calm();
-  // robbery: press E at the register; make the outcome deterministic
-  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  // robbery: press E at the register; make the outcome deterministic. Midday, so
+  // the clock can't roll past midnight and lift the store's alert mid-test.
+  const cash0 = await p.evaluate(() => { const s = window.__rfg.game.s; s.time.min = 12 * 60; return s.cash; });
   await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
   if (!(await p.evaluate(() => !!window.__rfg.app.world.combat.rob))) throw new Error('E at a store with a gun out did not start a robbery');
   await p.evaluate(() => { const r = window.__rfg.app.world.combat.rob; r.fightAt = 0; r.alarm = true; r.alarmAt = 1; r.dur = 3; r.pay = 500; });
@@ -988,7 +1010,7 @@ await step('phone missions (text offer → stops → paid)', async () => {
   // Rosa texts a parts run
   const o = await p.evaluate(async () => {
     const { offerMission, ensure } = await import('./js/core/missions.js');
-    const s = window.__rfg.game.s, w = window.__rfg.app.world; ensure(s).active = null; s.gps = null; w.gpsPath = null;
+    const s = window.__rfg.game.s, w = window.__rfg.app.world; ensure(s).active = null; ensure(s).offers = []; s.gps = null; w.gpsPath = null;
     if (w.vehicle) w.inCar = true;
     const o = offerMission(s, { force: true, kind: 'parts' });
     return { id: o.id, from: s.messages[0].from, act: s.messages[0].action };
@@ -1502,6 +1524,7 @@ await step('hustle (jobs, business, rentals)', async () => {
   await p.waitForTimeout(300);
   await snap('26-hustle');
   const bank0 = await p.evaluate(() => window.__rfg.game.s.bank);
+  await p.click('button[data-action="tab"][data-id="jobs"]');   // opens on Shifts
   await p.click('button[data-action="hire"][data-id="pizza"]');
   await p.waitForTimeout(150);
   if (!(await p.evaluate(() => window.__rfg.game.s.hustle.jobs.includes('pizza')))) throw new Error('job not taken');
@@ -1516,6 +1539,73 @@ await step('hustle (jobs, business, rentals)', async () => {
   console.log('     away income', JSON.stringify(away));
   if (!away || !(away.net > 0)) throw new Error('no income while away');
   await p.keyboard.press('Escape');
+});
+
+// ---------------- gig shifts: delivery runs, Ryde riders, tow calls ----------------
+await step('gig shifts (delivery, ride, tow)', async () => {
+  const W = 'window.__rfg.app.world';
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    s.warrants = []; s.heat = 0; w.police.reset?.(w); s.gigs = null;
+    if (!w.inCar) { w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; w.toggleCar(); }
+    const { openPhone } = await import('./js/ui/phone.js'); openPhone('hustle', window.__rfg.app);
+  });
+  await p.waitForTimeout(250);
+  await snap('27-shifts');
+  if ((await p.$$('button[data-action="gig"]:not([disabled])')).length !== 3) throw new Error('no shifts to start: ' + await p.textContent('.app-body'));
+  const park = (x, z) => p.evaluate(([x, z]) => { const w = window.__rfg.app.world, v = w.vehicle; v.x = x; v.z = z; v.vx = v.vz = 0; v.sim.v = 0; w.cam.x = x; w.cam.z = z; }, [x, z]);
+  const job = () => p.evaluate(() => { const g = window.__rfg.app.world.gigs, j = g.job; return j && { stage: j.stage, left: j.left, pick: j.pickup, drop: j.drop, quoted: j.quoted, tow: g.towCar && { x: g.towCar.x, z: g.towCar.z, hooked: g.towCar.hooked }, rider: g.rider && { in: !!g.rider.in } }; });
+  const money = () => p.evaluate(() => window.__rfg.game.s.bank + window.__rfg.game.s.cash);
+  // delivery: pick up at the diner, the clock starts, drop at the door
+  await p.click('button[data-action="gig"][data-id="delivery"]');
+  await p.waitForTimeout(200);
+  let j = await job();
+  if (!j || j.stage !== 'pickup' || !/Pick up the order/.test(j.pick.label)) throw new Error('delivery did not start ' + JSON.stringify(j));
+  if (!(await p.evaluate(() => !!window.__rfg.game.s.gps?.gig))) throw new Error('no GPS to the pickup');
+  if (!/Slice Brothers/.test(await p.textContent('[data-gig]'))) throw new Error('no shift box on the HUD');
+  await park(j.pick.x, j.pick.z); await p.waitForTimeout(1700);
+  j = await job();
+  if (j?.stage !== 'drop' || !(j.left > 0)) throw new Error('order not picked up ' + JSON.stringify(j));
+  await snap('28-delivery');
+  let m0 = await money();
+  await park(j.drop.x, j.drop.z); await p.waitForTimeout(1500);
+  if (await job()) throw new Error('delivery not finished');
+  let st = await p.evaluate(() => window.__rfg.game.s.gigs);
+  if (!(await money() > m0) || st.streak !== 1 || st.done !== 1) throw new Error('delivery not paid ' + JSON.stringify(st));
+  // ride: the rider walks to the car and gets in
+  const r = await p.evaluate(() => window.__rfg.app.world.gigs.start('ride'));
+  if (!r.ok) throw new Error('ride: ' + r.text);
+  j = await job();
+  await park(j.pick.x + 4, j.pick.z); await p.waitForTimeout(3500);
+  j = await job();
+  if (j?.stage !== 'drop' || !j.rider?.in) throw new Error('rider did not get in ' + JSON.stringify(j));
+  m0 = await money();
+  await park(j.drop.x, j.drop.z); await p.waitForTimeout(1300);
+  if (await job()) throw new Error('ride not finished');
+  if (!(await money() > m0)) throw new Error('ride not paid');
+  // tow: stop next to the broken-down car, it hooks on and follows you to the yard
+  const t = await p.evaluate(() => window.__rfg.app.world.gigs.start('tow'));
+  if (!t.ok) throw new Error('tow: ' + t.text);
+  j = await job();
+  await park(j.tow.x + 3, j.tow.z + 3); await p.waitForTimeout(2600);
+  j = await job();
+  if (j?.stage !== 'drop' || !j.tow?.hooked) throw new Error('tow not hooked ' + JSON.stringify(j));
+  await park(j.tow.x + 30, j.tow.z); await p.waitForTimeout(300);
+  const gap = await p.evaluate(() => { const w = window.__rfg.app.world, c = w.gigs.towCar, v = w.vehicle; return Math.hypot(c.x - v.x, c.z - v.z); });
+  if (!(gap > 3 && gap < 9)) throw new Error('towed car is not trailing behind: ' + gap);
+  await snap('29-tow');
+  m0 = await money();
+  await park(j.drop.x, j.drop.z); await p.waitForTimeout(1500);
+  if (await job()) throw new Error('tow not finished');
+  st = await p.evaluate(() => window.__rfg.game.s.gigs);
+  if (!(await money() > m0) || st.streak !== 3) throw new Error('tow not paid ' + JSON.stringify(st));
+  // stay legit: a warrant keeps you off the schedule, an arrest suspends you and wipes the streak
+  const why = await p.evaluate(async () => { const { addWarrant } = await import('./js/core/warrants.js'); const s = window.__rfg.game.s; addWarrant(s, { kind: 'fta', text: 'Failure to appear', fine: 300 }); const r = window.__rfg.app.world.gigs.start('delivery'); s.warrants = []; return r; });
+  if (why.ok || !/warrant/.test(why.text)) throw new Error('a warrant did not block the shift: ' + why.text);
+  const sus = await p.evaluate(async () => { const w = window.__rfg.app.world; w.gigs.start('delivery'); const { emit } = await import('./js/core/events.js'); window.__rfg.game.s.stats.busted++; emit('busted', { fine: 500 }); w.gigs.update(0.016); return { job: !!w.gigs.job, g: window.__rfg.game.s.gigs, why: w.gigs.blocked() }; });
+  if (sus.job || sus.g.streak !== 0 || !/Suspended/.test(sus.why || '')) throw new Error('an arrest did not suspend you ' + JSON.stringify(sus));
+  await p.evaluate(() => { window.__rfg.game.s.gigs.suspended = 0; const w = window.__rfg.app.world, v = w.vehicle; v.vx = v.vz = 0; v.sim.v = 0; if (w.inCar) w.toggleCar(); });   // back on foot for the next step
 });
 
 // ---------------- crew turf: claim open hoods, turf wars, defending, street tax ----------------
