@@ -5,6 +5,7 @@ import { $, el, esc } from './dom.js';
 import { game, fmtMoney, gameTimeStr, dayName, tierOf, nextTier, activeCar, tankGallons } from '../core/state.js';
 import { settings } from '../core/save.js';
 import { LOCATIONS, districtAt } from '../data/world.js';
+import { turfLabel } from '../core/turf.js';
 import { currentStep, CHAPTERS } from '../data/story.js';
 import { MPH } from '../sim/powertrain.js';
 import { input, touch, isTouchDevice } from '../core/input.js';
@@ -126,7 +127,8 @@ export class Hud {
     this.q('day').textContent = `${dayName(s.time)} · Day ${s.time.day} · ${wx(s).icon} ${wx(s).name}${nightShift(s.time) ? ' · 🚓 Night shift' : ''}`;
     const p = w.playerState();
     const street = w.streetAt(p.x, p.z);
-    this.q('place').textContent = `${street ? street + ' · ' : ''}${districtAt(p.x, p.z)}`;
+    const turf = turfLabel(s, p.x, p.z);
+    this.q('place').textContent = `${street ? street + ' · ' : ''}${districtAt(p.x, p.z)}${turf ? ' · ' + turf : ''}`;
     const ob = this.q('online');
     ob.classList.toggle('hidden', !online.active);
     if (online.active) ob.textContent = `🌐 ${online.serverName} · ${online.list().length + 1} online`;
