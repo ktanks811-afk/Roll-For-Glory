@@ -8,7 +8,8 @@ import { BACKROAD } from './map.js';
 
 export const TILE = 400;          // metres per tile
 export const TS = 1.0;            // tile resolution, pixels per metre
-const LOT_COLOR = { park: '#27402a', yard: '#2c3828', parking: '#363840', gas: '#3d3f45', strip: '#4a4b50' };
+const LOT_COLOR = { park: '#27402a', yard: '#2c3828', parking: '#363840', gas: '#3d3f45', strip: '#4a4b50',
+  lane: '#7d828c', dirt: '#5e5040', field: '#34421f', sand: '#a8956a', pond: '#16405e', court: '#5a3a2a', lot: '#3d3f45', junk: '#45403a' };
 
 export function buildTile(map, i, j) {
   const x0 = i * TILE - 1, z0 = j * TILE - 1, W = TILE + 2;
@@ -41,6 +42,7 @@ export function buildTile(map, i, j) {
   g.strokeStyle = '#a8aab0'; g.lineWidth = 5; g.beginPath(); BACKROAD.forEach(([x, z], k) => k ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
   for (const it of items) if (it.type === 'b') {
     const b = it.o;
+    if (b.kind === 'parked') continue;
     g.fillStyle = b.kind === 'stands' ? '#5a5f69' : '#4b515d'; g.fillRect(b.x, b.z, b.w, b.d);
     g.strokeStyle = '#2b2f37'; g.lineWidth = 1.4; g.strokeRect(b.x + 0.5, b.z + 0.5, b.w - 1, b.d - 1);
   }

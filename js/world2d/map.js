@@ -4,6 +4,7 @@
 
 import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
 import { buildRoads } from './roads.js';
+import { addScenery } from './scenery.js';
 
 function mulberry32(a) {
   return () => {
@@ -268,6 +269,10 @@ export function buildMap() {
       : { x: cx - span / 2, z: cz - thick / 2, w: span, d: thick, h: 7.5, color: '#1a1c22', kind: 'gantry', noCollide: true, label: l.name, labelColor: l.color, loc: l.id, horiz });
   }
 
+  // ---------------- filling in the empty ground ----------------
+  const props = [];       // ground-level detail: shrubs, hedges, pools, flowerbeds, benches
+  addScenery({ roads, buildings, lots, trees, rocks, props, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
+
   // ---------------- colliders ----------------
   const colliders = [];
   for (const b of buildings) if (!b.noCollide) colliders.push({ x0: b.x, z0: b.z, x1: b.x + b.w, z1: b.z + b.d, h: b.h, b });
@@ -294,8 +299,9 @@ export function buildMap() {
   lots.forEach(l => drawGrid.insert({ type: 'l', o: l }, l.x, l.z, l.x + l.w, l.z + l.d));
   trees.forEach(t => drawGrid.insert({ type: 't', o: t }, t.x - t.r, t.z - t.r, t.x + t.r, t.z + t.r));
   rocks.forEach(r => drawGrid.insert({ type: 'r', o: r }, r.x, r.z, r.x + r.w, r.z + r.d));
+  props.forEach(p => { const r = p.r || 0; drawGrid.insert({ type: 'p', o: p }, p.x - r, p.z - r, p.x + (p.w || 0) + r, p.z + (p.d || 0) + r); });
 
-  return { roads, buildings, lots, trees, water, rocks, hills, signs, colliders, grid, drawGrid, garages, backroad: BACKROAD };
+  return { roads, buildings, lots, trees, water, rocks, hills, signs, props, colliders, grid, drawGrid, garages, backroad: BACKROAD };
 }
 
 // Northridge Pass: a winding two-lane through the west hills.
