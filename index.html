@@ -54,6 +54,12 @@
   </script>
   <script type="module" src="js/main.js"></script>
   <script>
+    // Always load the latest version of the game (see sw.js).
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    }
+  </script>
+  <script>
     // Opening index.html straight off disk blocks ES modules. Say so instead
     // of sitting on "Loading…" forever.
     if (location.protocol === 'file:') {
