@@ -34,6 +34,9 @@ export const DOCKET_HOUR = 9;          // your case is set for 9 AM
 export const FINE_PER_DAY = 150;       // Texas lets you sit out an unpaid fine in jail
 export const PROBATION_FEE = 60;       // weekly supervision fee
 export const STORAGE_PER_DAY = 20;     // impound storage while you're locked up
+export const IMPOUND_FEE = 300;        // release fee at the impound lot
+export const IMPOUND_LOT = 'pspd_central';   // your car waits behind the Central Precinct
+export const impoundFee = s => Math.round(IMPOUND_FEE * (s.insurance ? 0.75 : 1));   // insurance pays 25%
 
 // What an offence from the street turns into in court. Anything not listed
 // is a Class B. `tg`: a "3g" offence, so parole comes only after half the sentence.
