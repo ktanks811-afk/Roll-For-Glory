@@ -24,7 +24,8 @@ import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
-import { serveAll, signCitation, warrantForEscape, CITATION_DAYS } from '../core/warrants.js';
+import { serveAll, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
+import { toggleMask, masked } from '../core/disguise.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -147,6 +148,7 @@ export class World {
     if (input.pressed('map')) { this.ui.openPhone('map'); return; }
     if (input.pressed('pause')) { this.ui.openPause(); return; }
     if (input.pressed('camera')) this.zoomLevel = ((this.zoomLevel ?? 1) + 1) % 3;
+    if (input.pressed('mask')) this.toggleMask();
 
     const p = this.playerState();
     this.offence = null;
@@ -563,8 +565,34 @@ export class World {
     s.followers += 40 * lvl;
     // they know who you are: a warrant goes out for the chase and anything they saw
     const wr = warrantForEscape(s, seen ? record : record.filter(r => r.kind === 'robbery' || r.kind === 'shots' || r.kind === 'assault'), lvl, seen);
-    this.ui.toast(`ESCAPED! +${80 * lvl} rep.${wr.length ? ' A warrant is out for you — patrols will know your plate.' : ' Heat will cool down if you lay low.'}`, 'good');
+    const anon = wr.unidentified ? ` Nobody could ID you behind the mask${wr.unidentified > 1 ? ` (${wr.unidentified} crimes)` : ''}.` : '';
+    this.ui.toast(`ESCAPED! +${80 * lvl} rep.${wr.length ? ' A warrant is out for you — patrols will know your plate.' : ' Heat will cool down if you lay low.'}${anon}`, 'good');
     emit('pursuitEscaped', { level: lvl });
+  }
+
+  // Pull the mask down or up (V / the MASK button). Never in a car.
+  toggleMask() {
+    if (this.inCar) return;
+    const on = toggleMask(this.s);
+    if (on === null) { this.ui.toast('You don\'t own a mask. Riverside Army Surplus sells them.', 'info'); return; }
+    audio.click();
+    this.ui.toast(on ? 'Mask down. Witnesses won\'t see your face, but cops notice a ski mask.' : 'Mask off.', 'info');
+  }
+
+  // A patrol stopped you for walking around masked: the mask comes off and
+  // they run your name. A warrant makes it an arrest.
+  async onMaskStop() {
+    const s = this.s;
+    s.player.maskStash = s.player.look.mask; s.player.look.mask = 'no_mask';
+    if (hasWarrant(s)) {
+      this.police.phase = 'notice';
+      this.onBusted(400, false, this.police.record.slice(), true);
+      this.police.reset(this);
+      return;
+    }
+    s.heat = Math.max(s.heat, 0.5);
+    this.police.decayHold = 25;
+    await this.ui.modal('Stopped and questioned', `<p class="muted">"Evening. Take the mask off for me... Any reason you're walking around dressed like that?"</p><p>The officer runs your name. You're clean, so they let you go: "Lose the mask. People call us about it."</p><p class="small muted">Masks keep witnesses from naming you during a crime, but wearing one on the street gets you looked at. Pull it down right before (V or MASK) and off right after.</p>`);
   }
 
   updatePoliceAudio() {

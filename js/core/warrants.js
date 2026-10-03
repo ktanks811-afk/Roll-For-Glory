@@ -33,7 +33,7 @@ function addWarrant(s, w) {
   ensureRecord(s);
   const have = s.warrants.find(x => x.kind === w.kind && x.text === w.text);
   if (have) { have.fine += w.fine; have.felony ||= !!w.felony; return have; }
-  const item = { id: uid('wr'), day: s.time.day, felony: false, ...w };
+  const item = { id: uid('wr'), day: s.time.day, felony: false, evidence: '', ...w };
   s.warrants.push(item);
   emit('warrant', { added: item });
   return item;
@@ -60,15 +60,22 @@ export function citationsDue(s) {
 // You got away. Whatever they saw you do, plus the evading charge, goes on a warrant.
 // seen: false when no officer ever got eyes on you (a dispatch that never
 // found you), so there is nobody you evaded.
-export function warrantForEscape(s, record = [], level = 1, seen = true) {
+// A crime committed in a mask (r.conceal, see core/disguise.js) only becomes
+// a warrant if the witnesses or cameras can still tell it was you; the rest
+// stay open cases against an unknown suspect. `evidence` says what ties a
+// warrant to you, for the day it goes in front of a judge.
+export function warrantForEscape(s, record = [], level = 1, seen = true, rng = Math.random) {
   const felonyCrime = record.some(r => FELONY_KINDS.has(r.kind));
   const out = [];
+  out.unidentified = 0;
   if (seen) out.push(addWarrant(s, level >= 2 || felonyCrime
-    ? { kind: 'evading', text: 'Evading arrest (in a vehicle).', fine: 1500 + 500 * level, felony: true }
-    : { kind: 'evading', text: 'Evading detention (fled a stop).', fine: 600 }));
+    ? { kind: 'evading', text: 'Evading arrest (in a vehicle).', fine: 1500 + 500 * level, felony: true, evidence: 'Officers ran your plate' }
+    : { kind: 'evading', text: 'Evading detention (fled a stop).', fine: 600, evidence: 'Officers ran your plate' }));
   for (const r of record) {
     if (r.kind === 'noise' || r.kind === 'evading') continue;
-    out.push(addWarrant(s, { kind: r.kind, text: r.text, fine: r.fine || 250, felony: FELONY_KINDS.has(r.kind) }));
+    if (r.conceal > 0 && rng() < r.conceal) { out.unidentified++; s.stats && (s.stats.unsolved = (s.stats.unsolved || 0) + 1); continue; }
+    out.push(addWarrant(s, { kind: r.kind, text: r.text, fine: r.fine || 250, felony: FELONY_KINDS.has(r.kind),
+      evidence: r.conceal > 0 ? 'A witness picked you out despite the disguise' : 'Witnesses and cameras got your face' }));
   }
   return out;
 }

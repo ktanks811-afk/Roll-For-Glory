@@ -156,6 +156,7 @@ export const touchUi = {
         <div class="tc-foot-btns">
           <button class="tc-btn tc-round tc-sm tc-gun" data-tap="reload">RE-<br>LOAD</button>
           <button class="tc-btn tc-round tc-sm tc-gun" data-tap="draw">ARM</button>
+          <button class="tc-btn tc-round tc-sm tc-mask" data-tap="mask">MASK</button>
           <button class="tc-btn tc-round tc-fire" data-hold="fire">FIRE</button>
           <button class="tc-btn tc-round" data-hold="run">RUN</button>
           <button class="tc-btn tc-round" data-tap="enterExit">GET<br>IN</button>

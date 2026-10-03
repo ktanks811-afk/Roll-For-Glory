@@ -380,6 +380,40 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   W.warrantForEscape(st, [], 2);
   if (W.serveAll(st) !== 2500 || W.hasWarrant(st)) bad('an arrest should serve every warrant');
 }
+// ---- disguises: ski mask + all black keeps witnesses from naming you ----
+{
+  const D = await import('../js/core/disguise.js');
+  const W = await import('../js/core/warrants.js');
+  const { CLOTHES, CLOTH_BY_ID, BLACKOUT_FIT } = await import('../js/data/shops.js');
+  for (const c of CLOTHES) if (!['top', 'bottom', 'hat', 'shoes', 'mask'].includes(c.slot)) bad(`clothing ${c.id} has an unknown slot ${c.slot}`);
+  for (const id of BLACKOUT_FIT) if (!CLOTH_BY_ID[id] || CLOTH_BY_ID[id].shop !== 'surplus') bad(`blackout fit item ${id} is not sold at the surplus store`);
+  if (!LOCATIONS.some(l => l.shop === 'surplus' && l.type === 'clothing')) bad('no store sells the ski mask');
+  if (CLOTHES.some(c => /nike/i.test(c.name))) bad('use the made-up brand, not a real trademark');
+  const plain = { top: 'tee_white', bottom: 'jeans_blue', shoes: 'kicks_white', hat: 'no_hat', mask: 'no_mask' };
+  const black = { ...plain, top: 'fleece_black', bottom: 'joggers_black', shoes: 'kicks_blackout' };
+  const full = { ...black, mask: 'skimask_black' };
+  if (D.concealment(plain) !== 0) bad('a plain outfit should not hide you');
+  if (!D.allBlack(black) || D.masked(black)) bad('all-black detection is off');
+  if (!(D.concealment(black) > 0 && D.concealment(black) < D.concealment(black, true))) bad('all black should help, and help more at night');
+  if (!(D.concealment(full, true) >= 0.85 && D.concealment(full) > D.concealment({ ...plain, mask: 'skimask_black' }))) bad('mask + all black at night should be close to unrecognisable');
+  if (D.concealment({ ...plain, top: 'hoodie_black', bottom: 'jeans_black', shoes: 'boots_black' }) !== D.concealment(black)) bad('the black clothes Threadline already sells should count as black');
+  // a robbery done fully masked at night leaves no warrant when the witness can't ID; unmasked always does
+  const st = createState({ name: 'M', age: 25, look: {}, story: false });
+  const rob = conceal => [{ kind: 'robbery', text: 'Armed robbery — test.', fine: 6000, conceal }];
+  let wr = W.warrantForEscape(st, rob(D.concealment(full, true)), 1, false, () => 0.5);
+  if (wr.length || wr.unidentified !== 1 || W.hasWarrant(st)) bad('a masked robbery nobody could ID should not become a warrant');
+  wr = W.warrantForEscape(st, rob(D.concealment(full, true)), 1, false, () => 0.99);
+  if (wr.length !== 1 || !/despite the disguise/.test(st.warrants[0].evidence)) bad('a witness who does pick you out should still put out a warrant');
+  W.serveAll(st);
+  wr = W.warrantForEscape(st, rob(0), 1, false, () => 0);
+  if (wr.length !== 1 || !st.warrants[0].evidence) bad('an unmasked robbery should always become a warrant with evidence');
+  // pulling the mask down and up remembers which one
+  const ms = createState({ name: 'K', age: 25, look: { ...plain }, story: false });
+  if (D.toggleMask(ms) !== null) bad('toggling a mask you do not own should do nothing');
+  ms.player.outfits.push('bandana_black', 'skimask_black');
+  D.toggleMask(ms); ms.player.look.mask = 'skimask_black'; D.toggleMask(ms);
+  if (D.masked(ms.player.look) || D.toggleMask(ms) !== true || ms.player.look.mask !== 'skimask_black') bad('mask toggle should put back the last mask worn');
+}
 // ---- weapons: every Glock, AR pistols, shopping rules ----
 {
   const models = new Set(GLOCKS.map(g => g.model));

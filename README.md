@@ -235,6 +235,14 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   Pay tickets and misdemeanour warrants in the FWPD phone app or at a
   precinct; felony warrants clear only by turning yourself in at a precinct
   (25% off the fines) or by getting arrested (full price).
+- **Masks and blackout gear.** Riverside Army Surplus sells a black ski mask
+  (Vortex, a made-up brand), a bandana and all-black clothes, or the whole
+  blackout fit as a set. Pull the mask down and up with **V** (or the MASK
+  button on a phone). A crime done in a mask and all black, especially at
+  night, often can't be tied to you: no warrant, less heat, and patrols
+  can't match your face. Plates still give you away. Walking around masked
+  for no reason gets you stopped and questioned, and with a warrant that
+  stop is an arrest.
 - **Life stuff.** A big city with day/night and weather, traffic that stops
   at signals, pedestrians, fuel, gas prices, insurance, repairs, food and
   energy, clothes, properties with garage space, a rideshare app, a bank

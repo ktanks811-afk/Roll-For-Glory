@@ -14,9 +14,10 @@ import { online } from '../net/online.js';
 import { MiniMap } from './minimap.js';
 import { LEGAL_DB } from '../sim/sound.js';
 import { PULL_OVER_S } from '../world2d/police.js';
+import { masked, ownsMask, disguiseLabel } from '../core/disguise.js';
 
 const HELP = {
-  foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · G draw/holster gun · J/Space/click fire · R reload · P phone · M map · C zoom',
+  foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
   car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · Enter interact · F get out · P phone',
 };
 
@@ -49,6 +50,7 @@ export class Hud {
         <div class="hud-rep"><span data-tier></span><div class="bar thin"><div data-repbar></div></div></div>
         <div class="hud-heat" data-heat>${'<i></i>'.repeat(5)}</div>
         <div class="hud-warrant hidden" data-warrant></div>
+        <div class="hud-disguise hidden" data-disguise></div>
         <div class="hud-pursuit hidden" data-pursuit><b data-ptitle></b><div class="bar thin"><div data-pbar></div></div></div>
         <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom">⌕</button><button class="hud-btn" data-tp="phone" aria-label="Phone">☎</button></div>
         <div class="hud-dash hidden" data-dash>
@@ -138,6 +140,10 @@ export class Hud {
     const wr = this.q('warrant'), nw = s.warrants?.length || 0;
     wr.classList.toggle('hidden', !nw);
     if (nw) { const fel = s.warrants.some(x => x.felony); wr.textContent = `WARRANT${nw > 1 ? 'S ×' + nw : ''}`; wr.title = fel ? 'Felony warrant' : 'Warrant'; wr.classList.toggle('felony', fel); }
+    // masked on foot: how recognisable you are right now
+    const dg = this.q('disguise'), mk = !w.inCar && masked(s.player.look);
+    dg.classList.toggle('hidden', !mk);
+    if (mk) { const t = `MASKED · ${disguiseLabel(w.police.disguise).toUpperCase()}`; if (dg.textContent !== t) dg.textContent = t; }
     const pp = this.q('pursuit');
     const ph = w.police.phase;
     pp.classList.toggle('hidden', ph === 'none');
@@ -197,7 +203,7 @@ export class Hud {
       wq.classList.toggle('hidden', !html);
     }
     const troot = document.getElementById('touch');
-    if (troot) { troot.classList.toggle('armed', !!(cb && cb.armed)); troot.classList.toggle('has-gun', !!(cb && cb.gun && !w.inCar)); }
+    if (troot) { troot.classList.toggle('armed', !!(cb && cb.armed)); troot.classList.toggle('has-gun', !!(cb && cb.gun && !w.inCar)); troot.classList.toggle('has-mask', !w.inCar && ownsMask(w.s)); troot.classList.toggle('masked', !w.inCar && masked(w.s.player.look)); }
     const prompt = parts.join(' &nbsp;·&nbsp; ');
     pr.innerHTML = prompt; pr.classList.toggle('hidden', !prompt);
     // dash
