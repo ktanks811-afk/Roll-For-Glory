@@ -358,7 +358,7 @@ await step('drag pack: hooks, wheelies, tune it out', async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
     const s = window.__rfg.game.s;
     const car = st.newCar('chevrolet_camaro_ss_2016'); s.cars.push(car);
-    window.__dragSaved = s.activeCar; s.activeCar = car.uid;
+    window.__dragSaved = s.activeCar; window.__dragInCar = window.__rfg.app.world.inCar; s.activeCar = car.uid;
     const pick = (cat, stage) => CATALOG.find(p => p.cat === cat && p.stage === stage && fits(p, CAR_BY_ID.chevrolet_camaro_ss_2016))?.id;
     Object.assign(car.parts, { turbo: pick('turbo', 4), ecu: pick('ecu', 3), fuel: pick('fuel', 4), engine: pick('engine', 4), intercooler: pick('intercooler', 3), dragpack: pick('dragpack', 4) });
     window.__rfg.app.world.refreshCar();
@@ -385,7 +385,7 @@ await step('drag pack: hooks, wheelies, tune it out', async () => {
   if (!tune.has || !['frontExt', 'rearComp', 'pwr1', 'pwr2'].every(k => tune.keys.includes(k))) throw new Error('Drag launch tune group missing settings: ' + tune.keys.join(','));
   await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); });
   // drag strip: it wheelies on the launch
-  const restore = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; const s = window.__rfg.game.s; if (!window.__dragSaved) return; s.cars = s.cars.filter(c => c.uid !== s.activeCar); s.activeCar = window.__dragSaved; window.__dragSaved = null; window.__rfg.app.world.refreshCar(); });
+  const restore = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; const s = window.__rfg.game.s; if (!window.__dragSaved) return; s.cars = s.cars.filter(c => c.uid !== s.activeCar); s.activeCar = window.__dragSaved; window.__dragSaved = null; const w = window.__rfg.app.world; w.refreshCar(); w.inCar = window.__dragInCar; });
   try {
   await p.evaluate(async () => { const { openRaceSetup } = await import('./js/ui/raceSetup.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world; try { w.police.reset(w); } catch {} w.inCar = true; w.paused = false; window.__rfg.game.s.cash += 5000; openRaceSetup(window.__rfg.app, { type: 'drag', loc: LOC_BY_ID.ironline }); });
   await p.waitForTimeout(300);
@@ -410,7 +410,7 @@ await step('drag pack: hooks, wheelies, tune it out', async () => {
   await p.waitForTimeout(400); await snap('drag-pack-timeslip');
   slip = await p.textContent('.results').catch(() => '');
   await p.click('text=Back to the street');
-  } finally { await restore(); }
+  } finally { await p.keyboard.up('KeyW'); await p.keyboard.up('KeyS'); await restore(); await p.waitForTimeout(200); }
   console.log('     dragpack', JSON.stringify({ maxPitch: +maxPitch.toFixed(2), wheelieRow: /Wheelie/.test(slip) }));
   if (!(maxPitch > 0.2)) throw new Error('1000 hp car on a drag pack did not wheelie at the strip');
   if (!/Wheelie/.test(slip)) throw new Error('timeslip has no wheelie row');
