@@ -1,4 +1,5 @@
-// The smartphone. Apps: Messages, Contacts, Map, Bank, Marketplace,
+// The smartphone. The home screen shows your FWPD status, the mission you're
+// on and your GPS at a glance. Apps: Messages, Contacts, Map, Missions, Bank, Marketplace,
 // PartsHub, Throttle (social), Races, Ryde (rideshare), Crew, Garage,
 // Journal, Settings.
 
@@ -24,11 +25,13 @@ import { myHoods } from '../core/turf.js';
 import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
+import { ensure as ensureMissions, now as missionNow, offerById, acceptMission, declineMission, abandonMission, pointGps, currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 
 const APPS = [
   { id: 'messages', name: 'Messages', icon: '💬', bg: '#2bd96b' },
   { id: 'contacts', name: 'Contacts', icon: '👤', bg: '#6b6e78' },
   { id: 'map', name: 'Map', icon: '🗺', bg: '#2a7bff' },
+  { id: 'missions', name: 'Missions', icon: '📦', bg: '#e8641a' },
   { id: 'bank', name: 'Bank', icon: '🏦', bg: '#1f8f3a' },
   { id: 'marketplace', name: 'Marketplace', icon: '🏪', bg: '#1877f2' },
   { id: 'partshub', name: 'PartsHub', icon: '🔧', bg: '#e0192e' },
@@ -75,17 +78,32 @@ function wire(scr, ctx, handlers) {
 
 // ---------------- home ----------------
 function renderHome(scr, ctx) {
-  const s = ctx.s;
+  const s = ctx.s, ms = ensureMissions(s);
   const unread = s.messages.filter(m => !m.read).length;
   const t = tierOf(s.rep);
+  const offers = ms.offers.filter(o => o.expires > missionNow(s)).length;
+  const badge = { messages: unread, fwpd: hasWarrant(s) ? s.warrants.length : 0, missions: ms.active ? '!' : offers };
+  // lock-screen style cards: where you stand with FWPD, the job you're on, where the GPS is taking you
+  const warr = hasWarrant(s), cites = s.citations?.length || 0;
+  const a = ms.active, stop = currentStop(s);
+  const latest = s.messages.find(m => !m.read);
   scr.innerHTML = `<div class="phone-wall"><div class="who">${esc(s.player.name)}</div>
     <div class="sub">${fmtMoney(s.cash)} cash · ${fmtMoney(s.bank)} bank · ${t.name} · ${s.followers.toLocaleString()} followers</div></div>
-    <div class="phone-home">${APPS.map(a => `<button class="app" data-action="open" data-id="${a.id}"><i style="background:${a.bg}">${a.icon}</i>${a.name}${a.id === 'messages' && unread ? `<span class="badge">${unread}</span>` : ''}${a.id === 'fwpd' && hasWarrant(s) ? `<span class="badge">${s.warrants.length}</span>` : ''}</button>`).join('')}</div>`;
-  bind(scr, { open: d => {
-    if (d.id === 'partshub') { ctx.h.close(); openPartsHub(ctx.app); return; }
-    if (d.id === 'settings') { openSettings(ctx.app); return; }
-    ctx.go(d.id);
-  } });
+    <div class="phone-widgets">
+      <button class="pw ${warr ? 'pw-bad' : 'pw-ok'}" data-action="open" data-id="fwpd"><small>🚔 FWPD status</small><b>${warr ? `${s.warrants.length} warrant${s.warrants.length > 1 ? 's' : ''}${hasFelony(s) ? ' · felony' : ''}` : 'No warrants'}</b><span>${warr ? 'Patrols are running your plate' : cites ? `${cites} unpaid ticket${cites > 1 ? 's' : ''}` : 'You\'re clean'}</span></button>
+      <button class="pw ${a ? (a.hot ? 'pw-hot' : 'pw-job') : ''}" data-action="open" data-id="missions"><small>📦 Mission</small><b>${a ? esc(a.title) : offers ? `${offers} offer${offers > 1 ? 's' : ''}` : 'No job'}</b><span>${a ? `${fmtLeft(timeLeft(s))} · ${esc(stop?.name || '')}` : offers ? 'Tap to see who\'s asking' : 'Jobs come by text'}</span></button>
+      <button class="pw ${latest ? '' : 'pw-wide'}" data-action="open" data-id="map"><small>🗺 GPS</small><b>${s.gps ? esc(s.gps.label) : 'Not set'}</b><span>${s.gps ? 'Tap for the route' : 'Tap to pick a place'}</span></button>
+      ${latest ? `<button class="pw" data-action="text" data-id="${esc(latest.from)}"><small>💬 ${esc(whoIs(latest.from).name)}</small><span>${esc(latest.text)}</span></button>` : ''}
+    </div>
+    <div class="phone-home">${APPS.map(ap => `<button class="app" data-action="open" data-id="${ap.id}"><i style="background:${ap.bg}">${ap.icon}</i>${ap.name}${badge[ap.id] ? `<span class="badge">${badge[ap.id]}</span>` : ''}</button>`).join('')}</div>`;
+  bind(scr, {
+    open: d => {
+      if (d.id === 'partshub') { ctx.h.close(); openPartsHub(ctx.app); return; }
+      if (d.id === 'settings') { openSettings(ctx.app); return; }
+      ctx.go(d.id);
+    },
+    text: d => ctx.go('messages', d.id),
+  });
 }
 
 const RENDER = {};
@@ -95,25 +113,32 @@ RENDER.ocrew = renderOcrew;
 RENDER.turf = renderTurf;
 
 // ---------------- messages ----------------
+// Conversations, one per sender, newest first. Open one to read the thread as
+// chat bubbles; offers (races, missions, sponsors) answer right in the thread.
+const whoIs = id => id === 'marketplace' ? { name: 'Marketplace', color: '#1877f2' } : id === 'partshub' ? { name: 'PartsHub', color: '#e0192e' } : id === 'insurance' ? { name: 'Cowtown Mutual Insurance', color: '#1f8f3a' } : id === 'hustle' ? { name: 'Hustle', color: '#0f6b4f' } : contactInfo(id);
+function msgAction(s, m) {
+  const a = m.action;
+  if (!a) return '';
+  if (a.type === 'gps') return `<button class="btn btn-sm" data-action="gps" data-loc="${a.loc}">📍 Set GPS</button>`;
+  if (a.type === 'challenge') {
+    const ch = a.challenge;
+    return ch.expires < s.time.day ? '<span class="tag">Expired</span>' : s.challenge?.id === ch.id ? '<span class="tag tag-green">Accepted — go to the spot</span>'
+      : `<button class="btn btn-sm btn-primary" data-action="accept" data-id="${m.id}">Accept</button> <button class="btn btn-sm" data-action="decline" data-id="${m.id}">Decline</button>`;
+  }
+  if (a.type === 'mission') {
+    const ms = ensureMissions(s);
+    if (ms.active?.id === a.id) return `<span class="tag tag-green">On it · ${fmtLeft(timeLeft(s))} left</span> <button class="btn btn-sm" data-action="mgps">📍 GPS</button>`;
+    const o = offerById(s, a.id);
+    if (!o || o.expires <= missionNow(s)) return '<span class="tag">Closed</span>';
+    return `<button class="btn btn-sm btn-primary" data-action="maccept" data-id="${a.id}" ${ms.active ? 'disabled' : ''}>Take the job</button> <button class="btn btn-sm" data-action="mdecline" data-id="${a.id}">Pass</button>${ms.active ? '<div class="small muted" style="margin-top:4px">Finish your current job first.</div>' : ''}`;
+  }
+  if (a.type === 'offer') return '<button class="btn btn-sm" data-action="offers">View offers</button>';
+  if (a.type === 'sponsor' && !a.done) return `<button class="btn btn-sm btn-primary" data-action="sponsor" data-id="${m.id}">Sign deal</button>`;
+  return '';
+}
 RENDER.messages = (scr, ctx) => {
   const s = ctx.s;
-  const who = id => id === 'marketplace' ? { name: 'Marketplace', color: '#1877f2' } : id === 'partshub' ? { name: 'PartsHub', color: '#e0192e' } : id === 'insurance' ? { name: 'Cowtown Mutual Insurance', color: '#1f8f3a' } : id === 'hustle' ? { name: 'Hustle', color: '#0f6b4f' } : contactInfo(id);
-  scr.innerHTML = head('Messages') + `<div class="app-body">${s.messages.length ? s.messages.map(m => {
-    const w = who(m.from);
-    let action = '';
-    if (m.action?.type === 'gps') action = `<button class="btn btn-sm" data-action="gps" data-loc="${m.action.loc}">📍 Set GPS</button>`;
-    if (m.action?.type === 'challenge') {
-      const ch = m.action.challenge;
-      const expired = ch.expires < s.time.day;
-      action = expired ? '<span class="tag">Expired</span>' : s.challenge?.id === ch.id ? '<span class="tag tag-green">Accepted — go to the spot</span>'
-        : `<button class="btn btn-sm btn-primary" data-action="accept" data-id="${m.id}">Accept</button> <button class="btn btn-sm" data-action="decline" data-id="${m.id}">Decline</button>`;
-    }
-    if (m.action?.type === 'offer') action = `<button class="btn btn-sm" data-action="offers">View offers</button>`;
-    if (m.action?.type === 'sponsor' && !m.action.done) action = `<button class="btn btn-sm btn-primary" data-action="sponsor" data-id="${m.id}">Sign deal</button>`;
-    return `<div class="msg ${m.read ? '' : 'unread'}"><div class="from"><span>${esc(w.name)}</span><small>Day ${m.day} · ${m.t}</small></div><p>${esc(m.text)}</p>${action ? `<div class="row" style="margin-top:6px">${action}</div>` : ''}</div>`;
-  }).join('') : '<div class="empty">No messages yet.</div>'}</div>`;
-  s.messages.forEach(m => { m.read = true; });
-  wire(scr, ctx, {
+  const handlers = {
     gps: d => { const l = LOC_BY_ID[d.loc]; ctx.app.world?.setGps(l.x, l.z, l.name); ctx.h.close(); },
     accept: d => {
       const m = s.messages.find(x => x.id === d.id); const ch = m.action.challenge;
@@ -125,6 +150,9 @@ RENDER.messages = (scr, ctx) => {
       ctx.h.close();
     },
     decline: d => { const m = s.messages.find(x => x.id === d.id); m.action.challenge.expires = -1; addRep(s, -10, 'Ducked a challenge'); ctx.h.refresh(); },
+    maccept: d => takeMission(s, d.id, ctx),
+    mdecline: d => { declineMission(s, d.id); ctx.h.refresh(); },
+    mgps: () => { pointGps(s, ctx.app.world); ctx.h.close(); },
     offers: () => ctx.go('marketplace', 'selling'),
     sponsor: d => {
       const m = s.messages.find(x => x.id === d.id);
@@ -133,6 +161,69 @@ RENDER.messages = (scr, ctx) => {
       toast(`Signed with ${m.action.deal.name}: ${fmtMoney(m.action.deal.perWin)} per win`, 'good');
       ctx.h.refresh();
     },
+  };
+  if (ctx.st.sub) {
+    const from = ctx.st.sub, w = whoIs(from);
+    const thread = s.messages.filter(m => m.from === from).reverse();
+    scr.innerHTML = `<div class="app-head"><button class="back" data-action="back">‹ Back</button><span class="avatar" style="background:${w.color}">${esc(w.name[0])}</span><h2>${esc(w.name)}</h2></div>
+      <div class="app-body chat">${thread.map((m, i) => {
+        const day = i === 0 || thread[i - 1].day !== m.day ? `<div class="chat-day">Day ${m.day}</div>` : '';
+        const act = msgAction(s, m);
+        return `${day}<div class="bubble ${m.read ? '' : 'unread'}"><p>${esc(m.text)}</p>${act ? `<div class="row bubble-act">${act}</div>` : ''}<small>${m.t}</small></div>`;
+      }).join('') || '<div class="empty">No messages.</div>'}</div>`;
+    thread.forEach(m => { m.read = true; });
+    wire(scr, ctx, handlers);
+    const body = scr.querySelector('.chat'); scr.scrollTop = scr.scrollHeight; if (body) body.lastElementChild?.scrollIntoView?.({ block: 'end' });
+    return;
+  }
+  const convos = [];
+  for (const m of s.messages) {
+    let c = convos.find(x => x.from === m.from);
+    if (!c) convos.push(c = { from: m.from, last: m, unread: 0, offer: false });
+    if (!m.read) c.unread++;
+    if (msgAction(s, m).includes('btn-primary')) c.offer = true;
+  }
+  scr.innerHTML = head('Messages') + `<div class="app-body">${convos.length ? `<div class="list">${convos.map(c => {
+    const w = whoIs(c.from);
+    return `<div class="li click convo ${c.unread ? 'unread' : ''}" data-action="open" data-id="${esc(c.from)}"><span class="avatar" style="background:${w.color}">${esc(w.name[0])}</span><div class="grow"><div class="t">${esc(w.name)}${c.offer ? ' <span class="tag tag-yellow">Offer</span>' : ''}</div><div class="s">${esc(c.last.text)}</div></div><div class="convo-meta"><small>${c.last.day === s.time.day ? c.last.t : 'Day ' + c.last.day}</small>${c.unread ? `<span class="badge">${c.unread}</span>` : ''}</div></div>`;
+  }).join('')}</div>` : '<div class="empty">No messages yet.</div>'}</div>`;
+  wire(scr, ctx, { open: d => ctx.go('messages', d.id) });
+};
+
+function takeMission(s, id, ctx) {
+  const r = acceptMission(s, id, ctx.app.world);
+  if (!r.ok) { toast(r.why, 'bad'); ctx.h.refresh(); return; }
+  const l = currentStop(s);
+  toast(`Job on: ${r.mission.title}. First stop ${l.name}. ${fmtLeft(r.mission.limit)} on the clock.`, 'good');
+  ctx.h.close();
+}
+
+// ---------------- missions ----------------
+RENDER.missions = (scr, ctx) => {
+  const s = ctx.s, ms = ensureMissions(s);
+  ms.offers = ms.offers.filter(o => o.expires > missionNow(s));
+  const a = ms.active, l = currentStop(s);
+  const stopsHtml = o => o.stops.map((id, i) => `<div class="mstop ${a && a.id === o.id ? (i < a.stage ? 'done' : i === a.stage ? 'now' : '') : ''}"><b>${i + 1}</b><span>${esc(LOC_BY_ID[id].name)}</span></div>`).join('');
+  scr.innerHTML = head('Missions') + `<div class="app-body">
+    ${a ? `<div class="section-title">On the job</div>
+      <div class="mission on ${a.hot ? 'hot' : ''}"><div class="row"><span class="avatar" style="background:${whoIs(a.from).color}">${esc(whoIs(a.from).name[0])}</span><div class="grow"><b>${esc(a.title)}${a.hot ? ' 🔥' : ''}</b><div class="small muted">for ${esc(whoIs(a.from).name)} · ${fmtMoney(a.pay)}</div></div><div class="mclock ${timeLeft(s) < 5 ? 'bad' : ''}">${fmtLeft(timeLeft(s))}</div></div>
+        <div class="small" style="margin:6px 0">▶ ${esc(stopLabel(a))} at <b>${esc(l?.name || '')}</b></div>
+        ${stopsHtml(a)}
+        ${a.hot ? '<p class="small bad">The package is hot. Drive clean; getting busted ends the job.</p>' : ''}
+        <div class="row" style="gap:6px;margin-top:8px"><button class="btn btn-sm btn-primary" data-action="mgps">📍 GPS to next stop</button><button class="btn btn-sm btn-danger" data-action="quit">Bail on it</button></div></div>` : ''}
+    <div class="section-title">Offers (${ms.offers.length})</div>
+    ${ms.offers.length ? ms.offers.map(o => `<div class="mission ${o.hot ? 'hot' : ''}"><div class="row"><span class="avatar" style="background:${whoIs(o.from).color}">${esc(whoIs(o.from).name[0])}</span><div class="grow"><b>${esc(o.title)}${o.hot ? ' 🔥' : ''}</b><div class="small muted">${esc(whoIs(o.from).name)} · closes in ${fmtLeft(o.expires - missionNow(s))}</div></div><b class="good">${fmtMoney(o.pay)}</b></div>
+        <p class="small">${esc(o.text)}</p>${stopsHtml(o)}
+        <div class="row" style="gap:6px;margin-top:8px"><button class="btn btn-sm btn-primary" data-action="maccept" data-id="${o.id}" ${a ? 'disabled' : ''}>Take the job</button><button class="btn btn-sm" data-action="mdecline" data-id="${o.id}">Pass</button></div></div>`).join('')
+      : `<p class="muted small">${s.activeCar ? 'No offers right now. People you know text you jobs every few hours.' : 'Get a car first. Nobody texts a job to someone without wheels.'}</p>`}
+    <div class="section-title">Record</div>
+    <div class="kv"><span>Jobs done</span><span>${ms.done}</span><span>Failed</span><span>${ms.failed}</span><span>Earned</span><span>${fmtMoney(ms.earned)}</span></div>
+    ${ms.log.length ? `<div class="list" style="margin-top:6px">${ms.log.slice(0, 8).map(e => `<div class="li"><span>${e.ok ? '✅' : '❌'}</span><div class="grow"><div class="t">${esc(e.title)}</div><div class="s">${esc(whoIs(e.from).name)} · Day ${e.day} · ${e.t}${e.ok ? '' : ' · ' + ({ late: 'out of time', busted: 'busted', quit: 'bailed' }[e.why] || e.why)}</div></div>${e.ok ? `<b class="good">+${fmtMoney(e.pay)}</b>` : ''}</div>`).join('')}</div>` : ''}</div>`;
+  wire(scr, ctx, {
+    maccept: d => takeMission(s, d.id, ctx),
+    mdecline: d => { declineMission(s, d.id); ctx.h.refresh(); },
+    mgps: () => { pointGps(s, ctx.app.world); ctx.h.close(); },
+    quit: async () => { if (await confirm('Bail on the job?', `<p>${esc(whoIs(a.from).name)} won't be happy. You lose some rep.</p>`, 'Bail', true)) { abandonMission(s, ctx.app.world); ctx.h.refresh(); } },
   });
 };
 
