@@ -543,3 +543,7 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .mstop.done { opacity: .5; text-decoration: line-through; }
 .mc-job { font-size: 13px; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
 .hud-objective.job { border-left-color: #ffb020; }
+.ks-rims { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.ks-rim { align-items: center; text-align: center; }
+.ks-rim i { display: block; width: 56px; height: 56px; background: url(../img/rims.webp) 0 0 / 616px 224px no-repeat; margin-bottom: 3px; }
+.ks-rim small { font-size: 11.5px; }

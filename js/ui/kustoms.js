@@ -11,6 +11,8 @@ import { carName } from '../data/cars.js';
 import { drawSideCar } from '../gfx2d/sideCar.js';
 import { drawThumb } from './marketplace.js';
 import { judge } from '../core/carshow.js';
+import { RIM_BY_ID, RIM_COLS } from '../data/rims.js';
+import { onRimsReady } from '../gfx2d/rimSprites.js';
 import { emit } from '../core/events.js';
 import { audio } from '../core/audio.js';
 
@@ -34,7 +36,7 @@ const SCORE_LABELS = { paint: 'Paint', wheels: 'Wheels', body: 'Body & aero', de
 // Put a catalog product on a visual (same rules as installing it in the garage).
 export function applyVisual(v, p, color) {
   if (p.cat === 'paint') { v.finish = p.value; if (color) v.paint = color; }
-  else if (p.cat === 'wheels') { v.wheels = p.value; v.wheelColor = color || p.color; }
+  else if (p.cat === 'wheels') { v.wheels = p.value; v.rim = p.rim || null; v.wheelColor = p.rim ? p.color : color || p.color; }
   else v[p.cat] = p.value;
   if (p.cat === 'decal' && color) v.decalColor = color;
 }
@@ -66,7 +68,10 @@ export function openKustoms(app) {
   const s = game.s;
   const car = activeCar(s);
   const st = { tab: 'paint', draft: { ...car.visual }, picks: {}, view: 'side' };
-  return openPanel((root, h) => render(root, h, app, st, s, car), { cls: 'kustoms' });
+  const h = openPanel((root, hh) => render(root, hh, app, st, s, car), { cls: 'kustoms' });
+  // redraw the preview once the rim pack art has loaded
+  onRimsReady(() => { const cv = h.root.querySelector('[data-side]'); if (cv) drawSideCar(cv, { model: modelOf(car), visual: st.draft, levels: levels(car), cond: car.cond }); });
+  return h;
 }
 
 function render(root, h, app, st, s, car) {
@@ -82,19 +87,25 @@ function render(root, h, app, st, s, car) {
     const curVal = car.visual[cat];
     return `<div class="section-title">${esc(CATEGORY_NAMES[cat])}</div><div class="ks-opts">
       <button class="ks-opt ${!st.picks[cat] ? 'on' : ''}" data-action="keep" data-cat="${cat}"><b>Keep what's on it</b><small>${esc(String(curVal ?? 'stock'))}</small></button>
-      ${items.map(p => `<button class="ks-opt ${st.picks[cat] === p.id ? 'on' : ''}" data-action="pick" data-id="${p.id}"><b>${esc(p.brand.startsWith('(') ? p.name : p.brand)}</b><small>${esc(p.brand.startsWith('(') ? '' : p.name)}</small><span>${fmtMoney(p.price)}${p.labor > 1 ? ` + ${p.labor}h` : ''}</span></button>`).join('')}
-    </div>`;
+      ${cat === 'wheels' ? '' : items.map(p => `<button class="ks-opt ${st.picks[cat] === p.id ? 'on' : ''}" data-action="pick" data-id="${p.id}"><b>${esc(p.brand.startsWith('(') ? p.name : p.brand)}</b><small>${esc(p.brand.startsWith('(') ? '' : p.name)}</small><span>${fmtMoney(p.price)}${p.labor > 1 ? ` + ${p.labor}h` : ''}</span></button>`).join('')}
+    </div>${cat === 'wheels' ? wheelLists(items) : ''}`;
   };
+  const opt = p => `<button class="ks-opt ${st.picks[p.cat] === p.id ? 'on' : ''}" data-action="pick" data-id="${p.id}"><b>${esc(p.brand.startsWith('(') ? p.name : p.brand)}</b><small>${esc(p.brand.startsWith('(') ? '' : p.name)}</small><span>${fmtMoney(p.price)}${p.labor > 1 ? ` + ${p.labor}h` : ''}</span></button>`;
+  const rimOpt = p => { const r = RIM_BY_ID[p.rim]; return `<button class="ks-opt ks-rim ${st.picks.wheels === p.id ? 'on' : ''}" data-action="pick" data-id="${p.id}"><i style="background-position:${-(r.i % RIM_COLS) * 56}px ${-Math.floor(r.i / RIM_COLS) * 56}px"></i><small>${esc(r.name)}</small><span>${fmtMoney(p.price)}</span></button>`; };
+  const wheelLists = items => `<div class="section-title">Glitch rim pack</div><div class="ks-opts ks-rims">${items.filter(p => p.rim).map(rimOpt).join('')}</div>
+    <div class="section-title">More wheels</div><div class="ks-opts">${items.filter(p => !p.rim).map(opt).join('')}</div>`;
   const extras = {
     paint: `<div class="section-title">Color</div><div class="opts">${PAINT_SWATCHES.map(c => swatch(c, d.paint === c, 'paint')).join('')}</div>
       <label class="field" style="margin-top:8px"><span>Any color</span><input type="color" data-color="paint" value="${d.paint}" class="input" style="height:40px;padding:2px"></label>
       <p class="small muted">A new color is a respray. Pick a paint or wrap below, or Manny uses the cheapest one in the finish you have.</p>`,
-    wheels: `<div class="section-title">Wheel color</div><div class="opts">${WHEEL_COLORS.map(c => swatch(c, d.wheelColor === c, 'wcolor')).join('')}</div>
-      <p class="small muted">${st.picks.wheels ? 'New wheels come in this color.' : `Keeping your wheels? A new color is a ${fmtMoney(POWDER_COAT.price)} powder coat.`}</p>
-      <div class="section-title">Size & stance</div><div class="opts">${WHEEL_SIZES.map(n => `<button class="${(+d.wheelSize || shapeOf(m).rim || 19) === n ? 'on' : ''}" data-action="wsize" data-n="${n}">${n}"</button>`).join('')}</div>
-      <div class="opts" style="margin-top:6px">${['stock', 'flush', 'poke'].map(o => `<button class="${(d.offset || 'flush') === o ? 'on' : ''}" data-action="offset" data-o="${o}">${o}</button>`).join('')}</div>`,
+    wheels: d.rim ? '<p class="small muted">Glitch rims come in their own finish. Pick a different wheel to choose a color.</p>' + sizeHtml() : `<div class="section-title">Wheel color</div><div class="opts">${WHEEL_COLORS.map(c => swatch(c, d.wheelColor === c, 'wcolor')).join('')}</div>
+      <p class="small muted">${st.picks.wheels ? 'New wheels come in this color.' : `Keeping your wheels? A new color is a ${fmtMoney(POWDER_COAT.price)} powder coat.`}</p>` + sizeHtml(),
     decal: d.decal !== 'none' ? `<div class="section-title">Graphics color</div><div class="opts">${PAINT_SWATCHES.map(c => swatch(c, d.decalColor === c, 'dcolor')).join('')}</div>` : '',
   };
+  function sizeHtml() {
+    return `<div class="section-title">Size & stance</div><div class="opts">${WHEEL_SIZES.map(n => `<button class="${(+d.wheelSize || shapeOf(m).rim || 19) === n ? 'on' : ''}" data-action="wsize" data-n="${n}">${n}"</button>`).join('')}</div>
+      <div class="opts" style="margin-top:6px">${['stock', 'flush', 'poke'].map(o => `<button class="${(d.offset || 'flush') === o ? 'on' : ''}" data-action="offset" data-o="${o}">${o}</button>`).join('')}</div>`;
+  }
   root.innerHTML = `<div class="p-head"><h1>Design studio<small>Vega Kustoms · ${esc(carName(m, car.year))}</small></h1><button class="btn x" data-action="close">×</button></div>
     <div class="tabs">${TABS.map(([id, l]) => `<button class="${st.tab === id ? 'on' : ''}" data-action="tab" data-id="${id}">${l}</button>`).join('')}</div>
     <div class="p-body"><div class="garage ks"><div class="ks-preview">
@@ -113,7 +124,7 @@ function render(root, h, app, st, s, car) {
   const restore = cat => {   // undo a pick: put the car's current look back for that slot
     const cur = car.visual;
     if (cat === 'paint') { d.finish = cur.finish; }
-    else if (cat === 'wheels') { d.wheels = cur.wheels; d.wheelColor = cur.wheelColor; }
+    else if (cat === 'wheels') { d.wheels = cur.wheels; d.wheelColor = cur.wheelColor; d.rim = cur.rim; }
     else d[cat] = cur[cat];
     if (cat === 'decal') d.decalColor = cur.decalColor;
   };

@@ -3,6 +3,7 @@
 // pushes the car in the simulation; see FX in parts.js. `labor` is shop hours
 // to install. `makes` restricts fitment to listed brands; `eng` to engines
 // whose description matches.
+import { RIM_PRODUCTS } from './rims.js';
 
 const ICE_ONLY = new Set(['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'transmission', 'clutch', 'nitrous', 'twostep']);
 const JDM = ['honda', 'acura', 'toyota', 'lexus', 'scion', 'nissan', 'infiniti', 'mazda', 'subaru', 'mitsubishi'];
@@ -590,6 +591,8 @@ export const VISUAL_CATALOG = [
     ['Alcantara (OEM+)', 'Navy Alcantara Interior', 2400, '#1d2a44', { labor: 8 }],
     ['Katzkin', 'Leather Interior (Black)', 1750, '#111111', { labor: 6 }],
   ]),
+  // Glitch rim pack (data/rims.js). Kept last so older product ids don't move.
+  ...vis('wheels', RIM_PRODUCTS),
 ];
 
 export const CATALOG = [...PERF_CATALOG, ...VISUAL_CATALOG];

@@ -1437,7 +1437,7 @@ await step('kustoms studio + car show', async () => {
   // try on a color, rims and a widebody: nothing is charged until you build it
   const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
   await p.click('.ks-pick [data-action="paint"][data-c="#6b2bd1"]');
-  await p.click('.tabs button[data-id="rims"]'); await p.click('.ks-pick [data-action="pick"] >> nth=4'); await p.click('.ks-pick [data-action="wsize"][data-n="18"]');
+  await p.click('.tabs button[data-id="rims"]'); await p.click('.ks-pick .ks-rim >> nth=27'); await p.click('.ks-pick [data-action="wsize"][data-n="18"]');
   await p.click('.tabs button[data-id="kit"]'); await p.click('.ks-pick .ks-opt:has-text("Pandem")');
   await p.click('.tabs button[data-id="tint"]'); await p.click('.ks-pick .ks-opt:has-text("LLumar")');
   const mid = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, paint: window.__rfg.game.s.cars.find(c => c.uid === window.__rfg.game.s.activeCar).visual.paint }));
@@ -1447,8 +1447,8 @@ await step('kustoms studio + car show', async () => {
   if (!/Respray|Basecoat|Wrap|Kandy|Metallic/i.test(await p.textContent('.ks-cart'))) throw new Error('a new color should add a respray to the bill');
   await snap('30-kustoms-studio');
   await p.click('[data-action="book"]'); await p.click('.modal button:has-text("Pay & build")'); await p.waitForTimeout(150);
-  const after = await p.evaluate(() => { const s = window.__rfg.game.s, v = s.cars.find(c => c.uid === s.activeCar).visual; return { cash: s.cash, paint: v.paint, kit: v.kit, tint: v.tint, size: v.wheelSize }; });
-  if (after.paint !== '#6b2bd1' || after.kit !== 'wide' || after.tint !== 'medium' || after.size !== '18' || !(after.cash < cash0 - 6000)) throw new Error('build did not land: ' + JSON.stringify(after));
+  const after = await p.evaluate(() => { const s = window.__rfg.game.s, v = s.cars.find(c => c.uid === s.activeCar).visual; return { cash: s.cash, paint: v.paint, kit: v.kit, tint: v.tint, size: v.wheelSize, rim: v.rim }; });
+  if (after.rim !== 'gw27' || after.paint !== '#6b2bd1' || after.kit !== 'wide' || after.tint !== 'medium' || after.size !== '18' || !(after.cash < cash0 - 6000)) throw new Error('build did not land: ' + JSON.stringify(after));
   await clear();
   // the show only runs on weekends
   await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const s = window.__rfg.game.s; s.time.day = 10; s.time.min = 12 * 60; openPlace(LOC_BY_ID.stockyards_show, window.__rfg.app); });

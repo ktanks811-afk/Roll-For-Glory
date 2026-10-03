@@ -639,6 +639,19 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!CS.isShowTime({ day: 6, min: 12 * 60 }, 'Sat') || CS.isShowTime({ day: 6, min: 20 * 60 }, 'Sat') || CS.isShowTime({ day: 3, min: 12 * 60 }, 'Wed')) bad('car show hours are off');
   if (!LOCATIONS.some(l => l.type === 'carshow')) bad('the car show needs a lot on the map');
 }
+// ---- Glitch rim pack: every rim is on the atlas and sold as a wheel ----
+{
+  const { RIMS, RIM_COLS } = await import('../js/data/rims.js');
+  const fs = await import('node:fs');
+  if (!fs.existsSync(new URL('../img/rims.webp', import.meta.url))) bad('rim atlas img/rims.webp is missing');
+  if (RIMS.length !== 44 || Math.ceil(RIMS.length / RIM_COLS) !== 4) bad('rim pack should be 44 wheels on a 4-row atlas');
+  for (const r of RIMS) {
+    const p = CATALOG.find(x => x.rim === r.id);
+    if (!p || p.cat !== 'wheels' || !p.visual) bad(`rim ${r.id} is not sold as a wheel`);
+    if (!['five', 'six', 'split', 'turbine', 'mesh', 'dish', 'steel'].includes(r.style)) bad(`rim ${r.id} has no fallback style`);
+  }
+  if (ITEM_BY_ID.vis_a5?.name !== 'Dial In 18" (set)' || ITEM_BY_ID.vis_ci?.cat !== 'interior') bad('adding rims moved older product ids (saves would break)');
+}
 // ---- street races: every leg runs on a real road, records are sane, pink slips have rules ----
 {
   const map = buildMap();
