@@ -503,6 +503,63 @@ await step('Amazin\' shop + guns + robbery', async () => {
   await p.click('.modal button'); await calm();
 });
 
+// ---------------- carjacking ----------------
+await step('carjacking', async () => {
+  const calm = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; try { w.police.reset(w); } catch {} window.__rfg.game.s.heat = 0; w.paused = false; });
+  // sitting at a stop on a city street, an hour into the career
+  const sit = () => p.evaluate(() => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle;
+    const r = w.map.roads.nearestOnRoad(120, -60);
+    v.x = r.x; v.z = r.z; v.h = Math.atan2(r.edge.dx, -r.edge.dz); v.vx = v.vz = 0; v.sim.v = 0;
+    w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; s.playTime = Math.max(s.playTime, 3600); s.carjack = { lastDay: -99, n: 0 };
+    w.carjacks.jack = null; w.carjacks.rng = Math.random;
+  });
+  await calm(); await sit(); await p.waitForTimeout(200);
+  if (!(await p.evaluate(async () => (await import('./js/data/carjack.js')).canCarjack(window.__rfg.app.world.carjacks.context())))) {
+    throw new Error('a carjacking is not allowed stopped in the city ' + JSON.stringify(await p.evaluate(() => window.__rfg.app.world.carjacks.context())));
+  }
+  // he walks up to the window, then you choose
+  await p.evaluate(() => window.__rfg.app.world.carjacks.start());
+  if (!(await p.evaluate(() => !!window.__rfg.app.world.carjacks.jack))) throw new Error('carjacker did not appear');
+  await p.waitForSelector('.modal h2:has-text("Carjacking")', { timeout: 6000 });
+  await snap('40-carjack');
+  const labels = await p.$$eval('.modal-actions button', bs => bs.map(b => b.textContent));
+  if (labels.join() !== 'Give it up,Floor it,Fight him for it') throw new Error('carjack choices: ' + labels.join());
+  // give it up: the car drives off and is gone until the cops find it
+  const uid = await p.evaluate(() => window.__rfg.game.s.activeCar);
+  await p.click('.modal button:has-text("Give it up")');
+  await p.waitForSelector('.modal h2:has-text("Carjacked")');
+  const gone = await p.evaluate(uid => { const w = window.__rfg.app.world, c = window.__rfg.game.s.cars.find(c => c.uid === uid); return { veh: !!w.vehicle, inCar: w.inCar, stolen: !!c.stolen, away: !!w.carjacks.away, body: c.cond.body }; }, uid);
+  if (gone.veh || gone.inCar || !gone.stolen || !gone.away) throw new Error('car not taken ' + JSON.stringify(gone));
+  await p.click('.modal button'); await p.waitForTimeout(600);
+  await snap('41-carjack-driveoff');
+  await p.keyboard.press('KeyF'); await p.waitForTimeout(100);
+  if (await p.evaluate(() => window.__rfg.app.world.inCar)) throw new Error('got into a stolen car');
+  // the cops find it: back on the street, GPS set, a text from Brenner, beat up
+  await p.evaluate(uid => { window.__rfg.game.s.cars.find(c => c.uid === uid).stolen.foundAt = 0; }, uid);
+  await p.waitForTimeout(1300);
+  const found = await p.evaluate(uid => { const w = window.__rfg.app.world, s = window.__rfg.game.s, c = s.cars.find(c => c.uid === uid); return { veh: w.vehicle?.car === c, stolen: !!c.stolen, gps: s.gps?.label, msg: s.messages[0]?.from, body: c.cond.body, fuel: c.fuel }; }, uid);
+  if (!found.veh || found.stolen || !/stolen/i.test(found.gps || '') || found.msg !== 'brenner' || !(found.body < gone.body) || !(found.fuel <= 0.15)) throw new Error('stolen car not recovered ' + JSON.stringify(found));
+  // fight him for it (rigged to win): you keep the car and get rep
+  await calm(); await sit();
+  const rep0 = await p.evaluate(() => window.__rfg.game.s.rep);
+  await p.evaluate(() => { const c = window.__rfg.app.world.carjacks; c.rng = () => 0.1; c.start(); });
+  await p.waitForSelector('.modal h2:has-text("Carjacking")', { timeout: 6000 });
+  await p.click('.modal button:has-text("Fight him for it")');
+  await p.waitForSelector('.modal h2:has-text("You kept your car")');
+  const kept = await p.evaluate(() => { const w = window.__rfg.app.world; return { veh: !!w.vehicle, inCar: w.inCar, rep: window.__rfg.game.s.rep, runner: !!w.carjacks.runner }; });
+  if (!kept.veh || !kept.inCar || !(kept.rep > rep0) || !kept.runner) throw new Error('won the fight but lost the car ' + JSON.stringify(kept));
+  // pull off before he reaches the window: no confrontation
+  await calm(); await sit();
+  await p.evaluate(() => window.__rfg.app.world.carjacks.start());
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = Math.sin(v.h) * 12; v.vz = -Math.cos(v.h) * 12; v.sim.v = 12; });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(500); await p.keyboard.up('KeyW');
+  if (await p.evaluate(() => !!window.__rfg.app.world.carjacks.jack || !!document.querySelector('.modal h2'))) throw new Error('driving off did not shake the carjacker');
+  // it is still rare: the gap between carjackings holds
+  if (await p.evaluate(async () => (await import('./js/data/carjack.js')).canCarjack(window.__rfg.app.world.carjacks.context()))) throw new Error('another carjacking allowed the same day');
+  await calm();
+});
+
 await step('save + reload', async () => {
   await p.evaluate(async () => { const { saveGame } = await import('./js/core/save.js'); saveGame('slot1'); });
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(500);
