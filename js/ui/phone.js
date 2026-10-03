@@ -19,6 +19,8 @@ import { renderHustle } from './hustle.js';
 import { renderShop } from './shop.js';
 import { renderOcrew } from './ocrew.js';
 import { renderMap } from './mapapp.js';
+import { recordHtml } from './record.js';
+import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
 
 const APPS = [
   { id: 'messages', name: 'Messages', icon: '💬', bg: '#2bd96b' },
@@ -36,6 +38,7 @@ const APPS = [
   { id: 'ocrew', name: 'Online Crew', icon: '🌐', bg: '#2a7bff' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
+  { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
   { id: 'settings', name: 'Settings', icon: '⚙', bg: '#2a2c33' },
 ];
 
@@ -73,7 +76,7 @@ function renderHome(scr, ctx) {
   const t = tierOf(s.rep);
   scr.innerHTML = `<div class="phone-wall"><div class="who">${esc(s.player.name)}</div>
     <div class="sub">${fmtMoney(s.cash)} cash · ${fmtMoney(s.bank)} bank · ${t.name} · ${s.followers.toLocaleString()} followers</div></div>
-    <div class="phone-home">${APPS.map(a => `<button class="app" data-action="open" data-id="${a.id}"><i style="background:${a.bg}">${a.icon}</i>${a.name}${a.id === 'messages' && unread ? `<span class="badge">${unread}</span>` : ''}</button>`).join('')}</div>`;
+    <div class="phone-home">${APPS.map(a => `<button class="app" data-action="open" data-id="${a.id}"><i style="background:${a.bg}">${a.icon}</i>${a.name}${a.id === 'messages' && unread ? `<span class="badge">${unread}</span>` : ''}${a.id === 'fwpd' && hasWarrant(s) ? `<span class="badge">${s.warrants.length}</span>` : ''}</button>`).join('')}</div>`;
   bind(scr, { open: d => {
     if (d.id === 'partshub') { ctx.h.close(); openPartsHub(ctx.app); return; }
     if (d.id === 'settings') { openSettings(ctx.app); return; }
@@ -346,13 +349,35 @@ RENDER.garage = (scr, ctx) => {
   const s = ctx.s;
   scr.innerHTML = head('My Cars') + `<div class="app-body"><div class="list">${s.cars.map(c => {
     const m = modelOf(c), mt = carMetrics(c);
-    return `<div class="li"><div class="grow"><div class="t">${esc(carName(m, c.year))} ${c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : ''}</div><div class="s">${Math.round(c.miles).toLocaleString()} mi · ${mt.cls} ${mt.pi} · worth ~${fmtMoney(carValue(c))}</div></div></div>`;
+    return `<div class="li"><div class="grow"><div class="t">${esc(carName(m, c.year))} ${c.stolen ? '<span class="tag tag-red">Stolen</span>' : c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : ''}</div><div class="s">${Math.round(c.miles).toLocaleString()} mi · ${mt.cls} ${mt.pi} · worth ~${fmtMoney(carValue(c))}</div></div></div>`;
   }).join('') || '<div class="empty">No cars yet. Try Marketplace.</div>'}</div>
   <p class="small muted">Switch cars, install parts and tune at your home garage. Torque Temple and Vega Kustoms can install anything.</p>
   <div class="row"><button class="btn btn-sm" data-action="home">📍 Home</button><button class="btn btn-sm" data-action="view" ${s.cars.length ? '' : 'disabled'}>View specs</button></div></div>`;
   wire(scr, ctx, {
     home: () => { const l = LOC_BY_ID[s.home]; ctx.app.world?.setGps(l.x, l.z, 'Home'); ctx.h.close(); },
     view: () => openGarage(ctx.app, { readOnly: true }),
+  });
+};
+
+// ---------------- FWPD: your record, pay tickets ----------------
+RENDER.fwpd = (scr, ctx) => {
+  const s = ctx.s, w = ctx.app.world;
+  const due = payableTotal(s), chase = !!w?.police.active;
+  scr.innerHTML = head('FWPD') + `<div class="app-body">
+    <div class="warrant-status ${hasWarrant(s) ? 'on' : ''}">${hasWarrant(s) ? `${s.warrants.length} OPEN WARRANT${s.warrants.length > 1 ? 'S' : ''}${hasFelony(s) ? ' · FELONY' : ''}` : 'NO WARRANTS'}</div>
+    <p class="small muted">Fort Worth Police Department · online citation payments</p>
+    ${recordHtml(s)}
+    ${due ? `<button class="btn btn-primary" style="width:100%;margin-top:10px" data-action="pay" ${chase ? 'disabled' : ''}>Pay ${fmtMoney(due)}</button>` : ''}
+    ${chase ? '<p class="small bad">Payments are closed while you\'re being pursued.</p>' : ''}
+    ${hasFelony(s) ? '<p class="small muted">Felony warrants can\'t be paid online. Turn yourself in at a precinct (25% off the fines), or wait to get arrested.</p>' : hasWarrant(s) ? '<p class="small muted">While a warrant is open, patrols run your plate and recognise you on sight. A traffic stop becomes an arrest.</p>' : ''}
+    <button class="btn" style="width:100%;margin-top:6px" data-action="gps">📍 Nearest precinct</button></div>`;
+  wire(scr, ctx, {
+    pay: () => { const r = payFines(s); if (r.ok) { toast(`Paid ${fmtMoney(r.total)} to FWPD`, 'good'); ctx.h.refresh(); } },
+    gps: () => {
+      const p = w?.playerState(); if (!p) return;
+      const l = ['pspd_central', 'pspd_harbor'].map(id => LOC_BY_ID[id]).sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+      w.setGps(l.x, l.z, l.name); ctx.h.close();
+    },
   });
 };
 

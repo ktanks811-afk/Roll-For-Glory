@@ -98,7 +98,8 @@ export function renderMap(scr, ctx) {
     // districts, faint, when zoomed out
     if (k < 0.2) {
       g.font = '700 13px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.55)';
-      for (const [t, x, z] of [['DOWNTOWN', 0, 0], ['WESTBROOK', -620, 0], ['IRONSIDE', 620, -250], ['HARBOR', 700, 800], ['GLORY HIGHWAY', 0, -1330], ['DUST FLATS', -300, 1250]]) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
+      const inner = k > 0.11 ? [['STOCKYARDS', 0, -650], ['NEAR SOUTHSIDE', 0, 650], ['ARLINGTON HEIGHTS', -650, 0], ['RIVERSIDE', 650, -300], ['LAKESIDE', 650, 800]] : [];
+      for (const [t, x, z] of [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['LAKE WORTH', 1900, 700], ['LOOP 820', 0, -1330], ['CROSS TIMBERS', -2100, -500], ['CHISHOLM FLATS', -300, 1250]]) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
     }
 
     // route preview (dashed) and the active GPS route

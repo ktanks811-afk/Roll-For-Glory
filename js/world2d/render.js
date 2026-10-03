@@ -3,6 +3,7 @@
 
 import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, LOCATIONS } from '../data/world.js';
 import { BACKROAD } from './map.js';
+import { LOT_COLOR } from './mapTiles.js';
 
 export class Camera {
   constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; }
@@ -693,9 +694,10 @@ export function renderOverview(map, scale = 0.12) {
   g.fillStyle = '#7d6a4c'; g.fillRect(0, sy(DESERT_Z), c.width, c.height);
   g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
   g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
+  for (const l of map.lots) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
   for (const w of map.water) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
   g.fillStyle = 'rgba(80,90,100,0.9)';
-  for (const b of map.buildings) g.fillRect(sx(b.x), sy(b.z), Math.max(1, b.w * scale), Math.max(1, b.d * scale));
+  for (const b of map.buildings) if (b.kind !== 'parked') g.fillRect(sx(b.x), sy(b.z), Math.max(1, b.w * scale), Math.max(1, b.d * scale));
   for (const e of map.roads.edges) {
     g.strokeStyle = e.kind === 'highway' ? '#e8c21a' : e.kind === 'desert' ? '#c9b48a' : '#c8cad0';
     g.lineWidth = Math.max(1.5, e.width * scale * (e.kind === 'highway' ? 1 : 1.4));

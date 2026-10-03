@@ -2,7 +2,8 @@
 // → drive → garage → PartsHub → drag race → roll race. Fails on any console
 // error or uncaught exception.
 import { chromium } from 'playwright';
-const URL = process.env.URL || 'http://localhost:8123/index.html';
+// ?auth=local: accounts kept in this browser instead of on Supabase (only honoured on localhost)
+const URL = process.env.URL || 'http://localhost:8123/index.html?auth=local';
 const OUT = process.env.OUT || '/tmp/claude-0/shots';
 const shots = !!process.env.SHOTS;
 import fs from 'fs'; if (shots) fs.mkdirSync(OUT, { recursive: true });
@@ -22,6 +23,35 @@ await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
 await p.goto(URL, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__rfg, null, { timeout: 15000 });
 await p.waitForTimeout(800);
+await step('account required', async () => {
+  // a career saved before accounts existed, to check it moves into the new account
+  await p.evaluate(() => localStorage.setItem('rollforglory.save.slot3', JSON.stringify({ savedAt: 1, state: { player: { name: 'OldTimer' }, time: { day: 9 }, cash: 777, rep: 0, cars: [] } })));
+  await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(800);
+  if (await p.isVisible('.menu button:has-text("New Game")')) throw new Error('title menu shown without an account');
+  await snap('00-signup');
+  if (!(await p.isVisible('.auth-legacy:has-text("OldTimer")'))) throw new Error('no note about the old save moving into the account');
+  await p.fill('[name=username]', 'Tester'); await p.fill('[name=email]', 'tester@example.com'); await p.fill('[name=password]', '123');
+  await p.click('.auth-go');
+  if (!/at least 6/.test(await p.textContent('[data-err]'))) throw new Error('short password accepted');
+  await p.fill('[name=password]', 'hunter22'); await p.click('.auth-go'); await p.waitForTimeout(400);
+  if (!(await p.isVisible('.acct-chip:has-text("Tester")'))) throw new Error('not logged in after sign-up');
+  const keys = await p.evaluate(() => Object.keys(localStorage));
+  if (keys.includes('rollforglory.save.slot3') || !keys.some(k => /^rollforglory\.acct\..+\.save\.slot3$/.test(k))) throw new Error('old save did not move into the account: ' + keys.join(','));
+  // stays logged in across launches
+  await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(600);
+  if (!(await p.isVisible('.acct-chip:has-text("Tester")'))) throw new Error('logged out after reopening the game');
+  // log out → log-in screen; wrong password refused; right one lets you back in with your saves
+  await p.click('.acct-chip button'); await p.click('.modal button:has-text("Log out")'); await p.waitForTimeout(300);
+  if (!(await p.isVisible('.auth-card'))) throw new Error('no log-in screen after logging out');
+  await p.click('.auth-links button:has-text("Log in")');
+  await p.fill('[name=email]', 'tester@example.com'); await p.fill('[name=password]', 'nope123'); await p.click('.auth-go'); await p.waitForTimeout(200);
+  if (!/Wrong email or password/.test(await p.textContent('[data-err]'))) throw new Error('wrong password accepted');
+  await p.fill('[name=password]', 'hunter22'); await p.click('.auth-go'); await p.waitForTimeout(400);
+  if (!(await p.isVisible('.menu button:has-text("Load Game")'))) throw new Error('no title menu after logging in');
+  const info = await p.evaluate(async () => (await import('./js/core/save.js')).slotInfo('slot3'));
+  if (info?.name !== 'OldTimer') throw new Error('old save not available after logging back in');
+  await p.evaluate(async () => (await import('./js/core/save.js')).deleteSlot('slot3'));
+});
 await snap('01-title');
 await step('new game', async () => {
   await p.click('text=New Game');
@@ -516,6 +546,64 @@ await step('Amazin\' shop + guns + robbery', async () => {
   await p.click('.modal button'); await calm();
 });
 
+// ---------------- carjacking ----------------
+await step('carjacking', async () => {
+  const calm = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; try { w.police.reset(w); } catch {} window.__rfg.game.s.heat = 0; w.paused = false; });
+  // sitting at a stop on a city street, an hour into the career
+  const sit = () => p.evaluate(() => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle;
+    const r = w.map.roads.nearestOnRoad(120, -60);
+    v.x = r.x; v.z = r.z; v.h = Math.atan2(r.edge.dx, -r.edge.dz); v.vx = v.vz = 0; v.sim.v = 0;
+    w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; s.playTime = Math.max(s.playTime, 3600); s.carjack = { lastDay: -99, n: 0 };
+    w.carjacks.jack = null; w.carjacks.rng = Math.random;
+  });
+  await calm(); await sit(); await p.waitForTimeout(200);
+  if (!(await p.evaluate(async () => (await import('./js/data/carjack.js')).canCarjack(window.__rfg.app.world.carjacks.context())))) {
+    throw new Error('a carjacking is not allowed stopped in the city ' + JSON.stringify(await p.evaluate(() => window.__rfg.app.world.carjacks.context())));
+  }
+  // he walks up to the window, then you choose
+  await p.evaluate(() => window.__rfg.app.world.carjacks.start());
+  if (!(await p.evaluate(() => !!window.__rfg.app.world.carjacks.jack))) throw new Error('carjacker did not appear');
+  await p.waitForSelector('.modal h2:has-text("Carjacking")', { timeout: 6000 });
+  await snap('40-carjack');
+  const labels = await p.$$eval('.modal-actions button', bs => bs.map(b => b.textContent));
+  if (labels.join() !== 'Give it up,Floor it,Fight him for it') throw new Error('carjack choices: ' + labels.join());
+  // give it up: the car drives off and is gone until the cops find it
+  const uid = await p.evaluate(() => window.__rfg.game.s.activeCar);
+  await p.click('.modal button:has-text("Give it up")');
+  await p.waitForSelector('.modal h2:has-text("Carjacked")');
+  const gone = await p.evaluate(uid => { const w = window.__rfg.app.world, c = window.__rfg.game.s.cars.find(c => c.uid === uid); return { veh: !!w.vehicle, inCar: w.inCar, stolen: !!c.stolen, away: !!w.carjacks.away, body: c.cond.body }; }, uid);
+  if (gone.veh || gone.inCar || !gone.stolen || !gone.away) throw new Error('car not taken ' + JSON.stringify(gone));
+  await p.click('.modal button'); await p.waitForTimeout(600);
+  await snap('41-carjack-driveoff');
+  await p.keyboard.press('KeyF'); await p.waitForTimeout(100);
+  if (await p.evaluate(() => window.__rfg.app.world.inCar)) throw new Error('got into a stolen car');
+  // the cops find it: back on the street, GPS set, a text from Brenner, beat up
+  await p.evaluate(uid => { window.__rfg.game.s.cars.find(c => c.uid === uid).stolen.foundAt = 0; }, uid);
+  await p.waitForTimeout(1300);
+  const found = await p.evaluate(uid => { const w = window.__rfg.app.world, s = window.__rfg.game.s, c = s.cars.find(c => c.uid === uid); return { veh: w.vehicle?.car === c, stolen: !!c.stolen, gps: s.gps?.label, msg: s.messages[0]?.from, body: c.cond.body, fuel: c.fuel }; }, uid);
+  if (!found.veh || found.stolen || !/stolen/i.test(found.gps || '') || found.msg !== 'brenner' || !(found.body < gone.body) || !(found.fuel <= 0.15)) throw new Error('stolen car not recovered ' + JSON.stringify(found));
+  // fight him for it (rigged to win): you keep the car and get rep
+  await calm(); await sit();
+  const rep0 = await p.evaluate(() => window.__rfg.game.s.rep);
+  await p.evaluate(() => { const c = window.__rfg.app.world.carjacks; c.rng = () => 0.1; c.start(); });
+  await p.waitForSelector('.modal h2:has-text("Carjacking")', { timeout: 6000 });
+  await p.click('.modal button:has-text("Fight him for it")');
+  await p.waitForSelector('.modal h2:has-text("You kept your car")');
+  const kept = await p.evaluate(() => { const w = window.__rfg.app.world; return { veh: !!w.vehicle, inCar: w.inCar, rep: window.__rfg.game.s.rep, runner: !!w.carjacks.runner }; });
+  if (!kept.veh || !kept.inCar || !(kept.rep > rep0) || !kept.runner) throw new Error('won the fight but lost the car ' + JSON.stringify(kept));
+  // pull off before he reaches the window: no confrontation
+  await calm(); await sit();
+  await p.evaluate(() => window.__rfg.app.world.carjacks.start());
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = Math.sin(v.h) * 12; v.vz = -Math.cos(v.h) * 12; v.sim.v = 12; });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(500); await p.keyboard.up('KeyW');
+  if (await p.evaluate(() => !!window.__rfg.app.world.carjacks.jack || !!document.querySelector('.modal h2'))) throw new Error('driving off did not shake the carjacker');
+  // it is still rare: the gap between carjackings holds
+  if (await p.evaluate(async () => (await import('./js/data/carjack.js')).canCarjack(window.__rfg.app.world.carjacks.context()))) throw new Error('another carjacking allowed the same day');
+  await p.evaluate(() => { const w = window.__rfg.app.world; window.__rfg.game.s.gps = null; w.gpsPath = null; });   // later steps expect no route
+  await calm();
+});
+
 await step('save + reload', async () => {
   await p.evaluate(async () => { const { saveGame } = await import('./js/core/save.js'); saveGame('slot1'); });
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(500);
@@ -809,6 +897,148 @@ await step('noise + traffic stop', async () => {
   if (quiet.att > 0.05 || quiet.phase !== 'none') throw new Error('a street-legal car should not draw attention for noise ' + JSON.stringify(quiet));
 });
 
+// ---------------- warrants: escape → plate hit → arrest; unpaid ticket → warrant ----------------
+await step('warrants', async () => {
+  const R = () => p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { warrants: (s.warrants || []).map(x => x.kind + (x.felony ? '!' : '')), citations: (s.citations || []).length, phase: w.police.phase, tag: document.querySelector('[data-warrant]')?.className + ':' + document.querySelector('[data-warrant]')?.textContent }; });
+  const clearModals = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  // 1. outrun a level-2 pursuit: a felony evading warrant goes out
+  await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    s.warrants = []; s.citations = []; s.cash = 50000; w.police.reset(w); w.paused = false;
+    s.heat = 2.3; w.police.startChase(w, true); w.police.eyesOn = true;
+    w.police.note({ kind: 'speeding', text: 'Speeding — 88 in a 45.', fine: 700 });
+    w.police.escaped(w);
+  });
+  await p.waitForTimeout(250);
+  let r = await R();
+  if (!r.warrants.includes('evading!') || !r.warrants.includes('speeding')) throw new Error('escaping a pursuit did not put out a warrant ' + JSON.stringify(r));
+  if (/hidden/.test(r.tag) || !/felony/.test(r.tag) || !/WARRANT/.test(r.tag)) throw new Error('HUD does not show the warrant ' + JSON.stringify(r));
+  // the warrant is in the save, so it follows the account to the next session
+  const saved = await p.evaluate(async () => { const { saveGame, loadGame } = await import('./js/core/save.js'); saveGame('auto', true); return (loadGame('auto')?.warrants || []).length; });
+  if (saved < 2) throw new Error('warrants were not saved: ' + saved);
+  await snap('25-warrant-hud');
+  // 2. a patrol next to you runs your plate: felony stop
+  const hit = await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world, pl = w.playerState();
+    w.police.reset(w); s.heat = 0;
+    const fake = { x: pl.x + 4, z: pl.z, police: true };
+    w.police.patrols.push(fake);
+    for (let i = 0; i < 4 && w.police.phase === 'none'; i++) w.police.recognition(1, w, true);
+    w.police.patrols = w.police.patrols.filter(c => c !== fake);
+    return { phase: w.police.phase, heat: s.heat, radio: document.querySelector('.hud-radio')?.textContent || '' };
+  });
+  if (hit.phase !== 'chase' || hit.heat < 2) throw new Error('a patrol next to a wanted car did not recognise it ' + JSON.stringify(hit));
+  // 3. pulling over with a warrant is an arrest, and it serves the warrant
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.phase = 'notice'; w.police.busted(w); });
+  await p.waitForSelector('.modal h2:has-text("BUSTED")');
+  if (!/active warrant/.test(await p.textContent('.modal')) || !/warrants? served/.test(await p.textContent('.modal'))) throw new Error('arrest modal does not mention the warrant');
+  await clearModals(); await p.evaluate(() => { window.__rfg.app.world.paused = false; }); await p.waitForTimeout(250);
+  r = await R();
+  if (r.warrants.length || !/hidden/.test(r.tag)) throw new Error('arrest did not clear the warrants ' + JSON.stringify(r));
+  // 4. sign a ticket instead of paying, miss the due date: warrant
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.police.phase = 'notice'; w.police.note({ kind: 'speeding', text: 'Speeding — 61 in a 40.', fine: 330 }); w.police.busted(w); });
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")');
+  await p.click('.modal button:has-text("pay within")');
+  await p.waitForSelector('.modal h2:has-text("Citation signed")');
+  await clearModals();
+  if ((await R()).citations !== 1) throw new Error('signed ticket not on the record');
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.time.day += 4; window.__rfg.app.world.ui.onNewDay(); });
+  r = await R();
+  if (!r.warrants.includes('fta') || r.citations) throw new Error('an overdue ticket did not become a warrant ' + JSON.stringify(r));
+  if (!(await p.evaluate(() => window.__rfg.game.s.messages[0]?.from === 'brenner'))) throw new Error('no message about the new warrant');
+  // 5. FWPD phone app lists it and pays it
+  await clearModals();
+  await key('KeyP'); await p.waitForTimeout(250);
+  await p.click('.app:has-text("FWPD")'); await p.waitForTimeout(200);
+  if (!/Failure to pay/.test(await p.textContent('.phone-screen'))) throw new Error('FWPD app does not list the warrant');
+  await snap('26-fwpd-app');
+  await p.click('.phone-screen button:has-text("Pay $")'); await p.waitForTimeout(200);
+  if ((await R()).warrants.length) throw new Error('paying in the app did not clear a misdemeanour warrant');
+  await clearModals();
+  // 6. a felony can't be paid off; turning yourself in at a precinct clears it
+  await p.evaluate(async () => {
+    const { warrantForEscape } = await import('./js/core/warrants.js'); const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const s = window.__rfg.game.s; warrantForEscape(s, [{ kind: 'robbery', text: 'Armed robbery — test.', fine: 6000 }], 3);
+    openPlace(LOC_BY_ID.pspd_central, window.__rfg.app);
+  });
+  await p.waitForTimeout(250);
+  await snap('27-precinct');
+  await p.click('button:has-text("Turn yourself in")');
+  await p.click('.modal button:has-text("Turn myself in")');
+  await p.waitForTimeout(200);
+  if ((await R()).warrants.length) throw new Error('turning yourself in did not clear the felony warrant');
+  await clearModals();
+});
+
+// ---------------- traffic stop: 10 s to pull over, officer walks up, drive off = chase ----------------
+await step('traffic stop: pull over, walk-up, drive off', async () => {
+  const P = () => p.evaluate(() => { const w = window.__rfg.app.world, po = w.police; return { phase: po.phase, pullT: +po.pullT.toFixed(1), step: po.stop?.step || null, officer: po.officer ? { x: po.officer.x, z: po.officer.z } : null, rec: po.record.map(r => r.kind), heat: +window.__rfg.game.s.heat.toFixed(2), title: document.querySelector('[data-ptitle]')?.textContent || '' }; });
+  // lit up while sitting still, with the unit already close behind
+  const light = () => p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { Unit } = await import('./js/world2d/police.js'); const { CAR_BY_ID } = await import('./js/data/cars.js');
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle, po = w.police;
+    po.reset(w); po.patrols.length = 0; po.units.length = 0; s.heat = 0; s.warrants = []; w.paused = false; w.inCar = true;
+    // parked on a long straight downtown, facing along the road
+    const e = w.map.roads.edges.filter(e => e.len > 160).sort((a, b) => Math.hypot(a.ax, a.az) - Math.hypot(b.ax, b.az))[0];
+    v.x = e.ax + e.dx * 110 - e.dz * 2.5; v.z = e.az + e.dz * 110 + e.dx * 2.5; v.h = Math.atan2(e.dx, -e.dz);
+    v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; v.yawRate = 0; w.traffic.cars.length = 0;
+    const fx = Math.sin(v.h), fz = -Math.cos(v.h);
+    po.units.push(new Unit(CAR_BY_ID.ford_crown_victoria_police_interceptor_2003, v.x - fx * 30, v.z - fz * 30, v.h));
+    po.note({ kind: 'speeding', text: 'Speeding — 52 mph in a 35.', fine: 300 });
+    po.startChase(w);
+  });
+  await light();
+  const lit = await P();
+  console.log('     lit up', JSON.stringify(lit));
+  if (lit.phase !== 'notice' || !(lit.pullT > 9)) throw new Error('no 10 second pull-over countdown ' + JSON.stringify(lit));
+  if (!/PULL OVER — 1?\d+s/.test(lit.title)) throw new Error('HUD does not count down the pull-over: ' + lit.title);
+  await snap('28-pull-over');
+  // sitting still counts as pulling over; the unit parks behind and the officer walks to the window
+  let walk = null;
+  for (let i = 0; i < 80 && !walk; i++) { await p.waitForTimeout(100); const s = await P(); if (s.step === 'walk' && s.officer) walk = s; }
+  if (!walk) throw new Error('officer never got out ' + JSON.stringify(await P()) + JSON.stringify(await p.evaluate(() => { const w = window.__rfg.app.world, u = w.police.stop?.unit, v = w.vehicle; return { u: u && { x: u.x, z: u.z, h: u.h, v: u.v }, v: { x: v.x, z: v.z, h: v.h }, st: w.police.stop && { x: w.police.stop.x, z: w.police.stop.z, h: w.police.stop.h, t: w.police.stop.t } }; })));
+  const parked = await p.evaluate(() => { const w = window.__rfg.app.world, u = w.police.stop.unit, v = w.vehicle; const fx = Math.sin(v.h), fz = -Math.cos(v.h); return { behind: -((u.x - v.x) * fx + (u.z - v.z) * fz), side: Math.abs((u.x - v.x) * Math.cos(v.h) + (u.z - v.z) * Math.sin(v.h)) }; });
+  console.log('     unit parked', JSON.stringify(parked));
+  if (!(parked.behind > 5 && parked.behind < 11 && parked.side < 2)) throw new Error('unit did not park behind the car ' + JSON.stringify(parked));
+  await p.waitForTimeout(900);
+  await snap('29-officer-walking');
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")', { timeout: 12000 });
+  const win = await p.evaluate(() => { const w = window.__rfg.app.world, o = w.police.officer, v = w.vehicle; const rx = Math.cos(v.h), rz = Math.sin(v.h); return { left: -((o.x - v.x) * rx + (o.z - v.z) * rz), d: Math.hypot(o.x - v.x, o.z - v.z) }; });
+  console.log('     officer at window', JSON.stringify(win));
+  if (!(win.left > 0.8 && win.d < 3)) throw new Error('officer is not at the driver window ' + JSON.stringify(win));
+  await snap('30-ticket-at-window');
+  await p.click('.modal button:has-text("Accept the citation")');
+  await p.waitForSelector('.modal h2:has-text("Citation issued")'); await p.click('.modal button');
+  const done = await P();
+  if (done.phase !== 'none' || done.heat !== 0) throw new Error('stop did not end after taking the ticket ' + JSON.stringify(done));
+
+  // driving off while the officer walks up: chase
+  await light();
+  for (let i = 0; i < 80; i++) { await p.waitForTimeout(100); if ((await P()).step === 'walk') break; }
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(900); await p.keyboard.up('KeyW');
+  const ran = await P();
+  console.log('     drove off', JSON.stringify(ran));
+  if (ran.phase !== 'chase' || !ran.rec.includes('evading')) throw new Error('driving off the stop did not start a chase ' + JSON.stringify(ran));
+  if (await p.isVisible('.modal-back')) throw new Error('ticket shown after driving off');
+
+  // pulling off from the window instead of taking the ticket: chase
+  await light();
+  await p.waitForSelector('.modal h2:has-text("Traffic stop")', { timeout: 12000 });
+  await p.click('.modal button:has-text("Pull off")');
+  const off = await P();
+  if (off.phase !== 'chase' || !off.rec.includes('evading')) throw new Error('pulling off from the window did not start a chase ' + JSON.stringify(off));
+
+  // never stopping: the countdown runs out and it's a pursuit
+  await light();
+  await p.evaluate(() => { window.__rfg.app.world.police.pullT = 0.6; });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1200); await p.keyboard.up('KeyW');
+  const fail = await P();
+  console.log('     failed to yield', JSON.stringify(fail));
+  if (fail.phase !== 'chase') throw new Error('not pulling over in time did not start a chase ' + JSON.stringify(fail));
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.police.units.length = 0; });
+});
+
 // ---------------- side-view showroom (layered Mustang) ----------------
 await step('showroom (side-view Mustang)', async () => {
   const hash = () => p.evaluate(() => { const c = document.querySelector('[data-side]'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0, solid = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3]) solid++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7 + d[i + 3]) | 0; } return { h, solid, w: c.width, hgt: c.height }; });
@@ -938,6 +1168,45 @@ await step('engine sounds', async () => {
   if (r.bad.length) throw new Error(r.bad.join('; '));
 });
 
+// ---------------- real account server (Supabase Auth, mocked) ----------------
+await step('supabase accounts', async () => {
+  const actx = await b.newContext({ viewport: { width: 844, height: 390 } });
+  const a = await actx.newPage(); a.setDefaultTimeout(8000);
+  a.on('pageerror', e => errs.push('auth pageerror: ' + e.message));
+  await a.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+  const calls = []; let refreshOk = true;
+  const user = { id: 'u-123', email: 'kim@example.com', user_metadata: { username: 'Kimari' } };
+  const sess = n => ({ access_token: 'at' + n, refresh_token: 'rt' + n, expires_in: 3600, token_type: 'bearer', user });
+  await a.route(/supabase\.co\/auth\/v1\//, async r => {
+    const u = new globalThis.URL(r.request().url()), path = u.pathname.split('/auth/v1/')[1] + u.search, body = r.request().postDataJSON?.() || {};
+    calls.push(path.split('&')[0]);
+    const json = (status, o) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(o) });
+    if (path.startsWith('signup')) return json(200, { id: 'u-123', email: body.email, user_metadata: body.data });   // email confirmation on: no session
+    if (path.startsWith('token?grant_type=password')) return body.password === 'hunter22' ? json(200, sess(1)) : json(400, { error_code: 'invalid_credentials', msg: 'Invalid login credentials' });
+    if (path.startsWith('token?grant_type=refresh_token')) return refreshOk ? json(200, sess(2)) : json(400, { error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token' });
+    if (path.startsWith('logout')) return r.fulfill({ status: 204 });
+    return json(404, { msg: 'not mocked: ' + path });
+  });
+  const open = async () => { await a.goto(URL.replace(/\?.*$/, ''), { waitUntil: 'domcontentloaded' }); await a.waitForFunction(() => window.__rfg, null, { timeout: 15000 }); await a.waitForTimeout(600); };
+  await open();
+  if (await a.evaluate(() => window.__rfg.auth.kind) !== 'supabase') throw new Error('not using Supabase without ?auth=local');
+  await a.fill('[name=username]', 'Kimari'); await a.fill('[name=email]', 'Kim@Example.com'); await a.fill('[name=password]', 'hunter22');
+  await a.click('.auth-go'); await a.waitForTimeout(300);
+  if (!(await a.isVisible('h1:has-text("Check your email")'))) throw new Error('no "check your email" after signing up');
+  await a.click('.auth-go');   // → log in
+  await a.fill('[name=email]', 'kim@example.com'); await a.fill('[name=password]', 'wrong12'); await a.click('.auth-go'); await a.waitForTimeout(300);
+  if (!/Wrong email or password/.test(await a.textContent('[data-err]'))) throw new Error('bad password not reported');
+  await a.fill('[name=password]', 'hunter22'); await a.click('.auth-go'); await a.waitForTimeout(400);
+  if (!(await a.isVisible('.acct-chip:has-text("Kimari")'))) throw new Error('not logged in with Supabase');
+  await snap('00-title-logged-in');
+  await open();   // reopening refreshes the session and stays logged in
+  if (!(await a.isVisible('.acct-chip:has-text("Kimari")')) || !calls.some(c => c.startsWith('token?grant_type=refresh_token'))) throw new Error('session not kept / refreshed: ' + calls.join(' '));
+  if ((await a.evaluate(() => window.__rfg.auth.session.refresh_token)) !== 'rt2') throw new Error('refreshed session not stored');
+  refreshOk = false; await open();   // the server says the session is dead → back to log in
+  if (!(await a.isVisible('.auth-card'))) throw new Error('dead session still let you in');
+  await actx.close();
+});
+
 // ---------------- phone controls (separate touch context) ----------------
 await step('phone controls', async () => {
   const mctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -954,6 +1223,7 @@ await step('phone controls', async () => {
   if (!(await m.evaluate(() => { const r = document.getElementById('rotate'); return !!r && !r.classList.contains('hidden'); }))) throw new Error('no rotate-your-phone screen in portrait');
   await m.tap('#rotate-skip');
   if (await m.evaluate(() => !document.getElementById('rotate').classList.contains('hidden'))) throw new Error('rotate screen did not dismiss');
+  await m.fill('[name=username]', 'Phone'); await m.fill('[name=email]', 'phone@example.com'); await m.fill('[name=password]', 'hunter22'); await m.tap('.auth-go'); await m.waitForTimeout(300);
   await m.tap('text=New Game'); await m.fill('[data-name]', 'Phone'); await m.tap('text=Hit the streets'); await m.waitForTimeout(600);
   const expect = (c, msg) => { if (!c) throw new Error(msg); };
   // pointer helper: fire at an element (centre by default, or an offset in px)

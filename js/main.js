@@ -8,6 +8,7 @@ import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
+import { citationsDue } from './core/warrants.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
@@ -15,6 +16,8 @@ import { initCrews } from './ui/ocrew.js';
 import { initOrientation } from './ui/orientation.js';
 import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
+import { auth } from './net/auth.js';
+import { showAuth } from './ui/account.js';
 import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
 import { openPhone } from './ui/phone.js';
@@ -142,6 +145,9 @@ function newDay() {
     const upkeep = s.properties.length > 1 ? 120 * (s.properties.length - 1) : 0;
     if (upkeep) spend(s, upkeep, 'Property taxes & utilities');
   }
+  // unpaid tickets past their due date become warrants
+  const late = citationsDue(s);
+  if (late.length) sendMessage(s, 'brenner', `You didn't pay your ticket${late.length > 1 ? 's' : ''}. There's a warrant out for you now (${fmtMoney(late.reduce((t, w) => t + w.fine, 0))} with the late fee). Pay it at a precinct or in the FWPD app before one of my officers runs your plate.`);
   // sponsor deals expire
   if (s.sponsor && s.sponsor.until < s.time.day) { sendMessage(s, s.sponsor.contact || 'kingpin', `Your ${s.sponsor.name} sponsorship ended.`); s.sponsor = null; }
   saveGame('auto', true);
@@ -223,10 +229,15 @@ async function boot() {
     touchUi.mount($('#touch'));
     initStory();
     app.backdrop = new MenuBackdrop();
-    showTitle(app);
+    const signedIn = await auth.restore();
+    if (signedIn.recovery) showAuth(app, { mode: 'newpass', onDone: () => showTitle(app) });
+    else if (signedIn.linkError) showAuth(app, { mode: 'login', note: signedIn.linkError, onDone: () => showTitle(app) });
+    else showTitle(app);
+    // Logged out from somewhere else (password changed, etc.): back to the log-in screen once off the streets.
+    auth.onChange(u => { if (!u && app.mode === 'title') showTitle(app); });
     hideBoot();
     requestAnimationFrame(frame);
-    window.__rfg = { app, game, ui, online };
+    window.__rfg = { app, game, ui, online, auth };
     initOnline(app);
     initCrews(app);
     initOrientation();

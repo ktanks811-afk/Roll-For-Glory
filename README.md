@@ -210,6 +210,16 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   mug them (witnesses may call 911). Get busted after a robbery or with an FRT
   and you lose the gun and a lot of cash. Health, armor and a hospital bill
   exist if a clerk gets you.
+- **Carjackings.** Rarely (at most once every three in-game days, and
+  mostly at night), when you sit still in your car in the city, a man in a
+  ski mask walks up to your window with a pistol. Pull off before he gets
+  there and he's gone. If he reaches you, you choose: **give it up** (he may
+  take your cash too, and the cops find the car abandoned a couple of minutes
+  later, beat up and low on gas, with your GPS set to it), **floor it**
+  (usually works, but he may shoot and you can still lose the car), **pull
+  your gun** if you carry one with ammo (usually keeps the car, but shots
+  bring the cops, self-defense or not) or **fight him for it** barehanded
+  (the worst odds). Getting shot costs health and can put you in the ER.
 - **Police.** Five heat levels. A cop has to be close (about 65 m) and have
   line of sight. Speeding (30+ mph over) and burnouts have to go on for a few
   seconds before anyone reacts; running reds or hitting cars gets noticed at
@@ -217,6 +227,14 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   they lose you they set up a search zone, and you need a cooldown to
   escape. Roadblocks and spike strips start at level 4, and a helicopter
   joins at level 5. Getting busted means fines and impound.
+- **Warrants.** Escape a pursuit, or get away with a robbery or a shooting,
+  and a warrant goes out in your name. Tickets you sign for instead of paying
+  are due in 3 game days; miss the date and they become a warrant too. Open
+  warrants stay with your account's save. While you have one, patrols run
+  your plate and recognise you on foot, and a traffic stop becomes an arrest.
+  Pay tickets and misdemeanour warrants in the FWPD phone app or at a
+  precinct; felony warrants clear only by turning yourself in at a precinct
+  (25% off the fines) or by getting arrested (full price).
 - **Life stuff.** A big city with day/night and weather, traffic that stops
   at signals, pedestrians, fuel, gas prices, insurance, repairs, food and
   energy, clothes, properties with garage space, a rideshare app, a bank

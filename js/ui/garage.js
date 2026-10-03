@@ -483,8 +483,8 @@ function collection(body, h, app, st, s, car, m) {
       const mm = modelOf(c), mt = carMetrics(c);
       return `<div class="card ${c.uid === st.carUid ? '' : 'click'}" data-action="view" data-uid="${c.uid}"><canvas width="320" height="180" data-thumb="${c.uid}" class="carthumb"></canvas>
         <h3>${esc(carName(mm, c.year))}</h3><div class="muted small">${Math.round(c.miles).toLocaleString()} mi · <span class="pi"><b>${mt.cls}</b>${mt.pi}</span> · ${fmtMoney(carValue(c))}</div>
-        <div class="row" style="margin-top:8px">${c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : atHome ? `<button class="btn btn-sm btn-primary" data-action="drive" data-uid="${c.uid}">Drive this</button>` : ''}
-        <button class="btn btn-sm" data-action="tradein" data-uid="${c.uid}">Sell to dealer ${fmtMoney(carValue(c) * 0.7)}</button></div></div>`;
+        <div class="row" style="margin-top:8px">${c.stolen ? '<span class="tag tag-red">Stolen — cops are looking</span>' : `${c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : atHome ? `<button class="btn btn-sm btn-primary" data-action="drive" data-uid="${c.uid}">Drive this</button>` : ''}
+        <button class="btn btn-sm" data-action="tradein" data-uid="${c.uid}">Sell to dealer ${fmtMoney(carValue(c) * 0.7)}</button>`}</div></div>`;
     }).join('')}</div>`;
   body.querySelectorAll('[data-thumb]').forEach(cv => { const c = getCar(s, cv.dataset.thumb); drawThumb(cv, modelOf(c), c.visual, c.parts, c.cond); });
   bind(body, {

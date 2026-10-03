@@ -5,8 +5,9 @@ import { buildMap, collideCircle, onBackroad } from './map.js';
 import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, renderOverview, signalState } from './render.js';
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
-import { PoliceSystem } from './police.js';
+import { PoliceSystem, OFFICER_LOOK } from './police.js';
 import { Combat } from './combat.js';
+import { Carjacks } from './carjack.js';
 import { carSprite, drawCar, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
@@ -23,6 +24,7 @@ import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
+import { serveAll, signCitation, warrantForEscape, CITATION_DAYS } from '../core/warrants.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -61,6 +63,7 @@ export class World {
     this.trafficCtx = { signalT: 0, others: [] };
     this.audio = audio;
     this.combat = new Combat(this);
+    this.carjacks = new Carjacks(this);
     this.spawnPlayer();
   }
 
@@ -72,7 +75,8 @@ export class World {
     const home = LOC_BY_ID[s.home] || LOC_BY_ID.eastgate_studio;
     const car = activeCar(s);
     const pos = s.pos;
-    if (car && s.carPos) {
+    if (car?.stolen) { /* carjacked: it turns up when the cops find it */ }
+    else if (car && s.carPos) {
       this.placeCar(car, s.carPos.x, s.carPos.z, s.carPos.h);
     } else if (car) {
       const sp = this.homeSpot(home);
@@ -105,7 +109,7 @@ export class World {
   // Called after parts/repairs so the drive matches the build.
   refreshCar() {
     const car = activeCar(this.s);
-    if (!car) { this.vehicle = null; return; }
+    if (!car || car.stolen) { this.vehicle = null; this.inCar = false; return; }
     if (!this.vehicle || this.vehicle.car !== car) {
       // a different car comes out of the home garage
       const home = LOC_BY_ID[this.s.home];
@@ -150,6 +154,7 @@ export class World {
     if (this.inCar && this.vehicle) this.updateDriving(dt);
     else this.updateFoot(dt);
     this.combat.update(dt);
+    this.carjacks.update(dt);
     this.updateOnline(dt);
 
     // traffic + police
@@ -178,11 +183,14 @@ export class World {
     const vx = this.inCar && this.vehicle ? this.vehicle.vx : 0, vz = this.inCar && this.vehicle ? this.vehicle.vz : 0;
     const spd = Math.hypot(vx, vz);
     const base = (window.innerWidth < 700 ? 7.5 : 11) * [1, 0.55, 1.5][this.zoomLevel ?? 0];
-    const targetZoom = this.inCar ? base / (1 + spd / 48) : base * 1.2;
+    // a traffic stop pulls the camera in so you can watch the officer walk up
+    const stop = this.police.phase === 'stop' ? this.police.stop : null;
+    const targetZoom = stop ? base * 1.35 : this.inCar ? base / (1 + spd / 48) : base * 1.2;
     this.cam.zoom += (targetZoom - this.cam.zoom) * Math.min(1, dt * 2);
     // Keep the car near the middle of the screen at any speed: only a whisker
     // of look-ahead, and a follow fast enough that the lag cancels it out.
-    const tx = focus.x + vx * 0.1, tz = focus.z + vz * 0.1;
+    const mid = stop?.unit && Math.hypot(stop.unit.x - focus.x, stop.unit.z - focus.z) < 20 ? stop.unit : null;
+    const tx = mid ? (focus.x + mid.x) / 2 : focus.x + vx * 0.1, tz = mid ? (focus.z + mid.z) / 2 : focus.z + vz * 0.1;
     const follow = this.inCar ? 1 - Math.exp(-dt * 12) : Math.min(1, dt * 5);
     this.cam.x += (tx - this.cam.x) * follow;
     this.cam.z += (tz - this.cam.z) * follow;
@@ -494,62 +502,78 @@ export class World {
     this.ui.toast('SPIKE STRIP! Tires are shredded — grip is gone.', 'bad');
   }
 
-  onBusted(fine, ticketOnly, record = []) {
+  // warrantStop: you pulled over for a ticket and the officer found your warrant
+  onBusted(fine, ticketOnly, record = [], warrantStop = false) {
     const s = this.s;
     fine += ticketOnly ? 0 : this.combat.onBusted(record);
+    // an arrest serves every open warrant and unpaid ticket, at full price
+    const nWarrants = ticketOnly ? 0 : (s.warrants?.length || 0);
+    const served = ticketOnly ? 0 : serveAll(s);
     const insured = s.insurance;
-    const total = Math.round(fine * (insured && !ticketOnly ? 0.75 : 1));
+    const total = Math.round(fine * (insured && !ticketOnly ? 0.75 : 1)) + served;
     if (!spend(s, total, ticketOnly ? 'FWPD traffic citation' : 'FWPD fines + impound')) {
       s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0;
     }
     if (!ticketOnly) { addRep(s, -60, 'Busted'); s.stats.busted++; }
     this.ui.modal(ticketOnly ? 'Pulled over' : 'BUSTED', ticketOnly
       ? `<p>The officer writes you a ticket for ${fmtMoney(total)}. "Slow it down out here."</p>`
-      : `<p>You're in cuffs. Your car spends the night in impound.</p><p>Fines, towing and impound: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>`);
+      : `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. Your car spends the night in impound.</p><p>Fines, towing and impound: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>${nWarrants ? `<p class="small muted">${nWarrants} warrant${nWarrants > 1 ? 's' : ''} served (${fmtMoney(served)} included). Your record is clean again.</p>` : ''}`);
     emit('busted', { fine: total });
   }
 
-  // You pulled over. The officer writes up everything they saw.
+  // You pulled over and the officer is at your window with everything they
+  // saw. Resolves 'flee' if you pull off instead of taking the ticket,
+  // 'busted' if the car gets impounded, otherwise 'paid'.
   async onTrafficStop(record) {
     const s = this.s;
     const items = record.map(r => ({ ...r }));
     let total = items.reduce((t, r) => t + r.fine, 0);
     const hasNoise = items.some(r => r.kind === 'noise');
     const priors = s.stats.noiseTickets || 0;
-    s.stats.tickets = (s.stats.tickets || 0) + 1;
-    if (hasNoise) s.stats.noiseTickets = priors + 1;
+    const count = () => { s.stats.tickets = (s.stats.tickets || 0) + 1; if (hasNoise) s.stats.noiseTickets = priors + 1; };
     // third noise citation: they want the car off the road
-    if (hasNoise && priors >= 2) { this.onBusted(1200, false); return; }
+    if (hasNoise && priors >= 2) { count(); this.onBusted(1200, false); return 'busted'; }
     const say = hasNoise ? '"Sir, you could hear that thing from three blocks away. Step out of the car — license and registration."'
       : items.some(r => r.kind === 'speeding') ? '"Do you know how fast you were going?"' : '"License and registration. You know why I pulled you over?"';
     const list = () => items.map(r => `<div class="row" style="justify-content:space-between"><span>${esc(r.text)}</span><b>${fmtMoney(r.fine)}</b></div>`).join('');
     const pick = await this.ui.modal('Traffic stop',
-      `<p class="muted">${esc(say)}</p><div style="margin:10px 0">${list()}</div><p><b>Total: ${fmtMoney(total)}</b></p>${hasNoise ? `<p class="small muted">Noise citation${priors ? ` (#${priors + 1}) — a third one gets the car impounded` : ''}. Quieter exhaust, quieter tickets.</p>` : ''}`,
-      [{ label: 'Accept the citation', primary: true, value: 'accept' }, { label: 'Try to talk your way out', value: 'argue' }]);
+      `<p class="small muted">The officer leans in at your window with the ticket book.</p><p class="muted">${esc(say)}</p><div style="margin:10px 0">${list()}</div><p><b>Total: ${fmtMoney(total)}</b></p>${hasNoise ? `<p class="small muted">Noise citation${priors ? ` (#${priors + 1}) — a third one gets the car impounded` : ''}. Quieter exhaust, quieter tickets.</p>` : ''}`,
+      [{ label: 'Accept the citation', primary: true, value: 'accept' }, { label: `Sign it, pay within ${CITATION_DAYS} days`, value: 'sign' }, { label: 'Try to talk your way out', value: 'argue' }, { label: 'Pull off', danger: true, value: 'flee' }]);
+    if (pick === 'flee') return 'flee';
+    count();
     let note = '';
     if (pick === 'argue') {
       const chance = Math.max(0.05, 0.15 + tierOf(s.rep).n * 0.04 - priors * 0.05 - (hasNoise ? 0.05 : 0));
       if (Math.random() < chance) { total = 0; note = 'The officer sighs. "Just a warning this time. Get that fixed."'; }
       else { total = Math.round(total * 1.4); note = '"Now you\'re getting every violation I saw." Fines go up 40%.'; }
     }
-    if (total > 0 && !spend(s, total, 'FWPD traffic citation')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
-    this.ui.modal(total ? 'Citation issued' : 'Warning', `<p>${total ? `You paid <b>${fmtMoney(total)}</b>. ` : ''}${esc(note || '"Drive safe. Keep it under control."')}</p>`);
+    // Can't pay on the spot (or chose not to): sign for it. Leave it unpaid
+    // past the due date and it turns into a warrant.
+    let signed = null;
+    if (total > 0 && (pick === 'sign' || !spend(s, total, 'FWPD traffic citation'))) signed = signCitation(s, items, total);
+    this.ui.modal(signed ? 'Citation signed' : total ? 'Citation issued' : 'Warning', signed
+      ? `<p>You owe <b>${fmtMoney(total)}</b>, due by day ${signed.due}. Pay it at a precinct or in the FWPD app on your phone.</p><p class="small muted">Miss the date and it becomes a warrant for your arrest.</p>`
+      : `<p>${total ? `You paid <b>${fmtMoney(total)}</b>. ` : ''}${esc(note || '"Drive safe. Keep it under control."')}</p>`);
     emit('busted', { fine: total, ticket: true });
+    return 'paid';
   }
 
-  onEscaped() {
+  // record: what they saw you do; seen: whether they ever got eyes on you
+  onEscaped(record = [], seen = true) {
     const s = this.s;
     s.stats.pursuitsEscaped++;
     const lvl = Math.max(1, Math.floor(s.heat));
     addRep(s, 80 * lvl, 'Escaped the cops');
     s.followers += 40 * lvl;
-    this.ui.toast(`ESCAPED! +${80 * lvl} rep. Heat will cool down if you lay low.`, 'good');
+    // they know who you are: a warrant goes out for the chase and anything they saw
+    const wr = warrantForEscape(s, seen ? record : record.filter(r => r.kind === 'robbery' || r.kind === 'shots' || r.kind === 'assault'), lvl, seen);
+    this.ui.toast(`ESCAPED! +${80 * lvl} rep.${wr.length ? ' A warrant is out for you — patrols will know your plate.' : ' Heat will cool down if you lay low.'}`, 'good');
     emit('pursuitEscaped', { level: lvl });
   }
 
   updatePoliceAudio() {
     const lvl = this.police.level;
-    if (this.police.active) audio.siren(true, Math.min(1, 0.4 + lvl * 0.15));
+    if (this.police.active && this.police.phase !== 'stop') audio.siren(true, Math.min(1, 0.4 + lvl * 0.15));
   }
 
   streetAt(x, z) { return this.map.roads.streetName(x, z); }
@@ -594,7 +618,7 @@ export class World {
     if (this.garageT > 0) return;
     this.garageT = 0.5;
     const st = this.s;
-    const others = st.cars.filter(c => c.uid !== st.activeCar);
+    const others = st.cars.filter(c => c.uid !== st.activeCar && !c.stolen);
     const order = [...new Set([st.home, ...st.properties])].map(id => this.map.garages.find(g => g.id === id)).filter(Boolean);
     const out = [];
     let k = 0;
@@ -727,8 +751,12 @@ export class World {
         ctx.restore();
       }
     }
+    // the officer walking up during a traffic stop
+    const cop = this.police.officer;
+    if (cop) drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
     if (!this.inCar) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
     this.combat.draw(ctx, cam);
+    this.carjacks.draw(ctx, cam);
 
     const livePeers = online.active ? this.drawPeers(ctx, v) : [];
 
@@ -790,7 +818,7 @@ export class World {
       if (this.vehicle && this.inCar && this.vehicle.car.cond.lights >= 20) carsLit.push({ x: this.vehicle.x, z: this.vehicle.z, h: this.vehicle.h, lightsOn: true, beam: 34 });
       const pulse = Math.sin(this.t * 14) > 0;
       for (const c of [...this.police.patrols.filter(p => this.police.active), ...this.police.units, ...this.police.blocks.flatMap(b => b.cars)]) {
-        if (c.x < v.x0 || c.x > v.x1 || c.z < v.z0 || c.z > v.z1) continue;
+        if (c.lightBar === false || c.x < v.x0 || c.x > v.x1 || c.z < v.z0 || c.z > v.z1) continue;
         glows.push({ x: c.x, z: c.z, r: 9, color: pulse ? 'rgba(255,30,30,1)' : 'rgba(40,90,255,1)', a: 0.7 });
       }
       for (const c of carsLit) {
@@ -815,6 +843,7 @@ export class World {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       const pulse = Math.sin(this.t * 14) > 0;
       for (const c of [...this.police.units, ...this.police.patrols]) {
+        if (c.lightBar === false) continue;
         ctx.fillStyle = pulse ? 'rgba(255,30,30,0.35)' : 'rgba(40,90,255,0.35)';
         ctx.beginPath(); ctx.arc(cam.sx(c.x), cam.sy(c.z), 4 * cam.zoom, 0, Math.PI * 2); ctx.fill();
       }
