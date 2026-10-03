@@ -10,6 +10,7 @@ import { partLevels, defaultVisual } from '../data/parts.js';
 import { soundProfile } from '../sim/sound.js';
 import { audio } from '../core/audio.js';
 import { el, esc } from '../ui/dom.js';
+import { isWet, wx } from '../core/weather.js';
 
 const COUNT = 3;          // seconds of countdown
 const CP_R = 20;          // how close counts as through a checkpoint (m)
@@ -49,7 +50,7 @@ export class StreetRaces {
       const lv = partLevels(cfg.rival.car.parts);
       r.rival = {
         rival: true, name: cfg.rival.name, nick: cfg.rival.nick, model: m, spec: cfg.rivalSpec, skill: cfg.rival.skill,
-        sim: newSim(cfg.rivalSpec, { tireTemp: 0.6 }), s: 0, lat: rivalLat, laneT: 0, wet: w.s.weather === 'rain',
+        sim: newSim(cfg.rivalSpec, { tireTemp: 0.6 }), s: 0, lat: rivalLat, laneT: 0, wet: isWet(w.s) && wx(w.s).grip,
         x: st.x + rx * rivalLat, z: st.z + rz * rivalLat, h: st.h, dims: dimsFor(m), sprite: carSprite(m, visual, lv, {}),
         speed: 0, v: 0, hitT: 0,
         hit(imp) { this.sim.v *= Math.max(0.4, 1 - imp / 30); this.hitT = 0.6; },
