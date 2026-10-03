@@ -1,6 +1,6 @@
-# Roll for Glory
+# Murda Worth Street Racing
 
-**Build your car. Build your name. Roll for Glory.**
+**Build your car. Build your name.**
 
 A 2D top-down open-world street racing life sim that runs in the browser. You
 show up in Port Solace with $4,500 and no car. Find a tired, high-mileage

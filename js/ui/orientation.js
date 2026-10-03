@@ -16,7 +16,7 @@ export function initOrientation() {
   const overlay = document.createElement('div');
   overlay.id = 'rotate';
   overlay.className = 'rotate hidden';
-  overlay.innerHTML = '<div class="rotate-phone"></div><b>Rotate your phone</b><span>Roll for Glory plays in landscape.</span><button id="rotate-skip" type="button">Play in portrait anyway</button>';
+  overlay.innerHTML = '<div class="rotate-phone"></div><b>Rotate your phone</b><span>Murda Worth Street Racing plays in landscape.</span><button id="rotate-skip" type="button">Play in portrait anyway</button>';
   document.body.appendChild(overlay);
   overlay.querySelector('#rotate-skip').addEventListener('click', () => { skipped = true; sync(); });
 

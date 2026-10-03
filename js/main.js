@@ -200,6 +200,22 @@ function frame(now) {
 }
 
 // ---------------- boot ----------------
+// Fill the loading bar, keep the loading art up for a beat (tap skips), then fade it out.
+const BOOT_MIN_MS = 1600;
+function hideBoot() {
+  const el = $('#boot');
+  clearInterval(window.__bootTick);
+  $('#boot-fill').style.width = '100%';
+  $('#boot-msg').textContent = 'Ready';
+  let gone = false;
+  const go = () => {
+    if (gone) return; gone = true;
+    el.classList.add('done');
+    setTimeout(() => { el.style.display = 'none'; }, 400);
+  };
+  el.addEventListener('pointerdown', go, { once: true });
+  setTimeout(go, Math.max(300, BOOT_MIN_MS - performance.now()));
+}
 async function boot() {
   try {
     getMap();
@@ -208,7 +224,7 @@ async function boot() {
     initStory();
     app.backdrop = new MenuBackdrop();
     showTitle(app);
-    $('#boot').style.display = 'none';
+    hideBoot();
     requestAnimationFrame(frame);
     window.__rfg = { app, game, ui, online };
     initOnline(app);

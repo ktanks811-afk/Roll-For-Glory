@@ -62,7 +62,7 @@ export function exportSave() {
 
 export function importSave(text) {
   const d = JSON.parse(text);
-  if (d.game !== 'roll-for-glory' || !d.state) throw new Error('Not a Roll for Glory save file');
+  if (d.game !== 'roll-for-glory' || !d.state) throw new Error('Not a Murda Worth Street Racing save file');
   return migrate(d.state);
 }
 
