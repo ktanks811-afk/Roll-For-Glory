@@ -495,7 +495,7 @@ export class World {
     fine += ticketOnly ? 0 : this.combat.onBusted(record);
     const insured = s.insurance;
     const total = Math.round(fine * (insured && !ticketOnly ? 0.75 : 1));
-    if (!spend(s, total, ticketOnly ? 'PSPD traffic citation' : 'PSPD fines + impound')) {
+    if (!spend(s, total, ticketOnly ? 'FWPD traffic citation' : 'FWPD fines + impound')) {
       s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0;
     }
     if (!ticketOnly) { addRep(s, -60, 'Busted'); s.stats.busted++; }
@@ -528,7 +528,7 @@ export class World {
       if (Math.random() < chance) { total = 0; note = 'The officer sighs. "Just a warning this time. Get that fixed."'; }
       else { total = Math.round(total * 1.4); note = '"Now you\'re getting every violation I saw." Fines go up 40%.'; }
     }
-    if (total > 0 && !spend(s, total, 'PSPD traffic citation')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
+    if (total > 0 && !spend(s, total, 'FWPD traffic citation')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
     this.ui.modal(total ? 'Citation issued' : 'Warning', `<p>${total ? `You paid <b>${fmtMoney(total)}</b>. ` : ''}${esc(note || '"Drive safe. Keep it under control."')}</p>`);
     emit('busted', { fine: total, ticket: true });
   }

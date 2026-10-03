@@ -267,6 +267,30 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const l of LOCATIONS) if ((l.type === 'roll' || l.type === 'drag') && !map.buildings.some(b => b.kind === 'gantry' && b.loc === l.id)) bad(`${l.id} has no start gantry`);
 }
 
+// ---- filler scenery stays off the roads and away from businesses and race starts ----
+{
+  const t0 = performance.now();
+  const map = buildMap();
+  const ms = performance.now() - t0;
+  if (ms > 1500) bad(`buildMap took ${ms.toFixed(0)} ms`);
+  if (map.buildings.length < 2500 || map.props.length < 4000) bad(`map looks empty: ${map.buildings.length} buildings, ${map.props.length} props`);
+  const ROADKINDS = new Set(['gantry', 'canopy', 'pier', 'roof']);
+  for (const b of map.buildings) {
+    if (b.noCollide || ROADKINDS.has(b.kind) || b.loc) continue;
+    for (const e of map.roads.edges) {
+      const h = e.width / 2;
+      if (b.x < Math.max(e.ax, e.bx) + h && b.x + b.w > Math.min(e.ax, e.bx) - h && b.z < Math.max(e.az, e.bz) + h && b.z + b.d > Math.min(e.az, e.bz) - h) { bad(`${b.kind} at ${b.x.toFixed(0)},${b.z.toFixed(0)} sits on ${e.name}`); break; }
+    }
+    if (!b.fill) continue;
+    for (const l of LOCATIONS) {
+      const dx = Math.max(b.x - l.x, 0, l.x - (b.x + b.w)), dz = Math.max(b.z - l.z, 0, l.z - (b.z + b.d));
+      if (Math.hypot(dx, dz) < 15) bad(`${b.kind} at ${b.x.toFixed(0)},${b.z.toFixed(0)} crowds ${l.id}`);
+    }
+  }
+  // every race start and business marker is reachable: nothing solid on it
+  for (const l of LOCATIONS) if (collideCircle(map, l.x, l.z, 1.5)) bad(`${l.id} marker is blocked`);
+}
+
 // ---- every car has its own design sheet, and it describes a real car ----
 {
   for (const c of CARS) {

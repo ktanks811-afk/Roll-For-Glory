@@ -8,7 +8,8 @@ import { BACKROAD } from './map.js';
 
 export const TILE = 400;          // metres per tile
 export const TS = 1.0;            // tile resolution, pixels per metre
-const LOT_COLOR = { park: '#27402a', yard: '#2c3828', parking: '#363840', gas: '#3d3f45', strip: '#4a4b50' };
+const LOT_COLOR = { park: '#27402a', yard: '#2c3828', parking: '#363840', gas: '#3d3f45', strip: '#4a4b50',
+  plaza: '#6a4a3e', trail: '#7a6a4a', lane: '#7d828c', dirt: '#5e5040', field: '#34421f', sand: '#a8956a', pond: '#16405e', court: '#5a3a2a', lot: '#3d3f45', junk: '#45403a' };
 
 export function buildTile(map, i, j) {
   const x0 = i * TILE - 1, z0 = j * TILE - 1, W = TILE + 2;
@@ -18,7 +19,7 @@ export function buildTile(map, i, j) {
   const inside = (x, z, w, d) => x + w >= x0 && x <= x0 + W && z + d >= z0 && z <= z0 + W;
   // ground: grass, then desert, hills and the city grid
   g.fillStyle = '#1b2417'; g.fillRect(x0, z0, W, W);
-  g.fillStyle = '#6a5b43'; g.fillRect(x0, DESERT_Z, W, W);
+  g.fillStyle = '#6a5b43'; if (z0 + W > DESERT_Z) g.fillRect(x0, Math.max(z0, DESERT_Z), W, z0 + W - Math.max(z0, DESERT_Z));
   g.fillStyle = '#222b1d'; g.fillRect(-3300, -1000, 2300, DESERT_Z + 1000);
   g.fillStyle = '#2a2c31'; g.fillRect(-985, -985, 1970, 1970);
   for (const w of map.water) if (inside(w.x, w.z, w.w, w.d)) { g.fillStyle = '#12304a'; g.fillRect(w.x, w.z, w.w, w.d); g.strokeStyle = '#1d4b70'; g.lineWidth = 3; g.strokeRect(w.x, w.z, w.w, w.d); }
@@ -41,6 +42,7 @@ export function buildTile(map, i, j) {
   g.strokeStyle = '#a8aab0'; g.lineWidth = 5; g.beginPath(); BACKROAD.forEach(([x, z], k) => k ? g.lineTo(x, z) : g.moveTo(x, z)); g.stroke();
   for (const it of items) if (it.type === 'b') {
     const b = it.o;
+    if (b.kind === 'parked') continue;
     g.fillStyle = b.kind === 'stands' ? '#5a5f69' : '#4b515d'; g.fillRect(b.x, b.z, b.w, b.d);
     g.strokeStyle = '#2b2f37'; g.lineWidth = 1.4; g.strokeRect(b.x + 0.5, b.z + 0.5, b.w - 1, b.d - 1);
   }

@@ -1,9 +1,10 @@
-// Port Solace map content: districts, buildings, lots, trees, water,
+// Fort Worth map content: districts, buildings, lots, trees, water,
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
 import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
 import { buildRoads } from './roads.js';
+import { addScenery } from './scenery.js';
 
 function mulberry32(a) {
   return () => {
@@ -57,7 +58,7 @@ export function buildMap() {
           const shrink = R(0, 6);
           buildings.push({ x: x0 + a * (s + g) + shrink / 2, z: z0 + b * (s + g) + shrink / 2, w: s - shrink, d: s - shrink, h: R(45, 190), color: pick(ROOFS.downtown), kind: 'tower' });
         }
-      } else if (dist === 'Ironside Industrial' || dist === 'Harbor District') {
+      } else if (dist === 'Riverside Industrial' || dist === 'Lakeside') {
         if (rnd() < 0.5) {
           buildings.push({ x: x0 + 4, z: z0 + 4, w: W - 8, d: D * R(0.45, 0.6), h: R(10, 18), color: pick(ROOFS.industrial), kind: 'warehouse' });
           lots.push({ x: x0 + 4, z: z0 + D * 0.66, w: W - 8, d: D * 0.32, kind: 'parking' });
@@ -65,7 +66,7 @@ export function buildMap() {
           buildings.push({ x: x0 + 4, z: z0 + 4, w: W * 0.55, d: D - 8, h: R(12, 22), color: pick(ROOFS.industrial), kind: 'warehouse' });
           for (let k = 0; k < 4; k++) buildings.push({ x: x0 + W * 0.62 + (k % 2) * 22, z: z0 + 10 + Math.floor(k / 2) * 50, w: 16, d: 40, h: 5, color: pick(['#8a3b2a', '#2a5a8a', '#3a7a3a', '#8a7a2a']), kind: 'containers' });
         }
-      } else if (dist === 'Westbrook Residential') {
+      } else if (dist === 'Arlington Heights') {
         if (rnd() < 0.12) { park(x0, z0, W, D); continue; }
         const n = 4, s = W / n;
         for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
@@ -201,7 +202,7 @@ export function buildMap() {
     }
   }
   // ---------------- outside the grid ----------------
-  // Glory Highway: tunnel hill and the river bridge
+  // Loop 820: tunnel hill and the river bridge
   hills.push({ x: (TUNNEL[0] + TUNNEL[1]) / 2, z: HWY_Z, r: 330 });
   water.push({ x: RIVER_X - 45, z: -3200, w: 90, d: 3200 - 1000, kind: 'river' });
   water.push({ x: SEA_X + 10, z: 250, w: 3000, d: 3800, kind: 'sea' });
@@ -268,6 +269,10 @@ export function buildMap() {
       : { x: cx - span / 2, z: cz - thick / 2, w: span, d: thick, h: 7.5, color: '#1a1c22', kind: 'gantry', noCollide: true, label: l.name, labelColor: l.color, loc: l.id, horiz });
   }
 
+  // ---------------- filling in the empty ground ----------------
+  const props = [];       // ground-level detail: shrubs, hedges, pools, flowerbeds, benches
+  const extra = addScenery({ roads, buildings, lots, trees, rocks, props, water, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
+
   // ---------------- colliders ----------------
   const colliders = [];
   for (const b of buildings) if (!b.noCollide) colliders.push({ x0: b.x, z0: b.z, x1: b.x + b.w, z1: b.z + b.d, h: b.h, b });
@@ -278,6 +283,7 @@ export function buildMap() {
   colliders.push({ x0: RIVER_X - 45, z0: -3200, x1: RIVER_X + 45, z1: HWY_Z - HWY_W / 2 - 4, h: 0, water: true });
   colliders.push({ x0: RIVER_X - 45, z0: HWY_Z + HWY_W / 2 + 4, x1: RIVER_X + 45, z1: -1000, h: 0, water: true });
   colliders.push({ x0: SEA_X + 10, z0: 250, x1: SEA_X + 3000, z1: 4100, h: 0, water: true });
+  for (const w of extra.water) colliders.push({ x0: w.x, z0: w.z, x1: w.x + w.w, z1: w.z + w.d, h: 0, water: true });
   // tunnel hill walls (the tunnel itself is open)
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z - 300, x1: TUNNEL[1], z1: HWY_Z - HWY_W / 2 - 2, h: 30, hill: true });
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z + HWY_W / 2 + 2, x1: TUNNEL[1], z1: HWY_Z + 300, h: 30, hill: true });
@@ -294,11 +300,12 @@ export function buildMap() {
   lots.forEach(l => drawGrid.insert({ type: 'l', o: l }, l.x, l.z, l.x + l.w, l.z + l.d));
   trees.forEach(t => drawGrid.insert({ type: 't', o: t }, t.x - t.r, t.z - t.r, t.x + t.r, t.z + t.r));
   rocks.forEach(r => drawGrid.insert({ type: 'r', o: r }, r.x, r.z, r.x + r.w, r.z + r.d));
+  props.forEach(p => { const r = p.r || 0; drawGrid.insert({ type: 'p', o: p }, p.x - r, p.z - r, p.x + (p.w || 0) + r, p.z + (p.d || 0) + r); });
 
-  return { roads, buildings, lots, trees, water, rocks, hills, signs, colliders, grid, drawGrid, garages, backroad: BACKROAD };
+  return { roads, buildings, lots, trees, water, rocks, hills, signs, props, colliders, grid, drawGrid, garages, backroad: BACKROAD };
 }
 
-// Northridge Pass: a winding two-lane through the west hills.
+// Cross Timbers Pass: a winding two-lane through the west hills.
 export const BACKROAD = [
   [-900, -300], [-1050, -310], [-1180, -380], [-1300, -360], [-1420, -460], [-1540, -430], [-1650, -540],
   [-1780, -500], [-1900, -620], [-2050, -580], [-2200, -700], [-2380, -650],

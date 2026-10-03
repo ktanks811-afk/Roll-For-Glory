@@ -30,13 +30,13 @@ export function buildRoads() {
       edge(node(GRID[j], GRID[i]), node(GRID[j + 1], GRID[i]), { ...CITY, name: STREET_EW[i] });
     }
   }
-  // Glory Highway and its connectors
-  const HWY = { kind: 'highway', width: HWY_W, lanes: [3.6, 7.6, 11.6], speed: 30, name: 'Glory Highway' };
+  // Loop 820 and its connectors
+  const HWY = { kind: 'highway', width: HWY_W, lanes: [3.6, 7.6, 11.6], speed: 30, name: 'Loop 820' };
   const hx = [HWY_X[0], -900, 0, 900, HWY_X[1]];
   for (let i = 0; i < hx.length - 1; i++) edge(node(hx[i], HWY_Z), node(hx[i + 1], HWY_Z), HWY);
-  for (const x of [-900, 0, 900]) edge(node(x, -900), node(x, HWY_Z), { ...CITY, name: 'Glory Hwy Connector', speed: 20 });
-  // Dust Line Road into the desert
-  const DES = { kind: 'desert', width: 11, lanes: [2.6], speed: 25, name: 'Dust Line Road' };
+  for (const x of [-900, 0, 900]) edge(node(x, -900), node(x, HWY_Z), { ...CITY, name: 'I-35W', speed: 20 });
+  // Chisholm Trail Pkwy into the desert
+  const DES = { kind: 'desert', width: 11, lanes: [2.6], speed: 25, name: 'Chisholm Trail Pkwy' };
   edge(node(0, 900), node(0, 1800), DES);
   edge(node(0, 1800), node(0, DESERT_ROAD_END), DES);
 

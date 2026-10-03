@@ -98,7 +98,7 @@ export class Hud {
     const words = next.text.split(/\s+/).length;
     this.radioCur = { text: next.text, until: now + Math.min(6000, 2500 + words * 220) + (this.radioLines.length ? 0 : 600) };
     audio.radio();
-    box.innerHTML = `<b>PSPD</b><span><i>${esc(next.text)}</i></span>`;
+    box.innerHTML = `<b>FWPD</b><span><i>${esc(next.text)}</i></span>`;
     box.classList.remove('on'); void box.offsetWidth; box.classList.add('on');
     // too long for one line on this screen: slide it along instead of wrapping
     const sp = box.querySelector('span'), over = sp.scrollWidth - sp.clientWidth;

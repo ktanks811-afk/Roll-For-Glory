@@ -1,4 +1,4 @@
-// Online free roam: other players share the Port Solace map with you live.
+// Online free roam: other players share the Fort Worth map with you live.
 //
 // Transport is Supabase Realtime *broadcast* only — no tables, no accounts, no
 // stored data, nothing persisted anywhere. Everyone in the same room code sees
@@ -23,12 +23,12 @@ const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 // by the clients themselves: a full server turns you away.
 export const SERVER_CAP = 16;
 export const SERVERS = [
-  { id: 'harbor',    name: 'Harbor',    blurb: 'Docks and warehouses, never sleeps' },
+  { id: 'harbor',    name: 'Lake Worth',    blurb: 'Lakefront docks and warehouses, never sleeps' },
   { id: 'downtown',  name: 'Downtown',  blurb: 'Lights, traffic, and a lot of cops' },
   { id: 'eastgate',  name: 'Eastgate',  blurb: 'Where everyone starts out' },
-  { id: 'ironside',  name: 'Ironside',  blurb: 'Industrial roads, long straights' },
+  { id: 'ironside',  name: 'Riverside',  blurb: 'Industrial roads, long straights' },
   { id: 'dustline',  name: 'Dustline',  blurb: 'Desert highway and open sand' },
-  { id: 'northridge',name: 'Northridge', blurb: 'Mountain roads' },
+  { id: 'northridge',name: 'Cross Timbers', blurb: 'Mountain roads' },
   { id: 'pier9',     name: 'Pier 9',    blurb: 'Meet-night crowd' },
   { id: 'glory',     name: 'Glory Row', blurb: 'The big leagues' },
 ];

@@ -31,7 +31,7 @@ const WHAT = {
   food: 'Food and energy.',
   clothing: 'Outfits and streetwear.',
   realty: 'Buy and sell properties.',
-  police: 'PSPD precinct. Lay low when you have heat.',
+  police: 'FWPD precinct. Lay low when you have heat.',
   meet: 'Street meet: racers to talk to, side bets, Zed\'s van, show your car.',
   drag: 'The drag strip: burnouts, the tree, timeslips.',
   roll: 'A roll-race road. Pick a rival and a wager.',
