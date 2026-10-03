@@ -36,7 +36,7 @@ export class Gigs {
 
   get s() { return this.w.s; }
 
-  blocked() { return G.blocked(this.s, { policePhase: this.w.police.phase, busy: !!this.job }); }
+  blocked() { return G.blocked(this.s, { policePhase: this.w.police.phase, busy: !!this.job, racing: !!this.w.races?.active }); }
 
   // ------------------------------------------------------------ spots
   // The sidewalk in front of a city block: where riders wait and orders get dropped.

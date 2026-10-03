@@ -51,6 +51,8 @@ export function blocked(s, ctx = {}) {
   if (g.suspended && s.time.day <= g.suspended) return `Suspended after your arrest. You're back on the schedule Day ${g.suspended + 1}.`;
   if (hasWarrant(s)) return 'Background check failed: you have an open warrant. Clear it at the precinct or in the FWPD app first.';
   if (ctx.busy) return 'You\'re already on a shift.';
+  if (s.missions?.active) return `Finish the job you took by text first (${s.missions.active.title}).`;
+  if (ctx.racing) return 'Finish the race first.';
   const car = activeCar(s);
   if (!car || car.stolen) return 'You need a car to work these shifts.';
   if (car.engineBlown) return 'Your engine is blown. Get it rebuilt first.';

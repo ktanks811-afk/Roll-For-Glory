@@ -227,6 +227,60 @@ await step('roll race', async () => {
   await p.waitForTimeout(400); await snap('19-roll-result');
   await p.click('text=Back to the street');
 });
+await step('street races: 1v1 for cash, pink slips, time trial', async () => {
+  const w0 = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; return { x: v.x, z: v.z, h: v.h, uid: s.activeCar }; });
+  const toStart = id => p.evaluate(async id => {
+    const { LOC_BY_ID } = await import('./js/data/world.js'); const l = LOC_BY_ID[id]; const w = window.__rfg.app.world, v = w.vehicle;
+    window.__rfg.game.s.heat = 0; w.police.reset?.(w);
+    v.x = l.x; v.z = l.z; v.h = l.face; v.vx = v.vz = 0; v.sim.v = 0; w.inCar = true; w.cam.x = l.x; w.cam.z = l.z; w.paused = false;
+  }, id);
+  // through every checkpoint (the driving itself is covered by the other steps)
+  const runIt = async () => { for (let k = 0; k < 12; k++) { if (await p.evaluate(() => { const w = window.__rfg.app.world, r = w.races.race; if (!r) return true; if (r.phase !== 'race') return false; const c = r.route.checkpoints[r.next], v = w.vehicle; v.x = c.x; v.z = c.z; v.vx = v.vz = 0; return false; })) break; await p.waitForTimeout(250); } };
+  const waitStart = () => p.waitForFunction(() => window.__rfg.app.world.races.race?.phase === 'race', null, { timeout: 6000 });
+  // the start line is a place: Enter opens the setup
+  await toStart('sr_sundance'); await p.waitForTimeout(250);
+  await p.keyboard.press('Enter'); await p.waitForSelector('.p-head h1:has-text("Sundance Square Sprint")');
+  await p.click('[data-action=pick] >> nth=0');
+  await p.evaluate(() => { const r = document.querySelector('[data-wager]'); r.value = 200; r.oninput(); });
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  await p.click('text=Line up');
+  // countdown: the car is held on the grid, the rival is beside you
+  await p.waitForTimeout(1200); await snap('21-street-countdown');
+  const grid = await p.evaluate(() => { const w = window.__rfg.app.world, r = w.races.race; return { phase: r.phase, held: w.vehicle.speed < 0.1, rival: !!r.rival, hud: !!document.querySelector('.sr-hud') }; });
+  if (grid.phase !== 'count' || !grid.held || !grid.rival || !grid.hud) throw new Error('no countdown on the grid ' + JSON.stringify(grid));
+  await waitStart();
+  await p.waitForFunction(() => window.__rfg.app.world.races.race?.rival.s > 5, null, { timeout: 8000 }).catch(async () => { throw new Error('the rival never left the line ' + JSON.stringify(await p.evaluate(() => { const w = window.__rfg.app.world, r = w.races.race; return { s: r?.rival.s, v: r?.rival.sim.v, paused: w.paused, panels: document.querySelectorAll('#panels > *').length, modal: document.querySelector('.modal h2')?.textContent }; }))); });
+  await snap('22-street-race');
+  await runIt();
+  await p.waitForSelector('.p-head h1:has-text("YOU WIN")'); await snap('23-street-win');
+  const won = await p.evaluate(() => ({ money: window.__rfg.game.s.cash + window.__rfg.game.s.bank, best: window.__rfg.game.s.streetRecords?.sr_sundance, hud: !!document.querySelector('.sr-hud') }));
+  if (won.money !== cash0 + 200 || !won.best || won.hud) throw new Error('cash race payout wrong ' + JSON.stringify({ cash0, ...won }));
+  await p.click('text=Back to the street');
+  // pink slips, on a second car the rival's own model: lose it and it's gone
+  const keysModel = await p.evaluate(async () => (await import('./js/data/npcs.js')).RACER_BY_ID.keys.car.model);
+  await p.evaluate(async m => { const S = await import('./js/core/state.js'); const s = window.__rfg.game.s; if (!s.properties.includes('westside_house')) s.properties.push('westside_house'); const c = S.newCar(m); s.cars.push(c); s.activeCar = c.uid; const w = window.__rfg.app.world; w.inCar = false; w.vehicle = null; w.refreshCar(); }, keysModel);
+  await toStart('sr_magnolia'); await p.waitForTimeout(250);
+  await p.evaluate(async () => { const { openStreetRace } = await import('./js/ui/streetRaceSetup.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openStreetRace(window.__rfg.app, LOC_BY_ID.sr_magnolia, { npcId: 'keys' }); });
+  await p.click('[data-v=pinks]'); await snap('24-pink-slips');
+  if (!(await p.isVisible('text=Winner keeps both cars'))) throw new Error('pink slips not on offer against an even car');
+  const pinkUid = await p.evaluate(() => window.__rfg.game.s.activeCar);
+  await p.click('text=Line up'); await waitStart();
+  await p.evaluate(() => { const r = window.__rfg.app.world.races.race; r.rival.s = r.route.length - 1; });
+  await p.waitForSelector('.p-head h1:has-text("YOU LOST")', { timeout: 10000 });
+  const lost = await p.evaluate(uid => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { gone: !s.cars.some(c => c.uid === uid), onFoot: !w.inCar, active: s.activeCar }; }, pinkUid);
+  if (!lost.gone || !lost.onFoot || lost.active !== w0.uid) throw new Error('lost the pink slip but kept the car ' + JSON.stringify(lost));
+  await p.click('text=Back to the street');
+  // back in your own car where it was, then a solo run at the course record
+  await p.evaluate(w0 => { const w = window.__rfg.app.world, s = window.__rfg.game.s; s.activeCar = w0.uid; w.refreshCar(); const v = w.vehicle; v.x = w0.x; v.z = w0.z; v.h = w0.h; w.inCar = true; w.restartEngineSound(); }, w0);
+  await toStart('sr_stockyards'); await p.waitForTimeout(250);
+  await p.evaluate(async () => { const { openStreetRace } = await import('./js/ui/streetRaceSetup.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openStreetRace(window.__rfg.app, LOC_BY_ID.sr_stockyards); });
+  await p.click('[data-v=trial]');
+  if (!(await p.isVisible('text=Course record'))) throw new Error('no course record on the time trial');
+  await p.click('text=Start the clock'); await waitStart(); await runIt();
+  await p.waitForSelector('.p-head h1:has-text("NEW RECORD")');
+  await p.click('text=Back to the street');
+  await p.evaluate(w0 => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; v.x = w0.x; v.z = w0.z; v.h = w0.h; v.vx = v.vz = 0; v.sim.v = 0; s.heat = 0; w.police.reset?.(w); s.gps = null; w.gpsPath = null; }, w0);
+});
 await step('places', async () => {
   for (const id of ['eastgate_studio', 'auto_row', 'halo_exotics', 'rusty_used', 'torque_temple', 'vega_kustoms', 'second_chance', 'gas_westbrook', 'luckys', 'threadline', 'bayline', 'pspd_central', 'pier9']) {
     await p.evaluate(async id => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); window.__rfg.game.s.rep = 40000; openPlace(LOC_BY_ID[id], window.__rfg.app); }, id);
@@ -624,6 +678,7 @@ await step('carjacking', async () => {
     const r = w.map.roads.nearestOnRoad(120, -60);
     v.x = r.x; v.z = r.z; v.h = Math.atan2(r.edge.dx, -r.edge.dz); v.vx = v.vz = 0; v.sim.v = 0;
     w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; s.playTime = Math.max(s.playTime, 3600); s.carjack = { lastDay: -99, n: 0 };
+    if (v.car) v.car.cond.body = 100;   // earlier steps can leave it wrecked (body floors at 5), then the recovery damage can't show
     w.carjacks.jack = null; w.carjacks.rng = Math.random;
   });
   await calm(); await sit(); await p.waitForTimeout(200);
@@ -925,6 +980,65 @@ await step('phone map (places + GPS)', async () => {
 });
 
 // ---------------- loud exhaust → cops notice → traffic stop ----------------
+// ---------------- phone: status cards, texted missions, chat threads ----------------
+await step('phone missions (text offer → stops → paid)', async () => {
+  const reset = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await reset();
+  // Rosa texts a parts run
+  const o = await p.evaluate(async () => {
+    const { offerMission, ensure } = await import('./js/core/missions.js');
+    const s = window.__rfg.game.s, w = window.__rfg.app.world; ensure(s).active = null; s.gps = null; w.gpsPath = null;
+    if (w.vehicle) w.inCar = true;
+    const o = offerMission(s, { force: true, kind: 'parts' });
+    return { id: o.id, from: s.messages[0].from, act: s.messages[0].action };
+  });
+  if (o.from !== 'rosa' || o.act?.type !== 'mission') throw new Error('no mission text from Rosa ' + JSON.stringify(o));
+  // home screen shows the offer + FWPD status
+  await key('KeyP'); await p.waitForTimeout(250);
+  const home = await p.textContent('.phone-widgets');
+  if (!/FWPD status/.test(home) || !/1 offer/.test(home)) throw new Error('home status cards missing: ' + home);
+  await snap('32-phone-home-cards');
+  // Messages is a list of conversations; Rosa's thread has the job
+  await p.click('.app:has-text("Messages")'); await p.waitForTimeout(200);
+  await p.click('.convo:has-text("Rosa")'); await p.waitForTimeout(200);
+  if (!(await p.$('.bubble [data-action="maccept"]'))) throw new Error('no Take the job button in the thread');
+  await snap('33-messages-thread');
+  await p.click('.bubble [data-action="maccept"]'); await p.waitForTimeout(200);
+  let r = await p.evaluate(() => { const s = window.__rfg.game.s; return { a: s.missions.active, gps: s.gps?.label, obj: document.querySelector('[data-obj]')?.textContent || '' }; });
+  if (!r.a || r.a.stage !== 0 || !/Parts run/.test(r.gps || '')) throw new Error('accepting did not start the job / set GPS ' + JSON.stringify(r));
+  await p.waitForTimeout(300);
+  r.obj = await p.evaluate(() => document.querySelector('[data-obj]')?.textContent || '');
+  if (!/Parts run/.test(r.obj)) throw new Error('HUD does not show the mission: ' + r.obj);
+  // the Missions app and the map both show it
+  await key('KeyP'); await p.waitForTimeout(200);
+  await p.click('.app:has-text("Missions")'); await p.waitForTimeout(200);
+  if (!/On the job/.test(await p.textContent('.phone-screen'))) throw new Error('Missions app does not show the active job');
+  await snap('34-missions-app');
+  await reset();
+  // drive to each stop: pickup, then Torque Temple
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  for (let i = 0; i < 2; i++) {
+    await p.evaluate(async () => {
+      const { currentStop } = await import('./js/core/missions.js');
+      const s = window.__rfg.game.s, w = window.__rfg.app.world, l = currentStop(s), v = w.vehicle;
+      v.x = l.x; v.z = l.z; v.vx = v.vz = 0; w.cam.x = l.x; w.cam.z = l.z;
+    });
+    await p.waitForTimeout(300);
+  }
+  r = await p.evaluate(() => { const s = window.__rfg.game.s; return { a: s.missions.active, done: s.missions.done, cash: s.cash, last: s.messages[0] }; });
+  if (r.a || r.done !== 1 || !(r.cash > cash0) || r.last.from !== 'rosa') throw new Error('finishing the run did not pay ' + JSON.stringify({ a: !!r.a, done: r.done, d: r.cash - cash0, from: r.last.from }));
+  // a run that runs out of time fails
+  await p.evaluate(async () => {
+    const { offerMission, acceptMission } = await import('./js/core/missions.js');
+    const s = window.__rfg.game.s, o = offerMission(s, { force: true, kind: 'ride' }); acceptMission(s, o.id, window.__rfg.app.world);
+    s.missions.active.deadline = s.time.day * 1440 + s.time.min - 1;
+  });
+  await p.waitForTimeout(200);
+  r = await p.evaluate(() => { const s = window.__rfg.game.s; return { a: !!s.missions.active, failed: s.missions.failed }; });
+  if (r.a || r.failed !== 1) throw new Error('a late mission did not fail ' + JSON.stringify(r));
+  await p.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
+});
+
 await step('noise + traffic stop', async () => {
   const W = () => p.evaluate(() => { const w = window.__rfg.app.world; return { db: Math.round(w.liveDb), sdb: Math.round(w.staticDb), phase: w.police.phase, att: +w.police.noiseAtt.toFixed(2), rec: w.police.record.map(r => r.kind), cash: window.__rfg.game.s.cash }; });
   await p.evaluate(async () => {
@@ -1306,6 +1420,54 @@ await step('showroom (side-view Mustang)', async () => {
   await snap('29-showroom-civic');
   await p.click('[data-layer="wheels"]'); const civicNoWheels = await hash(); if (civicNoWheels.h === civic.h) throw new Error('Civic wheels layer does nothing');
   await p.keyboard.press('Escape');
+});
+
+// ---------------- Vega Kustoms design studio + weekend car show ----------------
+await step('kustoms studio + car show', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await clear();
+  await p.evaluate(async () => {
+    const { newCar } = await import('./js/core/state.js'); const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const r = window.__rfg, s = r.game.s; const c = newCar('honda_civic_ex_1996'); s.cars.push(c); s.activeCar = c.uid; s.cash = 60000; r.app.world.refreshCar();
+    openPlace(LOC_BY_ID.vega_kustoms, r.app);
+  });
+  await p.click('[data-action="studio"]');
+  await p.waitForSelector('.ks [data-side]');
+  const score0 = +(await p.textContent('.ks-score b'));
+  // try on a color, rims and a widebody: nothing is charged until you build it
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.click('.ks-pick [data-action="paint"][data-c="#6b2bd1"]');
+  await p.click('.tabs button[data-id="rims"]'); await p.click('.ks-pick .ks-rim >> nth=27'); await p.click('.ks-pick [data-action="wsize"][data-n="18"]');
+  await p.click('.tabs button[data-id="kit"]'); await p.click('.ks-pick .ks-opt:has-text("Pandem")');
+  await p.click('.tabs button[data-id="tint"]'); await p.click('.ks-pick .ks-opt:has-text("LLumar")');
+  const mid = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, paint: window.__rfg.game.s.cars.find(c => c.uid === window.__rfg.game.s.activeCar).visual.paint }));
+  if (mid.cash !== cash0 || mid.paint === '#6b2bd1') throw new Error('trying parts on should not charge or change the car');
+  const score1 = +(await p.textContent('.ks-score b'));
+  if (!(score1 > score0 + 20)) throw new Error(`the show score should climb with the build (${score0} -> ${score1})`);
+  if (!/Respray|Basecoat|Wrap|Kandy|Metallic/i.test(await p.textContent('.ks-cart'))) throw new Error('a new color should add a respray to the bill');
+  await snap('30-kustoms-studio');
+  await p.click('[data-action="book"]'); await p.click('.modal button:has-text("Pay & build")'); await p.waitForTimeout(150);
+  const after = await p.evaluate(() => { const s = window.__rfg.game.s, v = s.cars.find(c => c.uid === s.activeCar).visual; return { cash: s.cash, paint: v.paint, kit: v.kit, tint: v.tint, size: v.wheelSize, rim: v.rim }; });
+  if (after.rim !== 'gw27' || after.paint !== '#6b2bd1' || after.kit !== 'wide' || after.tint !== 'medium' || after.size !== '18' || !(after.cash < cash0 - 6000)) throw new Error('build did not land: ' + JSON.stringify(after));
+  await clear();
+  // the show only runs on weekends
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const s = window.__rfg.game.s; s.time.day = 10; s.time.min = 12 * 60; openPlace(LOC_BY_ID.stockyards_show, window.__rfg.app); });
+  await p.waitForSelector('.modal h2:has-text("Stockyards Car Show")');
+  if (!/Saturday and Sunday/.test(await p.textContent('.modal-body'))) throw new Error('weekday visit should give the show times');
+  await clear();
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const s = window.__rfg.game.s; s.time.day = 13; s.time.min = 12 * 60; openPlace(LOC_BY_ID.stockyards_show, window.__rfg.app); });
+  await p.click('[data-action="enter"]');
+  await p.waitForSelector('.cs-lineup canvas');
+  await snap('31-car-show-lineup');
+  await p.click('[data-action="vote"] >> nth=0');
+  await p.waitForSelector('.cs-place', { timeout: 8000 });
+  await snap('32-car-show-results');
+  const res = await p.evaluate(() => { const s = window.__rfg.game.s; return { day: s.shows?.day, entered: s.shows?.entered, votes: [...document.querySelectorAll('[data-v]')].reduce((a, n) => a + +n.textContent, 0) }; });
+  if (res.day !== 13 || res.entered !== 1 || res.votes !== 241) throw new Error('car show did not run: ' + JSON.stringify(res));
+  await clear();
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.stockyards_show, window.__rfg.app); });
+  if (!/already showed today/.test(await p.textContent('.modal-body'))) throw new Error('one show per day');
+  await clear();
 });
 
 // ---------------- every car: own side view + overhead sprite ----------------

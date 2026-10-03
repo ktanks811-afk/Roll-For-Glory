@@ -7,6 +7,7 @@ import { touchUi } from './ui/touch.js';
 import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
+import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
@@ -111,6 +112,7 @@ function hourly() {
   const fta = courtTick(s, addWarrant);
   if (fta) sendMessage(s, 'clerk', `You failed to appear in ${courtName(fta.case)} (Cause No. ${fta.case.cause}). The judge issued a warrant for your arrest for bail jumping${fta.forfeited ? ` and your ${fmtMoney(fta.forfeited)} bail is forfeited` : ''}. Turn yourself in at the courthouse or a precinct.`, { action: { type: 'gps', loc: 'courthouse' } });
   maybeChallenge(s);
+  offerMission(s);
   // buyers message you about cars you have listed
   for (const ml of s.myListings) {
     const car = s.cars.find(c => c.uid === ml.carUid);

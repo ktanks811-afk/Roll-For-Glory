@@ -20,7 +20,7 @@ const FIRST = ['Danny', 'Rico', 'Shay', 'Malik', 'Trina', 'Jace', 'Lex', 'Bo', '
 const NICKS = ['Boost', 'Lowride', 'Two-Step', 'Clutch', 'Redline', 'Smoke', 'Turbo', 'Bandit', 'Lucky', 'Ghost', 'Spool', 'Nitro'];
 
 // A random street racer whose car is roughly as quick as yours.
-function streetRacer(s) {
+export function streetRacer(s) {
   const car = activeCar(s);
   const myPi = carMetrics(car).pi;
   const pool = CARS.filter(c => !c.market || Math.random() < 0.3).map(c => ({ c, pi: metrics(buildSpec(c, {}, {})).pi })).filter(x => Math.abs(x.pi - myPi) < 140 && x.c.msrp < 400000);
@@ -47,7 +47,7 @@ export function openRaceMenu(app) {
   openPanel((root, h) => {
     root.innerHTML = `<div class="p-head"><h1>Race</h1><button class="btn x" data-action="close">×</button></div><div class="p-body">
       <p class="muted">Races happen at real spots in Fort Worth. Set your GPS and drive there — or race whoever texts you a challenge.</p>
-      <div class="list">${LOCATIONS.filter(l => ['roll', 'drag', 'meet'].includes(l.type)).map(l => `<div class="li click" data-action="go" data-id="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${l.tier && tierOf(s.rep).n < l.tier ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'drag' ? 'Drag strip · ' : l.type === 'meet' ? 'Street meet · after 8 PM · ' : 'Roll racing · '}${esc(ROADS[l.road]?.desc || (l.type === 'drag' ? ROADS.strip.desc : 'Show cars, find racers, bet on races.'))}</div></div><span>📍</span></div>`).join('')}</div></div>`;
+      <div class="list">${LOCATIONS.filter(l => ['roll', 'drag', 'meet', 'sprint'].includes(l.type)).map(l => `<div class="li click" data-action="go" data-id="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${l.tier && tierOf(s.rep).n < l.tier ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'drag' ? 'Drag strip · ' : l.type === 'meet' ? 'Street meet · after 8 PM · ' : l.type === 'sprint' ? 'Street race · ' : 'Roll racing · '}${esc(l.type === 'sprint' ? 'Cash or pink slips across Fort Worth.' : ROADS[l.road]?.desc || (l.type === 'drag' ? ROADS.strip.desc : 'Show cars, find racers, bet on races.'))}</div></div><span>📍</span></div>`).join('')}</div></div>`;
     bind(root, { close: () => h.close(), go: d => { const l = LOC_BY_ID[d.id]; app.world?.setGps(l.x, l.z, l.name); closeAllPanels(); } });
   });
 }

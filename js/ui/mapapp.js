@@ -9,12 +9,12 @@ import { LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
 import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { online } from '../net/online.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', tow: '$', meet: '●', flag: '⚑' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', tow: '$', meet: '●', flag: '⚑', trophy: '♛' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot'] },
   { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty'] },
-  { id: 'race', label: 'Races & meets', types: ['meet', 'drag', 'roll'] },
+  { id: 'race', label: 'Races & meets', types: ['meet', 'carshow', 'drag', 'roll', 'sprint'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food'] },
   { id: 'work', label: 'Work', types: ['work'] },
   { id: 'home', label: 'Home', types: ['home', 'property'] },
@@ -38,6 +38,7 @@ const WHAT = {
   meet: 'Street meet: racers to talk to, side bets, Zed\'s van, show your car.',
   drag: 'The drag strip: burnouts, the tree, timeslips.',
   roll: 'A roll-race road. Pick a rival and a wager.',
+  sprint: 'A street race start line: 1v1 for cash or pink slips, or a run at the course record.',
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const shortName = n => n.replace(/\s*\(.*?\)\s*/g, ' ').trim();
@@ -147,6 +148,15 @@ export function renderMap(scr, ctx) {
     // dropped pin and destination flag
     const flag = (x, y, col) => { g.fillStyle = 'rgba(0,0,0,.8)'; g.beginPath(); g.arc(x, y, 10, 0, 7); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 3, y + 7); g.lineTo(x - 3, y - 7); g.stroke(); g.fillStyle = col; g.beginPath(); g.moveTo(x - 3, y - 7); g.lineTo(x + 7, y - 3.5); g.lineTo(x - 3, y); g.closePath(); g.fill(); };
     if (st.pin) { const [x, y] = toScreen(st.pin.x, st.pin.z); flag(x, y, '#ffb020'); }
+    // every stop left on the mission you're on, numbered
+    const job = s.missions?.active;
+    if (job) job.stops.forEach((id, i) => {
+      if (i < job.stage) return;
+      const l = LOC_BY_ID[id], [x, y] = toScreen(l.x, l.z);
+      g.fillStyle = 'rgba(0,0,0,.85)'; g.beginPath(); g.arc(x, y - 16, 9, 0, 7); g.fill();
+      g.fillStyle = i === job.stage ? '#ffb020' : '#8a6a20'; g.beginPath(); g.arc(x, y - 16, 7.5, 0, 7); g.fill();
+      g.fillStyle = '#000'; g.font = '700 10px sans-serif'; g.textAlign = 'center'; g.fillText(String(i + 1), x, y - 15.5);
+    });
     if (s.gps) { const [x, y] = toScreen(s.gps.x, s.gps.z); flag(x, y, '#ff2a3a'); }
 
     // traffic that matters: cops, other players, your parked car, you
@@ -180,10 +190,12 @@ export function renderMap(scr, ctx) {
   };
   const drawCard = () => {
     const t = st.sel, active = t && s.gps && s.gps.x === t.x && s.gps.z === t.z;
+    const job = s.missions?.active, jl = job && LOC_BY_ID[job.stops[job.stage]];
+    const jobRow = job && jl ? `<div class="mc-job">📦 <b>${esc(job.title)}</b> · stop ${job.stage + 1} of ${job.stops.length}: ${esc(shortName(jl.name))}${s.gps && s.gps.x === jl.x && s.gps.z === jl.z ? '' : ' <button class="btn btn-sm" data-job>Route there</button>'}</div>` : '';
     if (!t) {
-      card.innerHTML = s.gps
+      card.innerHTML = jobRow + (s.gps
         ? `<div class="mc-name">🚩 GPS: ${esc(s.gps.label)}</div><div class="mc-sub">${fmtDist(drive(s.gps.x, s.gps.z).meters)} by road · ${fmtEta(drive(s.gps.x, s.gps.z).meters)}</div><div class="row" style="gap:6px;margin-top:8px"><button class="btn btn-sm btn-primary" data-go>Start driving</button><button class="btn btn-sm" data-clear>Clear GPS</button></div>`
-        : `<div class="mc-name">Where to?</div><div class="mc-sub">Tap a pin or a place below to see what's there and get directions. Tap anywhere on the map to drop a pin.</div>`;
+        : `<div class="mc-name">Where to?</div><div class="mc-sub">Tap a pin or a place below to see what's there and get directions. Tap anywhere on the map to drop a pin.</div>`);
     } else {
       const l = LOC_BY_ID[t.id], locked = l && l.tier && tier < l.tier;
       const m = selRoute ? selRoute.meters : 0;
@@ -195,6 +207,7 @@ export function renderMap(scr, ctx) {
           : '<button class="btn btn-sm btn-primary" data-gps>📍 Set GPS</button>'}<button class="btn btn-sm" data-center>Center</button><button class="btn btn-sm" data-x>✕</button></div>`;
     }
     const q = sel => card.querySelector(sel);
+    q('[data-job]')?.addEventListener('click', () => { select(jl, { center: true }); setGps(jl); });
     q('[data-gps]')?.addEventListener('click', () => setGps(t));
     q('[data-go]')?.addEventListener('click', () => ctx.h.close());
     q('[data-clear]')?.addEventListener('click', () => { s.gps = null; if (w) w.gpsPath = null; select(st.sel); });

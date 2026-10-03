@@ -1,3 +1,5 @@
+import { STREET_RACES, raceStart } from './streetRaces.js';
+
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
 // with a highway to the north, desert to the south, mountains to the west
 // and the harbor to the south-east. Positions are metres; -z is north.
@@ -78,6 +80,7 @@ export const LOCATIONS = [
   L('hillcrest_villa', 'property', 'Hillcrest Villa', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
   L('foundry_warehouse', 'property', 'Foundry Warehouse Garage', 11, 3, 'W', { color: '#ffffff', icon: 'home' }),
   L('hook_haul', 'work', 'Hook & Haul Towing', 10, 6, 'S', { color: '#f0a020', icon: 'tow' }),
+  L('stockyards_show', 'carshow', 'Stockyards Car Show', 7, 3, 'W', { color: '#e8c21a', icon: 'trophy' }),
   L('pier9', 'meet', 'Pier 9 Lot', 11, 11, 'W', { color: '#ff1a2e', icon: 'meet', tier: 1 }),
   L('kessler_lot', 'meet', 'Kessler Mall Lot', 2, 9, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
   L('old_foundry', 'meet', 'The Old Foundry', 10, 2, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
@@ -89,6 +92,8 @@ export const LOCATIONS = [
   { id: 'dustline_start', type: 'roll', name: 'Chisholm Trail Pkwy', x: 12, z: 1120, face: 0, color: '#ff1a2e', icon: 'flag', road: 'desert', tier: 2 },
   { id: 'northridge_start', type: 'roll', name: 'Cross Timbers Pass', x: -1120, z: -330, face: -Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'mountain', tier: 4 },
   { id: 'gas_desert', type: 'gas', name: 'Last Chance Gas', x: -24, z: 1700, face: -Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
+  // street race start lines (routes in data/streetRaces.js)
+  ...STREET_RACES.map(ev => { const st = raceStart(ev); return { id: ev.id, type: 'sprint', name: ev.name, x: st.x, z: st.z, face: st.h, color: '#ffbe1e', icon: 'flag', tier: ev.tier > 1 ? ev.tier : undefined, race: ev.id }; }),
 ];
 
 export const LOC_BY_ID = Object.fromEntries(LOCATIONS.map(l => [l.id, l]));

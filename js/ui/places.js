@@ -13,7 +13,10 @@ import { drawThumb } from './marketplace.js';
 import { openGarage, advanceTime } from './garage.js';
 import { openPartsHub } from './partshub.js';
 import { openRaceSetup } from './raceSetup.js';
+import { openStreetRace } from './streetRaceSetup.js';
 import { openMeet } from './meet.js';
+import { openKustoms } from './kustoms.js';
+import { openCarShow } from './carshow.js';
 import { drawPortrait } from '../gfx2d/person.js';
 import { emit } from '../core/events.js';
 import { saveGame } from '../core/save.js';
@@ -51,8 +54,10 @@ const HANDLERS = {
     if (!activeCar(s)) { modal(loc.name, '<p>You can\'t roll up to a car meet on foot. Get a car.</p>'); return; }
     openMeet(loc, app);
   },
+  carshow: (loc, app) => openCarShow(loc, app),
   roll: (loc, app, s) => openRaceSetup(app, { type: 'roll', loc }),
   drag: (loc, app, s) => openRaceSetup(app, { type: 'drag', loc }),
+  sprint: (loc, app) => openStreetRace(app, loc),
 };
 
 // ---------------- home / safehouse ----------------
@@ -275,11 +280,14 @@ function visual(loc, app, s) {
     root.innerHTML = head('Vega Kustoms', 'Manny Vega · paint, wraps, wheels, body') + `<div class="p-body">
       <p class="muted">Manny: "Fast is Rosa's job. Looking fast is mine."</p>
       <div class="grid">
+        <div class="card click" data-action="studio"><h3>✨ Design studio</h3><p class="muted small">Try paint, rims, tint, body kits and more on your car before you pay. See what show judges would score it.</p></div>
         <div class="card click" data-action="counter"><h3>🎨 Paint, wraps & body</h3><p class="muted small">Respray, wraps, widebody kits, wheels, aero — installed today.</p></div>
         <div class="card click" data-action="booth"><h3>🔧 Install your parts</h3><p class="muted small">Bring visual parts you bought online.</p></div>
-      </div></div>`;
+      </div>
+      <p class="small muted">Manny: "Car show at the Stockyards every Saturday and Sunday, 10 to 6. Win it and people will know the shop."</p></div>`;
     bind(root, {
       close: () => h.close(),
+      studio: () => { if (!activeCar(s)) { toast('Bring a car to the booth first', 'info'); return; } openKustoms(app); },
       counter: () => openPartsHub(app, { store: 'visual' }),
       booth: () => openGarage(app, { mode: 'visual', tab: 'install' }),
     });

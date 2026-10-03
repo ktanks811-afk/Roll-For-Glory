@@ -41,6 +41,17 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   Kustoms. Every visual mod shows up on the car. So do big performance
   parts: intercooler, blower through the hood, drag radials, calipers,
   exhaust tips and the nitrous bottle.
+- **Vega Kustoms design studio.** Try paint (any color, gloss to chrome),
+  rims (style, color, size and stance), tint, body kits, wings, hoods,
+  lights, underglow, graphics and interiors on your car with a live side and
+  top view before you spend anything. One bill covers parts, labor and tax,
+  and a live show score tells you what the judges would think.
+- **Car shows at the Stockyards.** Saturdays and Sundays, 10 AM to 6 PM.
+  Enter your build against five others (street regulars and local builds:
+  slab, JDM, muscle, euro and stance), look over every car, cast your
+  People's Choice vote, then watch 240 voters split the crowd. Each voter has
+  a taste, so the best build usually wins but not always. Top three take
+  cash, rep and a trophy.
 - **Garage.** A spec sheet, condition, value, a dyno with your power and
   torque curves against the factory curves, and your car collection.
 - **Tuning (Garage → Tune).** Set the car up the way a real tuner would, with
@@ -179,6 +190,19 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   hit Set GPS: the route lights up on the map right away and the minimap picks
   it up. Tap any empty spot to drop a pin and navigate there. Your car, cops
   and other players show up too.
+- **Phone home screen.** Status cards up top show your FWPD status
+  (warrants, unpaid tickets), the mission you're on with its clock, where the
+  GPS is taking you, and your latest unread text. Tap any card to jump to it.
+  Messages is a list of conversations; open one to read it as a chat and
+  answer offers right in the thread.
+- **Missions by text.** Every few hours (once you have a car) someone you know
+  texts you a job: Rosa needs a parts run, Manny's paint got dropped at the
+  wrong place, Jojo needs a ride, Dre wants a sponsor driven to a meet (tier
+  2), and Zed has a hot duffel bag (tier 2, pays best, but the pickup draws
+  police heat and getting busted ends it). Take it in Messages or Phone →
+  Missions. The GPS walks you through each stop, the HUD shows the clock,
+  and the map numbers the stops. Make the last drop in time to get paid and
+  earn rep; run out of time, bail, or get busted and you lose some rep.
 - **Online crews (permanent).** Phone → Online Crew. Found a crew ($1,500 for
   jackets: name, 2–4 letter tag, colour, motto, open or invite-only) or join
   one that other real players run. Crews are stored in the Supabase project
