@@ -6,7 +6,7 @@ const URL = process.env.URL || 'http://localhost:8123/index.html';
 const OUT = process.env.OUT || '/tmp/claude-0/shots';
 const shots = !!process.env.SHOTS;
 import fs from 'fs'; if (shots) fs.mkdirSync(OUT, { recursive: true });
-const exe = fs.existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome') ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined;
+const exe = process.env.CHROME || (fs.existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome') ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined);
 const b = await chromium.launch({ executablePath: exe });
 const mainCtx = await b.newContext({ viewport: { width: 1280, height: 760 } });   // shared by the online test's second tab
 const p = await mainCtx.newPage();
@@ -883,6 +883,9 @@ await step('engine sounds', async () => {
 // ---------------- phone controls (separate touch context) ----------------
 await step('phone controls', async () => {
   const mctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  // like iPhone Safari: no orientation lock, so portrait gets the rotate screen
+  // (Chromium's headless shell grants the lock, which would hide it)
+  await mctx.addInitScript(() => { if (screen.orientation) screen.orientation.lock = () => Promise.reject(new DOMException('not supported', 'NotSupportedError')); });
   const m = await mctx.newPage(); m.setDefaultTimeout(6000);
   m.on('pageerror', e => errs.push('mobile pageerror: ' + e.message));
   m.on('console', x => { if (x.type() === 'error' && !/Failed to load resource/.test(x.text())) errs.push('mobile console: ' + x.text()); });
