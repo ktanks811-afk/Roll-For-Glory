@@ -624,6 +624,7 @@ await step('carjacking', async () => {
     const r = w.map.roads.nearestOnRoad(120, -60);
     v.x = r.x; v.z = r.z; v.h = Math.atan2(r.edge.dx, -r.edge.dz); v.vx = v.vz = 0; v.sim.v = 0;
     w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; s.playTime = Math.max(s.playTime, 3600); s.carjack = { lastDay: -99, n: 0 };
+    if (v.car) v.car.cond.body = 100;   // earlier steps can leave it wrecked (body floors at 5), then the recovery damage can't show
     w.carjacks.jack = null; w.carjacks.rng = Math.random;
   });
   await calm(); await sit(); await p.waitForTimeout(200);
