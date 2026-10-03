@@ -19,6 +19,17 @@ const HELP = {
   car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · Enter interact · F get out · P phone',
 };
 
+// turn-by-turn arrows (drawn pointing up = straight ahead)
+const NAV_SVG = {
+  right: '<path d="M7 21V12a3 3 0 0 1 3-3h7"/><path d="M14 5l4 4-4 4"/>',
+  left: '<path d="M17 21V12a3 3 0 0 0-3-3H7"/><path d="M10 5L6 9l4 4"/>',
+  uturn: '<path d="M16 21V9a4 4 0 0 0-8 0v4"/><path d="M4 10l4 4 4-4"/>',
+  arrive: '<path d="M7 21V4"/><path d="M7 4h11l-3 4 3 4H7"/>',
+};
+const navDist = (m, kmh) => kmh
+  ? (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.max(10, Math.round(m / 10) * 10) + ' m')
+  : (m >= 402 ? (m / 1609.34).toFixed(1) + ' mi' : Math.max(10, Math.round(m * 3.28084 / 50) * 50) + ' ft');
+
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', meet: '●', flag: '⚑' };
 
 export class Hud {
@@ -49,6 +60,7 @@ export class Hud {
       </div>
         <div class="hud-weapon hidden" data-weapon></div>
       </div>
+      <div class="hud-nav hidden" data-nav><svg viewBox="0 0 24 24" data-navicon></svg><div><b data-navdist></b><small data-navstreet></small></div></div>
       <div class="hud-radio" data-radio></div>
       <div class="hud-prompt hidden" data-prompt></div>
       <div class="hud-help" data-help></div>
@@ -129,6 +141,17 @@ export class Hud {
       const pct = ph === 'cooldown' ? (1 - w.police.cooldown / (14 + w.police.level * 5)) * 100 : ph === 'search' ? 100 - Math.min(100, w.police.unseenT * 5) : 100;
       this.q('pbar').style.width = `${pct}%`;
       pp.className = `hud-pursuit ${ph}`;
+    }
+    // GPS turn-by-turn
+    const nav = w.navInfo ? w.navInfo() : null, nb = this.q('nav');
+    nb.classList.toggle('hidden', !nav);
+    this.root.classList.toggle('nav-on', !!nav);
+    if (nav) {
+      const kmh = settings.units === 'kmh';
+      if (nb.dataset.turn !== nav.turn) { nb.dataset.turn = nav.turn; this.q('navicon').innerHTML = NAV_SVG[nav.turn]; }
+      this.q('navdist').textContent = navDist(nav.dist, kmh);
+      const what = nav.turn === 'arrive' ? nav.label : nav.street ? `${nav.turn === 'uturn' ? 'U-turn' : 'Turn ' + nav.turn} onto ${nav.street}` : nav.turn === 'uturn' ? 'Make a U-turn' : `Turn ${nav.turn}`;
+      this.q('navstreet').textContent = nav.turn === 'arrive' ? what : `${what} · ${navDist(nav.total, kmh)} to go`;
     }
     // objective
     const step = s.story.enabled ? currentStep(s.story) : null;

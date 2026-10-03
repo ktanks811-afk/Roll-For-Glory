@@ -117,6 +117,11 @@ body.touch .hud-dash { position: relative; width: 100%; margin-top: calc(var(--u
 body.touch .dash-speed b { font-size: calc(var(--u, 1px) * 32); }
 body.touch .dash-gear { font-size: calc(var(--u, 1px) * 24); top: calc(var(--u, 1px) * 6); }
 body.touch .dash-car { display: none; }
+body.touch .hud-nav { gap: calc(var(--u, 1px) * 8); min-width: 0; max-width: calc(100vw - 2 * var(--u, 1px) * 196); padding: calc(var(--u, 1px) * 4) calc(var(--u, 1px) * 10) calc(var(--u, 1px) * 4) calc(var(--u, 1px) * 8); }
+body.touch .hud-nav svg { width: calc(var(--u, 1px) * 28); height: calc(var(--u, 1px) * 28); }
+body.touch .hud-nav b { font-size: calc(var(--u, 1px) * 18); }
+body.touch .hud-nav small { font-size: calc(var(--u, 1px) * 11); }
+body.touch #hud.nav-on .hud-radio.on { transform: translate(-50%, calc(var(--u, 1px) * 46)); }
 body.touch .hud-radio { font-size: calc(var(--u, 1px) * 12); padding: 4px 10px; max-width: max(180px, calc(100vw - 2 * var(--u, 1px) * 200)); }
 body.touch .hud-weapon { margin-top: calc(var(--u, 1px) * 8); padding: calc(var(--u, 1px) * 4) calc(var(--u, 1px) * 7); font-size: calc(var(--u, 1px) * 11); }
 body.touch .hud-prompt { font-size: 14px; padding: 6px 12px; }
