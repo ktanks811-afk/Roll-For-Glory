@@ -1,7 +1,7 @@
 {
-  "name": "Roll for Glory",
-  "short_name": "Roll for Glory",
-  "description": "Build your car. Build your name. Roll for Glory.",
+  "name": "Murda Worth Street Racing",
+  "short_name": "Murda Worth",
+  "description": "Build your car. Build your name.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",

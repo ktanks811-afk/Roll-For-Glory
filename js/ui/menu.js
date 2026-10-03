@@ -75,8 +75,8 @@ export function showTitle(app) {
   const root = $('#screen');
   root.innerHTML = '';
   const t = el(`<div class="title">
-    <div class="title-logo">ROLL<span>FOR</span>GLORY</div>
-    <div class="title-tag">BUILD YOUR CAR. BUILD YOUR NAME. ROLL FOR GLORY.</div>
+    <div class="title-logo">MURDA WORTH<span>STREET RACING</span></div>
+    <div class="title-tag">BUILD YOUR CAR. BUILD YOUR NAME.</div>
     <nav class="menu">
       <button data-action="continue" ${need ? 'disabled' : ''}>Continue${latest ? `<small>${esc(latest.name)} · Day ${latest.day} · ${fmtMoney(latest.cash)} · ${slotName(latest.slot)}</small>` : '<small>No saved career yet</small>'}</button>
       <button data-action="online" ${need ? 'disabled' : ''}>Play Online<small>Free roam with other players</small></button>
@@ -204,7 +204,7 @@ export function openSlots(mode, app) {
       export: () => {
         const blob = new Blob([exportSave()], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `roll-for-glory-${game.s.player.name.replace(/\W+/g, '_')}-day${game.s.time.day}.json`; a.click();
+        a.download = `murda-worth-${game.s.player.name.replace(/\W+/g, '_')}-day${game.s.time.day}.json`; a.click();
       },
       import: () => {
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
