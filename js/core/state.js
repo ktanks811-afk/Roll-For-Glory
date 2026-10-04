@@ -42,6 +42,7 @@ export function createState({ name, age, look, story = true }) {
     properties: ['eastgate_studio'],
     home: 'eastgate_studio',
     inventory: { energyDrinks: 0 },
+    loot: [],            // stolen goods from robberies (core/loot.js)
     partsBin: [],        // { pid, uid } owned parts not installed
     orders: [],          // { id, items:[pid], arriveDay, total }
     listings: [],        // Marketplace listings currently visible

@@ -1,47 +1,60 @@
-// Stolen goods: what you can take off people, out of stores and out of cars,
-// and what it's worth on the street. `value` is the street value (what a
-// buyer would pay used); the pawn counter and the fence pay a cut of it.
-// `serial`: how traceable it is (0..1). Phones and laptops have IMEIs and
-// serials the pawn shop runs through LeadsOnline; gold has none.
-// `src`: where it turns up and how often (relative weight).
+// Stolen goods: from store robberies, muggings, the glovebox of a car you
+// steal. `value` is what the thing is worth on the street (what a buyer pays
+// retail-ish); a fence or pawn shop pays a fraction of it (core/loot.js).
+// `kind` groups it at the pawn shop. `serial`: how traceable it is (0..1):
+// phones and laptops have IMEIs and serials the pawn counter runs through
+// LeadsOnline; gold has none. Rules for carrying and selling it live in
+// core/loot.js, the robberies in world2d/combat.js.
 
 export const LOOT = [
-  { id: 'phone',        kind: 'electronics', name: 'iPhone 17 Pro',          value: 520,  serial: 0.85, src: { mug: 6, store: 1, car: 2, house: 2 } },
-  { id: 'android',      kind: 'electronics', name: 'Galaxy S26',             value: 300,  serial: 0.8,  src: { mug: 5, store: 1, car: 2, house: 1 } },
-  { id: 'earbuds',      kind: 'electronics', name: 'AirPods Pro',            value: 110,  serial: 0.4,  src: { mug: 4, store: 2, car: 3, house: 1 } },
-  { id: 'laptop',       kind: 'electronics', name: 'MacBook Pro',            value: 900,  serial: 0.9,  src: { mug: 1, car: 3, house: 3 } },
-  { id: 'tablet',       kind: 'electronics', name: 'iPad Air',               value: 330,  serial: 0.85, src: { mug: 1, car: 2, house: 2 } },
-  { id: 'console',      kind: 'electronics', name: 'PlayStation 5',          value: 280,  serial: 0.7,  src: { house: 3, store: 1 } },
-  { id: 'speaker',      kind: 'electronics', name: 'JBL Boombox',            value: 190,  serial: 0.35, src: { car: 2, house: 2 } },
-  { id: 'vapes',        kind: 'other',       name: 'Carton of vapes',        value: 160,  serial: 0,    src: { store: 4 } },
-  { id: 'scratchers',   kind: 'other',       name: 'Roll of scratch-offs',   value: 240,  serial: 0.6,  src: { store: 3 } },
-  { id: 'cigs',         kind: 'other',       name: 'Cartons of Newports',    value: 130,  serial: 0,    src: { store: 4 } },
-  { id: 'watch',        kind: 'jewelry',     name: 'Apple Watch',            value: 230,  serial: 0.75, src: { mug: 3, car: 1, house: 1 } },
-  { id: 'gold_chain',   kind: 'jewelry',     name: '14k gold chain',         value: 650,  serial: 0,    src: { mug: 2, house: 2 } },
-  { id: 'cuban_link',   kind: 'jewelry',     name: 'Cuban link chain',       value: 1800, serial: 0.1,  src: { mug: 0.4, house: 1 } },
-  { id: 'diamond_ring', kind: 'jewelry',     name: 'Diamond ring',           value: 1300, serial: 0.25, src: { mug: 0.6, house: 1.5 } },
-  { id: 'rolex',        kind: 'jewelry',     name: 'Rolex Submariner',       value: 9500, serial: 0.7,  src: { mug: 0.12, house: 0.3, car: 0.05 } },
-  { id: 'glovebox_gun', kind: 'gun',         name: 'Glock 19 (glovebox)',    value: 420,  serial: 0.95, src: { car: 1.2, house: 0.6 } },
-  { id: 'register_gun', kind: 'gun',         name: 'Taurus G3 (under the counter)', value: 260, serial: 0.95, src: { store: 1 } },
-  { id: 'shotgun',      kind: 'gun',         name: 'Mossberg 500 shotgun',   value: 380,  serial: 0.95, src: { store: 0.3, house: 0.5 } },
+  { id: 'cigs',         kind: 'other',       name: 'Carton of Newports',         value: 95,   icon: '🚬', serial: 0 },
+  { id: 'scratchers',   kind: 'other',       name: 'Roll of lottery scratchers', value: 150,  icon: '🎟', serial: 0.6 },
+  { id: 'liquor',       kind: 'other',       name: 'Bottle of Hennessy',         value: 60,   icon: '🍾', serial: 0 },
+  { id: 'vapes',        kind: 'other',       name: 'Box of vapes',               value: 120,  icon: '💨', serial: 0 },
+  { id: 'giftcards',    kind: 'other',       name: 'Stack of gift cards',        value: 220,  icon: '💳', serial: 0.5 },
+  { id: 'phones',       kind: 'electronics', name: 'Prepaid phones',             value: 180,  icon: '📱', serial: 0.5 },
+  { id: 'energy',       kind: 'other',       name: 'Case of energy drinks',      value: 40,   icon: '🥤', serial: 0 },
+  { id: 'tipjar',       kind: 'other',       name: 'Tip jar',                    value: 35,   icon: '🫙', serial: 0 },
+  { id: 'sneakers',     kind: 'other',       name: 'Pair of limited sneakers',   value: 340,  icon: '👟', serial: 0.1 },
+  { id: 'chain',        kind: 'jewelry',     name: 'Gold chain',                 value: 650,  icon: '📿', serial: 0 },
+  { id: 'watch',        kind: 'jewelry',     name: 'Display-case watch',         value: 900,  icon: '⌚', serial: 0.4 },
+  { id: 'tablet',       kind: 'electronics', name: 'Register tablet',            value: 260,  icon: '📟', serial: 0.8 },
+  // off people and out of cars
+  { id: 'phone',        kind: 'electronics', name: 'iPhone 17 Pro',              value: 520,  icon: '📱', serial: 0.85 },
+  { id: 'android',      kind: 'electronics', name: 'Galaxy S26',                 value: 300,  icon: '📱', serial: 0.8 },
+  { id: 'earbuds',      kind: 'electronics', name: 'AirPods Pro',                value: 110,  icon: '🎧', serial: 0.4 },
+  { id: 'laptop',       kind: 'electronics', name: 'MacBook Pro',                value: 900,  icon: '💻', serial: 0.9 },
+  { id: 'ipad',         kind: 'electronics', name: 'iPad Air',                   value: 330,  icon: '📱', serial: 0.85 },
+  { id: 'speaker',      kind: 'electronics', name: 'JBL Boombox',                value: 190,  icon: '🔊', serial: 0.35 },
+  { id: 'apple_watch',  kind: 'jewelry',     name: 'Apple Watch',                value: 230,  icon: '⌚', serial: 0.75 },
+  { id: 'cuban_link',   kind: 'jewelry',     name: 'Cuban link chain',           value: 1800, icon: '📿', serial: 0.1 },
+  { id: 'diamond_ring', kind: 'jewelry',     name: 'Diamond ring',               value: 1300, icon: '💍', serial: 0.25 },
+  { id: 'rolex',        kind: 'jewelry',     name: 'Rolex Submariner',           value: 9500, icon: '⌚', serial: 0.7 },
+  { id: 'glovebox_gun', kind: 'gun',         name: 'Glock 19 (glovebox)',        value: 420,  icon: '🔫', serial: 0.95 },
 ];
 export const LOOT_BY_ID = Object.fromEntries(LOOT.map(l => [l.id, l]));
 export const LOOT_KINDS = { electronics: 'Electronics', jewelry: 'Jewelry', gun: 'Guns', other: 'Other' };
-export const LOOT_ICON = { electronics: '📱', jewelry: '💍', gun: '🔫', other: '📦' };
 
-// How many items a source usually gives up: chance of anything, then 1..max.
-export const LOOT_ROLLS = {
-  mug:   { chance: 0.55, max: 2 },
-  store: { chance: 0.75, max: 3 },
-  car:   { chance: 0.5,  max: 2 },
-  house: { chance: 0.95, max: 4 },
+// What's behind the counter at each kind of store, with weights.
+export const STORE_LOOT = {
+  corner:   [['cigs', 4], ['scratchers', 3], ['liquor', 3], ['vapes', 3], ['phones', 2], ['energy', 2]],
+  gas:      [['cigs', 4], ['scratchers', 4], ['vapes', 3], ['giftcards', 2], ['phones', 1], ['energy', 2]],
+  food:     [['tipjar', 4], ['liquor', 2], ['tablet', 1]],
+  clothing: [['sneakers', 4], ['chain', 2], ['watch', 1]],
+};
+
+// What you get off a person you mug and out of a car you steal (core/loot.js
+// grabLoot): the chance of anything, up to `max` items, from the weighted table.
+export const STREET_LOOT = {
+  mug: { chance: 0.55, max: 2, table: [['phone', 6], ['android', 5], ['earbuds', 4], ['apple_watch', 3], ['chain', 2], ['laptop', 1], ['ipad', 1], ['diamond_ring', 0.6], ['cuban_link', 0.4], ['rolex', 0.12]] },
+  car: { chance: 0.5,  max: 2, table: [['phone', 2], ['android', 2], ['earbuds', 3], ['laptop', 3], ['ipad', 2], ['speaker', 2], ['apple_watch', 1], ['glovebox_gun', 1.2], ['rolex', 0.05]] },
 };
 
 // Cash Cow Pawn & Gold on East Lancaster. The counter pays more and runs
 // serial numbers; Dre in the back room pays less and never asks.
 export const PAWN = {
   counter: 0.42,       // share of street value paid over the counter
-  fence: 0.33,         // the fence's base share
+  fence: 0.36,         // the fence's base share
   fenceHeatCut: 0.06,  // each level of police heat takes this off the fence's share
   fenceWarrantCut: 0.05,
   fenceMin: 0.12,

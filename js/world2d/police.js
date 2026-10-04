@@ -343,7 +343,7 @@ export class PoliceSystem {
   // that decides whether the warrant can name you.
   note(o) {
     if (!o.kind) return;
-    const conceal = o.kind === 'noise' ? 0 : this.disguise;
+    const conceal = o.kind === 'noise' ? 0 : (o.conceal ?? this.disguise);   // a store camera remembers how you looked
     const have = this.record.find(r => r.kind === o.kind);
     if (!have) this.record.push({ kind: o.kind, text: o.text, fine: o.fine || 250, conceal });
     else {
@@ -516,12 +516,14 @@ export class PoliceSystem {
   }
 
   // Silent alarm / 911 call from a robbery: units head for the spot.
-  dispatchRobbery(w, loc, mugging = false) {
+  // called: the clerk phoned it in after the robber left.
+  dispatchRobbery(w, loc, mugging = false, called = false, conceal) {
     const p = w.player;
-    if (!mugging) w.hud.radio(`Dispatch: 211 in progress at ${loc.name}. Silent alarm. All units respond.`);
+    if (called) w.hud.radio(`Dispatch: caller reports a 211 just occurred at ${loc.name}. Suspect fled on foot. Units respond.`);
+    else if (!mugging) w.hud.radio(`Dispatch: 211 in progress at ${loc.name}. Silent alarm. All units respond.`);
     else w.hud.radio('Dispatch: caller reports an armed mugging. Units responding.');
     this.addHeat((mugging ? 0.9 : 1.6) * this.vague(), masked(this.s.player?.look) ? 'Armed robbery, masked suspect.' : 'Armed robbery.', w.hud);
-    this.note({ kind: 'robbery', text: mugging ? 'Armed mugging.' : `Armed robbery — ${loc.name}.`, fine: mugging ? 4000 : 6000 });
+    this.note({ kind: 'robbery', text: mugging ? 'Armed mugging.' : `Armed robbery — ${loc.name}.`, fine: mugging ? 4000 : 6000, conceal });
     this.lastSeen = { x: loc.x ?? p.x, z: loc.z ?? p.z, vx: 0, vz: 0 };
     if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') { this.startChase(w, true); this.unseenT = -8; }
   }

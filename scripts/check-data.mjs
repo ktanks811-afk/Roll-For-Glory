@@ -32,8 +32,8 @@ import * as EST from '../js/core/estate.js';
 import { applyEstate } from '../js/world2d/estate.js';
 import { LAND, PLANS, TRAPS, DRUGS } from '../js/data/estate.js';
 import { charge as chargeOf, classify } from '../js/core/justice.js';
-import * as LT from '../js/core/loot.js';
-import { LOOT, LOOT_BY_ID, LOOT_ROLLS, PAWN } from '../js/data/loot.js';
+import * as LOOTC from '../js/core/loot.js';
+import { LOOT, LOOT_BY_ID, STORE_LOOT, STREET_LOOT, LOOT_KINDS, PAWN } from '../js/data/loot.js';
 import { takeWarrants } from '../js/core/warrants.js';
 
 let fails = 0;
@@ -820,52 +820,81 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
 }
 // ---- stolen goods: pawn counter and the fence ----
 {
-  for (const l of LOOT) {
-    if (!(l.value > 0) || !(l.serial >= 0 && l.serial <= 1) || !Object.keys(l.src).length) bad(`loot ${l.id}: bad data`);
-    for (const k of Object.keys(l.src)) if (!LOOT_ROLLS[k]) bad(`loot ${l.id}: unknown source ${k}`);
-  }
+  for (const l of LOOT) if (!LOOT_KINDS[l.kind] || !(l.serial >= 0 && l.serial <= 1)) bad(`loot ${l.id}: needs a kind and serial`);
+  for (const [src, r] of Object.entries(STREET_LOOT)) for (const [id] of r.table) if (!LOOT_BY_ID[id]) bad(`${src}: unknown loot ${id}`);
   if (!LOCATIONS.some(l => l.type === 'pawn')) bad('no pawn shop on the map');
   const st = createState({ name: 'P', age: 25, look: {}, story: false });
-  let paid = 0; const earnFn = (s, n) => { s.cash += n; paid += n; };
+  const earnFn = (s, n) => { s.cash += n; };
   const seq = xs => { let i = 0; return () => xs[i++ % xs.length]; };
-  for (const src of Object.keys(LOOT_ROLLS)) {
-    const got = LT.rollLoot(st, src, seq([0, 0.99, 0.5, 0.2, 0.7]));
-    if (!got.length || got.some(i => !LOOT_BY_ID[i.id].src[src])) bad(`rollLoot ${src}`);
+  for (const src of Object.keys(STREET_LOOT)) {
+    const got = LOOTC.grabLoot(st, src, 'test', seq([0, 0.99, 0.5, 0.2, 0.7]));
+    if (!got.length || got.some(i => !STREET_LOOT[src].table.some(([x]) => x === i.id))) bad(`grabLoot ${src}`);
   }
-  if (LT.rollLoot(st, 'mug', () => 0.999).length) bad('a mugging should sometimes give nothing');
-  const ph = LT.addLoot(st, 'phone', { from: 'robbery' }), gold = LT.addLoot(st, 'gold_chain');
-  if (!ph || ph.kind !== 'electronics' || ph.value !== LOOT_BY_ID.phone.value) bad('addLoot shape');
+  if (LOOTC.grabLoot(st, 'mug', '', () => 0.999).length) bad('a mugging should sometimes give nothing');
+  const ph = LOOTC.addLoot(st, 'phone', 'a mugging'), gold = LOOTC.addLoot(st, 'chain', 'Test Mart');
+  if (!ph || LOOTC.lootKind(ph) !== 'electronics' || ph.value !== LOOT_BY_ID.phone.value) bad('addLoot shape');
   // the fence pays less the hotter you are, and won't deal at high heat
-  const cool = LT.fenceOffer(st, ph, 0), warm = LT.fenceOffer(st, ph, 2.5);
+  const cool = LOOTC.fenceOffer(st, ph, 0), warm = LOOTC.fenceOffer(st, ph, 2.5);
   if (!(cool > warm && warm > 0)) bad(`fence should pay less with heat (${cool} vs ${warm})`);
-  if (LT.fenceShare(st, PAWN.fenceRefuse) !== null || LT.sellToFence(st, [ph.uid], earnFn, 5).ok) bad('fence should refuse at high heat');
-  if (!(LT.counterOffer(ph) > cool)) bad('the counter should pay more than the fence');
+  if (LOOTC.fenceShare(st, PAWN.fenceRefuse) !== null || LOOTC.sellToFence(st, [ph.uid], earnFn, 5).ok) bad('fence should refuse at high heat');
+  if (!(LOOTC.counterOffer(ph) > cool)) bad('the counter should pay more than the fence');
   // gold has no serial: never flagged; a fresh phone often is, a week-old one less
-  if (LT.flagChance(st, gold) !== 0) bad('gold should never get flagged');
-  const fresh = LT.flagChance(st, ph); st.time.day += 8; const old = LT.flagChance(st, ph); st.time.day -= 8;
-  if (!(fresh > 0.5 && old < fresh / 2)) bad(`hot items should cool off (${fresh} → ${old})`);
-  const r1 = LT.pawnItem(st, gold.uid, earnFn, () => 0);
-  if (!r1.ok || r1.flagged || r1.paid !== LT.counterOffer(gold)) bad('pawning gold');
-  const w0 = st.warrants.length, r2 = LT.pawnItem(st, ph.uid, earnFn, () => 0);
-  if (!r2.flagged || r2.paid || st.warrants.length !== w0 + 1 || st.loot.items.some(i => i.uid === ph.uid)) bad('a flagged item should be kept and a warrant issued');
+  if (LOOTC.flagChance(st, gold) !== 0) bad('gold should never get flagged');
+  const fresh = LOOTC.flagChance(st, ph); st.time.day += 8; const later = LOOTC.flagChance(st, ph); st.time.day -= 8;
+  if (!(fresh > 0.5 && later < fresh / 2)) bad(`hot items should cool off (${fresh} → ${later})`);
+  const r1 = LOOTC.pawnItem(st, gold.uid, earnFn, () => 0);
+  if (!r1.ok || r1.flagged || r1.paid !== LOOTC.counterOffer(gold)) bad('pawning gold');
+  const w0 = (st.warrants || []).length, r2 = LOOTC.pawnItem(st, ph.uid, earnFn, () => 0);
+  if (!r2.flagged || r2.paid || st.warrants.length !== w0 + 1 || st.loot.some(i => i.uid === ph.uid)) bad('a flagged item should be kept and a warrant issued');
   const wr = takeWarrants(st);
-  if (!wr.items.some(i => i.kind === 'theft' && i.value === ph.value)) bad('theft warrant should keep its value');
-  if (classify({ kind: 'theft', value: 50 }).cls !== 'C' || classify({ kind: 'theft', value: 900 }).cls !== 'A' || classify({ kind: 'theft', value: 9500 }).cls !== 'SJF') bad('theft classes by value');
-  if (classify(LT.theftOffence([{ kind: 'gun', value: 260, name: 'g' }])).cls !== 'SJF') bad('a stolen gun should be a felony');
+  if (!wr.items.some(i => i.kind === 'stolen_goods' && i.value === ph.value)) bad('stolen-goods warrant should keep its value');
+  if (classify({ kind: 'stolen_goods', value: 260, guns: 1 }).cls !== 'SJF') bad('a stolen gun should be a felony');
   // sell to the fence, then busted with the rest: seized and charged
-  const n = st.loot.items.length, before = st.cash, all = st.loot.items.slice(0, 2).map(i => i.uid);
-  const f = LT.sellToFence(st, all, earnFn, 0);
-  if (!f.ok || st.cash - before !== f.paid || st.loot.items.length !== n - 2) bad('selling to the fence');
-  const seized = LT.seizeLoot(st);
-  if (st.loot.items.length || seized.length !== 1 || seized[0].kind !== 'theft') bad('stolen goods should be seized on arrest');
-  if (LT.seizeLoot(st).length) bad('nothing to seize when clean');
+  const n = st.loot.length, before = st.cash, two = st.loot.slice(0, 2).map(i => i.uid);
+  const f = LOOTC.sellToFence(st, two, earnFn, 0);
+  if (!f.ok || st.cash - before !== f.paid || st.loot.length !== n - 2) bad('selling to the fence');
+  LOOTC.addLoot(st, 'glovebox_gun', 'a stolen car');
+  const seized = LOOTC.seizeLoot(st);
+  if (st.loot.length || seized.length !== 1 || classify(seized[0]).cls !== 'SJF') bad('stolen goods with a gun should be seized and a felony ' + JSON.stringify(seized));
   // your own guns sell legally at the counter
   giveWeapon(st, GLOCKS[0].id, false);
-  const g = ensureArms(st).guns[0], sg = LT.sellOwnGun(st, g.uid, earnFn);
+  const g = ensureArms(st).guns[0], sg = LOOTC.sellOwnGun(st, g.uid, earnFn);
   if (!sg.ok || ensureArms(st).guns.length || sg.paid !== Math.round(GLOCKS[0].price * PAWN.ownGun)) bad('selling your own gun');
-  // old saves without s.loot
-  const legacy = createState({ name: 'L', age: 25, look: {}, story: false }); delete legacy.loot;
-  if (LT.lootItems(legacy).length !== 0 || LT.seizeLoot(legacy).length) bad('saves without loot');
+  // the early pawn-shop save shape { items } is repaired
+  const early = { loot: { items: [{ uid: 'x', id: 'phone', name: 'iPhone', value: 500, day: 1 }] } };
+  if (LOOTC.ensureLoot(early).length !== 1) bad('early loot shape');
+}
+// ---- store robberies: corner stores, stolen goods, selling and getting caught with it ----
+{
+  const corners = LOCATIONS.filter(l => l.type === 'corner');
+  if (corners.length < 3) bad('expected corner stores to rob');
+  for (const t of ['corner', 'gas', 'food', 'clothing']) {
+    if (!STORE_LOOT[t]?.length) bad(`${t}: nothing behind the counter`);
+    for (const [id] of STORE_LOOT[t] || []) if (!LOOT_BY_ID[id]) bad(`${t}: unknown loot ${id}`);
+  }
+  for (const l of LOOT) if (!(l.value > 0) || !l.name) bad(`loot ${l.id}: needs a name and value`);
+  const rolled = LOOTC.rollLoot('corner', 3);
+  if (rolled.length !== 3 || rolled.some(id => !STORE_LOOT.corner.some(([x]) => x === id))) bad('rollLoot corner: ' + rolled);
+  if (LOOTC.rollLoot('nowhere', 2).length) bad('rollLoot for a store with no shelf');
+  const st = createState({ name: 'R', age: 25, look: {}, story: false });
+  if (!Array.isArray(st.loot)) bad('new career has no loot list');
+  const old = { ...st }; delete old.loot; LOOTC.ensureLoot(old);
+  if (!Array.isArray(old.loot)) bad('old saves should get an empty loot list');
+  LOOTC.addLoot(st, 'chain', 'Test Mart'); LOOTC.addLoot(st, 'cigs', 'Test Mart'); LOOTC.addLoot(st, 'nope');
+  if (st.loot.length !== 2 || !st.loot.every(i => i.hot && i.uid && i.from === 'Test Mart')) bad('addLoot shape ' + JSON.stringify(st.loot));
+  const cash = st.cash, total = LOOTC.lootTotal(st);
+  const paid = LOOTC.sellLoot(st, [st.loot[1].uid]);
+  if (paid !== Math.round(LOOT_BY_ID.cigs.value * LOOTC.FENCE_RATE) || st.cash !== cash + paid || st.loot.length !== 1) bad('selling one item');
+  if (total !== LOOT_BY_ID.chain.value + LOOT_BY_ID.cigs.value) bad('loot total');
+  // busted holding a gold chain: theft over $100 (Class B), goods seized
+  const rec = LOOTC.seizeLoot(st);
+  if (st.loot.length || rec.length !== 1 || rec[0].kind !== 'stolen_goods') bad('seizeLoot ' + JSON.stringify(rec));
+  if (classify(rec[0]).cls !== 'B') bad('a $650 chain should be a Class B theft: ' + JSON.stringify(classify(rec[0])));
+  if (classify({ kind: 'stolen_goods', value: 3000 }).cls !== 'SJF') bad('$3,000 of stolen goods should be a state jail felony');
+  if (classify({ kind: 'stolen_goods', value: 50 }).cls !== 'C') bad('$50 of stolen goods is a Class C');
+  const ch = chargeOf([...rec, { kind: 'robbery', text: 'Armed robbery — Rosedale Food Mart.', fine: 6000 }], 0.9);
+  if (!ch.charges.some(c => c.cls === 'F1') || !ch.charges.some(c => /stolen goods/.test(c.text))) bad('robbery + goods charges ' + JSON.stringify(ch));
+  if (LOOTC.seizeLoot(st).length) bad('nothing to seize twice');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

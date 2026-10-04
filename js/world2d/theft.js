@@ -18,7 +18,7 @@ import { CAR_BY_ID, carName } from '../data/cars.js';
 import { PROPERTIES } from '../data/world.js';
 import { randomPlate } from '../data/parts.js';
 import { COMMON } from './traffic.js';
-import { rollLoot, lootNames } from '../core/loot.js';
+import { grabLoot, lootNames } from '../core/loot.js';
 import { lineOfSight } from './map.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { drawCar } from '../gfx2d/carSprite.js';
@@ -160,7 +160,7 @@ export class Thefts {
     s.stats.carsStolen = (s.stats.carsStolen || 0) + 1;
     this.witnesses(car, x, z);
     // whatever the owner left inside is yours too (fence it at Cash Cow Pawn)
-    const got = rollLoot(s, 'car', this.rng);
+    const got = grabLoot(s, 'car', `a stolen ${model.model}`, this.rng);
     w.ui.toast((a.kind === 'driver' ? `You took the ${model.model}. Go!` : `You hotwired a ${model.model}. Drive it like it's yours.`) + (got.length ? ` Inside: ${lootNames(got)}.` : ''), 'good');
   }
 

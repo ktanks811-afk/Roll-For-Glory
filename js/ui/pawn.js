@@ -6,9 +6,9 @@
 
 import { openPanel, bind, esc, toast, confirm, modal } from './dom.js';
 import { game, fmtMoney, earn } from '../core/state.js';
-import { LOOT_KINDS, LOOT_ICON, PAWN } from '../data/loot.js';
+import { LOOT_BY_ID, LOOT_KINDS, PAWN } from '../data/loot.js';
 import { WEAPON_BY_ID, ensureArms } from '../data/weapons.js';
-import { ensureLoot, lootValue, hotness, flagChance, counterOffer, fenceShare, fenceOffer, sellToFence, pawnItem, ownGunOffer, sellOwnGun } from '../core/loot.js';
+import { ensureLoot, lootTotal, lootKind, hotness, flagChance, counterOffer, fenceShare, fenceOffer, sellToFence, pawnItem, ownGunOffer, sellOwnGun } from '../core/loot.js';
 import { saveGame } from '../core/save.js';
 import { audio } from '../core/audio.js';
 
@@ -18,18 +18,18 @@ const risk = p => p >= 0.5 ? '<span class="bad">High</span>' : p >= 0.25 ? '<spa
 const heatWord = h => h >= 4 ? 'every cop in Fort Worth wants you' : h >= 3 ? 'very hot' : h >= 2 ? 'hot' : h >= 1 ? 'warm' : 'cool';
 
 export function openPawn(loc, app) {
-  const s = game.s, l = ensureLoot(s);
+  const s = game.s;
   const w = app.world;
   if (w?.police?.phase === 'chase') { modal(loc.name, '<p>Marcus flips the sign to CLOSED when he sees the lights behind you. "Not today."</p>'); return; }
   let tab = 'fence';
   const picked = new Set();
   openPanel((root, h) => {
     const heat = s.heat || 0, share = fenceShare(s, heat);
-    const items = l.items.slice().sort((a, b) => b.value - a.value);
+    const items = ensureLoot(s).slice().sort((a, b) => b.value - a.value);
     for (const u of [...picked]) if (!items.some(i => i.uid === u)) picked.delete(u);
     const tabs = [['fence', 'Back room (Dre)'], ['counter', 'Pawn counter'], ['guns', 'Sell my guns']];
-    const itemRow = (i, right) => `<div class="li"><span style="font-size:20px">${LOOT_ICON[i.kind] || '📦'}</span><div class="grow"><div class="t">${esc(i.name)}</div>
-      <div class="s">${LOOT_KINDS[i.kind]} · street value ${fmtMoney(i.value)} · ${hotness(s, i) >= 0.8 ? '<span class="bad">hot</span>' : hotness(s, i) > 0.3 ? 'cooling off' : 'cold'} (taken day ${i.day})</div></div>${right}</div>`;
+    const itemRow = (i, right) => `<div class="li"><span style="font-size:20px">${LOOT_BY_ID[i.id]?.icon || '📦'}</span><div class="grow"><div class="t">${esc(i.name)}</div>
+      <div class="s">${LOOT_KINDS[lootKind(i)]} · street value ${fmtMoney(i.value)} · ${hotness(s, i) >= 0.8 ? '<span class="bad">hot</span>' : hotness(s, i) > 0.3 ? 'cooling off' : 'cold'} (${i.from ? `from ${esc(i.from)}, ` : ''}day ${i.day})</div></div>${right}</div>`;
     let body = '';
     if (tab === 'fence') {
       const sel = items.filter(i => picked.has(i.uid)), selPay = sel.reduce((t, i) => t + fenceOffer(s, i, heat), 0);
@@ -51,7 +51,7 @@ export function openPawn(loc, app) {
     }
     root.innerHTML = head(loc.name, `East Lancaster · "We buy gold, guns &amp; electronics"`) + `<div class="p-body" style="max-width:720px">
       <div class="tabs" style="margin:0 -12px 10px">${tabs.map(([id, label]) => `<button class="${tab === id ? 'on' : ''}" data-action="tab" data-id="${id}">${label}</button>`).join('')}</div>
-      <p class="small muted">On you: <b>${l.items.length}</b> stolen item${l.items.length === 1 ? '' : 's'}${l.items.length ? ` worth about ${fmtMoney(lootValue(l.items))} on the street` : ''}. Get arrested with them and they're evidence.</p>
+      <p class="small muted">On you: <b>${items.length}</b> stolen item${items.length === 1 ? '' : 's'}${items.length ? ` worth about ${fmtMoney(lootTotal(s))} on the street` : ''}. Get arrested with them and they're evidence.</p>
       ${body}</div>`;
     const sold = r => { if (!r.ok) { toast(r.text, 'bad'); audio.error?.(); return; } audio.buy?.(); saveGame('auto', true); h.refresh(); };
     bind(root, {

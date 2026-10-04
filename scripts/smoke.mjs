@@ -682,6 +682,26 @@ await step('Amazin\' shop + guns + robbery', async () => {
   await calm();
   await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
   if (await p.evaluate(() => !!window.__rfg.app.world.combat.rob)) throw new Error('could rob the same store twice in a day');
+  if (!(await p.evaluate(() => window.__rfg.game.s.loot.length >= 1))) throw new Error('the gas station robbery left no goods to fence');
+  // corner store: the clerk goes for the shotgun, a warning shot stops them, and you walk out with the goods
+  await calm();
+  await p.evaluate(async () => { const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world, s = window.__rfg.game.s; const l = LOC_BY_ID.corner_rosedale; s.time.min = 12 * 60; s.loot = []; w.inCar = false; w.foot.x = l.x; w.foot.z = l.z - 2; w.foot.h = Math.PI; w.cam.x = w.foot.x; w.cam.z = w.foot.z; const c = w.combat; c.drawn = true; c.cd = 0; c.gun.g.loaded = 15; c.arms.hp = 100; });
+  await p.waitForTimeout(200);
+  await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
+  if (!(await p.evaluate(() => window.__rfg.app.world.combat.rob?.loc.id === 'corner_rosedale'))) throw new Error('E at the corner store did not start a robbery ' + await p.evaluate(() => window.__rfg.app.world.combat.robPrompt()));
+  await p.evaluate(() => { const r = window.__rfg.app.world.combat.rob; r.clerk = 'fight'; r.fightAt = 0.3; r.dur = 3; r.alarm = false; r.alarmed = false; r.pay = 300; r.loot = ['cigs', 'phones']; });
+  await p.waitForTimeout(700);
+  if (!(await p.evaluate(() => window.__rfg.app.world.combat.rob?.reach > 0))) throw new Error('the clerk never reached for the shotgun');
+  await snap('32b-clerk-reaching');
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(120); await p.keyboard.up('KeyJ');
+  await p.waitForTimeout(3300);
+  const cr = await p.evaluate(() => { const w = window.__rfg.app.world, s = window.__rfg.game.s; return { rob: !!w.combat.rob, hp: w.combat.arms.hp, loot: s.loot.map(i => i.id), rec: w.police.record.map(r => r.kind) }; });
+  if (cr.rob || cr.hp < 90 || !cr.loot.includes('phones') || !cr.loot.includes('cigs')) throw new Error('warning shot robbery went wrong ' + JSON.stringify(cr));
+  if (!cr.rec.includes('robbery')) throw new Error('the clerk hit the alarm after the warning shot, but no robbery on the record ' + JSON.stringify(cr));
+  // Sal buys the goods
+  await calm();
+  const sold = await p.evaluate(async () => { const L = await import('./js/core/loot.js'); const s = window.__rfg.game.s, c0 = s.cash; const paid = L.sellLoot(s); return { paid, gain: s.cash - c0, left: s.loot.length }; });
+  if (!(sold.paid > 0) || sold.gain !== sold.paid || sold.left) throw new Error('could not fence the goods ' + JSON.stringify(sold));
   // mugging a pedestrian
   await p.evaluate(async () => { const { LOCATIONS } = await import('./js/data/world.js'); const w = window.__rfg.app.world; const f = w.foot; for (const [x, z] of [[0, 75], [150, 225], [-300, 75], [300, -75], [0, -225], [-150, 375]]) if (LOCATIONS.every(l => Math.hypot(l.x - x, l.z - z) > 30)) { f.x = x; f.z = z; break; } w.cam.x = f.x; w.cam.z = f.z; w.traffic.peds.length = 0; w.traffic.peds.push({ x0: f.x, z0: f.z - 2.2, size: 1, t: 0, sp: 0, dir: 1, color: '#c41b1b', dodge: 0, dx: 0, dz: 0, x: f.x, z: f.z - 2.2, hp: 40 }); f.h = 0; });
   await calm();
@@ -1706,8 +1726,8 @@ await step('pawn shop + fence', async () => {
   await clear();
   await p.evaluate(async () => {
     const { addLoot } = await import('./js/core/loot.js'); const s = window.__rfg.game.s, w = window.__rfg.app.world;
-    w.police.reset(w); s.heat = 0; s.warrants = []; s.loot = { items: [] };
-    addLoot(s, 'phone', { from: 'mug' }); addLoot(s, 'laptop', { from: 'car' }); addLoot(s, 'gold_chain', { from: 'mug' }); addLoot(s, 'register_gun', { from: 'store' });
+    w.police.reset(w); s.heat = 0; s.warrants = []; s.loot = [];
+    addLoot(s, 'phone', 'a mugging'); addLoot(s, 'laptop', 'a stolen car'); addLoot(s, 'chain', 'Test Mart'); addLoot(s, 'glovebox_gun', 'a stolen car');
   });
   await open();
   await p.waitForSelector('.p-head:has-text("Cash Cow Pawn")');
@@ -1716,20 +1736,20 @@ await step('pawn shop + fence', async () => {
   const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
   await p.locator('[data-action=pick]').nth(0).click(); await p.locator('[data-action=pick]').nth(1).click();
   await p.click('[data-action=fence]'); await p.waitForTimeout(150);
-  const a = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, n: window.__rfg.game.s.loot.items.length }));
+  const a = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, n: window.__rfg.game.s.loot.length }));
   if (!(a.cash > cash0) || a.n !== 2) throw new Error('fence sale did nothing ' + JSON.stringify(a));
   // the counter: gold never gets flagged
   await p.click('.tabs button:has-text("Pawn counter")');
   await snap('pawn-counter');
-  const gold = await p.evaluate(() => window.__rfg.game.s.loot.items.find(i => i.id === 'gold_chain')?.uid);
+  const gold = await p.evaluate(() => window.__rfg.game.s.loot.find(i => i.id === 'chain')?.uid);
   if (gold) { await p.click(`[data-action=pawn][data-id="${gold}"]`); await p.waitForTimeout(150); }
-  if (await p.evaluate(() => window.__rfg.game.s.loot.items.some(i => i.id === 'gold_chain'))) throw new Error('pawning the chain did nothing');
+  if (await p.evaluate(() => window.__rfg.game.s.loot.some(i => i.id === 'chain'))) throw new Error('pawning the chain did nothing');
   // too hot: Dre won't come out
   await p.evaluate(() => { window.__rfg.game.s.heat = 4.5; });
   await p.click('.tabs button:has-text("Back room")');
   await p.waitForSelector('.card:has-text("Dre won\'t come out")');
   await snap('pawn-too-hot');
-  await p.evaluate(() => { const s = window.__rfg.game.s; s.heat = 0; s.loot.items = []; });
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.heat = 0; s.loot = []; });
   await clear();
 });
 await step('hustle (jobs, business, rentals)', async () => {

@@ -92,7 +92,7 @@ const strength = w => /serial/i.test(w.evidence || '') ? 0.8 : /disguise/i.test(
 export function takeWarrants(s) {
   ensureRecord(s);
   const n = s.warrants.length;
-  const items = s.warrants.filter(w => w.kind !== 'bailjump').map(w => ({ kind: w.kind, text: w.text, fine: w.fine, felony: w.felony, value: w.value, evidence: strength(w) }));
+  const items = s.warrants.filter(w => w.kind !== 'bailjump').map(w => ({ kind: w.kind, text: w.text, fine: w.fine, felony: w.felony, value: w.value, guns: w.guns, evidence: strength(w) }));
   const tickets = citationTotal(s);
   s.warrants = []; s.citations = [];
   if (n) emit('warrant', { cleared: n });
@@ -139,5 +139,5 @@ export function surrender(s) {
   s.warrants = []; s.citations = [];
   if (n) emit('warrant', { cleared: n });
   s.heat = 0;
-  return { ok: true, total, felonies: felonies.map(w => ({ kind: w.kind, text: w.text, felony: true, value: w.value, evidence: strength(w) })), skipped };
+  return { ok: true, total, felonies: felonies.map(w => ({ kind: w.kind, text: w.text, felony: true, value: w.value, guns: w.guns, evidence: strength(w) })), skipped };
 }
