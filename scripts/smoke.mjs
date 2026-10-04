@@ -1716,6 +1716,92 @@ await step('crew turf', async () => {
   await p.keyboard.press('Escape');
 });
 
+// ---------------- gangs: jumped in, homies, rival corners, a hit, a drive-by, getting slid on ----------------
+await step('gangs', async () => {
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    if (w.inCar) w.toggleCar();
+    w.police.reset(w); s.warrants = [];
+    s.gang = undefined; s.arms.hp = 100; s.time.min = 12 * 60;
+    w.foot.x = -450; w.foot.z = -450;
+    const { openPhone } = await import('./js/ui/phone.js'); openPhone('gang', window.__rfg.app);
+  });
+  await p.waitForTimeout(250);
+  await snap('29-gangs');
+  if ((await p.$$('[data-gang]')).length !== 5) throw new Error('expected 5 sets');
+  await p.click('[data-gang="six_block"] [data-action="jump"]');
+  await p.click('.modal-back .btn-primary');
+  await p.waitForTimeout(200);
+  await snap('30-gang-member');
+  const joined = await p.evaluate(() => ({ set: window.__rfg.game.s.gang.set, hp: window.__rfg.game.s.arms.hp }));
+  if (joined.set !== 'six_block' || joined.hp > 60) throw new Error('jumping in did not work ' + JSON.stringify(joined));
+  await p.keyboard.press('Escape'); await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); });
+  // the homie follows you around
+  await p.waitForTimeout(500);
+  const homie = await p.evaluate(() => { const w = window.__rfg.app.world, h = w.gangs.homies[0]; return h && { friend: h.friend, d: Math.hypot(h.x - w.foot.x, h.z - w.foot.z), inPeds: w.traffic.peds.includes(h) }; });
+  if (!homie || !homie.friend || homie.d > 6 || !homie.inPeds) throw new Error('no homie riding with you ' + JSON.stringify(homie));
+  // walk up on Hemphill (Six Block's rivals): they open up, your homie shoots back
+  await p.evaluate(() => { const w = window.__rfg.app.world, c = w.gangs.corners.hemphill; w.foot.x = c.x + c.ax * 12; w.foot.z = c.z + c.az * 12; w.combat.arms.hp = 100; w.combat.arms.armor = 1; });
+  await p.waitForTimeout(3500);
+  await snap('31-gang-shootout');
+  const fight = await p.evaluate(() => { const w = window.__rfg.app.world, set = w.gangs.sets.hemphill; return { peds: set?.peds.length, enemy: set && !set.peds[0].friend, shots: w.gangs.shots || 0, hp: w.combat.arms.hp, armor: w.combat.arms.armor }; });
+  console.log('     gang fight', JSON.stringify(fight));
+  if (fight.peds !== 4 || !fight.enemy) throw new Error('Hemphill corner did not post up');
+  if (!(fight.shots >= 3)) throw new Error('nobody shot: ' + fight.shots);
+  // the hit: drop their people, get paid
+  const hit = await p.evaluate(async () => {
+    const G = await import('./js/core/gangs.js'); const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    w.police.reset(w);
+    s.gang.job = { ...G.makeJob(s, 'hit', 'hemphill'), deadline: 1e9 };
+    s.gang.job.got = 0;
+    const cash = s.cash, respect = s.gang.respect;
+    for (const pd of w.gangs.sets.hemphill.peds) if (!pd.down) w.combat.hurtPed(pd, 100);
+    await new Promise(r => setTimeout(r, 300));
+    return { job: s.gang.job, paid: s.cash - cash, respect: s.gang.respect - respect, beef: s.gang.beef.hemphill };
+  });
+  console.log('     gang hit', JSON.stringify({ ...hit, job: !!hit.job }));
+  if (hit.job || !(hit.paid >= 700) || !(hit.respect >= 80)) throw new Error('the hit did not pay off');
+  // a drive-by on the Rydaz: sit in the car next to their corner, the homie hangs out the window
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; w.combat.arms.hp = 100; });
+  await p.waitForTimeout(150); await key('KeyF'); await p.waitForTimeout(200);
+  const db = await p.evaluate(async () => {
+    const G = await import('./js/core/gangs.js'); const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    s.gang.job = { ...G.makeJob(s, 'driveby', 'riverside'), deadline: 1e9 };
+    const c = w.gangs.corners.riverside, v = w.vehicle;
+    v.x = c.x + c.az * 7; v.z = c.z - c.ax * 7; v.vx = v.vz = v.speed = 0;
+    const shots = w.gangs.shots || 0;
+    await new Promise(r => setTimeout(r, 2500));
+    return { inCar: w.inCar, set: !!w.gangs.sets.riverside, shots: (w.gangs.shots || 0) - shots, got: s.gang.job?.got ?? 'done', down: w.gangs.sets.riverside?.peds.filter(q => q.down).length, heat: w.police.level, phase: w.police.phase };
+  });
+  console.log('     drive-by', JSON.stringify(db));
+  if (!db.inCar || !db.set || !(db.shots >= 2)) throw new Error('no drive-by from the car');
+  // getting slid on: a Hemphill car comes down your street
+  await snap('32-drive-by');
+  const slid = await p.evaluate(async () => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    w.toggleCar(); w.police.reset(w);
+    w.foot.x = -450 + 10; w.foot.z = -375;
+    s.gang.hit = { gang: 'hemphill', at: 0 };
+    await new Promise(r => setTimeout(r, 400));
+    const car = w.gangs.hitCar;
+    return { car: !!car, color: car?.color, d: car && Math.hypot(car.x - w.foot.x, car.z - w.foot.z), pending: !!s.gang.hit };
+  });
+  console.log('     slid on', JSON.stringify(slid));
+  if (!slid.car || slid.pending || !(slid.d < 100)) throw new Error('the rival hit car never came');
+  await p.evaluate(async () => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, { openPhone } = await import('./js/ui/phone.js');
+    openPhone('gang', window.__rfg.app);
+  });
+  await p.waitForTimeout(200);
+  await snap('33-gang-app');
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
+    const w = window.__rfg.app.world, s = window.__rfg.game.s;
+    s.gang = undefined; w.gangs.hitCar = null; w.police.reset(w); s.warrants = []; w.combat.arms.hp = 100;
+  });
+});
+
 // ---------------- engine sounds: each car's note matches its engine ----------------
 await step('engine sounds', async () => {
   const r = await p.evaluate(async () => {

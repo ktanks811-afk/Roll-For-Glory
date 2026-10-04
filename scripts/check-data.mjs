@@ -21,6 +21,9 @@ import { PROPERTIES } from '../js/data/world.js';
 import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
 import { sideGeo } from '../js/gfx2d/sideCar.js';
 import { CARJACK, canCarjack, carjackChance, carjackChoices, resolveCarjack, strippedCar } from '../js/data/carjack.js';
+import * as GANG from '../js/core/gangs.js';
+import { GANGS, GANG_IDS, GANG_CONTACTS, RANKS } from '../js/data/gangs.js';
+import { HOOD_BY_ID } from '../js/core/turf.js';
 import { STREET_RACES, raceRoute, courseRecord, cornerSpeed, pinkSlipCheck } from '../js/data/streetRaces.js';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
@@ -704,6 +707,49 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!pinkSlipCheck({ ...fair, freeSlots: 0 })) bad('pink slips allowed with a full garage');
   if (!pinkSlipCheck({ ...fair, myPi: 600 })) bad('pink slips allowed against a much slower car');
   if (!pinkSlipCheck({ ...fair, myValue: 2000 })) bad('pink slips allowed with a junker against a nice car');
+}
+// ---- gangs: getting on, ranks, homies, beef, work ----
+{
+  for (const id of GANG_IDS) {
+    const g = GANGS[id];
+    if (!HOOD_BY_ID[g.hood]) bad(`gang ${id}: unknown hood ${g.hood}`);
+    if (!GANG_CONTACTS[g.boss]) bad(`gang ${id}: no big homie contact`);
+    if (g.rivals.some(r => !GANGS[r] || r === id)) bad(`gang ${id}: bad rival`);
+  }
+  if (RANKS.some((r, i) => i && !(r.respect > RANKS[i - 1].respect && r.homies >= RANKS[i - 1].homies))) bad('gang ranks should climb');
+  const s = createState({ name: 'Gang', age: 22, look: {}, story: false });
+  game.s = s;
+  GANG.ensureGang(s);
+  if (GANG.hostile(s, 'six_block')) bad('a set should not shoot at someone with no beef');
+  s.arms = undefined; ensureArms(s); s.arms.hp = 100;
+  if (GANG.jumpIn(s, 'six_block')) bad('could not get jumped in');
+  if (s.gang.set !== 'six_block' || s.arms.hp !== 55 || s.gang.homies.length !== 1) bad('getting jumped in should hurt and come with a homie');
+  if (!GANG.hostile(s, 'hemphill') || GANG.hostile(s, 'six_block')) bad('your set\'s rivals should shoot on sight, your own set should not');
+  if (GANG.rankOf(s).name !== 'Lil Homie') bad('new members start as Lil Homie');
+  GANG.addRespect(s, 160);
+  if (GANG.rankOf(s).name !== 'Soldier' || GANG.homieCap(s) !== 2) bad('respect should rank you up');
+  s.cash = 5000;
+  if (GANG.recruit(s) || s.gang.homies.length !== 2) bad('could not recruit a homie');
+  if (!GANG.recruitBlocked(s)) bad('recruiting past the rank cap was allowed');
+  if (s.gang.offers.length !== 3) bad('a member should have work offered');
+  const hit = s.gang.offers.find(o => o.kind === 'hit');
+  if (GANG.takeJob(s, hit.id)) bad('could not take a hit');
+  const cash = s.cash, rep = s.gang.respect, beef = s.gang.beef[hit.gang];
+  for (let i = 0; i < hit.need; i++) GANG.progress(s, 'hit', hit.gang);
+  if (s.gang.job || s.cash !== cash + hit.pay || s.gang.respect !== rep + hit.respect || !(s.gang.beef[hit.gang] > beef)) bad('finishing a hit should pay, add respect and beef');
+  s.gang.beef.como = 60;
+  if (!GANG.hostile(s, 'como')) bad('hot beef should make a set shoot on sight');
+  s.cash = 1e5;
+  if (GANG.squash(s, 'como') || GANG.hostile(s, 'como') || s.gang.beef.como !== 0) bad('squashing beef should cool a set off');
+  GANG.leave(s);
+  if (s.gang.set || !(s.gang.beef.six_block >= GANG.HOSTILE_AT)) bad('leaving your set should put you at war with it');
+  s.rep = 1e6;
+  if (GANG.found(s, 'Rosedale Gang', 'Stop Six') || s.gang.set !== 'own' || !GANG.hostile(s, 'six_block')) bad('starting a set in a taken hood should start beef');
+  s.time.day += 1; const before = s.cash; GANG.tick(s);
+  if (!(s.cash > before)) bad('your own set should pay dues in the morning');
+  const { classify } = await import('../js/core/justice.js');
+  if (classify({ kind: 'driveby', text: 'Drive-by shooting (gang activity).' }).cls !== 'F2') bad('a gang drive-by should be a 2nd-degree felony');
+  game.s = null;
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

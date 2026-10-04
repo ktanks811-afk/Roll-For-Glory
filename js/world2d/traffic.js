@@ -146,7 +146,7 @@ export class TrafficSystem {
     }
     for (const p of this.peds) {
       if (p.down) { p.down -= dt; if (p.down <= 0) p.gone = true; continue; }
-      if (p.cower) continue;
+      if (p.cower || p.ctl) continue;   // gang members: world2d/gangs.js moves them
       p.t = (p.t + p.sp * p.dir * dt * (p.scared ? 2.5 : 1) + p.size * 4) % (p.size * 4);
       // jump out of the way of fast cars
       for (const c of ctx.movers) {
