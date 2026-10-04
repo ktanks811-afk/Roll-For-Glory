@@ -63,6 +63,13 @@ export const CAR_ART = {
     archY: 283,
     tireR: 0.42,
   },
+  audi_rs3_2022: {
+    side: 'img/cars/audi-rs3-side.png',
+    top: 'img/cars/audi-rs3-top.png',
+    wheels: [204, 868],
+    archY: 258,
+    tireR: 0.357,
+  },
 };
 
 const ready = {};   // id -> { side, top } processed layers
