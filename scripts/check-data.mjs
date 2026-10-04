@@ -880,6 +880,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const a = mk(); a.cash = 6000; a.dirty = 5000;
   const sz = BK.seizeCash(a);
   if (sz.seized !== 5000 || a.cash !== 1000 || sz.items[0]?.kind !== 'launder_SJF') bad('seizing dirty cash at booking');
+}
 // ---- JPS hospital: injuries heal, bills go to collections, then garnishment ----
 {
   const HL = await import('../js/core/health.js');
