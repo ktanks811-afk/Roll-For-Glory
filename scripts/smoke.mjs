@@ -959,6 +959,8 @@ await step('stealing cars', async () => {
   if (!(await parked())) throw new Error('no parked cars in the city');
   await p.waitForTimeout(150);
   if (!(await p.evaluate(() => window.__rfg.app.world.thefts.target?.kind === 'parked'))) throw new Error('no steal prompt next to a parked car ' + JSON.stringify(await p.evaluate(() => window.__rfg.app.world.thefts.target?.kind || null)));
+  // two cars parked nose to tail: standing between them, the other one can be the closer one
+  await p.evaluate(() => { window.__stealCol = window.__rfg.app.world.thefts.target.col; });
   await key('KeyT'); await p.waitForTimeout(1900);
   await snap('43-steal-parked');
   const hw = await p.evaluate(() => { const w = window.__rfg.app.world; return { inCar: w.inCar, hot: w.vehicle?.car?.hot?.kind, off: window.__stealCol.off, gone: window.__stealCol.b.gone, carname: document.body.innerText.includes('STOLEN') }; });
