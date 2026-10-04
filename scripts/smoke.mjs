@@ -1874,6 +1874,38 @@ await step('every car draws (side view + overhead)', async () => {
 });
 
 // ---------------- side hustles: passive income ----------------
+await step('pawn shop + fence', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  const open = () => p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.cashcow_pawn, window.__rfg.app); });
+  await clear();
+  await p.evaluate(async () => {
+    const { addLoot } = await import('./js/core/loot.js'); const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    w.police.reset(w); s.heat = 0; s.warrants = []; s.loot = [];
+    addLoot(s, 'phone', 'a mugging'); addLoot(s, 'laptop', 'a stolen car'); addLoot(s, 'chain', 'Test Mart'); addLoot(s, 'glovebox_gun', 'a stolen car');
+  });
+  await open();
+  await p.waitForSelector('.p-head:has-text("Cash Cow Pawn")');
+  await snap('pawn-fence');
+  // Dre: pick two and sell
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.locator('[data-action=pick]').nth(0).click(); await p.locator('[data-action=pick]').nth(1).click();
+  await p.click('[data-action=fence]'); await p.waitForTimeout(150);
+  const a = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, n: window.__rfg.game.s.loot.length }));
+  if (!(a.cash > cash0) || a.n !== 2) throw new Error('fence sale did nothing ' + JSON.stringify(a));
+  // the counter: gold never gets flagged
+  await p.click('.tabs button:has-text("Pawn counter")');
+  await snap('pawn-counter');
+  const gold = await p.evaluate(() => window.__rfg.game.s.loot.find(i => i.id === 'chain')?.uid);
+  if (gold) { await p.click(`[data-action=pawn][data-id="${gold}"]`); await p.waitForTimeout(150); }
+  if (await p.evaluate(() => window.__rfg.game.s.loot.some(i => i.id === 'chain'))) throw new Error('pawning the chain did nothing');
+  // too hot: Dre won't come out
+  await p.evaluate(() => { window.__rfg.game.s.heat = 4.5; });
+  await p.click('.tabs button:has-text("Back room")');
+  await p.waitForSelector('.card:has-text("Dre won\'t come out")');
+  await snap('pawn-too-hot');
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.heat = 0; s.loot = []; });
+  await clear();
+});
 await step('hustle (jobs, business, rentals)', async () => {
   await p.evaluate(async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());

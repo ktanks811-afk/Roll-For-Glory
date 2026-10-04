@@ -13,7 +13,7 @@ const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '�
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop'] },
-  { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty'] },
+  { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty', 'pawn'] },
   { id: 'race', label: 'Races & meets', types: ['meet', 'carshow', 'drag', 'roll', 'sprint'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food', 'corner'] },
   { id: 'work', label: 'Work', types: ['work'] },
@@ -38,6 +38,7 @@ const WHAT = {
   realty: 'Buy and sell houses, land and trap houses.',
   trap: 'A trap house. Stock the stash and customers knock. Too many and SWAT does too.',
   land: 'Land for sale. Buy it and build your own house and garage.',
+  pawn: 'Pawn shop with a fence in the back: sell stolen phones, jewelry, electronics and guns.',
   plug: 'Lil Tre sells product out the back of his corner store.',
   police: 'FWPD precinct. Lay low when you have heat.',
   hospital: 'JPS, the county trauma center. Urgent care, clinic follow-ups for injuries, and your medical bills.',
