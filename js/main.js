@@ -22,6 +22,7 @@ import { initOnline } from './ui/online.js';
 import { initCrews } from './ui/ocrew.js';
 import { initTurf } from './core/turf.js';
 import { initGangs } from './core/gangs.js';
+import { initFeed, feedHour } from './core/feed.js';
 import { initOrientation } from './ui/orientation.js';
 import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
@@ -122,6 +123,7 @@ function hourly() {
   if (fta) sendMessage(s, 'clerk', `You failed to appear in ${courtName(fta.case)} (Cause No. ${fta.case.cause}). The judge issued a warrant for your arrest for bail jumping${fta.forfeited ? ` and your ${fmtMoney(fta.forfeited)} bail is forfeited` : ''}. Turn yourself in at the courthouse or a precinct.`, { action: { type: 'gps', loc: 'courthouse' } });
   maybeChallenge(s);
   offerMission(s);
+  feedHour(s);
   // buyers message you about cars you have listed
   for (const ml of s.myListings) {
     const car = s.cars.find(c => c.uid === ml.carUid);
@@ -285,6 +287,7 @@ async function boot() {
     initCrews(app);
     initTurf(app);
     initGangs();
+    initFeed();
     initOrientation();
   } catch (e) {
     console.error(e);
