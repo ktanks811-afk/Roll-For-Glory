@@ -184,6 +184,8 @@ export const PEOPLE = {
   kingpin: { name: 'Dre Holloway', role: 'Organizer · "Kingpin"', color: '#e8c21a', bio: 'Runs the meets. If there\'s a race worth watching, Dre set it up.' },
   brenner: { name: 'Sgt. Hal Brenner', role: 'FWPD Street Racing Task Force', color: '#1b4fc4', bio: 'Twenty years on the job. Has a whiteboard with your name on it now.' },
   clerk:   { name: 'Tarrant County District Clerk', role: 'Courts · notices to appear', color: '#8a6d3b', bio: 'Automated court notices. Ignoring them is how warrants happen.' },
+  jps:     { name: 'JPS Health Network', role: 'Patient financial services', color: '#e0192e', bio: 'John Peter Smith Hospital, the county trauma center. Statements, payment plans and JPS Connection.' },
+  collections: { name: 'Lone Star Recovery Services', role: 'Debt collector', color: '#7a7a7a', bio: 'Buys unpaid medical bills. Calls at dinner. Sues.' },
   priya:   { name: 'Priya Shah', role: 'Agent · Bayline Realty', color: '#1f8f3a', bio: 'Sells garages with houses attached.' },
   plug:    { name: 'Lil Tre', role: 'The plug · Stop Six', color: '#2cff7a', bio: 'Runs the corner store on the east side. The good stuff is behind the counter.' },
   builder: { name: 'Cowtown Custom Builders', role: 'Construction', color: '#c8a46a', bio: 'Pour the slab Monday, hand you the keys Thursday.' },

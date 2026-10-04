@@ -30,6 +30,7 @@ import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug } from './estate.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
 import { openChop } from './chop.js';
+import { openHospital } from './hospital.js';
 import { BREAKDOWNS, needsOil, oilChangeCost, changeOil, clearBreakdown, oilInterval } from '../core/upkeep.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
@@ -57,6 +58,7 @@ const HANDLERS = {
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
+  hospital: (loc, app) => openHospital(loc, app),
   meet: (loc, app, s) => {
     if (!isNight(s.time)) { modal(loc.name, `<p>Empty lot. A security guard on a golf cart. Meets start after <b>8 PM</b>.</p><p class="muted small">Tip: sleep at home until night.</p>`); return; }
     if (!activeCar(s)) { modal(loc.name, '<p>You can\'t roll up to a car meet on foot. Get a car.</p>'); return; }

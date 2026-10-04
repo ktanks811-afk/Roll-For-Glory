@@ -14,6 +14,7 @@ import { addRep, spend, fmtMoney } from '../core/state.js';
 import { collideCircle } from './map.js';
 import { WEAPON_BY_ID, CAL, ensureArms, equippedGun } from '../data/weapons.js';
 import { LOCATIONS } from '../data/world.js';
+import { healthMods } from '../core/health.js';
 
 // A forced-reset trigger turns a semi-auto pistol into a full-auto one: very fast, wild, and unreliable.
 export const FRT = { cd: 0.062, spread: 1.7, jam: 0.045, burst: 0.2 };
@@ -119,7 +120,7 @@ export class Combat {
       else if (!this.burstLeft && Math.random() < (this.burstChance ?? FRT.burst)) this.burstLeft = 2;
     }
     const ang0 = this.aimAngle();
-    const spread = def.spread * (g.frt ? FRT.spread : 1) * (f.moving ? 1.7 : 1) * Math.PI / 180;
+    const spread = def.spread * (g.frt ? FRT.spread : 1) * (f.moving ? 1.7 : 1) * healthMods(this.s).aim * Math.PI / 180;
     const ang = ang0 + (Math.random() - 0.5) * 2 * spread;
     f.h = ang0;
     const mx = f.x + Math.sin(ang0) * 0.55, mz = f.z - Math.cos(ang0) * 0.55;
@@ -304,17 +305,20 @@ export class Combat {
 
   // ---------------------------------------------------------------- damage
   hurt(dmg, why) {
+    if (this.w.downed) return;
     const a = this.arms;
     const soak = a.armor > 0 ? Math.min(dmg * 0.6, a.armor * 100) : 0;
     a.armor = Math.max(0, a.armor - soak / 120);
     a.hp -= dmg - soak;
     this.say(`${why} (−${Math.round(dmg - soak)} health)`, 'bad');
     if (this.w.cam) this.w.cam.shake = 0.5;
-    if (a.hp <= 0) this.knockedOut();
+    if (a.hp <= 0) this.knockedOut(why);
   }
-  knockedOut() {
+  // Shot down: MedStar takes you to JPS (ui/hospital.js).
+  knockedOut(why = '') {
     const s = this.s, a = this.arms;
     this.rob = null; this.mug = null; this.drawn = false;
+    if (this.w.ui.hospital) { const sev = Math.min(1, 0.35 + Math.max(0, -a.hp) / 60 + Math.random() * 0.3); a.hp = 1; this.w.ui.hospital({ cause: 'shot', sev, why }); return; }
     a.hp = 60;
     const bill = 1500;
     if (!spend(s, bill, 'Hospital bill')) { s.bank -= Math.max(0, bill - s.cash - s.bank); s.cash = 0; }
@@ -339,7 +343,9 @@ export class Combat {
     this.cd = Math.max(0, this.cd - dt);
     if (this.reload > 0) { this.reload -= dt; if (this.reload <= 0) this.finishReload(); }
     const a = this.arms;
-    if (a.hp < 100 && !this.rob) a.hp = Math.min(100, a.hp + dt * 0.4);
+    const hm = healthMods(this.s);   // injuries cap your health and slow the healing
+    if (a.hp > hm.cap) a.hp = hm.cap;
+    else if (a.hp < hm.cap && !this.rob) a.hp = Math.min(hm.cap, a.hp + dt * 0.4 * hm.regen);
     for (const t of this.tracers) t.t -= dt; this.tracers = this.tracers.filter(t => t.t > 0);
     for (const t of this.flashes) t.t -= dt; this.flashes = this.flashes.filter(t => t.t > 0);
     for (const t of this.sparks) t.t -= dt; this.sparks = this.sparks.filter(t => t.t > 0);
