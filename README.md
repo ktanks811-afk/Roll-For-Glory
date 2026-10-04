@@ -226,6 +226,15 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   leaving are soft deletes. `?net=local` swaps the database for a
   same-browser copy of the same rules, which is what the smoke test uses. The
   older single-player Crew app (NPC crews) is still there.
+- **Online profiles (no log-in).** The first launch gives the device a
+  profile and every save is copied online to the Supabase project
+  (`rfg_profiles`, through the `rfg_profile_save` / `rfg_profile_load`
+  functions; only a sha256 hash of the profile key is stored). On launch any
+  newer copy online is pulled down, so careers survive a browser that forgets
+  its storage. The title screen's **Profile code** button shows the 20-letter
+  code; typing it on another phone (or after a wipe) brings the careers back.
+  Code lives in `js/net/profile.js`; `?auth=local` keeps the online copy in
+  the same browser for the smoke test.
 - **Crew turf.** Phone → Turf (or the Turf button in the Crew app). Every
   Fort Worth neighborhood belongs to a crew: Iron Saints run the Stockyards
   (North Side) and Riverside, Midnight Static the Near Southside and

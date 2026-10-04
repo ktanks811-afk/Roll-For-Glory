@@ -2,7 +2,7 @@
 // → drive → garage → PartsHub → drag race → roll race. Fails on any console
 // error or uncaught exception.
 import { chromium } from 'playwright';
-// ?auth=local: accounts kept in this browser instead of on Supabase (only honoured on localhost)
+// ?auth=local: online profile saves kept in this browser instead of on Supabase (only honoured on localhost)
 const URL = process.env.URL || 'http://localhost:8123/index.html?auth=local';
 const OUT = process.env.OUT || '/tmp/claude-0/shots';
 const shots = !!process.env.SHOTS;
@@ -23,37 +23,34 @@ await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
 await p.goto(URL, { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.__rfg, null, { timeout: 15000 });
 await p.waitForTimeout(800);
-await step('account required', async () => {
-  // a career saved before accounts existed, to check it moves into the new account
+await step('online profile, no log-in', async () => {
+  // a career saved before profiles existed, to check it moves into the profile
   await p.evaluate(() => localStorage.setItem('rollforglory.save.slot3', JSON.stringify({ savedAt: 1, state: { player: { name: 'OldTimer' }, time: { day: 9 }, cash: 777, rep: 0, cars: [] } })));
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(800);
-  if (await p.isVisible('.menu button:has-text("New Game")')) throw new Error('title menu shown without an account');
-  await snap('00-signup');
-  if (!(await p.isVisible('.auth-legacy:has-text("OldTimer")'))) throw new Error('no note about the old save moving into the account');
-  await p.fill('[name=username]', 'Tester'); await p.fill('[name=email]', 'tester@example.com'); await p.fill('[name=password]', '123');
-  await p.click('.auth-go');
-  if (!/at least 6/.test(await p.textContent('[data-err]'))) throw new Error('short password accepted');
-  await p.fill('[name=password]', 'hunter22'); await p.click('.auth-go'); await p.waitForTimeout(400);
-  if (!(await p.isVisible('.acct-chip:has-text("Tester")'))) throw new Error('not logged in after sign-up');
+  if (!(await p.isVisible('.menu button:has-text("New Game")'))) throw new Error('no title menu straight away');
+  if (await p.isVisible('.auth-card')) throw new Error('log-in screen still shown');
+  if (!(await p.isVisible('.acct-chip:has-text("Saved online")'))) throw new Error('no profile chip');
   const keys = await p.evaluate(() => Object.keys(localStorage));
-  if (keys.includes('rollforglory.save.slot3') || !keys.some(k => /^rollforglory\.acct\..+\.save\.slot3$/.test(k))) throw new Error('old save did not move into the account: ' + keys.join(','));
-  // stays logged in across launches
+  if (keys.includes('rollforglory.save.slot3') || !keys.some(k => /^rollforglory\.acct\..+\.save\.slot3$/.test(k))) throw new Error('old save did not move into the profile: ' + keys.join(','));
+  await p.evaluate(() => window.__rfg.profile.push());
+  const code = await p.evaluate(() => window.__rfg.profile.code);
+  if (!/^([A-Z2-9]{4}-){4}[A-Z2-9]{4}$/.test(code)) throw new Error('bad profile code ' + code);
+  // same profile after reopening
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(600);
-  if (!(await p.isVisible('.acct-chip:has-text("Tester")'))) throw new Error('logged out after reopening the game');
-  // a browser that loses localStorage but keeps cookies still keeps you logged in
-  await p.evaluate(() => localStorage.removeItem('mwsr.auth.session'));
+  if ((await p.evaluate(() => window.__rfg.profile.code)) !== code) throw new Error('profile changed after reopening');
+  // localStorage lost but the cookie kept: same profile, saves come back from online
+  await p.evaluate(() => { for (const k of Object.keys(localStorage)) if (k !== 'mwsr.localcloud') localStorage.removeItem(k); });
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(600);
-  if (!(await p.isVisible('.acct-chip:has-text("Tester")'))) throw new Error('logged out after localStorage lost the session (cookie backup)');
-  // log out → log-in screen; wrong password refused; right one lets you back in with your saves
-  await p.click('.acct-chip button'); await p.click('.modal button:has-text("Log out")'); await p.waitForTimeout(300);
-  if (!(await p.isVisible('.auth-card'))) throw new Error('no log-in screen after logging out');
-  await p.click('.auth-links button:has-text("Log in")');
-  await p.fill('[name=email]', 'tester@example.com'); await p.fill('[name=password]', 'nope123'); await p.click('.auth-go'); await p.waitForTimeout(200);
-  if (!/Wrong email or password/.test(await p.textContent('[data-err]'))) throw new Error('wrong password accepted');
-  await p.fill('[name=password]', 'hunter22'); await p.click('.auth-go'); await p.waitForTimeout(400);
-  if (!(await p.isVisible('.menu button:has-text("Load Game")'))) throw new Error('no title menu after logging in');
-  const info = await p.evaluate(async () => (await import('./js/core/save.js')).slotInfo('slot3'));
-  if (info?.name !== 'OldTimer') throw new Error('old save not available after logging back in');
+  if ((await p.evaluate(() => window.__rfg.profile.code)) !== code) throw new Error('profile lost with localStorage (cookie backup)');
+  if ((await p.evaluate(async () => (await import('./js/core/save.js')).slotInfo('slot3')))?.name !== 'OldTimer') throw new Error('save not pulled back from online');
+  // everything forgotten: a new profile, and the code brings the careers back
+  await p.evaluate(() => { for (const k of Object.keys(localStorage)) if (k !== 'mwsr.localcloud') localStorage.removeItem(k); document.cookie = 'mwsr_profile=; path=/; max-age=0'; });
+  await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(600);
+  if ((await p.evaluate(() => window.__rfg.profile.code)) === code) throw new Error('profile survived a full wipe?');
+  if (await p.isVisible('.menu button[data-action=continue]:not([disabled])')) throw new Error('careers visible on a fresh profile');
+  await p.click('.acct-chip button'); await p.click('.modal button:has-text("Use a code")');
+  await p.fill('.modal input', code.toLowerCase()); await p.click('.modal [data-ok]'); await p.waitForTimeout(400);
+  if (!(await p.isVisible('.menu button:has-text("OldTimer")'))) throw new Error('careers not back after entering the code');
   await p.evaluate(async () => (await import('./js/core/save.js')).deleteSlot('slot3'));
 });
 await snap('01-title');
@@ -2345,42 +2342,30 @@ await step('engine sounds', async () => {
   if (r.bad.length) throw new Error(r.bad.join('; '));
 });
 
-// ---------------- real account server (Supabase Auth, mocked) ----------------
-await step('supabase accounts', async () => {
+// ---------------- real save server (Supabase RPCs, mocked) ----------------
+await step('supabase profile saves', async () => {
   const actx = await b.newContext({ viewport: { width: 844, height: 390 } });
   const a = await actx.newPage(); a.setDefaultTimeout(8000);
-  a.on('pageerror', e => errs.push('auth pageerror: ' + e.message));
+  a.on('pageerror', e => errs.push('profile pageerror: ' + e.message));
   await a.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
-  const calls = []; let refreshOk = true;
-  const user = { id: 'u-123', email: 'kim@example.com', user_metadata: { username: 'Kimari' } };
-  const sess = n => ({ access_token: 'at' + n, refresh_token: 'rt' + n, expires_in: 3600, token_type: 'bearer', user });
-  await a.route(/supabase\.co\/auth\/v1\//, async r => {
-    const u = new globalThis.URL(r.request().url()), path = u.pathname.split('/auth/v1/')[1] + u.search, body = r.request().postDataJSON?.() || {};
-    calls.push(path.split('&')[0]);
+  const db = {}, calls = [];
+  await a.route(/supabase\.co\/rest\/v1\/rpc\/rfg_profile_/, async r => {
+    const fn = r.request().url().split('/rpc/')[1], body = r.request().postDataJSON() || {};
+    calls.push(fn);
     const json = (status, o) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(o) });
-    if (path.startsWith('signup')) return json(200, { id: 'u-123', email: body.email, user_metadata: body.data });   // email confirmation on: no session
-    if (path.startsWith('token?grant_type=password')) return body.password === 'hunter22' ? json(200, sess(1)) : json(400, { error_code: 'invalid_credentials', msg: 'Invalid login credentials' });
-    if (path.startsWith('token?grant_type=refresh_token')) return refreshOk ? json(200, sess(2)) : json(400, { error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token' });
-    if (path.startsWith('logout')) return r.fulfill({ status: 204 });
-    return json(404, { msg: 'not mocked: ' + path });
+    const row = db[body.p_id];
+    if (row && row.key !== body.p_key) return json(400, { message: 'Wrong profile code' });
+    if (fn === 'rfg_profile_load') return json(200, row ? { found: true, saves: row.saves } : { found: false });
+    db[body.p_id] = { key: body.p_key, saves: body.p_saves }; return json(200, { ok: true });
   });
   const open = async () => { await a.goto(URL.replace(/\?.*$/, ''), { waitUntil: 'domcontentloaded' }); await a.waitForFunction(() => window.__rfg, null, { timeout: 15000 }); await a.waitForTimeout(600); };
   await open();
-  if (await a.evaluate(() => window.__rfg.auth.kind) !== 'supabase') throw new Error('not using Supabase without ?auth=local');
-  await a.fill('[name=username]', 'Kimari'); await a.fill('[name=email]', 'Kim@Example.com'); await a.fill('[name=password]', 'hunter22');
-  await a.click('.auth-go'); await a.waitForTimeout(300);
-  if (!(await a.isVisible('h1:has-text("Check your email")'))) throw new Error('no "check your email" after signing up');
-  await a.click('.auth-go');   // → log in
-  await a.fill('[name=email]', 'kim@example.com'); await a.fill('[name=password]', 'wrong12'); await a.click('.auth-go'); await a.waitForTimeout(300);
-  if (!/Wrong email or password/.test(await a.textContent('[data-err]'))) throw new Error('bad password not reported');
-  await a.fill('[name=password]', 'hunter22'); await a.click('.auth-go'); await a.waitForTimeout(400);
-  if (!(await a.isVisible('.acct-chip:has-text("Kimari")'))) throw new Error('not logged in with Supabase');
-  await snap('00-title-logged-in');
-  await open();   // reopening refreshes the session and stays logged in
-  if (!(await a.isVisible('.acct-chip:has-text("Kimari")')) || !calls.some(c => c.startsWith('token?grant_type=refresh_token'))) throw new Error('session not kept / refreshed: ' + calls.join(' '));
-  if ((await a.evaluate(() => window.__rfg.auth.session.refresh_token)) !== 'rt2') throw new Error('refreshed session not stored');
-  refreshOk = false; await open();   // the server says the session is dead → back to log in
-  if (!(await a.isVisible('.auth-card'))) throw new Error('dead session still let you in');
+  if (await a.evaluate(() => window.__rfg.profile.kind) !== 'supabase') throw new Error('not using Supabase without ?auth=local');
+  if (!(await a.isVisible('.menu button:has-text("New Game")'))) throw new Error('no title menu');
+  await a.click('text=New Game'); await a.fill('[data-name]', 'Cloudy'); await a.click('text=Hit the streets'); await a.waitForTimeout(600);
+  await a.evaluate(async () => { (await import('./js/core/save.js')).saveGame('slot1', true); await window.__rfg.profile.push(); });
+  const id = await a.evaluate(() => window.__rfg.profile.id);
+  if (db[id]?.saves?.slots?.slot1?.state?.player?.name !== 'Cloudy') throw new Error('save not sent online: ' + calls.join(' '));
   await actx.close();
 });
 
@@ -2400,7 +2385,6 @@ await step('phone controls', async () => {
   if (!(await m.evaluate(() => { const r = document.getElementById('rotate'); return !!r && !r.classList.contains('hidden'); }))) throw new Error('no rotate-your-phone screen in portrait');
   await m.tap('#rotate-skip');
   if (await m.evaluate(() => !document.getElementById('rotate').classList.contains('hidden'))) throw new Error('rotate screen did not dismiss');
-  await m.fill('[name=username]', 'Phone'); await m.fill('[name=email]', 'phone@example.com'); await m.fill('[name=password]', 'hunter22'); await m.tap('.auth-go'); await m.waitForTimeout(300);
   await m.tap('text=New Game'); await m.fill('[data-name]', 'Phone'); await m.tap('text=Hit the streets'); await m.waitForTimeout(600);
   const expect = (c, msg) => { if (!c) throw new Error(msg); };
   // pointer helper: fire at an element (centre by default, or an offset in px)

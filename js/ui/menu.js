@@ -20,8 +20,8 @@ import { openGarage } from './garage.js';
 import { openRaceMenu } from './raceSetup.js';
 import { openOnline } from './online.js';
 import { online } from '../net/online.js';
-import { auth } from '../net/auth.js';
-import { showAuth, accountChip } from './account.js';
+import { profile } from '../net/profile.js';
+import { profileChip } from './account.js';
 
 // ---------------- animated backdrop ----------------
 const HERO = [
@@ -73,10 +73,7 @@ export class MenuBackdrop {
 // ---------------- title ----------------
 export function showTitle(app) {
   closeAllPanels();
-  // No account, no game: the log-in screen comes first.
-  if (!auth.user) { setSaveOwner(null); showAuth(app, { onDone: () => showTitle(app) }); return; }
-  const moved = setSaveOwner(auth.user.id);
-  if (moved) toast(`Your saved career is now linked to ${auth.user.username}`, 'good');
+  setSaveOwner(profile.owner);
   const latest = latestSlot();
   const need = !latest;
   const root = $('#screen');
@@ -100,7 +97,7 @@ export function showTitle(app) {
     <div class="title-foot">A fan-made street racing sim. Real car and parts brand names are used for flavor only — no affiliation or endorsement. The city is a loose take on Fort Worth, TX; its people and businesses are fictional.</div>
   </div>`);
   root.appendChild(t);
-  const chip = accountChip(() => showTitle(app));
+  const chip = profileChip(() => showTitle(app));
   if (chip) t.appendChild(chip);
   const resume = (then) => {
     const s = loadGame(latest.slot);

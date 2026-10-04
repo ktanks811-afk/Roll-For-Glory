@@ -1,5 +1,6 @@
 // Saves live in localStorage: one autosave plus three manual slots, kept
-// separately for each account that logs in on this device.
+// separately for each profile on this device and copied online (see
+// js/net/profile.js).
 // Every access is wrapped — private windows and blocked storage must not
 // crash the game, they just mean nothing persists.
 
@@ -14,11 +15,11 @@ import { ensureLoot } from './loot.js';
 
 const PREFIX = 'rollforglory.';
 export const SLOTS = ['auto', 'slot1', 'slot2', 'slot3'];
-let owner = '';   // 'acct.<user id>.' once someone is logged in
+let owner = '';   // 'acct.<profile owner>.' once the profile is known
 
-// Points saves at this account's careers. The first account to log in on a
-// device takes over the saves made before accounts existed, so nobody loses
-// their progress. Returns how many saves it took over.
+// Points saves at this profile's careers. The first profile on a device takes
+// over the saves made before profiles existed, so nobody loses their
+// progress. Returns how many saves it took over.
 export function setSaveOwner(userId) {
   owner = userId ? `acct.${userId}.` : '';
   if (!userId || SLOTS.some(sl => raw(owner + 'save.' + sl))) return 0;
@@ -32,17 +33,8 @@ export function setSaveOwner(userId) {
       moved++;
     } catch { /* storage full or blocked: the old save stays where it was */ }
   }
+  if (moved) changed();
   return moved;
-}
-
-// The newest save made before accounts existed, if this device has one.
-export function latestLegacySave() {
-  let best = null;
-  for (const sl of SLOTS) {
-    let d = null; try { d = JSON.parse(raw('save.' + sl)); } catch { /* unreadable */ }
-    if (d && d.state && d.state.player && (!best || d.savedAt > best.savedAt)) best = { savedAt: d.savedAt, name: d.state.player.name, day: d.state.time?.day ?? 1 };
-  }
-  return best;
 }
 
 function raw(key) { try { return localStorage.getItem(PREFIX + key); } catch { return null; } }
@@ -54,10 +46,34 @@ function write(key, val) {
   try { localStorage.setItem(PREFIX + key, JSON.stringify(val)); return true; } catch { return false; }
 }
 
+// Online profile hooks (js/net/profile.js): something saved or deleted.
+const savedListeners = new Set();
+export function onSaved(fn) { savedListeners.add(fn); }
+const changed = () => { for (const fn of savedListeners) try { fn(); } catch { /* listener failed */ } };
+
+// Every save slot of one owner, as stored, for copying online.
+export function exportSlots(who) {
+  const out = {};
+  for (const sl of SLOTS) { const d = read(`acct.${who}.save.${sl}`); if (d && d.state) out[sl] = d; }
+  return out;
+}
+// Takes saves from online: a slot is replaced when the online copy is newer
+// (or always, with `replace`, when switching to another profile's code).
+export function importSlots(who, slots, replace = false) {
+  let n = 0;
+  for (const sl of SLOTS) {
+    const d = slots[sl], mine = read(`acct.${who}.save.${sl}`);
+    if (d && d.state && (replace || !mine || (d.savedAt || 0) > (mine.savedAt || 0))) { if (write(`acct.${who}.save.${sl}`, d)) n++; }
+    else if (replace && !d && mine) try { localStorage.removeItem(`${PREFIX}acct.${who}.save.${sl}`); } catch { /* blocked */ }
+  }
+  return n;
+}
+
 export function saveGame(slot = 'auto', quiet = false) {
   if (!game.s) return false;
   ensureHustle(game.s).lastReal = Date.now();
   const ok = write(owner + 'save.' + slot, { savedAt: Date.now(), state: game.s });
+  if (ok) changed();
   if (!quiet) emit('toast', ok
     ? { kind: 'good', text: slot === 'auto' ? 'Autosaved' : `Saved to ${slotName(slot)}` }
     : { kind: 'bad', text: 'Could not save — browser storage is unavailable' });
@@ -88,6 +104,7 @@ export function latestSlot() {
 
 export function deleteSlot(slot) {
   try { localStorage.removeItem(PREFIX + owner + 'save.' + slot); } catch { /* storage blocked */ }
+  changed();
 }
 
 export function slotName(slot) {

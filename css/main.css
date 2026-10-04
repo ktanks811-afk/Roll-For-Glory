@@ -158,7 +158,6 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .auth-card h1 { margin: 6px 0 0; font-family: var(--head); font-size: 22px; letter-spacing: .04em; text-transform: uppercase; }
 .auth-sub { margin: 0 0 2px; color: var(--silver); font-size: 14px; line-height: 1.35; }
 .auth-note, .auth-legacy { margin: 0; padding: 7px 10px; border-radius: var(--r); font-size: 13px; line-height: 1.35; background: rgba(43,217,107,.1); border: 1px solid rgba(43,217,107,.35); color: #bff3d2; }
-.auth-warn { margin: 0; padding: 7px 10px; border-radius: var(--r); font-size: 13px; line-height: 1.35; background: rgba(255,190,40,.1); border: 1px solid rgba(255,190,40,.4); color: #ffe2a3; }
 .auth-card .field { margin: 0; }
 .auth-err { margin: 0; color: var(--red2); font-size: 14px; font-weight: 600; }
 .auth-go { margin-top: 4px; padding: 11px 16px; }
@@ -170,14 +169,14 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
   .auth-brand { display: none; }
   .auth-card h1 { margin: 0; font-size: 19px; }
   .auth-sub { display: none; }
-  .auth-note, .auth-legacy, .auth-warn { padding: 5px 8px; font-size: 12px; }
-  .auth-links { margin: 0; }
+  .auth-note, .auth-legacy,   .auth-links { margin: 0; }
   .auth-card .field > span { font-size: 12px; }
   .auth-card .input { padding: 7px 10px; }
   .auth-go { padding: 8px 14px; }
 }
 .acct-chip { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 12px; border-radius: 999px; background: rgba(5,5,7,.75); border: 1px solid var(--line2); color: var(--silver); font-size: 14px; }
 .acct-chip b { color: var(--text); }
+.profile-code { margin: 10px 0; padding: 10px; text-align: center; font: 700 20px/1.2 ui-monospace, Menlo, monospace; letter-spacing: .08em; background: var(--panel2); border: 1px solid var(--line2); border-radius: var(--r); user-select: text; -webkit-user-select: text; }
 .acct-chip button { appearance: none; border: 1px solid var(--line2); background: var(--panel2); color: var(--text); border-radius: 999px; padding: 4px 10px; font: 700 12px var(--ui); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
 
 /* ---------- character creation ---------- */
