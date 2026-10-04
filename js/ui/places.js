@@ -31,6 +31,7 @@ import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug } from './estate.js';
 import { ensureLoot } from '../core/loot.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
+import { openChop } from './chop.js';
 import { openPawn } from './pawn.js';
 import { openHospital } from './hospital.js';
 import { BREAKDOWNS, needsOil, oilChangeCost, changeOil, clearBreakdown, oilInterval } from '../core/upkeep.js';
@@ -51,6 +52,7 @@ export function openPlace(loc, app) {
 const HANDLERS = {
   home: homeScreen,
   property: (loc, app, s) => s.properties.includes(loc.id) ? homeScreen(loc, app, s) : openRealty(app, loc.id),
+  chop: (loc, app) => openChop(loc, app),
   dealer, usedlot: fence, perf, visual, repair, gas, food, corner, clothing,
   realty: (loc, app) => openRealty(app),
   trap: (loc, app) => openTrap(loc, app),
@@ -243,7 +245,8 @@ async function fence(loc, app, s) {
   if (app.world.police.phase === 'chase') { modal("Rusty's Used Autos", '<p>Sal waves you off the lot: "Not with the cops on you. Lose them, then come back."</p>'); return; }
   const v = th.hot, m = CAR_BY_ID[v.car.modelId], offer = th.salOffer();
   const pick = await modal("Rusty's Used Autos", `<p class="muted">Sal walks around the ${esc(carName(m, v.car.year))} and looks at the punched ignition. "I don't want to know."</p>
-    <p>He'll give you <b>${fmtMoney(offer)}</b> cash for it, no questions asked. The car gets parted out tonight.</p>`,
+    <p>He'll give you <b>${fmtMoney(offer)}</b> cash for it, no questions asked. The car gets parted out tonight.</p>
+    <p class="small muted">"Or take it to my nephew Junior at Marchetti Salvage and strip it yourself. More money. More heat."</p>`,
     [{ label: `Sell it · ${fmtMoney(offer)}`, primary: true, value: 'sell' }, { label: 'Just browsing', value: 'lot' }]);
   if (pick === 'sell') { const paid = th.sell(); audio.buy?.(); toast(`Sal paid ${fmtMoney(paid)}. That car never existed.`, 'good'); emit('carFenced', { paid }); }
   else if (pick === 'lot') usedlot(loc, app, s);
