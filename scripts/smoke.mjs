@@ -451,7 +451,8 @@ await step('upkeep: oil, tread, breakdowns, roadside', async () => {
     const saved = JSON.parse(JSON.stringify({ cond: car.cond, oil: car.oil, fuel: car.fuel }));
     s.cash += 5000;
     // miles wear the oil and the tread
-    car.oil = 100; car.cond.tires = 100;
+    // start from a healthy car: earlier steps' crashes can leave the engine or gearbox worn enough to break down mid-test
+    car.oil = 100; car.cond.tires = 100; car.cond.engine = Math.max(car.cond.engine, 90); car.cond.trans = Math.max(car.cond.trans, 90); delete car.broken;
     for (let i = 0; i < 300; i++) up.wearTick(car, 0.1, { spec: st.carSpec(car) });
     const worn = { oil: car.oil, tires: car.cond.tires };
     // run out of oil and it overheats; the car makes no power

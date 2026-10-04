@@ -895,6 +895,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const ch = chargeOf([...rec, { kind: 'robbery', text: 'Armed robbery — Rosedale Food Mart.', fine: 6000 }], 0.9);
   if (!ch.charges.some(c => c.cls === 'F1') || !ch.charges.some(c => /stolen goods/.test(c.text))) bad('robbery + goods charges ' + JSON.stringify(ch));
   if (LOOTC.seizeLoot(st).length) bad('nothing to seize twice');
+}
 // ---- JPS hospital: injuries heal, bills go to collections, then garnishment ----
 {
   const HL = await import('../js/core/health.js');
