@@ -464,6 +464,77 @@ await step('part profiles + blowing the motor', async () => {
   if (r.evs.indexOf('stress') > r.evs.indexOf('blown')) throw new Error('no warning before the engine blew');
   if (!r.rebuildShown || r.after.blown || r.after.eng !== 100) throw new Error('repair shop did not rebuild the blown engine');
 });
+await step('upkeep: oil, tread, breakdowns, roadside', async () => {
+  const r = await p.evaluate(async () => {
+    const up = await import('./js/core/upkeep.js');
+    const st = await import('./js/core/state.js');
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
+    document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, car = s.cars.find(c => c.uid === s.activeCar);
+    const saved = JSON.parse(JSON.stringify({ cond: car.cond, oil: car.oil, fuel: car.fuel }));
+    s.cash += 5000;
+    // miles wear the oil and the tread
+    car.oil = 100; car.cond.tires = 100;
+    for (let i = 0; i < 300; i++) up.wearTick(car, 0.1, { spec: st.carSpec(car) });
+    const worn = { oil: car.oil, tires: car.cond.tires };
+    // run out of oil and it overheats; the car makes no power
+    car.oil = 0; car.cond.engine = 90; delete car.broken;
+    let ev = null; for (let i = 0; i < 200 && !ev?.match?.(/overheat|stall/); i++) ev = up.wearTick(car, 0.1, { spec: st.carSpec(car) }) || ev;
+    const broke = car.broken;
+    w.paused = false;
+    await new Promise(r => setTimeout(r, 250));
+    const hud = document.querySelector('[data-carname]')?.textContent || '';
+    // the repair shop shows the oil change and the breakdown
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    openPlace(LOC_BY_ID.second_chance, window.__rfg.app);
+    await new Promise(r => setTimeout(r, 150));
+    const shop = document.querySelector('#panels')?.textContent || '';
+    const oilBtn = !!document.querySelector('#panels [data-action="oil"]:not([disabled])');
+    closeAllPanels();
+    // old saves (no oil field, no breakdowns) load with fresh oil
+    const { importSave } = await import('./js/core/save.js');
+    const old = JSON.parse(JSON.stringify(s)); for (const c of old.cars) { delete c.oil; delete c.broken; }
+    const mig = importSave(JSON.stringify({ game: 'roll-for-glory', state: old })).cars.every(c => c.oil === 100 && !c.broken);
+    return { worn, ev, broke, hud, shopBreak: /Overheated|Stalled/.test(shop), shopOil: /Oil change/.test(shop), oilBtn, mig, saved };
+  });
+  console.log('     upkeep', JSON.stringify({ ...r, saved: undefined }));
+  if (!(r.worn.oil < 60 && r.worn.tires < 95)) throw new Error('driving did not wear the oil and tires');
+  if (!r.broke) throw new Error('no oil did not break the car down');
+  if (!/OVERHEATED|STALLED/.test(r.hud)) throw new Error('HUD does not say the car broke down: ' + r.hud);
+  if (!r.shopBreak || !r.shopOil || !r.oilBtn) throw new Error('repair shop missing the breakdown / oil change');
+  if (!r.mig) throw new Error('old saves did not get fresh oil');
+  // the car won't drive while broken down
+  const x0 = await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; return [v.x, v.z]; });
+  if (await p.evaluate(() => window.__rfg.app.world.inCar)) {
+    await key('KeyW', 500);
+    const moved = await p.evaluate(x0 => { const v = window.__rfg.app.world.vehicle; return Math.hypot(v.x - x0[0], v.z - x0[1]); }, x0);
+    if (moved > 1.5) throw new Error('a broken-down car still drove ' + moved.toFixed(1) + ' m');
+  }
+  // the mobile mechanic gets it running from the phone
+  await key('KeyP'); await p.waitForTimeout(250);
+  await p.click('.app:has-text("Bank")'); await p.waitForTimeout(200);
+  await p.click('[data-action="mech"]'); await p.waitForTimeout(150);
+  const fixed = await p.evaluate(() => { const s = window.__rfg.game.s, c = s.cars.find(c => c.uid === s.activeCar); return { broken: c.broken || null, oil: c.oil }; });
+  await p.click('.phone-bar button').catch(() => {}); await p.keyboard.press('Escape').catch(() => {}); await p.waitForTimeout(150);
+  if (fixed.broken) throw new Error('mobile mechanic did not fix the breakdown');
+  // gas station: oil change at the pump
+  const gas = await p.evaluate(async saved => {
+    const s = window.__rfg.game.s, car = s.cars.find(c => c.uid === s.activeCar), w = window.__rfg.app.world;
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const loc = LOC_BY_ID.gas_westbrook;
+    w.vehicle.x = loc.x; w.vehicle.z = loc.z; car.oil = 10;
+    openPlace(loc, window.__rfg.app);
+    await new Promise(r => setTimeout(r, 150));
+    document.querySelector('#panels [data-action="oil"]')?.click();
+    await new Promise(r => setTimeout(r, 100));
+    const oil = car.oil;
+    closeAllPanels();
+    Object.assign(car, { cond: saved.cond, oil: saved.oil ?? 100, fuel: saved.fuel }); delete car.broken; w.refreshCar();
+    return { oil };
+  }, r.saved);
+  if (gas.oil !== 100) throw new Error('gas station oil change did not work ' + JSON.stringify(gas));
+});
 await step('drag pack: hooks, wheelies, tune it out', async () => {
   // a 1000+ hp build on a drag pack, no wheelie bars
   const setup = await p.evaluate(async () => {
