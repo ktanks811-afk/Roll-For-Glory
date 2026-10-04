@@ -12,11 +12,17 @@ import { CAR_BY_ID, carName } from '../data/cars.js';
 import { installPart, pickColorFor } from './garage.js';
 import { audio } from '../core/audio.js';
 import { PART_ICONS } from '../data/partInfo.js';
+import { RIM_BY_ID, RIM_COLS } from '../data/rims.js';
 import { openPartProfile } from './partProfile.js';
 
-const PERF_CATS = ['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'ecu', 'transmission', 'clutch', 'diff', 'suspension', 'brakes', 'tires', 'weight', 'nitrous', 'twostep'];
+const PERF_CATS = ['engine', 'turbo', 'supercharger', 'intake', 'exhaust', 'intercooler', 'fuel', 'ecu', 'transmission', 'clutch', 'diff', 'suspension', 'brakes', 'tires', 'dragpack', 'wheeliebar', 'weight', 'nitrous', 'twostep'];
 const VIS_CATS = ['wheels', 'paint', 'tint', 'spoiler', 'kit', 'frontBumper', 'rearBumper', 'skirts', 'hood', 'exhaustTips', 'headlights', 'taillights', 'decal', 'neon', 'interior'];
 const ICONS = PART_ICONS;
+// Glitch rims show their own picture from the rim sheet; everything else gets its category icon.
+const prodImg = p => {
+  const r = p.rim && RIM_BY_ID[p.rim];
+  return r ? `<div class="prod-img prod-rim"><i style="background-position:${-(r.i % RIM_COLS) * 56}px ${-Math.floor(r.i / RIM_COLS) * 56}px"></i></div>` : `<div class="prod-img">${ICONS[p.cat]}</div>`;
+};
 
 const view = { tab: 'shop', cat: 'turbo', brand: '', q: '', fitOnly: true, sort: 'pop' };
 
@@ -98,7 +104,7 @@ function renderShop(body, h, s, car, cats, counts, store, app) {
   if (view.brand) items = items.filter(p => p.brand === view.brand);
   if (view.q) { const q = view.q.toLowerCase(); items = CATALOG.filter(p => cats.includes(p.cat) && (`${p.brand} ${p.name}`).toLowerCase().includes(q)); }
   if (view.fitOnly && m) items = items.filter(p => fits(p, m));
-  items = [...items].sort((a, b) => view.sort === 'low' ? a.price - b.price : view.sort === 'high' ? b.price - a.price : view.sort === 'stage' ? b.stage - a.stage || a.price - b.price : (a.stage - b.stage) || (a.price - b.price));
+  items = [...items].sort((a, b) => (view.sort === 'pop' && !!b.rim - !!a.rim) || (view.sort === 'low' ? a.price - b.price : view.sort === 'high' ? b.price - a.price : view.sort === 'stage' ? b.stage - a.stage || a.price - b.price : (a.stage - b.stage) || (a.price - b.price)));
   const installed = car ? new Set([...Object.values(car.parts)]) : new Set();
   const mult = store ? 1.1 : 1;
   body.innerHTML = `<div class="shop"><div class="shop-side">
@@ -118,7 +124,7 @@ function renderShop(body, h, s, car, cats, counts, store, app) {
         const eff = (gain ? `${gain.delta >= 0 ? '+' : ''}${gain.delta} hp${gain.limited ? ' (fuel-limited!)' : ''}` : effectText(p, car)) + (gain && p.cat === 'exhaust' ? ` · ${effectText(p, car)}` : '');
         const isOn = installed.has(p.id);
         const price = Math.round(p.price * mult);
-        return `<div class="li prod click-row" data-action="profile" data-id="${p.id}"><div class="prod-img">${ICONS[p.cat]}</div>
+        return `<div class="li prod click-row" data-action="profile" data-id="${p.id}">${prodImg(p)}
           <div class="grow"><div class="brand">${esc(p.brand)}</div><div class="name">${esc(p.name)} <i class="pp-i">i</i></div>
             <div class="row small" style="gap:6px;margin-top:2px">${p.visual ? '' : `<span class="stage stage-${p.stage}">STAGE ${p.stage}</span>`}${eff ? `<span class="${gain && gain.delta > 0 ? 'good' : 'muted'}">${esc(eff)}</span>` : ''}
             <span class="muted">· ${p.labor}h install</span>${!ok ? `<span class="bad">· ${esc(fitNote(p, m))}</span>` : ''}${isOn ? '<span class="tag tag-green">Installed</span>' : ''}</div></div>
@@ -168,7 +174,7 @@ function totals(s) {
 function renderCart(body, h, s, car) {
   const t = totals(s);
   const m = car ? modelOf(car) : null;
-  body.innerHTML = `<div class="p-body">${t.items.length ? `<div class="list">${t.items.map((p, i) => `<div class="li"><div class="prod-img">${ICONS[p.cat]}</div><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)}</div><div class="s">${CATEGORY_NAMES[p.cat]}${m && !fits(p, m) ? ` · <span class="bad">${esc(fitNote(p, m))} (for your ${esc(m.model)})</span>` : ''}</div></div><b>${fmtMoney(p.price)}</b><button class="btn btn-sm" data-action="rm" data-i="${i}">✕</button></div>`).join('')}</div>
+  body.innerHTML = `<div class="p-body">${t.items.length ? `<div class="list">${t.items.map((p, i) => `<div class="li">${prodImg(p)}<div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)}</div><div class="s">${CATEGORY_NAMES[p.cat]}${m && !fits(p, m) ? ` · <span class="bad">${esc(fitNote(p, m))} (for your ${esc(m.model)})</span>` : ''}</div></div><b>${fmtMoney(p.price)}</b><button class="btn btn-sm" data-action="rm" data-i="${i}">✕</button></div>`).join('')}</div>
     <div style="max-width:360px;margin:16px 0 0 auto"><div class="kv"><span>Subtotal</span><span>${fmtMoney(t.sub, true)}</span><span>Shipping</span><span>${t.ship ? fmtMoney(t.ship, true) : 'FREE'}</span><span>Sales tax (7.25%)</span><span>${fmtMoney(t.tax, true)}</span><span><b>Total</b></span><span style="font-size:20px">${fmtMoney(t.total, true)}</span></div>
     <p class="small muted">⚡ Instant delivery: the parts land in My Parts the moment you order. Install at home (DIY, ≤6h jobs) or at Torque Temple / Vega Kustoms.</p>
     <button class="btn btn-primary" style="width:100%" data-action="checkout">Place order · ${fmtMoney(t.total, true)}</button></div>` : '<div class="empty">Your cart is empty.</div>'}</div>`;
@@ -191,6 +197,6 @@ function renderOrders(body, h, s) {
 }
 
 function renderBin(body, h, s) {
-  body.innerHTML = `<div class="p-body">${s.partsBin.length ? `<div class="list">${s.partsBin.map(b => { const p = ITEM_BY_ID[b.pid]; return `<div class="li click-row" data-action="profile" data-id="${p.id}"><div class="prod-img">${ICONS[p.cat]}</div><div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)} <i class="pp-i">i</i></div><div class="s">${CATEGORY_NAMES[p.cat]} · ${p.labor}h install${p.labor > 6 || p.shopOnly ? ' (shop install)' : ''}</div></div></div>`; }).join('')}</div><p class="small muted">Install these from your Garage at home, or at Torque Temple / Vega Kustoms.</p>` : '<div class="empty">No uninstalled parts. Parts you order show up here instantly.</div>'}</div>`;
+  body.innerHTML = `<div class="p-body">${s.partsBin.length ? `<div class="list">${s.partsBin.map(b => { const p = ITEM_BY_ID[b.pid]; return `<div class="li click-row" data-action="profile" data-id="${p.id}">${prodImg(p)}<div class="grow"><div class="t">${esc(p.brand)} ${esc(p.name)} <i class="pp-i">i</i></div><div class="s">${CATEGORY_NAMES[p.cat]} · ${p.labor}h install${p.labor > 6 || p.shopOnly ? ' (shop install)' : ''}</div></div></div>`; }).join('')}</div><p class="small muted">Install these from your Garage at home, or at Torque Temple / Vega Kustoms.</p>` : '<div class="empty">No uninstalled parts. Parts you order show up here instantly.</div>'}</div>`;
   bind(body, { profile: d => openPartProfile({ pid: d.id, car: activeCar(s) }) });
 }
