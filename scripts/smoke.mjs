@@ -1903,6 +1903,7 @@ await step('gangs', async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
     const w = window.__rfg.app.world, s = window.__rfg.game.s;
     s.gang = undefined; w.gangs.hitCar = null; w.police.reset(w); s.warrants = []; w.combat.arms.hp = 100;
+    w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; if (!w.inCar) w.toggleCar();   // later steps expect you back in the car
   });
 });
 
