@@ -2262,7 +2262,9 @@ await step('gangs', async () => {
     s.gang.job = { ...G.makeJob(s, 'hit', 'hemphill'), deadline: 1e9 };
     s.gang.job.got = 0;
     const cash = s.cash, respect = s.gang.respect;
-    for (const pd of w.gangs.sets.hemphill.peds) if (!pd.down) w.combat.hurtPed(pd, 100);
+    // your homie may already have dropped some of them in the shootout, before the job existed
+    for (const pd of w.gangs.sets.hemphill.peds) { pd.down = 0; pd.counted = false; pd.hp = 40; }
+    for (const pd of w.gangs.sets.hemphill.peds) w.combat.hurtPed(pd, 100);
     await new Promise(r => setTimeout(r, 300));
     return { job: s.gang.job, paid: s.cash - cash, respect: s.gang.respect - respect, beef: s.gang.beef.hemphill };
   });
