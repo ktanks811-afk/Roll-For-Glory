@@ -484,7 +484,7 @@ function drawGarageRoof(ctx, b, rx, ry, w, d, z, showLabels) {
 }
 
 // Shopfront on the street side of a landmark: awning, glass, doors, props.
-const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', chop: '#c9752a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e', carshow: '#e8c21a', hospital: '#e0192e' };
+const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', chop: '#c9752a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', corner: '#ff8a1a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e', carshow: '#e8c21a', hospital: '#e0192e' };
 function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
   const side = b.side, ns = side === 'N' || side === 'S';
   const len = ns ? w : d;
@@ -500,7 +500,7 @@ function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
   const mid = len / 2, aw = Math.min(len * 0.5, 20 * z), awn = 2.6 * z;
   const shop = b.shop;
   // glass front
-  if (['dealer', 'clothing', 'realty', 'food', 'usedlot', 'visual', 'gas'].includes(shop)) {
+  if (['dealer', 'clothing', 'realty', 'food', 'corner', 'usedlot', 'visual', 'gas'].includes(shop)) {
     const gl = fr(len * 0.07, len * 0.93, -3.2 * z, -0.35 * z);
     box(gl, night > 0.3 ? 'rgba(255,224,150,0.7)' : 'rgba(150,200,230,0.55)');
     ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;

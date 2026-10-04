@@ -14,6 +14,7 @@
 
 import { uid, spend, canAfford } from './state.js';
 import { emit } from './events.js';
+import { theftClass } from './loot.js';
 
 // Real Texas punishment ranges (days) and what bail usually looks like.
 export const CLASSES = {
@@ -54,6 +55,7 @@ export function classify(o) {
     case 'robbery': return { cls: 'F1', text: /mugging/.test(t) ? 'Aggravated robbery (armed mugging).' : `Aggravated robbery${o.text?.includes('—') ? ' — ' + o.text.split('—').pop().trim().replace(/\.$/, '') : ''}.`, tg: true };
     case 'driveby': return /gang/.test(t) ? { cls: 'F2', text: 'Engaging in organized criminal activity: deadly conduct (drive-by shooting).' } : { cls: 'F3', text: 'Deadly conduct: drive-by shooting.' };
     case 'chop': return /parts/i.test(t) ? { cls: 'SJF', text: 'Theft of property: stolen vehicle parts.' } : { cls: 'F3', text: 'Engaging in organized criminal activity: operating a chop shop.' };
+    case 'stolen_goods': { const cls = theftClass(o.value || 0); return { cls, text: `Theft of property (stolen goods${cls === 'C' ? '' : `, ${o.value >= 2500 ? 'over $2,500' : o.value >= 750 ? 'over $750' : 'over $100'}`}).` }; }
     case 'gta': return { cls: 'SJF', text: 'Unauthorized use of a motor vehicle (stolen car).' };
     case 'carjack': return /armed/i.test(t) ? { cls: 'F1', text: 'Aggravated robbery (armed carjacking).', tg: true } : { cls: 'F2', text: 'Robbery (carjacking).' };
     case 'auto': return { cls: 'F3', text: 'Possession of a prohibited weapon (machine gun).' };
