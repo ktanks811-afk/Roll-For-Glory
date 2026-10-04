@@ -11,6 +11,7 @@ import { settings } from '../core/save.js';
 import { game, isNight } from '../core/state.js';
 import { $, el, esc } from '../ui/dom.js';
 import { touchUi } from '../ui/touch.js';
+import { pad } from '../core/gamepad.js';
 import { RevLimiter, launchRpmSetting, optimalLaunchRpm } from '../sim/twostep.js';
 import { soundProfile } from '../sim/sound.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
@@ -20,7 +21,9 @@ import { wx } from '../core/weather.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // instruction text: phone wording when the on-screen controls are showing
-const T = (phone, keys) => touchUi.active ? phone : keys;
+// controller: the touch wording with the triggers named
+const padText = t => t.replace('drag the shift knob down to downshift', 'LB to downshift').replace(/\bBRAKE\b/g, 'LT').replace(/\bGAS\b/g, 'RT');
+const T = (phone, keys) => pad.inUse ? padText(phone) : touchUi.active ? phone : keys;
 // fit the whole road comfortably on narrow screens
 const H_ZOOM = () => Math.min(14, window.innerWidth / 34);
 const THEMES = {

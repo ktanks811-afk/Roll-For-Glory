@@ -20,6 +20,7 @@ import { CAR_BY_ID, carName } from '../data/cars.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
 import { input } from '../core/input.js';
+import { pad, rumble } from '../core/gamepad.js';
 import { esc } from '../ui/dom.js';
 import { audio } from '../core/audio.js';
 import { settings, saveGame } from '../core/save.js';
@@ -403,7 +404,7 @@ export class World {
         this.inCar = true;
         input.setContext('car');
         this.restartEngineSound();
-      } else if (!this.nearLoc) this.ui.toast('Get closer to your car (F)', 'info');
+      } else if (!this.nearLoc) this.ui.toast(`Get closer to your car (${pad.inUse ? 'Y' : 'F'})`, 'info');
     } else if (!this.nearLoc) {
       this.ui.toast("You don't own a car yet — check Marketplace on your phone", 'info');
     }
@@ -586,6 +587,7 @@ export class World {
     const car = this.vehicle?.car;
     if (!car || this.t - (this.lastCrashT || 0) < 0.25) return;
     this.lastCrashT = this.t;
+    rumble(Math.min(1, impact / 25), Math.min(1, impact / 15), 120 + Math.min(300, impact * 8));
     const dmg = Math.max(0, impact - 3) * 1.7;
     car.cond.body = Math.max(5, car.cond.body - dmg);
     car.cond.lights = Math.max(0, car.cond.lights - dmg * (Math.random() < 0.5 ? 1.4 : 0.4));
@@ -761,7 +763,7 @@ export class World {
         hint = this.inCar ? `Drive into the garage — ${g.loc.name.split(' (')[0]}` : `Walk into your garage — ${g.loc.name.split(' (')[0]}`;
       }
     }
-    if (inside && inside !== this.inGarage) this.ui.toast(`${inside.loc.name.split(' (')[0]} — your garage. Press E to manage your cars.`, 'info');
+    if (inside && inside !== this.inGarage) this.ui.toast(`${inside.loc.name.split(' (')[0]} — your garage. Press ${pad.inUse ? 'A' : 'E'} to manage your cars.`, 'info');
     this.inGarage = inside;
     this.garageHint = inside ? '' : hint;
     if (inside) best = inside.loc;   // anywhere inside counts as being at the door
@@ -771,7 +773,7 @@ export class World {
     this.nearLoc = best;
     if (input.pressed('interact')) {
       if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
-      else if (best && this.combat.armed && this.combat.storeNear()) this.ui.toast('Holster your weapon (G) to go inside.', 'info');
+      else if (best && this.combat.armed && this.combat.storeNear()) this.ui.toast(`Holster your weapon (${pad.inUse ? 'LT' : 'G'}) to go inside.`, 'info');
       else if (best) this.ui.openPlace(best, this);
     }
   }
