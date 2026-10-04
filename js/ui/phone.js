@@ -28,6 +28,7 @@ import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
 import * as B from '../core/bank.js';
 import { wx } from '../core/weather.js';
+import { BREAKDOWNS, MECHANIC_COST, roadsideFix } from '../core/upkeep.js';
 import { ensure as ensureMissions, now as missionNow, offerById, acceptMission, declineMission, abandonMission, pointGps, currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 
 const APPS = [
@@ -287,6 +288,7 @@ RENDER.bank = (scr, ctx) => {
       <button class="btn btn-sm ${s.insurance ? '' : 'btn-primary'}" data-action="ins">${s.insurance ? 'Cancel' : 'Buy'}</button></div>
     <div class="section-title">Roadside</div>
     <div class="li"><div class="grow"><div class="t">Gas delivery (2 gal)</div><div class="s">$45 — when you're stranded</div></div><button class="btn btn-sm" data-action="gas" ${car ? '' : 'disabled'}>Call</button></div>
+    <div class="li"><div class="grow"><div class="t">Mobile mechanic</div><div class="s">${fmtMoney(MECHANIC_COST)} — ${car?.broken ? (BREAKDOWNS[car.broken].roadside ? `<b class="bad">${BREAKDOWNS[car.broken].name}.</b> Tops up the oil and gets it running` : `<b class="bad">${BREAKDOWNS[car.broken].name}.</b> Can't fix that on the side of the road. Tow it.`) : 'when your car breaks down'}</div></div><button class="btn btn-sm ${car?.broken && BREAKDOWNS[car.broken].roadside ? 'btn-primary' : ''}" data-action="mech" ${car?.broken && BREAKDOWNS[car.broken].roadside ? '' : 'disabled'}>Call</button></div>
     <div class="li"><div class="grow"><div class="t">Tow to Second Chance Collision</div><div class="s">$185 flat rate</div></div><button class="btn btn-sm" data-action="tow" ${car ? '' : 'disabled'}>Call</button></div>
     <div class="section-title">Recent activity</div>
     <div class="list">${s.ledger.slice(0, 40).map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.label)}</div><div class="s">Day ${l.day} · ${l.t}</div></div><b class="${l.amount > 0 ? 'good' : l.amount < 0 ? 'bad' : ''}">${l.amount ? (l.amount > 0 ? '+' : '') + fmtMoney(l.amount, true) : ''}</b></div>`).join('') || '<div class="empty">Nothing yet</div>'}</div>`;
@@ -350,6 +352,12 @@ RENDER.bank = (scr, ctx) => {
     hustle: () => { ctx.st.tab = 'biz'; ctx.go('hustle'); },
     ins: () => { s.insurance = !s.insurance; toast(s.insurance ? 'Insured. First premium due at the end of the week.' : 'Policy cancelled', 'info'); ctx.h.refresh(); },
     gas: () => { if (spend(s, 45, 'Roadside gas delivery')) { const c = activeCar(s); c.fuel = Math.min(1, c.fuel + 2 / 14); toast('Gas delivered. Find a station soon.', 'good'); ctx.h.refresh(); } },
+    mech: () => {
+      const c = activeCar(s);
+      if (!c?.broken || !spend(s, MECHANIC_COST, 'Mobile mechanic')) return;
+      roadsideFix(c); s.time.min += 30; ctx.app.world?.refreshCar();
+      toast('Mechanic got it running. Get an oil change and a real repair soon.', 'good'); ctx.h.refresh();
+    },
     tow: () => {
       if (!spend(s, 185, 'Tow truck')) return;
       const l = LOC_BY_ID.second_chance;

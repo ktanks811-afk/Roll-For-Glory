@@ -197,7 +197,7 @@ export function newCar(modelId, extra = {}) {
     visual: defaultVisual(model),
     cond: { body: 100, lights: 100, tires: 100, engine: 100, trans: 100 },
     tune: { finalDrive: 1 },
-    fuel: 1, nos: 0,
+    fuel: 1, nos: 0, oil: 100,
     stats: { races: 0, wins: 0, losses: 0, bestEt: null, bestTrap: 0 },
     paid: model.msrp,
     ...extra,
@@ -210,7 +210,7 @@ export function modelOf(car) { return CAR_BY_ID[car.modelId]; }
 
 const specCache = new WeakMap();
 export function carSpec(car) {
-  const key = JSON.stringify([car.parts, car.cond, car.tune, car.visual?.spoiler]);
+  const key = JSON.stringify([car.parts, car.cond && Object.values(car.cond).map(Math.round), car.tune, car.visual?.spoiler]);   // rounded: everyday wear ticks every frame
   const hit = specCache.get(car);
   if (hit && hit.key === key) return hit.spec;
   const spec = buildSpec(CAR_BY_ID[car.modelId], partLevels(car.parts), car.cond, car.tune, car.visual);
