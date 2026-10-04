@@ -9,7 +9,7 @@ import { LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
 import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { online } from '../net/online.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', tow: '$', meet: '●', flag: '⚑', trophy: '♛' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', meet: '●', flag: '⚑', trophy: '♛' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot'] },
@@ -19,6 +19,7 @@ const CATS = [
   { id: 'work', label: 'Work', types: ['work'] },
   { id: 'home', label: 'Home', types: ['home', 'property', 'trap', 'land'] },
   { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
+  { id: 'health', label: 'Hospital', types: ['hospital'] },
 ];
 const WHAT = {
   home: 'Your place: sleep, save, garage, change clothes.',
@@ -38,6 +39,7 @@ const WHAT = {
   land: 'Land for sale. Buy it and build your own house and garage.',
   plug: 'Lil Tre sells product out the back of his corner store.',
   police: 'FWPD precinct. Lay low when you have heat.',
+  hospital: 'JPS, the county trauma center. Urgent care, clinic follow-ups for injuries, and your medical bills.',
   court: 'Criminal courts. Show up on your court date or a warrant goes out.',
   meet: 'Street meet: racers to talk to, side bets, Zed\'s van, show your car.',
   drag: 'The drag strip: burnouts, the tree, timeslips.',
