@@ -15,6 +15,7 @@ import { openPartsHub } from './partshub.js';
 import { openRaceSetup } from './raceSetup.js';
 import { openStreetRace } from './streetRaceSetup.js';
 import { openMeet } from './meet.js';
+import { openNightMeet } from './nightmeet.js';
 import { openKustoms } from './kustoms.js';
 import { openCarShow } from './carshow.js';
 import { drawPortrait } from '../gfx2d/person.js';
@@ -65,6 +66,7 @@ const HANDLERS = {
   court: (loc, app) => openCourthouse(loc, app),
   hospital: (loc, app) => openHospital(loc, app),
   meet: (loc, app, s) => {
+    if (loc.weekend) { openNightMeet(loc, app); return; }
     if (!isNight(s.time)) { modal(loc.name, `<p>Empty lot. A security guard on a golf cart. Meets start after <b>8 PM</b>.</p><p class="muted small">Tip: sleep at home until night.</p>`); return; }
     if (!activeCar(s)) { modal(loc.name, '<p>You can\'t roll up to a car meet on foot. Get a car.</p>'); return; }
     openMeet(loc, app);
@@ -72,7 +74,8 @@ const HANDLERS = {
   carshow: (loc, app) => openCarShow(loc, app),
   roll: (loc, app, s) => openRaceSetup(app, { type: 'roll', loc }),
   drag: (loc, app, s) => openRaceSetup(app, { type: 'drag', loc }),
-  sprint: (loc, app) => openStreetRace(app, loc),
+  // a race set up at the weekend meet waits at its start line
+  sprint: (loc, app, s) => openStreetRace(app, loc, s.meetRace?.race === loc.race ? { npcId: s.meetRace.npcId } : {}),
 };
 
 // ---------------- home / safehouse ----------------

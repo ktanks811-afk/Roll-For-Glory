@@ -403,7 +403,7 @@ RENDER.races = (scr, ctx) => {
     <div class="section-title">Spots</div>
     <div class="list">${spots.map(l => {
       const locked = (l.tier || 1) > tier;
-      return `<div class="li click" data-action="gps" data-loc="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${locked ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'meet' ? 'Street meet · after 8 PM' : l.type === 'drag' ? 'Sanctioned drag strip · test & tune, bracket races' : l.type === 'sprint' ? `Street race · ${STREET_RACE_BY_ID[l.race].kind === 'circuit' ? 'circuit' : 'sprint'} · ${s.streetRecords?.[l.race] ? 'your best ' + fmtRaceTime(s.streetRecords[l.race]) : 'cash or pink slips'}` : 'Roll racing · ' + esc(ROADS[l.road]?.desc || '')}</div></div><span>📍</span></div>`;
+      return `<div class="li click" data-action="gps" data-loc="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${locked ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'meet' ? (l.weekend ? 'Weekend night meet · Fri & Sat, 9 PM to 3 AM · crews, spotlight, races' : 'Street meet · after 8 PM') : l.type === 'drag' ? 'Sanctioned drag strip · test & tune, bracket races' : l.type === 'sprint' ? `Street race · ${STREET_RACE_BY_ID[l.race].kind === 'circuit' ? 'circuit' : 'sprint'} · ${s.streetRecords?.[l.race] ? 'your best ' + fmtRaceTime(s.streetRecords[l.race]) : 'cash or pink slips'}` : 'Roll racing · ' + esc(ROADS[l.road]?.desc || '')}</div></div><span>📍</span></div>`;
     }).join('')}</div></div>`;
   wire(scr, ctx, { gps: d => { const l = LOC_BY_ID[d.loc]; ctx.app.world?.setGps(l.x, l.z, l.name); ctx.h.close(); } });
 };
