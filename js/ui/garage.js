@@ -1,6 +1,7 @@
 // Garage: car overview, installed parts, install from the parts bin (DIY at
 // home or paid labor at a shop), dyno, tuning and the car collection.
 
+import { BREAKDOWNS, needsOil, oilInterval } from '../core/upkeep.js';
 import { openPanel, bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
 import { game, fmtMoney, spend, earn, activeCar, carSpec, carMetrics, carValue, modelOf, levels, uid, carMpg, tankGallons, getCar } from '../core/state.js';
 import { ITEM_BY_ID, CATEGORY_NAMES, fits, fitNote, LABOR_RATE } from '../data/catalog.js';
@@ -143,8 +144,10 @@ function overview(body, h, app, st, s, car, m) {
       </div>
       ${spec.fuelLimited ? '<p class="warn small">⚠ Fuel-limited: your injectors/pump can\'t feed this much boost. Upgrade the fuel system.</p>' : ''}
       <div class="section-title">Condition</div>
+      ${car.broken ? `<p class="bad small">🛠 <b>${esc(BREAKDOWNS[car.broken]?.name || 'Broken down')}.</b> ${esc(BREAKDOWNS[car.broken]?.text || '')} Bank → Roadside on your phone.</p>` : ''}
+      ${needsOil(car) ? `<div class="cond"><span>Oil life</span>${bar(car.oil ?? 100, (car.oil ?? 100) < 20 ? 'red' : (car.oil ?? 100) < 45 ? 'yellow' : 'green')}<span>${Math.round(car.oil ?? 100)}%</span></div>` : ''}
       ${['engine', 'trans', 'body', 'tires', 'lights'].map(k => `<div class="cond"><span>${{ engine: 'Engine', trans: 'Transmission', body: 'Body', tires: 'Tires', lights: 'Lights' }[k]}</span>${bar(car.cond[k], car.cond[k] < 40 ? 'red' : car.cond[k] < 70 ? 'yellow' : 'green')}<span>${Math.round(car.cond[k])}%</span></div>`).join('')}
-      <p class="small muted">Repairs: Second Chance Collision. Low engine/transmission health costs power and slows shifts. Flat tires kill grip.</p>
+      <p class="small muted">Repairs: Second Chance Collision. Oil changes: any gas station${needsOil(car) ? `, every ~${oilInterval(spec)} mi on this build` : ''}. Old oil wears the engine; worn engines and gearboxes break down. Tires wear with every mile and bald ones blow out.</p>
       ${spec.nosSecs && st.mode !== 'readOnly' && st.mode !== 'visual' ? `<button class="btn btn-sm" data-action="refill" ${car.nos >= spec.nosSecs ? 'disabled' : ''}>Refill nitrous bottle (${fmtMoney(NITROUS_REFILL)})</button>` : ''}
     </div></div>`;
   drawThumb(body.querySelector('[data-car]'), m, car.visual, car.parts, car.cond);
