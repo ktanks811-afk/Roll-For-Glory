@@ -853,5 +853,45 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   }
   if (FOOD_SPOTS.filter(l => l.truck).length < 3) bad('Fort Worth needs its taco trucks');
 }
+
+// ---- JPS hospital: injuries heal, bills go to collections, then garnishment ----
+{
+  const HL = await import('../js/core/health.js');
+  if (!LOCATIONS.some(l => l.id === HL.HOSPITAL && l.type === 'hospital')) bad('JPS needs a door on the map');
+  for (const cause of ['shot', 'crash']) for (const sev of [0, 0.5, 1]) {
+    const c = HL.diagnose(cause, sev, () => 0.5);
+    if (!c.kinds.length || c.kinds.some(k => !HL.INJURIES[k])) bad(`diagnose ${cause} ${sev}: unknown injury`);
+    if (c.stayH < 6 || c.stayH > 60) bad(`diagnose ${cause} ${sev}: ${c.stayH} h stay`);
+    if (c.total < 2000 || c.total > 15000) bad(`diagnose ${cause} ${sev}: bill ${c.total}`);
+  }
+  const st = createState({ name: 'H', age: 25, look: {}, story: false });
+  st.cash = 0; st.bank = 900;
+  const b = HL.admit(st, HL.diagnose('shot', 0.6, () => 0.1));
+  const m = HL.healthMods(st);
+  if (!(m.speed < 1 && m.noRun && m.cap < 100)) bad('a leg GSW should slow you down ' + JSON.stringify(m));
+  if (b.status !== 'open' || b.balance !== b.total) bad('a new bill should be open for the full amount');
+  // ignore it: past due, collections (+20%), sued, the bank account garnished; cash is safe
+  const before = b.balance; st.cash = 300;
+  const seen = [];
+  for (let d = 0; d < 20; d++) { st.time.day++; HL.healthDay(st); seen.push(b.status); }
+  for (const k of ['late', 'collections', 'judgment']) if (!seen.includes(k)) bad(`an ignored bill never went ${k}: ${seen.join(',')}`);
+  if (st.bank !== 0 || st.cash !== 300) bad(`garnishment should empty the bank and leave cash (bank ${st.bank}, cash ${st.cash})`);
+  if (b.balance !== Math.round(before * 1.2) + HL.SUIT_COSTS - 900) bad(`judgment balance ${b.balance}`);
+  if (HL.followUp(st, st.health.injuries[0])) bad('the clinic should turn you away while the account is past due');
+  // JPS Connection and a plan
+  const st2 = createState({ name: 'H2', age: 25, look: {}, story: false });
+  st2.cash = 400; st2.bank = 2000;
+  const b2 = HL.admit(st2, HL.diagnose('crash', 0.3, () => 0.9));
+  const full = b2.balance;
+  if (!HL.applyConnection(st2, b2) || b2.balance !== Math.round(full * HL.CONNECTION_SHARE)) bad('JPS Connection should cut the bill to 10%');
+  if (!HL.startPlan(st2, b2) || b2.status !== 'plan') bad('payment plan did not start');
+  for (let d = 0; d < 7 * HL.PLAN_WEEKS + 1; d++) { st2.time.day++; HL.healthDay(st2); }
+  if (b2.status !== 'paid') bad(`a plan you can afford should pay off the bill (${b2.status}, ${b2.balance} left)`);
+  // healing
+  const j = st2.health.injuries[0];
+  if (!HL.followUp(st2, j) || !j.followUp) bad('follow-up visit failed');
+  HL.heal(st2, 99999);
+  if (HL.injured(st2) || HL.healthMods(st2).speed !== 1) bad('injuries should heal');
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

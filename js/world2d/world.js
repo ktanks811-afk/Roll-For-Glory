@@ -37,6 +37,7 @@ import { tickNeeds, runMul } from '../core/needs.js';
 import { applyEstate } from './estate.js';
 import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
+import { healthMods } from '../core/health.js';
 import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
@@ -411,7 +412,8 @@ export class World {
     const fwd = input.axis('forward') - input.axis('back');
     const side = input.steer();
     const run = input.held('run');
-    const sp = run ? 5.2 * runMul(this.s) : 1.8;
+    const hm = healthMods(this.s);   // a bad leg: slower, and no running
+    const sp = (run ? (hm.noRun ? 2.4 : 5.2 * runMul(this.s)) : 1.8) * hm.speed;
     let mx = side, mz = -fwd;
     const len = Math.hypot(mx, mz);
     if (len > 0.05) {
@@ -592,6 +594,15 @@ export class World {
     this.refreshCarSprite();
     if (impact > 10) this.vehicle.setSpec(carSpec(car));
     if (what === 'water') this.ui.toast('That\'s the water. Cars don\'t float.', 'bad');
+    // a hard hit hurts you too; hard enough and you crash out and wake up at JPS
+    if (impact > 18 && !this.downed && this.combat) {
+      const a = this.combat.arms;
+      a.hp -= (impact - 18) * 3;
+      if (impact > 40 || a.hp <= 0) {
+        a.hp = 1;
+        this.ui.hospital?.({ cause: 'crash', sev: Math.min(1, (impact - 18) / 30), why: what === 'police' ? 'You hit a squad car and blacked out.' : what === 'water' ? 'You went into the water. Somebody pulled you out.' : 'You crashed out.' });
+      } else if (impact > 24) this.ui.toast(`Hard hit. You're hurt (health ${Math.max(1, Math.round(a.hp))}).`, 'bad');
+    }
   }
 
   onSpikes() {
