@@ -893,7 +893,9 @@ await step('stealing cars', async () => {
   // get out, walk back to your own car: the stolen one gets dumped
   await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; });
   await key('KeyF'); await p.waitForTimeout(150);
-  await p.evaluate(() => { const w = window.__rfg.app.world, o = w.thefts.own.vehicle; w.foot.x = o.x + 2; w.foot.z = o.z; });
+  // the car you stole can be anywhere on the map, and dumped cars over 500 m away get
+  // cleaned up, so bring your own car to the curb here instead of walking across town
+  await p.evaluate(() => { const w = window.__rfg.app.world, o = w.thefts.own.vehicle; o.x = w.vehicle.x + 6; o.z = w.vehicle.z; w.foot.x = o.x + 2; w.foot.z = o.z; });
   await p.waitForTimeout(100);
   await key('KeyF'); await p.waitForTimeout(200);
   const back = await p.evaluate(ownUid => { const w = window.__rfg.app.world; return { inCar: w.inCar, mine: w.vehicle?.car?.uid === ownUid, own: !!w.thefts.own, dumped: w.thefts.dumped.length }; }, ownUid);
