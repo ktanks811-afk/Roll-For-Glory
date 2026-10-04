@@ -27,6 +27,7 @@ import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
 import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
+import { openRealty, openTrap, openLand, openPlug } from './estate.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -43,9 +44,12 @@ export function openPlace(loc, app) {
 
 const HANDLERS = {
   home: homeScreen,
-  property: (loc, app, s) => s.properties.includes(loc.id) ? homeScreen(loc, app, s) : realty(loc, app, s, loc.id),
+  property: (loc, app, s) => s.properties.includes(loc.id) ? homeScreen(loc, app, s) : openRealty(app, loc.id),
   dealer, usedlot, perf, visual, repair, gas, food, clothing,
-  realty: (loc, app, s) => realty(loc, app, s),
+  realty: (loc, app) => openRealty(app),
+  trap: (loc, app) => openTrap(loc, app),
+  land: (loc, app) => openLand(loc, app),
+  plug: (loc, app) => openPlug(loc, app),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
@@ -61,7 +65,7 @@ const HANDLERS = {
 };
 
 // ---------------- home / safehouse ----------------
-function homeScreen(loc, app, s) {
+export function homeScreen(loc, app, s) {
   const w = app.world;
   if (w && w.police.safehouse(w)) toast('You slipped into the garage. The cops lost you.', 'good');
   else if (w && w.police.phase === 'chase') { modal('Not now', '<p>They\'re right behind you — lose them first, then hide here.</p>'); return; }
@@ -379,34 +383,6 @@ function food(loc, app, s) {
 }
 
 function clothing(loc, app, s) { wardrobe(app, s, loc); }
-
-function realty(loc, app, s, focusId) {
-  openPanel((root, h) => {
-    const tier = tierOf(s.rep).n;
-    root.innerHTML = head('Bayline Realty', 'Priya Shah · "I sell garages with houses attached."') + `<div class="p-body"><div class="grid">${Object.entries(PROPERTIES).map(([id, p]) => {
-      const owned = s.properties.includes(id);
-      const locked = p.tier && tier < p.tier;
-      return `<div class="card" style="${focusId === id ? 'border-color:var(--red)' : ''}"><h3>${esc(p.name)}</h3><p class="muted small">${esc(p.desc)}</p>
-        <div class="kv"><span>Garage</span><span>${p.slots} cars</span><span>Upkeep</span><span>${id === 'eastgate_studio' ? '—' : '$120/week'}</span></div>
-        <div class="row" style="margin-top:8px"><div class="price grow">${p.price ? fmtMoney(p.price) : 'Rented'}</div>
-        ${owned ? `<span class="tag tag-green">${s.home === id ? 'Home' : 'Owned'}</span>${s.home !== id ? `<button class="btn btn-sm" data-action="home" data-id="${id}">Make home</button>` : ''}` : `<button class="btn btn-sm btn-primary" data-action="buy" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${p.tier}` : 'Buy'}</button>`}
-        <button class="btn btn-sm" data-action="gps" data-id="${id}">📍</button></div></div>`;
-    }).join('')}</div><p class="small muted">Prices include closing costs. Every home is a safehouse and adds garage space.</p></div>`;
-    bind(root, {
-      close: () => h.close(),
-      buy: async d => {
-        const p = PROPERTIES[d.id];
-        if (!(await confirm(`Buy ${p.name}?`, `<p>${fmtMoney(p.price)} — ${p.slots}-car garage.</p>`, 'Buy'))) return;
-        if (!spend(s, p.price, `Bought ${p.name}`)) return;
-        s.properties.push(d.id); s.home = d.id;
-        emit('propertyBought', { id: d.id });
-        toast(`${p.name} is yours`, 'good'); h.refresh();
-      },
-      home: d => { s.home = d.id; h.refresh(); },
-      gps: d => { const l = LOC_BY_ID[d.id]; app.world?.setGps(l.x, l.z, PROPERTIES[d.id].name); closeAllPanels(); },
-    });
-  });
-}
 
 function police(loc, app, s) {
   openPanel((root, h) => {

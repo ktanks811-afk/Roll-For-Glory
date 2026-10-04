@@ -1,4 +1,5 @@
 import { STREET_RACES, raceStart } from './streetRaces.js';
+import { ESTATE_LOCATIONS, TRAPS } from './estate.js';
 
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
 // with a highway to the north, desert to the south, mountains to the west
@@ -79,6 +80,10 @@ export const LOCATIONS = [
   L('westside_house', 'property', 'Arlington Heights House', 1, 6, 'E', { color: '#ffffff', icon: 'home' }),
   L('hillcrest_villa', 'property', 'Hillcrest Villa', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
   L('foundry_warehouse', 'property', 'Foundry Warehouse Garage', 11, 3, 'W', { color: '#ffffff', icon: 'home' }),
+  L('fairmount_craftsman', 'property', 'Fairmount Craftsman', 4, 9, 'N', { color: '#ffffff', icon: 'home' }),
+  L('westover_estate', 'property', 'Westover Hills Estate', 0, 3, 'E', { color: '#ffffff', icon: 'home' }),
+  L('rivercrest_mansion', 'property', 'Rivercrest Mansion', 1, 8, 'E', { color: '#ffffff', icon: 'home' }),
+  L('trap_riverside', 'trap', 'Riverside Duplex', 10, 4, 'W', { color: '#8a1a1a', icon: 'home' }),
   L('hook_haul', 'work', 'Hook & Haul Towing', 10, 6, 'S', { color: '#f0a020', icon: 'tow' }),
   L('stockyards_show', 'carshow', 'Stockyards Car Show', 7, 3, 'W', { color: '#e8c21a', icon: 'trophy' }),
   L('pier9', 'meet', 'Pier 9 Lot', 11, 11, 'W', { color: '#ff1a2e', icon: 'meet', tier: 1 }),
@@ -93,6 +98,8 @@ export const LOCATIONS = [
   { id: 'northridge_start', type: 'roll', name: 'Cross Timbers Pass', x: -1120, z: -330, face: -Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'mountain', tier: 4 },
   { id: 'gas_desert', type: 'gas', name: 'Last Chance Gas', x: -24, z: 1700, face: -Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
   // street race start lines (routes in data/streetRaces.js)
+  // trap houses, land for sale and the plug, off the city grid (data/estate.js)
+  ...ESTATE_LOCATIONS,
   ...STREET_RACES.map(ev => { const st = raceStart(ev); return { id: ev.id, type: 'sprint', name: ev.name, x: st.x, z: st.z, face: st.h, color: '#ffbe1e', icon: 'flag', tier: ev.tier > 1 ? ev.tier : undefined, race: ev.id }; }),
 ];
 
@@ -105,6 +112,11 @@ export const PROPERTIES = {
   westside_house:    { name: 'Arlington Heights House', price: 135000, slots: 4, desc: 'Quiet street, four-car garage with a lift.' },
   hillcrest_villa:   { name: 'Hillcrest Villa', price: 780000, slots: 8, desc: 'Hillside glass house with a heated showroom garage.', tier: 4 },
   foundry_warehouse: { name: 'Foundry Warehouse Garage', price: 260000, slots: 12, desc: 'A crew HQ: dyno cell, paint booth, twelve bays.', tier: 3 },
+  fairmount_craftsman: { name: 'Fairmount Craftsman', price: 340000, slots: 6, desc: 'Restored 1920s craftsman on a Southside street, six-car garage out back.', tier: 3, wall: '#7f8a6a', roof: '#4a3a2e' },
+  westover_estate:   { name: 'Westover Hills Estate', price: 1450000, slots: 10, desc: 'Gated, a pool, and a ten-car gallery garage with a turntable.', tier: 4, wall: '#d9d0bc', roof: '#3a4a3a' },
+  rivercrest_mansion: { name: 'Rivercrest Mansion', price: 3600000, slots: 14, desc: 'Country club money. Fourteen climate-controlled bays and a car elevator.', tier: 5, wall: '#e8e2d8', roof: '#2f3b4a', wallH: 5.2 },
+  // trap houses (data/estate.js): customers knock, SWAT might too
+  ...Object.fromEntries(Object.entries(TRAPS).map(([id, t]) => [id, { ...t, trap: true }])),
 };
 
 // Race roads available for roll racing (built by race/track.js).

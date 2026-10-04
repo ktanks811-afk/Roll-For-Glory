@@ -1313,6 +1313,53 @@ await step('courts + jail', async () => {
   await p.evaluate(() => { const s = window.__rfg.game.s; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; });
 });
 
+// ---------------- drugs, trap houses, land you build on ----------------
+await step('plug + trap house + SWAT + land', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; w.paused = false; w.knocking = false; });
+  const place = id => p.evaluate(async id => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID[id], window.__rfg.app); }, id);
+  await clear();
+  await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; w.police.reset(w); s.heat = 0; s.cash = 2e6; s.rep = 40000; s.time.min = 13 * 60; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; for (const c of s.cars) delete c.impound; });
+  // Bayline Realty: a trap house and a lot
+  await place('bayline');
+  await p.click('.tabs button:has-text("Trap houses")'); await p.click('[data-action=buy][data-id=trap_stopsix]'); await p.click('.modal button:has-text("Buy")');
+  await p.click('.tabs button:has-text("Land")'); await p.click('[data-action=buyland][data-id=land_stopsix]'); await p.click('.modal button:has-text("Buy")');
+  await snap('estate-realty');
+  await clear();
+  // the plug
+  await place('plug');
+  await p.click('[data-action=buy][data-id=percs][data-n="5"]');
+  await snap('estate-plug');
+  if (await p.evaluate(() => window.__rfg.game.s.drugs.bag.percs) !== 5) throw new Error('bought nothing from the plug');
+  await clear();
+  // stand in the trap house: a customer knocks, you serve them
+  await p.evaluate(() => { const w = window.__rfg.app.world, g = w.map.garages.find(g => g.id === 'trap_stopsix'); w.inCar = false; w.foot.x = g.center.x; w.foot.z = g.center.z; w.knockT = 0.5; });
+  await p.waitForSelector('.modal:has-text("Knock knock")', { timeout: 15000 });
+  await snap('estate-knock');
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.click('.modal button:has-text("Serve")'); await p.waitForTimeout(200);
+  const after = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, sold: window.__rfg.game.s.drugs.sold }));
+  if (!(after.cash > cash0) || after.sold < 1) throw new Error('serving a customer paid nothing ' + JSON.stringify(after));
+  await clear();
+  // SWAT: get down, booked on delivery
+  await p.evaluate(async () => { const { raid } = await import('./js/world2d/trap.js'); raid(window.__rfg.app.world, 'trap_stopsix'); });
+  await p.waitForSelector('.modal:has-text("SWAT RAID")'); await snap('estate-swat');
+  await p.click('.modal button:has-text("Get on the ground")'); await p.waitForTimeout(250);
+  const j = await p.evaluate(() => ({ cases: window.__rfg.game.s.justice.cases.map(c => c.charges.map(x => x.cls + ' ' + x.text)), closed: window.__rfg.game.s.estate.traps.trap_stopsix.closed }));
+  if (!j.cases.length || !/delivery/i.test(j.cases[0].join())) throw new Error('raid did not file a delivery case ' + JSON.stringify(j));
+  if (!(j.closed > 0)) throw new Error('raided house is not boarded up');
+  await clear();
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; for (const c of s.cars) delete c.impound; });
+  // land: build a house, skip ahead, it stands on the map with a garage
+  await place('land_stopsix');
+  await p.click('[data-action=build][data-id=starter]'); await p.click('.modal button:has-text("Break ground")');
+  await clear();
+  await p.evaluate(() => { window.__rfg.game.s.time.day += 2; });
+  await p.waitForFunction(() => window.__rfg.app.world.map.garages.some(g => g.id === 'land_stopsix'), null, { timeout: 5000 });
+  await p.evaluate(() => { const w = window.__rfg.app.world, g = w.map.garages.find(g => g.id === 'land_stopsix'); w.foot.x = g.park.x; w.foot.z = g.park.z; });
+  await p.waitForTimeout(400); await snap('estate-built');
+  await clear();
+});
+
 // ---------------- traffic stop: 10 s to pull over, officer walks up, drive off = chase ----------------
 await step('traffic stop: pull over, walk-up, drive off', async () => {
   await p.evaluate(() => { for (const c of window.__rfg.game.s.cars) delete c.impound; });   // an earlier arrest impounded the car
