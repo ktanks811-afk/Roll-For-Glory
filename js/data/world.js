@@ -88,6 +88,8 @@ export const LOCATIONS = [
   L('stockyards_show', 'carshow', 'Stockyards Car Show', 7, 3, 'W', { color: '#e8c21a', icon: 'trophy' }),
   L('pier9', 'meet', 'Pier 9 Lot', 11, 11, 'W', { color: '#ff1a2e', icon: 'meet', tier: 1 }),
   L('kessler_lot', 'meet', 'Kessler Mall Lot', 2, 9, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  // weekend night meet (Fri + Sat, 9 PM to 3 AM): ui/nightmeet.js
+  L('gran_plaza', 'meet', 'La Gran Plaza Lot', 6, 9, 'N', { color: '#ff1a2e', icon: 'meet', weekend: true }),
   L('old_foundry', 'meet', 'The Old Foundry', 10, 2, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
   // on the lawn in front of the pink granite courthouse (block 5,4; scenery draws the building)
   { id: 'courthouse', type: 'court', name: 'Tarrant County Courthouse', x: -75, z: -163, face: 0, color: '#c9a68a', icon: 'court' },

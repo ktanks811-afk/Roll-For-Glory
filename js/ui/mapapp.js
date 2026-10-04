@@ -204,7 +204,7 @@ export function renderMap(scr, ctx) {
       const m = selRoute ? selRoute.meters : 0;
       card.innerHTML = `<div class="mc-name">${t.pin ? '📍 Dropped pin' : esc(shortName(t.name))}${locked ? ' <span class="tag tag-red">🔒 Tier ' + l.tier + '</span>' : ''}</div>
         <div class="mc-sub">${esc(districtAt(t.x, t.z))} · ${fmtDist(m)} by road · ${fmtEta(m)}</div>
-        ${l ? `<div class="mc-what">${esc(WHAT[l.type] || '')}${l.tier ? ` Needs rep tier ${l.tier}.` : ''}</div>` : ''}
+        ${l ? `<div class="mc-what">${esc(l.weekend ? 'Weekend night meet, Friday and Saturday 9 PM to 3 AM: crews, the spotlight, burnouts and races set up from the lot.' : WHAT[l.type] || '')}${l.tier ? ` Needs rep tier ${l.tier}.` : ''}</div>` : ''}
         <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${active
           ? '<button class="btn btn-sm btn-primary" data-go>Start driving</button><button class="btn btn-sm" data-clear>Clear GPS</button>'
           : '<button class="btn btn-sm btn-primary" data-gps>📍 Set GPS</button>'}<button class="btn btn-sm" data-center>Center</button><button class="btn btn-sm" data-x>✕</button></div>`;

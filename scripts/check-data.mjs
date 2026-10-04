@@ -672,6 +672,48 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!CS.isShowTime({ day: 6, min: 12 * 60 }, 'Sat') || CS.isShowTime({ day: 6, min: 20 * 60 }, 'Sat') || CS.isShowTime({ day: 3, min: 12 * 60 }, 'Wed')) bad('car show hours are off');
   if (!LOCATIONS.some(l => l.type === 'carshow')) bad('the car show needs a lot on the map');
 }
+// ---- weekend night meets: when, who shows, the spotlight, races from the lot ----
+{
+  const NM = await import('../js/core/nightmeet.js');
+  // day 5 is a Friday: on from 9 PM, still that night at 2 AM Saturday, closed at 3 AM and on a Thursday
+  if (NM.meetNight({ day: 5, min: 21 * 60 }) !== 5 || NM.meetNight({ day: 6, min: 2 * 60 }) !== 5 || NM.meetNight({ day: 6, min: 3 * 60 }) !== 0
+    || NM.meetNight({ day: 4, min: 23 * 60 }) !== 0 || NM.meetNight({ day: 6, min: 22 * 60 }) !== 6 || NM.meetNight({ day: 7, min: 60 }) !== 6 || NM.meetNight({ day: 7, min: 22 * 60 }) !== 0) bad('night meet hours are off');
+  if (!LOCATIONS.some(l => l.id === NM.MEET_LOC && l.type === 'meet' && l.weekend && !l.tier)) bad('the weekend meet needs an open lot on the map');
+  for (const tier of [1, 2, 3, 4, 5]) {
+    const lu = NM.lineup(tier);
+    if (lu.cars.length < 6) bad(`night meet tier ${tier} only has ${lu.cars.length} cars`);
+    if (!lu.crews.length) bad(`no crews at the tier ${tier} night meet`);
+    for (const e of lu.cars) {
+      if (!CAR_BY_ID[e.modelId] || !isFinite(e.score)) bad(`night meet car ${e.name} is broken`);
+      if (e.racer && !RACERS.some(r => r.id === e.racer)) bad(`night meet racer ${e.racer} unknown`);
+    }
+    if (!lu.cars.some(e => e.racer)) bad(`nobody to race at the tier ${tier} night meet`);
+    for (const c of lu.crews) if (!lu.cars.some(e => e.crew === c)) bad(`crew ${c} rolled in with no cars`);
+    if (lu.crews.includes('midnight_static') && NM.lineup(tier, { skip: 'midnight_static' }).crews.includes('midnight_static')) bad('your own crew should not show up as a rival');
+    const ev = NM.meetRoute(tier);
+    if (!STREET_RACES.includes(ev) || ev.tier > tier) bad(`meet race route ${ev.id} is above tier ${tier}`);
+  }
+  const lot = NM.lineup(2).cars;
+  const top = NM.spotlight({ score: 400, lot, tier: 2, crowd: 200, rnd: () => 0.5 });
+  const low = NM.spotlight({ score: 10, lot, tier: 2, crowd: 200, rnd: () => 0.5 });
+  if (!(top.crown && top.rank === 1 && !low.crown && low.rank === lot.length + 1)) bad('spotlight ranks are off');
+  if (!(top.tips > low.tips && top.rep > low.rep && top.followers > low.followers && low.tips >= 0)) bad('a better build should earn more in the spotlight');
+  const crewd = NM.spotlight({ score: 60, lot, tier: 2, crowd: 200, crew: 3, rnd: () => 0.5 }), solo = NM.spotlight({ score: 60, lot, tier: 2, crowd: 200, rnd: () => 0.5 });
+  if (!(crewd.hype > solo.hype)) bad('rolling with your crew should add hype');
+  if (!(NM.copsChance(0, 0) < NM.copsChance(0, 2) && NM.copsChance(0, 2) < NM.copsChance(3, 2) && NM.copsChance(6, 3) <= 0.85)) bad('cop odds at the meet are off');
+  const w = NM.meetRaceBonus({ won: true, crew: true, tier: 2, pot: NM.CREW_POT[2] }), l = NM.meetRaceBonus({ won: false, crew: true, tier: 2, pot: NM.CREW_POT[2] });
+  if (!(w.cash === NM.CREW_POT[2] && l.cash === -NM.CREW_POT[2] && w.crewRep > 0 && l.crewRep === 0)) bad('crew pot settles wrong');
+  // old saves have no meet record; it gets made, and resets each night
+  const sv = { time: { day: 5, min: 22 * 60 } };
+  const r1 = NM.meetRecord(sv); r1.shown = true; r1.burnouts = 2;
+  if (NM.meetRecord(sv).shown !== true) bad('meet record forgot the night');
+  sv.time = { day: 6, min: 22 * 60 };
+  const r2 = NM.meetRecord(sv);
+  if (r2.shown || r2.burnouts || r2.nights !== 2) bad('meet record did not reset for a new night');
+  if (NM.lineup(1, { mates: ['tiny', 'lowkey'] }).cars.some(e => e.racer === 'tiny' || e.racer === 'lowkey')) bad('your crew mates should park with you, not on the lot');
+  const crewS = { crew: { members: ['tiny', 'lowkey', 'nobody'] } };
+  if (NM.crewWithYou(crewS).length !== 2 || NM.callout({}, lot) !== null) bad('crew at the meet is off');
+}
 // ---- Glitch rim pack: every rim is on the atlas and sold as a wheel ----
 {
   const { RIMS, RIM_COLS } = await import('../js/data/rims.js');

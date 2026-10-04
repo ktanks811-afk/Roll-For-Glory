@@ -1,6 +1,7 @@
 // Boot, main loop and mode switching (title → character → world ⇄ race).
 
-import { game, fmtMoney, activeCar, carValue, spend, hourOf } from './core/state.js';
+import { game, fmtMoney, activeCar, carValue, spend, hourOf, dayName } from './core/state.js';
+import { MEET_NIGHTS, MEET_LOC } from './core/nightmeet.js';
 import { on, emit } from './core/events.js';
 import { input } from './core/input.js';
 import { touchUi } from './ui/touch.js';
@@ -148,6 +149,8 @@ function morning() {
 
 function newDay() {
   const s = game.s;
+  // the weekend night meet: Dre texts the spot on Friday and Saturday
+  if (MEET_NIGHTS.includes(dayName(s.time))) sendMessage(s, 'kingpin', `Meet tonight at La Gran Plaza, 9 PM till 3. Crews are pulling up. Bring something clean.`, { action: { type: 'gps', loc: MEET_LOC } });
   hustleDay(s);
   // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at
   const dr = drugsDay(s);
