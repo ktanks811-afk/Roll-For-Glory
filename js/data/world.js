@@ -72,6 +72,11 @@ export const LOCATIONS = [
   L('gas_south', 'gas', 'Volt & Petrol', 6, 10, 'N', { color: '#1f8f3a', icon: 'gas' }),
   L('luckys', 'food', "Lucky's 24hr Diner", 6, 7, 'N', { color: '#e8c21a', icon: 'food' }),
   L('noodle', 'food', 'Midnight Noodle Bar', 9, 3, 'S', { color: '#e8c21a', icon: 'food' }),
+  // corner stores: snacks, smokes and scratchers behind bulletproof glass
+  L('corner_rosedale', 'corner', 'Rosedale Food Mart', 6, 9, 'N', { color: '#ff8a1a', icon: 'food' }),
+  L('corner_northside', 'corner', 'Northside Quick Stop', 6, 2, 'S', { color: '#ff8a1a', icon: 'food' }),
+  L('corner_riverside', 'corner', 'Riverside Mini Mart', 9, 4, 'W', { color: '#ff8a1a', icon: 'food' }),
+  L('corner_camp_bowie', 'corner', 'Camp Bowie Corner Store', 2, 5, 'E', { color: '#ff8a1a', icon: 'food' }),
   L('threadline', 'clothing', 'Threadline Streetwear', 4, 6, 'E', { color: '#a01aff', icon: 'shirt' }),
   L('surplus', 'clothing', 'Riverside Army Surplus', 8, 9, 'W', { color: '#a01aff', icon: 'shirt', shop: 'surplus' }),
   L('bayline', 'realty', 'Bayline Realty', 5, 5, 'S', { color: '#1f8f3a', icon: 'key', contact: 'priya' }),

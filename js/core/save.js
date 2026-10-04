@@ -10,6 +10,7 @@ import { ensure as ensureHustle, settleAway } from './hustle.js';
 import { ensureRecord } from './warrants.js';
 import { ensureJustice } from './justice.js';
 import { ensureNeeds } from './needs.js';
+import { ensureLoot } from './loot.js';
 
 const PREFIX = 'rollforglory.';
 export const SLOTS = ['auto', 'slot1', 'slot2', 'slot3'];
@@ -118,6 +119,7 @@ function migrate(s) {
   ensureRecord(s);
   ensureJustice(s);
   ensureNeeds(s);   // hunger + energy meters (older saves start full)
+  ensureLoot(s);
   settleAway(s);   // the businesses kept running while the game was closed
   return s;
 }
