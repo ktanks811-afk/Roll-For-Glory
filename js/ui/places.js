@@ -28,10 +28,11 @@ import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '..
 import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug } from './estate.js';
-import { ensureLoot, lootTotal, sellLoot, FENCE_RATE } from '../core/loot.js';
+import { ensureLoot } from '../core/loot.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
 import { MENUS } from '../data/food.js';
 import { eat, sleep, nap, ensureNeeds } from '../core/needs.js';
+import { openPawn } from './pawn.js';
 import { openHospital } from './hospital.js';
 import { BREAKDOWNS, needsOil, oilChangeCost, changeOil, clearBreakdown, oilInterval } from '../core/upkeep.js';
 
@@ -56,6 +57,7 @@ const HANDLERS = {
   trap: (loc, app) => openTrap(loc, app),
   land: (loc, app) => openLand(loc, app),
   plug: (loc, app) => openPlug(loc, app),
+  pawn: (loc, app) => openPawn(loc, app),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
@@ -254,15 +256,11 @@ async function fence(loc, app, s) {
   else if (pick === 'lot') usedlot(loc, app, s);
 }
 
-// Sal also takes stolen goods off your hands, at a steep discount.
+// Sal only does cars. Goods go to Dre at Cash Cow Pawn.
 async function fenceGoods(loc, app, s) {
-  if (app.world?.police.phase === 'chase') { usedlot(loc, app, s); return; }
-  const list = ensureLoot(s), total = lootTotal(s), offer = Math.round(total * FENCE_RATE);
-  const pick = await modal("Rusty's Used Autos", `<p class="muted">Sal looks at the bag. "Where'd you get all this? ...Never mind. Don't tell me."</p>
-    <div class="list">${list.map(i => `<div class="li"><div class="grow"><div class="t">${esc(i.name)}</div><div class="s">${i.from ? `From ${esc(i.from)}` : 'Hot'}</div></div><span class="muted">${fmtMoney(i.value)}</span></div>`).join('')}</div>
-    <p>He'll give you <b>${fmtMoney(offer)}</b> cash for all of it (${Math.round(FENCE_RATE * 100)}¢ on the dollar).</p><p class="small muted">Get busted with stolen goods on you and they're a theft charge.</p>`,
-    [{ label: `Sell it all · ${fmtMoney(offer)}`, primary: true, value: 'sell' }, { label: 'Look at cars', value: 'lot' }, { label: 'Keep it', value: 'keep' }]);
-  if (pick === 'sell') { const paid = sellLoot(s, null, FENCE_RATE); audio.buy?.(); toast(`Sal paid ${fmtMoney(paid)} for the goods.`, 'good'); emit('lootFenced', { paid }); }
+  const pick = await modal("Rusty's Used Autos", `<p class="muted">Sal looks at the bag. "I do cars. Take that to Dre in the back of Cash Cow Pawn on East Lancaster. He'll give you cash, no questions."</p>`,
+    [{ label: 'GPS to Cash Cow Pawn', primary: true, value: 'gps' }, { label: 'Look at cars', value: 'lot' }]);
+  if (pick === 'gps') { const l = LOC_BY_ID.cashcow_pawn; app.world?.setGps(l.x, l.z, l.name); }
   else if (pick === 'lot') usedlot(loc, app, s);
 }
 
