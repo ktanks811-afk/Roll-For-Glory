@@ -570,3 +570,15 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .tp-like { background: none; border: none; color: var(--dim); font: inherit; padding: 4px 0; cursor: pointer; min-height: 32px; }
 .tp-like.on { color: #ff1a6a; }
 .bar.bad > div { background: var(--red); }
+
+/* JPS hospital */
+.hud-injury { border-color: #e0192e; color: #ffb3bb; }
+.jps-panel .panel-inner { width: min(560px, 100%); border-color: #e0192e; }
+.jps-head { background: linear-gradient(90deg, #2a0b10, #121318 60%); }
+.jail-id .jps-mug { background: #fff; color: #e0192e; }
+.jail-clock.jps-clock { color: #ff8a96; font-size: 22px; }
+.jps-items > div { border-left-color: #e0192e; }
+.jps-bill { flex-wrap: wrap; }
+.jps-bill.warn-b { border-color: #e8c21a; } .jps-bill.bad-b { border-color: var(--red); }
+.jps-items { gap: 2px; }
+.jps-items > div { font-size: 13px; padding: 3px 8px; }
