@@ -9,6 +9,8 @@ import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
+import { drugsDay } from './core/drugs.js';
+import { raidWhileAway } from './world2d/trap.js';
 import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
 import { book } from './ui/court.js';
@@ -146,6 +148,10 @@ function morning() {
 function newDay() {
   const s = game.s;
   hustleDay(s);
+  // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at
+  const dr = drugsDay(s);
+  for (const n of dr.notes) toast(n, 'info');
+  for (const r of dr.raids) raidWhileAway(s, r);
   // marketplace churn
   s.listings = s.listings.filter(() => Math.random() > 0.3);
   while (s.listings.length < 30) s.listings.push(makeListing());

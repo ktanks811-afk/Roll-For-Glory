@@ -32,6 +32,9 @@ import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant
 import { charge, fileCase, openCase, IMPOUND_LOT } from '../core/justice.js';
 import { toggleMask, masked } from '../core/disguise.js';
 import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
+import { applyEstate } from './estate.js';
+import { estateTick } from './trap.js';
+import { seizeBag } from '../core/drugs.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -44,6 +47,7 @@ export class World {
   constructor(ui) {
     this.ui = ui;
     this.map = getMap();
+    applyEstate(this.map, game.s);   // houses you built on your land
     this.cam = new Camera();
     this.traffic = new TrafficSystem(this.map.roads);
     this.police = new PoliceSystem(this.map, game.s);
@@ -229,6 +233,7 @@ export class World {
 
     // texted missions: stops, clock (before the GPS clears itself on arrival)
     missionTick(this, p, (m, k) => this.ui.toast(m, k));
+    estateTick(this, dt);   // construction, customers at your trap house
 
     // gps
     this.gpsT -= dt;
@@ -592,6 +597,7 @@ export class World {
     const hotCar = !!this.vehicle?.car?.hot;
     // they chased you down: that's evading, on top of whatever they saw
     const ph = this.police.phase, items = record.slice();
+    items.push(...seizeBag(s));   // they search you: any product on you is a charge
     if (ph !== 'none' && ph !== 'notice' && ph !== 'stop' && this.police.eyesOn !== false && !items.some(r => r.kind === 'evading')) {
       items.push(this.inCar && this.police.level >= 2 ? { kind: 'evading', text: 'Evading arrest (in a vehicle).' } : { kind: 'evading', text: 'Evading arrest.' });
     }

@@ -17,7 +17,7 @@ const CATS = [
   { id: 'race', label: 'Races & meets', types: ['meet', 'carshow', 'drag', 'roll', 'sprint'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food'] },
   { id: 'work', label: 'Work', types: ['work'] },
-  { id: 'home', label: 'Home', types: ['home', 'property'] },
+  { id: 'home', label: 'Home', types: ['home', 'property', 'trap', 'land'] },
   { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
 ];
 const WHAT = {
@@ -32,7 +32,10 @@ const WHAT = {
   food: 'Food and energy.',
   work: 'Tow yard and gig dispatch: take delivery runs, Ryde riders and tow calls.',
   clothing: 'Outfits and streetwear.',
-  realty: 'Buy and sell properties.',
+  realty: 'Buy and sell houses, land and trap houses.',
+  trap: 'A trap house. Stock the stash and customers knock. Too many and SWAT does too.',
+  land: 'Land for sale. Buy it and build your own house and garage.',
+  plug: 'Lil Tre sells product out the back of his corner store.',
   police: 'FWPD precinct. Lay low when you have heat.',
   court: 'Criminal courts. Show up on your court date or a warrant goes out.',
   meet: 'Street meet: racers to talk to, side bets, Zed\'s van, show your car.',

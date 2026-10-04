@@ -40,6 +40,8 @@ export const IMPOUND_LOT = 'pspd_central';   // your car waits behind the Centra
 // is a Class B. `tg`: a "3g" offence, so parole comes only after half the sentence.
 export function classify(o) {
   const t = (o.text || '').toLowerCase();
+  // drug charges carry their class in the kind: 'drugs_F2' (core/drugs.js)
+  if (o.kind?.startsWith('drugs_') && CLASSES[o.kind.slice(6)]) return { cls: o.kind.slice(6), text: o.text };
   switch (o.kind) {
     case 'speeding': case 'redlight': case 'noise': case 'reckless': case 'fta':
       return { cls: 'C', text: o.text };
