@@ -11,6 +11,7 @@ import { Combat } from './combat.js';
 import { Carjacks } from './carjack.js';
 import { Thefts } from './theft.js';
 import { Gigs } from './gigs.js';
+import { GangWorld } from './gangs.js';
 import { StreetRaces } from './streetRace.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
@@ -77,6 +78,7 @@ export class World {
     this.carjacks = new Carjacks(this);
     this.thefts = new Thefts(this);
     this.gigs = new Gigs(this);
+    this.gangs = new GangWorld(this);
     this.races = new StreetRaces(this);
     this.spawnPlayer();
   }
@@ -182,6 +184,7 @@ export class World {
     this.carjacks.update(dt);
     this.thefts.update(dt);
     this.gigs.update(dt);
+    this.gangs.update(dt);
     this.races.update(dt);
     this.updateOnline(dt);
 
@@ -891,6 +894,7 @@ export class World {
     this.carjacks.draw(ctx, cam);
     this.thefts.draw(ctx, cam);
     this.gigs.draw(ctx, cam);
+    this.gangs.draw(ctx, cam);
 
     const livePeers = online.active ? this.drawPeers(ctx, v) : [];
 

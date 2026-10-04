@@ -67,7 +67,7 @@ export class Combat {
   // ---------------------------------------------------------------- aiming
   targets() {
     const w = this.w, out = [];
-    for (const p of w.traffic.peds) if (!p.down) out.push({ x: p.x, z: p.z, ped: p });
+    for (const p of w.traffic.peds) if (!p.down && !p.friend) out.push({ x: p.x, z: p.z, ped: p });
     for (const c of w.police.allCars()) out.push({ x: c.x, z: c.z, car: c, police: true });
     return out;
   }
@@ -170,7 +170,7 @@ export class Combat {
       const perp = Math.abs(rx * dz - rz * dx);
       if (perp < r && (!best || t < best.t)) best = { t, kind, ref, x: x + dx * t, z: z + dz * t };
     };
-    for (const p of this.w.traffic.peds) if (!p.down) test(p, 0.5, 'ped', p);
+    for (const p of this.w.traffic.peds) if (!p.down && !p.friend) test(p, 0.5, 'ped', p);
     for (const c of this.w.traffic.cars) test(c, 1.1, 'car', c);
     for (const c of this.w.police.allCars()) test(c, 1.1, 'police', c);
     if (best) {
@@ -198,7 +198,7 @@ export class Combat {
     audio.crash(0.15);
     let hitAny = false;
     for (const p of this.w.traffic.peds) {
-      if (p.down) continue;
+      if (p.down || p.friend) continue;
       const dx = p.x - f.x, dz = p.z - f.z, d = Math.hypot(dx, dz);
       if (d > def.reach + 0.4) continue;
       const da = Math.atan2(Math.sin(Math.atan2(dx, -dz) - a), Math.cos(Math.atan2(dx, -dz) - a));
@@ -232,7 +232,7 @@ export class Combat {
     const f = this.w.foot;
     let best = null, bd = r;
     for (const p of this.w.traffic.peds) {
-      if (p.down || p.mugged) continue;
+      if (p.down || p.mugged || p.friend) continue;
       const dx = p.x - f.x, dz = p.z - f.z, d = Math.hypot(dx, dz);
       if (d > bd) continue;
       const a = Math.atan2(dx, -dz);

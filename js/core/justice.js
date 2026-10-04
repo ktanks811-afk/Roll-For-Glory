@@ -52,6 +52,7 @@ export function classify(o) {
     case 'shots': return /assault/.test(t) ? { cls: 'F2', text: 'Aggravated assault with a deadly weapon.', tg: true } : { cls: 'F3', text: 'Deadly conduct: discharging a firearm.' };
     case 'assault': return /officer|police/.test(t) ? { cls: 'F1', text: 'Aggravated assault on a public servant.', tg: true } : { cls: 'F2', text: 'Aggravated assault with a deadly weapon.', tg: true };
     case 'robbery': return { cls: 'F1', text: /mugging/.test(t) ? 'Aggravated robbery (armed mugging).' : `Aggravated robbery${o.text?.includes('—') ? ' — ' + o.text.split('—').pop().trim().replace(/\.$/, '') : ''}.`, tg: true };
+    case 'driveby': return /gang/.test(t) ? { cls: 'F2', text: 'Engaging in organized criminal activity: deadly conduct (drive-by shooting).' } : { cls: 'F3', text: 'Deadly conduct: drive-by shooting.' };
     case 'gta': return { cls: 'SJF', text: 'Unauthorized use of a motor vehicle (stolen car).' };
     case 'carjack': return /armed/i.test(t) ? { cls: 'F1', text: 'Aggravated robbery (armed carjacking).', tg: true } : { cls: 'F2', text: 'Robbery (carjacking).' };
     case 'auto': return { cls: 'F3', text: 'Possession of a prohibited weapon (machine gun).' };

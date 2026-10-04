@@ -21,6 +21,7 @@ import { renderHustle } from './hustle.js';
 import { renderShop } from './shop.js';
 import { renderOcrew } from './ocrew.js';
 import { renderTurf } from './turf.js';
+import { renderGang } from './gang.js';
 import { myHoods } from '../core/turf.js';
 import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
@@ -44,6 +45,7 @@ const APPS = [
   { id: 'crew', name: 'Crew', icon: '👥', bg: '#3a3d46' },
   { id: 'ocrew', name: 'Online Crew', icon: '🌐', bg: '#2a7bff' },
   { id: 'turf', name: 'Turf', icon: '🚩', bg: '#7a1414' },
+  { id: 'gang', name: 'Gang', icon: '✊', bg: '#4a1a6b' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
   { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
@@ -112,6 +114,7 @@ RENDER.hustle = renderHustle;
 RENDER.shop = renderShop;
 RENDER.ocrew = renderOcrew;
 RENDER.turf = renderTurf;
+RENDER.gang = renderGang;
 
 // ---------------- messages ----------------
 // Conversations, one per sender, newest first. Open one to read the thread as
