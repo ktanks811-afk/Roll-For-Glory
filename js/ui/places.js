@@ -29,6 +29,7 @@ import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug } from './estate.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
+import { BREAKDOWNS, needsOil, oilChangeCost, changeOil, clearBreakdown, oilInterval } from '../core/upkeep.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -342,19 +343,25 @@ function repair(loc, app, s) {
     if (!car) { root.innerHTML = head('Second Chance Collision') + '<div class="p-body"><div class="empty">Nothing to fix — you don\'t have a car.</div></div>'; bind(root, { close: () => h.close() }); return; }
     const costs = repairCosts(car);
     const ins = s.insurance ? 0.3 : 1;
-    const total = Object.values(costs).reduce((a, b) => a + b, 0) * ins;
+    const oilDue = needsOil(car) && (car.oil ?? 100) < 99;
+    const oilCost = oilDue ? oilChangeCost(car) : 0;   // maintenance: insurance doesn't cover it
+    const total = Object.values(costs).reduce((a, b) => a + b, 0) * ins + oilCost;
     const names = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (replace set)', engine: car.engineBlown ? '💥 Engine rebuild' : 'Engine', trans: 'Transmission' };
     root.innerHTML = head('Second Chance Collision', 'Body · mechanical · tires · we work with all insurers') + `<div class="p-body" style="max-width:720px">
+      ${car.broken ? `<p class="bad"><b>🛠 ${esc(BREAKDOWNS[car.broken].name)}.</b> ${car.broken === 'trans' ? 'Fix the transmission and it\'ll drive again.' : 'Change the oil and fix the engine and it\'ll run again.'}</p>` : ''}
       ${car.engineBlown ? `<p class="bad"><b>Blown motor.</b> Spun a bearing and put a rod through the block. It needs a full rebuild before it'll run again.</p>` : ''}
       <p class="muted">${esc(carName(modelOf(car), car.year))}${s.insurance ? ' · <span class="good">Insurance covers 70%</span>' : ' · <span class="muted">Not insured (Bank app)</span>'}</p>
       <div class="list">${Object.entries(costs).map(([k, v]) => `<div class="li"><div style="width:150px">${names[k]}</div><div class="grow">${bar(car.cond[k], car.cond[k] < 40 ? 'red' : car.cond[k] < 70 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.cond[k])}%</span>
-        <button class="btn btn-sm" data-action="fix" data-k="${k}" ${v > 0 ? '' : 'disabled'}>${v > 0 ? fmtMoney(v * ins) : 'OK'}</button></div>`).join('')}</div>
+        <button class="btn btn-sm" data-action="fix" data-k="${k}" ${v > 0 ? '' : 'disabled'}>${v > 0 ? fmtMoney(v * ins) : 'OK'}</button></div>`).join('')}
+        ${needsOil(car) ? `<div class="li"><div style="width:150px">Oil change</div><div class="grow">${bar(car.oil ?? 100, (car.oil ?? 100) < 20 ? 'red' : (car.oil ?? 100) < 45 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.oil ?? 100)}%</span>
+        <button class="btn btn-sm" data-action="oil" ${oilDue ? '' : 'disabled'}>${oilDue ? fmtMoney(oilCost, true) : 'OK'}</button></div>` : ''}</div>
       <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn btn-primary" data-action="all" ${total > 0 ? '' : 'disabled'}>Fix everything · ${fmtMoney(total)}</button></div></div>`;
     const fix = k => { car.cond[k] = 100; if (k === 'engine' && car.engineBlown) { car.engineBlown = false; resetEngineWarnings(car); toast('Engine rebuilt. Fix the build or it\'ll happen again.', 'good'); } };
     bind(root, {
       close: () => h.close(),
-      fix: d => { if (spend(s, costs[d.k] * ins, `Repair: ${names[d.k]}`)) { fix(d.k); app.world?.refreshCar(); h.refresh(); } },
-      all: () => { if (spend(s, total, 'Full repair')) { Object.keys(costs).forEach(fix); app.world?.refreshCar(); toast('Good as new', 'good'); h.refresh(); } },
+      fix: d => { if (spend(s, costs[d.k] * ins, `Repair: ${names[d.k]}`)) { fix(d.k); clearBreakdown(car); app.world?.refreshCar(); h.refresh(); } },
+      oil: () => { if (spend(s, oilCost, 'Oil change')) { changeOil(car); toast('Fresh oil. Good for another ' + oilInterval(carSpec(car)) + ' miles.', 'good'); app.world?.refreshCar(); h.refresh(); } },
+      all: () => { if (spend(s, total, 'Full repair')) { Object.keys(costs).forEach(fix); if (needsOil(car)) changeOil(car); clearBreakdown(car); app.world?.refreshCar(); toast('Good as new', 'good'); h.refresh(); } },
     });
   });
 }
@@ -372,6 +379,9 @@ function gas(loc, app, s) {
     root.innerHTML = head(loc.name, `Regular $${GAS.regular} · Premium $${GAS.premium} · E85 $${GAS.e85} · EV $${GAS.kwh}/kWh`) + `<div class="p-body" style="max-width:640px">
       ${car ? `<div class="li"><div class="grow"><div class="t">${esc(carName(m, car.year))}</div><div class="s">${ev ? 'Battery' : 'Tank'}: ${(car.fuel * tankGallons(car)).toFixed(1)} / ${tankGallons(car)} ${ev ? 'kWh' : 'gal'} · ${ev ? 'DC fast charging' : grade === 'premium' ? 'Premium 93 required' : 'Regular 87'}</div>${bar(car.fuel * 100, car.fuel < 0.2 ? 'red' : 'green')}</div></div>
         <div class="row" style="margin:10px 0"><button class="btn btn-primary" data-action="fill" ${near && need > 0.05 ? '' : 'disabled'}>${near ? `Fill up · ${fmtMoney(need * price, true)}` : 'Park at the pump first'}</button></div>` : '<p class="muted">No car.</p>'}
+      ${car && needsOil(car) ? `<div class="section-title">Quick lube</div>
+      <div class="li"><div class="grow"><div class="t">Oil change${modelOf(car).asp !== 'na' || (modelOf(car).hp || 0) > 300 ? ' (full synthetic)' : ''}</div><div class="s">Oil life ${Math.round(car.oil ?? 100)}% · good for ~${oilInterval(carSpec(car))} mi on this build · 15 min${car.broken && car.broken !== 'trans' ? ' · gets it running again' : ''}</div>${bar(car.oil ?? 100, (car.oil ?? 100) < 20 ? 'red' : (car.oil ?? 100) < 45 ? 'yellow' : 'green')}</div>
+        <button class="btn btn-sm ${(car.oil ?? 100) < 20 ? 'btn-primary' : ''}" data-action="oil" ${near && (car.oil ?? 100) < 99 ? '' : 'disabled'}>${near ? fmtMoney(oilChangeCost(car), true) : 'At the pump'}</button></div>` : ''}
       <div class="section-title">Store</div>
       <div class="list">
         <div class="li"><div class="grow"><div class="t">Volt Energy Drink</div><div class="s">+25 energy (sharper reactions)</div></div><button class="btn btn-sm" data-action="snack" data-p="3.49" data-e="25">$3.49</button></div>
@@ -381,6 +391,7 @@ function gas(loc, app, s) {
     bind(root, {
       close: () => h.close(),
       fill: () => { const cost = need * price; if (spend(s, cost, `${loc.name}: ${need.toFixed(1)} ${ev ? 'kWh' : 'gal'} ${grade}`)) { car.fuel = 1; if (ev) advanceTime(s, 25); toast(ev ? 'Charged to 100% (25 min)' : 'Tank full', 'good'); h.refresh(); } },
+      oil: () => { if (spend(s, oilChangeCost(car), `${loc.name}: oil change`)) { changeOil(car); if (car.broken && BREAKDOWNS[car.broken].roadside && car.cond.engine < 30) car.cond.engine = 30; clearBreakdown(car); advanceTime(s, 15); toast(car.broken ? 'Fresh oil, but the car still needs a mechanic' : 'Fresh oil', 'good'); h.refresh(); } },
       snack: d => { if (spend(s, +d.p, 'Gas station snack')) { s.player.energy = Math.min(100, s.player.energy + +d.e); h.refresh(); } },
     });
   });
