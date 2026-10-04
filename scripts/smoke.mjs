@@ -1464,6 +1464,44 @@ await step('plug + trap house + SWAT + land', async () => {
   await clear();
 });
 
+// ---------------- hunger + sleep: meters, taco trucks, the snack bag, sleeping at home ----------------
+await step('hunger + sleep', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  const place = id => p.evaluate(async id => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID[id], window.__rfg.app); }, id);
+  await clear();
+  await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; w.police.reset(w); s.heat = 0; s.cash = 5000; s.time.min = 13 * 60; s.player.food = 20; s.player.energy = 30; s.inventory.tacos = 0; if (w.inCar) w.toggleCar(); w.foot.x = -100; w.foot.z = 309; });
+  await p.waitForTimeout(400);
+  if (!(await p.isVisible('#hud [data-nfood].low'))) throw new Error('low food meter not flagged on the HUD');
+  await snap('needs-hud-low');
+  // the taco truck
+  await place('taco_magnolia');
+  await p.waitForSelector('.panel:has-text("Tacos La Güera")');
+  await snap('needs-taco-truck');
+  await p.click('[data-action=buy][data-id=pastor]');
+  await p.click('[data-action=buy][data-id=tacos_togo]');
+  const a = await p.evaluate(() => ({ food: window.__rfg.game.s.player.food, tacos: window.__rfg.game.s.inventory.tacos }));
+  if (!(a.food >= 54) || a.tacos !== 1) throw new Error('taco truck did not feed you or bag the tacos ' + JSON.stringify(a));
+  await clear();
+  // eat from the bag by tapping the meters
+  await p.dispatchEvent('#hud [data-needs]', 'pointerdown');
+  await p.waitForSelector('.modal:has-text("Food & sleep")');
+  await snap('needs-bag');
+  await p.click('.modal button:has-text("Eat Tacos to go")'); await p.waitForTimeout(150);
+  const b2 = await p.evaluate(() => ({ food: window.__rfg.game.s.player.food, tacos: window.__rfg.game.s.inventory.tacos }));
+  if (b2.tacos !== 0 || !(b2.food > a.food)) throw new Error('eating from the bag did nothing ' + JSON.stringify(b2));
+  // a diner
+  await place('cowtown_diner');
+  await p.click('[data-action=buy][data-id=coffee]');
+  await clear();
+  // sleep at home: rested, saved
+  await p.evaluate(() => { window.__rfg.game.s.player.energy = 15; });
+  await place(await p.evaluate(() => window.__rfg.game.s.home));
+  await p.click('.card[data-action=sleep][data-to="8"]'); await p.waitForTimeout(200);
+  const c = await p.evaluate(async () => { const s = window.__rfg.game.s; const { slotInfo } = await import('./js/core/save.js'); return { energy: s.player.energy, hour: Math.floor(s.time.min / 60), saved: !!slotInfo('auto') }; });
+  if (c.energy !== 100 || c.hour !== 8 || !c.saved) throw new Error('sleeping at home did not rest and save ' + JSON.stringify(c));
+  await clear();
+});
+
 // ---------------- traffic stop: 10 s to pull over, officer walks up, drive off = chase ----------------
 await step('traffic stop: pull over, walk-up, drive off', async () => {
   await p.evaluate(() => { for (const c of window.__rfg.game.s.cars) delete c.impound; });   // an earlier arrest impounded the car

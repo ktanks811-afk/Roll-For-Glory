@@ -44,6 +44,7 @@ export class Hud {
       <div class="hud-tl">
         <div class="hud-clock"><span data-time></span><small data-day></small></div>
         <div class="hud-place" data-place></div>
+        <button class="hud-needs" data-needs aria-label="Food and energy"><span data-nfood>🌮<i><b></b></i></span><span data-nenergy>⚡<i><b></b></i></span></button>
         <button class="hud-online hidden" data-online aria-label="Online players"></button>
         <div class="hud-objective" data-obj></div>
         <div class="hud-gig hidden" data-gig></div>
@@ -81,6 +82,7 @@ export class Hud {
     this.radioLines = [];
     this.helpCtx = null;
     this.q('online').addEventListener('pointerdown', async e => { e.preventDefault(); const { openOnline } = await import('./online.js'); const { app } = await import('../main.js'); openOnline(app); });
+    this.q('needs').addEventListener('pointerdown', async e => { e.preventDefault(); const { openBag } = await import('./needs.js'); const { app } = await import('../main.js'); openBag(app); });
     this.root.querySelectorAll('[data-tp]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); touch.press(b.dataset.tp); }));
   }
 
@@ -131,6 +133,14 @@ export class Hud {
     const street = w.streetAt(p.x, p.z);
     const turf = turfLabel(s, p.x, p.z);
     this.q('place').textContent = `${street ? street + ' · ' : ''}${districtAt(p.x, p.z)}${turf ? ' · ' + turf : ''}`;
+    // hunger + energy (core/needs.js)
+    for (const [k, v] of [['nfood', s.player.food ?? 100], ['nenergy', s.player.energy ?? 100]]) {
+      const n = this.q(k), pct = Math.round(v);
+      if (n.dataset.pct === String(pct)) continue;
+      n.dataset.pct = pct;
+      n.querySelector('b').style.width = pct + '%';
+      n.className = pct < 8 ? 'empty' : pct < 25 ? 'low' : '';
+    }
     const ob = this.q('online');
     ob.classList.toggle('hidden', !online.active);
     if (online.active) ob.textContent = `🌐 ${online.serverName} · ${online.list().length + 1} online`;

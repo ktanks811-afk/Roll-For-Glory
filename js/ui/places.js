@@ -29,6 +29,8 @@ import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug } from './estate.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
+import { MENUS } from '../data/food.js';
+import { eat, sleep, nap, ensureNeeds } from '../core/needs.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -76,8 +78,9 @@ export function homeScreen(loc, app, s) {
     const hr = hourOf(s.time);
     root.innerHTML = head(prop.name, `Home · ${prop.slots} car garage · ${esc(prop.desc)}`) + `<div class="p-body"><div class="grid">
       <div class="card click" data-action="garage"><h3>🔧 Garage</h3><p class="muted small">Install parts (DIY), switch cars, dyno, tune.</p></div>
-      <div class="card click" data-action="sleep" data-to="8"><h3>🛏 Sleep until morning</h3><p class="muted small">Skip to 8:00 AM. Deliveries arrive at 8.</p></div>
-      <div class="card click" data-action="sleep" data-to="21"><h3>🌙 Rest until night</h3><p class="muted small">Skip to 9:00 PM. Meets are on.</p></div>
+      <div class="card click" data-action="sleep" data-to="8"><h3>🛏 Sleep until morning</h3><p class="muted small">Skip to 8:00 AM, fully rested. Saves your game.</p></div>
+      <div class="card click" data-action="sleep" data-to="21"><h3>🌙 Rest until night</h3><p class="muted small">Skip to 9:00 PM, fully rested. Meets are on. Saves your game.</p></div>
+      <div class="card click" data-action="nap"><h3>💤 Quick nap</h3><p class="muted small">2 hours, +40 energy. ${needsLine(s)}</p></div>
       <div class="card click" data-action="wardrobe"><h3>👕 Wardrobe</h3><p class="muted small">${s.player.outfits.length} items owned.</p></div>
       <div class="card click" data-action="save"><h3>💾 Save game</h3><p class="muted small">Manual save slots.</p></div>
       ${w?.thefts?.near(loc) ? `<div class="card click" data-action="keephot"><h3>🔑 Keep the stolen car</h3><p class="muted small">New plates and a VIN swap: ${fmtMoney(PLATE_SWAP)}. It gets a rebuilt title and goes in a bay.${w.thefts.canKeep() ? '' : ' <b class="bad">Your garage is full.</b>'}</p></div>` : ''}
@@ -98,10 +101,17 @@ export function homeScreen(loc, app, s) {
         const to = +d.to;
         let mins = ((to * 60 - s.time.min) + 1440) % 1440 || 1440;
         advanceTime(s, mins);
-        s.player.energy = 100;
+        sleep(s, mins);
         if (app.world) { app.world.police.s.heat = Math.max(0, app.world.police.s.heat - mins / 60 * 0.5); }
         saveGame('auto', true);
-        toast(to === 8 ? 'Good morning.' : 'Night falls on Fort Worth.', 'info');
+        toast(`${to === 8 ? 'Good morning.' : 'Night falls on Fort Worth.'} Fully rested, game saved.${s.player.food < 30 ? ' You woke up hungry.' : ''}`, 'info');
+        h.refresh();
+      },
+      nap: () => {
+        advanceTime(s, 120);
+        nap(s, 120);
+        saveGame('auto', true);
+        toast(`Power nap. Energy ${Math.round(s.player.energy)}.`, 'info');
         h.refresh();
       },
       wardrobe: () => wardrobe(app, s),
@@ -375,34 +385,52 @@ function gas(loc, app, s) {
       <div class="section-title">Store</div>
       <div class="list">
         <div class="li"><div class="grow"><div class="t">Volt Energy Drink</div><div class="s">+25 energy (sharper reactions)</div></div><button class="btn btn-sm" data-action="snack" data-p="3.49" data-e="25">$3.49</button></div>
-        <div class="li"><div class="grow"><div class="t">Gas station hot dog</div><div class="s">+20 energy. Questionable.</div></div><button class="btn btn-sm" data-action="snack" data-p="2.29" data-e="20">$2.29</button></div>
+        <div class="li"><div class="grow"><div class="t">Gas station hot dog</div><div class="s">+25 food, +5 energy. Questionable.</div></div><button class="btn btn-sm" data-action="snack" data-p="2.29" data-e="5" data-f="25">$2.29</button></div>
+        <div class="li"><div class="grow"><div class="t">Chips and a soda</div><div class="s">+10 food, +5 energy.</div></div><button class="btn btn-sm" data-action="snack" data-p="3.19" data-e="5" data-f="10">$3.19</button></div>
+        <div class="li"><div class="grow"><div class="t">Volt Energy Drink (to go)</div><div class="s">Goes in your bag. Drink it from the meters on your screen.</div></div><button class="btn btn-sm" data-action="togo" data-p="3.49">$3.49</button></div>
         <div class="li"><div class="grow"><div class="t">Octane booster</div><div class="s">It does nothing. People buy it anyway.</div></div><button class="btn btn-sm" data-action="snack" data-p="8.99" data-e="0">$8.99</button></div>
       </div></div>`;
     bind(root, {
       close: () => h.close(),
       fill: () => { const cost = need * price; if (spend(s, cost, `${loc.name}: ${need.toFixed(1)} ${ev ? 'kWh' : 'gal'} ${grade}`)) { car.fuel = 1; if (ev) advanceTime(s, 25); toast(ev ? 'Charged to 100% (25 min)' : 'Tank full', 'good'); h.refresh(); } },
-      snack: d => { if (spend(s, +d.p, 'Gas station snack')) { s.player.energy = Math.min(100, s.player.energy + +d.e); h.refresh(); } },
+      snack: d => { if (spend(s, +d.p, 'Gas station snack')) { eat(s, { food: +(d.f || 0), energy: +d.e }); h.refresh(); } },
+      togo: d => { if (spend(s, +d.p, 'Volt Energy Drink')) { ensureNeeds(s); s.inventory.energyDrinks++; toast('In your bag. Tap the meters to drink it.', 'good'); h.refresh(); } },
     });
   });
 }
 
+// Taco trucks, diners, the BBQ joint (data/food.js) and the original two
+// (Lucky's and the noodle bar, data/shops.js).
 function food(loc, app, s) {
+  const menu = MENUS[loc.menu] || FOOD;
+  const truck = !!loc.truck;
   openPanel((root, h) => {
-    root.innerHTML = head(loc.name, `Energy: ${Math.round(s.player.energy)}/100 · energy sharpens your reaction time on the tree`) + `<div class="p-body" style="max-width:640px"><div class="list">${FOOD.map(f => `<div class="li"><div class="grow"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.desc)}${f.energy ? ` · +${f.energy} energy` : ''}</div></div><button class="btn btn-sm" data-action="buy" data-id="${f.id}">${fmtMoney(f.price * 1.0725, true)}</button></div>`).join('')}</div>
-      <p class="small muted">Racers hang out here. Sometimes you overhear things.</p></div>`;
+    ensureNeeds(s);
+    const bag = s.inventory;
+    const gives = f => [f.food ? `+${f.food} food` : '', f.energy ? `+${f.energy} energy` : ''].filter(Boolean).join(', ');
+    root.innerHTML = head(loc.name, needsLine(s)) + `<div class="p-body" style="max-width:640px">
+      <div class="needs-row">${meter('🌮 Food', s.player.food)}${meter('⚡ Energy', s.player.energy)}</div>
+      <div class="list">${menu.map(f => `<div class="li"><div class="grow"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.desc)}${gives(f) ? ` · ${gives(f)}` : ''}${f.item ? ` · in your bag: ${bag[f.item] || 0}` : ''}</div></div><button class="btn btn-sm" data-action="buy" data-id="${f.id}">${fmtMoney(f.price * 1.0725, true)}</button></div>`).join('')}</div>
+      <p class="small muted">${truck ? 'Cash only. The line moves fast.' : 'Racers hang out here. Sometimes you overhear things.'}</p></div>`;
     bind(root, {
       close: () => h.close(),
       buy: d => {
-        const f = FOOD.find(x => x.id === d.id);
+        const f = menu.find(x => x.id === d.id);
         if (!spend(s, f.price * 1.0725, `${loc.name}: ${f.name}`)) return;
-        if (f.item) s.inventory[f.item] = (s.inventory[f.item] || 0) + 1;
-        s.player.energy = Math.min(100, s.player.energy + f.energy);
-        advanceTime(s, 20);
-        if (Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Loop 820 on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
+        if (f.item) { bag[f.item] = (bag[f.item] || 0) + 1; toast('In your bag. Tap the meters on your screen to eat it later.', 'good'); }
+        eat(s, f);
+        advanceTime(s, f.item ? 5 : truck ? 10 : 20);
+        if (!truck && Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Loop 820 on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
         h.refresh();
       },
     });
   });
+}
+
+const meter = (label, v) => `<div class="need"><span>${label}</span>${bar(v, v < 25 ? 'red' : v < 60 ? 'yellow' : 'green')}<b>${Math.round(v)}</b></div>`;
+function needsLine(s) {
+  ensureNeeds(s);
+  return `Food ${Math.round(s.player.food)}/100 · Energy ${Math.round(s.player.energy)}/100`;
 }
 
 function clothing(loc, app, s) { wardrobe(app, s, loc); }
