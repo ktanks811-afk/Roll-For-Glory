@@ -232,6 +232,8 @@ export class Hud {
     const parts = [];
     const tch = touchUi.active;
     const gp = pad.inUse;   // controller: Xbox button names
+    const tp = w.trailers?.promptHtml(tch);
+    if (tp) parts.push(tp);
     if (w.garageHint && !w.nearLoc) parts.push(`<span style="color:#2cff7a">▶</span> ${esc(w.garageHint)}`);
     const cb = w.combat;
     const rp = cb ? cb.robPrompt() : '';

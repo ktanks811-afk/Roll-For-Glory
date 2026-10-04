@@ -94,6 +94,8 @@ export const LOCATIONS = [
   L('marchetti_salvage', 'chop', 'Marchetti Salvage', 10, 7, 'N', { color: '#c9752a', icon: 'wrench', contact: 'junior' }),
   L('cashcow_pawn', 'pawn', 'Cash Cow Pawn & Gold', 9, 7, 'W', { color: '#d4a017', icon: 'tow' }),
   L('hook_haul', 'work', 'Hook & Haul Towing', 10, 6, 'S', { color: '#f0a020', icon: 'tow' }),
+  // car haulers and enclosed trailers (ui/trailers.js); only trucks pull them
+  L('trailer_lot', 'trailers', 'Cowtown Trailer Sales', 9, 6, 'W', { color: '#f0a020', icon: 'tow' }),
   L('stockyards_show', 'carshow', 'Stockyards Car Show', 7, 3, 'W', { color: '#e8c21a', icon: 'trophy' }),
   L('pier9', 'meet', 'Pier 9 Lot', 11, 11, 'W', { color: '#ff1a2e', icon: 'meet', tier: 1 }),
   L('kessler_lot', 'meet', 'Kessler Mall Lot', 2, 9, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),

@@ -2011,6 +2011,73 @@ await step('pawn shop + fence', async () => {
   await p.evaluate(() => { const s = window.__rfg.game.s; s.heat = 0; s.loot = []; });
   await clear();
 });
+await step('trailers: buy, hitch, load, unload at the meet, load back up', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await clear();
+  await p.evaluate(async () => {
+    const st = await import('./js/core/state.js'); const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    w.police.reset(w); s.heat = 0; s.cash += 30000;
+    window.__towSaved = { active: s.activeCar, inCar: w.inCar, n: s.cars.length };
+    const truck = st.newCar('ford_f_150_xlt_5_0_2015'), vette = st.newCar('chevrolet_corvette_z06_c8_2023');
+    s.cars.push(truck, vette); s.activeCar = truck.uid; s.carPos = null;
+    window.__towCars = [truck.uid, vette.uid];
+    w.vehicle = null; w.refreshCar();
+  });
+  // the lot: buy the open hauler (confirm dialog)
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.trailer_lot, window.__rfg.app); });
+  await p.waitForSelector('.p-head:has-text("Cowtown Trailer Sales")');
+  await p.waitForTimeout(300); await snap('trailer-lot');
+  await p.click('[data-action=buy][data-id=open_hauler]');
+  await p.click('.modal button:has-text("Buy")');
+  await p.waitForFunction(() => window.__rfg.game.s.trailers?.length === 1);
+  await clear();
+  // home: hitch it to the F-150 and load the Corvette
+  await p.evaluate(async () => { const { openTrailerHome } = await import('./js/ui/trailers.js'); openTrailerHome(window.__rfg.app); });
+  await p.click('[data-action=hitch]');
+  await p.click(`[data-action=load][data-uid="${(await p.evaluate(() => window.__towCars[1]))}"]`);
+  await snap('trailer-home');
+  const loaded = await p.evaluate(() => { const t = window.__rfg.game.s.tow; return t.trailer && t.car === window.__towCars[1]; });
+  if (!loaded) throw new Error('hitch + load from the home screen did nothing ' + JSON.stringify(await p.evaluate(() => window.__rfg.game.s.tow)));
+  await clear();
+  // drive the rig to Pier 9, stop, unload with USE
+  await p.evaluate(async () => {
+    const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world, l = LOC_BY_ID.pier9, v = w.vehicle;
+    v.x = l.x - Math.cos(l.face) * 0 + 14; v.z = l.z; v.h = 0; v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; v.yawRate = 0; v.car.fuel = 1;
+    w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; w.cam.zoom = 7; w.trailers.th = null;
+    const { input } = await import('./js/core/input.js'); input.setContext('car');
+  });
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(900); await p.keyboard.up('KeyW');
+  await p.keyboard.down('KeyS'); await p.waitForTimeout(1500); await p.keyboard.up('KeyS');
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; });
+  await p.waitForTimeout(300);
+  await snap('trailer-towing');
+  const pr = await p.evaluate(() => ({ act: window.__rfg.app.world.trailers.act?.label, hud: document.querySelector('[data-prompt]')?.textContent || '' }));
+  if (!/Unload the/.test(pr.act || '') || !/Unload/.test(pr.hud)) throw new Error('no unload prompt in the truck ' + JSON.stringify(pr));
+  const rep0 = await p.evaluate(() => window.__rfg.game.s.rep);
+  await key('Enter');
+  await p.waitForTimeout(300);
+  const out = await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { active: s.activeCar, rig: !!s.tow.rig, car: w.vehicle?.car.uid, inCar: w.inCar, rep: s.rep }; });
+  await snap('trailer-unloaded');
+  if (out.active !== (await p.evaluate(() => window.__towCars[1])) || !out.rig || out.car !== out.active || !out.inCar) throw new Error('unloading did not put you in the Corvette ' + JSON.stringify(out));
+  console.log('     trailer', JSON.stringify({ prompt: pr.act, repGain: out.rep - rep0 }));
+  // back the car up behind the trailer and load it
+  await p.evaluate(() => { const w = window.__rfg.app.world, b = w.trailers.rigBack(), v = w.vehicle; v.x = b.x; v.z = b.z; v.vx = v.vz = 0; v.sim.v = 0; });
+  await p.waitForTimeout(250);
+  const pr2 = await p.evaluate(() => window.__rfg.app.world.trailers.act?.label);
+  if (!/Load the/.test(pr2 || '')) throw new Error('no load prompt behind the trailer: ' + pr2);
+  await key('Enter');
+  await p.waitForTimeout(300);
+  const back = await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { active: s.activeCar, rig: s.tow.rig, car: s.tow.car, v: w.vehicle?.car.uid }; });
+  if (back.active !== (await p.evaluate(() => window.__towCars[0])) || back.rig || back.car !== (await p.evaluate(() => window.__towCars[1])) || back.v !== back.active) throw new Error('loading back up failed ' + JSON.stringify(back));
+  // put everything back the way it was
+  await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world, sv = window.__towSaved;
+    s.tow = null; s.trailers = [];
+    s.cars = s.cars.filter(c => !window.__towCars.includes(c.uid)); s.activeCar = sv.active; s.carPos = null;
+    w.vehicle = null; w.refreshCar(); w.inCar = sv.inCar;
+  });
+  await clear();
+});
 await step('hustle (jobs, business, rentals)', async () => {
   await p.evaluate(async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());

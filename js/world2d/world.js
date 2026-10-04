@@ -13,6 +13,7 @@ import { Thefts } from './theft.js';
 import { Gigs } from './gigs.js';
 import { GangWorld } from './gangs.js';
 import { StreetRaces } from './streetRace.js';
+import { Trailers } from './trailer.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
@@ -42,6 +43,7 @@ import { seizeCash } from '../core/bank.js';
 import { seizeLoot } from '../core/loot.js';
 import { healthMods } from '../core/health.js';
 import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
+import { awayFromGarage } from '../core/tow.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -86,6 +88,7 @@ export class World {
     this.gigs = new Gigs(this);
     this.gangs = new GangWorld(this);
     this.races = new StreetRaces(this);
+    this.trailers = new Trailers(this);
     this.spawnPlayer();
   }
 
@@ -192,6 +195,7 @@ export class World {
     this.gigs.update(dt);
     this.gangs.update(dt);
     this.races.update(dt);
+    this.trailers.update(dt);
     this.updateOnline(dt);
 
     // traffic + police
@@ -203,7 +207,7 @@ export class World {
       signalT: this.signalT, px: p.x, pz: p.z, density, inCity, night: isNight(s.time),
       weatherSlow: isWet(s) || s.weather === 'fog' ? 0.8 : 1,
       movers: this.vehicle ? [this.vehicleMover()] : [],
-      extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars(), ...this.thefts.obstacles()],
+      extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars(), ...this.thefts.obstacles(), ...this.trailers.obstacles()],
     });
     this.traffic.update(dt, this.trafficCtx);
     this.police.update(dt, this);
@@ -442,14 +446,16 @@ export class World {
     let grip = paved ? 1 : sand ? 0.62 : 0.72;
     grip *= wx(s).grip;
     const noFuel = car.fuel <= 0.0005 || !!car.engineBlown || !!car.broken;   // a blown motor or a breakdown makes no power either
+    // a trailer behind the truck: less pull, more drag (more with a car on it)
+    const tow = this.trailers.slowFor(v);
     v.update(dt, {
-      throttle: input.axis('throttle'), brake: input.axis('brake'), steer: input.steer(),
+      throttle: input.axis('throttle') * (1 - tow), brake: input.axis('brake'), steer: input.steer(),
       handbrake: input.held('handbrake'), nitrous: input.held('nitrous'),
       shiftUp: input.pressed('shiftUp'), shiftDown: input.pressed('shiftDown'),
       auto: settings.transmission === 'auto',
       // gas + brake with no 2-step fitted = burnout (with one it's launch-control hold, handled below)
       burnout: !(v.spec.twoStep >= 1),
-    }, { grip, drag: paved ? 0 : sand ? 2.2 : 1.6, noFuel });
+    }, { grip, drag: (paved ? 0 : sand ? 2.2 : 1.6) + tow * 0.9, noFuel });
     if (v.shifted) { v.shifted = false; audio.shift(); }
     if (input.pressed('horn')) { audio.horn(); online.honk(); }
     // gas + brake while stopped: rev it. With a 2-step it holds the launch rpm
@@ -476,7 +482,7 @@ export class World {
       }
     }
     // traffic + police cars
-    for (const o of [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.races.cars(), ...this.thefts.obstacles()]) {
+    for (const o of [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.races.cars(), ...this.thefts.obstacles(), ...this.trailers.obstacles()]) {
       const d = Math.hypot(o.x - v.x, o.z - v.z);
       const rr = (v.dims.W + (o.dims?.W || 1.9)) / 2 + 0.9;
       if (d < rr) {
@@ -772,7 +778,8 @@ export class World {
     if (this.races.active) best = null;
     this.nearLoc = best;
     if (input.pressed('interact')) {
-      if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
+      if (this.trailers.tryUse()) { /* unloaded the car off the trailer, or loaded it back up */ }
+      else if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
       else if (best && this.combat.armed && this.combat.storeNear()) this.ui.toast(`Holster your weapon (${pad.inUse ? 'LT' : 'G'}) to go inside.`, 'info');
       else if (best) this.ui.openPlace(best, this);
     }
@@ -784,7 +791,8 @@ export class World {
     if (this.garageT > 0) return;
     this.garageT = 0.5;
     const st = this.s;
-    const others = st.cars.filter(c => c.uid !== st.activeCar && !c.stolen);
+    const away = awayFromGarage(st);   // on the trailer, or the truck parked out with it
+    const others = st.cars.filter(c => c.uid !== st.activeCar && !c.stolen && !away.has(c.uid));
     const order = [...new Set([st.home, ...st.properties])].map(id => this.map.garages.find(g => g.id === id)).filter(Boolean);
     const out = [];
     let k = 0;
@@ -909,6 +917,8 @@ export class World {
       this.drawShadow(ctx, c.x, c.z, c.h, c.dims);
       drawCar(ctx, c.sprite, cam.sx(c.x), cam.sy(c.z), c.h, cam.zoom);
     }
+    // the trailer behind your truck (or parked out with it), under the cars
+    this.trailers.draw(ctx, cam);
     // the player's car (parked or driven)
     if (this.vehicle) {
       const pv = this.vehicle;

@@ -12,7 +12,7 @@ import { online } from '../net/online.js';
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', meet: '●', flag: '⚑', trophy: '♛' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
-  { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop'] },
+  { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop', 'trailers'] },
   { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty', 'pawn'] },
   { id: 'race', label: 'Races & meets', types: ['meet', 'carshow', 'drag', 'roll', 'sprint'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food', 'corner'] },
@@ -27,6 +27,7 @@ const WHAT = {
   usedlot: 'Used cars, cheap and honest-ish. Sal buys stolen ones.',
   chop: 'Chop shop. Strip stolen cars for parts and sell them to Junior. Too many and the task force sweeps it.',
   dealer: 'New cars at real prices.',
+  trailers: 'Car haulers and enclosed trailers. Hitch one to a truck and haul your car to meets and races.',
   perf: 'Install performance parts, dyno and tune.',
   visual: 'Paint, wheels, body kits and looks.',
   repair: 'Collision repair and fixing damage.',
