@@ -22,6 +22,8 @@ import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
 import { sideGeo } from '../js/gfx2d/sideCar.js';
 import { CARJACK, canCarjack, carjackChance, carjackChoices, resolveCarjack, strippedCar } from '../js/data/carjack.js';
 import * as GANG from '../js/core/gangs.js';
+import * as FEED from '../js/core/feed.js';
+import { REACT, RIVAL_TEXTS, PAGES } from '../js/data/social.js';
 import { GANGS, GANG_IDS, GANG_CONTACTS, RANKS } from '../js/data/gangs.js';
 import { HOOD_BY_ID } from '../js/core/turf.js';
 import { STREET_RACES, raceRoute, courseRecord, cornerSpeed, pinkSlipCheck } from '../js/data/streetRaces.js';
@@ -859,6 +861,71 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   game.s = st; applyEstate(map, st);
   if (!EST.sellLand(st, 'land_stopsix').ok || PROPERTIES.land_stopsix) bad('selling land you built on');
   for (const id of Object.keys(LAND)) { delete PROPERTIES[id]; }
+}
+
+// ---- Throttle feed + rival texts ----
+{
+  for (const [k, list] of Object.entries(REACT)) for (const [who, tpl] of list) {
+    if (who !== 'local' && !PAGES[who]) bad(`feed ${k}: unknown page ${who}`);
+    if (/\{(?!me|name|npc|car|where|amt|gang\})\w+\}/.test(tpl)) bad(`feed ${k}: unknown placeholder in "${tpl}"`);
+  }
+  const s = createState({ name: 'Feed Test', age: 22, look: {}, story: false });
+  game.s = s;
+  let seq = 0; const rng = () => ((seq = (seq * 9301 + 49297) % 233280) / 233280);
+  // an old save: a plain post of your own, no s.social
+  s.feed = [{ day: 1, text: 'old post', likes: 3 }];
+  s.stats.carsStolen = 4;
+  FEED.ensureSocial(s);
+  FEED.statTick(s, rng);
+  if (s.feed.length !== 1) bad('an old save should not get posts about things it did before the feed existed');
+  // win a race against a racer: the city posts, the racer becomes a rival and texts
+  const racer = RACERS[0];
+  const f0 = s.followers, m0 = s.messages.length;
+  FEED.onRace(s, { won: true, npcId: racer.id, wager: 2000 }, () => 0.1);
+  if (s.feed.length < 2 || !s.feed[0].text.includes(FEED.myHandle(s))) bad('a race win should get posted about you');
+  if (!(s.followers > f0)) bad('posts about you should bring followers');
+  if (!FEED.rival(s, racer.id) || FEED.rival(s, racer.id).heat < 20) bad('beating a racer should make them a rival');
+  const threat = s.messages.find(m => m.action?.type === 'rival');
+  if (s.messages.length <= m0 || !threat || threat.from !== racer.id) bad('a beaten racer should text a threat you can answer');
+  if (!FEED.rivalsList(s).some(r => r.id === racer.id)) bad('rivals list missing the racer');
+  if (FEED.ensureSocial(s).unseen < 1) bad('new posts should badge the app');
+  // talk back: rep, a post of your own, hotter rival
+  const h0 = FEED.rival(s, racer.id).heat, rep0 = s.rep;
+  if (FEED.answerRival(s, threat, 'back', rng)) bad('could not talk back');
+  if (!(FEED.rival(s, racer.id).heat > h0) || !(s.rep > rep0) || !s.feed[0].mine) bad('talking back should heat it up, earn rep and post');
+  if (!FEED.answerRival(s, threat, 'calm')) bad('a threat should only be answered once');
+  // run it back: a challenge text from them
+  { const c = newCar(CARS[0].id); s.cars.push(c); s.activeCar = c.uid; }
+  {
+    FEED.onRace(s, { won: true, npcId: racer.id, wager: 0 }, () => 0.1);
+    const t2 = s.messages.find(m => m.action?.type === 'rival' && !m.action.done);
+    if (!t2) bad('second threat missing');
+    else {
+      const why = FEED.answerRival(s, t2, 'race', rng);
+      if (why) bad('run it back: ' + why);
+      if (!s.messages.some(m => m.action?.type === 'challenge' && m.from === racer.id)) bad('running it back should text a race challenge');
+    }
+  }
+  // stealing a car, a SWAT raid and gang beef all get noticed
+  const n0 = s.feed.length;
+  s.stats.carsStolen = 5; FEED.statTick(s, rng);
+  if (s.feed.length <= n0 || !/stolen|took my/i.test(s.feed.slice(0, 2).map(p => p.text).join(' '))) bad('a stolen car should hit the feed');
+  GANG.ensureGang(s);
+  s.gang.beef.hemphill = 60;
+  const g0 = s.messages.length;
+  FEED.statTick(s, rng);
+  const gt = s.messages.find(m => m.action?.type === 'rival' && m.action.id === 'hemphill');
+  if (s.messages.length <= g0 || !gt || gt.from !== GANGS.hemphill.boss) bad('a set with hot beef should text you a threat');
+  FEED.statTick(s, rng);
+  if (s.messages.filter(m => m.action?.id === 'hemphill').length !== 1) bad('the same beef level should only text once');
+  if (FEED.rivalOptions(s, 'hemphill').length !== 2) bad('gang threats offer talk back or squash');
+  s.cash = 100000;
+  if (FEED.answerRival(s, gt, 'calm')) bad('squashing it by text failed');
+  if (s.gang.beef.hemphill !== 0 || FEED.rival(s, 'hemphill')) bad('squashing should end the beef');
+  // the feed stays bounded and hours tick without errors
+  for (let i = 0; i < 300; i++) FEED.feedHour(s, rng);
+  if (s.feed.length > FEED.FEED_MAX) bad('feed grew past its cap');
+  for (const k of Object.keys(RIVAL_TEXTS)) if (!RIVAL_TEXTS[k].length) bad(`rival texts ${k} empty`);
 }
 // ---- store robberies: corner stores, stolen goods, selling and getting caught with it ----
 {

@@ -557,6 +557,26 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .ks-rim { align-items: center; text-align: center; }
 .ks-rim i { display: block; width: 56px; height: 56px; background: url(../img/rims.webp) 0 0 / 616px 224px no-repeat; margin-bottom: 3px; }
 .ks-rim small { font-size: 11.5px; }
+
+/* Throttle feed */
+.tp-tabs { padding: 0; margin: 4px 0 8px; }
+.tfeed { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.tpost { display: flex; gap: 10px; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.tpost.about { border-left: 3px solid #ff1a6a; }
+.tpost .avatar { flex: none; }
+.tpost .grow { min-width: 0; }
+.tp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.tp-head b { font-size: 15px; }
+.tp-head small { color: var(--dim); font-size: 12px; }
+.tp-v { font-style: normal; color: #1d9bf0; font-size: 12px; }
+.tpost p { margin: 4px 0 6px; color: var(--silver); font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.tp-cmt { font-size: 13px; color: var(--dim); margin: 2px 0; overflow-wrap: anywhere; }
+.tp-cmt b { color: var(--text); font-weight: 600; }
+.tp-acts { display: flex; gap: 16px; margin-top: 6px; font-size: 13px; color: var(--dim); align-items: center; }
+.tp-like { background: none; border: none; color: var(--dim); font: inherit; padding: 4px 0; cursor: pointer; min-height: 32px; }
+.tp-like.on { color: #ff1a6a; }
+.bar.bad > div { background: var(--red); }
+
 /* JPS hospital */
 .hud-injury { border-color: #e0192e; color: #ffb3bb; }
 .jps-panel .panel-inner { width: min(560px, 100%); border-color: #e0192e; }
