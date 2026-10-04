@@ -1725,6 +1725,50 @@ await step('hustle (jobs, business, rentals)', async () => {
   await p.keyboard.press('Escape');
 });
 
+// ---------------- dirty money: bank, washing it, the feds ----------------
+await step('bank: dirty cash, CTRs, washing through a business', async () => {
+  await p.setViewportSize({ width: 844, height: 390 });   // iPhone landscape
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { earn } = await import('./js/core/state.js');
+    const s = window.__rfg.game.s;
+    s.feds = null; s.wash = {}; s.rep = Math.max(s.rep, 2000);
+    s.hustle.biz.laundromat = { level: 1, since: s.time.day };
+    earn(s, 30000, 'Trap money', { dirty: true });
+    const { openPhone } = await import('./js/ui/phone.js'); openPhone('bank', window.__rfg.app);
+  });
+  await p.waitForTimeout(250);
+  const stats = await p.textContent('[data-bank-stats]');
+  if (!/Dirty cash/.test(stats) || !/30,000/.test(stats)) throw new Error('bank does not show the dirty cash: ' + stats);
+  await snap('27b-bank');
+  // deposit $12,000 of it: a CTR gets filed and the feds notice
+  await p.click('button[data-action="depd"]');
+  await p.fill('.modal input', '12000'); await p.click('.modal [data-ok]');
+  await p.waitForTimeout(200);
+  const f = await p.evaluate(() => ({ ...window.__rfg.game.s.feds, dirty: window.__rfg.game.s.dirty }));
+  if (f.ctrs !== 1 || !(f.heat > 0)) throw new Error('no CTR on a $12,000 dirty deposit: ' + JSON.stringify(f));
+  // the rest goes into the laundromat's books
+  await p.click('button[data-action="tab"][data-id="wash"]');
+  await p.click('button[data-action="drop"][data-id="laundromat"]');
+  await p.fill('.modal input', '18000'); await p.click('.modal [data-ok]');
+  await p.waitForTimeout(200);
+  await snap('27c-wash');
+  const bank0 = await p.evaluate(() => window.__rfg.game.s.bank);
+  await p.evaluate(async () => { const B = await import('./js/core/bank.js'); const s = window.__rfg.game.s; s.time.day += 1; B.fedsDay(s); });
+  const after = await p.evaluate(() => ({ bank: window.__rfg.game.s.bank, q: window.__rfg.game.s.wash.laundromat.queue, dirty: window.__rfg.game.s.dirty }));
+  if (after.bank - bank0 !== 3400 || after.q !== 14000 || after.dirty !== 0) throw new Error('washing did not pay out: ' + JSON.stringify(after));
+  await p.click('button[data-action="tab"][data-id="feds"]');
+  await p.waitForTimeout(150);
+  if (!(await p.$('[data-fed-stage]'))) throw new Error('no federal attention screen');
+  await snap('27d-feds');
+  // nothing on screen spills off a phone
+  const wide = await p.evaluate(() => { const b = document.querySelector('.phone-screen'); return b.scrollWidth - b.clientWidth; });
+  if (wide > 2) throw new Error('bank app scrolls sideways on a phone: ' + wide);
+  await p.keyboard.press('Escape');
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.feds = null; s.wash = {}; delete s.hustle.biz.laundromat; });
+  await p.setViewportSize({ width: 1280, height: 760 });
+});
+
 // ---------------- gig shifts: delivery runs, Ryde riders, tow calls ----------------
 await step('gig shifts (delivery, ride, tow)', async () => {
   const W = 'window.__rfg.app.world';

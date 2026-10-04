@@ -30,6 +30,7 @@ export const JOBS = [
 // Businesses cost real money and pay more. Upgrades raise the take.
 export const BIZ = [
   { id: 'taco',   name: 'Tailpipe Tacos',        icon: '🌮', price: 9000,    tier: 1, daily: 320,   blurb: 'A food truck that parks outside every meet.' },
+  { id: 'laundromat', name: 'Spin Cycle Laundromat', icon: '🫧', price: 15000, tier: 1, daily: 450, wash: 4000, blurb: 'Coin machines, cash only, and nobody counts the quarters. Built for washing money.' },
   { id: 'wash',   name: 'Suds & Slides Car Wash', icon: '🧽', price: 18000,   tier: 2, daily: 630,   blurb: 'Hand wash, wax, and gossip.' },
   { id: 'tow',    name: 'Cowtown Tow Yard',  icon: '🛻', price: 36000,   tier: 2, daily: 1260,  blurb: 'Impound fees are a beautiful thing.' },
   { id: 'detail', name: 'Gloss & Wrap Studio',   icon: '🎨', price: 62000,   tier: 3, daily: 2170,  blurb: 'Paint protection, wraps, ceramic coat.' },

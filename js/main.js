@@ -10,6 +10,7 @@ import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { drugsDay } from './core/drugs.js';
+import { fedsDay } from './core/bank.js';
 import { raidWhileAway } from './world2d/trap.js';
 import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
@@ -153,6 +154,8 @@ function newDay() {
   const dr = drugsDay(s);
   for (const n of dr.notes) toast(n, 'info');
   for (const r of dr.raids) raidWhileAway(s, r);
+  // your businesses wash what you dropped off; the feds cool off or close in
+  for (const n of fedsDay(s)) toast(n, 'info');
   // marketplace churn
   s.listings = s.listings.filter(() => Math.random() > 0.3);
   while (s.listings.length < 30) s.listings.push(makeListing());
@@ -178,7 +181,7 @@ function newDay() {
 
 // ---------------- notifications ----------------
 on('toast', t => toast(t.text, t.kind));
-on('money', m => { if (Math.abs(m.amount) >= 1) toast(`${m.amount > 0 ? '+' : ''}${fmtMoney(m.amount)} · ${m.label}`, m.amount > 0 ? 'money' : 'info'); if (m.amount > 0) audio.buy(); });
+on('money', m => { if (Math.abs(m.amount) >= 1) toast(`${m.amount > 0 ? '+' : ''}${fmtMoney(m.amount)}${m.dirty ? ' 💵' : ''} · ${m.label}`, m.amount > 0 ? 'money' : 'info'); if (m.amount > 0) audio.buy(); });
 on('rep', r => { if (Math.abs(r.amount) >= 5) toast(`${r.amount > 0 ? '+' : ''}${r.amount} REP · ${r.reason}`, r.amount > 0 ? 'good' : 'bad'); });
 on('tierUp', ({ tier }) => { audio.win(); modal(`Tier ${tier.n}: ${tier.name}`, `<p>Your name is getting around. New racers will take your calls, bigger wagers are on the table, and new spots open up.</p>`); });
 on('message', m => {

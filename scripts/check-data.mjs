@@ -815,5 +815,71 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!EST.sellLand(st, 'land_stopsix').ok || PROPERTIES.land_stopsix) bad('selling land you built on');
   for (const id of Object.keys(LAND)) { delete PROPERTIES[id]; }
 }
+// dirty money, the bank, washing it through a business, and the feds
+{
+  const BK = await import('../js/core/bank.js');
+  const { earn, spend: pay, dirtyOf, cleanOf } = await import('../js/core/state.js');
+  const { classify } = await import('../js/core/justice.js');
+  const mk = () => { const s = createState({ name: 'Bank', age: 25, look: {}, story: false }); s.rep = 2000; s.time.day = 5; game.s = s; return s; };
+  // an old save: all cash is clean
+  const old = mk(); delete old.dirty; old.cash = 9000;
+  if (dirtyOf(old) !== 0 || cleanOf(old) !== 9000) bad('old saves should treat cash as clean');
+  const s = mk(); s.cash = 1000;
+  earn(s, 5000, 'Served a fiend', { dirty: true });
+  if (s.cash !== 6000 || dirtyOf(s) !== 5000) bad(`dirty earnings: cash ${s.cash}, dirty ${dirtyOf(s)}`);
+  // small buys spend the dirty cash first
+  pay(s, 500, 'Gas'); if (dirtyOf(s) !== 4500 || cleanOf(s) !== 1000) bad('small buys should spend dirty cash first');
+  // a clean deposit is fine, a dirty one draws attention
+  let r = BK.depositCash(s, 1000, false);
+  if (!r.ok || s.bank !== 1000 || BK.ensureFeds(s).heat !== 0) bad('clean deposit');
+  r = BK.depositCash(s, 4500, true);
+  if (!r.ok || dirtyOf(s) !== 0 || s.feds.heat <= 0) bad('dirty deposit should raise federal attention');
+  // over $10,000 in a day: a CTR
+  const c = mk(); c.cash = 12000; c.dirty = 12000;
+  r = BK.depositCash(c, 12000, true);
+  if (!r.ctr || c.feds.ctrs !== 1) bad('a CTR should be filed over $10,000');
+  // structuring: two $9,500 deposits in a few days
+  const st = mk(); st.cash = 19000; st.dirty = 19000;
+  BK.depositCash(st, 9500, true); st.time.day++;
+  r = BK.depositCash(st, 9500, true);
+  if (!r.sar || st.feds.sars !== 1 || r.ctr) bad('structuring should get a SAR and dodge the CTR');
+  // a big dirty-cash purchase: Form 8300; with clean money in the bank it isn't touched
+  const b = mk(); b.cash = 20000; b.dirty = 20000; b.bank = 30000;
+  pay(b, 15000, 'Bought a car');
+  if (dirtyOf(b) !== 20000 || b.bank !== 15000 || BK.ensureFeds(b).reports) bad('big buys should use the bank before dirty cash');
+  b.bank = 0; pay(b, 15000, 'Bought another car');
+  if (b.feds.reports !== 1 || b.feds.heat <= 0) bad('paying $15,000 in dirty cash should file a Form 8300');
+  // the plug doesn't file paperwork
+  const p = mk(); p.cash = 12000; p.dirty = 12000; pay(p, 11000, 'Lil Tre', { street: true });
+  if (BK.ensureFeds(p).reports) bad('street buys should not be reported');
+  // washing through a business
+  const w = mk(); w.cash = 30000; w.dirty = 0;
+  if (!H.buyBiz(w, 'laundromat').ok) bad('buying the laundromat');
+  w.cash += 10000; w.dirty = 10000;
+  const cap = BK.washCap(w, 'laundromat');
+  if (cap !== 4000) bad(`laundromat washes ${cap}/day`);
+  if (!BK.dropOff(w, 'laundromat', 10000).ok || dirtyOf(w) !== 0) bad('dropping off dirty cash');
+  const bank0 = w.bank;
+  BK.washDay(w);
+  if (w.bank - bank0 !== Math.round(4000 * (1 - BK.WASH_CUT)) || w.wash.laundromat.queue !== 6000) bad(`wash at normal pace: +${w.bank - bank0}, ${w.wash.laundromat.queue} left`);
+  if (w.feds.heat) bad('normal-pace washing should be quiet');
+  BK.setRush(w, 'laundromat', true); BK.washDay(w);
+  if (w.wash.laundromat.queue !== 0 || !(w.feds.heat > 0)) bad('rushing should finish the wash and raise attention');
+  // feds cool off on quiet days
+  const q = mk(); BK.ensureFeds(q).heat = 20; q.feds.quiet = 1; BK.fedsDay(q, () => 1);
+  if (q.feds.heat !== 20 - BK.DECAY) bad('federal attention should cool off');
+  // carrying a big stack draws attention
+  const h = mk(); h.cash = 80000; h.dirty = 80000; BK.fedsDay(h, () => 1);
+  if (!(h.feds.heat > 0)) bad('carrying a big dirty stack');
+  // 100: indictment, felony warrant, account seized
+  const i = mk(); i.bank = 50000; BK.ensureFeds(i).heat = 95; i.feds.proceeds = 40000;
+  const ind = BK.bumpFeds(i, 10, 'test');
+  if (!ind || !i.warrants.some(x => x.kind === 'launder_F3' && x.felony) || i.bank !== 30000) bad('indictment at 100');
+  if (classify({ kind: 'launder_F3', text: 'x' }).cls !== 'F3' || BK.launderClass(5000) !== 'SJF' || BK.launderClass(400000) !== 'F1') bad('laundering classes');
+  // arrested with a stack
+  const a = mk(); a.cash = 6000; a.dirty = 5000;
+  const sz = BK.seizeCash(a);
+  if (sz.seized !== 5000 || a.cash !== 1000 || sz.items[0]?.kind !== 'launder_SJF') bad('seizing dirty cash at booking');
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

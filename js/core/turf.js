@@ -195,7 +195,7 @@ function newDay(s) {
   for (const h of mine) t.hoods[h.id].hold = Math.min(100, t.hoods[h.id].hold + 20);
   const take = dailyTake(s);
   if (take > 0) {
-    earn(s, take, `Street tax: ${mine.length} hood${mine.length === 1 ? '' : 's'}${s.crew.npcCrew ? ' (your cut)' : ''}`);
+    earn(s, take, `Street tax: ${mine.length} hood${mine.length === 1 ? '' : 's'}${s.crew.npcCrew ? ' (your cut)' : ''}`, { dirty: true });
     s.crew.rep += 20 * mine.length;
   }
   if (!t.attack && mine.length && Math.random() < ATTACK_CHANCE) attack(s);

@@ -163,8 +163,8 @@ function results(app, r) {
     else repGain = 6;
   } else repGain = -5;
   s.xp += won || (r.outcome === 'done' && r.pTime < rec.time) ? 70 : 25;
-  if (money > 0) earn(s, money, npc ? `Beat ${npc.nick} (${ev.name})` : `${ev.name} record`);
-  if (money < 0) spend(s, -money, `Lost to ${npc.nick}`);
+  if (money > 0) earn(s, money, npc ? `Beat ${npc.nick} (${ev.name})` : `${ev.name} record`, { dirty: !!npc });
+  if (money < 0) spend(s, -money, `Lost to ${npc.nick}`, { street: true });
   addRep(s, repGain, won ? `Beat ${npc.nick}` : r.outcome === 'done' ? ev.name : 'Street race');
   addFollowers(s, followers);
   s.heat = Math.min(5.99, s.heat + ev.heat * (0.35 + Math.random() * 0.6));

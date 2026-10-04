@@ -29,6 +29,7 @@ export function createState({ name, age, look, story = true }) {
     playTime: 0,
     player: { name, age, look, energy: 100, outfits: ['hoodie_black', 'jeans_blue', 'no_hat', 'kicks_white'] },
     cash: 4500,
+    dirty: 0,            // how much of `cash` is dirty money (core/bank.js)
     bank: 0,
     rep: 0,
     xp: 0,
@@ -97,12 +98,27 @@ function log(s, label, amount) {
   if (s.ledger.length > 100) s.ledger.length = 100;
 }
 
-export function earn(s, amount, label) {
+// Cash on hand is one pile, but part of it can be dirty: money from drugs,
+// robberies, chop-shop cars, gang work and street bets. `s.dirty` is that
+// part (never more than `s.cash`); the rest is clean. Old saves have no
+// `dirty`, so all their cash counts as clean. See core/bank.js for what the
+// bank and the feds do with it.
+export const REPORT_LIMIT = 10000;   // cash over this in one go gets reported to the IRS
+export function dirtyOf(s) {
+  const d = Math.max(0, Math.min(Math.round(s.dirty || 0), Math.max(0, Math.round(s.cash))));
+  s.dirty = d;
+  return d;
+}
+export const cleanOf = s => Math.max(0, s.cash - dirtyOf(s));
+
+// dirty: money from crime. It lands in your pocket as dirty cash.
+export function earn(s, amount, label, { dirty = false } = {}) {
   amount = Math.round(amount);
   s.cash += amount;
+  if (dirty && amount > 0) s.dirty = dirtyOf(s) + amount;
   s.stats.earnings += amount;
-  log(s, label, amount);
-  emit('money', { amount, label });
+  log(s, dirty ? `${label} (dirty)` : label, amount);
+  emit('money', { amount, label, dirty });
 }
 
 // Income that is paid straight into the bank (paychecks, business profits).
@@ -114,34 +130,49 @@ export function earnBank(s, amount, label) {
   emit('money', { amount, label });
 }
 
-export function spend(s, amount, label, { fromBank = true } = {}) {
+// Small buys get paid with dirty cash first (nobody asks where a few hundred
+// came from). A legit purchase over $10,000 uses clean cash and the bank
+// first; if dirty cash still has to cover it, the seller files the IRS form
+// and the feds hear about it ('cashReport'). street: the plug, the set, a
+// bet — nobody there reports anything, so dirty cash goes first.
+export function spend(s, amount, label, { fromBank = true, street = false } = {}) {
   amount = Math.round(amount * 100) / 100;
   const total = s.cash + (fromBank ? s.bank : 0);
   if (total < amount) {
     emit('toast', { kind: 'bad', text: `Not enough money — need ${fmtMoney(amount)}` });
     return false;
   }
-  const fromCash = Math.min(s.cash, amount);
-  s.cash -= fromCash;
-  s.bank -= amount - fromCash;
+  const dirty = dirtyOf(s), clean = s.cash - dirty, bank = fromBank ? s.bank : 0;
+  let left = amount, fromDirty = 0, fromClean = 0, fromBankAmt = 0;
+  const take = (have) => { const v = Math.min(have, left); left -= v; return v; };
+  if (street || amount < REPORT_LIMIT) { fromDirty = take(dirty); fromClean = take(clean); fromBankAmt = take(bank); }
+  else { fromClean = take(clean); fromBankAmt = take(bank); fromDirty = take(dirty); }
+  s.cash -= fromDirty + fromClean;
+  s.dirty = dirty - fromDirty;
+  s.bank -= fromBankAmt;
   s.stats.expenses += amount;
   log(s, label, -amount);
   emit('money', { amount: -amount, label });
+  if (!street && amount >= REPORT_LIMIT && fromDirty > 0) emit('cashReport', { s, amount, dirty: fromDirty, label });
   return true;
 }
 export function canAfford(s, amount) { return s.cash + s.bank >= amount; }
 
+// Plain deposits only take clean cash. Dirty cash goes in through
+// core/bank.js depositCash(), which is where the feds start paying attention.
 export function deposit(s, amount) {
-  amount = Math.min(Math.round(amount), s.cash);
-  if (amount <= 0) return;
+  amount = Math.min(Math.round(amount), cleanOf(s));
+  if (amount <= 0) return 0;
   s.cash -= amount; s.bank += amount;
   log(s, 'Deposit to Cowtown Credit Union', 0);
+  return amount;
 }
 export function withdraw(s, amount) {
   amount = Math.min(Math.round(amount), s.bank);
-  if (amount <= 0) return;
+  if (amount <= 0) return 0;
   s.bank -= amount; s.cash += amount;
   log(s, 'ATM withdrawal', 0);
+  return amount;
 }
 
 // ---------------- rep ----------------

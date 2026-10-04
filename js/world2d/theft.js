@@ -289,7 +289,7 @@ export class Thefts {
     if (!v) return 0;
     const pay = this.salOffer();
     this.leave();
-    earn(s, pay, `Sal: ${carName(CAR_BY_ID[v.car.modelId], v.car.year)}, no questions asked`);
+    earn(s, pay, `Sal: ${carName(CAR_BY_ID[v.car.modelId], v.car.year)}, no questions asked`, { dirty: true });
     s.stats.carsFenced = (s.stats.carsFenced || 0) + 1;
     return pay;
   }

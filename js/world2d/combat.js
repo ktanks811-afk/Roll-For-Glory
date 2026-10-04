@@ -270,7 +270,7 @@ export class Combat {
     if (!this.rob) return;
     const r = this.rob; this.rob = null;
     const part = Math.round(r.pay * Math.min(0.6, (r.t / r.dur) * 0.6));
-    if (part > 40 && text !== 'quiet') { this.s.cash += part; this.say(`${text || 'You bailed.'} You grabbed ${fmtMoney(part)} on the way out.`, 'good'); this.finishRobbery(r, part); }
+    if (part > 40 && text !== 'quiet') { this.s.cash += part; this.s.dirty = (this.s.dirty || 0) + part; this.say(`${text || 'You bailed.'} You grabbed ${fmtMoney(part)} on the way out.`, 'good'); this.finishRobbery(r, part); }
     else if (text) this.say(text, 'info');
   }
   finishRobbery(r, amount) {
@@ -285,7 +285,7 @@ export class Combat {
     const r = this.rob; this.rob = null;
     let pay = r.pay, dye = Math.random() < 0.1;
     if (dye) pay = Math.round(pay * 0.5);
-    this.s.cash += pay;
+    this.s.cash += pay; this.s.dirty = (this.s.dirty || 0) + pay;
     this.finishRobbery(r, pay);
     this.say(`Robbery done: +${fmtMoney(pay)}${dye ? ' (a dye pack burst — half ruined)' : ''}. Now get out of there!`, 'good');
     audio.buy();
@@ -384,7 +384,7 @@ export class Combat {
       if (m.t >= m.dur) {
         this.mug = null;
         m.p.cower = false; m.p.scared = 10;
-        this.s.cash += m.pay;
+        this.s.cash += m.pay; this.s.dirty = (this.s.dirty || 0) + m.pay;
         this.s.stats.stolen = (this.s.stats.stolen || 0) + m.pay;
         this.arms.robberies++;
         this.say(`Mugged: +${fmtMoney(m.pay)}.`, 'good');
