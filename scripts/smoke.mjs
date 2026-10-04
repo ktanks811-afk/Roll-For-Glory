@@ -1701,6 +1701,7 @@ await step('traffic stop: pull over, walk-up, drive off', async () => {
     po.startChase(w);
   });
   await light();
+  await p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));   // let the HUD draw a frame (it still shows the last chase's title until then)
   const lit = await P();
   console.log('     lit up', JSON.stringify(lit));
   if (lit.phase !== 'notice' || !(lit.pullT > 9)) throw new Error('no 10 second pull-over countdown ' + JSON.stringify(lit));
