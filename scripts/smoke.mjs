@@ -2657,7 +2657,6 @@ await step('xbox controller', async () => {
   const btn = (n, v) => g.evaluate(([i, v]) => { window.__pad.buttons[i] = { pressed: v > 0.5, touched: v > 0, value: v }; }, [B[n], v]);
   const tap = async (n, ms = 150) => { await btn(n, 1); await g.waitForTimeout(ms); await btn(n, 0); await g.waitForTimeout(100); };
   const axes = (a) => g.evaluate(a => { window.__pad.axes = a; }, a);
-  await g.fill('[name=username]', 'Pad'); await g.fill('[name=email]', 'pad@example.com'); await g.fill('[name=password]', 'hunter22'); await g.click('.auth-go'); await g.waitForTimeout(300);
   // title menu: D-pad highlights a button, A presses it
   await tap('DOWN');
   const focus = await g.evaluate(() => document.querySelector('.pad-focus')?.textContent || '');
