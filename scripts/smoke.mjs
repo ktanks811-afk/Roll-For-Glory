@@ -2325,6 +2325,68 @@ await step('phone controls', async () => {
 });
 
 // ---------------- third-person (chase) camera ----------------
+await step('JPS hospital: crash out, shot down, bills, injuries', async () => {
+  const reset = () => p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+  });
+  await reset();
+  // crash out: a 100 mph hit into a wall
+  const before = await p.evaluate(() => {
+    const r = window.__rfg, w = r.app.world, s = r.game.s; w.paused = false; w.police.reset(w); w.police.patrols.length = 0;
+    s.warrants = []; s.citations = []; s.health = undefined; s.cash = 200; s.bank = 1000; s.insurance = false; w.combat.arms.hp = 100; w.downed = false;
+    if (!w.inCar) w.toggleCar();
+    w.lastCrashT = -9; w.onCrash(45, 'wall');
+    return { day: s.time.day, min: s.time.min };
+  });
+  await p.waitForSelector('.jps-panel [data-action="skip"]');
+  await snap('41-jps-stay');
+  await p.click('.jps-panel [data-action="skip"]');
+  await p.click('.jps-panel [data-action="out"]');
+  await p.waitForSelector('.modal-back button:has-text("JPS Connection")');
+  await snap('42-jps-discharge');
+  await p.click('.modal-back button:has-text("JPS Connection")');
+  await p.click('.modal-back button:has-text("Pay in full")');
+  await p.waitForTimeout(150);
+  const a = await p.evaluate(async () => {
+    const r = window.__rfg, w = r.app.world, s = r.game.s, { LOC_BY_ID } = await import('./js/data/world.js'), H = await import('./js/core/health.js');
+    const l = LOC_BY_ID.jps, b = s.health.bills[0];
+    return { inCar: w.inCar, downed: w.downed, d: Math.hypot(w.foot.x - l.x, w.foot.z - l.z), inj: s.health.injuries.map(j => j.kind), status: b.status, conn: b.connection, total: b.total, day: s.time.day, min: s.time.min, hp: w.combat.arms.hp, cap: H.healthMods(s).cap, modal: !!document.querySelector('.modal-back') };
+  });
+  if (a.inCar || a.downed || a.d > 8) throw new Error('did not wake up on foot at JPS ' + JSON.stringify(a));
+  if (!a.inj.length || a.status !== 'paid' || !a.conn) throw new Error('crash injuries / JPS Connection bill ' + JSON.stringify(a));
+  if ((a.day - before.day) * 1440 + a.min - before.min < 6 * 60) throw new Error('the stay did not cost any time ' + JSON.stringify([before, a]));
+  if (a.hp > a.cap || a.modal) throw new Error('health over the injury cap, or a modal left open ' + JSON.stringify(a));
+  // shot down on foot, with a bill you leave for later; the HUD shows the injury
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.combat.arms.hp = 5; w.combat.arms.armor = 0; w.combat.hurt(40, 'Test shooter'); });
+  await p.click('.jps-panel [data-action="skip"]');
+  await p.click('.jps-panel [data-action="out"]');
+  await p.click('.modal-back button:has-text("Bill me later")');
+  await p.waitForTimeout(250);
+  const b = await p.evaluate(() => { const s = window.__rfg.game.s; return { bills: s.health.bills.length, open: s.health.bills[0].status, msg: s.messages[0]?.from, hud: document.querySelector('[data-injury]')?.textContent, hidden: document.querySelector('[data-injury]')?.classList.contains('hidden') }; });
+  if (b.bills !== 2 || b.open !== 'open' || b.msg !== 'jps') throw new Error('shot: bill for later + statement text ' + JSON.stringify(b));
+  if (b.hidden || !/·/.test(b.hud || '')) throw new Error('HUD does not show the injury ' + JSON.stringify(b));
+  // the hospital: urgent care + a follow-up visit
+  await p.evaluate(async () => { const r = window.__rfg, { LOC_BY_ID } = await import('./js/data/world.js'); r.game.s.cash = 5000; window.__rfg.app.world.combat.arms.hp = 10; const { openPlace } = await import('./js/ui/places.js'); openPlace(LOC_BY_ID.jps, r.app); });
+  await p.waitForSelector('.jps-panel [data-action="follow"]');
+  await snap('43-jps-hospital');
+  const left0 = await p.evaluate(() => window.__rfg.game.s.health.injuries[0].left);
+  await p.click('.jps-panel [data-action="follow"]');
+  await p.click('.jps-panel [data-action="urgent"]');
+  const c = await p.evaluate(async () => { const s = window.__rfg.game.s, H = await import('./js/core/health.js'); return { j: s.health.injuries[0], hp: window.__rfg.app.world.combat.arms.hp, cap: H.healthMods(s).cap }; });
+  if (!c.j.followUp || c.j.left > left0 / 2 + 1 || c.hp !== c.cap) throw new Error('follow-up / urgent care ' + JSON.stringify({ c, left0 }));
+  await reset();
+  // the phone app
+  await p.evaluate(async () => { window.__rfg.game.s.cash = 50000; const { openPhone } = await import('./js/ui/phone.js'); openPhone('jps', window.__rfg.app); });
+  await p.waitForSelector('.warrant-status:has-text("OWED")');
+  await snap('44-jps-app');
+  await p.click('.phone [data-action="pay"]');
+  const d = await p.evaluate(async () => (await import('./js/core/health.js')).medicalDebt(window.__rfg.game.s));
+  if (d !== 0) throw new Error('paying in the app left a balance ' + d);
+  await reset();
+  // back in the car for the next step
+  await p.evaluate(() => { const w = window.__rfg.app.world, s = window.__rfg.game.s; s.health = undefined; w.combat.arms.hp = 100; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; if (!w.inCar) w.toggleCar(); });
+});
+
 await step('third-person camera', async () => {
   await p.evaluate(async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());

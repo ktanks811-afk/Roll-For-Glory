@@ -19,6 +19,7 @@ import { PULL_OVER_S } from '../world2d/police.js';
 import { masked, ownsMask, disguiseLabel } from '../core/disguise.js';
 import { wx, nightShift } from '../core/weather.js';
 import { currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
+import { INJURIES, fmtLeft as fmtHeal } from '../core/health.js';
 
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · T steal a car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
@@ -36,7 +37,7 @@ const navDist = (m, kmh) => kmh
   ? (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.max(10, Math.round(m / 10) * 10) + ' m')
   : (m >= 402 ? (m / 1609.34).toFixed(1) + ' mi' : Math.max(10, Math.round(m * 3.28084 / 50) * 50) + ' ft');
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', tow: '$', meet: '●', flag: '⚑' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', meet: '●', flag: '⚑' };
 
 export class Hud {
   constructor() {
@@ -56,6 +57,7 @@ export class Hud {
         <div class="hud-heat" data-heat>${'<i></i>'.repeat(5)}</div>
         <div class="hud-warrant hidden" data-warrant></div>
         <div class="hud-court hidden" data-court></div>
+        <div class="hud-court hud-injury hidden" data-injury></div>
         <div class="hud-disguise hidden" data-disguise></div>
         <div class="hud-pursuit hidden" data-pursuit><b data-ptitle></b><div class="bar thin"><div data-pbar></div></div></div>
         <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom">⌕</button><button class="hud-btn" data-tp="view" aria-label="Camera view">🎥</button><button class="hud-btn" data-tp="phone" aria-label="Phone">☎</button></div>
@@ -154,6 +156,10 @@ export class Hud {
     const cc = s.justice?.cases?.[0], ct = this.q('court'), showCourt = !!cc && !cc.fta && !cc.held;
     ct.classList.toggle('hidden', !showCourt);
     if (showCourt) { const today = cc.date.day === s.time.day; ct.textContent = today ? 'COURT TODAY · 9 AM' : `COURT · DAY ${cc.date.day} 9 AM`; ct.classList.toggle('today', today); }
+    // hurt: what's wrong and how long until it heals
+    const ij = this.q('injury'), inj = s.health?.injuries || [];
+    ij.classList.toggle('hidden', !inj.length);
+    if (inj.length) { const j = inj.reduce((a, b) => b.left > a.left ? b : a), d = INJURIES[j.kind], t = `${d?.icon || '✚'} ${(d?.short || 'HURT').toUpperCase()} · ${fmtHeal(j.left).toUpperCase()}${inj.length > 1 ? ` +${inj.length - 1}` : ''}`; if (ij.textContent !== t) ij.textContent = t; }
     // masked on foot: how recognisable you are right now
     const dg = this.q('disguise'), mk = !w.inCar && masked(s.player.look);
     dg.classList.toggle('hidden', !mk);
