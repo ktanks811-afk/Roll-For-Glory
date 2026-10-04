@@ -2037,7 +2037,7 @@ await step('bank: dirty cash, CTRs, washing through a business', async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
     const { earn } = await import('./js/core/state.js');
     const s = window.__rfg.game.s;
-    s.feds = null; s.wash = {}; s.rep = Math.max(s.rep, 2000);
+    s.feds = null; s.wash = {}; s.dirty = 0; s.rep = Math.max(s.rep, 2000);   // earlier steps (robberies, the chop shop) leave dirty cash behind
     s.hustle.biz.laundromat = { level: 1, since: s.time.day };
     earn(s, 30000, 'Trap money', { dirty: true });
     const { openPhone } = await import('./js/ui/phone.js'); openPhone('bank', window.__rfg.app);
