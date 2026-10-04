@@ -27,6 +27,8 @@ import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
 import { wx } from '../core/weather.js';
+import { renderJps } from './hospital.js';
+import { pastDue } from '../core/health.js';
 import { BREAKDOWNS, MECHANIC_COST, roadsideFix } from '../core/upkeep.js';
 import { ensure as ensureMissions, now as missionNow, offerById, acceptMission, declineMission, abandonMission, pointGps, currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 
@@ -50,6 +52,7 @@ const APPS = [
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
   { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
+  { id: 'jps', name: 'JPS Health', icon: '🏥', bg: '#e0192e' },
   { id: 'settings', name: 'Settings', icon: '⚙', bg: '#2a2c33' },
 ];
 
@@ -86,7 +89,7 @@ function renderHome(scr, ctx) {
   const unread = s.messages.filter(m => !m.read).length;
   const t = tierOf(s.rep);
   const offers = ms.offers.filter(o => o.expires > missionNow(s)).length;
-  const badge = { messages: unread, fwpd: hasWarrant(s) ? s.warrants.length : 0, missions: ms.active ? '!' : offers };
+  const badge = { messages: unread, fwpd: hasWarrant(s) ? s.warrants.length : 0, jps: pastDue(s) ? '!' : 0, missions: ms.active ? '!' : offers };
   // lock-screen style cards: where you stand with FWPD, the job you're on, where the GPS is taking you
   const warr = hasWarrant(s), cites = s.citations?.length || 0;
   const a = ms.active, stop = currentStop(s);
@@ -116,6 +119,7 @@ RENDER.shop = renderShop;
 RENDER.ocrew = renderOcrew;
 RENDER.turf = renderTurf;
 RENDER.gang = renderGang;
+RENDER.jps = renderJps;
 
 // ---------------- messages ----------------
 // Conversations, one per sender, newest first. Open one to read the thread as
