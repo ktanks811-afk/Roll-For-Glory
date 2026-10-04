@@ -27,6 +27,12 @@ import { HOOD_BY_ID } from '../js/core/turf.js';
 import { STREET_RACES, raceRoute, courseRecord, cornerSpeed, pinkSlipCheck } from '../js/data/streetRaces.js';
 import { soundProfile, harmonics, firingHz, noiseDb, liveNoiseDb, hearingRange, exhaustDb, LEGAL_DB } from '../js/sim/sound.js';
 
+import * as DR from '../js/core/drugs.js';
+import * as EST from '../js/core/estate.js';
+import { applyEstate } from '../js/world2d/estate.js';
+import { LAND, PLANS, TRAPS, DRUGS } from '../js/data/estate.js';
+import { charge as chargeOf } from '../js/core/justice.js';
+
 let fails = 0;
 const bad = (msg) => { fails++; console.error('FAIL', msg); };
 
@@ -750,6 +756,64 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const { classify } = await import('../js/core/justice.js');
   if (classify({ kind: 'driveby', text: 'Drive-by shooting (gang activity).' }).cls !== 'F2') bad('a gang drive-by should be a 2nd-degree felony');
   game.s = null;
+}
+// ---- drugs, trap houses, land you build on ----
+{
+  const st = createState({ name: 'D', age: 25, look: {}, story: false });
+  game.s = st; st.cash = 5e6; st.rep = 40000;
+  // the plug: buying puts it in your bag, prices hold for the day
+  const pr = DR.prices(st);
+  for (const g of DRUGS) if (!(pr[g.id].buy > 0 && pr[g.id].street > pr[g.id].buy)) bad(`${g.id}: street price should beat the plug's`);
+  if (!DR.buy(st, 'loud', 2).ok || st.drugs.bag.loud !== 2) bad('buying from the plug');
+  // the law: a little is possession, a lot is delivery, all of it goes to court
+  const small = DR.drugOffences({ loud: 1 }), big = DR.drugOffences({ powder: 6 });
+  if (small[0]?.kind !== 'drugs_B') bad(`an ounce of weed should be a Class B, got ${small[0]?.kind}`);
+  if (!/delivery/i.test(big[0]?.text) || big[0]?.kind !== 'drugs_F1') bad(`six 8-balls should be delivery (F1), got ${big[0]?.kind}`);
+  const ch = chargeOf(big).charges;
+  if (ch[0]?.cls !== 'F1') bad('drug offences do not reach court as felonies');
+  // a trap house: customers want what you have, every sale raises the heat
+  if (!EST.buyProperty(st, 'trap_stopsix').ok || st.home === 'trap_stopsix') bad('buying a trap house (and it should not become home)');
+  DR.moveStash(st, 'trap_stopsix', true);
+  if (DR.units(st.drugs.bag) || DR.units(DR.trapState(st, 'trap_stopsix').stash) !== 2) bad('stashing product');
+  DR.buy(st, 'percs', 80); DR.moveStash(st, 'trap_stopsix', true);
+  const before = DR.raidChance(st, 'trap_stopsix');
+  let served = 0;
+  for (let k = 0; k < 30; k++) { const c = DR.customer(st, 'trap_stopsix'); if (c && DR.serve(st, 'trap_stopsix', c, () => 0.99).ok) served++; }
+  if (served < 20) bad(`only ${served} customers got served`);
+  if (!(DR.raidChance(st, 'trap_stopsix') > before * 4)) bad('more customers should make a raid much more likely');
+  if (DR.serve(st, 'trap_stopsix', DR.customer(st, 'trap_stopsix') || { drug: 'percs', qty: 1, price: 1, who: 'x' }, () => 0).raid !== true) bad('an unlucky sale should bring SWAT');
+  const took = DR.raidHouse(st, 'trap_stopsix');
+  if (!took.product || DR.units(DR.trapState(st, 'trap_stopsix').stash) || !DR.isClosed(st, 'trap_stopsix')) bad('a raid should take the stash and board the house up');
+  // a day goes by: the house cools off
+  const t = DR.trapState(st, 'trap_stopsix'); t.traffic = 20; DR.drugsDay(st);
+  if (!(t.traffic < 20)) bad('trap traffic should cool off overnight');
+  // land: buy, build, and the house goes up on the map with a working garage
+  const map = buildMap();
+  for (const id of Object.keys(LAND)) {
+    if (!map.lots.some(l => l.loc === id && l.kind === 'dirt')) bad(`${id}: no lot on the map`);
+    if (!EST.buyLand(st, id).ok) bad(`buying ${id}`);
+    if (!EST.build(st, id, 'compound').ok) bad(`building on ${id}`);
+    if (EST.isBuilt(st, id)) bad(`${id} built instantly`);
+  }
+  st.time.day += 5;
+  if (EST.finishBuilds(st).length !== Object.keys(LAND).length) bad('builds did not finish');
+  applyEstate(map, st);
+  for (const id of Object.keys(LAND)) {
+    const g = map.garages.find(q => q.id === id), P = PROPERTIES[id];
+    if (!g || !P || P.slots !== 10 || !st.properties.includes(id)) { bad(`${id}: built house missing (garage ${!!g}, property ${!!P})`); continue; }
+    if (g.bays.length < P.slots - 1) bad(`${id}: ${g.bays.length} bays for ${P.slots}`);
+    g.panel.off = true;
+    for (let i = 0; i <= 40; i++) { const k = i / 40; if (collideCircle(map, g.park.x + (g.center.x - g.park.x) * k, g.park.z + (g.center.z - g.park.z) * k, 1.1)) { bad(`${id}: can't drive into the built garage`); break; } }
+    for (const b of g.bays) if (collideCircle(map, b.x, b.z, 0.9)) bad(`${id}: a bay is inside a wall`);
+    if (map.lots.find(l => l.loc === id && l.kind === 'dirt').w !== 0) bad(`${id}: the dirt lot still shows under the house`);
+  }
+  // loading another career takes those houses down again
+  const fresh = createState({ name: 'E', age: 25, look: {}, story: false });
+  applyEstate(map, fresh);
+  for (const id of Object.keys(LAND)) if (map.garages.some(g => g.id === id) || PROPERTIES[id]) bad(`${id}: a house from another career stayed up`);
+  game.s = st; applyEstate(map, st);
+  if (!EST.sellLand(st, 'land_stopsix').ok || PROPERTIES.land_stopsix) bad('selling land you built on');
+  for (const id of Object.keys(LAND)) { delete PROPERTIES[id]; }
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

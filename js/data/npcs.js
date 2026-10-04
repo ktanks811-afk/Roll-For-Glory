@@ -184,6 +184,8 @@ export const PEOPLE = {
   brenner: { name: 'Sgt. Hal Brenner', role: 'FWPD Street Racing Task Force', color: '#1b4fc4', bio: 'Twenty years on the job. Has a whiteboard with your name on it now.' },
   clerk:   { name: 'Tarrant County District Clerk', role: 'Courts · notices to appear', color: '#8a6d3b', bio: 'Automated court notices. Ignoring them is how warrants happen.' },
   priya:   { name: 'Priya Shah', role: 'Agent · Bayline Realty', color: '#1f8f3a', bio: 'Sells garages with houses attached.' },
+  plug:    { name: 'Lil Tre', role: 'The plug · Stop Six', color: '#2cff7a', bio: 'Runs the corner store on the east side. The good stuff is behind the counter.' },
+  builder: { name: 'Cowtown Custom Builders', role: 'Construction', color: '#c8a46a', bio: 'Pour the slab Monday, hand you the keys Thursday.' },
   zed:     { name: 'Zed', role: 'Parts Vendor', color: '#6b2bd1', bio: 'Shows up at meets with a van. Don\'t ask where the parts come from — they\'re just discounted, okay?' },
 };
 
