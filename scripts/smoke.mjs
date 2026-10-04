@@ -884,6 +884,65 @@ await step('stealing cars', async () => {
   if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get back in your car');
 });
 
+// ---------------- chop shop ----------------
+await step('chop shop', async () => {
+  const calm = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; try { w.police.reset(w); } catch {} window.__rfg.game.s.heat = 0; w.paused = false; });
+  await calm();
+  const ownUid = await p.evaluate(() => window.__rfg.game.s.activeCar);
+  // get out of your car and carjack somebody
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; });
+  if (await p.evaluate(() => window.__rfg.app.world.inCar)) { await key('KeyF'); await p.waitForTimeout(150); }
+  const jack = async () => {
+    await p.evaluate(() => {
+      const w = window.__rfg.app.world, c = w.traffic.cars.find(c => !c.police);
+      c.stun = 6; c.v = 0; w.foot.x = c.x - Math.cos(c.h) * 2; w.foot.z = c.z - Math.sin(c.h) * 2; w.cam.x = c.x; w.cam.z = c.z;
+    });
+    await p.waitForTimeout(120);
+    await key('KeyT'); await p.waitForTimeout(1300);
+    if (!(await p.evaluate(() => !!window.__rfg.app.world.vehicle?.car?.hot))) throw new Error('carjack for the chop shop failed');
+    await calm();
+    // drive it into Marchetti Salvage's yard
+    await p.evaluate(async () => { const w = window.__rfg.app.world, v = w.vehicle, { LOC_BY_ID } = await import('./js/data/world.js'), l = LOC_BY_ID.marchetti_salvage; v.x = l.x + 4; v.z = l.z + 6; v.vx = v.vz = 0; v.sim.v = 0; w.cam.x = v.x; w.cam.z = v.z; });
+  };
+  await jack();
+  await p.evaluate(() => { window.__rfg.game.s.chop = { heat: 0 }; });
+  const open = () => p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.marchetti_salvage, window.__rfg.app); });
+  await open();
+  await p.waitForSelector('[data-action="strip"]');
+  await snap('45-chop-shop');
+  const day0 = await p.evaluate(() => window.__rfg.game.s.time.min + window.__rfg.game.s.time.day * 1440);
+  await p.click('[data-action="strip"]');
+  await p.waitForSelector('[data-action="sellall"]');
+  await snap('46-chop-shelf');
+  const stripped = await p.evaluate(ownUid => { const w = window.__rfg.app.world, s = window.__rfg.game.s; return { shelf: s.chop.shelf.length, hot: !!w.vehicle?.car?.hot, mine: w.vehicle?.car?.uid === ownUid, inCar: w.inCar, chopped: s.stats.carsChopped, t: s.time.min + s.time.day * 1440 }; }, ownUid);
+  if (stripped.shelf < 8 || stripped.hot || !stripped.mine || stripped.inCar || stripped.chopped !== 1 || !(stripped.t > day0 + 200)) throw new Error('stripping the car failed ' + JSON.stringify({ day0, ...stripped }));
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.click('[data-action="sellall"]');
+  await p.waitForTimeout(150);
+  const sold = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, shelf: window.__rfg.game.s.chop.shelf.length }));
+  if (!(sold.cash > cash0 + 500) || sold.shelf) throw new Error('Junior did not buy the parts ' + JSON.stringify({ cash0, ...sold }));
+  // a hot shop: the task force sweeps it while you're in there
+  await calm();
+  await jack();
+  await p.evaluate(() => { const c = window.__rfg.game.s.chop; c.heat = 100; c.shelf.push({ uid: 'x', part: 'cat', name: 'Catalytic converter', make: 'honda', car: 'Civic', base: 300 }); });
+  await p.evaluate(async () => { const { sweepLive } = await import('./js/ui/chop.js'); const w = window.__rfg.app.world; sweepLive(w, w.vehicle); });
+  await p.waitForSelector('.modal button:has-text("Get on the ground")');
+  await snap('47-chop-sweep');
+  await p.click('.modal button:has-text("Get on the ground")');
+  await p.waitForSelector('.modal:has-text("BUSTED")');
+  const bust = await p.evaluate(ownUid => { const w = window.__rfg.app.world, s = window.__rfg.game.s, c = s.cars.find(c => c.uid === ownUid); return { closed: s.chop.closed > s.time.day, shelf: s.chop.shelf.length, impound: !!c.impound, hot: !!w.vehicle?.car?.hot, text: document.querySelector('.modal')?.innerText || '' }; }, ownUid);
+  if (!bust.closed || bust.shelf || bust.impound || bust.hot || !/chop shop/i.test(bust.text)) throw new Error('the sweep did not book you ' + JSON.stringify(bust));
+  await calm();
+  // close the case so later steps aren't stuck with a court date
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.justice.cases = []; s.warrants = []; });
+  await open();
+  await p.waitForSelector('.modal:has-text("chained shut")');
+  await calm();
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; });
+  await key('KeyF'); await p.waitForTimeout(200);
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get back in your car after the chop shop');
+});
+
 await step('save + reload', async () => {
   // saved while sitting in the car, so loading it back must start the engine sound
   await p.evaluate(() => { const w = window.__rfg.app.world; if (!w.inCar) { w.vehicle.vx = w.vehicle.vz = 0; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; } });

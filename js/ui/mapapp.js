@@ -12,7 +12,7 @@ import { online } from '../net/online.js';
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', tow: '$', meet: '●', flag: '⚑', trophy: '♛' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
-  { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot'] },
+  { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop'] },
   { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty'] },
   { id: 'race', label: 'Races & meets', types: ['meet', 'carshow', 'drag', 'roll', 'sprint'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food'] },
@@ -23,7 +23,8 @@ const CATS = [
 const WHAT = {
   home: 'Your place: sleep, save, garage, change clothes.',
   property: 'A property: extra garage space.',
-  usedlot: 'Used cars, cheap and honest-ish.',
+  usedlot: 'Used cars, cheap and honest-ish. Sal buys stolen ones.',
+  chop: 'Chop shop. Strip stolen cars for parts and sell them to Junior. Too many and the task force sweeps it.',
   dealer: 'New cars at real prices.',
   perf: 'Install performance parts, dyno and tune.',
   visual: 'Paint, wheels, body kits and looks.',
