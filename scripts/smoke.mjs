@@ -88,6 +88,29 @@ for (const app of ['Messages', 'Contacts', 'Map', 'Bank', 'Throttle', 'Races', '
     await p.waitForTimeout(100);
   });
 }
+await step('throttle feed + rival texts', async () => {
+  await p.evaluate(async () => {
+    const F = await import('./js/core/feed.js'); const { RACERS } = await import('./js/data/npcs.js');
+    const s = window.__rfg.game.s;
+    F.onRace(s, { won: true, npcId: RACERS[0].id, wager: 2500 }, () => 0.1);
+    F.react(s, 'escaped', {}, { n: 2 });
+  });
+  await p.click('.app:has-text("Throttle")'); await p.waitForTimeout(250);
+  const n = await p.locator('.tpost').count();
+  if (n < 3) throw new Error('feed shows ' + n + ' posts');
+  await snap('07-throttle-feed');
+  const before = await p.locator('.tp-like').first().innerText();
+  await p.locator('.tp-like').first().click(); await p.waitForTimeout(150);
+  if ((await p.locator('.tp-like').first().innerText()) === before || !(await p.locator('.tp-like.on').count())) throw new Error('like did not register');
+  await p.click('.tp-tabs button:has-text("Rivals")'); await p.waitForTimeout(150);
+  if (!(await p.locator('.li:has(.bar)').count())) throw new Error('rivals tab empty');
+  await p.click('button[data-action="dm"]'); await p.waitForTimeout(200);
+  if (!(await p.locator('button[data-action="rival"][data-pick="back"]').count())) throw new Error('rival threat has no answers');
+  await snap('07-rival-text');
+  await p.locator('button[data-action="rival"][data-pick="back"]').first().click(); await p.waitForTimeout(200);
+  if (!(await p.locator('.bubble .tag:has-text("You talked back")').count())) throw new Error('talking back did not stick');
+  await p.click('.phone-bar button'); await p.waitForTimeout(100);
+});
 await step('marketplace browse + buy', async () => {
   await p.click('.app:has-text("Marketplace")');
   await p.waitForTimeout(300);
