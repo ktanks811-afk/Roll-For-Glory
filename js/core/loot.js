@@ -10,7 +10,7 @@ import { LOOT_BY_ID, STORE_LOOT } from '../data/loot.js';
 export const FENCE_RATE = 0.4;     // what Sal pays on the dollar for hot goods
 
 export function ensureLoot(s) {
-  if (!Array.isArray(s.loot)) s.loot = [];
+  if (!Array.isArray(s.loot)) s.loot = Array.isArray(s.loot?.items) ? s.loot.items : [];   // { items } shape from an early pawn-shop build
   return s.loot;
 }
 
