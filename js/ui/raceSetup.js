@@ -60,6 +60,7 @@ export function openRaceSetup(app, { type, loc, npcId = null, wager = null }) {
   if (w && (!w.inCar)) { modal(loc.name, touchUi.active ? '<p>Get in your car first (tap GET IN next to it), then pull up here and tap USE.</p>' : '<p>Get in your car first (F), then pull up here and press Enter.</p>'); return; }
   if (w && w.police.active) { modal('Not now', '<p>Nobody is lining up with the cops on your tail. Lose them first.</p>'); return; }
   if (car.fuel < 0.05) { modal('Out of gas', '<p>You\'re running on fumes. Fill up first.</p>'); return; }
+  if (car.broken) { modal('Broken down', '<p>Your car is broken down. Call the mobile mechanic or a tow from your phone (Bank → Roadside).</p>'); return; }
   if (car.engineBlown) { modal('Blown motor', '<p>Your engine is blown. Get it towed to Second Chance Collision for a rebuild (Bank → Roadside → Tow).</p>'); return; }
   const tier = tierOf(s.rep).n;
   const isDrag = type === 'drag';

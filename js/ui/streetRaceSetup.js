@@ -29,6 +29,7 @@ export function openStreetRace(app, loc, { npcId = null } = {}) {
   if (w?.police.active) { modal('Not now', '<p>Nobody is lining up with the cops on your tail. Lose them first.</p>'); return; }
   if (w?.races.active) return;
   if (car.fuel < 0.08) { modal('Low on gas', '<p>You won\'t make it to the finish on fumes. Fill up first.</p>'); return; }
+  if (car.broken) { modal('Broken down', '<p>Your car is broken down. Call the mobile mechanic or a tow from your phone (Bank → Roadside).</p>'); return; }
   if (car.engineBlown) { modal('Blown motor', '<p>Your engine is blown. Get it towed to Second Chance Collision for a rebuild (Bank → Roadside → Tow).</p>'); return; }
   const tier = tierOf(s.rep).n;
   const route = raceRoute(ev);
