@@ -31,7 +31,9 @@ import * as DR from '../js/core/drugs.js';
 import * as EST from '../js/core/estate.js';
 import { applyEstate } from '../js/world2d/estate.js';
 import { LAND, PLANS, TRAPS, DRUGS } from '../js/data/estate.js';
-import { charge as chargeOf } from '../js/core/justice.js';
+import { charge as chargeOf, classify } from '../js/core/justice.js';
+import * as LOOTC from '../js/core/loot.js';
+import { LOOT, LOOT_BY_ID, STORE_LOOT } from '../js/data/loot.js';
 
 let fails = 0;
 const bad = (msg) => { fails++; console.error('FAIL', msg); };
@@ -814,6 +816,38 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   game.s = st; applyEstate(map, st);
   if (!EST.sellLand(st, 'land_stopsix').ok || PROPERTIES.land_stopsix) bad('selling land you built on');
   for (const id of Object.keys(LAND)) { delete PROPERTIES[id]; }
+}
+// ---- store robberies: corner stores, stolen goods, selling and getting caught with it ----
+{
+  const corners = LOCATIONS.filter(l => l.type === 'corner');
+  if (corners.length < 3) bad('expected corner stores to rob');
+  for (const t of ['corner', 'gas', 'food', 'clothing']) {
+    if (!STORE_LOOT[t]?.length) bad(`${t}: nothing behind the counter`);
+    for (const [id] of STORE_LOOT[t] || []) if (!LOOT_BY_ID[id]) bad(`${t}: unknown loot ${id}`);
+  }
+  for (const l of LOOT) if (!(l.value > 0) || !l.name) bad(`loot ${l.id}: needs a name and value`);
+  const rolled = LOOTC.rollLoot('corner', 3);
+  if (rolled.length !== 3 || rolled.some(id => !STORE_LOOT.corner.some(([x]) => x === id))) bad('rollLoot corner: ' + rolled);
+  if (LOOTC.rollLoot('nowhere', 2).length) bad('rollLoot for a store with no shelf');
+  const st = createState({ name: 'R', age: 25, look: {}, story: false });
+  if (!Array.isArray(st.loot)) bad('new career has no loot list');
+  const old = { ...st }; delete old.loot; LOOTC.ensureLoot(old);
+  if (!Array.isArray(old.loot)) bad('old saves should get an empty loot list');
+  LOOTC.addLoot(st, 'chain', 'Test Mart'); LOOTC.addLoot(st, 'cigs', 'Test Mart'); LOOTC.addLoot(st, 'nope');
+  if (st.loot.length !== 2 || !st.loot.every(i => i.hot && i.uid && i.from === 'Test Mart')) bad('addLoot shape ' + JSON.stringify(st.loot));
+  const cash = st.cash, total = LOOTC.lootTotal(st);
+  const paid = LOOTC.sellLoot(st, [st.loot[1].uid]);
+  if (paid !== Math.round(LOOT_BY_ID.cigs.value * LOOTC.FENCE_RATE) || st.cash !== cash + paid || st.loot.length !== 1) bad('selling one item');
+  if (total !== LOOT_BY_ID.chain.value + LOOT_BY_ID.cigs.value) bad('loot total');
+  // busted holding a gold chain: theft over $100 (Class B), goods seized
+  const rec = LOOTC.seizeLoot(st);
+  if (st.loot.length || rec.length !== 1 || rec[0].kind !== 'stolen_goods') bad('seizeLoot ' + JSON.stringify(rec));
+  if (classify(rec[0]).cls !== 'B') bad('a $650 chain should be a Class B theft: ' + JSON.stringify(classify(rec[0])));
+  if (classify({ kind: 'stolen_goods', value: 3000 }).cls !== 'SJF') bad('$3,000 of stolen goods should be a state jail felony');
+  if (classify({ kind: 'stolen_goods', value: 50 }).cls !== 'C') bad('$50 of stolen goods is a Class C');
+  const ch = chargeOf([...rec, { kind: 'robbery', text: 'Armed robbery — Rosedale Food Mart.', fine: 6000 }], 0.9);
+  if (!ch.charges.some(c => c.cls === 'F1') || !ch.charges.some(c => /stolen goods/.test(c.text))) bad('robbery + goods charges ' + JSON.stringify(ch));
+  if (LOOTC.seizeLoot(st).length) bad('nothing to seize twice');
 }
 // ---- JPS hospital: injuries heal, bills go to collections, then garnishment ----
 {

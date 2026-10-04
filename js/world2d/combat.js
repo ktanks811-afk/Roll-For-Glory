@@ -2,11 +2,17 @@
 // are in core/input.js (fire / reload), shots are hitscan with a tracer, and
 // every shot is loud: nearby pedestrians scatter and the police are told.
 //
-// Robbery: draw a gun next to a store (gas station, diner, clothing shop) and
-// press E. The clerk empties the register over a few seconds while you keep
-// the gun on them. Some stores have a silent alarm, some clerks fight back,
-// and leaving early only gets you part of the take. Muggings work on
-// pedestrians. Get caught after a robbery and you lose the gun and a lot of cash.
+// Robbery: draw a gun next to a store (corner store, gas station, diner,
+// clothing shop) and press E. The clerk empties the register over a few
+// seconds while you keep the gun on them, and you sweep goods off the shelf
+// behind the counter (cigarettes, scratchers, phones...: core/loot.js), which
+// Sal at Rusty's buys. The clerk either complies, stalls for the cops, or
+// reaches for the shotgun under the counter: fire a warning shot before they
+// come up with it, or eat it. A ski mask makes clerks comply more and keeps
+// the camera from getting your face. Some stores have a silent alarm, and a
+// clerk who didn't hit it usually calls 911 once you're out the door.
+// Leaving early only gets you part of the take. Muggings work on pedestrians.
+// Get caught after a robbery and you lose the gun and a lot of cash.
 
 import { input } from '../core/input.js';
 import { audio } from '../core/audio.js';
@@ -14,17 +20,25 @@ import { addRep, spend, fmtMoney } from '../core/state.js';
 import { collideCircle } from './map.js';
 import { WEAPON_BY_ID, CAL, ensureArms, equippedGun } from '../data/weapons.js';
 import { LOCATIONS } from '../data/world.js';
+import { masked, ownsMask } from '../core/disguise.js';
+import { addLoot, rollLoot } from '../core/loot.js';
+import { LOOT_BY_ID } from '../data/loot.js';
 import { healthMods } from '../core/health.js';
 
 // A forced-reset trigger turns a semi-auto pistol into a full-auto one: very fast, wild, and unreliable.
 export const FRT = { cd: 0.062, spread: 1.7, jam: 0.045, burst: 0.2 };
 
 const rnd = (a, b) => a + Math.random() * (b - a);
+// loot: how many goods you sweep off the shelf on a full robbery [min, max]
 const STORES = {
-  gas:      { min: 250, max: 800, dur: [5, 7], alarm: 0.4, fight: 0.1, what: 'register' },
-  food:     { min: 180, max: 520, dur: [4, 6], alarm: 0.3, fight: 0.08, what: 'till' },
-  clothing: { min: 450, max: 1400, dur: [6, 8], alarm: 0.55, fight: 0.12, what: 'safe' },
+  corner:   { min: 160, max: 620, dur: [4, 6], alarm: 0.45, fight: 0.16, what: 'register', loot: [1, 3] },
+  gas:      { min: 250, max: 800, dur: [5, 7], alarm: 0.4, fight: 0.1, what: 'register', loot: [1, 2] },
+  food:     { min: 180, max: 520, dur: [4, 6], alarm: 0.3, fight: 0.08, what: 'till', loot: [0, 1] },
+  clothing: { min: 450, max: 1400, dur: [6, 8], alarm: 0.55, fight: 0.12, what: 'safe', loot: [1, 2] },
 };
+const STALL = 0.22;      // chance an unmasked robber gets a clerk who drags their feet
+const REACH = 1.3;       // seconds you have to fire a warning shot once the clerk goes for the shotgun
+const CALL_DELAY = 12;   // seconds after you leave before the clerk's 911 call lands
 export const ROBBABLE = Object.keys(STORES);
 
 export class Combat {
@@ -224,7 +238,8 @@ export class Combat {
     if (st) {
       const cd = this.arms.cooldown[st.id];
       if (cd && cd > this.s.time.day) return `${st.name} is on high alert — try another day`;
-      return `ROB ${st.name}`;
+      const look = this.s.player?.look;
+      return `ROB ${st.name}${!masked(look) && ownsMask(this.s) ? ' (mask: V)' : ''}`;
     }
     const p = this.pedNear(5);
     return p ? 'MUG pedestrian' : '';
@@ -257,13 +272,22 @@ export class Combat {
     const cfg = STORES[loc.type], a = this.arms, day = this.s.time.day;
     if (a.cooldown[loc.id] > day) { this.say('The clerk already hit the panic button today. Try another store.', 'bad'); return; }
     const night = this.w.darkness() > 0.4;
-    const dur = rnd(cfg.dur[0], cfg.dur[1]);
+    const mask = masked(this.s.player?.look), kind = this.gun?.def.kind;
+    // how scary you look decides how the clerk plays it
+    const fight = cfg.fight * (mask ? 0.7 : 1) * (kind === 'melee' ? 2 : kind === 'arp' ? 0.5 : 1);
+    const clerk = Math.random() < fight ? 'fight' : Math.random() < STALL * (mask ? 0.5 : 1) ? 'stall' : 'comply';
+    let dur = rnd(cfg.dur[0], cfg.dur[1]);
+    if (clerk === 'stall') dur *= 1.5;
+    const n = Math.round(rnd(cfg.loot[0], cfg.loot[1] + 0.49));
     this.rob = {
-      loc, cfg, t: 0, dur, pay: Math.round(rnd(cfg.min, cfg.max) * (night ? 1.2 : 1)),
-      alarm: Math.random() < cfg.alarm * (night ? 0.8 : 1), alarmAt: rnd(0.35, 0.65) * dur,
-      fightAt: Math.random() < cfg.fight ? rnd(0.4, 0.85) * dur : 0, alarmed: false,
+      loc, cfg, t: 0, dur, pay: Math.round(rnd(cfg.min, cfg.max) * (night ? 1.2 : 1)), clerk, mask,
+      conceal: mask ? this.w.police.disguise : 0,   // no mask: the camera over the register gets your face
+      alarm: clerk === 'stall' || Math.random() < cfg.alarm * (night ? 0.8 : 1), alarmAt: (clerk === 'stall' ? rnd(0.15, 0.3) : rnd(0.35, 0.65)) * dur,
+      fightAt: clerk === 'fight' ? rnd(0.4, 0.85) * dur : 0, reach: 0, alarmed: false,
+      loot: rollLoot(loc.type, n),
     };
-    this.say(`"${['Easy, easy!', 'Take it, just take it!', 'Please don\'t shoot!'][Math.floor(Math.random() * 3)]}" Keep the gun on them…`, 'info');
+    this.say(clerk === 'stall' ? '"Okay... okay... the drawer\'s stuck..." The clerk is stalling. Keep the gun on them…'
+      : `"${['Easy, easy!', 'Take it, just take it!', 'Please don\'t shoot!'][Math.floor(Math.random() * 3)]}" Keep the gun on them…`, 'info');
     this.w.setOffence(1.5, 'Armed robbery in progress!', 'rob' + loc.id, 'robbery', 6000);
     audio.radio();
   }
@@ -271,8 +295,18 @@ export class Combat {
     if (!this.rob) return;
     const r = this.rob; this.rob = null;
     const part = Math.round(r.pay * Math.min(0.6, (r.t / r.dur) * 0.6));
-    if (part > 40 && text !== 'quiet') { this.s.cash += part; this.say(`${text || 'You bailed.'} You grabbed ${fmtMoney(part)} on the way out.`, 'good'); this.finishRobbery(r, part); }
-    else if (text) this.say(text, 'info');
+    if (part > 40 && text !== 'quiet') {
+      this.s.cash += part;
+      const got = r.t / r.dur > 0.5 ? this.takeLoot(r, 1) : [];
+      this.say(`${text || 'You bailed.'} You grabbed ${fmtMoney(part)}${got.length ? ` and ${got[0]}` : ''} on the way out.`, 'good');
+      this.finishRobbery(r, part);
+    } else if (text) this.say(text, 'info');
+  }
+  // Put the first n goods the clerk bagged into your loot. Returns their names.
+  takeLoot(r, n = r.loot.length) {
+    const out = [];
+    for (const id of r.loot.splice(0, n)) { const it = addLoot(this.s, id, r.loc.name); if (it) out.push(LOOT_BY_ID[id].name.toLowerCase()); }
+    return out;
   }
   finishRobbery(r, amount) {
     const a = this.arms, s = this.s;
@@ -281,16 +315,19 @@ export class Combat {
     s.stats.robberies = (s.stats.robberies || 0) + 1;
     s.stats.stolen = (s.stats.stolen || 0) + amount;
     addRep(s, 10, 'Robbery');
+    // nobody hit the alarm: the clerk calls it in once you're out the door
+    if (!r.alarmed && !r.alarm && Math.random() < (r.mask ? 0.35 : 0.6)) this.call = { t: CALL_DELAY, loc: r.loc, conceal: r.conceal };
   }
   completeRob() {
     const r = this.rob; this.rob = null;
     let pay = r.pay, dye = Math.random() < 0.1;
     if (dye) pay = Math.round(pay * 0.5);
     this.s.cash += pay;
+    const got = this.takeLoot(r);
     this.finishRobbery(r, pay);
-    this.say(`Robbery done: +${fmtMoney(pay)}${dye ? ' (a dye pack burst — half ruined)' : ''}. Now get out of there!`, 'good');
+    this.say(`Robbery done: +${fmtMoney(pay)}${dye ? ' (a dye pack burst — half ruined)' : ''}${got.length ? `, plus ${got.join(', ')}` : ''}. Now get out of there!`, 'good');
     audio.buy();
-    if (!r.alarmed && r.alarm) this.w.police.dispatchRobbery(this.w, r.loc);
+    if (!r.alarmed && r.alarm) this.w.police.dispatchRobbery(this.w, r.loc, false, false, r.conceal);
   }
 
   startMug(p) {
@@ -317,7 +354,7 @@ export class Combat {
   // Shot down: MedStar takes you to JPS (ui/hospital.js).
   knockedOut(why = '') {
     const s = this.s, a = this.arms;
-    this.rob = null; this.mug = null; this.drawn = false;
+    this.rob = null; this.mug = null; this.drawn = false; this.call = null;
     if (this.w.ui.hospital) { const sev = Math.min(1, 0.35 + Math.max(0, -a.hp) / 60 + Math.random() * 0.3); a.hp = 1; this.w.ui.hospital({ cause: 'shot', sev, why }); return; }
     a.hp = 60;
     const bill = 1500;
@@ -333,7 +370,7 @@ export class Combat {
     let extra = 3000;
     const gn = this.gun;
     if (gn) { a.guns = a.guns.filter(g => g.uid !== gn.g.uid); a.equipped = a.guns[0]?.uid || null; extra += 1500; this.say(`Your ${gn.def.name} was confiscated.`, 'bad'); }
-    this.drawn = false; this.rob = null; this.mug = null;
+    this.drawn = false; this.rob = null; this.mug = null; this.call = null;
     return extra;
   }
 
@@ -350,6 +387,7 @@ export class Combat {
     for (const t of this.flashes) t.t -= dt; this.flashes = this.flashes.filter(t => t.t > 0);
     for (const t of this.sparks) t.t -= dt; this.sparks = this.sparks.filter(t => t.t > 0);
     if (this.swingT > 0) this.swingT -= dt;
+    if (this.call && (this.call.t -= dt) <= 0) { const c = this.call; this.call = null; w.police.dispatchRobbery(w, c.loc, false, true, c.conceal); }
 
     if (w.inCar) { if (this.drawn) { this.drawn = false; } this.rob = null; this.mug = null; return; }
     if (input.pressed('draw')) this.toggleDraw();
@@ -374,13 +412,26 @@ export class Combat {
       const r = this.rob;
       r.t += dt;
       if (Math.hypot(r.loc.x - f.x, r.loc.z - f.z) > 13) { this.cancelRob('You left too early.'); return; }
-      if (!r.alarmed && r.alarm && r.t >= r.alarmAt) { r.alarmed = true; w.police.dispatchRobbery(w, r.loc); }
+      if (!r.alarmed && r.alarm && r.t >= r.alarmAt) { r.alarmed = true; w.police.dispatchRobbery(w, r.loc, false, false, r.conceal); }
       if (r.fightAt && r.t >= r.fightAt) {
-        r.fightAt = 0;
-        this.rob = null;
-        this.hurt(Math.round(rnd(25, 40)), 'The clerk pulled a shotgun from under the counter!');
-        this.finishRobbery(r, 0);
-        return;
+        // the clerk goes for the shotgun under the counter: you get a moment to stop them
+        r.fightAt = 0; r.reach = REACH; r.shots0 = this.shots || 0;
+        this.say('The clerk is reaching under the counter! FIRE a warning shot or back off!', 'bad');
+        if (navigator.vibrate) try { navigator.vibrate(120); } catch {}
+      }
+      if (r.reach > 0) {
+        if ((this.shots || 0) > r.shots0) {
+          // the warning shot worked: hands up, but they leaned on the alarm on the way down
+          r.reach = 0; r.alarm = true; r.alarmAt = Math.min(r.alarmAt, r.t);
+          this.say('BANG. The clerk drops the shotgun and puts their hands up. Keep going, fast.', 'good');
+        } else if ((r.reach -= dt) <= 0) {
+          r.reach = 0;
+          this.rob = null;
+          this.hurt(Math.round(rnd(25, 40)), 'The clerk came up with a shotgun!');
+          this.finishRobbery(r, 0);
+          return;
+        }
+        return;   // nobody empties a register with a shotgun coming up
       }
       if (r.t >= r.dur) this.completeRob();
     }
@@ -411,7 +462,10 @@ export class Combat {
     return name + `<div class="wp-stat">${this.jammed ? '<b style="color:#ff5a5a">JAMMED — R</b> ' : ''}<b>${this.reload > 0 ? 'RELOADING…' : `${g.loaded}/${def.mag}`}</b> <small>· ${this.arms.ammo[def.cal] || 0} ${def.cal}</small>${off}</div>`;
   }
   progress() {
-    if (this.rob) return { v: this.rob.t / this.rob.dur, label: this.rob.cfg.what };
+    if (this.rob) {
+      const r = this.rob;
+      return { v: r.t / r.dur, label: r.cfg.what, text: r.reach > 0 ? 'HE\'S REACHING — FIRE!' : r.clerk === 'stall' ? `Clerk is stalling… emptying the ${r.cfg.what}` : null };
+    }
     if (this.mug) return { v: this.mug.t / this.mug.dur, label: 'wallet' };
     return null;
   }
@@ -467,7 +521,7 @@ export class Combat {
       ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx - 3, by - 3, bw + 6, 0.5 * z + 6);
       ctx.fillStyle = '#ff2a3a'; ctx.fillRect(bx, by, bw * Math.min(1, pr.v), 0.5 * z);
       ctx.fillStyle = '#fff'; ctx.font = `700 ${Math.max(10, 0.55 * z)}px Rajdhani, sans-serif`; ctx.textAlign = 'center';
-      ctx.fillText(`Emptying the ${pr.label}…`, sx, by - 6);
+      ctx.fillText(pr.text || `Emptying the ${pr.label}…`, sx, by - 6);
       ctx.restore();
     }
   }
