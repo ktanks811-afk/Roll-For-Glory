@@ -40,7 +40,7 @@ export function renderHustle(scr, ctx) {
           <button class="btn btn-sm ${has ? '' : 'btn-primary'}" data-action="${has ? 'quit' : 'hire'}" data-id="${j.id}" ${!has && locked ? 'disabled' : ''}>${has ? 'Quit' : 'Take job'}</button></div>`;
       }).join('')}</div>`;
   } else if (tab === 'biz') {
-    body = `<p class="small muted">Buy a business and it earns while you race. Upgrade it for more. Profits go straight to your bank — expect the odd inspection fine or break-in, and the odd viral day.</p>
+    body = `<p class="small muted">Buy a business and it earns while you race. Upgrade it for more. Profits go straight to your bank — expect the odd inspection fine or break-in, and the odd viral day. Any business you own can also wash dirty cash (Bank app, Wash money).</p>
       <div class="list">${H.BIZ.map(b => {
         const own = h.biz[b.id], locked = tier < b.tier;
         const inc = Math.round(b.daily * H.LEVEL_MULT[own?.level || 1]);

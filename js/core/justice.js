@@ -43,6 +43,8 @@ export function classify(o) {
   const t = (o.text || '').toLowerCase();
   // drug charges carry their class in the kind: 'drugs_F2' (core/drugs.js)
   if (o.kind?.startsWith('drugs_') && CLASSES[o.kind.slice(6)]) return { cls: o.kind.slice(6), text: o.text };
+  // money laundering too, sized by the amount: 'launder_F3' (core/bank.js)
+  if (o.kind?.startsWith('launder_') && CLASSES[o.kind.slice(8)]) return { cls: o.kind.slice(8), text: o.text };
   switch (o.kind) {
     case 'speeding': case 'redlight': case 'noise': case 'reckless': case 'fta':
       return { cls: 'C', text: o.text };

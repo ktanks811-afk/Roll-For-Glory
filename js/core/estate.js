@@ -4,7 +4,7 @@
 // PROPERTIES at runtime and the map puts the building up (world2d/estate.js).
 // DOM-free so check-data can test it.
 
-import { spend, earnBank, fmtMoney, tierOf } from './state.js';
+import { spend, earn, earnBank, fmtMoney, tierOf } from './state.js';
 import { PROPERTIES, LOC_BY_ID } from '../data/world.js';
 import { LAND, PLANS, PLAN_BY_ID, TRAPS } from '../data/estate.js';
 import { ensureDrugs, trapState, units } from './drugs.js';
@@ -85,7 +85,7 @@ export function sellProperty(s, id) {
   if (p.trap) {
     const t = trapState(s, id), bag = ensureDrugs(s).bag;
     for (const [k, q] of Object.entries(t.stash)) bag[k] = (bag[k] || 0) + q;
-    if (t.safe) earnBank(s, t.safe, `${p.name}: emptied the safe`);
+    if (t.safe) earn(s, t.safe, `${p.name}: emptied the safe`, { dirty: true });
     delete s.estate.traps[id];
   }
   s.properties = s.properties.filter(x => x !== id);

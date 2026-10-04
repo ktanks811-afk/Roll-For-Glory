@@ -4,7 +4,7 @@
 // Journal, Settings.
 
 import { openPanel, closePanel, bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
-import { game, fmtMoney, gameTimeStr, dayName, tierOf, nextTier, racingLevel, activeCar, carValue, carMetrics, deposit, withdraw, spend, earn, addRep, addFollowers, modelOf, hourOf, isNight } from '../core/state.js';
+import { game, fmtMoney, gameTimeStr, dayName, tierOf, nextTier, racingLevel, activeCar, carValue, carMetrics, deposit, withdraw, dirtyOf, cleanOf, spend, earn, addRep, addFollowers, modelOf, hourOf, isNight } from '../core/state.js';
 import { LOCATIONS, LOC_BY_ID, PROPERTIES, ROADS, districtAt } from '../data/world.js';
 import { STREET_RACE_BY_ID, fmtRaceTime } from '../data/streetRaces.js';
 import { RACER_BY_ID, CREWS, RACERS, PEOPLE, contactInfo } from '../data/npcs.js';
@@ -26,6 +26,7 @@ import { myHoods } from '../core/turf.js';
 import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
+import * as B from '../core/bank.js';
 import { wx } from '../core/weather.js';
 import { GANGS } from '../data/gangs.js';
 import { ensureSocial, myHandle, markSeen, likePost, rivalsList, heatWord, rivalOptions, answerRival, HEATED_AT } from '../core/feed.js';
@@ -97,7 +98,7 @@ function renderHome(scr, ctx) {
   const a = ms.active, stop = currentStop(s);
   const latest = s.messages.find(m => !m.read);
   scr.innerHTML = `<div class="phone-wall"><div class="who">${esc(s.player.name)}</div>
-    <div class="sub">${fmtMoney(s.cash)} cash · ${fmtMoney(s.bank)} bank · ${t.name} · ${s.followers.toLocaleString()} followers</div></div>
+    <div class="sub">${fmtMoney(s.cash)} cash${dirtyOf(s) ? ` (${fmtMoney(dirtyOf(s))} dirty)` : ''} · ${fmtMoney(s.bank)} bank · ${t.name} · ${s.followers.toLocaleString()} followers</div></div>
     <div class="phone-widgets">
       <button class="pw ${warr ? 'pw-bad' : 'pw-ok'}" data-action="open" data-id="fwpd"><small>🚔 FWPD status</small><b>${warr ? `${s.warrants.length} warrant${s.warrants.length > 1 ? 's' : ''}${hasFelony(s) ? ' · felony' : ''}` : 'No warrants'}</b><span>${warr ? 'Patrols are running your plate' : cites ? `${cites} unpaid ticket${cites > 1 ? 's' : ''}` : 'You\'re clean'}</span></button>
       <button class="pw ${a ? (a.hot ? 'pw-hot' : 'pw-job') : ''}" data-action="open" data-id="missions"><small>📦 Mission</small><b>${a ? esc(a.title) : offers ? `${offers} offer${offers > 1 ? 's' : ''}` : 'No job'}</b><span>${a ? `${fmtLeft(timeLeft(s))} · ${esc(stop?.name || '')}` : offers ? 'Tap to see who\'s asking' : 'Jobs come by text'}</span></button>
@@ -288,10 +289,17 @@ RENDER.bank = (scr, ctx) => {
   const s = ctx.s;
   const car = activeCar(s);
   const ins = Math.round(40 + s.cars.reduce((a, c) => a + carValue(c), 0) * 0.0022);
-  scr.innerHTML = head('Cowtown Credit Union') + `<div class="app-body">
-    <div class="stats-row"><div><div class="stat-lbl">Cash</div><div class="stat-big">${fmtMoney(s.cash)}</div></div><div><div class="stat-lbl">Checking</div><div class="stat-big">${fmtMoney(s.bank)}</div></div></div>
-    <div class="row" style="margin:10px 0"><button class="btn btn-sm" data-action="dep">Deposit</button><button class="btn btn-sm" data-action="wd">Withdraw</button></div>
-    <div class="stats-row"><div><div class="stat-lbl">Earned</div><b class="good">${fmtMoney(s.stats.earnings)}</b></div><div><div class="stat-lbl">Spent</div><b class="bad">${fmtMoney(s.stats.expenses)}</b></div><div><div class="stat-lbl">Net worth</div><b>${fmtMoney(s.cash + s.bank + s.cars.reduce((a, c) => a + carValue(c), 0))}</b></div></div>
+  const f = B.ensureFeds(s), dirty = dirtyOf(s), clean = cleanOf(s), stage = B.stageOf(f.heat);
+  const tab = ctx.st.bankTab || 'account';
+  const prev = B.depositPreview(s, 0, false);
+  const owned = B.ownedBiz(s);
+  const tabs = [['account', 'Account'], ['wash', `Wash money${B.washQueued(s) ? ' 🫧' : ''}`], ['feds', `Feds${f.heat >= 30 ? ' ⚠' : ''}`]];
+  let body = '';
+  if (tab === 'account') {
+    body = `
+    <div class="row" style="margin:10px 0;gap:6px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" data-action="dep" ${clean ? '' : 'disabled'}>Deposit clean</button><button class="btn btn-sm" data-action="depd" ${dirty ? '' : 'disabled'}>Deposit dirty</button><button class="btn btn-sm" data-action="wd">Withdraw</button></div>
+    <p class="small muted" data-ctr-left>Cash deposited today: ${fmtMoney(f.day === s.time.day ? f.cashIn : 0)}. ${prev.left ? `${fmtMoney(prev.left)} more and Denise has to file a CTR with the IRS.` : 'A CTR was filed today.'} Clean cash is fine. Dirty cash draws federal attention.</p>
+    <div class="stats-row"><div><div class="stat-lbl">Earned</div><b class="good">${fmtMoney(s.stats.earnings)}</b></div><div><div class="stat-lbl">Spent</div><b class="bad">${fmtMoney(s.stats.expenses)}</b></div><div><div class="stat-lbl">Net worth</div><b>${fmtMoney(s.cash + s.bank + B.washQueued(s) + s.cars.reduce((a, c) => a + carValue(c), 0))}</b></div></div>
     <div class="section-title">Insurance</div>
     <div class="li"><div class="grow"><div class="t">Cowtown Mutual — Full coverage</div><div class="s">${fmtMoney(ins)}/week. Covers 70% of repairs and 25% of police impound fines.</div></div>
       <button class="btn btn-sm ${s.insurance ? '' : 'btn-primary'}" data-action="ins">${s.insurance ? 'Cancel' : 'Buy'}</button></div>
@@ -300,10 +308,65 @@ RENDER.bank = (scr, ctx) => {
     <div class="li"><div class="grow"><div class="t">Mobile mechanic</div><div class="s">${fmtMoney(MECHANIC_COST)} — ${car?.broken ? (BREAKDOWNS[car.broken].roadside ? `<b class="bad">${BREAKDOWNS[car.broken].name}.</b> Tops up the oil and gets it running` : `<b class="bad">${BREAKDOWNS[car.broken].name}.</b> Can't fix that on the side of the road. Tow it.`) : 'when your car breaks down'}</div></div><button class="btn btn-sm ${car?.broken && BREAKDOWNS[car.broken].roadside ? 'btn-primary' : ''}" data-action="mech" ${car?.broken && BREAKDOWNS[car.broken].roadside ? '' : 'disabled'}>Call</button></div>
     <div class="li"><div class="grow"><div class="t">Tow to Second Chance Collision</div><div class="s">$185 flat rate</div></div><button class="btn btn-sm" data-action="tow" ${car ? '' : 'disabled'}>Call</button></div>
     <div class="section-title">Recent activity</div>
-    <div class="list">${s.ledger.slice(0, 40).map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.label)}</div><div class="s">Day ${l.day} · ${l.t}</div></div><b class="${l.amount > 0 ? 'good' : l.amount < 0 ? 'bad' : ''}">${l.amount ? (l.amount > 0 ? '+' : '') + fmtMoney(l.amount, true) : ''}</b></div>`).join('') || '<div class="empty">Nothing yet</div>'}</div></div>`;
+    <div class="list">${s.ledger.slice(0, 40).map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.label)}</div><div class="s">Day ${l.day} · ${l.t}</div></div><b class="${l.amount > 0 ? 'good' : l.amount < 0 ? 'bad' : ''}">${l.amount ? (l.amount > 0 ? '+' : '') + fmtMoney(l.amount, true) : ''}</b></div>`).join('') || '<div class="empty">Nothing yet</div>'}</div>`;
+  } else if (tab === 'wash') {
+    body = `<p class="small muted">Drop dirty cash at a business you own and Keisha "Books" Moore runs it through the register as sales. It comes out clean in your checking account, minus her ${Math.round(B.WASH_CUT * 100)}% cut. Each business can wash so much a day before the numbers look off. Rush it to wash ${B.RUSH_MULT}× faster, but the feds notice when a taco truck makes what a car dealership does.</p>
+      ${owned.length ? `<div class="list" data-wash-list>${owned.map(o => {
+        const w = B.washState(s, o.id), cap = B.washCap(s, o.id);
+        return `<div class="li"><div class="grow"><div class="t">${o.biz.icon} ${esc(o.biz.name)} <span class="tag">Level ${o.level}</span></div>
+          <div class="s">Washes <b class="good">${fmtMoney(cap)}/day</b>${w.rush ? ` · <b class="warn">rushing ${fmtMoney(cap * B.RUSH_MULT)}/day</b>` : ''}</div>
+          <div class="s">In the books: <b>${fmtMoney(w.queue)}</b>${w.queue ? ` · clean in ~${Math.ceil(w.queue / (cap * (w.rush ? B.RUSH_MULT : 1)))} day${Math.ceil(w.queue / (cap * (w.rush ? B.RUSH_MULT : 1))) > 1 ? 's' : ''}` : ''}</div></div>
+          <div style="text-align:right"><button class="btn btn-sm btn-primary" data-action="drop" data-id="${o.id}" ${dirty ? '' : 'disabled'}>Drop off</button><br>
+          <button class="btn btn-sm" style="margin-top:4px" data-action="rush" data-id="${o.id}">${w.rush ? 'Normal pace' : 'Rush it'}</button>${w.queue ? `<br><button class="btn btn-sm" style="margin-top:4px" data-action="pull" data-id="${o.id}">Take it back</button>` : ''}</div></div>`;
+      }).join('')}</div>` : `<div class="empty">You don't own a business yet. Buy one in the Hustle app. The 🫧 Spin Cycle Laundromat is made for this.</div>
+        <div class="row" style="margin:8px 0"><button class="btn btn-sm btn-primary" data-action="hustle">Open Hustle</button></div>`}
+      <div class="stats-row"><div><div class="stat-lbl">Washed so far</div><b class="good">${fmtMoney(f.washed)}</b></div><div><div class="stat-lbl">Still in the books</div><b>${fmtMoney(B.washQueued(s))}</b></div></div>`;
+  } else {
+    body = `<div class="stat-lbl">Federal attention</div>
+      ${bar(f.heat, f.heat >= 60 ? 'feds hot' : 'feds')}
+      <p data-fed-stage><b class="${stage.color}">${esc(stage.name)}</b> · ${Math.round(f.heat)}/100. ${esc(stage.blurb)}</p>
+      <p class="small muted">At 100, IRS Criminal Investigation indicts you for money laundering: a felony warrant, and they seize what they can trace in your account. It cools off ${B.DECAY} points every quiet day.</p>
+      <div class="section-title">What gets you noticed</div>
+      <div class="list">
+        <div class="li"><div class="grow"><div class="t">💵 Depositing dirty cash</div><div class="s">Any amount adds up. Over $10,000 in a day and the bank files a CTR.</div></div></div>
+        <div class="li"><div class="grow"><div class="t">✂️ Structuring</div><div class="s">Keeping deposits between $8,000 and $9,999 to dodge the CTR. Twice in five days and the bank files a Suspicious Activity Report.</div></div></div>
+        <div class="li"><div class="grow"><div class="t">🧾 Form 8300</div><div class="s">Paying over $10,000 with dirty cash for a car, a house or a business. Bank money and clean cash get spent first.</div></div></div>
+        <div class="li"><div class="grow"><div class="t">💰 Sitting on a stack</div><div class="s">Carrying more than ${fmtMoney(B.HOLD_LIMIT)} in dirty cash. And if you get arrested with over ${fmtMoney(B.SEIZE_MIN)} on you, the cops seize it.</div></div></div>
+        <div class="li"><div class="grow"><div class="t">🫧 Rushing the wash</div><div class="s">A business washing more than its normal daily amount.</div></div></div>
+      </div>
+      <div class="stats-row"><div><div class="stat-lbl">CTRs</div><b>${f.ctrs}</b></div><div><div class="stat-lbl">SARs</div><b class="${f.sars ? 'bad' : ''}">${f.sars}</b></div><div><div class="stat-lbl">Form 8300s</div><b>${f.reports}</b></div></div>
+      <div class="stats-row"><div><div class="stat-lbl">Seized from you</div><b class="${f.seized ? 'bad' : ''}">${fmtMoney(f.seized)}</b></div><div><div class="stat-lbl">Indictments</div><b class="${f.indictments ? 'bad' : ''}">${f.indictments}</b></div></div>
+      ${f.log.length ? `<div class="section-title">On file</div><div class="list">${f.log.slice(0, 12).map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.text)}</div><div class="s">Day ${l.day}</div></div>${l.heat ? `<b class="bad">+${l.heat}</b>` : ''}</div>`).join('')}</div>` : ''}`;
+  }
+  scr.innerHTML = head('Cowtown Credit Union') + `<div class="app-body">
+    <div class="stats-row bank-stats" data-bank-stats><div><div class="stat-lbl">Clean cash</div><div class="stat-big">${fmtMoney(clean)}</div></div><div><div class="stat-lbl">Dirty cash</div><div class="stat-big ${dirty ? 'warn' : ''}">${fmtMoney(dirty)}</div></div><div><div class="stat-lbl">Checking</div><div class="stat-big">${fmtMoney(s.bank)}</div></div></div>
+    <div class="row" style="gap:6px;margin:8px 0;flex-wrap:wrap">${tabs.map(([id, label]) => `<button class="btn btn-sm ${tab === id ? 'btn-primary' : ''}" data-action="tab" data-id="${id}">${esc(label)}</button>`).join('')}</div>
+    ${body}</div>`;
+  const depositDirty = async () => {
+    const v = await prompt('Deposit dirty cash', `<p>Dirty cash: ${fmtMoney(dirtyOf(s))}</p><p class="small bad">Every dirty dollar you deposit is traceable. Over ${fmtMoney(B.REPORT_LIMIT)} in a day (counting clean deposits) gets a CTR filed. Keeping it just under ${fmtMoney(B.REPORT_LIMIT)} is structuring.</p>`, 'Amount', String(Math.floor(dirtyOf(s))));
+    if (!v) return;
+    const r = B.depositCash(s, +v.replace(/\D/g, ''), true);
+    toast(r.text, r.ok ? (r.ctr || r.sar ? 'bad' : 'good') : 'bad'); ctx.h.refresh();
+  };
   wire(scr, ctx, {
-    dep: async () => { const v = await prompt('Deposit', `<p>Cash on hand: ${fmtMoney(s.cash)}</p>`, 'Amount', String(Math.floor(s.cash))); if (v) { deposit(s, +v.replace(/\D/g, '')); ctx.h.refresh(); } },
-    wd: async () => { const v = await prompt('Withdraw', `<p>Checking: ${fmtMoney(s.bank)}</p>`, 'Amount', String(Math.floor(s.bank))); if (v) { withdraw(s, +v.replace(/\D/g, '')); ctx.h.refresh(); } },
+    tab: d => { ctx.st.bankTab = d.id; ctx.h.refresh(); },
+    dep: async () => {
+      const v = await prompt('Deposit', `<p>Clean cash: ${fmtMoney(cleanOf(s))}</p>`, 'Amount', String(Math.floor(cleanOf(s))));
+      if (!v) return;
+      const r = B.depositCash(s, +v.replace(/\D/g, ''), false);
+      toast(r.text, r.ok ? 'good' : 'bad'); ctx.h.refresh();
+    },
+    depd: depositDirty,
+    wd: async () => { const v = await prompt('Withdraw', `<p>Checking: ${fmtMoney(s.bank)}</p><p class="small muted">Comes out as clean cash.</p>`, 'Amount', String(Math.floor(s.bank))); if (v) { withdraw(s, +v.replace(/\D/g, '')); ctx.h.refresh(); } },
+    drop: async d => {
+      const v = await prompt(`Drop off at ${B.BIZ_NAME(d.id)}`, `<p>Dirty cash: ${fmtMoney(dirtyOf(s))}</p><p class="small muted">It washes ${fmtMoney(B.washCap(s, d.id))} a day at a normal pace. You get back ${Math.round((1 - B.WASH_CUT) * 100)}% as clean money in your bank.</p>`, 'Amount', String(Math.floor(dirtyOf(s))));
+      if (!v) return;
+      const r = B.dropOff(s, d.id, +v.replace(/\D/g, ''));
+      toast(r.text, r.ok ? 'good' : 'bad'); ctx.h.refresh();
+    },
+    rush: d => { const w = B.washState(s, d.id); B.setRush(s, d.id, !w.rush); toast(w.rush ? 'Rushing it. The books are going to look loud.' : 'Back to a normal pace.', w.rush ? 'bad' : 'info'); ctx.h.refresh(); },
+    pull: d => { const r = B.pullOut(s, d.id); toast(r.text, r.ok ? 'info' : 'bad'); ctx.h.refresh(); },
+    hustle: () => { ctx.st.tab = 'biz'; ctx.go('hustle'); },
     ins: () => { s.insurance = !s.insurance; toast(s.insurance ? 'Insured. First premium due at the end of the week.' : 'Policy cancelled', 'info'); ctx.h.refresh(); },
     gas: () => { if (spend(s, 45, 'Roadside gas delivery')) { const c = activeCar(s); c.fuel = Math.min(1, c.fuel + 2 / 14); toast('Gas delivered. Find a station soon.', 'good'); ctx.h.refresh(); } },
     mech: () => {

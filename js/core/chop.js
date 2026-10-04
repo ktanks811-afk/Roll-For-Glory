@@ -154,7 +154,7 @@ export function sellParts(s, uids = null) {
   const pay = sell.reduce((t, i) => t + partPrice(s, i), 0);
   c.shelf = c.shelf.filter(i => !sell.includes(i));
   c.earned += pay;
-  earn(s, pay, sell.length === 1 ? `Junior: ${sell[0].name}` : `Junior: ${sell.length} parts`);
+  earn(s, pay, sell.length === 1 ? `Junior: ${sell[0].name}` : `Junior: ${sell.length} parts`, { dirty: true });
   return pay;
 }
 
