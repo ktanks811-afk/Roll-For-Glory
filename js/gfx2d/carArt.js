@@ -13,6 +13,56 @@ export const CAR_ART = {
     wheels: [187, 895],                           // axle x in the side art (px)
     archY: 257,                                   // wheel-arch centre y in the side art (px)
   },
+  // Kimari's sheets, 2026-10-04. tireR = tyre radius in metres, sized to the arches.
+  chevrolet_corvette_z06_c8_2023: {
+    side: 'img/cars/corvette-z06-c8-side.png',
+    top: 'img/cars/corvette-z06-c8-top.png',
+    wheels: [213, 887],
+    archY: 214,
+    tireR: 0.35,
+  },
+  dodge_challenger_srt_hellcat_2015: {
+    side: 'img/cars/challenger-hellcat-widebody-side.png',
+    top: 'img/cars/challenger-hellcat-widebody-top.png',
+    wheels: [203, 868],
+    archY: 236,
+    tireR: 0.389,
+  },
+  ford_mustang_shelby_gt500_2020: {
+    side: 'img/cars/mustang-shelby-gt500-side.png',
+    top: 'img/cars/mustang-shelby-gt500-top.png',
+    wheels: [201, 877],
+    archY: 239,
+    tireR: 0.378,
+  },
+  infiniti_g35_coupe_2003: {
+    side: 'img/cars/infiniti-g35-coupe-side.png',
+    top: 'img/cars/infiniti-g35-coupe-top.png',
+    wheels: [188, 896],
+    archY: 248,
+    tireR: 0.347,
+  },
+  ram_1500_trx_2021: {
+    side: 'img/cars/ram-trx-side.png',
+    top: 'img/cars/ram-trx-top.png',
+    wheels: [177, 887],
+    archY: 270,
+    tireR: 0.472,
+  },
+  chevrolet_camaro_zl1_2017: {
+    side: 'img/cars/camaro-zl1-side.png',
+    top: 'img/cars/camaro-zl1-top.png',
+    wheels: [204, 862],
+    archY: 240,
+    tireR: 0.374,
+  },
+  ford_f_150_xlt_5_0_2015: {
+    side: 'img/cars/f150-regular-cab-side.png',
+    top: 'img/cars/f150-regular-cab-top.png',
+    wheels: [201, 874],
+    archY: 283,
+    tireR: 0.42,
+  },
 };
 
 const ready = {};   // id -> { side, top } processed layers
