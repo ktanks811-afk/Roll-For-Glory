@@ -10,6 +10,7 @@ import { PERF_IDS, partLabel } from '../data/parts.js';
 import { PART_INFO, PART_ICONS, supportCheck } from '../data/partInfo.js';
 import { buildSpec, launchCheck } from '../sim/powertrain.js';
 import { launchRpmSetting } from '../sim/twostep.js';
+import { oilInterval } from '../core/upkeep.js';
 
 const NEED_NAMES = { dragpack: 'Drag pack', ecu: 'Tune / ECU', fuel: 'Fuel system', intercooler: 'Intercooler', engine: 'Forged internals (Engine stage 2+)' };
 
@@ -46,7 +47,8 @@ export function partProfileHtml({ cat, pid, car }) {
       html += sec(it ? 'On your car' : 'Your engine', `<div class="pp-eng">
         <div><small>Power</small><b>${sp.hp} hp</b>${d ? ` <span class="${d > 0 ? 'good' : 'bad'}">${d > 0 ? '+' : ''}${d}</span>` : ''}</div>
         <div><small>Engine reliability</small><b style="color:${L.color}">${esc(L.label)}</b></div>
-        <div><small>Engine health</small><b>${car.engineBlown ? '💥 BLOWN' : `${Math.round(car.cond.engine)}%`}</b></div></div>
+        <div><small>Engine health</small><b>${car.engineBlown ? '💥 BLOWN' : `${Math.round(car.cond.engine)}%`}</b></div>
+        <div><small>Oil changes</small><b>every ~${oilInterval(sp)} mi</b>${it && oilInterval(sp) < oilInterval(now) ? ` <span class="bad">was ${oilInterval(now)}</span>` : ''}</div></div>
         ${reasons.length ? `<ul class="pp-reasons">${reasons.map(r => `<li>${r.nos ? '<b>On nitrous:</b> ' : ''}${esc(r.text)}<br><span class="muted">Fix: ${esc(r.fix)}</span></li>`).join('')}</ul>` : '<p class="small good">The motor will live with this build.</p>'}`);
     }
   }
