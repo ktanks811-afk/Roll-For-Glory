@@ -9,6 +9,7 @@ import { missionTick } from '../core/missions.js';
 import { PoliceSystem, OFFICER_LOOK } from './police.js';
 import { Combat } from './combat.js';
 import { Carjacks } from './carjack.js';
+import { Thefts } from './theft.js';
 import { Gigs } from './gigs.js';
 import { StreetRaces } from './streetRace.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
@@ -74,6 +75,7 @@ export class World {
     this.audio = audio;
     this.combat = new Combat(this);
     this.carjacks = new Carjacks(this);
+    this.thefts = new Thefts(this);
     this.gigs = new Gigs(this);
     this.races = new StreetRaces(this);
     this.spawnPlayer();
@@ -116,11 +118,17 @@ export class World {
   refreshCarSprite() {
     if (!this.vehicle) return;
     const car = this.vehicle.car;
-    this.carSpriteImg = carSprite(CAR_BY_ID[car.modelId], car.visual, levels(car), car.cond, { crewColor: this.s.crew?.color });
+    this.carSpriteImg = carSprite(CAR_BY_ID[car.modelId], car.visual, levels(car), car.cond, { crewColor: car.hot ? null : this.s.crew?.color });
   }
   // Called after parts/repairs so the drive matches the build.
   refreshCar() {
     const car = activeCar(this.s);
+    if (this.vehicle?.car?.hot) {
+      // driving a stolen car: the shop worked on your own, which stays parked
+      const own = this.thefts.own;
+      if (own && car && own.vehicle.car === car) { own.vehicle.setSpec(carSpec(car)); own.sprite = carSprite(CAR_BY_ID[car.modelId], car.visual, levels(car), car.cond, { crewColor: this.s.crew?.color }); }
+      return;
+    }
     if (!car || car.stolen) { this.vehicle = null; this.inCar = false; return; }
     if (!this.vehicle || this.vehicle.car !== car) {
       // a different car comes out of the home garage
@@ -172,6 +180,7 @@ export class World {
     else this.updateFoot(dt);
     this.combat.update(dt);
     this.carjacks.update(dt);
+    this.thefts.update(dt);
     this.gigs.update(dt);
     this.races.update(dt);
     this.updateOnline(dt);
@@ -185,7 +194,7 @@ export class World {
       signalT: this.signalT, px: p.x, pz: p.z, density, inCity, night: isNight(s.time),
       weatherSlow: isWet(s) || s.weather === 'fog' ? 0.8 : 1,
       movers: this.vehicle ? [this.vehicleMover()] : [],
-      extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars()],
+      extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars(), ...this.thefts.obstacles()],
     });
     this.traffic.update(dt, this.trafficCtx);
     this.police.update(dt, this);
@@ -232,8 +241,10 @@ export class World {
     if (s.gps && !s.gps.gig && Math.hypot(s.gps.x - p.x, s.gps.z - p.z) < 25) { this.ui.toast(`Arrived: ${s.gps.label}`, 'good'); s.gps = null; this.gpsPath = null; }
 
     // persist position
-    s.pos = { x: p.x, z: p.z, h: this.inCar ? this.vehicle.h : this.foot.h, inCar: this.inCar };
-    if (this.vehicle) s.carPos = { x: this.vehicle.x, z: this.vehicle.z, h: this.vehicle.h };
+    // (a stolen car isn't saved: load the game and you're on foot, your own car where you left it)
+    const hot = this.vehicle?.car?.hot, own = hot ? this.thefts.own?.vehicle : this.vehicle;
+    s.pos = { x: p.x, z: p.z, h: this.inCar ? this.vehicle.h : this.foot.h, inCar: this.inCar && !hot };
+    if (own) s.carPos = { x: own.x, z: own.z, h: own.h };
 
     this.saveT += dt;
     if (this.saveT > 45) { this.saveT = 0; saveGame('auto', true); }
@@ -348,11 +359,15 @@ export class World {
   // you sign it out at the Central Precinct (ui/places.js), free. You're let go there.
   impound() {
     const s = this.s, car = activeCar(s);
-    if (!car || car.stolen) return;
-    car.impound = { day: s.time?.day ?? 0 };
-    const lot = this.homeSpot(LOC_BY_ID[IMPOUND_LOT]);
-    this.placeCar(car, lot.x, lot.z, lot.h);
-    s.carPos = { x: lot.x, z: lot.z, h: lot.h };
+    // in a stolen car: it goes back to its owner, yours stays where you parked it
+    const hot = this.thefts.busted();
+    if (!hot) {
+      if (!car || car.stolen) return;
+      car.impound = { day: s.time?.day ?? 0 };
+      const lot = this.homeSpot(LOC_BY_ID[IMPOUND_LOT]);
+      this.placeCar(car, lot.x, lot.z, lot.h);
+      s.carPos = { x: lot.x, z: lot.z, h: lot.h };
+    }
     this.inCar = false;
     input.setContext('foot');
     if (this.engine) { this.engine.stop(); this.engine = null; }
@@ -370,6 +385,8 @@ export class World {
       const rx = Math.cos(v.h), rz = Math.sin(v.h);
       this.foot.x = v.x - rx * (v.dims.W / 2 + 0.8); this.foot.z = v.z - rz * (v.dims.W / 2 + 0.8); this.foot.h = v.h;
       if (this.engine) { this.engine.stop(); this.engine = null; }
+    } else if (this.thefts.tryOwn()) {
+      /* back in your own car; the stolen one is dumped */
     } else if (this.vehicle) {
       if (Math.hypot(this.vehicle.x - this.foot.x, this.vehicle.z - this.foot.z) < 4.5) {
         if (this.vehicle.car.impound) { this.ui.toast(`Impounded. Sign it out inside the Central Precinct`, 'bad'); return; }
@@ -445,14 +462,14 @@ export class World {
       }
     }
     // traffic + police cars
-    for (const o of [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.races.cars()]) {
+    for (const o of [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.races.cars(), ...this.thefts.obstacles()]) {
       const d = Math.hypot(o.x - v.x, o.z - v.z);
       const rr = (v.dims.W + (o.dims?.W || 1.9)) / 2 + 0.9;
       if (d < rr) {
         const nx = (v.x - o.x) / (d || 1), nz = (v.z - o.z) / (d || 1);
         const imp = v.bounce(nx, nz, rr - d);
         if (o.hit) o.hit(imp); else o.v *= 0.5;
-        if (imp > 2.5 && o.rival) this.onCrash(imp, 'car');   // trading paint with your rival is racing, not a hit-and-run
+        if (imp > 2.5 && (o.rival || o.own)) this.onCrash(imp, 'car');   // trading paint with your rival is racing, not a hit-and-run
         else if (imp > 2.5) {
           this.onCrash(imp, o.police ? 'police' : 'car');
           this.setOffence(o.police || this.police.units.includes(o) ? 1.5 : 0.8, o.police ? 'Assault on an officer with a vehicle!' : 'Hit-and-run collision.', 'crash', o.police ? 'assault' : 'hitrun', o.police ? 2500 : 650);
@@ -577,6 +594,7 @@ export class World {
       return;
     }
     fine += this.combat.onBusted(record);
+    const hotCar = !!this.vehicle?.car?.hot;
     // they chased you down: that's evading, on top of whatever they saw
     const ph = this.police.phase, items = record.slice();
     items.push(...seizeBag(s));   // they search you: any product on you is a charge
@@ -597,7 +615,7 @@ export class World {
     this.impound();
     const list = c ? `<div class="charges">${c.charges.map(x => `<div>⚖ ${esc(x.text)}</div>`).join('')}</div>` : '';
     this.ui.modal('BUSTED',
-      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. Your car gets towed to the impound lot behind the FWPD Central Precinct.</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p><p class="small muted">To get the car back, go into the Central Precinct and sign it out. No charge.</p>${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. They let you go at the precinct.</p>'}`,
+      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. ${hotCar ? 'The stolen car goes back to its owner. Your own car is still where you left it.' : 'Your car gets towed to the impound lot behind the FWPD Central Precinct.'}</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>${hotCar ? '' : '<p class="small muted">To get the car back, go into the Central Precinct and sign it out. No charge.</p>'}${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. They let you go at the precinct.</p>'}`,
       [{ label: c ? 'See the magistrate' : 'OK', primary: true }]).then(() => { if (c) this.ui.book?.(c); });
     emit('busted', { fine: total, charges: charges.length });
   }
@@ -647,7 +665,7 @@ export class World {
     addRep(s, 80 * lvl, 'Escaped the cops');
     s.followers += 40 * lvl;
     // they know who you are: a warrant goes out for the chase and anything they saw
-    const wr = warrantForEscape(s, seen ? record : record.filter(r => r.kind === 'robbery' || r.kind === 'shots' || r.kind === 'assault'), lvl, seen);
+    const wr = warrantForEscape(s, seen ? record : record.filter(r => r.kind === 'robbery' || r.kind === 'shots' || r.kind === 'assault' || r.kind === 'carjack'), lvl, seen);
     const anon = wr.unidentified ? ` Nobody could ID you behind the mask${wr.unidentified > 1 ? ` (${wr.unidentified} crimes)` : ''}.` : '';
     this.ui.toast(`ESCAPED! +${80 * lvl} rep.${wr.length ? ' A warrant is out for you — patrols will know your plate.' : ' Heat will cool down if you lay low.'}${anon}`, 'good');
     emit('pursuitEscaped', { level: lvl });
@@ -871,6 +889,7 @@ export class World {
     if (!this.inCar) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
     this.combat.draw(ctx, cam);
     this.carjacks.draw(ctx, cam);
+    this.thefts.draw(ctx, cam);
     this.gigs.draw(ctx, cam);
 
     const livePeers = online.active ? this.drawPeers(ctx, v) : [];

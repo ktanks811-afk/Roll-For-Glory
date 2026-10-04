@@ -337,7 +337,7 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
     const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
     const ox = cx * b.h * k, oy = cy * b.h * k;
     if (b.kind === 'roof') { drawGarageRoof(ctx, b, x0 + ox, y0 + oy, w, d, z, showLabels); continue; }
-    if (b.kind === 'parked') { drawParked(ctx, b, x0, y0, w, d, z); continue; }
+    if (b.kind === 'parked') { if (!b.gone) drawParked(ctx, b, x0, y0, w, d, z); continue; }   // gone: stolen (world2d/theft.js)
     if (b.round) { drawRound(ctx, b, x0, y0, ox, oy, w, d, z, night); continue; }
     // shadow
     ctx.fillStyle = 'rgba(0,0,0,0.25)';

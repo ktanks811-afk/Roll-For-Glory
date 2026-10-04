@@ -35,7 +35,7 @@ export class Carjacks {
     const w = this.w, v = w.vehicle;
     return {
       inCar: w.inCar && !!v, stopped: !!v && v.speed < 1, inCity: w.inCity, policeActive: w.police.active,
-      heat: this.s.heat, inGarage: !!w.inGarage, busy: !!(this.jack || this.away || w.combat.rob || w.races?.active),
+      heat: this.s.heat, inGarage: !!w.inGarage, busy: !!(this.jack || this.away || w.combat.rob || w.races?.active || w.vehicle?.car?.hot),
       playTime: this.s.playTime, day: this.s.time.day, lastDay: this.log.lastDay, night: isNight(this.s.time),
     };
   }
@@ -183,9 +183,11 @@ export class Carjacks {
       delete car.stolen;
       strippedCar(car, this.rng);
       const m = CAR_BY_ID[car.modelId], name = m ? carName(m) : 'car';
-      if (s.activeCar === car.uid && !w.vehicle) {
+      const inHot = !!w.vehicle?.car?.hot && !w.thefts.own;
+      if (s.activeCar === car.uid && (!w.vehicle || inHot)) {
         s.carPos = { x: spot.x, z: spot.z, h: spot.h };
-        w.placeCar(car, spot.x, spot.z, spot.h);
+        if (inHot) w.thefts.parkOwn(car, spot.x, spot.z, spot.h);   // you're in a stolen car: yours waits at the curb
+        else w.placeCar(car, spot.x, spot.z, spot.h);
         w.setGps(spot.x, spot.z, `Your stolen ${m?.model || 'car'}`);
         s.gps.stolen = true;
         const where = [w.streetAt(spot.x, spot.z), w.districtAt(spot.x, spot.z)].filter(Boolean).join(', ');
