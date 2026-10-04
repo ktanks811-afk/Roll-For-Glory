@@ -3,6 +3,7 @@
 // Every access is wrapped — private windows and blocked storage must not
 // crash the game, they just mean nothing persists.
 
+import { ensureUpkeep } from './upkeep.js';
 import { game } from './state.js';
 import { emit } from './events.js';
 import { ensure as ensureHustle, settleAway } from './hustle.js';
@@ -112,6 +113,7 @@ function migrate(s) {
   s.orders ??= [];
   for (const o of s.orders) for (const pid of o.items) s.partsBin.push({ pid, uid: Math.random().toString(36).slice(2) });
   s.orders = [];
+  for (const c of s.cars || []) ensureUpkeep(c);   // oil life + breakdowns came later: old cars start with fresh oil
   ensureHustle(s);
   ensureRecord(s);
   ensureJustice(s);
