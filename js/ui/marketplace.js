@@ -3,6 +3,7 @@
 // your own cars and take offers.
 
 import { bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
+import { ensureTow } from '../core/tow.js';
 import { game, fmtMoney, newCar, spend, earn, carValue, activeCar, carSpec, carMetrics, modelOf, garageCapacity, uid } from '../core/state.js';
 import { CAR_BY_ID, carName, MAKES, CURRENT_YEAR } from '../data/cars.js';
 import { negotiate, avgCond, makeListing } from '../data/market.js';
@@ -214,6 +215,7 @@ function renderSelling(scr, ctx) {
 
 export function sellCar(s, c, amount, app) {
   s.cars = s.cars.filter(x => x !== c);
+  ensureTow(s);   // it can't stay on (or pull) a trailer once it's gone
   s.myListings = s.myListings.filter(m => m.carUid !== c.uid);
   earn(s, amount, `Sold ${carName(modelOf(c), c.year)}`);
   if (s.activeCar === c.uid) {

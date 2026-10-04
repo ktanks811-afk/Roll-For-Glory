@@ -36,6 +36,8 @@ import { eat, sleep, nap, ensureNeeds } from '../core/needs.js';
 import { openChop } from './chop.js';
 import { openPawn } from './pawn.js';
 import { openHospital } from './hospital.js';
+import { openTrailerLot, openTrailerHome } from './trailers.js';
+import { describe as towLine } from '../core/tow.js';
 import { BREAKDOWNS, needsOil, oilChangeCost, changeOil, clearBreakdown, oilInterval } from '../core/upkeep.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
@@ -61,6 +63,7 @@ const HANDLERS = {
   land: (loc, app) => openLand(loc, app),
   plug: (loc, app) => openPlug(loc, app),
   pawn: (loc, app) => openPawn(loc, app),
+  trailers: (loc, app) => openTrailerLot(loc, app),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
@@ -95,11 +98,13 @@ export function homeScreen(loc, app, s) {
       <div class="card click" data-action="wardrobe"><h3>👕 Wardrobe</h3><p class="muted small">${s.player.outfits.length} items owned.</p></div>
       <div class="card click" data-action="save"><h3>💾 Save game</h3><p class="muted small">Manual save slots.</p></div>
       ${w?.thefts?.near(loc) ? `<div class="card click" data-action="keephot"><h3>🔑 Keep the stolen car</h3><p class="muted small">New plates and a VIN swap: ${fmtMoney(PLATE_SWAP)}. It gets a rebuilt title and goes in a bay.${w.thefts.canKeep() ? '' : ' <b class="bad">Your garage is full.</b>'}</p></div>` : ''}
+      ${s.trailers?.length ? `<div class="card click" data-action="trailer"><h3>🚚 Trailer</h3><p class="muted small">${esc(towLine(s))} Hitch it to a truck and load a car.</p></div>` : ''}
       <div class="card"><h3>📦 Parts bin</h3><p class="muted small">${s.partsBin.length} parts waiting · ${s.orders.length} orders on the way</p></div>
     </div></div>`;
     bind(root, {
       close: () => h.close(),
       garage: () => openGarage(app, { mode: 'home' }),
+      trailer: () => openTrailerHome(app),
       keephot: () => {
         if (!w.thefts.canKeep()) { toast('No room. Sell a car or buy a bigger place first.', 'bad'); return; }
         const car = w.thefts.keep();

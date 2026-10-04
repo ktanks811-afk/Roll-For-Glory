@@ -3,6 +3,7 @@
 
 import { BREAKDOWNS, needsOil, oilInterval } from '../core/upkeep.js';
 import { openPanel, bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
+import { ensureTow } from '../core/tow.js';
 import { game, fmtMoney, spend, earn, activeCar, carSpec, carMetrics, carValue, modelOf, levels, uid, carMpg, tankGallons, getCar } from '../core/state.js';
 import { ITEM_BY_ID, CATEGORY_NAMES, fits, fitNote, LABOR_RATE } from '../data/catalog.js';
 import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, partLevels } from '../data/parts.js';
@@ -486,7 +487,7 @@ function collection(body, h, app, st, s, car, m) {
       const mm = modelOf(c), mt = carMetrics(c);
       return `<div class="card ${c.uid === st.carUid ? '' : 'click'}" data-action="view" data-uid="${c.uid}"><canvas width="320" height="180" data-thumb="${c.uid}" class="carthumb"></canvas>
         <h3>${esc(carName(mm, c.year))}</h3><div class="muted small">${Math.round(c.miles).toLocaleString()} mi · <span class="pi"><b>${mt.cls}</b>${mt.pi}</span> · ${fmtMoney(carValue(c))}</div>
-        <div class="row" style="margin-top:8px">${c.stolen ? '<span class="tag tag-red">Stolen — cops are looking</span>' : `${c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : atHome ? `<button class="btn btn-sm btn-primary" data-action="drive" data-uid="${c.uid}">Drive this</button>` : ''}
+        <div class="row" style="margin-top:8px">${c.stolen ? '<span class="tag tag-red">Stolen — cops are looking</span>' : `${s.tow?.car === c.uid ? '<span class="tag">On the trailer</span> ' : s.tow?.rig && s.tow.truck === c.uid ? '<span class="tag">Parked out with the trailer</span> ' : ''}${c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : atHome ? `<button class="btn btn-sm btn-primary" data-action="drive" data-uid="${c.uid}">Drive this</button>` : ''}
         <button class="btn btn-sm" data-action="tradein" data-uid="${c.uid}">Sell to dealer ${fmtMoney(carValue(c) * 0.7)}</button>`}</div></div>`;
     }).join('')}</div>`;
   body.querySelectorAll('[data-thumb]').forEach(cv => { const c = getCar(s, cv.dataset.thumb); drawThumb(cv, modelOf(c), c.visual, c.parts, c.cond); });
@@ -494,9 +495,11 @@ function collection(body, h, app, st, s, car, m) {
     view: d => { st.carUid = d.uid; st.tab = 'overview'; h.refresh(); },
     drive: d => {
       s.activeCar = d.uid; s.carPos = null;
+      const t = s.tow, rigBack = !!(t?.rig && t.truck === d.uid), offTrailer = !!(t?.car && t.car === d.uid);
+      ensureTow(s);   // the truck brings its trailer home; a car on the trailer comes off it
       const w = app.world;
       if (w) { const home = LOC_BY_ID[s.home]; w.vehicle = null; const hs = w.homeSpot(home); w.placeCar(getCar(s, d.uid), hs.x, hs.z, hs.h); }
-      toast(`Now driving your ${modelOf(getCar(s, d.uid)).model}`, 'good');
+      toast(`Now driving your ${modelOf(getCar(s, d.uid)).model}.${rigBack ? ' A buddy drove it and the trailer home for you.' : offTrailer ? ' You unloaded it off the trailer.' : ''}`, 'good');
       h.refresh();
     },
     tradein: async d => {

@@ -40,6 +40,9 @@ import * as CHOP from '../js/core/chop.js';
 import * as LOOTC from '../js/core/loot.js';
 import { LOOT, LOOT_BY_ID, STORE_LOOT, STREET_LOOT, LOOT_KINDS, PAWN } from '../js/data/loot.js';
 import { takeWarrants } from '../js/core/warrants.js';
+import * as TOW from '../js/core/tow.js';
+import { TRAILERS } from '../js/data/trailers.js';
+import { existsSync } from 'node:fs';
 
 let fails = 0;
 const bad = (msg) => { fails++; console.error('FAIL', msg); };
@@ -1185,6 +1188,43 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!HL.followUp(st2, j) || !j.followUp) bad('follow-up visit failed');
   HL.heal(st2, 99999);
   if (HL.injured(st2) || HL.healthMods(st2).speed !== 1) bad('injuries should heal');
+}
+// ---- trailers: buy, hitch to a truck only, load, drop the rig, load back up ----
+{
+  for (const t of TRAILERS) for (const f of [t.side, t.top]) if (!existsSync(new URL('../' + f, import.meta.url))) bad(`trailer art missing: ${f}`);
+  if (!LOCATIONS.some(l => l.type === 'trailers')) bad('nowhere sells trailers');
+  const st = createState({ name: 'Tow', age: 25, look: {}, story: false });
+  st.cash = 40000;
+  const truck = newCar('ford_f_150_xlt_5_0_2015'), vette = newCar('chevrolet_corvette_z06_c8_2023'), trx = newCar('ram_1500_trx_2021'), civic = newCar('honda_civic_ex_1996');
+  st.cars.push(truck, vette, trx, civic);
+  st.activeCar = vette.uid;
+  const r = TOW.buyTrailer(st, 'enclosed_20', spend);
+  if (!r.ok || st.cash !== 40000 - r.def.price) bad('buying a trailer failed');
+  const tr = r.trailer;
+  if (TOW.hitch(st, tr.uid).ok) bad('a Corvette should not be able to pull a trailer');
+  st.activeCar = truck.uid;
+  if (!TOW.hitch(st, tr.uid).ok) bad('the F-150 should pull a trailer');
+  if (!TOW.loadBlock(st, trx.uid)) bad('a TRX is too long for the 20 ft enclosed trailer');
+  if (TOW.loadBlock(st, truck.uid) === '') bad('the truck cannot ride on its own trailer');
+  if (!TOW.loadCar(st, vette.uid).ok || st.tow.car !== vette.uid) bad('loading the Corvette failed');
+  if (!(TOW.towDrag(st) > 0)) bad('a loaded trailer should slow the truck');
+  if (!TOW.awayFromGarage(st).has(vette.uid)) bad('a car on the trailer is not in its garage bay');
+  const d = TOW.dropRig(st, { x: 10, z: 20, h: 0 }, 0.1);
+  if (!d.ok || st.activeCar !== vette.uid || !st.tow.rig || st.tow.car) bad('unloading should hand you the Corvette and park the rig');
+  if (!TOW.awayFromGarage(st).has(truck.uid)) bad('the truck parked out with the trailer is not in its garage bay');
+  if (TOW.sellTrailer(st, tr.uid, () => {}).ok) bad('you should not sell a trailer that is parked out');
+  const p = TOW.pickUpRig(st);
+  if (!p.ok || st.activeCar !== truck.uid || st.tow.car !== vette.uid || st.tow.rig) bad('loading back up should put you in the truck');
+  // switching cars at home: the car comes off the trailer; with the rig out, picking the truck brings it home
+  st.activeCar = vette.uid; TOW.ensureTow(st);
+  if (st.tow.car) bad('driving the car off the trailer should empty it');
+  st.activeCar = truck.uid; TOW.loadCar(st, civic.uid); TOW.dropRig(st, { x: 0, z: 0, h: 0 }, 0);
+  st.activeCar = truck.uid; TOW.ensureTow(st);
+  if (st.tow.rig) bad('picking the truck at home should bring the rig back');
+  // selling the truck unhitches the trailer
+  st.cars = st.cars.filter(c => c !== truck); TOW.ensureTow(st);
+  if (st.tow.trailer || st.tow.truck) bad('selling the truck should unhitch the trailer');
+  if (!TOW.fits(TRAILERS.find(t => t.id === 'enclosed_28'), CAR_BY_ID[trx.modelId])) bad('the 28 ft trailer should fit a TRX');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);
