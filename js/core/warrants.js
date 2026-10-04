@@ -15,7 +15,7 @@ import { emit } from './events.js';
 export const CITATION_DAYS = 3;       // a signed ticket is due this many game days later
 export const FTA_FEE = 250;           // failure-to-appear fee added when a ticket becomes a warrant
 export const SURRENDER_DISCOUNT = 0.25;
-const FELONY_KINDS = new Set(['robbery', 'shots', 'assault', 'auto', 'gta', 'carjack']);
+const FELONY_KINDS = new Set(['robbery', 'shots', 'assault', 'auto', 'gta', 'carjack', 'chop']);
 
 export function ensureRecord(s) {
   s.citations ??= [];   // { id, text, fine, due }

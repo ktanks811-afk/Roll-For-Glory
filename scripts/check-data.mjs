@@ -34,6 +34,7 @@ import * as EST from '../js/core/estate.js';
 import { applyEstate } from '../js/world2d/estate.js';
 import { LAND, PLANS, TRAPS, DRUGS } from '../js/data/estate.js';
 import { charge as chargeOf, classify } from '../js/core/justice.js';
+import * as CHOP from '../js/core/chop.js';
 import * as LOOTC from '../js/core/loot.js';
 import { LOOT, LOOT_BY_ID, STORE_LOOT, STREET_LOOT, LOOT_KINDS, PAWN } from '../js/data/loot.js';
 import { takeWarrants } from '../js/core/warrants.js';
@@ -819,6 +820,40 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   game.s = st; applyEstate(map, st);
   if (!EST.sellLand(st, 'land_stopsix').ok || PROPERTIES.land_stopsix) bad('selling land you built on');
   for (const id of Object.keys(LAND)) { delete PROPERTIES[id]; }
+}
+// ---------------- chop shop ----------------
+{
+  const st = createState({ name: 'C', age: 25, look: {}, story: false });
+  game.s = st;
+  const civic = newCar(CARS.find(c => c.make === 'honda' && c.body !== 'super').id, { year: 2012, hot: { kind: 'parked', reported: false } });
+  const ferrari = newCar(CARS.find(c => c.make === 'ferrari').id, { year: 2018, hot: { kind: 'carjack', armed: true, reported: true } });
+  const ev = newCar(CARS.find(c => c.asp === 'ev').id, { year: 2022, hot: { kind: 'parked' } });
+  const full = CHOP.stripPlan(st, civic), quick = CHOP.stripPlan(st, civic, true);
+  if (!(full.total > quick.total && full.mins > quick.mins)) bad('chop: a full strip should pay more and take longer than a quick one');
+  for (const car of [civic, ferrari]) {
+    const whole = Math.round(CHOP.stripPlan(st, car).total), value = Math.round((await import('../js/core/state.js')).carValue(car));
+    if (!(whole > value * 0.3) && !CHOP.isExotic(CAR_BY_ID[car.modelId])) bad(`chop: stripping ${car.modelId} (${whole}) pays less than Sal (${value * 0.3})`);
+    if (whole > value) bad(`chop: parts off ${car.modelId} are worth more than the car`);
+  }
+  if (CHOP.stripPlan(st, ev).parts.some(p => p.id === 'cat')) bad('chop: an EV has no catalytic converter');
+  if (CHOP.carHeat(ferrari) <= CHOP.carHeat(civic)) bad('chop: an armed carjacked exotic should bring more heat than a parked Civic');
+  if (CHOP.sweepChance(st, 0) !== 0) bad('chop: a cold shop should never get swept');
+  CHOP.strip(st, civic);
+  if (!st.chop.shelf.length || st.chop.heat <= 0 || st.stats.carsChopped !== 1) bad('chop: stripping did not put parts on the shelf');
+  const cash0 = st.cash, worth = CHOP.shelfValue(st);
+  if (CHOP.sellParts(st) !== worth || st.cash !== cash0 + worth || st.chop.shelf.length) bad('chop: selling the shelf');
+  st.chop.heat = 90;
+  if (!(CHOP.sweepChance(st, 3) > CHOP.sweepChance(st, 0) && CHOP.sweepChance(st, 0) > 0)) bad('chop: heat and the cops should raise the sweep odds');
+  CHOP.strip(st, civic);
+  let swept = null;
+  for (let i = 0; i < 40 && !swept; i++) swept = CHOP.chopDay(st, () => 0.01);
+  if (!swept?.swept || st.chop.shelf.length || !CHOP.isClosed(st) || !swept.took.parts) bad('chop: a hot shop should get swept and lose the shelf');
+  if (CHOP.chopDay(st)) bad('chop: a padlocked shop got swept again');
+  if (classify(CHOP.CHOP_CHARGE).cls !== 'F3' || classify(CHOP.PARTS_CHARGE).cls !== 'SJF') bad('chop: charge classes');
+  // old saves without a chop shop still load
+  const old = createState({ name: 'O', age: 25, look: {}, story: false }); delete old.chop;
+  if (CHOP.isClosed(old) || CHOP.shelfValue(old) !== 0) bad('chop: an old save');
+  if (!LOCATIONS.some(l => l.id === CHOP.CHOP_LOC && l.type === 'chop')) bad('chop: Marchetti Salvage is not on the map');
 }
 // ---- stolen goods: pawn counter and the fence ----
 {
