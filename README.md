@@ -379,6 +379,47 @@ in the car.
 | Gas stations, races, shops | USE |
 | Get out | GET OUT |
 
+**With an Xbox controller** (or any pad the browser reads as a standard
+gamepad: PlayStation, Switch Pro, 8BitDo). Plug it in or pair it over
+Bluetooth, press a button, and the on-screen controls step aside. Touch the
+screen and they come back. Works on iPhone/iPad Safari, Android Chrome, and
+desktop browsers.
+
+| On foot | |
+| --- | --- |
+| Walk | Left stick |
+| Run | Hold B (or click L3) |
+| Shops, homes, meets | A |
+| Get in your car | Y |
+| Steal a car | X |
+| Draw / holster · fire · reload | LT · RT · RB |
+| Aim | Right stick |
+| Ski mask | LB |
+
+| Driving | |
+| --- | --- |
+| Gas / brake and reverse | RT / LT (analog) |
+| Steer | Left stick (analog) or D-pad ◀ ▶ |
+| E-brake | A |
+| Nitrous | X |
+| Shift up / down | RB / LB |
+| Gas stations, races, shops | B |
+| Get out | Y |
+| Horn · camera view | L3 · R3 |
+
+| Racing | |
+| --- | --- |
+| Gas / brake | RT / LT |
+| Nitrous | X or A |
+| Shift up / down | RB or B / LB |
+| Change lanes | Left stick or D-pad ◀ ▶ |
+
+**Anywhere:** Phone View · Map D-pad ▲ · Zoom D-pad ▼ · Pause Menu.
+**Menus and the phone:** D-pad or left stick to move, A to select, B to go
+back, right stick to scroll, ◀ ▶ to change a slider or list. View or Menu
+closes the phone / pause menu. The controller rumbles on crashes and gunshots
+(Chrome and Edge).
+
 The game asks for landscape: your first tap goes fullscreen and locks the
 screen to landscape (Android Chrome). Add it to your home screen and it opens
 in landscape from launch. On iPhone, where browsers can't lock rotation, a

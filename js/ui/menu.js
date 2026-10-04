@@ -15,6 +15,7 @@ import { openCreate } from './create.js';
 import { enterWorld, toTitle } from '../main.js';
 import { openPhone } from './phone.js';
 import { touchUi } from './touch.js';
+import { pad } from '../core/gamepad.js';
 import { isTouchDevice } from '../core/input.js';
 import { openGarage } from './garage.js';
 import { openRaceMenu } from './raceSetup.js';
@@ -148,6 +149,31 @@ export function openPause(app) {
 }
 
 export function showControls() {
+  if (pad.connected) {
+    const k = (...b) => b.map(x => `<kbd>${x}</kbd>`).join(' ');
+    modal('Controls (controller)', `<div class="section-title" style="margin-top:0">On foot</div><div class="kv">
+      <span>Walk</span><span>${k('Left stick')}</span><span>Run</span><span>Hold ${k('B')} or click ${k('L3')}</span>
+      <span>Shops, homes, meets</span><span>${k('A')}</span><span>Get in your car</span><span>${k('Y')}</span>
+      <span>Steal a car</span><span>${k('X')}</span><span>Draw / holster</span><span>${k('LT')}</span>
+      <span>Fire · reload</span><span>${k('RT')} · ${k('RB')}</span><span>Aim</span><span>${k('Right stick')}</span>
+      <span>Ski mask</span><span>${k('LB')}</span></div>
+      <div class="section-title">Driving</div><div class="kv">
+      <span>Gas / brake &amp; reverse</span><span>${k('RT')} / ${k('LT')}</span><span>Steer</span><span>${k('Left stick')} or ${k('◀ ▶')}</span>
+      <span>E-brake (drift)</span><span>${k('A')}</span><span>Nitrous</span><span>${k('X')}</span>
+      <span>Shift up / down</span><span>${k('RB')} / ${k('LB')}</span><span>Horn · camera view</span><span>${k('L3')} · ${k('R3')}</span>
+      <span>Gas stations, races, shops</span><span>${k('B')}</span><span>Get out</span><span>${k('Y')}</span></div>
+      <div class="section-title">Racing</div><div class="kv">
+      <span>Gas / brake</span><span>${k('RT')} / ${k('LT')}</span><span>Nitrous</span><span>${k('X')} or ${k('A')}</span>
+      <span>Shift up / down</span><span>${k('RB')} or ${k('B')} / ${k('LB')}</span><span>Change lanes</span><span>${k('Left stick')} or ${k('◀ ▶')}</span></div>
+      <div class="section-title">Anywhere</div><div class="kv">
+      <span>Phone</span><span>${k('View')}</span><span>Map</span><span>${k('▲')}</span>
+      <span>Camera zoom</span><span>${k('▼')}</span><span>Pause</span><span>${k('Menu')}</span></div>
+      <div class="section-title">Menus &amp; phone</div><div class="kv">
+      <span>Move</span><span>${k('D-pad')} or ${k('Left stick')}</span><span>Select · back</span><span>${k('A')} · ${k('B')}</span>
+      <span>Scroll</span><span>${k('Right stick')}</span><span>Sliders &amp; lists</span><span>${k('◀ ▶')}</span></div>
+      <p class="muted small" style="margin-top:10px">Drag race: hold ${k('LT')}+${k('RT')} for a burnout, ease on ${k('RT')} to roll up and stage, hold both against the brake, and let go of ${k('LT')} on green. Both triggers at a meet revs the engine.</p>`);
+    return;
+  }
   if (touchUi.active) {
     modal('Controls', `<div class="section-title" style="margin-top:0">Walking</div><div class="kv">
       <span>Move</span><span>Joystick (left)</span><span>Run</span><span>Hold RUN</span>

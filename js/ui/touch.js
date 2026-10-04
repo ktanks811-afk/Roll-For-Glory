@@ -14,6 +14,7 @@
 // from the default spot (fractions of the screen) plus a size.
 
 import { input, touch, isTouchDevice } from '../core/input.js';
+import { pad } from '../core/gamepad.js';
 import { settings, saveSettings } from '../core/save.js';
 import { toast } from './dom.js';
 import { buzz } from './haptics.js';
@@ -337,6 +338,7 @@ export const touchUi = {
     });
     this.releaseAll = () => { stopStick(); resetWheel(); touch.reset(); root.querySelectorAll('.on').forEach(n => n.classList.remove('on')); };
     refreshMode();
+    pad.onUse(() => { this.releaseAll(); this.refresh(); });
   },
 
   // Move / resize the on-screen controls (opened from Settings).
@@ -348,7 +350,8 @@ export const touchUi = {
 
   // Re-read the setting (Auto = only on touch devices).
   refresh() {
-    enabled = settings.touch === 'on' || (settings.touch === 'auto' && isTouchDevice());
+    // a controller in use hides them; touch the screen and they're back
+    enabled = !pad.inUse && (settings.touch === 'on' || (settings.touch === 'auto' && isTouchDevice()));
     apply();
     refreshMode();
   },
