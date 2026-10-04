@@ -31,7 +31,10 @@ import * as DR from '../js/core/drugs.js';
 import * as EST from '../js/core/estate.js';
 import { applyEstate } from '../js/world2d/estate.js';
 import { LAND, PLANS, TRAPS, DRUGS } from '../js/data/estate.js';
-import { charge as chargeOf } from '../js/core/justice.js';
+import { charge as chargeOf, classify } from '../js/core/justice.js';
+import * as LT from '../js/core/loot.js';
+import { LOOT, LOOT_BY_ID, LOOT_ROLLS, PAWN } from '../js/data/loot.js';
+import { takeWarrants } from '../js/core/warrants.js';
 
 let fails = 0;
 const bad = (msg) => { fails++; console.error('FAIL', msg); };
@@ -814,6 +817,55 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   game.s = st; applyEstate(map, st);
   if (!EST.sellLand(st, 'land_stopsix').ok || PROPERTIES.land_stopsix) bad('selling land you built on');
   for (const id of Object.keys(LAND)) { delete PROPERTIES[id]; }
+}
+// ---- stolen goods: pawn counter and the fence ----
+{
+  for (const l of LOOT) {
+    if (!(l.value > 0) || !(l.serial >= 0 && l.serial <= 1) || !Object.keys(l.src).length) bad(`loot ${l.id}: bad data`);
+    for (const k of Object.keys(l.src)) if (!LOOT_ROLLS[k]) bad(`loot ${l.id}: unknown source ${k}`);
+  }
+  if (!LOCATIONS.some(l => l.type === 'pawn')) bad('no pawn shop on the map');
+  const st = createState({ name: 'P', age: 25, look: {}, story: false });
+  let paid = 0; const earnFn = (s, n) => { s.cash += n; paid += n; };
+  const seq = xs => { let i = 0; return () => xs[i++ % xs.length]; };
+  for (const src of Object.keys(LOOT_ROLLS)) {
+    const got = LT.rollLoot(st, src, seq([0, 0.99, 0.5, 0.2, 0.7]));
+    if (!got.length || got.some(i => !LOOT_BY_ID[i.id].src[src])) bad(`rollLoot ${src}`);
+  }
+  if (LT.rollLoot(st, 'mug', () => 0.999).length) bad('a mugging should sometimes give nothing');
+  const ph = LT.addLoot(st, 'phone', { from: 'robbery' }), gold = LT.addLoot(st, 'gold_chain');
+  if (!ph || ph.kind !== 'electronics' || ph.value !== LOOT_BY_ID.phone.value) bad('addLoot shape');
+  // the fence pays less the hotter you are, and won't deal at high heat
+  const cool = LT.fenceOffer(st, ph, 0), warm = LT.fenceOffer(st, ph, 2.5);
+  if (!(cool > warm && warm > 0)) bad(`fence should pay less with heat (${cool} vs ${warm})`);
+  if (LT.fenceShare(st, PAWN.fenceRefuse) !== null || LT.sellToFence(st, [ph.uid], earnFn, 5).ok) bad('fence should refuse at high heat');
+  if (!(LT.counterOffer(ph) > cool)) bad('the counter should pay more than the fence');
+  // gold has no serial: never flagged; a fresh phone often is, a week-old one less
+  if (LT.flagChance(st, gold) !== 0) bad('gold should never get flagged');
+  const fresh = LT.flagChance(st, ph); st.time.day += 8; const old = LT.flagChance(st, ph); st.time.day -= 8;
+  if (!(fresh > 0.5 && old < fresh / 2)) bad(`hot items should cool off (${fresh} → ${old})`);
+  const r1 = LT.pawnItem(st, gold.uid, earnFn, () => 0);
+  if (!r1.ok || r1.flagged || r1.paid !== LT.counterOffer(gold)) bad('pawning gold');
+  const w0 = st.warrants.length, r2 = LT.pawnItem(st, ph.uid, earnFn, () => 0);
+  if (!r2.flagged || r2.paid || st.warrants.length !== w0 + 1 || st.loot.items.some(i => i.uid === ph.uid)) bad('a flagged item should be kept and a warrant issued');
+  const wr = takeWarrants(st);
+  if (!wr.items.some(i => i.kind === 'theft' && i.value === ph.value)) bad('theft warrant should keep its value');
+  if (classify({ kind: 'theft', value: 50 }).cls !== 'C' || classify({ kind: 'theft', value: 900 }).cls !== 'A' || classify({ kind: 'theft', value: 9500 }).cls !== 'SJF') bad('theft classes by value');
+  if (classify(LT.theftOffence([{ kind: 'gun', value: 260, name: 'g' }])).cls !== 'SJF') bad('a stolen gun should be a felony');
+  // sell to the fence, then busted with the rest: seized and charged
+  const n = st.loot.items.length, before = st.cash, all = st.loot.items.slice(0, 2).map(i => i.uid);
+  const f = LT.sellToFence(st, all, earnFn, 0);
+  if (!f.ok || st.cash - before !== f.paid || st.loot.items.length !== n - 2) bad('selling to the fence');
+  const seized = LT.seizeLoot(st);
+  if (st.loot.items.length || seized.length !== 1 || seized[0].kind !== 'theft') bad('stolen goods should be seized on arrest');
+  if (LT.seizeLoot(st).length) bad('nothing to seize when clean');
+  // your own guns sell legally at the counter
+  giveWeapon(st, GLOCKS[0].id, false);
+  const g = ensureArms(st).guns[0], sg = LT.sellOwnGun(st, g.uid, earnFn);
+  if (!sg.ok || ensureArms(st).guns.length || sg.paid !== Math.round(GLOCKS[0].price * PAWN.ownGun)) bad('selling your own gun');
+  // old saves without s.loot
+  const legacy = createState({ name: 'L', age: 25, look: {}, story: false }); delete legacy.loot;
+  if (LT.lootItems(legacy).length !== 0 || LT.seizeLoot(legacy).length) bad('saves without loot');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

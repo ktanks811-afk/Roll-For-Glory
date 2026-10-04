@@ -29,6 +29,7 @@ import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug } from './estate.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
+import { openPawn } from './pawn.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -51,6 +52,7 @@ const HANDLERS = {
   trap: (loc, app) => openTrap(loc, app),
   land: (loc, app) => openLand(loc, app),
   plug: (loc, app) => openPlug(loc, app),
+  pawn: (loc, app) => openPawn(loc, app),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),

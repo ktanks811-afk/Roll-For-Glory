@@ -14,6 +14,7 @@ import { addRep, spend, fmtMoney } from '../core/state.js';
 import { collideCircle } from './map.js';
 import { WEAPON_BY_ID, CAL, ensureArms, equippedGun } from '../data/weapons.js';
 import { LOCATIONS } from '../data/world.js';
+import { rollLoot, lootNames } from '../core/loot.js';
 
 // A forced-reset trigger turns a semi-auto pistol into a full-auto one: very fast, wild, and unreliable.
 export const FRT = { cd: 0.062, spread: 1.7, jam: 0.045, burst: 0.2 };
@@ -287,7 +288,8 @@ export class Combat {
     if (dye) pay = Math.round(pay * 0.5);
     this.s.cash += pay;
     this.finishRobbery(r, pay);
-    this.say(`Robbery done: +${fmtMoney(pay)}${dye ? ' (a dye pack burst — half ruined)' : ''}. Now get out of there!`, 'good');
+    const got = rollLoot(this.s, 'store');
+    this.say(`Robbery done: +${fmtMoney(pay)}${dye ? ' (a dye pack burst — half ruined)' : ''}${got.length ? `. You also grabbed: ${lootNames(got)}` : ''}. Now get out of there!`, 'good');
     audio.buy();
     if (!r.alarmed && r.alarm) this.w.police.dispatchRobbery(this.w, r.loc);
   }
@@ -387,7 +389,8 @@ export class Combat {
         this.s.cash += m.pay;
         this.s.stats.stolen = (this.s.stats.stolen || 0) + m.pay;
         this.arms.robberies++;
-        this.say(`Mugged: +${fmtMoney(m.pay)}.`, 'good');
+        const got = rollLoot(this.s, 'mug');
+        this.say(`Mugged: +${fmtMoney(m.pay)}${got.length ? ` and ${lootNames(got)}` : ''}.`, 'good');
         if (m.call) w.police.dispatchRobbery(w, { x: f.x, z: f.z, name: 'a street mugging' }, true);
       }
     }
