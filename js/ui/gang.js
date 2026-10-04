@@ -108,7 +108,7 @@ export function renderGang(scr, ctx) {
     <div class="section-title">Put in work</div><div class="list">${g.offers.length ? g.offers.map(o => jobCard(s, o, false)).join('') : '<p class="small muted">Nothing today. Check back in the morning.</p>'}</div>
     <div class="section-title">Homies · ${g.homies.length}/${cap}</div><div class="list">${g.homies.map(h => {
       const out = h.out > s.time.day;
-      return `<div class="li" data-homie="${h.id}">${dot(set.color)}<div class="grow"><div class="t">${esc(h.nick)}</div><div class="s">${out ? `At JPS till day ${h.out}` : h.rolling ? 'Riding with you' : 'On the block'}</div></div>
+      return `<div class="li" data-homie="${h.id}">${dot(set.color)}<div class="grow"><div class="t">${esc(h.nick)}</div><div class="s">${out ? (h.jail ? `In county till day ${h.out}` : `At JPS till day ${h.out}`) : h.rolling ? 'Riding with you' : 'On the block'}</div></div>
         ${out ? '' : `<button class="btn btn-sm ${h.rolling ? '' : 'btn-primary'}" data-action="roll" data-id="${h.id}">${h.rolling ? 'Stay' : 'Ride'}</button>`}</div>`;
     }).join('')}</div>
     <button class="btn btn-sm btn-primary" data-action="recruit" ${G.recruitBlocked(s) ? 'disabled' : ''}>Put somebody on · ${fmtMoney(G.recruitCost(s))}</button>

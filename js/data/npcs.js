@@ -1,4 +1,5 @@
 import { GANG_CONTACTS } from './gangs.js';
+import { LAWYER_CONTACTS } from './lawyers.js';
 
 // Every character in Fort Worth. Racers carry a full build so the race sim
 // treats them exactly like the player; nothing about an opponent is faked.
@@ -176,6 +177,7 @@ export const RACER_BY_ID = Object.fromEntries(RACERS.map(r => [r.id, r]));
 // Non-racing contacts
 export const PEOPLE = {
   ...GANG_CONTACTS,
+  ...LAWYER_CONTACTS,
   jojo:    { name: 'Jojo Mendez', role: 'Friend', color: '#13b3c4', bio: 'Your oldest friend. Knows everyone, owes most of them money.' },
   sal:     { name: 'Sal Marchetti', role: "Dealer · Rusty's Used Autos", color: '#c8b98a', bio: 'Sells cars that mostly run. Honest about the "mostly".' },
   rosa:    { name: 'Rosa Vega', role: 'Mechanic · Torque Temple', color: '#e8641a', bio: 'Best wrench in Fort Worth. Will not build you something stupid. Will build you something fast.' },

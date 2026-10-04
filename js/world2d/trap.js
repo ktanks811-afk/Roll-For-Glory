@@ -120,5 +120,5 @@ export function raidWhileAway(s, r) {
   const items = drugOffences(r.took.stash || {}, { intent: true });
   if (!items.length) items.push({ kind: 'drugs_SJF', text: `Maintaining a drug house: ${T.name}.`, fine: 1500 });
   for (const o of items) addWarrant(s, { kind: o.kind, text: o.text, fine: Math.max(2000, o.fine), felony: true, evidence: 'SWAT search warrant on a house in your name' });
-  sendMessage(s, 'brenner', `SWAT hit ${T.name} this morning. Your man at the door is in county and he gave them your name. ${r.took.product ? `${r.took.product} units of product` : 'The product'}${r.took.safe ? ` and ${fmtMoney(r.took.safe)} from the safe` : ''} are in evidence, and there's a felony warrant with your name on it.`, { action: { type: 'gps', loc: 'pspd_central' } });
+  sendMessage(s, 'brenner', `SWAT hit ${T.name} this morning. Your man at the door is in county, and we'll see what he has to say. ${r.took.product ? `${r.took.product} units of product` : 'The product'}${r.took.safe ? ` and ${fmtMoney(r.took.safe)} from the safe` : ''} are in evidence. The deed is in your name, so there's a felony warrant out for you.`, { action: { type: 'gps', loc: 'pspd_central' } });
 }

@@ -22,6 +22,7 @@ import { renderShop } from './shop.js';
 import { renderOcrew } from './ocrew.js';
 import { renderTurf } from './turf.js';
 import { renderGang } from './gang.js';
+import { renderLegal } from './legal.js';
 import { myHoods } from '../core/turf.js';
 import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
@@ -49,6 +50,7 @@ const APPS = [
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
   { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
+  { id: 'legal', name: 'Lawyer', icon: '⚖', bg: '#8a6d2b' },
   { id: 'settings', name: 'Settings', icon: '⚙', bg: '#2a2c33' },
 ];
 
@@ -85,7 +87,7 @@ function renderHome(scr, ctx) {
   const unread = s.messages.filter(m => !m.read).length;
   const t = tierOf(s.rep);
   const offers = ms.offers.filter(o => o.expires > missionNow(s)).length;
-  const badge = { messages: unread, fwpd: hasWarrant(s) ? s.warrants.length : 0, missions: ms.active ? '!' : offers };
+  const badge = { messages: unread, fwpd: hasWarrant(s) ? s.warrants.length : 0, missions: ms.active ? '!' : offers, legal: s.informants?.held?.length || 0 };
   // lock-screen style cards: where you stand with FWPD, the job you're on, where the GPS is taking you
   const warr = hasWarrant(s), cites = s.citations?.length || 0;
   const a = ms.active, stop = currentStop(s);
@@ -115,6 +117,7 @@ RENDER.shop = renderShop;
 RENDER.ocrew = renderOcrew;
 RENDER.turf = renderTurf;
 RENDER.gang = renderGang;
+RENDER.legal = renderLegal;
 
 // ---------------- messages ----------------
 // Conversations, one per sender, newest first. Open one to read the thread as
@@ -137,6 +140,7 @@ function msgAction(s, m) {
     return `<button class="btn btn-sm btn-primary" data-action="maccept" data-id="${a.id}" ${ms.active ? 'disabled' : ''}>Take the job</button> <button class="btn btn-sm" data-action="mdecline" data-id="${a.id}">Pass</button>${ms.active ? '<div class="small muted" style="margin-top:4px">Finish your current job first.</div>' : ''}`;
   }
   if (a.type === 'offer') return '<button class="btn btn-sm" data-action="offers">View offers</button>';
+  if (a.type === 'legal') return '<button class="btn btn-sm" data-action="legal">⚖ Lawyer app</button>';
   if (a.type === 'sponsor' && !a.done) return `<button class="btn btn-sm btn-primary" data-action="sponsor" data-id="${m.id}">Sign deal</button>`;
   return '';
 }
@@ -158,6 +162,7 @@ RENDER.messages = (scr, ctx) => {
     mdecline: d => { declineMission(s, d.id); ctx.h.refresh(); },
     mgps: () => { pointGps(s, ctx.app.world); ctx.h.close(); },
     offers: () => ctx.go('marketplace', 'selling'),
+    legal: () => ctx.go('legal'),
     sponsor: d => {
       const m = s.messages.find(x => x.id === d.id);
       s.sponsor = { ...m.action.deal, until: s.time.day + m.action.deal.days };

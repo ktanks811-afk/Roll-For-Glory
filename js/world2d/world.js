@@ -30,7 +30,8 @@ import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
-import { charge, fileCase, openCase, IMPOUND_LOT } from '../core/justice.js';
+import { charge, fileCase, openCase, topClass, IMPOUND_LOT } from '../core/justice.js';
+import { coDefendants } from '../core/legal.js';
 import { toggleMask, masked } from '../core/disguise.js';
 import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
 import { applyEstate } from './estate.js';
@@ -616,9 +617,11 @@ export class World {
     // a case you skipped court on comes back to life too
     const c = charges.length || openCase(s)?.fta ? fileCase(s, charges) : null;
     this.impound();
+    // homies riding with you get booked too, and detectives will lean on them
+    const codef = coDefendants(s, charges.length ? topClass(charges) : 'A');
     const list = c ? `<div class="charges">${c.charges.map(x => `<div>⚖ ${esc(x.text)}</div>`).join('')}</div>` : '';
     this.ui.modal('BUSTED',
-      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. ${hotCar ? 'The stolen car goes back to its owner. Your own car is still where you left it.' : 'Your car gets towed to the impound lot behind the FWPD Central Precinct.'}</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>${hotCar ? '' : '<p class="small muted">To get the car back, go into the Central Precinct and sign it out. No charge.</p>'}${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. They let you go at the precinct.</p>'}`,
+      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. ${hotCar ? 'The stolen car goes back to its owner. Your own car is still where you left it.' : 'Your car gets towed to the impound lot behind the FWPD Central Precinct.'}</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>${hotCar ? '' : '<p class="small muted">To get the car back, go into the Central Precinct and sign it out. No charge.</p>'}${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${codef.length ? `<p class="small bad">${codef.map(e => esc(e.name)).join(', ')} got booked with you.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. They let you go at the precinct.</p>'}`,
       [{ label: c ? 'See the magistrate' : 'OK', primary: true }]).then(() => { if (c) this.ui.book?.(c); });
     emit('busted', { fine: total, charges: charges.length });
   }

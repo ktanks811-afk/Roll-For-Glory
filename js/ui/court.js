@@ -12,8 +12,10 @@ import { ensure as ensureHustle } from '../core/hustle.js';
 import {
   CLASSES, BOND_FEE, DOCKET, STORAGE_PER_DAY, FACILITY, IMPOUND_LOT,
   ensureJustice, openCase, topClass, isFelonyCase, priorScore, courtName, fmtCourt, bailFor, postBond, courtStatus,
-  pleaOffer, convictChance, lawyerFee, dismissChance, resolveCase, describe, payFine, gameMinutes, realDaysFor, fmtDays,
+  pleaOffer, pleaCharges, convictChance, lawyerOf, dismissChance, resolveCase, describe, payFine, gameMinutes, realDaysFor, fmtDays,
 } from '../core/justice.js';
+import { cooperateBlocked, cooperate as cooperateWithDA, informantsOn } from '../core/legal.js';
+import { pickLawyer, upgrades, bailLawyerLine } from './legal.js';
 
 const COURT = () => LOC_BY_ID.courthouse;
 const JUDGES = ['Hon. Raymond Okafor', 'Hon. Patricia Delgado', 'Hon. Wade Hollister', 'Hon. Renee Castillo', 'Hon. Curtis Bell'];
@@ -27,20 +29,23 @@ export const chargesHtml = c => `<div class="charges">${c.charges.map(x => `<div
 export async function book(app, c) {
   const s = game.s;
   if (!c || !ensureJustice(s).cases.includes(c)) return;
-  const b = bailFor(s, c);
   for (;;) {
+    const b = bailFor(s, c);
     const opts = b.held ? [{ label: 'Wait in jail for court', primary: true, value: 'held' }] : [
       b.pr && { label: 'Sign a personal bond (free)', primary: true, value: 'pr' },
       canAfford(s, b.amount) && { label: `Post cash bail · ${fmtMoney(b.amount)}`, primary: !b.pr, value: 'cash' },
       canAfford(s, Math.round(b.amount * BOND_FEE)) && { label: `Call a bondsman · ${fmtMoney(Math.round(b.amount * BOND_FEE))}`, primary: !b.pr && !canAfford(s, b.amount), value: 'surety' },
       { label: 'Sit in jail until court', value: 'held' },
     ].filter(Boolean);
+    if (upgrades(c).length) opts.splice(opts.length - 1, 0, { label: lawyerOf(c) ? 'Call a better lawyer' : 'Call a lawyer', value: 'lawyer' });
     const pick = await modal('Magistrate', `<p class="small muted">Tarrant County Jail · magistrate's warning</p>
       <p>"You're charged with the following. You have the right to remain silent and the right to a lawyer; if you can't afford one, the court will appoint one."</p>
       ${chargesHtml(c)}
       ${b.held ? `<p><b class="bad">Held without bond.</b> ${esc(b.why)}</p>` : `<p>Bail is set at <b>${fmtMoney(b.amount)}</b>.${b.pr ? ' Since it\'s your first time, you can sign a personal bond and walk out for free.' : ''}</p>
       <p class="small muted">Cash bail comes back when you show up to court. A bondsman charges 10% and keeps it. If you can't pay, you sit in jail until your court date, and the time counts toward any sentence.</p>`}
+      ${bailLawyerLine(s, c)}
       <p>Court date: <b>${fmtCourt(c.date)}</b>, ${courtName(c)}, Tarrant County Courthouse.</p>`, opts);
+    if (pick === 'lawyer') { await pickLawyer(s, c); continue; }
     if (pick === 'held') { postBond(s, c, 'held'); await holdForCourt(app, c); return; }
     if (postBond(s, c, pick).ok) break;
   }
@@ -122,29 +127,49 @@ export async function hearing(app, c, { custody = false } = {}) {
     ${custody ? '<p class="small muted">You\'re brought in from the holding cell in county orange.</p>' : ''}
     ${priorScore(s) ? `<p class="small muted">The State has your record: ${ensureJustice(s).convictions.length} prior conviction${ensureJustice(s).convictions.length > 1 ? 's' : ''}.</p>` : ''}
     ${ensureJustice(s).probation ? '<p class="small bad">You\'re on probation. The State has filed a motion to revoke it.</p>' : ''}`, [{ label: 'Approach the bench', primary: true }]);
-  // weak misdemeanour cases get dropped
-  if (!ensureJustice(s).probation && Math.random() < dismissChance(c)) {
+  // weak misdemeanour cases get dropped, and a lawyer's motions can sink a felony
+  const dismissed = async () => {
+    if (ensureJustice(s).probation || Math.random() >= dismissChance(c)) return false;
+    const L = lawyerOf(c);
     const r = resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: false })));
     if (r.refund) earn(s, r.refund, 'Cash bail refunded');
-    await modal('Case dismissed', `<p>The prosecutor stands up: "Your Honor, the State moves to dismiss for insufficient evidence."</p><p><b>Dismissed.</b> You're free to go.${r.refund ? ` Your ${fmtMoney(r.refund)} bail comes back.` : ''}</p>`);
-    return after(app, custody, null);
+    await modal('Case dismissed', `<p>${L ? `${esc(L.name)} stands up: "Your Honor, the evidence was obtained in an illegal search, and the State's witness has no credibility." The judge agrees.` : 'The prosecutor stands up: "Your Honor, the State moves to dismiss for insufficient evidence."'}</p><p><b>Dismissed.</b> You're free to go.${r.refund ? ` Your ${fmtMoney(r.refund)} bail comes back.` : ''}</p>`);
+    await after(app, custody, null);
+    return true;
+  };
+  if (await dismissed()) return;
+  let pick, cooperate = false;
+  for (;;) {
+    const L = lawyerOf(c), offer = pleaOffer(s, c, { cooperate });
+    const named = L?.discovery ? informantsOn(c) : [];
+    const pledDown = pleaCharges(c, { cooperate }).some(ch => ch.pled);
+    const coopWhy = cooperateBlocked(s, c);
+    pick = await modal('Plea', `<p>${cooperate ? 'For your cooperation, the' : 'The'} prosecutor's offer if you plead guilty:</p>
+      <div class="offer"><b>${esc(describe(offer))}</b>${offer.fine ? ` + ${fmtMoney(offer.fine)} fine and court costs` : ''}${offer.kind === 'jail' ? `<div class="small muted">You'd serve about ${fmtDays(Math.max(0, offer.served - credit))}${credit ? ` after ${fmtDays(credit)} credit for time served` : ''}.</div>` : ''}${offer.kind === 'deferred' ? `<div class="small muted">Finish ${offer.probationDays} days of probation and the case is dismissed. No conviction.</div>` : ''}</div>
+      ${L ? `<p class="small good">${esc(L.name)} negotiated this deal${pledDown ? ' and got the top charge pled down a class' : ''}.</p>` : ''}
+      ${c.charges.some(ch => ch.ci) ? `<p class="small warn">Part of the State's case comes from a confidential informant${named.length ? `. Discovery says it's <b>${named.map(esc).join(', ')}</b>` : ''}. Informants make shaky witnesses.</p>` : ''}
+      <p class="small muted">Or plead not guilty and go to trial. The State's case looks <b>${(ev => ev >= 0.8 ? 'strong' : ev >= 0.65 ? 'decent' : 'thin')(Math.max(...c.charges.map(ch => ch.evidence)))}</b>. ${L ? `${esc(L.name)} likes your chances better than the public defender would.` : 'Your public defender has a big caseload; a private attorney has a much better shot.'} If the jury convicts, the judge won't be as generous as the deal.</p>`,
+      [{ label: 'Take the deal', primary: true, value: 'plea' }, { label: `Trial with ${L ? L.name : 'a public defender'}`, value: 'trial' },
+        ...(upgrades(c).length ? [{ label: L ? 'Trade up your lawyer' : 'Hire a lawyer', value: 'hire' }] : []),
+        ...(!coopWhy && !cooperate ? [{ label: 'Cooperate with the DA', value: 'coop' }] : [])]);
+    if (pick === 'hire') { if (await pickLawyer(s, c) && await dismissed()) return; continue; }
+    if (pick === 'coop') {
+      if (await confirm('Cooperate?', '<p>You sit down with the DA and the Gang Unit and give them names: who you run with, where the product comes from. The deal gets a lot better.</p><p class="bad">Snitches don\'t stay secret for long. If the streets find out, your set turns on you and your name is mud.</p>', 'Give them names', true)) cooperate = true;
+      continue;
+    }
+    break;
   }
-  const offer = pleaOffer(s, c);
-  const fee = lawyerFee(c);
-  const pick = await modal('Plea', `<p>The prosecutor's offer if you plead guilty:</p>
-    <div class="offer"><b>${esc(describe(offer))}</b>${offer.fine ? ` + ${fmtMoney(offer.fine)} fine and court costs` : ''}${offer.kind === 'jail' ? `<div class="small muted">You'd serve about ${fmtDays(Math.max(0, offer.served - credit))}${credit ? ` after ${fmtDays(credit)} credit for time served` : ''}.</div>` : ''}${offer.kind === 'deferred' ? `<div class="small muted">Finish ${offer.probationDays} days of probation and the case is dismissed. No conviction.</div>` : ''}</div>
-    <p class="small muted">Or plead not guilty and go to trial. The State's case looks <b>${(ev => ev >= 0.8 ? 'strong' : ev >= 0.65 ? 'decent' : 'thin')(Math.max(...c.charges.map(ch => ch.evidence)))}</b>. Your public defender has a big caseload; a private attorney (${fmtMoney(fee)}) has a much better shot. If the jury convicts, the judge won't be as generous as the deal.</p>`,
-    [{ label: 'Take the deal', primary: true, value: 'plea' }, { label: 'Trial with a public defender', value: 'pd' }, ...(canAfford(s, fee) ? [{ label: `Hire a lawyer (${fmtMoney(fee)}) and go to trial`, value: 'lawyer' }] : [])]);
-  let verdicts, plea = pick === 'plea';
-  if (plea) verdicts = c.charges.map(ch => ({ charge: ch, guilty: true }));
-  else {
-    if (pick === 'lawyer') spend(s, fee, 'Defense attorney');
-    verdicts = c.charges.map(ch => ({ charge: ch, guilty: Math.random() < convictChance(s, ch, pick === 'lawyer') }));
+  let verdicts, plea = pick === 'plea', coop = null;
+  if (plea) {
+    verdicts = pleaCharges(c, { cooperate }).map(ch => ({ charge: ch, guilty: true }));
+    if (cooperate) coop = cooperateWithDA(s, c);
+  } else {
+    verdicts = c.charges.map(ch => ({ charge: ch, guilty: Math.random() < convictChance(s, ch, c.lawyer) }));
     advanceTime(s, 5 * 60);   // jury selection, testimony, deliberation
     await modal('Verdict', `<p class="small muted">The jury was out ${2 + Math.floor(Math.random() * 4)} hours.</p><p>"On the following counts, we the jury find the defendant..."</p>
       <div class="charges">${verdicts.map(v => `<div class="charge"><span>${esc(v.charge.text)}</span><b class="${v.guilty ? 'bad' : 'good'}">${v.guilty ? 'GUILTY' : 'NOT GUILTY'}</b></div>`).join('')}</div>`, [{ label: verdicts.some(v => v.guilty) ? 'Sentencing' : 'Walk out', primary: true }]);
   }
-  const r = resolveCase(s, c, verdicts, { plea, served: credit });
+  const r = resolveCase(s, c, verdicts, { plea, served: credit, cooperate: plea && cooperate });
   if (r.refund) earn(s, r.refund, 'Cash bail refunded');
   const sent = r.sentence;
   const f = sent.fine ? payFine(s, sent.fine) : { paid: 0, layout: 0 };
@@ -155,6 +180,7 @@ export async function hearing(app, c, { custody = false } = {}) {
   const jailDays = (sent.kind === 'jail' ? sent.served : 0) + f.layout;
   await modal('Sentence', `<p>"${plea ? 'The court accepts your plea.' : 'Having been found guilty,'} I sentence you to..."</p>
     <div class="offer"><b>${esc(describe(sent))}</b>${sent.fine ? ` + ${fmtMoney(sent.fine)} fine and costs` : ''}</div>
+    ${coop ? (coop.exposed ? `<p class="bad">Word got out that you cooperated.${coop.kicked ? ' Your set put you out, and they want smoke.' : coop.lost ? ` ${coop.lost} of your homies walked.` : ''}</p>` : '<p class="small muted">Your cooperation stays sealed. For now.</p>') : ''}
     ${r.revoked ? `<p class="bad">Probation revoked: you also serve the ${fmtDays(r.revoked.days)} that was suspended for ${esc(r.revoked.text)}</p>` : ''}
     ${sent.kind === 'deferred' ? `<p>Deferred adjudication: ${sent.probationDays} days of probation. Stay out of trouble and the case is dismissed. Get convicted of anything before then and you're sentenced on this one too.</p>` : ''}
     ${sent.kind === 'probation' ? `<p>${fmtDays(sent.days)} suspended: ${sent.probationDays} days of probation instead. Another conviction before it's done and you serve it.</p>` : ''}

@@ -1954,6 +1954,89 @@ await step('gangs', async () => {
   });
 });
 
+// ---------------- lawyers + snitches: hire a lawyer at booking, homies booked with you, bail them out, who talked ----------------
+await step('lawyers + snitches', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await clear();
+  await p.evaluate(async () => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world, G = await import('./js/core/gangs.js');
+    for (const c of s.cars) delete c.impound;
+    s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; s.citations = []; s.informants = undefined;
+    s.cash = 300000; s.time.min = 10 * 60; s.gang = undefined; w.combat.arms.hp = 100;
+    G.jumpIn(s, 'hemphill'); s.gang.stats.driveBys = 1; s.gang.homies[0].rolling = true;
+    w.police.reset(w);
+    w.onBusted(400, false, [{ kind: 'robbery', text: 'Armed robbery — Amazin\' Mart.', fine: 6000 }]);
+  });
+  await p.waitForSelector('.modal h2:has-text("BUSTED")');
+  if (!/got booked with you/.test(await p.textContent('.modal'))) throw new Error('BUSTED modal should say the homie got booked too');
+  await p.click('.modal button:has-text("See the magistrate")');
+  await p.waitForSelector('.modal h2:has-text("Magistrate")');
+  const bail0 = await p.textContent('.modal');
+  await p.click('.modal button:has-text("Call a lawyer")');
+  await p.waitForSelector('.modal h2:has-text("Call a lawyer")');
+  await snap('34-pick-lawyer');
+  await p.click('.modal button:has-text("Hire Rita Salinas")');
+  await p.waitForSelector('.modal h2:has-text("Magistrate")');
+  const bail1 = await p.textContent('.modal');
+  const amt = x => +(/Bail is set at \$([\d,]+)/.exec(x)?.[1] || '0').replace(/,/g, '');
+  if (!/Rita Salinas is standing next to you/.test(bail1) || !(amt(bail1) < amt(bail0))) throw new Error(`lawyer should argue bail down: ${amt(bail0)} → ${amt(bail1)}`);
+  await p.click('.modal button:has-text("bondsman")'); await p.waitForTimeout(300);
+  let st = await p.evaluate(() => { const s = window.__rfg.game.s; return { lawyer: s.justice.cases[0]?.lawyer, held: s.informants.held.map(e => e.name), jailed: s.gang.homies.filter(h => h.jail).length }; });
+  if (st.lawyer !== 'salinas' || st.held.length !== 1 || st.jailed !== 1) throw new Error('case lawyer / homie in county: ' + JSON.stringify(st));
+  // the Lawyer app: bail the homie out (phone-sized screen)
+  await clear();
+  await p.setViewportSize({ width: 844, height: 390 }); await p.waitForTimeout(200);
+  await p.evaluate(() => window.__rfg.ui.openPhone('legal')); await p.waitForTimeout(250);
+  const app = await p.textContent('.phone-screen');
+  if (!/Rita Salinas/.test(app) || !(await p.$('[data-held]'))) throw new Error('Lawyer app should show the case lawyer and the homie in county');
+  if (shots) await p.evaluate(() => document.querySelectorAll('.toast').forEach(t => t.remove()));
+  await snap('35-lawyer-app');
+  await p.click('[data-held] [data-action="bail"]'); await p.waitForTimeout(200);
+  st = await p.evaluate(() => { const s = window.__rfg.game.s; return { held: s.informants.held.length, jailed: s.gang.homies.filter(h => h.jail).length }; });
+  if (st.held || st.jailed) throw new Error('bailing out the homie: ' + JSON.stringify(st));
+  // another homie gets picked up and folds: a felony warrant, and the app says somebody talked
+  await p.evaluate(async () => {
+    const s = window.__rfg.game.s, LG = await import('./js/core/legal.js');
+    const h = s.gang.homies[0]; h.loyal = 0;
+    LG.pickup(s, { kind: 'homie', ref: h.id, cls: 'F2', why: 'a gun charge' });
+    s.time.day++; LG.informantsDay(s, () => 0);
+  });
+  await clear();
+  await p.evaluate(() => window.__rfg.ui.openPhone('legal')); await p.waitForTimeout(250);
+  if (!/talked/.test(await p.textContent('.phone-screen'))) throw new Error('Lawyer app should list who talked');
+  st = await p.evaluate(() => { const s = window.__rfg.game.s; return { charges: s.justice.cases[0]?.charges.filter(x => x.ci).length, homies: s.gang.homies.length }; });
+  if (!st.charges || st.homies) throw new Error('the snitch should add charges to the open case and leave the set: ' + JSON.stringify(st));
+  if (shots) await p.evaluate(() => document.querySelectorAll('.toast').forEach(t => t.remove()));
+  await snap('36-who-talked');
+  await clear();
+  await p.setViewportSize({ width: 1280, height: 760 }); await p.waitForTimeout(200);
+  // court day: the lawyer's deal, then take it
+  await p.evaluate(async () => {
+    const s = window.__rfg.game.s, c = s.justice.cases[0]; s.time.day = c.date.day; s.time.min = 9 * 60;
+    const { hearing } = await import('./js/ui/court.js'); hearing(window.__rfg.app, c, { custody: false });
+  });
+  await p.click('.modal button:has-text("Approach the bench")');
+  const h2 = await p.waitForSelector('.modal h2:has-text("Plea"), .modal h2:has-text("Case dismissed")');
+  if (/Plea/.test(await h2.textContent())) {
+    const t = await p.textContent('.modal');
+    if (!/Rita Salinas negotiated this deal/.test(t) || !/Discovery says it's/.test(t) || !(await p.$('.modal button:has-text("Trial with Rita Salinas")'))) throw new Error('plea should show the lawyer, the deal and the informant: ' + t.slice(0, 300));
+    await snap('37-lawyer-plea');
+    await p.click('.modal button:has-text("Take the deal")');
+    await p.waitForSelector('.modal h2:has-text("Sentence")');
+    await p.click('.modal button');
+    if (await p.isVisible('.jail-clock')) { await p.click('button:has-text("Skip to release")'); await p.click('button:has-text("Walk out")'); }
+  } else await p.click('.modal button');
+  await p.waitForTimeout(250);
+  await clear();
+  await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    s.gang = undefined; s.informants = undefined; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = [];
+    for (const c of s.cars) delete c.impound;
+    w.police.reset(w); w.combat.arms.hp = 100;
+    w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; if (!w.inCar) w.toggleCar();
+  });
+});
+
 // ---------------- engine sounds: each car's note matches its engine ----------------
 await step('engine sounds', async () => {
   const r = await p.evaluate(async () => {

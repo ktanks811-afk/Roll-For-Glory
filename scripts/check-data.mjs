@@ -757,6 +757,126 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (classify({ kind: 'driveby', text: 'Drive-by shooting (gang activity).' }).cls !== 'F2') bad('a gang drive-by should be a 2nd-degree felony');
   game.s = null;
 }
+// ---- lawyers and snitches ----
+{
+  const J = await import('../js/core/justice.js');
+  const LG = await import('../js/core/legal.js');
+  const W = await import('../js/core/warrants.js');
+  const { LAWYERS, LAWYER_IDS } = await import('../js/data/lawyers.js');
+  const { ensureArms } = await import('../js/data/weapons.js');
+  const fresh = () => { const s = createState({ name: 'Law', age: 25, look: {}, story: false }); s.cash = 900000; s.time.day = 10; s.time.min = 9 * 60; game.s = s; return s; };
+  const felony = () => J.charge([{ kind: 'robbery', text: 'Armed robbery — Amazin\' Mart.' }, { kind: 'evading', text: 'Evading arrest (in a vehicle).' }]).charges;
+  if (LAWYER_IDS.some((id, i) => i && !(LAWYERS[id].fee > LAWYERS[LAWYER_IDS[i - 1]].fee && LAWYERS[id].trial > LAWYERS[LAWYER_IDS[i - 1]].trial))) bad('lawyer tiers should cost more and do more');
+  // a lawyer argues bail down, gets a better plea and better odds at trial
+  {
+    const s = fresh();
+    const c = J.fileCase(s, felony());
+    const pdBail = J.bailFor(s, c).amount, pdOffer = J.pleaOffer(s, c), pdOdds = J.convictChance(s, c.charges[0], c.lawyer);
+    const cash = s.cash;
+    if (LG.hireForCase(s, c, 'kane') || c.lawyer !== 'kane' || cash - s.cash !== LG.caseFee(s, c, 'kane')) bad('hiring a lawyer for a case');
+    if (LG.hireForCase(s, c, 'ferris') === '') bad('should not trade down to a cheaper lawyer');
+    if (!(J.bailFor(s, c).amount < pdBail)) bad('a lawyer should get bail lowered');
+    const offer = J.pleaOffer(s, c);
+    if (!(offer.days < pdOffer.days)) bad(`a lawyer's plea should beat the public defender's: ${offer.days} vs ${pdOffer.days}`);
+    if (!J.pleaCharges(c).some(ch => ch.pled && ch.cls === 'F2')) bad('a real lawyer should plead aggravated robbery down a class');
+    if (!(J.convictChance(s, c.charges[0], c.lawyer) < pdOdds - 0.2)) bad('a top lawyer should cut the odds of conviction');
+    if (!(J.dismissChance(c) > 0)) bad('a lawyer can get a felony thrown out');
+    // the old boolean "paid lawyer" still works for old saves
+    if (!(J.convictChance(s, c.charges[0], true) < pdOdds)) bad('old private-lawyer flag');
+  }
+  // the best lawyer can talk a no-bond hold into a bond, but not after you skipped court
+  {
+    const s = fresh();
+    s.justice.convictions.push({ day: 1, text: 'a', cls: 'F3' });
+    const c = J.fileCase(s, felony());
+    if (!J.bailFor(s, c).held) bad('aggravated robbery with felony priors should be held');
+    LG.hireForCase(s, c, 'kane');
+    const b = J.bailFor(s, c);
+    if (b.held || !b.hearing) bad('Kane should get a bond hearing');
+    c.fta = true;
+    if (!J.bailFor(s, c).held) bad('no lawyer gets you bail after you skip court');
+  }
+  // a retainer takes new cases for free and renews weekly
+  {
+    const s = fresh();
+    if (LG.setRetainer(s, 'salinas') || !LG.retainerActive(s)) bad('putting a lawyer on retainer');
+    const c = J.fileCase(s, felony());
+    if (c.lawyer !== 'salinas' || !c.retained || LG.caseFee(s, c, 'salinas') !== 0) bad('a retained lawyer takes new cases free');
+    s.time.day += 7; const cash = s.cash;
+    if (!LG.retainerDay(s)?.renewed || cash - s.cash !== LAWYERS.salinas.retainer) bad('the retainer should renew weekly');
+    s.cash = 0; s.bank = 0; s.time.day += 7;
+    if (!LG.retainerDay(s)?.lapsed || LG.retainerActive(s)) bad('an unpaid retainer should lapse');
+  }
+  // cash bail comes back down when you hire a lawyer after posting it
+  {
+    const s = fresh();
+    const c = J.fileCase(s, J.charge([{ kind: 'shots', text: 'Discharging a firearm in public.' }]).charges);
+    J.postBond(s, c, 'cash');
+    const paid = c.bond.paid, cash = s.cash;
+    LG.hireForCase(s, c, 'salinas');
+    if (!(c.bond.paid < paid) || s.cash !== cash - LG.caseFee(s, c, 'salinas') + (paid - c.bond.paid)) bad('a lawyer should get cash bail reduced');
+  }
+  // snitches: a homie gets booked, detectives lean on him, he gives you up
+  {
+    const s = fresh();
+    GANG.ensureGang(s); ensureArms(s).hp = 100;
+    GANG.jumpIn(s, 'hemphill');
+    s.gang.stats.driveBys = 2;
+    const h = s.gang.homies[0]; h.loyal = 0;
+    const e = LG.pickup(s, { kind: 'homie', ref: h.id, cls: 'F2', why: 'a gun charge' });
+    if (!e || !h.jail || GANG.readyHomies(s).includes(h) || s.messages[0]?.from !== 'tcjail') bad('a picked-up homie should be in county and call collect');
+    const loose = LG.talkChance(s, e);
+    LG.sendLawyer(s, e.id); LG.putOnBooks(s, e.id);
+    if (!(LG.talkChance(s, e) < loose - 0.2)) bad('a lawyer and books should make him less likely to talk');
+    s.time.day++;
+    LG.informantsDay(s, () => 0);   // he folds
+    const ws = s.warrants.filter(w => w.ci === h.nick);
+    if (!ws.length || !ws.every(w => w.felony) || !ws.some(w => /organized criminal/i.test(w.text))) bad('a snitch should put felony warrants out: ' + JSON.stringify(s.warrants));
+    if (s.gang.homies.includes(h) || s.informants.held.length || s.informants.talked[0]?.name !== h.nick) bad('a snitch is gone from the set');
+    const items = W.takeWarrants(s).items;
+    const chs = J.charge(items).charges;
+    if (!chs.length || !chs.every(ch => ch.ci === h.nick && ch.evidence < 0.6)) bad('informant charges should be weaker in court: ' + JSON.stringify(chs));
+    if (!(J.convictChance(s, chs[0], 'kane') < J.convictChance(s, chs[0], 'salinas'))) bad('a better lawyer tears a snitch apart');
+  }
+  // a solid homie bailed out comes home and never talks
+  {
+    const s = fresh();
+    GANG.ensureGang(s); ensureArms(s).hp = 100;
+    GANG.jumpIn(s, 'northside');
+    s.gang.stats.driveBys = 1;
+    const h = s.gang.homies[0];
+    const e = LG.pickup(s, { kind: 'homie', ref: h.id, cls: 'A', why: 'a weed charge' });
+    if (LG.bailOut(s, e.id) || h.jail || s.informants.held.length || !GANG.readyHomies(s).includes(h)) bad('bailing a homie out brings him home');
+    // a homie who holds it down comes home on his release day
+    const e2 = LG.pickup(s, { kind: 'homie', ref: h.id, cls: 'A', why: 'a weed charge' });
+    s.time.day++; LG.informantsDay(s, () => 0.99);
+    if (!e2.decided || e2.talked || s.warrants.length) bad('a solid homie should hold it down');
+    s.time.day = e2.out; LG.informantsDay(s, () => 0.99);
+    if (h.jail || s.informants.held.length) bad('he should come home when his time is up');
+    // homies riding with you get booked with you
+    h.rolling = true;
+    if (LG.coDefendants(s, 'F1').length !== 1 || !s.informants.held[0]?.codef) bad('rolling homies should be booked with you');
+  }
+  // a snitch with an open case: the charges go on the case, not a warrant
+  {
+    const s = fresh();
+    DR.ensureDrugs(s);
+    const c = J.fileCase(s, J.charge([{ kind: 'hitrun', text: 'Hit-and-run.' }]).charges);
+    s.properties.push('trap_stopsix'); s.drugs.sold = 5;
+    const e = LG.workerBusted(s, 'trap_stopsix');
+    s.time.day++; LG.informantsDay(s, () => 0);
+    if (!e?.talked || s.warrants.length || !c.charges.some(ch => ch.ci === e.name && ch.cls === 'F2')) bad('a trap worker who talks should add a drug charge to your case');
+    if (!(J.dismissChance(c) >= 0)) bad('dismiss chance');
+    // cooperating knocks the deal down, but the streets may find out
+    const before = J.pleaOffer(s, c);
+    if (LG.cooperateBlocked(s, c)) bad('cooperating should be possible on a felony case: ' + LG.cooperateBlocked(s, c));
+    const after = J.pleaOffer(s, c, { cooperate: true });
+    if (!(after.days < before.days || after.kind !== before.kind)) bad('cooperating should get a better deal');
+    const r = LG.cooperate(s, c, () => 0);
+    if (!r.exposed || !s.informants.marked) bad('a snitch should be found out sometimes');
+  }
+  game.s = null;
+}
 // ---- drugs, trap houses, land you build on ----
 {
   const st = createState({ name: 'D', age: 25, look: {}, story: false });

@@ -14,6 +14,7 @@ import { raidWhileAway } from './world2d/trap.js';
 import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
 import { book } from './ui/court.js';
+import { informantsDay, retainerDay, workerBusted } from './core/legal.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
@@ -152,7 +153,10 @@ function newDay() {
   // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at
   const dr = drugsDay(s);
   for (const n of dr.notes) toast(n, 'info');
-  for (const r of dr.raids) raidWhileAway(s, r);
+  for (const r of dr.raids) { raidWhileAway(s, r); workerBusted(s, r.trapId); }
+  // lawyers bill the week; whoever's in county talks to detectives or holds it down
+  retainerDay(s);
+  for (const n of informantsDay(s).notes) toast(n, 'info');
   // marketplace churn
   s.listings = s.listings.filter(() => Math.random() > 0.3);
   while (s.listings.length < 30) s.listings.push(makeListing());

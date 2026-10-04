@@ -14,6 +14,7 @@
 
 import { uid, spend, canAfford } from './state.js';
 import { emit } from './events.js';
+import { LAWYERS } from '../data/lawyers.js';
 
 // Real Texas punishment ranges (days) and what bail usually looks like.
 export const CLASSES = {
@@ -56,6 +57,7 @@ export function classify(o) {
     case 'gta': return { cls: 'SJF', text: 'Unauthorized use of a motor vehicle (stolen car).' };
     case 'carjack': return /armed/i.test(t) ? { cls: 'F1', text: 'Aggravated robbery (armed carjacking).', tg: true } : { cls: 'F2', text: 'Robbery (carjacking).' };
     case 'auto': return { cls: 'F3', text: 'Possession of a prohibited weapon (machine gun).' };
+    case 'eoca': return { cls: 'F3', text: o.text || 'Engaging in organized criminal activity.' };
     case 'bailjump': return { cls: o.felony ? 'F3' : 'A', text: o.felony ? 'Bail jumping and failure to appear (felony).' : 'Bail jumping and failure to appear.' };
     default: return { cls: 'B', text: o.text || 'Misdemeanor offense.' };
   }
@@ -68,6 +70,7 @@ export function ensureJustice(s) {
   j.convictions ??= [];    // { day, text, cls, sentence }
   j.probation ??= null;    // { until, text, deferred, suspended: { days, cls, tg }, caseId }
   j.nextCause ??= 1712000 + Math.floor(Math.random() * 9000);
+  j.retainer ??= null;     // { id, until }: a lawyer on call (core/legal.js)
   return j;
 }
 
@@ -89,7 +92,7 @@ export function charge(items, evidence = 0.85) {
     const c = classify(o);
     if (c.cls === 'C') { tickets.push({ ...o }); continue; }
     if (charges.some(x => x.text === c.text)) continue;
-    charges.push({ cls: c.cls, text: c.text, tg: !!c.tg, evidence: o.evidence ?? evidence });
+    charges.push({ cls: c.cls, text: c.text, tg: !!c.tg, evidence: o.evidence ?? evidence, ...(o.ci ? { ci: o.ci } : {}) });
   }
   return { charges, tickets };
 }
@@ -99,7 +102,9 @@ export function fileCase(s, charges, { surrender = false } = {}) {
   const j = ensureJustice(s);
   let c = j.cases[0];
   if (!c) {
-    c = { id: uid('case'), cause: j.nextCause++, filed: s.time.day, charges: [], bond: { type: 'pending', amount: 0, paid: 0 }, fta: false, surrender, held: false };
+    c = { id: uid('case'), cause: j.nextCause++, filed: s.time.day, charges: [], bond: { type: 'pending', amount: 0, paid: 0 }, fta: false, surrender, held: false, lawyer: null };
+    // a lawyer on retainer takes any new case
+    if (j.retainer && j.retainer.until >= s.time.day && LAWYERS[j.retainer.id]) { c.lawyer = j.retainer.id; c.retained = true; }
     j.cases.push(c);
   }
   for (const ch of charges) if (!c.charges.some(x => x.text === ch.text)) c.charges.push(ch);
@@ -110,18 +115,25 @@ export function fileCase(s, charges, { surrender = false } = {}) {
   return c;
 }
 
-// What the magistrate does at booking.
+// Who's defending you on a case (null: the public defender).
+export const lawyerOf = c => (c && LAWYERS[c.lawyer]) || null;
+
+// What the magistrate does at booking. A good lawyer argues bail down, and
+// the best one can talk a no-bond hold into a (big) bail.
 export function bailFor(s, c) {
-  const top = topClass(c.charges);
-  if (c.fta || c.violation || (top === 'F1' && priorScore(s) >= 2)) return { held: true, amount: 0, pr: false, why: c.fta ? 'You skipped court before.' : c.violation ? 'Probation violation hold.' : 'Danger to the community.' };
+  const top = topClass(c.charges), L = lawyerOf(c);
+  const hold = c.fta || c.violation || (top === 'F1' && priorScore(s) >= 2);
+  if (hold && !(L?.bond && !c.fta)) return { held: true, amount: 0, pr: false, why: c.fta ? 'You skipped court before.' : c.violation ? 'Probation violation hold.' : 'Danger to the community.' };
   const sorted = c.charges.map(x => CLASSES[x.cls].bail).sort((a, b) => b - a);
   let amount = sorted[0] + sorted.slice(1).reduce((t, b) => t + b * 0.25, 0);
   amount *= 1 + 0.5 * priorScore(s);
   if (c.surrender) amount *= 0.5;
+  if (hold) amount *= 2;               // your lawyer got you a bond hearing, but it isn't cheap
+  if (L) amount *= 1 - L.bail;
   amount = Math.max(250, Math.round(amount / 250) * 250);
   // first-time misdemeanours, or turning yourself in on a lower felony: released on your word
   const pr = (!CLASSES[top].felony && priorScore(s) === 0) || (c.surrender && CLASSES[top].rank <= CLASSES.F3.rank && priorScore(s) === 0);
-  return { held: false, amount, pr };
+  return { held: false, amount, pr, argued: !!L, hearing: !!hold };
 }
 
 // type: 'pr' (free), 'cash' (refunded when you show up), 'surety' (10% to a bondsman, gone), 'held'
@@ -162,25 +174,52 @@ export function courtTick(s, addWarrant) {
   return { case: c, forfeited };
 }
 
-// The State's plea offer on each charge. Short version: first-timers on
-// misdemeanours get deferred adjudication, felonies get the low end.
-export function pleaOffer(s, c) {
-  return sentence(s, c.charges, { plea: true });
+// What you plead guilty to. A real lawyer bargains the top charge down a
+// class (an aggravated robbery becomes a plain robbery); cooperating with
+// the DA knocks it down another.
+export function pleaCharges(c, { cooperate = false } = {}) {
+  const L = lawyerOf(c);
+  let n = (L?.reduce || 0) + (cooperate ? 1 : 0);
+  if (!n) return c.charges;
+  const top = topClass(c.charges);
+  return c.charges.map(ch => {
+    if (ch.cls !== top) return ch;
+    const r = Math.max(CLASSES.B.rank, CLASSES[ch.cls].rank - n);
+    return r === CLASSES[ch.cls].rank ? ch : { ...ch, cls: BY_RANK[r], tg: false, text: `${ch.text.replace(/\.$/, '')} (pled down to a ${CLASSES[BY_RANK[r]].short}).`, pled: ch.text };
+  });
 }
 
-// conviction chance per charge at trial
-export function convictChance(s, ch, privateLawyer) {
-  return Math.max(0.08, Math.min(0.95, ch.evidence - (privateLawyer ? 0.2 : 0) + priorScore(s) * 0.03));
+// How far your lawyer pulls the punishment down the range.
+export const lawyerEdge = (c, plea, cooperate = false) => (lawyerOf(c)?.plea || 0) * (plea ? 1 : 0.5) + (cooperate ? 0.12 : 0);
+
+// The State's plea offer on each charge. Short version: first-timers on
+// misdemeanours get deferred adjudication, felonies get the low end. A
+// lawyer gets you a better one.
+export function pleaOffer(s, c, { cooperate = false } = {}) {
+  return sentence(s, pleaCharges(c, { cooperate }), { plea: true, edge: lawyerEdge(c, true, cooperate) });
+}
+
+// conviction chance per charge at trial. lawyer: a LAWYERS id or entry, or
+// true for an unnamed paid lawyer (old saves). A charge that rests on an
+// informant (ch.ci) is shakier, and a good lawyer tears the snitch apart.
+export function convictChance(s, ch, lawyer) {
+  const L = lawyer === true ? { trial: 0.2, snitch: 0.1 } : typeof lawyer === 'string' ? LAWYERS[lawyer] : lawyer || null;
+  const ci = ch.ci ? 0.05 + (L?.snitch || 0) : 0;
+  return Math.max(0.08, Math.min(0.95, ch.evidence - (L?.trial || 0) - ci + priorScore(s) * 0.03));
 }
 
 export const lawyerFee = c => ({ B: 1500, A: 2500, SJF: 5000, F3: 10000, F2: 20000, F1: 40000 })[topClass(c.charges)] || 1500;
 
-// Before anything else, a weak misdemeanour case can get dropped.
+// Before anything else, a weak misdemeanour case can get dropped. A lawyer
+// files motions; a felony case gets thrown out only with a real lawyer.
 export function dismissChance(c) {
-  const top = topClass(c.charges);
-  if (CLASSES[top].felony || c.fta) return 0;
+  const top = topClass(c.charges), L = lawyerOf(c);
+  if (c.fta) return 0;
   const ev = Math.max(...c.charges.map(x => x.evidence));
-  return ev < 0.7 ? 0.35 : 0.08;
+  // a case that rests only on a snitch falls apart once a lawyer gets into discovery
+  const ciOnly = c.charges.every(x => x.ci) && L?.discovery ? 0.15 : 0;
+  if (CLASSES[top].felony) return L ? L.dismiss * 0.6 + ciOnly : 0;
+  return (ev < 0.7 ? 0.35 : 0.08) + (L?.dismiss || 0) + ciOnly;
 }
 
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -189,13 +228,13 @@ const roundDays = d => d >= 730 ? Math.round(d / 365) * 365 : d >= 120 ? Math.ro
 
 // The punishment for the charges you were found guilty of.
 // returns { kind: 'fine'|'deferred'|'probation'|'jail', fine, days (real), served (real days you actually do), facility, probationDays (game), cls, tg, text }
-export function sentence(s, convicted, { plea = false, rng = Math.random } = {}) {
+export function sentence(s, convicted, { plea = false, rng = Math.random, edge = 0 } = {}) {
   if (!convicted.length) return { kind: 'none', fine: 0, days: 0, served: 0 };
   const cls = topClass(convicted), K = CLASSES[cls], tg = convicted.some(x => x.tg && x.cls === cls);
   const priors = priorScore(s);
   const fine = Math.round(lerp(K.fine[0], K.fine[1], Math.min(1, (plea ? 0.15 : 0.45) + priors * 0.1)) / 50) * 50 + COURT_COSTS;
   // where in the range you land: pleas low, trials higher, priors and extra counts push it up
-  const pos = Math.min(1, (plea ? 0.08 : 0.4 + rng() * 0.3) + priors * 0.12 + (convicted.length - 1) * 0.08);
+  const pos = Math.max(0, Math.min(1, (plea ? 0.08 : 0.4 + rng() * 0.3) + priors * 0.12 + (convicted.length - 1) * 0.08 - edge));
   const days = roundDays(K.felony ? logLerp(K.days[0], K.days[1], pos) : lerp(K.days[0], K.days[1], pos));
   const base = { fine, cls, tg, days };
   if (cls === 'C') return { ...base, kind: 'fine', days: 0, served: 0 };
@@ -236,10 +275,10 @@ export const FACILITY = {
 // set up; cash bail comes back. Returns the money owed and the time to serve
 // (the caller runs the jail sim).
 // verdicts: [{ charge, guilty }]; plea: took the deal
-export function resolveCase(s, c, verdicts, { plea = false, rng = Math.random, served = 0 } = {}) {
+export function resolveCase(s, c, verdicts, { plea = false, rng = Math.random, served = 0, cooperate = false } = {}) {
   const j = ensureJustice(s);
   const guilty = verdicts.filter(v => v.guilty).map(v => v.charge);
-  let sent = sentence(s, guilty, { plea, rng });
+  let sent = sentence(s, guilty, { plea, rng, edge: lawyerEdge(c, plea, cooperate) });
   const refund = c.bond.type === 'cash' ? c.bond.paid : 0;
   // probation revoked: a new conviction while on probation brings the old sentence back
   let revoked = null;
