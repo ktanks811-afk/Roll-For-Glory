@@ -27,6 +27,7 @@ import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
 import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
+import { PLATE_SWAP } from '../world2d/theft.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -44,7 +45,7 @@ export function openPlace(loc, app) {
 const HANDLERS = {
   home: homeScreen,
   property: (loc, app, s) => s.properties.includes(loc.id) ? homeScreen(loc, app, s) : realty(loc, app, s, loc.id),
-  dealer, usedlot, perf, visual, repair, gas, food, clothing,
+  dealer, usedlot: fence, perf, visual, repair, gas, food, clothing,
   realty: (loc, app, s) => realty(loc, app, s),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
@@ -75,11 +76,20 @@ function homeScreen(loc, app, s) {
       <div class="card click" data-action="sleep" data-to="21"><h3>🌙 Rest until night</h3><p class="muted small">Skip to 9:00 PM. Meets are on.</p></div>
       <div class="card click" data-action="wardrobe"><h3>👕 Wardrobe</h3><p class="muted small">${s.player.outfits.length} items owned.</p></div>
       <div class="card click" data-action="save"><h3>💾 Save game</h3><p class="muted small">Manual save slots.</p></div>
+      ${w?.thefts?.near(loc) ? `<div class="card click" data-action="keephot"><h3>🔑 Keep the stolen car</h3><p class="muted small">New plates and a VIN swap: ${fmtMoney(PLATE_SWAP)}. It gets a rebuilt title and goes in a bay.${w.thefts.canKeep() ? '' : ' <b class="bad">Your garage is full.</b>'}</p></div>` : ''}
       <div class="card"><h3>📦 Parts bin</h3><p class="muted small">${s.partsBin.length} parts waiting · ${s.orders.length} orders on the way</p></div>
     </div></div>`;
     bind(root, {
       close: () => h.close(),
       garage: () => openGarage(app, { mode: 'home' }),
+      keephot: () => {
+        if (!w.thefts.canKeep()) { toast('No room. Sell a car or buy a bigger place first.', 'bad'); return; }
+        const car = w.thefts.keep();
+        if (!car) { toast(`You need ${fmtMoney(PLATE_SWAP)} for the plates.`, 'bad'); return; }
+        toast(`New plates on the ${modelOf(car).model}. It's yours now.`, 'good');
+        saveGame('auto', true);
+        h.refresh();
+      },
       sleep: d => {
         const to = +d.to;
         let mins = ((to * 60 - s.time.min) + 1440) % 1440 || 1440;
@@ -213,6 +223,19 @@ async function buyFromDealer(c, app, s, loc, h) {
 }
 
 // ---------------- used lot ----------------
+// Pull a stolen car onto Rusty's lot and Sal buys it, cash, no questions asked.
+async function fence(loc, app, s) {
+  const th = app.world?.thefts;
+  if (!th?.near(loc)) { usedlot(loc, app, s); return; }
+  if (app.world.police.phase === 'chase') { modal("Rusty's Used Autos", '<p>Sal waves you off the lot: "Not with the cops on you. Lose them, then come back."</p>'); return; }
+  const v = th.hot, m = CAR_BY_ID[v.car.modelId], offer = th.salOffer();
+  const pick = await modal("Rusty's Used Autos", `<p class="muted">Sal walks around the ${esc(carName(m, v.car.year))} and looks at the punched ignition. "I don't want to know."</p>
+    <p>He'll give you <b>${fmtMoney(offer)}</b> cash for it, no questions asked. The car gets parted out tonight.</p>`,
+    [{ label: `Sell it · ${fmtMoney(offer)}`, primary: true, value: 'sell' }, { label: 'Just browsing', value: 'lot' }]);
+  if (pick === 'sell') { const paid = th.sell(); audio.buy?.(); toast(`Sal paid ${fmtMoney(paid)}. That car never existed.`, 'good'); emit('carFenced', { paid }); }
+  else if (pick === 'lot') usedlot(loc, app, s);
+}
+
 function usedlot(loc, app, s) {
   openPanel((root, h) => {
     if (!s.rustyStock || s.rustyStock.day !== s.time.day) {
@@ -334,8 +357,8 @@ function repair(loc, app, s) {
 
 function gas(loc, app, s) {
   openPanel((root, h) => {
-    const car = activeCar(s);
     const w = app.world;
+    const car = w?.vehicle?.car?.hot ? w.vehicle.car : activeCar(s);   // filling up a stolen car works too
     const near = car && w?.vehicle && Math.hypot(w.vehicle.x - loc.x, w.vehicle.z - loc.z) < 45;
     const m = car ? modelOf(car) : null;
     const ev = m?.asp === 'ev';

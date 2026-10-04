@@ -5,7 +5,7 @@
 // table, and an action that isn't in the current table does nothing:
 //
 //   foot — walking around: WASD move, Shift run, E interact, F get in a car,
-//          G draw/holster, J or Space or click fire, R reload
+//          G draw/holster, J or Space or click fire, R reload, T steal a car
 //   car  — driving:        W gas, S brake/reverse, A/D steer, Space e-brake,
 //                          N/Shift nitrous, Q/E shift, Enter interact, F get out
 //   race — in a race:      the driving controls minus things a race doesn't use
@@ -44,6 +44,7 @@ export const CONTEXTS = {
     fire: ['KeyJ', 'Space'],
     reload: ['KeyR'],
     mask: ['KeyV'],
+    steal: ['KeyT'],
   },
   car: {
     ...COMMON, ...MOVE_X,

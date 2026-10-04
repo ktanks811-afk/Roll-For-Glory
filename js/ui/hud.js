@@ -20,7 +20,7 @@ import { wx, nightShift } from '../core/weather.js';
 import { currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 
 const HELP = {
-  foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
+  foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · T steal a car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
   car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · Enter interact · F get out · P phone',
 };
 
@@ -211,8 +211,12 @@ export class Hud {
     const rp = cb ? cb.robPrompt() : '';
     if (rp) parts.push(`<kbd>${tch ? 'USE' : 'E'}</kbd> <b style="color:#ff5a5a">${esc(rp)}</b>`);
     if (w.nearLoc && !(cb && cb.armed)) parts.push(`<kbd>${tch ? 'USE' : w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
-    if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${tch ? 'GET IN' : 'F'}</kbd> ${tch ? 'your car' : 'Get in'}`);
+    if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${tch ? 'GET IN' : 'F'}</kbd> ${w.vehicle.car.hot ? 'the stolen car' : tch ? 'your car' : 'Get in'}`);
     else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push(`<kbd>${tch ? 'GET OUT' : 'F'}</kbd> ${tch ? '' : 'Get out'}`);
+    const own = w.thefts?.own?.vehicle;
+    if (!w.inCar && own && Math.hypot(own.x - w.foot.x, own.z - w.foot.z) < 4.5) parts.push(`<kbd>${tch ? 'GET IN' : 'F'}</kbd> your car`);
+    const sp = w.thefts?.promptText();
+    if (sp) parts.push(`<kbd>${tch ? 'STEAL' : 'T'}</kbd> <b style="color:#ff5a5a">${esc(sp)}</b>`);
     const wl = cb && !w.inCar ? cb.hudLine(tch) : '';
     const wq = this.q('weapon');
     if (wq) {
@@ -223,7 +227,7 @@ export class Hud {
       wq.classList.toggle('hidden', !html);
     }
     const troot = document.getElementById('touch');
-    if (troot) { troot.classList.toggle('armed', !!(cb && cb.armed)); troot.classList.toggle('has-gun', !!(cb && cb.gun && !w.inCar)); troot.classList.toggle('has-mask', !w.inCar && ownsMask(w.s)); troot.classList.toggle('masked', !w.inCar && masked(w.s.player.look)); }
+    if (troot) { troot.classList.toggle('armed', !!(cb && cb.armed)); troot.classList.toggle('has-gun', !!(cb && cb.gun && !w.inCar)); troot.classList.toggle('has-mask', !w.inCar && ownsMask(w.s)); troot.classList.toggle('masked', !w.inCar && masked(w.s.player.look)); troot.classList.toggle('can-steal', !!w.thefts?.target); }
     const prompt = parts.join(' &nbsp;·&nbsp; ');
     pr.innerHTML = prompt; pr.classList.toggle('hidden', !prompt);
     // dash
@@ -258,7 +262,8 @@ export class Hud {
       }
       this.q('nosrow').classList.toggle('hidden', !v.spec.nosSecs);
       if (v.spec.nosSecs) this.q('nos').style.width = `${v.sim.nos / v.spec.nosSecs * 100}%`;
-      this.q('carname').textContent = `${v.car.year} ${v.model.model}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : ''}`;
+      const hot = v.car.hot;
+      this.q('carname').textContent = `${v.car.year} ${v.model.model}${hot ? (hot.reported ? ' · 🚨 STOLEN' : ' · STOLEN') : ''}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : ''}`;
     }
     this.renderRadio();
   }
