@@ -28,6 +28,7 @@ import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '..
 import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug } from './estate.js';
+import { ensureLoot, lootTotal, sellLoot, FENCE_RATE } from '../core/loot.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
@@ -46,7 +47,7 @@ export function openPlace(loc, app) {
 const HANDLERS = {
   home: homeScreen,
   property: (loc, app, s) => s.properties.includes(loc.id) ? homeScreen(loc, app, s) : openRealty(app, loc.id),
-  dealer, usedlot: fence, perf, visual, repair, gas, food, clothing,
+  dealer, usedlot: fence, perf, visual, repair, gas, food, corner, clothing,
   realty: (loc, app) => openRealty(app),
   trap: (loc, app) => openTrap(loc, app),
   land: (loc, app) => openLand(loc, app),
@@ -230,13 +231,25 @@ async function buyFromDealer(c, app, s, loc, h) {
 // Pull a stolen car onto Rusty's lot and Sal buys it, cash, no questions asked.
 async function fence(loc, app, s) {
   const th = app.world?.thefts;
-  if (!th?.near(loc)) { usedlot(loc, app, s); return; }
+  if (!th?.near(loc)) { if (ensureLoot(s).length) fenceGoods(loc, app, s); else usedlot(loc, app, s); return; }
   if (app.world.police.phase === 'chase') { modal("Rusty's Used Autos", '<p>Sal waves you off the lot: "Not with the cops on you. Lose them, then come back."</p>'); return; }
   const v = th.hot, m = CAR_BY_ID[v.car.modelId], offer = th.salOffer();
   const pick = await modal("Rusty's Used Autos", `<p class="muted">Sal walks around the ${esc(carName(m, v.car.year))} and looks at the punched ignition. "I don't want to know."</p>
     <p>He'll give you <b>${fmtMoney(offer)}</b> cash for it, no questions asked. The car gets parted out tonight.</p>`,
     [{ label: `Sell it · ${fmtMoney(offer)}`, primary: true, value: 'sell' }, { label: 'Just browsing', value: 'lot' }]);
   if (pick === 'sell') { const paid = th.sell(); audio.buy?.(); toast(`Sal paid ${fmtMoney(paid)}. That car never existed.`, 'good'); emit('carFenced', { paid }); }
+  else if (pick === 'lot') usedlot(loc, app, s);
+}
+
+// Sal also takes stolen goods off your hands, at a steep discount.
+async function fenceGoods(loc, app, s) {
+  if (app.world?.police.phase === 'chase') { usedlot(loc, app, s); return; }
+  const list = ensureLoot(s), total = lootTotal(s), offer = Math.round(total * FENCE_RATE);
+  const pick = await modal("Rusty's Used Autos", `<p class="muted">Sal looks at the bag. "Where'd you get all this? ...Never mind. Don't tell me."</p>
+    <div class="list">${list.map(i => `<div class="li"><div class="grow"><div class="t">${esc(i.name)}</div><div class="s">${i.from ? `From ${esc(i.from)}` : 'Hot'}</div></div><span class="muted">${fmtMoney(i.value)}</span></div>`).join('')}</div>
+    <p>He'll give you <b>${fmtMoney(offer)}</b> cash for all of it (${Math.round(FENCE_RATE * 100)}¢ on the dollar).</p><p class="small muted">Get busted with stolen goods on you and they're a theft charge.</p>`,
+    [{ label: `Sell it all · ${fmtMoney(offer)}`, primary: true, value: 'sell' }, { label: 'Look at cars', value: 'lot' }, { label: 'Keep it', value: 'keep' }]);
+  if (pick === 'sell') { const paid = sellLoot(s, null, FENCE_RATE); audio.buy?.(); toast(`Sal paid ${fmtMoney(paid)} for the goods.`, 'good'); emit('lootFenced', { paid }); }
   else if (pick === 'lot') usedlot(loc, app, s);
 }
 
@@ -401,6 +414,25 @@ function food(loc, app, s) {
         if (Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Loop 820 on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
         h.refresh();
       },
+    });
+  });
+}
+
+// Corner store: snacks and drinks behind the plexiglass. (Rob it with a gun out: world2d/combat.js.)
+function corner(loc, app, s) {
+  openPanel((root, h) => {
+    const items = [
+      { n: 'Hot Cheetos and a tea', d: '+15 energy', p: 2.99, e: 15 },
+      { n: 'Big Red', d: '+10 energy. A Texas classic.', p: 1.79, e: 10 },
+      { n: 'Volt Energy Drink', d: '+25 energy', p: 3.49, e: 25 },
+      { n: 'Honey bun', d: '+20 energy', p: 1.49, e: 20 },
+    ];
+    root.innerHTML = head(loc.name, 'Snacks · drinks · smokes · scratchers') + `<div class="p-body" style="max-width:640px">
+      <p class="muted small">The clerk watches you through the bulletproof glass.</p>
+      <div class="list">${items.map((f, i) => `<div class="li"><div class="grow"><div class="t">${esc(f.n)}</div><div class="s">${esc(f.d)}</div></div><button class="btn btn-sm" data-action="snack" data-i="${i}">${fmtMoney(f.p, true)}</button></div>`).join('')}</div></div>`;
+    bind(root, {
+      close: () => h.close(),
+      snack: d => { const f = items[+d.i]; if (spend(s, f.p, `${loc.name}: ${f.n}`)) { s.player.energy = Math.min(100, s.player.energy + f.e); h.refresh(); } },
     });
   });
 }

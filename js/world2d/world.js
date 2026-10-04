@@ -36,6 +36,7 @@ import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weathe
 import { applyEstate } from './estate.js';
 import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
+import { seizeLoot } from '../core/loot.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -601,6 +602,7 @@ export class World {
     // they chased you down: that's evading, on top of whatever they saw
     const ph = this.police.phase, items = record.slice();
     items.push(...seizeBag(s));   // they search you: any product on you is a charge
+    items.push(...seizeLoot(s));  // and stolen goods from a robbery
     if (ph !== 'none' && ph !== 'notice' && ph !== 'stop' && this.police.eyesOn !== false && !items.some(r => r.kind === 'evading')) {
       items.push(this.inCar && this.police.level >= 2 ? { kind: 'evading', text: 'Evading arrest (in a vehicle).' } : { kind: 'evading', text: 'Evading arrest.' });
     }
