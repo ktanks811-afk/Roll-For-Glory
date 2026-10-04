@@ -3,7 +3,7 @@
 // out). No account, no game.
 
 import { $, el, esc, bind, toast, confirm } from './dom.js';
-import { auth, USERNAME_RE } from '../net/auth.js';
+import { auth, USERNAME_RE, storageWorks, inAppBrowser } from '../net/auth.js';
 import { latestLegacySave } from '../core/save.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -43,6 +43,11 @@ export function showAuth(app, { mode, note = '', email = '', onDone } = {}) {
     }[m];
     const legacyNote = legacy && (m === 'signup' || m === 'login')
       ? `<p class="auth-legacy">Your saved career (<b>${esc(legacy.name)}</b>, day ${legacy.day}) on this device moves into the first account you log in with.</p>` : '';
+    // Browsers that forget everything on close would make them log in every time: say so up front.
+    const warn = (m === 'signup' || m === 'login') && auth.kind === 'supabase' && (inAppBrowser || !storageWorks)
+      ? `<p class="auth-warn">${inAppBrowser
+        ? "This app's built-in browser forgets your login when you close it. Open the game in <b>Safari</b> (or Chrome) and tap <b>Share → Add to Home Screen</b> to stay logged in."
+        : 'Your browser is blocking storage (Private Browsing or blocked cookies), so it will log you out every time you leave. Use a normal tab, or add the game to your home screen, to stay logged in.'}</p>` : '';
     root.innerHTML = '';
     const t = el(`<div class="auth">
       <form class="auth-card" novalidate>
@@ -50,6 +55,7 @@ export function showAuth(app, { mode, note = '', email = '', onDone } = {}) {
         <h1>${h}</h1>
         <p class="auth-sub">${sub}</p>
         ${state.note ? `<p class="auth-note">${esc(state.note)}</p>` : ''}
+        ${warn}
         ${legacyNote}
         ${fields}
         <p class="auth-err" data-err hidden></p>

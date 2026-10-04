@@ -18,8 +18,40 @@ const LOCAL_USERS = 'mwsr.auth.localusers';
 const isLocalHost = () => ['localhost', '127.0.0.1', '[::1]', ''].includes(location.hostname);
 export const USERNAME_RE = /^[A-Za-z0-9_.-]{3,16}$/;
 
+const COOKIE = 'mwsr_session';
+const cookiePath = () => location.pathname.replace(/[^/]*$/, '') || '/';
+
 function readJson(key) { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch { return null; } }
 function writeJson(key, v) { try { if (v == null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage blocked */ } }
+
+// Backup copy of just what it takes to log back in (refresh token + who).
+function writeCookie(sess) {
+  try {
+    const base = `${COOKIE}=; path=${cookiePath()}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
+    if (!sess || !sess.refresh_token) { document.cookie = base + '; max-age=0'; return; }
+    const u = sess.user || {};
+    const v = encodeURIComponent(JSON.stringify({ r: sess.refresh_token, u: { id: u.id, email: u.email, user_metadata: { username: u.user_metadata && u.user_metadata.username } } }));
+    document.cookie = base.replace('=;', `=${v};`) + '; max-age=34560000';   // 400 days, the most browsers allow
+  } catch { /* cookies blocked */ }
+}
+function readCookie() {
+  try {
+    const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE}=([^;]*)`));
+    if (!m) return null;
+    const d = JSON.parse(decodeURIComponent(m[1]));
+    return d && d.r ? { access_token: '', refresh_token: d.r, expires_at: 0, user: d.u } : null;
+  } catch { return null; }
+}
+
+// False when this browser throws away what the game stores (storage blocked,
+// some private modes): the player would have to log in on every launch.
+export const storageWorks = (() => {
+  try { const k = 'mwsr.probe'; localStorage.setItem(k, '1'); const ok = localStorage.getItem(k) === '1'; localStorage.removeItem(k); return ok; } catch { return false; }
+})();
+
+// Links opened inside Instagram, Snapchat, TikTok, Facebook and friends load in
+// a throwaway browser that often forgets everything once it is closed.
+export const inAppBrowser = /FBAN|FBAV|FB_IAB|Instagram|Snapchat|musical_ly|BytedanceWebview|TikTok|Twitter|LinkedInApp|Pinterest|Line\//i.test(navigator.userAgent || '');
 
 // What the rest of the game sees: { id, email, username }.
 const toUser = u => (u && u.id ? { id: u.id, email: u.email || '', username: (u.user_metadata && u.user_metadata.username) || (u.email || '').split('@')[0] } : null);
@@ -129,6 +161,9 @@ export const auth = {
     if (s && !s.expires_at && s.expires_in) s.expires_at = Math.floor(Date.now() / 1000) + s.expires_in;
     this.session = s && s.access_token ? s : null;
     writeJson(SESSION_KEY, this.session);
+    writeCookie(this.session);
+    // Ask the browser not to clear the game's storage when space runs low.
+    if (this.session) try { navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {}); } catch { /* not supported */ }
     for (const fn of this.listeners) fn(this.user);
   },
 
@@ -137,7 +172,7 @@ export const auth = {
   async restore() {
     const fromLink = await this.fromEmailLink();
     if (fromLink) return fromLink;
-    const saved = readJson(SESSION_KEY);
+    const saved = readJson(SESSION_KEY) || readCookie();
     if (!saved || !saved.refresh_token) return { user: null };
     this.session = saved;
     this.refreshNow();   // in the background: no waiting on a slow signal

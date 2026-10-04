@@ -40,6 +40,10 @@ await step('account required', async () => {
   // stays logged in across launches
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(600);
   if (!(await p.isVisible('.acct-chip:has-text("Tester")'))) throw new Error('logged out after reopening the game');
+  // a browser that loses localStorage but keeps cookies still keeps you logged in
+  await p.evaluate(() => localStorage.removeItem('mwsr.auth.session'));
+  await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(600);
+  if (!(await p.isVisible('.acct-chip:has-text("Tester")'))) throw new Error('logged out after localStorage lost the session (cookie backup)');
   // log out → log-in screen; wrong password refused; right one lets you back in with your saves
   await p.click('.acct-chip button'); await p.click('.modal button:has-text("Log out")'); await p.waitForTimeout(300);
   if (!(await p.isVisible('.auth-card'))) throw new Error('no log-in screen after logging out');
