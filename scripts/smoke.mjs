@@ -780,6 +780,110 @@ await step('carjacking', async () => {
   await calm();
 });
 
+// ---------------- stealing cars (GTA style) ----------------
+await step('stealing cars', async () => {
+  const calm = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; try { w.police.reset(w); } catch {} window.__rfg.game.s.heat = 0; w.paused = false; });
+  await calm();
+  // park your own car on a city street and get out
+  const ownUid = await p.evaluate(() => {
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle;
+    const r = w.map.roads.nearestOnRoad(120, -60);
+    v.x = r.x; v.z = r.z; v.h = Math.atan2(r.edge.dx, -r.edge.dz); v.vx = v.vz = 0; v.sim.v = 0;
+    w.inCar = false; w.foot.x = v.x + 3; w.foot.z = v.z + 3; w.cam.x = v.x; w.cam.z = v.z;
+    if (v.car.impound) delete v.car.impound;
+    return s.activeCar;
+  });
+  await p.evaluate(async () => (await import('./js/core/input.js')).input.setContext('foot'));
+  // a civilian car stopped at a light: walk up to the driver's door
+  const yank = () => p.evaluate(() => {
+    const w = window.__rfg.app.world, c = w.traffic.cars.find(c => !c.police);
+    if (!c) return false;
+    c.stun = 6; c.v = 0;
+    w.foot.x = c.x - Math.cos(c.h) * 2; w.foot.z = c.z - Math.sin(c.h) * 2; w.cam.x = c.x; w.cam.z = c.z;
+    window.__stealTarget = c;
+    return true;
+  });
+  if (!(await yank())) throw new Error('no traffic to steal from');
+  await p.waitForTimeout(150);
+  const prompt = await p.evaluate(() => ({ t: window.__rfg.app.world.thefts.target?.kind, hud: document.querySelector('.hud-prompt, [data-q="prompt"]')?.textContent || document.body.innerText.includes('Pull the driver out'), touch: document.getElementById('touch')?.classList.contains('can-steal') }));
+  if (prompt.t !== 'driver' || !prompt.touch) throw new Error('no steal prompt next to a stopped car ' + JSON.stringify(prompt));
+  await key('KeyT'); await p.waitForTimeout(1300);
+  await snap('42-carjack-npc');
+  const took = await p.evaluate(ownUid => { const w = window.__rfg.app.world, t = w.thefts; return { inCar: w.inCar, hot: w.vehicle?.car?.hot?.kind, own: t.own?.vehicle?.car?.uid === ownUid, gone: !w.traffic.cars.includes(window.__stealTarget), driver: t.drivers.length, stolen: window.__rfg.game.s.stats.carsStolen }; }, ownUid);
+  if (!took.inCar || took.hot !== 'carjack' || !took.own || !took.gone || !took.driver || !took.stolen) throw new Error('pulling the driver out failed ' + JSON.stringify(took));
+  // the 911 call comes in: units respond, it's on your record
+  await p.evaluate(() => { window.__rfg.app.world.vehicle.car.hot.callAt = 0; });
+  await p.waitForTimeout(300);
+  const call = await p.evaluate(() => { const w = window.__rfg.app.world; return { phase: w.police.phase, rec: w.police.record.map(r => r.kind), heat: window.__rfg.game.s.heat, reported: w.vehicle.car.hot.reported }; });
+  if (call.phase !== 'chase' || !call.rec.includes('carjack') || !(call.heat >= 2) || !call.reported) throw new Error('carjacking was never called in ' + JSON.stringify(call));
+  const cls = await p.evaluate(async () => (await import('./js/core/justice.js')).classify({ kind: 'carjack', text: 'Carjacking (robbery of a motor vehicle).' }).cls);
+  if (cls !== 'F2') throw new Error('carjacking charge class ' + cls);
+  await calm();
+  // get out, walk back to your own car: the stolen one gets dumped
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; });
+  await key('KeyF'); await p.waitForTimeout(150);
+  await p.evaluate(() => { const w = window.__rfg.app.world, o = w.thefts.own.vehicle; w.foot.x = o.x + 2; w.foot.z = o.z; });
+  await p.waitForTimeout(100);
+  await key('KeyF'); await p.waitForTimeout(200);
+  const back = await p.evaluate(ownUid => { const w = window.__rfg.app.world; return { inCar: w.inCar, mine: w.vehicle?.car?.uid === ownUid, own: !!w.thefts.own, dumped: w.thefts.dumped.length }; }, ownUid);
+  if (!back.inCar || !back.mine || back.own || !back.dumped) throw new Error('could not get back in your own car ' + JSON.stringify(back));
+  // a car parked at the curb: break in and drive off
+  await key('KeyF'); await p.waitForTimeout(150);
+  const parked = () => p.evaluate(() => {
+    const w = window.__rfg.app.world, me = w.thefts.own?.vehicle || w.vehicle;
+    const cs = w.map.colliders.filter(c => c.b?.kind === 'parked' && !c.off && Math.max(c.b.w, c.b.d) < 6.5 && Math.abs(c.b.x) < 900 && Math.abs(c.b.z) < 900);
+    cs.sort((a, b) => Math.hypot(a.b.x - me.x, a.b.z - me.z) - Math.hypot(b.b.x - me.x, b.b.z - me.z));
+    const c = cs[0]; if (!c) return null;
+    const b = c.b, along = b.w > b.d;
+    w.foot.x = along ? b.x + b.w / 2 : b.x - 0.6; w.foot.z = along ? b.z - 0.6 : b.z + b.d / 2; w.cam.x = w.foot.x; w.cam.z = w.foot.z;
+    window.__stealCol = c;
+    return { x: b.x, z: b.z };
+  });
+  if (!(await parked())) throw new Error('no parked cars in the city');
+  await p.waitForTimeout(150);
+  if (!(await p.evaluate(() => window.__rfg.app.world.thefts.target?.kind === 'parked'))) throw new Error('no steal prompt next to a parked car ' + JSON.stringify(await p.evaluate(() => window.__rfg.app.world.thefts.target?.kind || null)));
+  await key('KeyT'); await p.waitForTimeout(1900);
+  await snap('43-steal-parked');
+  const hw = await p.evaluate(() => { const w = window.__rfg.app.world; return { inCar: w.inCar, hot: w.vehicle?.car?.hot?.kind, off: window.__stealCol.off, gone: window.__stealCol.b.gone, carname: document.body.innerText.includes('STOLEN') }; });
+  if (!hw.inCar || hw.hot !== 'parked' || !hw.off || !hw.gone || !hw.carname) throw new Error('stealing a parked car failed ' + JSON.stringify(hw));
+  // a reported plate: a patrol close by runs it and lights you up
+  await calm();
+  await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, h = v.car.hot; h.quiet = true; h.callAt = 0; });
+  await p.waitForTimeout(200);
+  await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; w.police.phase = 'none'; w.thefts.plate = 0.99; const c = w.traffic.spawnNear(v.x, v.z, 0, 2000, {}); if (c) { c.police = true; c.stun = 5; w.police.patrols = [c]; v.x = c.x - Math.sin(c.h) * 9; v.z = c.z + Math.cos(c.h) * 9; v.h = c.h; v.vx = v.vz = 0; v.sim.v = 0; } });
+  await p.waitForTimeout(400);
+  const ran = await p.evaluate(() => { const w = window.__rfg.app.world; return { phase: w.police.phase, rec: w.police.record.map(r => r.kind), reported: w.vehicle.car.hot.reported }; });
+  if (!ran.reported || ran.phase !== 'chase' || !ran.rec.includes('gta')) throw new Error('reported plate never got run ' + JSON.stringify(ran));
+  await calm();
+  // Sal buys it at Rusty's, no questions asked
+  const cash0 = await p.evaluate(async () => {
+    const w = window.__rfg.app.world, v = w.vehicle, { LOC_BY_ID } = await import('./js/data/world.js'), l = LOC_BY_ID.rusty_used;
+    v.x = l.x + 4; v.z = l.z; v.vx = v.vz = 0; v.sim.v = 0;
+    return window.__rfg.game.s.cash;
+  });
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.rusty_used, window.__rfg.app); });
+  await p.waitForSelector('.modal button:has-text("Sell it")');
+  await snap('44-sal-fence');
+  await p.click('.modal button:has-text("Sell it")');
+  await p.waitForTimeout(200);
+  const sold = await p.evaluate(ownUid => { const w = window.__rfg.app.world; return { cash: window.__rfg.game.s.cash, inCar: w.inCar, mine: w.vehicle?.car?.uid === ownUid }; }, ownUid);
+  if (!(sold.cash > cash0) || sold.inCar || !sold.mine) throw new Error('Sal did not buy the stolen car ' + JSON.stringify({ cash0, ...sold }));
+  // busted in a stolen car: it goes back to its owner, yours isn't towed
+  await calm();
+  if (!(await yank())) throw new Error('no traffic for the bust test');
+  await p.waitForTimeout(100);
+  await key('KeyT'); await p.waitForTimeout(1300);
+  if (!(await p.evaluate(() => !!window.__rfg.app.world.vehicle?.car?.hot))) throw new Error('second carjack failed');
+  await p.evaluate(() => window.__rfg.app.world.impound());
+  const bust = await p.evaluate(ownUid => { const w = window.__rfg.app.world, c = window.__rfg.game.s.cars.find(c => c.uid === ownUid); return { mine: w.vehicle?.car === c, impound: !!c.impound, inCar: w.inCar }; }, ownUid);
+  if (!bust.mine || bust.impound || bust.inCar) throw new Error('busted in a stolen car impounded yours ' + JSON.stringify(bust));
+  // back in your own car for the steps after this one
+  await calm();
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; });
+  await key('KeyF'); await p.waitForTimeout(200);
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get back in your car');
+});
+
 await step('save + reload', async () => {
   // saved while sitting in the car, so loading it back must start the engine sound
   await p.evaluate(() => { const w = window.__rfg.app.world; if (!w.inCar) { w.vehicle.vx = w.vehicle.vz = 0; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; } });

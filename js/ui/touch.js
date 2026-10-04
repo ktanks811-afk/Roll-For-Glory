@@ -1,6 +1,6 @@
 // On-screen controls for phones. What shows depends on what you're doing:
 //
-//   walking  — joystick, RUN, IN (get in car), USE
+//   walking  — joystick, RUN, IN (get in car), USE, STEAL (next to a car you can take)
 //   driving  — ◀ ▶ steering arrows, BRAKE and GAS pedals, a shift knob,
 //              NOS, E-BRAKE, HORN, OUT (get out), USE
 //   racing   — arrows (change lanes), pedals, shift knob, NOS
@@ -283,6 +283,7 @@ export const touchUi = {
           <button class="tc-btn tc-round" data-hold="run" data-ed="run">RUN</button>
           <button class="tc-btn tc-round" data-tap="enterExit" data-ed="getin">GET<br>IN</button>
           <button class="tc-btn tc-round tc-use" data-tap="interact" data-ed="use">USE</button>
+          <button class="tc-btn tc-round tc-steal" data-tap="steal" data-ed="steal">STEAL</button>
         </div>
       </div>
       <div class="tc-drive">
