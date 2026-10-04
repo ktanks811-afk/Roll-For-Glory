@@ -3,7 +3,7 @@
 
 import { BREAKDOWNS } from '../core/upkeep.js';
 import { $, el, esc } from './dom.js';
-import { game, fmtMoney, gameTimeStr, dayName, tierOf, nextTier, activeCar, tankGallons } from '../core/state.js';
+import { game, fmtMoney, gameTimeStr, dayName, tierOf, nextTier, activeCar, tankGallons, dirtyOf } from '../core/state.js';
 import { settings } from '../core/save.js';
 import { LOCATIONS, districtAt } from '../data/world.js';
 import { turfLabel } from '../core/turf.js';
@@ -149,7 +149,8 @@ export class Hud {
     ob.classList.toggle('hidden', !online.active);
     if (online.active) ob.textContent = `🌐 ${online.serverName} · ${online.list().length + 1} online`;
     this.q('cash').textContent = fmtMoney(s.cash);
-    this.q('bank').textContent = s.bank ? `Bank ${fmtMoney(s.bank)}` : '';
+    const dirty = dirtyOf(s);
+    this.q('bank').textContent = [s.bank ? `Bank ${fmtMoney(s.bank)}` : '', dirty ? `💵 ${fmtMoney(dirty)} dirty` : ''].filter(Boolean).join(' · ');
     const t = tierOf(s.rep), nt = nextTier(s.rep);
     this.q('tier').textContent = `${s.rep.toLocaleString()} REP · ${t.name}`;
     this.q('repbar').style.width = nt ? `${(s.rep - t.rep) / (nt.rep - t.rep) * 100}%` : '100%';

@@ -64,7 +64,7 @@ export function buy(s, id, n = 1) {
   const g = DRUG_BY_ID[id];
   if (!g || n < 1) return err('He doesn\'t have that.');
   const cost = prices(s)[id].buy * n;
-  if (!spend(s, cost, `Lil Tre: ${n} × ${g.name}`)) return err(`That's ${fmtMoney(cost)}. Come back with the money.`);
+  if (!spend(s, cost, `Lil Tre: ${n} × ${g.name}`, { street: true })) return err(`That's ${fmtMoney(cost)}. Come back with the money.`);
   const bag = ensureDrugs(s).bag;
   bag[id] = (bag[id] || 0) + n;
   return { ok: true, text: `+${n} ${g.unit === 'oz' ? 'oz' : '×'} ${g.name}. It's in your bag.`, cost };
@@ -77,7 +77,7 @@ export function dump(s, id, n = 1) {
   if (n < 1) return err('You don\'t have any.');
   const pay = Math.round(prices(s)[id].street * 0.5) * n;
   bag[id] -= n; if (!bag[id]) delete bag[id];
-  earn(s, pay, `Sold ${n} × ${DRUG_BY_ID[id].name} back to the plug`);
+  earn(s, pay, `Sold ${n} × ${DRUG_BY_ID[id].name} back to the plug`, { dirty: true });
   return { ok: true, text: `He gives you ${fmtMoney(pay)}.`, pay };
 }
 
@@ -125,7 +125,7 @@ export function serve(s, trapId, c, rng = Math.random) {
   need -= fromStash;
   if (need > (bag[c.drug] || 0)) return err('You ran out.');
   if (need) { bag[c.drug] -= need; if (!bag[c.drug]) delete bag[c.drug]; }
-  earn(s, c.price, `Served ${c.who.replace(/^an? /, '')}`);
+  earn(s, c.price, `Served ${c.who.replace(/^an? /, '')}`, { dirty: true });
   const d = ensureDrugs(s);
   d.sold++; d.earned += c.price;
   t.served++;
@@ -187,7 +187,7 @@ export function drugsDay(s, rng = Math.random) {
     const t = trapState(s, id), T = TRAPS[id];
     t.traffic = Math.round(t.traffic * DECAY * 10) / 10;
     if (!t.worker || t.closed > s.time.day) continue;
-    if (!spend(s, WORKER_PAY, `${T.name}: paid the door`)) { t.worker = false; notes.push(`${T.name}: you couldn't pay your worker, so he walked.`); continue; }
+    if (!spend(s, WORKER_PAY, `${T.name}: paid the door`, { street: true })) { t.worker = false; notes.push(`${T.name}: you couldn't pay your worker, so he walked.`); continue; }
     let n = 0, take = 0, raided = false;
     const want = Math.round(T.worker * (0.7 + rng() * 0.6));
     for (let k = 0; k < want; k++) {

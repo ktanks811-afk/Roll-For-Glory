@@ -147,18 +147,18 @@ export function openMeet(loc, app) {
         const v = await prompt('Place a bet', `<p>On ${esc(pickR.name)}. Odds ${odds(pickR, other)}.</p>`, '$', '200');
         if (!v) return;
         const amt = Math.min(+String(v).replace(/[^\d]/g, ''), [0, 1000, 5000, 20000, 80000, 300000][tierOf(s.rep).n]);
-        if (!amt || !spend(s, amt, `Side bet on ${pickR.nick}`)) return;
+        if (!amt || !spend(s, amt, `Side bet on ${pickR.nick}`, { street: true })) return;
         const won = simulateRace(pickR, other);
         st.betDone = true;
         const mult = oddsMult(pickR, other);
-        if (won) { earn(s, amt * (1 + mult), `Won side bet on ${pickR.nick}`); st.log.push(`${pickR.nick} took it by a fender. You collect.`); }
+        if (won) { earn(s, amt * (1 + mult), `Won side bet on ${pickR.nick}`, { dirty: true }); st.log.push(`${pickR.nick} took it by a fender. You collect.`); }
         else st.log.push(`${other.nick} walked ${pickR.nick}. There goes ${fmtMoney(amt)}.`);
         audio[won ? 'win' : 'lose']();
         h.refresh();
       },
       zed: d => {
         const p = st.vendor[+d.i];
-        if (!spend(s, p.deal, `Zed: ${p.name}`)) return;
+        if (!spend(s, p.deal, `Zed: ${p.name}`, { street: true })) return;
         p.sold = true; s.partsBin.push({ pid: p.id, uid: uid('b') });
         toast('Zed: "Pleasure doing business."', 'good');
         h.refresh();

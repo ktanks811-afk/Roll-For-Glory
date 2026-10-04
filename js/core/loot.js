@@ -41,7 +41,7 @@ export function sellLoot(s, uids = null, rate = FENCE_RATE) {
   if (!pick.length) return 0;
   const paid = Math.round(pick.reduce((t, i) => t + lootValue(i), 0) * rate);
   s.loot = list.filter(i => !pick.includes(i));
-  s.cash += paid;
+  s.cash += paid; s.dirty = (s.dirty || 0) + paid;   // fenced goods pay in dirty cash (core/bank.js)
   return paid;
 }
 
@@ -136,7 +136,7 @@ export function sellToFence(s, uids, earn, heat) {
   if (!items.length) return { ok: false, paid: 0, items, text: 'Nothing to sell.' };
   s.loot = list.filter(i => !items.includes(i));
   const paid = items.reduce((t, i) => t + Math.round(lootValue(i) * share), 0);
-  earn(s, paid, `Fenced ${items.length === 1 ? items[0].name : items.length + ' items'}`);
+  earn(s, paid, `Fenced ${items.length === 1 ? items[0].name : items.length + ' items'}`, { dirty: true });
   return { ok: true, paid, items, text: '' };
 }
 
@@ -154,7 +154,7 @@ export function pawnItem(s, itemUid, earn, rng = Math.random) {
     return { ok: true, flagged: true, paid: 0, item, warrant };
   }
   const paid = counterOffer(item);
-  earn(s, paid, `Pawned ${item.name}`);
+  earn(s, paid, `Pawned ${item.name}`, { dirty: true });
   return { ok: true, flagged: false, paid, item };
 }
 

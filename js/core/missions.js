@@ -135,7 +135,7 @@ function finish(s, ok, why, world) {
   if (m.log.length > 20) m.log.length = 20;
   if (ok) {
     m.done++; m.earned += a.pay;
-    earn(s, a.pay, `Mission: ${a.title}`);
+    earn(s, a.pay, `Mission: ${a.title}`, { dirty: !!a.hot });
     addRep(s, a.rep, a.title);
     sendMessage(s, a.from, KIND_BY_ID[a.kind].thanks);
   } else {

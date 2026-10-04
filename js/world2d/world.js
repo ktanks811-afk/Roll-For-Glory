@@ -37,6 +37,7 @@ import { tickNeeds, runMul } from '../core/needs.js';
 import { applyEstate } from './estate.js';
 import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
+import { seizeCash } from '../core/bank.js';
 import { seizeLoot } from '../core/loot.js';
 import { healthMods } from '../core/health.js';
 import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
@@ -632,6 +633,8 @@ export class World {
     // they chased you down: that's evading, on top of whatever they saw
     const ph = this.police.phase, items = record.slice();
     items.push(...seizeBag(s));   // they search you: any product on you is a charge
+    const cash = seizeCash(s);    // and a dirty stack gets seized (a laundering charge if it's big)
+    items.push(...cash.items);
     items.push(...seizeLoot(s));  // and stolen goods are evidence
     if (ph !== 'none' && ph !== 'notice' && ph !== 'stop' && this.police.eyesOn !== false && !items.some(r => r.kind === 'evading')) {
       items.push(this.inCar && this.police.level >= 2 ? { kind: 'evading', text: 'Evading arrest (in a vehicle).' } : { kind: 'evading', text: 'Evading arrest.' });
@@ -650,7 +653,7 @@ export class World {
     this.impound();
     const list = c ? `<div class="charges">${c.charges.map(x => `<div>⚖ ${esc(x.text)}</div>`).join('')}</div>` : '';
     this.ui.modal('BUSTED',
-      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. ${hotCar ? 'The stolen car goes back to its owner. Your own car is still where you left it.' : 'Your car gets towed to the impound lot behind the FWPD Central Precinct.'}</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>${hotCar ? '' : '<p class="small muted">To get the car back, go into the Central Precinct and sign it out. No charge.</p>'}${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. They let you go at the precinct.</p>'}`,
+      `${warrantStop ? '<p class="muted">"License and registration... Step out of the car, please. You have an active warrant."</p>' : ''}<p>You're in cuffs. ${hotCar ? 'The stolen car goes back to its owner. Your own car is still where you left it.' : 'Your car gets towed to the impound lot behind the FWPD Central Precinct.'}</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>${insured ? ' (insurance covered 25%)' : ''}. Rep −60.</p>${hotCar ? '' : '<p class="small muted">To get the car back, go into the Central Precinct and sign it out. No charge.</p>'}${cash.seized ? `<p class="bad">They seized <b>${fmtMoney(cash.seized)}</b> in cash you couldn't explain.</p>` : ''}${wr.n ? `<p class="small muted">${wr.n} warrant${wr.n > 1 ? 's' : ''} served.</p>` : ''}${c ? `<p>You're booked into the Tarrant County Jail on:</p>${list}` : '<p class="small muted">No criminal charges. They let you go at the precinct.</p>'}`,
       [{ label: c ? 'See the magistrate' : 'OK', primary: true }]).then(() => { if (c) this.ui.book?.(c); });
     emit('busted', { fine: total, charges: charges.length });
   }

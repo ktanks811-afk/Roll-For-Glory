@@ -169,7 +169,7 @@ export function found(s, name, hood, color = '#ff2a3a') {
   if (why) return why;
   name = String(name || '').trim().slice(0, 24);
   if (!name) return 'Name your set.';
-  if (!spend(s, FOUND_COST, `Started ${name}`)) return 'Not enough money.';
+  if (!spend(s, FOUND_COST, `Started ${name}`, { street: true })) return 'Not enough money.';
   const g = ensureGang(s);
   g.set = 'own'; g.own = { name, color, hood }; g.respect = 0; g.homies = []; g.init = null; g.offers = [];
   addHomie(s); addHomie(s);
@@ -215,7 +215,7 @@ export function recruitBlocked(s) {
 export function recruit(s) {
   const why = recruitBlocked(s);
   if (why) return why;
-  spend(s, recruitCost(s), 'Put a homie on');
+  spend(s, recruitCost(s), 'Put a homie on', { street: true });
   const h = addHomie(s);
   emit('toast', { kind: 'good', text: `${h.nick} is with you now.` });
   return '';
@@ -247,7 +247,7 @@ export function squash(s, id) {
   const g = ensureGang(s);
   if (!GANGS[id]) return 'No such set.';
   if (!g.beef[id] && !rivalsOf(s).includes(id)) return 'There\'s no beef.';
-  if (!spend(s, squashCost(s, id), `Squashed it with ${GANGS[id].short}`)) return 'Not enough money.';
+  if (!spend(s, squashCost(s, id), `Squashed it with ${GANGS[id].short}`, { street: true })) return 'Not enough money.';
   g.beef[id] = 0;
   g.truce[id] = s.time.day + 3;
   if (g.hit?.gang === id) g.hit = null;
@@ -336,12 +336,12 @@ function finishJob(s, ok) {
   }
   if (j.init) {
     putOn(s, j.by, 'You did that.');
-    earn(s, j.pay, `${GANGS[j.by].short}: initiation`);
+    earn(s, j.pay, `${GANGS[j.by].short}: initiation`, { dirty: true });
     return;
   }
   g.stats.jobs++;
   if (j.kind === 'driveby') g.stats.driveBys++;
-  earn(s, j.pay, `${mySet(s)?.short || 'Set'}: ${j.title}`);
+  earn(s, j.pay, `${mySet(s)?.short || 'Set'}: ${j.title}`, { dirty: true });
   if (j.kind !== 'collect') addBeef(s, j.gang, JOB_KINDS[j.kind].beef);
   addRespect(s, j.respect, j.title);
 }
@@ -370,7 +370,7 @@ function newDay(s) {
   if (!g.set) { g.offers = []; return; }
   const r = rankOf(s), ready = readyHomies(s).length;
   const bag = g.set === 'own' ? ready * HOMIE_DUES : r.bag;
-  if (bag > 0) earn(s, bag, g.set === 'own' ? `${g.own.name}: dues from ${ready} homie${ready === 1 ? '' : 's'}` : `${mySet(s).short}: your bag (${r.name})`);
+  if (bag > 0) earn(s, bag, g.set === 'own' ? `${g.own.name}: dues from ${ready} homie${ready === 1 ? '' : 's'}` : `${mySet(s).short}: your bag (${r.name})`, { dirty: true });
   rollOffers(s);
   // hot beef: somebody comes looking for you
   if (!g.hit) {
