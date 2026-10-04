@@ -484,7 +484,7 @@ function drawGarageRoof(ctx, b, rx, ry, w, d, z, showLabels) {
 }
 
 // Shopfront on the street side of a landmark: awning, glass, doors, props.
-const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', corner: '#ff8a1a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e', carshow: '#e8c21a' };
+const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', corner: '#ff8a1a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e', carshow: '#e8c21a', hospital: '#e0192e' };
 function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
   const side = b.side, ns = side === 'N' || side === 'S';
   const len = ns ? w : d;
@@ -530,6 +530,13 @@ function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
     box(fr(0, len, -1.4 * z, -0.4 * z), '#1b4fc4');
     ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(rx + w / 2, ry + d / 2 - (ns ? 0 : 0), Math.min(w, d) * 0.22, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#1b4fc4'; ctx.font = `700 ${Math.max(8, Math.min(w, d) * 0.3)}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('H', rx + w / 2, ry + d / 2 + 1);
+  }
+  if (shop === 'hospital') {
+    // red cross on the roof, ER band over the doors
+    box(fr(0, len, -1.4 * z, -0.4 * z), '#e0192e');
+    const cx = rx + w / 2, cy = ry + d / 2, a = Math.min(w, d) * 0.3, t = a * 0.34;
+    ctx.fillStyle = '#fff'; ctx.fillRect(cx - a / 2 - 2, cy - a / 2 - 2, a + 4, a + 4);
+    ctx.fillStyle = '#e0192e'; ctx.fillRect(cx - a / 2, cy - t / 2, a, t); ctx.fillRect(cx - t / 2, cy - a / 2, t, a);
   }
   // roof units
   const hx = Math.abs(Math.sin(b.x * 0.37 + b.z * 0.11));
