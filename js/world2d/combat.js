@@ -21,7 +21,7 @@ import { collideCircle } from './map.js';
 import { WEAPON_BY_ID, CAL, ensureArms, equippedGun } from '../data/weapons.js';
 import { LOCATIONS } from '../data/world.js';
 import { masked, ownsMask } from '../core/disguise.js';
-import { addLoot, rollLoot } from '../core/loot.js';
+import { addLoot, rollLoot, grabLoot, lootNames } from '../core/loot.js';
 import { LOOT_BY_ID } from '../data/loot.js';
 import { healthMods } from '../core/health.js';
 
@@ -444,7 +444,8 @@ export class Combat {
         this.s.cash += m.pay;
         this.s.stats.stolen = (this.s.stats.stolen || 0) + m.pay;
         this.arms.robberies++;
-        this.say(`Mugged: +${fmtMoney(m.pay)}.`, 'good');
+        const got = grabLoot(this.s, 'mug', 'a mugging');
+        this.say(`Mugged: +${fmtMoney(m.pay)}${got.length ? ` and ${lootNames(got)}` : ''}.`, 'good');
         if (m.call) w.police.dispatchRobbery(w, { x: f.x, z: f.z, name: 'a street mugging' }, true);
       }
     }
