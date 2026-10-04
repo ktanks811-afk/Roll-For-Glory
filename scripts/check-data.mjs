@@ -34,6 +34,8 @@ import * as EST from '../js/core/estate.js';
 import { applyEstate } from '../js/world2d/estate.js';
 import { LAND, PLANS, TRAPS, DRUGS } from '../js/data/estate.js';
 import { charge as chargeOf, classify } from '../js/core/justice.js';
+import * as NEED from '../js/core/needs.js';
+import { FOOD_SPOTS, MENUS } from '../js/data/food.js';
 import * as CHOP from '../js/core/chop.js';
 import * as LOOTC from '../js/core/loot.js';
 import { LOOT, LOOT_BY_ID, STORE_LOOT, STREET_LOOT, LOOT_KINDS, PAWN } from '../js/data/loot.js';
@@ -864,6 +866,43 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!EST.sellLand(st, 'land_stopsix').ok || PROPERTIES.land_stopsix) bad('selling land you built on');
   for (const id of Object.keys(LAND)) { delete PROPERTIES[id]; }
 }
+// ---- hunger + sleep: meters drain slowly, food and sleep fill them, food spots stand on the map ----
+{
+  const s = createState({ name: 'H', age: 25, look: {}, story: false });
+  if (s.player.food !== 100 || s.player.energy !== 100) bad('a new career should start fed and rested');
+  const old = { player: { energy: 60 }, inventory: {} };
+  NEED.ensureNeeds(old);
+  if (old.player.food !== 100 || old.inventory.tacos !== 0) bad('an old save should get a full food meter and an empty bag');
+  // an hour of play barely moves them; a full day empties the stomach, not the battery
+  NEED.tickNeeds(s, 60);
+  if (!(s.player.food > 90 && s.player.energy > 90)) bad(`an hour of play drained too much: ${JSON.stringify(s.player)}`);
+  const msgs = [];
+  for (let m = 0; m < 24 * 60; m++) { const w = NEED.tickNeeds(s, 1); if (w) msgs.push(w); }
+  if (s.player.food !== 0) bad('a full day without eating should empty the food meter');
+  if (msgs.length !== 4) bad(`expected one low and one very low heads-up per meter, got ${msgs.length}: ${msgs.join(' | ')}`);
+  if (!(NEED.runMul(s) < 1)) bad('running on empty should slow you down');
+  NEED.eat(s, MENUS.taco[0]);
+  if (s.player.food !== MENUS.taco[0].food) bad('eating tacos did not fill you up');
+  s.inventory.tacos = 1;
+  if (!NEED.eatFromBag(s, 'tacos') || s.inventory.tacos !== 0) bad('could not eat tacos from the bag');
+  if (NEED.eatFromBag(s, 'tacos')) bad('ate tacos you do not have');
+  NEED.sleep(s, 10 * 60);
+  if (s.player.energy !== 100) bad('sleeping should leave you fully rested');
+  s.player.energy = 10; NEED.nap(s, 120);
+  if (s.player.energy !== 50) bad('a two-hour nap should give +40 energy');
+  for (const [k, items] of Object.entries(MENUS)) for (const f of items) if (!(f.price > 0) || !(f.food >= 0) || !(f.energy >= 0)) bad(`menu ${k}: ${f.id} has a bad price or value`);
+  const map = buildMap();
+  for (const l of FOOD_SPOTS) {
+    if (!MENUS[l.menu]) bad(`${l.id} has no menu`);
+    if (!map.buildings.some(b => b.loc === l.id && b.shop === 'food')) bad(`${l.id} has nothing built on its lot`);
+    if (!LOCATIONS.includes(l)) bad(`${l.id} is not on the map`);
+    // reachable from the street: the road is right outside the marker
+    const back = { N: [0, -1], S: [0, 1], W: [-1, 0], E: [1, 0] }[l.side];
+    if (collideCircle(map, l.x + back[0] * 6, l.z + back[1] * 6, 1.5)) bad(`${l.id}: something blocks the way up to it`);
+  }
+  if (FOOD_SPOTS.filter(l => l.truck).length < 3) bad('Fort Worth needs its taco trucks');
+}
+
 // ---------------- chop shop ----------------
 {
   const st = createState({ name: 'C', age: 25, look: {}, story: false });
@@ -1009,6 +1048,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (s.feed.length > FEED.FEED_MAX) bad('feed grew past its cap');
   for (const k of Object.keys(RIVAL_TEXTS)) if (!RIVAL_TEXTS[k].length) bad(`rival texts ${k} empty`);
 }
+
 // ---- store robberies: corner stores, stolen goods, selling and getting caught with it ----
 {
   const corners = LOCATIONS.filter(l => l.type === 'corner');

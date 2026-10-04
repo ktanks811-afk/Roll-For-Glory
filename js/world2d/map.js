@@ -6,6 +6,7 @@ import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RI
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
 import { addEstate } from './estate.js';
+import { addEats } from './eats.js';
 
 function mulberry32(a) {
   return () => {
@@ -213,6 +214,8 @@ export function buildMap() {
   const extra = addScenery({ roads, buildings, lots, trees, rocks, props, water, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
   // trap houses, land for sale and the plug, outside the city grid: cleared of filler, then built (world2d/estate.js)
   addEstate({ ...gout, props });
+  // taco trucks and diners: same idea, their own lots cleared and built on (world2d/eats.js)
+  addEats({ ...gout, props });
 
   // ---------------- colliders ----------------
   const colliders = [];

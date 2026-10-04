@@ -40,10 +40,10 @@ export const BLACKOUT_DISCOUNT = 0.1;
 export const CLOTH_BY_ID = Object.fromEntries(CLOTHES.map(c => [c.id, c]));
 
 export const FOOD = [
-  { id: 'coffee', name: 'Black Coffee', price: 4, energy: 15, desc: 'Keeps your reactions sharp.' },
-  { id: 'burger', name: 'Double Smash Burger', price: 12, energy: 40, desc: "Lucky's classic." },
-  { id: 'plate', name: 'Midnight Plate (eggs, hash, steak)', price: 22, energy: 70, desc: 'Fuel for a long night.' },
-  { id: 'energy', name: 'Volt Energy Drink (to go)', price: 6, energy: 0, item: 'energyDrinks', desc: 'Keep one in the car. Drink from the phone.' },
+  { id: 'coffee', name: 'Black Coffee', price: 4, food: 0, energy: 15, desc: 'Keeps your reactions sharp.' },
+  { id: 'burger', name: 'Double Smash Burger', price: 12, food: 55, energy: 40, desc: "Lucky's classic." },
+  { id: 'plate', name: 'Midnight Plate (eggs, hash, steak)', price: 22, food: 85, energy: 70, desc: 'Fuel for a long night.' },
+  { id: 'energy', name: 'Volt Energy Drink (to go)', price: 6, food: 0, energy: 0, item: 'energyDrinks', desc: 'Keep one in the car. Drink it from the meters on your screen.' },
 ];
 
 export const SKIN_TONES = ['#f1d1b5', '#e0b590', '#c68e65', '#9c6644', '#6b4429', '#3f2a1a'];

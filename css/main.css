@@ -191,6 +191,17 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .hud-clock { font-family: var(--head); font-size: 22px; font-weight: 700; text-shadow: 0 2px 6px #000; }
 .hud-clock small { display: block; font-family: var(--ui); font-size: 12px; color: var(--silver); text-transform: capitalize; }
 .hud-place { font-size: 13px; color: var(--silver); text-shadow: 0 1px 4px #000; margin-top: 2px; }
+.hud-needs { display: flex; gap: 10px; margin-top: 5px; padding: 3px 6px; background: rgba(0,0,0,.35); border: 0; border-radius: 6px; color: #fff; font: inherit; font-size: 12px; pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hud-needs span { display: flex; align-items: center; gap: 4px; }
+.hud-needs i { display: block; width: 44px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.16); overflow: hidden; }
+.hud-needs b { display: block; height: 100%; background: var(--green); transition: width .4s; }
+.hud-needs .low b { background: var(--yellow); }
+.hud-needs .empty b { background: var(--red); }
+.hud-needs .low, .hud-needs .empty { animation: needs-blink 1.6s ease-in-out infinite; }
+@keyframes needs-blink { 50% { opacity: .55; } }
+.needs-row { display: flex; gap: 14px; margin-bottom: 10px; }
+.needs-row .need { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.needs-row .need .bar { flex: 1; }
 .hud-objective { margin-top: 10px; background: rgba(10,10,12,.78); border-left: 3px solid var(--red); padding: 6px 10px; font-weight: 700; font-size: 14px; max-width: 330px; border-radius: 0 4px 4px 0; }
 .hud-gig { margin-top: 6px; background: rgba(10,10,12,.78); border-left: 3px solid #f0a020; padding: 6px 10px; font-weight: 700; font-size: 14px; max-width: 330px; border-radius: 0 4px 4px 0; }
 .hud-gig small { display: block; color: #f0c060; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
