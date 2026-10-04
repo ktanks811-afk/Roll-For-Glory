@@ -681,6 +681,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (NM.meetNight({ day: 5, min: 21 * 60 }) !== 5 || NM.meetNight({ day: 6, min: 2 * 60 }) !== 5 || NM.meetNight({ day: 6, min: 3 * 60 }) !== 0
     || NM.meetNight({ day: 4, min: 23 * 60 }) !== 0 || NM.meetNight({ day: 6, min: 22 * 60 }) !== 6 || NM.meetNight({ day: 7, min: 60 }) !== 6 || NM.meetNight({ day: 7, min: 22 * 60 }) !== 0) bad('night meet hours are off');
   if (!LOCATIONS.some(l => l.id === NM.MEET_LOC && l.type === 'meet' && l.weekend && !l.tier)) bad('the weekend meet needs an open lot on the map');
+  { const lot = LOCATIONS.find(l => l.id === NM.MEET_LOC), mate = LOCATIONS.find(l => l !== lot && l.block && lot.block && l.block.join() === lot.block.join()); if (mate) bad(`the weekend meet shares its block with ${mate.id}`); }
   for (const tier of [1, 2, 3, 4, 5]) {
     const lu = NM.lineup(tier);
     if (lu.cars.length < 6) bad(`night meet tier ${tier} only has ${lu.cars.length} cars`);
