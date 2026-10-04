@@ -526,6 +526,26 @@ export class PoliceSystem {
     if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') { this.startChase(w, true); this.unseenT = -8; }
   }
 
+  // A stolen car got called in (world2d/theft.js). An officer who saw it
+  // chases now; a 911 call sends units to the spot, so they show up a little
+  // later. A carjacking is a felony stop from the start.
+  reportTheft(w, o, x, z, seen) {
+    const carjack = o.kind === 'carjack';
+    const before = this.level;
+    this.s.heat = clamp(Math.max(this.s.heat + (carjack ? 0.6 : 0.3) * this.vague(), carjack ? (o.text.includes('Armed') ? 2.5 : 2) : 1), 0, 5.99);
+    this.decayHold = 25;
+    if (this.level > before) w.hud.radio(`Dispatch: Heat level ${this.level}. ${carjack ? 'Carjacking suspect.' : 'Stolen vehicle.'}`);
+    const have = this.record.find(r => r.kind === o.kind);
+    if (!have) this.record.push({ kind: o.kind, text: o.text, fine: o.fine, conceal: o.conceal ?? 0 });
+    this.lastSeen = { x, z, vx: 0, vz: 0 };
+    if (this.phase === 'stop') this.fled(w);
+    else if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') {
+      this.startChase(w, true);
+      if (!seen) this.unseenT = -10;
+    }
+    if (seen) this.eyesOn = true;
+  }
+
   // A vague description ("someone in black, mask on") puts less heat on you.
   vague() { return 1 - 0.3 * this.disguise; }
 

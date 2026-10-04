@@ -7,7 +7,7 @@ import { carSprite, dimsFor } from '../gfx2d/carSprite.js';
 import { signalState } from './render.js';
 import { ROAD_W } from '../data/world.js';
 
-const COMMON = CARS.filter(c => !c.market && c.msrp < 70000);
+export const COMMON = CARS.filter(c => !c.market && c.msrp < 70000);
 const COLORS = ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4', '#c8b98a', '#5a5d63', '#0d0d0d', '#4a5232', '#8c9196', '#e0e0e0'];
 const pick = a => a[Math.floor(Math.random() * a.length)];
 

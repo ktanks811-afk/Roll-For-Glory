@@ -164,6 +164,11 @@ body.touch .race-sub { font-size: 14px; top: 44%; }
 #touch .tc-mask { display: none; }
 #touch.has-mask .tc-mask { display: flex; align-items: center; justify-content: center; }
 #touch.masked .tc-mask { background: rgba(10,10,12,.85); border-color: #fff; }
+/* steal a car: only next to one you can take */
+#touch .tc-steal { display: none; border-color: #ffbe1e; background: rgba(150, 90, 0, .6); font-weight: 800; animation: tc-steal-pulse 1s ease-in-out infinite; }
+#touch.can-steal .tc-steal { display: flex; align-items: center; justify-content: center; }
+#touch .tc-steal.on { background: rgba(255, 190, 30, .85); color: #111; }
+@keyframes tc-steal-pulse { 50% { box-shadow: 0 0 0 calc(var(--u) * 6) rgba(255, 190, 30, .25); } }
 #touch .tc-fire { width: calc(var(--u) * 68); height: calc(var(--u) * 68); }
 #touch .tc-fire { background: rgba(255,42,58,.55); border-color: #ff2a3a; font-weight: 800; }
 
@@ -175,7 +180,7 @@ body.touch .race-sub { font-size: 14px; top: 44%; }
 
 /* ---------- button layout editor (Settings → Edit button layout) ---------- */
 #touch.editing { pointer-events: auto; z-index: 45; background: rgba(5, 5, 6, .9); }
-#touch.editing .tc-gun, #touch.editing .tc-fire, #touch.editing .tc-mask { display: flex; align-items: center; justify-content: center; }
+#touch.editing .tc-gun, #touch.editing .tc-fire, #touch.editing .tc-mask, #touch.editing .tc-steal { display: flex; align-items: center; justify-content: center; }
 #touch.editing[data-ctx="car"] .tc-wheel { display: block; }
 #touch.editing[data-ctx="car"] .tc-arrows { display: flex; }
 #touch.editing [data-ed] { outline: calc(var(--u) * 2) dashed rgba(255, 255, 255, .35); outline-offset: calc(var(--u) * 3); }
