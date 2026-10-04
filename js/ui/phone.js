@@ -27,6 +27,8 @@ import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
 import { wx } from '../core/weather.js';
+import { GANGS } from '../data/gangs.js';
+import { ensureSocial, myHandle, markSeen, likePost, rivalsList, heatWord, rivalOptions, answerRival, HEATED_AT } from '../core/feed.js';
 import { ensure as ensureMissions, now as missionNow, offerById, acceptMission, declineMission, abandonMission, pointGps, currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 
 const APPS = [
@@ -85,7 +87,7 @@ function renderHome(scr, ctx) {
   const unread = s.messages.filter(m => !m.read).length;
   const t = tierOf(s.rep);
   const offers = ms.offers.filter(o => o.expires > missionNow(s)).length;
-  const badge = { messages: unread, fwpd: hasWarrant(s) ? s.warrants.length : 0, missions: ms.active ? '!' : offers };
+  const badge = { messages: unread, fwpd: hasWarrant(s) ? s.warrants.length : 0, missions: ms.active ? '!' : offers, social: ensureSocial(s).unseen };
   // lock-screen style cards: where you stand with FWPD, the job you're on, where the GPS is taking you
   const warr = hasWarrant(s), cites = s.citations?.length || 0;
   const a = ms.active, stop = currentStop(s);
@@ -136,6 +138,10 @@ function msgAction(s, m) {
     if (!o || o.expires <= missionNow(s)) return '<span class="tag">Closed</span>';
     return `<button class="btn btn-sm btn-primary" data-action="maccept" data-id="${a.id}" ${ms.active ? 'disabled' : ''}>Take the job</button> <button class="btn btn-sm" data-action="mdecline" data-id="${a.id}">Pass</button>${ms.active ? '<div class="small muted" style="margin-top:4px">Finish your current job first.</div>' : ''}`;
   }
+  if (a.type === 'rival') {
+    if (a.done) return `<span class="tag">${{ race: 'You ran it back', back: 'You talked back', calm: 'You let it go' }[a.done] || 'Handled'}</span>`;
+    return rivalOptions(s, a.id).map((o, i) => `<button class="btn btn-sm ${i === 0 ? 'btn-primary' : ''}" data-action="rival" data-id="${m.id}" data-pick="${o.id}">${esc(o.label)}</button>`).join(' ');
+  }
   if (a.type === 'offer') return '<button class="btn btn-sm" data-action="offers">View offers</button>';
   if (a.type === 'sponsor' && !a.done) return `<button class="btn btn-sm btn-primary" data-action="sponsor" data-id="${m.id}">Sign deal</button>`;
   return '';
@@ -158,6 +164,13 @@ RENDER.messages = (scr, ctx) => {
     mdecline: d => { declineMission(s, d.id); ctx.h.refresh(); },
     mgps: () => { pointGps(s, ctx.app.world); ctx.h.close(); },
     offers: () => ctx.go('marketplace', 'selling'),
+    rival: d => {
+      const m = s.messages.find(x => x.id === d.id);
+      const why = answerRival(s, m, d.pick);
+      if (why) toast(why, 'bad');
+      else toast({ race: 'Run it back. Check your texts for the spot.', back: 'You talked back. They won\'t forget it.', calm: 'You let it go.' }[d.pick], d.pick === 'back' ? 'info' : 'good');
+      ctx.h.refresh();
+    },
     sponsor: d => {
       const m = s.messages.find(x => x.id === d.id);
       s.sponsor = { ...m.action.deal, until: s.time.day + m.action.deal.days };
@@ -305,16 +318,36 @@ const SPONSORS = [
   { at: 50000, name: 'Apex Lubricants', perWin: 4500, days: 21, contact: 'kingpin' },
 ];
 RENDER.social = (scr, ctx) => {
-  const s = ctx.s;
+  const s = ctx.s, so = ensureSocial(s);
   const car = activeCar(s);
   const postedToday = s.lastPostDay === s.time.day;
+  const tab = ctx.st.tab || 'all';
+  markSeen(s);
+  const me = myHandle(s);
+  const posts = s.feed.filter(p => tab === 'you' ? p.mine || !p.who || p.about : true).slice(0, 50);
+  const rivals = rivalsList(s);
+  const avatar = (p) => p.who ? `<span class="avatar" style="background:${p.color || '#555'}">${esc((p.who.replace(/[^\w]/g, '')[0] || '?').toUpperCase())}</span>` : `<span class="avatar" style="background:linear-gradient(135deg,#a01aff,#ff1a6a)">${esc(s.player.name[0])}</span>`;
+  const postHtml = p => `<div class="tpost ${p.about ? 'about' : ''}">${avatar(p)}<div class="grow">
+      <div class="tp-head"><b>${esc(p.who || s.player.name)}</b>${p.v ? '<i class="tp-v">✔</i>' : ''}<small>${esc(p.who ? '@' + p.handle : me)} · Day ${p.day}${p.t ? ' ' + p.t : ''}</small></div>
+      <p>${esc(p.text)}</p>
+      ${(p.comments || []).slice(0, 2).map(c => `<div class="tp-cmt"><b>@${esc(c.who)}</b> ${esc(c.text)}</div>`).join('')}
+      <div class="tp-acts">${p.id ? `<button class="tp-like ${p.liked ? 'on' : ''}" data-action="like" data-id="${p.id}">${p.liked ? '♥' : '♡'} ${p.likes.toLocaleString()}</button>` : `<span>♥ ${p.likes.toLocaleString()}</span>`}<span>💬 ${(p.comments || []).length}</span></div>
+    </div></div>`;
+  const rivalHtml = r => `<div class="li"><span class="avatar" style="background:${r.kind === 'gang' ? GANGS[r.id]?.color || '#7a1414' : RACER_BY_ID[r.id]?.color || '#888'}">${esc(r.name[0])}</span><div class="grow"><div class="t">${esc(r.name)} <span class="tag ${r.heat >= HEATED_AT ? 'tag-red' : 'tag-yellow'}">${heatWord(r.heat)}</span></div><div class="s">${r.kind === 'gang' ? 'Set you have beef with' : 'Racer with a grudge'}</div>${bar(r.heat, r.heat >= HEATED_AT ? 'bad' : '')}</div>${r.contact ? `<button class="btn btn-sm" data-action="dm" data-id="${esc(r.contact)}">Texts</button>` : ''}</div>`;
   scr.innerHTML = head('Throttle') + `<div class="app-body">
-    <div class="row"><span class="avatar" style="background:linear-gradient(135deg,#a01aff,#ff1a6a)">${esc(s.player.name[0])}</span><div class="grow"><b>@${esc(s.player.name.toLowerCase().replace(/\W+/g, ''))}</b><div class="muted small">${s.followers.toLocaleString()} followers · ${s.stats.wins} wins</div></div></div>
-    <p class="small muted">Followers come from wins, big wagers, meets, escapes and clean builds. Sponsors find you at ${SPONSORS.map(x => x.at.toLocaleString()).join(', ')} followers.</p>
+    <div class="row"><span class="avatar" style="background:linear-gradient(135deg,#a01aff,#ff1a6a)">${esc(s.player.name[0])}</span><div class="grow"><b>${esc(me)}</b><div class="muted small">${s.followers.toLocaleString()} followers · ${s.stats.wins} wins</div></div></div>
     ${s.sponsor ? `<div class="li"><div class="grow"><div class="t">Sponsored by ${esc(s.sponsor.name)}</div><div class="s">${fmtMoney(s.sponsor.perWin)} per win · until day ${s.sponsor.until}</div></div></div>` : ''}
-    <button class="btn btn-primary" data-action="post" ${!car || postedToday ? 'disabled' : ''} style="width:100%;margin:8px 0">${postedToday ? 'Posted today — come back tomorrow' : car ? `📸 Post your ${esc(modelOf(car).model)}` : 'Get a car to post'}</button>
-    <div class="list">${s.feed.slice(0, 40).map(p => `<div class="msg"><div class="from"><span>${esc(p.who || '@' + s.player.name)}</span><small>Day ${p.day}</small></div><p>${esc(p.text)}</p><div class="small muted">♥ ${p.likes.toLocaleString()}</div></div>`).join('') || '<div class="empty">No posts yet</div>'}</div></div>`;
+    <button class="btn btn-primary" data-action="post" ${!car || postedToday ? 'disabled' : ''} style="width:100%;margin:8px 0">${postedToday ? 'Posted today. Come back tomorrow' : car ? `📸 Post your ${esc(modelOf(car).model)}` : 'Get a car to post'}</button>
+    <div class="tabs tp-tabs"><button class="${tab === 'all' ? 'on' : ''}" data-action="tab" data-id="all">For you</button><button class="${tab === 'you' ? 'on' : ''}" data-action="tab" data-id="you">About you</button><button class="${tab === 'rivals' ? 'on' : ''}" data-action="tab" data-id="rivals">Rivals${rivals.length ? ` (${rivals.length})` : ''}</button></div>
+    ${tab === 'rivals'
+      ? (rivals.length ? `<p class="small muted">Beat somebody, take their car or slide on their set and they'll remember. Answer their threats in Messages.</p><div class="list">${rivals.map(rivalHtml).join('')}</div>` : '<div class="empty">Nobody has a problem with you. Yet.</div>')
+      : `<div class="tfeed">${posts.map(postHtml).join('') || `<div class="empty">${tab === 'you' ? 'Nobody\'s posting about you yet. Win a race, run from the cops, make some noise.' : 'No posts yet'}</div>`}</div>
+        <p class="small muted">Followers come from wins, chases, big wagers and people talking about you. Sponsors find you at ${SPONSORS.map(x => x.at.toLocaleString()).join(', ')} followers.</p>`}
+  </div>`;
   wire(scr, ctx, {
+    tab: d => { ctx.st.tab = d.id; ctx.h.refresh(); },
+    like: d => { likePost(s, d.id); ctx.h.refresh(); },
+    dm: d => ctx.go('messages', d.id),
     post: () => {
       const c = activeCar(s);
       const m = modelOf(c);
@@ -322,7 +355,7 @@ RENDER.social = (scr, ctx) => {
       const gain = Math.round((10 + mods * 6 + m.rarity * 18 + carMetrics(c).pi / 20) * (0.7 + Math.random() * 0.8) * (1 + s.followers / 5000));
       s.lastPostDay = s.time.day;
       addFollowers(s, gain);
-      s.feed.unshift({ day: s.time.day, text: pickCaption(c), likes: Math.round(gain * (3 + Math.random() * 6)) });
+      s.feed.unshift({ id: 'post' + Date.now().toString(36), mine: true, day: s.time.day, t: gameTimeStr(s.time), text: pickCaption(c), likes: Math.round(gain * (3 + Math.random() * 6)), comments: [] });
       toast(`+${gain} followers`, 'good');
       checkSponsors(s);
       ctx.h.refresh();
