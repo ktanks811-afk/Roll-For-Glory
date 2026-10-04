@@ -1796,6 +1796,7 @@ await step('kustoms studio + car show', async () => {
 await step('weekend night meet', async () => {
   const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
   await clear();
+  const saved = await p.evaluate(() => { const s = window.__rfg.game.s; return { time: { ...s.time }, cash: s.cash, bank: s.bank }; });
   const open = (day, min) => p.evaluate(async ([day, min]) => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const s = window.__rfg.game.s; s.time.day = day; s.time.min = min; s.heat = 0; openPlace(LOC_BY_ID.gran_plaza, window.__rfg.app); }, [day, min]);
   // Thursday night: nothing going on
   await open(11, 22 * 60);
@@ -1845,7 +1846,8 @@ await step('weekend night meet', async () => {
     await clear(); await open(12, 23 * 60 + 30);
     if (!/shut it down/.test(await p.textContent('.modal-body'))) throw new Error('lot should stay closed after the cops broke it up');
   }
-  await p.evaluate(() => { const s = window.__rfg.game.s; s.heat = 0; s.crew = null; s.time.day = 10; s.time.min = 12 * 60; });
+  // put the clock and the money back so later steps see the same game they would without this one
+  await p.evaluate(saved => { const s = window.__rfg.game.s; s.heat = 0; s.crew = null; s.meetRace = null; Object.assign(s.time, saved.time); s.cash = saved.cash; s.bank = saved.bank; }, saved);
   await clear();
 });
 
