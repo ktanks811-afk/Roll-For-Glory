@@ -10,6 +10,7 @@ import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { drugsDay } from './core/drugs.js';
+import { chopDay, PARTS_CHARGE } from './core/chop.js';
 import { raidWhileAway } from './world2d/trap.js';
 import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
@@ -160,6 +161,12 @@ function newDay() {
   const dr = drugsDay(s);
   for (const n of dr.notes) toast(n, 'info');
   for (const r of dr.raids) raidWhileAway(s, r);
+  // the chop shop cools off, or the task force sweeps it while you're not there
+  const ch = chopDay(s);
+  if (ch?.swept) {
+    if (ch.talked) addWarrant(s, { ...PARTS_CHARGE, fine: Math.max(2000, PARTS_CHARGE.fine), felony: true, evidence: 'Junior Marchetti\'s statement to the task force' });
+    sendMessage(s, 'junior', `Task force hit the yard this morning. They took everything off the shelf${ch.took.parts ? ` (${ch.took.parts} of your parts)` : ''} and chained the gate. ${ch.talked ? 'They had me in a room for six hours. I\'m sorry, man. They know your name.' : 'I didn\'t say nothing.'} Lay low for a few days.`);
+  }
   // marketplace churn
   s.listings = s.listings.filter(() => Math.random() > 0.3);
   while (s.listings.length < 30) s.listings.push(makeListing());
