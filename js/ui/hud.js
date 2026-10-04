@@ -1,6 +1,7 @@
 // In-world HUD: clock, money, rep, heat, speedo/tach, fuel, nitrous,
 // minimap, prompts, police radio and the current objective.
 
+import { BREAKDOWNS } from '../core/upkeep.js';
 import { $, el, esc } from './dom.js';
 import { game, fmtMoney, gameTimeStr, dayName, tierOf, nextTier, activeCar, tankGallons } from '../core/state.js';
 import { settings } from '../core/save.js';
@@ -64,6 +65,7 @@ export class Hud {
         <div class="dash-gear" data-gear>N</div>
         <div class="dash-tach"><div data-rpm></div><i data-redline></i></div>
         <div class="dash-row"><span>FUEL</span><div class="bar thin"><div data-fuel></div></div></div>
+        <div class="dash-row hidden" data-oilrow><span>OIL</span><div class="bar thin"><div data-oil></div></div></div>
         <div class="dash-row hidden" data-engrow><span>ENG</span><div class="bar thin"><div data-eng></div></div></div>
         <div class="dash-row hidden" data-noiserow><span>NOISE</span><b data-noise>—</b></div>
         <div class="dash-row" data-nosrow><span>NOS</span><div class="bar thin nos"><div data-nos></div></div></div>
@@ -262,6 +264,11 @@ export class Hud {
       this.q('engrow').classList.toggle('hidden', !(v.spec.engineRisk > 0 || v.spec.engineNosRisk > 0 || eh < 70) || v.model.asp === 'ev');
       this.q('eng').style.width = `${eh}%`;
       this.q('eng').classList.toggle('low', eh < 35);
+      // oil life: shows once it's due
+      const oil = v.car.oil ?? 100;
+      this.q('oilrow').classList.toggle('hidden', !(oil < 30) || v.model.asp === 'ev');
+      this.q('oil').style.width = `${oil}%`;
+      this.q('oil').classList.toggle('low', oil < 12);
       // exhaust noise: only worth showing once the car is loud enough to matter
       const nr = this.q('noiserow'), loud = (w.staticDb || 0) > LEGAL_DB - 8;
       nr.classList.toggle('hidden', !loud);
@@ -273,7 +280,7 @@ export class Hud {
       this.q('nosrow').classList.toggle('hidden', !v.spec.nosSecs);
       if (v.spec.nosSecs) this.q('nos').style.width = `${v.sim.nos / v.spec.nosSecs * 100}%`;
       const hot = v.car.hot;
-      this.q('carname').textContent = `${v.car.year} ${v.model.model}${hot ? (hot.reported ? ' · 🚨 STOLEN' : ' · STOLEN') : ''}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : ''}`;
+      this.q('carname').textContent = `${v.car.year} ${v.model.model}${hot ? (hot.reported ? ' · 🚨 STOLEN' : ' · STOLEN') : ''}${v.car.broken ? ` · 🛠 ${BREAKDOWNS[v.car.broken]?.short || 'BROKEN DOWN'}` : ''}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : v.car.cond.tires < 20 ? ' · BALD TIRES' : ''}`;
     }
     this.renderRadio();
   }
