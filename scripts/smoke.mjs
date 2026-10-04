@@ -2602,6 +2602,67 @@ await step('third-person camera', async () => {
   if (Math.abs(c) > 0.05) throw new Error('top-down camera did not level out ' + c);
 });
 
+// ---------------- Xbox controller (mocked Gamepad API) ----------------
+await step('xbox controller', async () => {
+  const gctx = await b.newContext({ viewport: { width: 1280, height: 760 } });
+  await gctx.addInitScript(() => {
+    window.__pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD)', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+      axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) };
+    navigator.getGamepads = () => [window.__pad];
+  });
+  const g = await gctx.newPage(); g.setDefaultTimeout(6000);
+  g.on('pageerror', e => errs.push('pad pageerror: ' + e.message));
+  g.on('console', x => { if (x.type() === 'error' && !/Failed to load resource/.test(x.text())) errs.push('pad console: ' + x.text()); });
+  await g.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+  await g.goto(URL, { waitUntil: 'domcontentloaded' });
+  await g.waitForFunction(() => window.__rfg);
+  const expect = (c, msg) => { if (!c) throw new Error(msg); };
+  const B = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, MENU: 9, LS: 10, RS: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
+  const btn = (n, v) => g.evaluate(([i, v]) => { window.__pad.buttons[i] = { pressed: v > 0.5, touched: v > 0, value: v }; }, [B[n], v]);
+  const tap = async (n, ms = 150) => { await btn(n, 1); await g.waitForTimeout(ms); await btn(n, 0); await g.waitForTimeout(100); };
+  const axes = (a) => g.evaluate(a => { window.__pad.axes = a; }, a);
+  await g.fill('[name=username]', 'Pad'); await g.fill('[name=email]', 'pad@example.com'); await g.fill('[name=password]', 'hunter22'); await g.click('.auth-go'); await g.waitForTimeout(300);
+  // title menu: D-pad highlights a button, A presses it
+  await tap('DOWN');
+  const focus = await g.evaluate(() => document.querySelector('.pad-focus')?.textContent || '');
+  expect(/New Game|Load Game|Settings/.test(focus), 'D-pad did not highlight a title menu button: ' + focus);
+  await g.click('text=New Game'); await g.fill('[data-name]', 'Pad'); await g.click('text=Hit the streets'); await g.waitForTimeout(600);
+  await g.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  const st = () => g.evaluate(() => { const w = window.__rfg.app.world; return { inCar: w.inCar, fx: w.foot.x, fz: w.foot.z, v: w.vehicle?.speed, gear: w.vehicle?.sim.gear, panels: document.querySelectorAll('#panels .panel').length, help: document.querySelector('[data-help]')?.textContent || '' }; });
+  // left stick walks
+  let a = await st();
+  await axes([0, -1, 0, 0]); await g.waitForTimeout(500); await axes([0, 0, 0, 0]);
+  let c = await st();
+  expect(a.fz - c.fz > 0.4, 'left stick did not walk the player forward ' + JSON.stringify([a, c]));
+  // View opens the phone, B puts it away
+  await tap('VIEW'); await g.waitForTimeout(150);
+  expect((await st()).panels === 1, 'View did not open the phone');
+  await tap('B'); await g.waitForTimeout(150);
+  expect((await st()).panels === 0, 'B did not close the phone');
+  // Y gets in the car, RT drives, RB shifts up, Y gets out
+  await g.evaluate(async () => { const { newCar } = await import('./js/core/state.js'); const s = window.__rfg.game.s; const c = newCar('ford_mustang_gt_s650_2024'); s.cars.push(c); s.activeCar = c.uid; const w = window.__rfg.app.world; w.refreshCar(); w.vehicle.x = w.foot.x + 2; w.vehicle.z = w.foot.z; });
+  await tap('Y'); await g.waitForTimeout(200);
+  expect((await st()).inCar, 'Y did not get in the car');
+  await btn('RT', 1); await g.waitForTimeout(1500);
+  c = await st();
+  expect(c.v > 3, 'RT did not drive the car ' + JSON.stringify(c));
+  await btn('RT', 0); await btn('LT', 1); await g.waitForTimeout(500); await btn('LT', 0);
+  expect((await st()).v < c.v - 1, 'LT did not brake');
+  await g.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; v.speed = 0; });
+  await tap('Y'); await g.waitForTimeout(200);
+  expect(!(await st()).inCar, 'Y did not get out of the car');
+  // Menu opens the pause menu; it's navigable and B closes it
+  await tap('MENU'); await g.waitForTimeout(150);
+  expect((await st()).panels === 1, 'Menu did not pause');
+  await tap('DOWN');
+  expect(await g.evaluate(() => !!document.querySelector('#panels .pad-focus')), 'no highlighted button in the pause menu');
+  await tap('B'); await g.waitForTimeout(150);
+  expect((await st()).panels === 0, 'B did not close the pause menu');
+  // controller hints: touching the keyboard switches them back
+  expect(/Left stick/.test((await st()).help), 'HUD help does not show controller buttons');
+  await g.close(); await gctx.close();
+});
+
 console.log(errs.length ? '\nERRORS:\n' + errs.join('\n') : '\nno errors');
 await b.close();
 process.exit(errs.length ? 1 : 0);

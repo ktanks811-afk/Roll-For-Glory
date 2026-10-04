@@ -11,6 +11,7 @@ import { currentStep, CHAPTERS } from '../data/story.js';
 import { MPH } from '../sim/powertrain.js';
 import { input, touch, isTouchDevice } from '../core/input.js';
 import { touchUi } from './touch.js';
+import { pad } from '../core/gamepad.js';
 import { audio } from '../core/audio.js';
 import { online } from '../net/online.js';
 import { MiniMap } from './minimap.js';
@@ -24,6 +25,10 @@ import { INJURIES, fmtLeft as fmtHeal } from '../core/health.js';
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · T steal a car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
   car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · Enter interact · F get out · P phone',
+};
+const PAD_HELP = {
+  foot: 'ON FOOT — Left stick walk · B run · A use · Y get in · X steal · LT draw/holster · RT fire · RB reload · LB mask · Right stick aim · View phone · ↑ map',
+  car: 'DRIVING — RT gas · LT brake/reverse · Left stick steer · A e-brake · X nitrous · RB/LB shift · B use · Y get out · L3 horn · R3 camera · View phone',
 };
 
 // turn-by-turn arrows (drawn pointing up = straight ahead)
@@ -212,10 +217,11 @@ export class Hud {
     if (gl) { const html = `<small>${esc(gl.title)}</small>${esc(gl.text)}`; if (gb.dataset.h !== html) { gb.dataset.h = html; gb.innerHTML = html; } gb.classList.toggle('late', gl.late); }
     // control hints follow what you're doing: walking or driving
     const ctx = w.inCar ? 'car' : 'foot';
-    if (ctx !== this.helpCtx) {
-      this.helpCtx = ctx;
+    const dev = pad.inUse ? 'pad' : touchUi.active ? 'touch' : 'keys';
+    if (ctx + dev !== this.helpCtx) {
+      this.helpCtx = ctx + dev;
       const help = this.q('help');
-      help.textContent = touchUi.active ? '' : HELP[ctx];
+      help.textContent = dev === 'pad' ? PAD_HELP[ctx] : dev === 'touch' ? '' : HELP[ctx];
       help.classList.remove('fade');
       clearTimeout(this.helpT);
       this.helpT = setTimeout(() => help.classList.add('fade'), 9000);
@@ -224,17 +230,18 @@ export class Hud {
     const pr = this.q('prompt');
     const parts = [];
     const tch = touchUi.active;
+    const gp = pad.inUse;   // controller: Xbox button names
     if (w.garageHint && !w.nearLoc) parts.push(`<span style="color:#2cff7a">▶</span> ${esc(w.garageHint)}`);
     const cb = w.combat;
     const rp = cb ? cb.robPrompt() : '';
-    if (rp) parts.push(`<kbd>${tch ? 'USE' : 'E'}</kbd> <b style="color:#ff5a5a">${esc(rp)}</b>`);
-    if (w.nearLoc && !(cb && cb.armed)) parts.push(`<kbd>${tch ? 'USE' : w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
-    if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${tch ? 'GET IN' : 'F'}</kbd> ${w.vehicle.car.hot ? 'the stolen car' : tch ? 'your car' : 'Get in'}`);
-    else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push(`<kbd>${tch ? 'GET OUT' : 'F'}</kbd> ${tch ? '' : 'Get out'}`);
+    if (rp) parts.push(`<kbd>${gp ? 'A' : tch ? 'USE' : 'E'}</kbd> <b style="color:#ff5a5a">${esc(rp)}</b>`);
+    if (w.nearLoc && !(cb && cb.armed)) parts.push(`<kbd>${gp ? (w.inCar ? 'B' : 'A') : tch ? 'USE' : w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
+    if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${gp ? 'Y' : tch ? 'GET IN' : 'F'}</kbd> ${w.vehicle.car.hot ? 'the stolen car' : tch ? 'your car' : 'Get in'}`);
+    else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push(`<kbd>${gp ? 'Y' : tch ? 'GET OUT' : 'F'}</kbd> ${tch ? '' : 'Get out'}`);
     const own = w.thefts?.own?.vehicle;
-    if (!w.inCar && own && Math.hypot(own.x - w.foot.x, own.z - w.foot.z) < 4.5) parts.push(`<kbd>${tch ? 'GET IN' : 'F'}</kbd> your car`);
+    if (!w.inCar && own && Math.hypot(own.x - w.foot.x, own.z - w.foot.z) < 4.5) parts.push(`<kbd>${gp ? 'Y' : tch ? 'GET IN' : 'F'}</kbd> your car`);
     const sp = w.thefts?.promptText();
-    if (sp) parts.push(`<kbd>${tch ? 'STEAL' : 'T'}</kbd> <b style="color:#ff5a5a">${esc(sp)}</b>`);
+    if (sp) parts.push(`<kbd>${gp ? 'X' : tch ? 'STEAL' : 'T'}</kbd> <b style="color:#ff5a5a">${esc(sp)}</b>`);
     const wl = cb && !w.inCar ? cb.hudLine(tch) : '';
     const wq = this.q('weapon');
     if (wq) {

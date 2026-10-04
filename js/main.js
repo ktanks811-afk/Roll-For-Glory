@@ -5,6 +5,7 @@ import { MEET_NIGHTS, MEET_LOC } from './core/nightmeet.js';
 import { on, emit } from './core/events.js';
 import { input } from './core/input.js';
 import { touchUi } from './ui/touch.js';
+import { padNav } from './ui/padnav.js';
 import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
@@ -235,6 +236,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  input.pollPad(padNav);   // controller: menus first, then the game
   // which control scheme is live: walking, driving, racing, or none
   input.setContext(app.mode === 'race' ? 'race' : app.mode === 'world' && app.world ? (app.world.inCar && app.world.vehicle ? 'car' : 'foot') : 'menu');
   try {

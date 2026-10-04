@@ -17,6 +17,7 @@ import { LOC_BY_ID } from '../data/world.js';
 import { openRaceSetup } from './raceSetup.js';
 import { emit } from '../core/events.js';
 import { audio } from '../core/audio.js';
+import { pad } from '../core/gamepad.js';
 import { checkSponsors } from './phone.js';
 
 export function openMeet(loc, app) {
@@ -30,10 +31,10 @@ export function openMeet(loc, app) {
   emit('meetVisited', { loc: loc.id });
   audio.music('meet');
   let anim = 0;
-  // Rev it: gas + brake held together (button, or W + S). Flames only with a 2-step.
+  // Rev it: gas + brake held together (button, W + S, or both triggers on a controller). Flames only with a 2-step.
   const rev = { btn: false, keys: new Set(), lim: null, voice: null, last: performance.now(), car: null };
   const fx = { flame: 0, revving: false };
-  const revHeld = () => rev.btn || (rev.keys.has('w') && rev.keys.has('s')) || (rev.keys.has('arrowup') && rev.keys.has('arrowdown'));
+  const revHeld = () => rev.btn || (rev.keys.has('w') && rev.keys.has('s')) || (rev.keys.has('arrowup') && rev.keys.has('arrowdown')) || (pad.lt > 0.3 && pad.rt > 0.3);
   const onKey = (down) => (e) => { rev.keys[down ? 'add' : 'delete'](e.key.toLowerCase()); };
   const kd = onKey(true), ku = onKey(false), pu = () => { rev.btn = false; };
   window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);

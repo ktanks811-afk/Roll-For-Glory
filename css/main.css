@@ -599,3 +599,6 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .jps-bill.warn-b { border-color: #e8c21a; } .jps-bill.bad-b { border-color: var(--red); }
 .jps-items { gap: 2px; }
 .jps-items > div { font-size: 13px; padding: 3px 8px; }
+
+/* controller focus (ui/padnav.js) */
+.pad-focus { outline: 3px solid #2cff7a !important; outline-offset: 2px; box-shadow: 0 0 0 6px rgba(44,255,122,.25), 0 0 18px rgba(44,255,122,.45) !important; }

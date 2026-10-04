@@ -15,6 +15,7 @@
 // Get caught after a robbery and you lose the gun and a lot of cash.
 
 import { input } from '../core/input.js';
+import { pad, rumble } from '../core/gamepad.js';
 import { audio } from '../core/audio.js';
 import { addRep, spend, fmtMoney } from '../core/state.js';
 import { collideCircle } from './map.js';
@@ -88,6 +89,9 @@ export class Combat {
   }
   aimAngle() {
     const f = this.w.foot;
+    // controller: the right stick aims
+    const stick = input.aim();
+    if (stick !== null) return stick;
     // desktop: face the mouse while it's been moving
     if (performance.now() - this.mouse.t < 2500 && !('ontouchstart' in window && !this.mouseFire)) {
       const cam = this.w.cam;
@@ -116,7 +120,7 @@ export class Combat {
     if (this.cd > 0 || this.reload > 0) return;
     const f = this.w.foot;
     if (def.melee) { this.swing(def); return; }
-    if (this.jammed) { if (!this.jamSaid) { this.say('JAMMED! Press R to clear it.', 'bad'); this.jamSaid = true; audio.click(); } this.cd = 0.3; return; }
+    if (this.jammed) { if (!this.jamSaid) { this.say(`JAMMED! Press ${pad.inUse ? 'RB' : 'R'} to clear it.`, 'bad'); this.jamSaid = true; audio.click(); } this.cd = 0.3; return; }
     // semi-auto guns fire once per pull; held trigger repeats slowly. FRT'd guns and the G18 run full-auto.
     const full = def.auto || g.frt;
     if (!full && !this.freshPull && this.heldT < 0.32) return;
@@ -142,6 +146,7 @@ export class Combat {
     this.tracers.push({ x0: mx, z0: mz, x1: hit.x, z1: hit.z, t: 0.09 });
     this.flashes.push({ x: mx, z: mz, a: ang0, t: 0.07 });
     audio.gunshot(def.cal === '.22 LR' ? 0.5 : def.kind === 'arp' ? 1.3 : 1);
+    rumble(0.6, 0.3, 70);
     if (this.w.cam) this.w.cam.shake = Math.max(this.w.cam.shake, 0.1);
     // everyone nearby hears it
     for (const p of this.w.traffic.peds) if (Math.hypot(p.x - f.x, p.z - f.z) < 45) p.scared = Math.max(p.scared || 0, 6);
@@ -458,9 +463,9 @@ export class Combat {
     if (!gn) return '';
     const { g, def } = gn;
     const name = `<div class="wp-name"><b>${def.name}</b>${g.frt ? ' <small style="color:#ff5a5a">FRT</small>' : ''}</div>`;
-    const off = this.armed ? '' : ` <small class="wp-off">HOLSTERED${touch ? '' : ' — G'}</small>`;
+    const off = this.armed ? '' : ` <small class="wp-off">HOLSTERED${touch ? '' : pad.inUse ? ' — LT' : ' — G'}</small>`;
     if (def.melee) return off ? name + `<div class="wp-stat">${off.trim()}</div>` : name;
-    return name + `<div class="wp-stat">${this.jammed ? '<b style="color:#ff5a5a">JAMMED — R</b> ' : ''}<b>${this.reload > 0 ? 'RELOADING…' : `${g.loaded}/${def.mag}`}</b> <small>· ${this.arms.ammo[def.cal] || 0} ${def.cal}</small>${off}</div>`;
+    return name + `<div class="wp-stat">${this.jammed ? `<b style="color:#ff5a5a">JAMMED — ${pad.inUse ? 'RB' : 'R'}</b> ` : ''}<b>${this.reload > 0 ? 'RELOADING…' : `${g.loaded}/${def.mag}`}</b> <small>· ${this.arms.ammo[def.cal] || 0} ${def.cal}</small>${off}</div>`;
   }
   progress() {
     if (this.rob) {
