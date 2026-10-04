@@ -37,6 +37,7 @@ import { applyEstate } from './estate.js';
 import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
 import { healthMods } from '../core/health.js';
+import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -434,7 +435,7 @@ export class World {
     const sand = !paved && v.z > DESERT_Z;
     let grip = paved ? 1 : sand ? 0.62 : 0.72;
     grip *= wx(s).grip;
-    const noFuel = car.fuel <= 0.0005 || !!car.engineBlown;   // a blown motor makes no power either
+    const noFuel = car.fuel <= 0.0005 || !!car.engineBlown || !!car.broken;   // a blown motor or a breakdown makes no power either
     v.update(dt, {
       throttle: input.axis('throttle'), brake: input.axis('brake'), steer: input.steer(),
       handbrake: input.held('handbrake'), nitrous: input.held('nitrous'),
@@ -456,7 +457,9 @@ export class World {
     this.flame = lr.flame;
     if (revving) { v.sim.rpm = lr.rpm; v.rev = 0; }   // gas + brake beats the reverse gear creeping in
     if (lr.bang) { audio.pop(); if (settings.shake) this.cam.shake = Math.max(this.cam.shake, 0.12); }
-    if (noFuel && !car.engineBlown && input.axis('throttle') > 0 && !this.fuelWarned) { this.fuelWarned = true; this.ui.toast('Out of gas! Call roadside assistance from your phone (Bank → Roadside) or push it to a station.', 'bad'); }
+    if (car.broken && !car.engineBlown && input.axis('throttle') > 0 && !this.brokeWarned) { this.brokeWarned = true; this.ui.toast(wearMessage(car.broken, car), 'bad'); }
+    if (!car.broken) this.brokeWarned = false;
+    if (noFuel && !car.engineBlown && !car.broken && input.axis('throttle') > 0 && !this.fuelWarned) { this.fuelWarned = true; this.ui.toast('Out of gas! Call roadside assistance from your phone (Bank → Roadside) or push it to a station.', 'bad'); }
 
     // buildings / water
     for (const c of v.circles()) {
@@ -487,12 +490,25 @@ export class World {
     car.miles += dist / 1609.34;
     s.stats.miles += dist / 1609.34;
     const thr = input.axis('throttle');
-    const gal = dist / 1609.34 / carMpg(car) * (0.5 + thr * 0.9 + (v.sim.nosOn ? 1 : 0));
+    // the engine sips a little just idling; the city is compressed, so it all burns FUEL_BURN times faster
+    const idle = noFuel || v.model.asp === 'ev' ? 0 : dt * 0.00012;
+    const gal = (dist / 1609.34 / carMpg(car) * (0.5 + thr * 0.9 + (v.sim.nosOn ? 1 : 0)) + idle) * FUEL_BURN;
     car.fuel = Math.max(0, car.fuel - gal / tankGallons(car));
     if (car.fuel < 0.12 && !this.lowFuelWarned) { this.lowFuelWarned = true; this.ui.toast('Fuel low — find a gas station', 'bad'); }
     if (car.fuel > 0.2) { this.lowFuelWarned = false; this.fuelWarned = false; }
     // tire wear from wheelspin
     if (v.sim.slip > 0.2) car.cond.tires = Math.max(1, car.cond.tires - dt * 0.6 * v.sim.slip);
+    // upkeep: oil life, tread, everyday wear, and breakdowns when it's been let go
+    const wear = wearTick(car, dist / 1609.34, { spec: v.spec, slip: v.sim.slip, dt });
+    if (wear) {
+      this.ui.toast(wearMessage(wear, car), wear === 'oilLow' || wear === 'tiresLow' ? 'info' : 'bad');
+      if (wear === 'blowout') { audio.crash(0.6); this.refreshCarSprite(); }
+      if (BREAKDOWNS[wear]) { audio.crash?.(0.5); this.brokeWarned = true; emit('breakdown', { kind: wear }); }
+    }
+    // worn parts cost power and grip: refresh the sim when they cross a step (not every frame)
+    const wk = `${Math.floor(car.cond.engine / 10)}|${Math.floor(car.cond.trans / 10)}|${Math.ceil(car.cond.tires / 5)}`;
+    if (this.wearKey && this.wearKey !== wk) v.setSpec(carSpec(car));
+    this.wearKey = wk;
     // an aggressive tune knocks (or floats the valves) at wide-open throttle
     // drag pack wheelies: warn once per pull when it stands up
     if (v.sim.standing && !this.wheelieWarned) { this.wheelieWarned = true; this.ui.toast('Wheelie! Front end is way up. Lift to set it down. Tune it out in Garage → Tune → Drag launch.', 'bad'); }
@@ -521,7 +537,7 @@ export class World {
       if (this.skids.length > 1100) this.skids.splice(0, 100);
       if (this.smoke.length > 160) this.smoke.splice(0, this.smoke.length - 160);
     } else this.lastSkid = null;
-    if (car.cond.engine < 35 && Math.random() < dt * (car.engineBlown ? 18 : 6)) {
+    if ((car.cond.engine < 35 || car.broken === 'overheat') && Math.random() < dt * (car.engineBlown || car.broken === 'overheat' ? 18 : 6)) {
       this.smoke.push({ x: v.x + Math.sin(v.h) * v.dims.L * 0.4, z: v.z - Math.cos(v.h) * v.dims.L * 0.4, r: 0.8, life: 2, a: 0.4, dark: true });
     }
     for (const sm of this.smoke) { sm.life -= dt; sm.r += dt * 1.1; }
