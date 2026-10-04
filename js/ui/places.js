@@ -15,6 +15,7 @@ import { openPartsHub } from './partshub.js';
 import { openRaceSetup } from './raceSetup.js';
 import { openStreetRace } from './streetRaceSetup.js';
 import { openMeet } from './meet.js';
+import { openNightMeet } from './nightmeet.js';
 import { openKustoms } from './kustoms.js';
 import { openCarShow } from './carshow.js';
 import { drawPortrait } from '../gfx2d/person.js';
@@ -28,7 +29,12 @@ import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '..
 import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug } from './estate.js';
+import { ensureLoot } from '../core/loot.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
+import { MENUS } from '../data/food.js';
+import { eat, sleep, nap, ensureNeeds } from '../core/needs.js';
+import { openChop } from './chop.js';
+import { openPawn } from './pawn.js';
 import { openHospital } from './hospital.js';
 import { BREAKDOWNS, needsOil, oilChangeCost, changeOil, clearBreakdown, oilInterval } from '../core/upkeep.js';
 
@@ -48,16 +54,19 @@ export function openPlace(loc, app) {
 const HANDLERS = {
   home: homeScreen,
   property: (loc, app, s) => s.properties.includes(loc.id) ? homeScreen(loc, app, s) : openRealty(app, loc.id),
-  dealer, usedlot: fence, perf, visual, repair, gas, food, clothing,
+  chop: (loc, app) => openChop(loc, app),
+  dealer, usedlot: fence, perf, visual, repair, gas, food, corner, clothing,
   realty: (loc, app) => openRealty(app),
   trap: (loc, app) => openTrap(loc, app),
   land: (loc, app) => openLand(loc, app),
   plug: (loc, app) => openPlug(loc, app),
+  pawn: (loc, app) => openPawn(loc, app),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
   hospital: (loc, app) => openHospital(loc, app),
   meet: (loc, app, s) => {
+    if (loc.weekend) { openNightMeet(loc, app); return; }
     if (!isNight(s.time)) { modal(loc.name, `<p>Empty lot. A security guard on a golf cart. Meets start after <b>8 PM</b>.</p><p class="muted small">Tip: sleep at home until night.</p>`); return; }
     if (!activeCar(s)) { modal(loc.name, '<p>You can\'t roll up to a car meet on foot. Get a car.</p>'); return; }
     openMeet(loc, app);
@@ -65,7 +74,8 @@ const HANDLERS = {
   carshow: (loc, app) => openCarShow(loc, app),
   roll: (loc, app, s) => openRaceSetup(app, { type: 'roll', loc }),
   drag: (loc, app, s) => openRaceSetup(app, { type: 'drag', loc }),
-  sprint: (loc, app) => openStreetRace(app, loc),
+  // a race set up at the weekend meet waits at its start line
+  sprint: (loc, app, s) => openStreetRace(app, loc, s.meetRace?.race === loc.race ? { npcId: s.meetRace.npcId } : {}),
 };
 
 // ---------------- home / safehouse ----------------
@@ -79,8 +89,9 @@ export function homeScreen(loc, app, s) {
     const hr = hourOf(s.time);
     root.innerHTML = head(prop.name, `Home · ${prop.slots} car garage · ${esc(prop.desc)}`) + `<div class="p-body"><div class="grid">
       <div class="card click" data-action="garage"><h3>🔧 Garage</h3><p class="muted small">Install parts (DIY), switch cars, dyno, tune.</p></div>
-      <div class="card click" data-action="sleep" data-to="8"><h3>🛏 Sleep until morning</h3><p class="muted small">Skip to 8:00 AM. Deliveries arrive at 8.</p></div>
-      <div class="card click" data-action="sleep" data-to="21"><h3>🌙 Rest until night</h3><p class="muted small">Skip to 9:00 PM. Meets are on.</p></div>
+      <div class="card click" data-action="sleep" data-to="8"><h3>🛏 Sleep until morning</h3><p class="muted small">Skip to 8:00 AM, fully rested. Saves your game.</p></div>
+      <div class="card click" data-action="sleep" data-to="21"><h3>🌙 Rest until night</h3><p class="muted small">Skip to 9:00 PM, fully rested. Meets are on. Saves your game.</p></div>
+      <div class="card click" data-action="nap"><h3>💤 Quick nap</h3><p class="muted small">2 hours, +40 energy. ${needsLine(s)}</p></div>
       <div class="card click" data-action="wardrobe"><h3>👕 Wardrobe</h3><p class="muted small">${s.player.outfits.length} items owned.</p></div>
       <div class="card click" data-action="save"><h3>💾 Save game</h3><p class="muted small">Manual save slots.</p></div>
       ${w?.thefts?.near(loc) ? `<div class="card click" data-action="keephot"><h3>🔑 Keep the stolen car</h3><p class="muted small">New plates and a VIN swap: ${fmtMoney(PLATE_SWAP)}. It gets a rebuilt title and goes in a bay.${w.thefts.canKeep() ? '' : ' <b class="bad">Your garage is full.</b>'}</p></div>` : ''}
@@ -101,10 +112,17 @@ export function homeScreen(loc, app, s) {
         const to = +d.to;
         let mins = ((to * 60 - s.time.min) + 1440) % 1440 || 1440;
         advanceTime(s, mins);
-        s.player.energy = 100;
+        sleep(s, mins);
         if (app.world) { app.world.police.s.heat = Math.max(0, app.world.police.s.heat - mins / 60 * 0.5); }
         saveGame('auto', true);
-        toast(to === 8 ? 'Good morning.' : 'Night falls on Fort Worth.', 'info');
+        toast(`${to === 8 ? 'Good morning.' : 'Night falls on Fort Worth.'} Fully rested, game saved.${s.player.food < 30 ? ' You woke up hungry.' : ''}`, 'info');
+        h.refresh();
+      },
+      nap: () => {
+        advanceTime(s, 120);
+        nap(s, 120);
+        saveGame('auto', true);
+        toast(`Power nap. Energy ${Math.round(s.player.energy)}.`, 'info');
         h.refresh();
       },
       wardrobe: () => wardrobe(app, s),
@@ -233,13 +251,22 @@ async function buyFromDealer(c, app, s, loc, h) {
 // Pull a stolen car onto Rusty's lot and Sal buys it, cash, no questions asked.
 async function fence(loc, app, s) {
   const th = app.world?.thefts;
-  if (!th?.near(loc)) { usedlot(loc, app, s); return; }
+  if (!th?.near(loc)) { if (ensureLoot(s).length) fenceGoods(loc, app, s); else usedlot(loc, app, s); return; }
   if (app.world.police.phase === 'chase') { modal("Rusty's Used Autos", '<p>Sal waves you off the lot: "Not with the cops on you. Lose them, then come back."</p>'); return; }
   const v = th.hot, m = CAR_BY_ID[v.car.modelId], offer = th.salOffer();
   const pick = await modal("Rusty's Used Autos", `<p class="muted">Sal walks around the ${esc(carName(m, v.car.year))} and looks at the punched ignition. "I don't want to know."</p>
-    <p>He'll give you <b>${fmtMoney(offer)}</b> cash for it, no questions asked. The car gets parted out tonight.</p>`,
+    <p>He'll give you <b>${fmtMoney(offer)}</b> cash for it, no questions asked. The car gets parted out tonight.</p>
+    <p class="small muted">"Or take it to my nephew Junior at Marchetti Salvage and strip it yourself. More money. More heat."</p>`,
     [{ label: `Sell it · ${fmtMoney(offer)}`, primary: true, value: 'sell' }, { label: 'Just browsing', value: 'lot' }]);
   if (pick === 'sell') { const paid = th.sell(); audio.buy?.(); toast(`Sal paid ${fmtMoney(paid)}. That car never existed.`, 'good'); emit('carFenced', { paid }); }
+  else if (pick === 'lot') usedlot(loc, app, s);
+}
+
+// Sal only does cars. Goods go to Dre at Cash Cow Pawn.
+async function fenceGoods(loc, app, s) {
+  const pick = await modal("Rusty's Used Autos", `<p class="muted">Sal looks at the bag. "I do cars. Take that to Dre in the back of Cash Cow Pawn on East Lancaster. He'll give you cash, no questions."</p>`,
+    [{ label: 'GPS to Cash Cow Pawn', primary: true, value: 'gps' }, { label: 'Look at cars', value: 'lot' }]);
+  if (pick === 'gps') { const l = LOC_BY_ID.cashcow_pawn; app.world?.setGps(l.x, l.z, l.name); }
   else if (pick === 'lot') usedlot(loc, app, s);
 }
 
@@ -387,33 +414,70 @@ function gas(loc, app, s) {
       <div class="section-title">Store</div>
       <div class="list">
         <div class="li"><div class="grow"><div class="t">Volt Energy Drink</div><div class="s">+25 energy (sharper reactions)</div></div><button class="btn btn-sm" data-action="snack" data-p="3.49" data-e="25">$3.49</button></div>
-        <div class="li"><div class="grow"><div class="t">Gas station hot dog</div><div class="s">+20 energy. Questionable.</div></div><button class="btn btn-sm" data-action="snack" data-p="2.29" data-e="20">$2.29</button></div>
+        <div class="li"><div class="grow"><div class="t">Gas station hot dog</div><div class="s">+25 food, +5 energy. Questionable.</div></div><button class="btn btn-sm" data-action="snack" data-p="2.29" data-e="5" data-f="25">$2.29</button></div>
+        <div class="li"><div class="grow"><div class="t">Chips and a soda</div><div class="s">+10 food, +5 energy.</div></div><button class="btn btn-sm" data-action="snack" data-p="3.19" data-e="5" data-f="10">$3.19</button></div>
+        <div class="li"><div class="grow"><div class="t">Volt Energy Drink (to go)</div><div class="s">Goes in your bag. Drink it from the meters on your screen.</div></div><button class="btn btn-sm" data-action="togo" data-p="3.49">$3.49</button></div>
         <div class="li"><div class="grow"><div class="t">Octane booster</div><div class="s">It does nothing. People buy it anyway.</div></div><button class="btn btn-sm" data-action="snack" data-p="8.99" data-e="0">$8.99</button></div>
       </div></div>`;
     bind(root, {
       close: () => h.close(),
       fill: () => { const cost = need * price; if (spend(s, cost, `${loc.name}: ${need.toFixed(1)} ${ev ? 'kWh' : 'gal'} ${grade}`)) { car.fuel = 1; if (ev) advanceTime(s, 25); toast(ev ? 'Charged to 100% (25 min)' : 'Tank full', 'good'); h.refresh(); } },
+      snack: d => { if (spend(s, +d.p, 'Gas station snack')) { eat(s, { food: +(d.f || 0), energy: +d.e }); h.refresh(); } },
+      togo: d => { if (spend(s, +d.p, 'Volt Energy Drink')) { ensureNeeds(s); s.inventory.energyDrinks++; toast('In your bag. Tap the meters to drink it.', 'good'); h.refresh(); } },
       oil: () => { if (spend(s, oilChangeCost(car), `${loc.name}: oil change`)) { changeOil(car); if (car.broken && BREAKDOWNS[car.broken].roadside && car.cond.engine < 30) car.cond.engine = 30; clearBreakdown(car); advanceTime(s, 15); toast(car.broken ? 'Fresh oil, but the car still needs a mechanic' : 'Fresh oil', 'good'); h.refresh(); } },
-      snack: d => { if (spend(s, +d.p, 'Gas station snack')) { s.player.energy = Math.min(100, s.player.energy + +d.e); h.refresh(); } },
     });
   });
 }
 
+// Taco trucks, diners, the BBQ joint (data/food.js) and the original two
+// (Lucky's and the noodle bar, data/shops.js).
 function food(loc, app, s) {
+  const menu = MENUS[loc.menu] || FOOD;
+  const truck = !!loc.truck;
   openPanel((root, h) => {
-    root.innerHTML = head(loc.name, `Energy: ${Math.round(s.player.energy)}/100 · energy sharpens your reaction time on the tree`) + `<div class="p-body" style="max-width:640px"><div class="list">${FOOD.map(f => `<div class="li"><div class="grow"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.desc)}${f.energy ? ` · +${f.energy} energy` : ''}</div></div><button class="btn btn-sm" data-action="buy" data-id="${f.id}">${fmtMoney(f.price * 1.0725, true)}</button></div>`).join('')}</div>
-      <p class="small muted">Racers hang out here. Sometimes you overhear things.</p></div>`;
+    ensureNeeds(s);
+    const bag = s.inventory;
+    const gives = f => [f.food ? `+${f.food} food` : '', f.energy ? `+${f.energy} energy` : ''].filter(Boolean).join(', ');
+    root.innerHTML = head(loc.name, needsLine(s)) + `<div class="p-body" style="max-width:640px">
+      <div class="needs-row">${meter('🌮 Food', s.player.food)}${meter('⚡ Energy', s.player.energy)}</div>
+      <div class="list">${menu.map(f => `<div class="li"><div class="grow"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.desc)}${gives(f) ? ` · ${gives(f)}` : ''}${f.item ? ` · in your bag: ${bag[f.item] || 0}` : ''}</div></div><button class="btn btn-sm" data-action="buy" data-id="${f.id}">${fmtMoney(f.price * 1.0725, true)}</button></div>`).join('')}</div>
+      <p class="small muted">${truck ? 'Cash only. The line moves fast.' : 'Racers hang out here. Sometimes you overhear things.'}</p></div>`;
     bind(root, {
       close: () => h.close(),
       buy: d => {
-        const f = FOOD.find(x => x.id === d.id);
+        const f = menu.find(x => x.id === d.id);
         if (!spend(s, f.price * 1.0725, `${loc.name}: ${f.name}`)) return;
-        if (f.item) s.inventory[f.item] = (s.inventory[f.item] || 0) + 1;
-        s.player.energy = Math.min(100, s.player.energy + f.energy);
-        advanceTime(s, 20);
-        if (Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Loop 820 on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
+        if (f.item) { bag[f.item] = (bag[f.item] || 0) + 1; toast('In your bag. Tap the meters on your screen to eat it later.', 'good'); }
+        eat(s, f);
+        advanceTime(s, f.item ? 5 : truck ? 10 : 20);
+        if (!truck && Math.random() < 0.35) toast(['Overheard: "Static only races after midnight."', 'Overheard: "Somebody ran 9s at Ironline last week on drag radials."', 'Overheard: "Cops set up on Loop 820 on Fridays."', 'Overheard: "Rosa can make a Civic do anything."'][Math.floor(Math.random() * 4)], 'info');
         h.refresh();
       },
+    });
+  });
+}
+
+const meter = (label, v) => `<div class="need"><span>${label}</span>${bar(v, v < 25 ? 'red' : v < 60 ? 'yellow' : 'green')}<b>${Math.round(v)}</b></div>`;
+function needsLine(s) {
+  ensureNeeds(s);
+  return `Food ${Math.round(s.player.food)}/100 · Energy ${Math.round(s.player.energy)}/100`;
+}
+
+// Corner store: snacks and drinks behind the plexiglass. (Rob it with a gun out: world2d/combat.js.)
+function corner(loc, app, s) {
+  openPanel((root, h) => {
+    const items = [
+      { n: 'Hot Cheetos and a tea', d: '+15 food, +10 energy', p: 2.99, e: 10, f: 15 },
+      { n: 'Big Red', d: '+10 energy. A Texas classic.', p: 1.79, e: 10 },
+      { n: 'Volt Energy Drink', d: '+25 energy', p: 3.49, e: 25 },
+      { n: 'Honey bun', d: '+20 food, +10 energy', p: 1.49, e: 10, f: 20 },
+    ];
+    root.innerHTML = head(loc.name, 'Snacks · drinks · smokes · scratchers') + `<div class="p-body" style="max-width:640px">
+      <p class="muted small">The clerk watches you through the bulletproof glass.</p>
+      <div class="list">${items.map((f, i) => `<div class="li"><div class="grow"><div class="t">${esc(f.n)}</div><div class="s">${esc(f.d)}</div></div><button class="btn btn-sm" data-action="snack" data-i="${i}">${fmtMoney(f.p, true)}</button></div>`).join('')}</div></div>`;
+    bind(root, {
+      close: () => h.close(),
+      snack: d => { const f = items[+d.i]; if (spend(s, f.p, `${loc.name}: ${f.n}`)) { eat(s, { food: f.f || 0, energy: f.e }); h.refresh(); } },
     });
   });
 }

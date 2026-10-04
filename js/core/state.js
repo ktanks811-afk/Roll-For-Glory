@@ -27,7 +27,7 @@ export function createState({ name, age, look, story = true }) {
     version: 2,
     created: Date.now(),
     playTime: 0,
-    player: { name, age, look, energy: 100, outfits: ['hoodie_black', 'jeans_blue', 'no_hat', 'kicks_white'] },
+    player: { name, age, look, energy: 100, food: 100, outfits: ['hoodie_black', 'jeans_blue', 'no_hat', 'kicks_white'] },
     cash: 4500,
     dirty: 0,            // how much of `cash` is dirty money (core/bank.js)
     bank: 0,
@@ -42,7 +42,8 @@ export function createState({ name, age, look, story = true }) {
     activeCar: null,
     properties: ['eastgate_studio'],
     home: 'eastgate_studio',
-    inventory: { energyDrinks: 0 },
+    inventory: { energyDrinks: 0, tacos: 0 },
+    loot: [],            // stolen goods from robberies (core/loot.js)
     partsBin: [],        // { pid, uid } owned parts not installed
     orders: [],          // { id, items:[pid], arriveDay, total }
     listings: [],        // Marketplace listings currently visible

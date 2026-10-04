@@ -1,6 +1,7 @@
 // Boot, main loop and mode switching (title → character → world ⇄ race).
 
-import { game, fmtMoney, activeCar, carValue, spend, hourOf } from './core/state.js';
+import { game, fmtMoney, activeCar, carValue, spend, hourOf, dayName } from './core/state.js';
+import { MEET_NIGHTS, MEET_LOC } from './core/nightmeet.js';
 import { on, emit } from './core/events.js';
 import { input } from './core/input.js';
 import { touchUi } from './ui/touch.js';
@@ -11,6 +12,7 @@ import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { drugsDay } from './core/drugs.js';
 import { fedsDay } from './core/bank.js';
+import { chopDay, PARTS_CHARGE } from './core/chop.js';
 import { raidWhileAway } from './world2d/trap.js';
 import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
@@ -23,6 +25,7 @@ import { initOnline } from './ui/online.js';
 import { initCrews } from './ui/ocrew.js';
 import { initTurf } from './core/turf.js';
 import { initGangs } from './core/gangs.js';
+import { initFeed, feedHour } from './core/feed.js';
 import { initOrientation } from './ui/orientation.js';
 import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
@@ -123,6 +126,7 @@ function hourly() {
   if (fta) sendMessage(s, 'clerk', `You failed to appear in ${courtName(fta.case)} (Cause No. ${fta.case.cause}). The judge issued a warrant for your arrest for bail jumping${fta.forfeited ? ` and your ${fmtMoney(fta.forfeited)} bail is forfeited` : ''}. Turn yourself in at the courthouse or a precinct.`, { action: { type: 'gps', loc: 'courthouse' } });
   maybeChallenge(s);
   offerMission(s);
+  feedHour(s);
   // buyers message you about cars you have listed
   for (const ml of s.myListings) {
     const car = s.cars.find(c => c.uid === ml.carUid);
@@ -154,6 +158,8 @@ function morning() {
 
 function newDay() {
   const s = game.s;
+  // the weekend night meet: Dre texts the spot on Friday and Saturday
+  if (MEET_NIGHTS.includes(dayName(s.time))) sendMessage(s, 'kingpin', `Meet tonight at La Gran Plaza, 9 PM till 3. Crews are pulling up. Bring something clean.`, { action: { type: 'gps', loc: MEET_LOC } });
   hustleDay(s);
   // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at
   const dr = drugsDay(s);
@@ -161,6 +167,12 @@ function newDay() {
   for (const r of dr.raids) raidWhileAway(s, r);
   // your businesses wash what you dropped off; the feds cool off or close in
   for (const n of fedsDay(s)) toast(n, 'info');
+  // the chop shop cools off, or the task force sweeps it while you're not there
+  const ch = chopDay(s);
+  if (ch?.swept) {
+    if (ch.talked) addWarrant(s, { ...PARTS_CHARGE, fine: Math.max(2000, PARTS_CHARGE.fine), felony: true, evidence: 'Junior Marchetti\'s statement to the task force' });
+    sendMessage(s, 'junior', `Task force hit the yard this morning. They took everything off the shelf${ch.took.parts ? ` (${ch.took.parts} of your parts)` : ''} and chained the gate. ${ch.talked ? 'They had me in a room for six hours. I\'m sorry, man. They know your name.' : 'I didn\'t say nothing.'} Lay low for a few days.`);
+  }
   // marketplace churn
   s.listings = s.listings.filter(() => Math.random() > 0.3);
   while (s.listings.length < 30) s.listings.push(makeListing());
@@ -288,6 +300,7 @@ async function boot() {
     initCrews(app);
     initTurf(app);
     initGangs();
+    initFeed();
     initOrientation();
   } catch (e) {
     console.error(e);

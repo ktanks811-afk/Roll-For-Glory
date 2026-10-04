@@ -88,6 +88,29 @@ for (const app of ['Messages', 'Contacts', 'Map', 'Bank', 'Throttle', 'Races', '
     await p.waitForTimeout(100);
   });
 }
+await step('throttle feed + rival texts', async () => {
+  await p.evaluate(async () => {
+    const F = await import('./js/core/feed.js'); const { RACERS } = await import('./js/data/npcs.js');
+    const s = window.__rfg.game.s;
+    F.onRace(s, { won: true, npcId: RACERS[0].id, wager: 2500 }, () => 0.1);
+    F.react(s, 'escaped', {}, { n: 2 });
+  });
+  await p.click('.app:has-text("Throttle")'); await p.waitForTimeout(250);
+  const n = await p.locator('.tpost').count();
+  if (n < 3) throw new Error('feed shows ' + n + ' posts');
+  await snap('07-throttle-feed');
+  const before = await p.locator('.tp-like').first().innerText();
+  await p.locator('.tp-like').first().click(); await p.waitForTimeout(150);
+  if ((await p.locator('.tp-like').first().innerText()) === before || !(await p.locator('.tp-like.on').count())) throw new Error('like did not register');
+  await p.click('.tp-tabs button:has-text("Rivals")'); await p.waitForTimeout(150);
+  if (!(await p.locator('.li:has(.bar)').count())) throw new Error('rivals tab empty');
+  await p.click('button[data-action="dm"]'); await p.waitForTimeout(200);
+  if (!(await p.locator('button[data-action="rival"][data-pick="back"]').count())) throw new Error('rival threat has no answers');
+  await snap('07-rival-text');
+  await p.locator('button[data-action="rival"][data-pick="back"]').first().click(); await p.waitForTimeout(200);
+  if (!(await p.locator('.bubble .tag:has-text("You talked back")').count())) throw new Error('talking back did not stick');
+  await p.click('.phone-bar button'); await p.waitForTimeout(100);
+});
 await step('marketplace browse + buy', async () => {
   await p.click('.app:has-text("Marketplace")');
   await p.waitForTimeout(300);
@@ -451,7 +474,8 @@ await step('upkeep: oil, tread, breakdowns, roadside', async () => {
     const saved = JSON.parse(JSON.stringify({ cond: car.cond, oil: car.oil, fuel: car.fuel }));
     s.cash += 5000;
     // miles wear the oil and the tread
-    car.oil = 100; car.cond.tires = 100;
+    // start from a healthy car: earlier steps' crashes can leave the engine or gearbox worn enough to break down mid-test
+    car.oil = 100; car.cond.tires = 100; car.cond.engine = Math.max(car.cond.engine, 90); car.cond.trans = Math.max(car.cond.trans, 90); delete car.broken;
     for (let i = 0; i < 300; i++) up.wearTick(car, 0.1, { spec: st.carSpec(car) });
     const worn = { oil: car.oil, tires: car.cond.tires };
     // run out of oil and it overheats; the car makes no power
@@ -753,6 +777,26 @@ await step('Amazin\' shop + guns + robbery', async () => {
   await calm();
   await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
   if (await p.evaluate(() => !!window.__rfg.app.world.combat.rob)) throw new Error('could rob the same store twice in a day');
+  if (!(await p.evaluate(() => window.__rfg.game.s.loot.length >= 1))) throw new Error('the gas station robbery left no goods to fence');
+  // corner store: the clerk goes for the shotgun, a warning shot stops them, and you walk out with the goods
+  await calm();
+  await p.evaluate(async () => { const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world, s = window.__rfg.game.s; const l = LOC_BY_ID.corner_rosedale; s.time.min = 12 * 60; s.loot = []; w.inCar = false; w.foot.x = l.x; w.foot.z = l.z - 2; w.foot.h = Math.PI; w.cam.x = w.foot.x; w.cam.z = w.foot.z; const c = w.combat; c.drawn = true; c.cd = 0; c.gun.g.loaded = 15; c.arms.hp = 100; });
+  await p.waitForTimeout(200);
+  await p.keyboard.press('KeyE'); await p.waitForTimeout(150);
+  if (!(await p.evaluate(() => window.__rfg.app.world.combat.rob?.loc.id === 'corner_rosedale'))) throw new Error('E at the corner store did not start a robbery ' + await p.evaluate(() => window.__rfg.app.world.combat.robPrompt()));
+  await p.evaluate(() => { const r = window.__rfg.app.world.combat.rob; r.clerk = 'fight'; r.fightAt = 0.3; r.dur = 3; r.alarm = false; r.alarmed = false; r.pay = 300; r.loot = ['cigs', 'phones']; });
+  await p.waitForTimeout(700);
+  if (!(await p.evaluate(() => window.__rfg.app.world.combat.rob?.reach > 0))) throw new Error('the clerk never reached for the shotgun');
+  await snap('32b-clerk-reaching');
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(120); await p.keyboard.up('KeyJ');
+  await p.waitForTimeout(3300);
+  const cr = await p.evaluate(() => { const w = window.__rfg.app.world, s = window.__rfg.game.s; return { rob: !!w.combat.rob, hp: w.combat.arms.hp, loot: s.loot.map(i => i.id), rec: w.police.record.map(r => r.kind) }; });
+  if (cr.rob || cr.hp < 90 || !cr.loot.includes('phones') || !cr.loot.includes('cigs')) throw new Error('warning shot robbery went wrong ' + JSON.stringify(cr));
+  if (!cr.rec.includes('robbery')) throw new Error('the clerk hit the alarm after the warning shot, but no robbery on the record ' + JSON.stringify(cr));
+  // Sal buys the goods
+  await calm();
+  const sold = await p.evaluate(async () => { const L = await import('./js/core/loot.js'); const s = window.__rfg.game.s, c0 = s.cash; const paid = L.sellLoot(s); return { paid, gain: s.cash - c0, left: s.loot.length }; });
+  if (!(sold.paid > 0) || sold.gain !== sold.paid || sold.left) throw new Error('could not fence the goods ' + JSON.stringify(sold));
   // mugging a pedestrian
   await p.evaluate(async () => { const { LOCATIONS } = await import('./js/data/world.js'); const w = window.__rfg.app.world; const f = w.foot; for (const [x, z] of [[0, 75], [150, 225], [-300, 75], [300, -75], [0, -225], [-150, 375]]) if (LOCATIONS.every(l => Math.hypot(l.x - x, l.z - z) > 30)) { f.x = x; f.z = z; break; } w.cam.x = f.x; w.cam.z = f.z; w.traffic.peds.length = 0; w.traffic.peds.push({ x0: f.x, z0: f.z - 2.2, size: 1, t: 0, sp: 0, dir: 1, color: '#c41b1b', dodge: 0, dx: 0, dz: 0, x: f.x, z: f.z - 2.2, hp: 40 }); f.h = 0; });
   await calm();
@@ -955,6 +999,65 @@ await step('stealing cars', async () => {
   await p.evaluate(() => { const w = window.__rfg.app.world; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; });
   await key('KeyF'); await p.waitForTimeout(200);
   if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get back in your car');
+});
+
+// ---------------- chop shop ----------------
+await step('chop shop', async () => {
+  const calm = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; try { w.police.reset(w); } catch {} window.__rfg.game.s.heat = 0; w.paused = false; });
+  await calm();
+  const ownUid = await p.evaluate(() => window.__rfg.game.s.activeCar);
+  // get out of your car and carjack somebody
+  await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; });
+  if (await p.evaluate(() => window.__rfg.app.world.inCar)) { await key('KeyF'); await p.waitForTimeout(150); }
+  const jack = async () => {
+    await p.evaluate(() => {
+      const w = window.__rfg.app.world, c = w.traffic.cars.find(c => !c.police);
+      c.stun = 6; c.v = 0; w.foot.x = c.x - Math.cos(c.h) * 2; w.foot.z = c.z - Math.sin(c.h) * 2; w.cam.x = c.x; w.cam.z = c.z;
+    });
+    await p.waitForTimeout(120);
+    await key('KeyT'); await p.waitForTimeout(1300);
+    if (!(await p.evaluate(() => !!window.__rfg.app.world.vehicle?.car?.hot))) throw new Error('carjack for the chop shop failed');
+    await calm();
+    // drive it into Marchetti Salvage's yard
+    await p.evaluate(async () => { const w = window.__rfg.app.world, v = w.vehicle, { LOC_BY_ID } = await import('./js/data/world.js'), l = LOC_BY_ID.marchetti_salvage; v.x = l.x + 4; v.z = l.z + 6; v.vx = v.vz = 0; v.sim.v = 0; w.cam.x = v.x; w.cam.z = v.z; });
+  };
+  await jack();
+  await p.evaluate(() => { window.__rfg.game.s.chop = { heat: 0 }; });
+  const open = () => p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.marchetti_salvage, window.__rfg.app); });
+  await open();
+  await p.waitForSelector('[data-action="strip"]');
+  await snap('45-chop-shop');
+  const day0 = await p.evaluate(() => window.__rfg.game.s.time.min + window.__rfg.game.s.time.day * 1440);
+  await p.click('[data-action="strip"]');
+  await p.waitForSelector('[data-action="sellall"]');
+  await snap('46-chop-shelf');
+  const stripped = await p.evaluate(ownUid => { const w = window.__rfg.app.world, s = window.__rfg.game.s; return { shelf: s.chop.shelf.length, hot: !!w.vehicle?.car?.hot, mine: w.vehicle?.car?.uid === ownUid, inCar: w.inCar, chopped: s.stats.carsChopped, t: s.time.min + s.time.day * 1440 }; }, ownUid);
+  if (stripped.shelf < 8 || stripped.hot || !stripped.mine || stripped.inCar || stripped.chopped !== 1 || !(stripped.t > day0 + 200)) throw new Error('stripping the car failed ' + JSON.stringify({ day0, ...stripped }));
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.click('[data-action="sellall"]');
+  await p.waitForTimeout(150);
+  const sold = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, shelf: window.__rfg.game.s.chop.shelf.length }));
+  if (!(sold.cash > cash0 + 500) || sold.shelf) throw new Error('Junior did not buy the parts ' + JSON.stringify({ cash0, ...sold }));
+  // a hot shop: the task force sweeps it while you're in there
+  await calm();
+  await jack();
+  await p.evaluate(() => { const c = window.__rfg.game.s.chop; c.heat = 100; c.shelf.push({ uid: 'x', part: 'cat', name: 'Catalytic converter', make: 'honda', car: 'Civic', base: 300 }); });
+  await p.evaluate(async () => { const { sweepLive } = await import('./js/ui/chop.js'); const w = window.__rfg.app.world; sweepLive(w, w.vehicle); });
+  await p.waitForSelector('.modal button:has-text("Get on the ground")');
+  await snap('47-chop-sweep');
+  await p.click('.modal button:has-text("Get on the ground")');
+  await p.waitForSelector('.modal:has-text("BUSTED")');
+  const bust = await p.evaluate(ownUid => { const w = window.__rfg.app.world, s = window.__rfg.game.s, c = s.cars.find(c => c.uid === ownUid); return { closed: s.chop.closed > s.time.day, shelf: s.chop.shelf.length, impound: !!c.impound, hot: !!w.vehicle?.car?.hot, text: document.querySelector('.modal')?.innerText || '' }; }, ownUid);
+  if (!bust.closed || bust.shelf || bust.impound || bust.hot || !/chop shop/i.test(bust.text)) throw new Error('the sweep did not book you ' + JSON.stringify(bust));
+  await calm();
+  // close the case so later steps aren't stuck with a court date
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.justice.cases = []; s.warrants = []; });
+  await open();
+  await p.waitForSelector('.modal:has-text("chained shut")');
+  await calm();
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; });
+  await key('KeyF'); await p.waitForTimeout(200);
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) throw new Error('could not get back in your car after the chop shop');
 });
 
 await step('save + reload', async () => {
@@ -1537,6 +1640,44 @@ await step('plug + trap house + SWAT + land', async () => {
   await clear();
 });
 
+// ---------------- hunger + sleep: meters, taco trucks, the snack bag, sleeping at home ----------------
+await step('hunger + sleep', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  const place = id => p.evaluate(async id => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID[id], window.__rfg.app); }, id);
+  await clear();
+  await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; w.police.reset(w); s.heat = 0; s.cash = 5000; s.time.min = 13 * 60; s.player.food = 20; s.player.energy = 30; s.inventory.tacos = 0; if (w.inCar) w.toggleCar(); w.foot.x = -100; w.foot.z = 309; });
+  await p.waitForTimeout(400);
+  if (!(await p.isVisible('#hud [data-nfood].low'))) throw new Error('low food meter not flagged on the HUD');
+  await snap('needs-hud-low');
+  // the taco truck
+  await place('taco_magnolia');
+  await p.waitForSelector('.panel:has-text("Tacos La Güera")');
+  await snap('needs-taco-truck');
+  await p.click('[data-action=buy][data-id=pastor]');
+  await p.click('[data-action=buy][data-id=tacos_togo]');
+  const a = await p.evaluate(() => ({ food: window.__rfg.game.s.player.food, tacos: window.__rfg.game.s.inventory.tacos }));
+  if (!(a.food >= 54) || a.tacos !== 1) throw new Error('taco truck did not feed you or bag the tacos ' + JSON.stringify(a));
+  await clear();
+  // eat from the bag by tapping the meters
+  await p.dispatchEvent('#hud [data-needs]', 'pointerdown');
+  await p.waitForSelector('.modal:has-text("Food & sleep")');
+  await snap('needs-bag');
+  await p.click('.modal button:has-text("Eat Tacos to go")'); await p.waitForTimeout(150);
+  const b2 = await p.evaluate(() => ({ food: window.__rfg.game.s.player.food, tacos: window.__rfg.game.s.inventory.tacos }));
+  if (b2.tacos !== 0 || !(b2.food > a.food)) throw new Error('eating from the bag did nothing ' + JSON.stringify(b2));
+  // a diner
+  await place('cowtown_diner');
+  await p.click('[data-action=buy][data-id=coffee]');
+  await clear();
+  // sleep at home: rested, saved
+  await p.evaluate(() => { window.__rfg.game.s.player.energy = 15; });
+  await place(await p.evaluate(() => window.__rfg.game.s.home));
+  await p.click('.card[data-action=sleep][data-to="8"]'); await p.waitForTimeout(200);
+  const c = await p.evaluate(async () => { const s = window.__rfg.game.s; const { slotInfo } = await import('./js/core/save.js'); return { energy: s.player.energy, hour: Math.floor(s.time.min / 60), saved: !!slotInfo('auto') }; });
+  if (c.energy !== 100 || c.hour !== 8 || !c.saved) throw new Error('sleeping at home did not rest and save ' + JSON.stringify(c));
+  await clear();
+});
+
 // ---------------- traffic stop: 10 s to pull over, officer walks up, drive off = chase ----------------
 await step('traffic stop: pull over, walk-up, drive off', async () => {
   await p.evaluate(() => { for (const c of window.__rfg.game.s.cars) delete c.impound; });   // an earlier arrest impounded the car
@@ -1750,6 +1891,65 @@ await step('kustoms studio + car show', async () => {
   await clear();
 });
 
+// ---------------- weekend night meet at La Gran Plaza ----------------
+await step('weekend night meet', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await clear();
+  const saved = await p.evaluate(() => { const s = window.__rfg.game.s; return { time: { ...s.time }, cash: s.cash, bank: s.bank }; });
+  const open = (day, min) => p.evaluate(async ([day, min]) => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const s = window.__rfg.game.s; s.time.day = day; s.time.min = min; s.heat = 0; openPlace(LOC_BY_ID.gran_plaza, window.__rfg.app); }, [day, min]);
+  // Thursday night: nothing going on
+  await open(11, 22 * 60);
+  await p.waitForSelector('.modal h2:has-text("La Gran Plaza Lot")');
+  if (!/Friday and Saturday nights/.test(await p.textContent('.modal-body'))) throw new Error('a weeknight visit should give the meet nights');
+  await clear();
+  // Friday 10 PM with a crew
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.crew = { name: 'Night Shift', color: '#2a7bff', logo: 'N', rep: 0, members: ['tiny', 'lowkey'], npcCrew: null }; s.meetRace = null; delete s.nightMeet; });
+  await open(12, 22 * 60);
+  await p.waitForSelector('.nm .nm-lot .li');
+  await p.waitForTimeout(200);
+  await snap('33-night-meet');
+  const n = (await p.$$('.nm .nm-lot .li')).length;
+  if (n < 6) throw new Error('only ' + n + ' cars at the meet');
+  if (!(await p.isVisible('.nm-call'))) throw new Error('no crew callout for a player with a crew');
+  if (!/Tiny, Lowkey parked next to you/.test(await p.textContent('.nm'))) throw new Error('crew did not roll in with you');
+  await p.click('.nm [data-action="look"] >> nth=0'); await p.waitForSelector('.modal:has-text("Show score")'); await p.evaluate(() => document.querySelectorAll('.modal-back').forEach(m => m.remove()));
+  const before = await p.evaluate(() => { const s = window.__rfg.game.s; return { cash: s.cash, rep: s.rep, followers: s.followers }; });
+  await p.click('.nm [data-action="spot"]');
+  await p.waitForSelector('.nm-result');
+  await snap('34-night-meet-spotlight');
+  const after = await p.evaluate(() => { const s = window.__rfg.game.s; return { cash: s.cash, rep: s.rep, followers: s.followers, shown: s.nightMeet?.shown, night: s.nightMeet?.night }; });
+  if (!(after.cash > before.cash && after.followers > before.followers && after.shown && after.night === 12)) throw new Error('spotlight paid nothing: ' + JSON.stringify({ before, after }));
+  if (await p.$('.nm [data-action="spot"]')) throw new Error('spotlight should be once a night');
+  // take the crew callout: a street race gets set with a pot and the GPS
+  await p.click('.nm-call [data-action="accept"]'); await p.click('.modal button:has-text("Run it")'); await p.waitForTimeout(150);
+  const mr = await p.evaluate(() => ({ mr: window.__rfg.game.s.meetRace, gps: window.__rfg.game.s.gps?.label || '' }));
+  if (!mr.mr?.crew || !(mr.mr.pot > 0) || !/Race/.test(mr.gps)) throw new Error('callout did not set up a race: ' + JSON.stringify(mr));
+  // the start line knows about it
+  await clear();
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world; const s = window.__rfg.game.s; if (!w.inCar) { w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; } openPlace(LOC_BY_ID[s.meetRace.race], window.__rfg.app); });
+  await p.waitForTimeout(150);
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) { await clear(); await key('KeyF'); await p.waitForTimeout(200); await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID[window.__rfg.game.s.meetRace.race], window.__rfg.app); }); await p.waitForTimeout(150); }
+  if (!(await p.isVisible('.nm-note'))) throw new Error('street race setup does not show the meet race');
+  await snap('35-night-meet-race-setup');
+  // settle a win: crew pot, crew rep
+  const won = await p.evaluate(async () => { const { settleMeetRace } = await import('./js/ui/nightmeet.js'); const s = window.__rfg.game.s; const c0 = s.cash + s.bank, cr0 = s.crew.rep; const mr = s.meetRace; const b = settleMeetRace(s, { won: true, npcId: mr.npcId, raceId: mr.race }); return { b, cash: s.cash + s.bank - c0, crew: s.crew.rep - cr0, left: s.meetRace }; });
+  if (!(won.cash === won.b.pot && won.crew > 0 && won.left === null)) throw new Error('crew race did not settle: ' + JSON.stringify(won));
+  await clear();
+  // burnouts can bring the cops: force it and the lot closes for the night
+  await open(12, 23 * 60);
+  await p.waitForSelector('.nm [data-action="burn"]');
+  await p.evaluate(() => { window.__rfg.game.s.heat = 5.9; });
+  for (let i = 0; i < 3 && await p.$('.nm [data-action="burn"]:not([disabled])'); i++) { await p.click('.nm [data-action="burn"]'); await p.waitForTimeout(100); }
+  const cops = await p.evaluate(() => ({ busted: window.__rfg.game.s.nightMeet.busted, modal: document.querySelector('.modal h2')?.textContent }));
+  if (cops.busted === 12) {
+    await clear(); await open(12, 23 * 60 + 30);
+    if (!/shut it down/.test(await p.textContent('.modal-body'))) throw new Error('lot should stay closed after the cops broke it up');
+  }
+  // put the clock and the money back so later steps see the same game they would without this one
+  await p.evaluate(saved => { const s = window.__rfg.game.s; s.heat = 0; s.crew = null; s.meetRace = null; Object.assign(s.time, saved.time); s.cash = saved.cash; s.bank = saved.bank; }, saved);
+  await clear();
+});
+
 // ---------------- every car: own side view + overhead sprite ----------------
 await step('every car draws (side view + overhead)', async () => {
   const r = await p.evaluate(async () => {
@@ -1773,6 +1973,38 @@ await step('every car draws (side view + overhead)', async () => {
 });
 
 // ---------------- side hustles: passive income ----------------
+await step('pawn shop + fence', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  const open = () => p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.cashcow_pawn, window.__rfg.app); });
+  await clear();
+  await p.evaluate(async () => {
+    const { addLoot } = await import('./js/core/loot.js'); const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    w.police.reset(w); s.heat = 0; s.warrants = []; s.loot = [];
+    addLoot(s, 'phone', 'a mugging'); addLoot(s, 'laptop', 'a stolen car'); addLoot(s, 'chain', 'Test Mart'); addLoot(s, 'glovebox_gun', 'a stolen car');
+  });
+  await open();
+  await p.waitForSelector('.p-head:has-text("Cash Cow Pawn")');
+  await snap('pawn-fence');
+  // Dre: pick two and sell
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.locator('[data-action=pick]').nth(0).click(); await p.locator('[data-action=pick]').nth(1).click();
+  await p.click('[data-action=fence]'); await p.waitForTimeout(150);
+  const a = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, n: window.__rfg.game.s.loot.length }));
+  if (!(a.cash > cash0) || a.n !== 2) throw new Error('fence sale did nothing ' + JSON.stringify(a));
+  // the counter: gold never gets flagged
+  await p.click('.tabs button:has-text("Pawn counter")');
+  await snap('pawn-counter');
+  const gold = await p.evaluate(() => window.__rfg.game.s.loot.find(i => i.id === 'chain')?.uid);
+  if (gold) { await p.click(`[data-action=pawn][data-id="${gold}"]`); await p.waitForTimeout(150); }
+  if (await p.evaluate(() => window.__rfg.game.s.loot.some(i => i.id === 'chain'))) throw new Error('pawning the chain did nothing');
+  // too hot: Dre won't come out
+  await p.evaluate(() => { window.__rfg.game.s.heat = 4.5; });
+  await p.click('.tabs button:has-text("Back room")');
+  await p.waitForSelector('.card:has-text("Dre won\'t come out")');
+  await snap('pawn-too-hot');
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.heat = 0; s.loot = []; });
+  await clear();
+});
 await step('hustle (jobs, business, rentals)', async () => {
   await p.evaluate(async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());

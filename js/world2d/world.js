@@ -33,10 +33,12 @@ import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant
 import { charge, fileCase, openCase, IMPOUND_LOT } from '../core/justice.js';
 import { toggleMask, masked } from '../core/disguise.js';
 import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
+import { tickNeeds, runMul } from '../core/needs.js';
 import { applyEstate } from './estate.js';
 import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
 import { seizeCash } from '../core/bank.js';
+import { seizeLoot } from '../core/loot.js';
 import { healthMods } from '../core/health.js';
 import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
 
@@ -340,6 +342,8 @@ export class World {
     const s = this.s;
     const before = s.time.min;
     s.time.min += dt * 1.0;   // 1 real second = 1 game minute
+    const need = tickNeeds(s, dt);   // hunger + energy drain while you play (core/needs.js)
+    if (need) this.ui.toast(need, 'info');
     if (Math.floor(before / 60) !== Math.floor(s.time.min / 60)) this.onHour();
     if (s.time.min >= 1440) { s.time.min -= 1440; s.time.day++; this.ui.onNewDay(); }
   }
@@ -411,7 +415,7 @@ export class World {
     const side = input.steer();
     const run = input.held('run');
     const hm = healthMods(this.s);   // a bad leg: slower, and no running
-    const sp = (run ? (hm.noRun ? 2.4 : 5.2) : 1.8) * hm.speed;
+    const sp = (run ? (hm.noRun ? 2.4 : 5.2 * runMul(this.s)) : 1.8) * hm.speed;
     let mx = side, mz = -fwd;
     const len = Math.hypot(mx, mz);
     if (len > 0.05) {
@@ -631,6 +635,7 @@ export class World {
     items.push(...seizeBag(s));   // they search you: any product on you is a charge
     const cash = seizeCash(s);    // and a dirty stack gets seized (a laundering charge if it's big)
     items.push(...cash.items);
+    items.push(...seizeLoot(s));  // and stolen goods are evidence
     if (ph !== 'none' && ph !== 'notice' && ph !== 'stop' && this.police.eyesOn !== false && !items.some(r => r.kind === 'evading')) {
       items.push(this.inCar && this.police.level >= 2 ? { kind: 'evading', text: 'Evading arrest (in a vehicle).' } : { kind: 'evading', text: 'Evading arrest.' });
     }

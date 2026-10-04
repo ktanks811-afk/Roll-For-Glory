@@ -22,6 +22,8 @@ import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
 import { sideGeo } from '../js/gfx2d/sideCar.js';
 import { CARJACK, canCarjack, carjackChance, carjackChoices, resolveCarjack, strippedCar } from '../js/data/carjack.js';
 import * as GANG from '../js/core/gangs.js';
+import * as FEED from '../js/core/feed.js';
+import { REACT, RIVAL_TEXTS, PAGES } from '../js/data/social.js';
 import { GANGS, GANG_IDS, GANG_CONTACTS, RANKS } from '../js/data/gangs.js';
 import { HOOD_BY_ID } from '../js/core/turf.js';
 import { STREET_RACES, raceRoute, courseRecord, cornerSpeed, pinkSlipCheck } from '../js/data/streetRaces.js';
@@ -31,7 +33,13 @@ import * as DR from '../js/core/drugs.js';
 import * as EST from '../js/core/estate.js';
 import { applyEstate } from '../js/world2d/estate.js';
 import { LAND, PLANS, TRAPS, DRUGS } from '../js/data/estate.js';
-import { charge as chargeOf } from '../js/core/justice.js';
+import { charge as chargeOf, classify } from '../js/core/justice.js';
+import * as NEED from '../js/core/needs.js';
+import { FOOD_SPOTS, MENUS } from '../js/data/food.js';
+import * as CHOP from '../js/core/chop.js';
+import * as LOOTC from '../js/core/loot.js';
+import { LOOT, LOOT_BY_ID, STORE_LOOT, STREET_LOOT, LOOT_KINDS, PAWN } from '../js/data/loot.js';
+import { takeWarrants } from '../js/core/warrants.js';
 
 let fails = 0;
 const bad = (msg) => { fails++; console.error('FAIL', msg); };
@@ -672,6 +680,49 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!CS.isShowTime({ day: 6, min: 12 * 60 }, 'Sat') || CS.isShowTime({ day: 6, min: 20 * 60 }, 'Sat') || CS.isShowTime({ day: 3, min: 12 * 60 }, 'Wed')) bad('car show hours are off');
   if (!LOCATIONS.some(l => l.type === 'carshow')) bad('the car show needs a lot on the map');
 }
+// ---- weekend night meets: when, who shows, the spotlight, races from the lot ----
+{
+  const NM = await import('../js/core/nightmeet.js');
+  // day 5 is a Friday: on from 9 PM, still that night at 2 AM Saturday, closed at 3 AM and on a Thursday
+  if (NM.meetNight({ day: 5, min: 21 * 60 }) !== 5 || NM.meetNight({ day: 6, min: 2 * 60 }) !== 5 || NM.meetNight({ day: 6, min: 3 * 60 }) !== 0
+    || NM.meetNight({ day: 4, min: 23 * 60 }) !== 0 || NM.meetNight({ day: 6, min: 22 * 60 }) !== 6 || NM.meetNight({ day: 7, min: 60 }) !== 6 || NM.meetNight({ day: 7, min: 22 * 60 }) !== 0) bad('night meet hours are off');
+  if (!LOCATIONS.some(l => l.id === NM.MEET_LOC && l.type === 'meet' && l.weekend && !l.tier)) bad('the weekend meet needs an open lot on the map');
+  { const lot = LOCATIONS.find(l => l.id === NM.MEET_LOC), mate = LOCATIONS.find(l => l !== lot && l.block && lot.block && l.block.join() === lot.block.join()); if (mate) bad(`the weekend meet shares its block with ${mate.id}`); }
+  for (const tier of [1, 2, 3, 4, 5]) {
+    const lu = NM.lineup(tier);
+    if (lu.cars.length < 6) bad(`night meet tier ${tier} only has ${lu.cars.length} cars`);
+    if (!lu.crews.length) bad(`no crews at the tier ${tier} night meet`);
+    for (const e of lu.cars) {
+      if (!CAR_BY_ID[e.modelId] || !isFinite(e.score)) bad(`night meet car ${e.name} is broken`);
+      if (e.racer && !RACERS.some(r => r.id === e.racer)) bad(`night meet racer ${e.racer} unknown`);
+    }
+    if (!lu.cars.some(e => e.racer)) bad(`nobody to race at the tier ${tier} night meet`);
+    for (const c of lu.crews) if (!lu.cars.some(e => e.crew === c)) bad(`crew ${c} rolled in with no cars`);
+    if (lu.crews.includes('midnight_static') && NM.lineup(tier, { skip: 'midnight_static' }).crews.includes('midnight_static')) bad('your own crew should not show up as a rival');
+    const ev = NM.meetRoute(tier);
+    if (!STREET_RACES.includes(ev) || ev.tier > tier) bad(`meet race route ${ev.id} is above tier ${tier}`);
+  }
+  const lot = NM.lineup(2).cars;
+  const top = NM.spotlight({ score: 400, lot, tier: 2, crowd: 200, rnd: () => 0.5 });
+  const low = NM.spotlight({ score: 10, lot, tier: 2, crowd: 200, rnd: () => 0.5 });
+  if (!(top.crown && top.rank === 1 && !low.crown && low.rank === lot.length + 1)) bad('spotlight ranks are off');
+  if (!(top.tips > low.tips && top.rep > low.rep && top.followers > low.followers && low.tips >= 0)) bad('a better build should earn more in the spotlight');
+  const crewd = NM.spotlight({ score: 60, lot, tier: 2, crowd: 200, crew: 3, rnd: () => 0.5 }), solo = NM.spotlight({ score: 60, lot, tier: 2, crowd: 200, rnd: () => 0.5 });
+  if (!(crewd.hype > solo.hype)) bad('rolling with your crew should add hype');
+  if (!(NM.copsChance(0, 0) < NM.copsChance(0, 2) && NM.copsChance(0, 2) < NM.copsChance(3, 2) && NM.copsChance(6, 3) <= 0.85)) bad('cop odds at the meet are off');
+  const w = NM.meetRaceBonus({ won: true, crew: true, tier: 2, pot: NM.CREW_POT[2] }), l = NM.meetRaceBonus({ won: false, crew: true, tier: 2, pot: NM.CREW_POT[2] });
+  if (!(w.cash === NM.CREW_POT[2] && l.cash === -NM.CREW_POT[2] && w.crewRep > 0 && l.crewRep === 0)) bad('crew pot settles wrong');
+  // old saves have no meet record; it gets made, and resets each night
+  const sv = { time: { day: 5, min: 22 * 60 } };
+  const r1 = NM.meetRecord(sv); r1.shown = true; r1.burnouts = 2;
+  if (NM.meetRecord(sv).shown !== true) bad('meet record forgot the night');
+  sv.time = { day: 6, min: 22 * 60 };
+  const r2 = NM.meetRecord(sv);
+  if (r2.shown || r2.burnouts || r2.nights !== 2) bad('meet record did not reset for a new night');
+  if (NM.lineup(1, { mates: ['tiny', 'lowkey'] }).cars.some(e => e.racer === 'tiny' || e.racer === 'lowkey')) bad('your crew mates should park with you, not on the lot');
+  const crewS = { crew: { members: ['tiny', 'lowkey', 'nobody'] } };
+  if (NM.crewWithYou(crewS).length !== 2 || NM.callout({}, lot) !== null) bad('crew at the meet is off');
+}
 // ---- Glitch rim pack: every rim is on the atlas and sold as a wheel ----
 {
   const { RIMS, RIM_COLS } = await import('../js/data/rims.js');
@@ -880,6 +931,221 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const a = mk(); a.cash = 6000; a.dirty = 5000;
   const sz = BK.seizeCash(a);
   if (sz.seized !== 5000 || a.cash !== 1000 || sz.items[0]?.kind !== 'launder_SJF') bad('seizing dirty cash at booking');
+}
+// ---- hunger + sleep: meters drain slowly, food and sleep fill them, food spots stand on the map ----
+{
+  const s = createState({ name: 'H', age: 25, look: {}, story: false });
+  if (s.player.food !== 100 || s.player.energy !== 100) bad('a new career should start fed and rested');
+  const old = { player: { energy: 60 }, inventory: {} };
+  NEED.ensureNeeds(old);
+  if (old.player.food !== 100 || old.inventory.tacos !== 0) bad('an old save should get a full food meter and an empty bag');
+  // an hour of play barely moves them; a full day empties the stomach, not the battery
+  NEED.tickNeeds(s, 60);
+  if (!(s.player.food > 90 && s.player.energy > 90)) bad(`an hour of play drained too much: ${JSON.stringify(s.player)}`);
+  const msgs = [];
+  for (let m = 0; m < 24 * 60; m++) { const w = NEED.tickNeeds(s, 1); if (w) msgs.push(w); }
+  if (s.player.food !== 0) bad('a full day without eating should empty the food meter');
+  if (msgs.length !== 4) bad(`expected one low and one very low heads-up per meter, got ${msgs.length}: ${msgs.join(' | ')}`);
+  if (!(NEED.runMul(s) < 1)) bad('running on empty should slow you down');
+  NEED.eat(s, MENUS.taco[0]);
+  if (s.player.food !== MENUS.taco[0].food) bad('eating tacos did not fill you up');
+  s.inventory.tacos = 1;
+  if (!NEED.eatFromBag(s, 'tacos') || s.inventory.tacos !== 0) bad('could not eat tacos from the bag');
+  if (NEED.eatFromBag(s, 'tacos')) bad('ate tacos you do not have');
+  NEED.sleep(s, 10 * 60);
+  if (s.player.energy !== 100) bad('sleeping should leave you fully rested');
+  s.player.energy = 10; NEED.nap(s, 120);
+  if (s.player.energy !== 50) bad('a two-hour nap should give +40 energy');
+  for (const [k, items] of Object.entries(MENUS)) for (const f of items) if (!(f.price > 0) || !(f.food >= 0) || !(f.energy >= 0)) bad(`menu ${k}: ${f.id} has a bad price or value`);
+  const map = buildMap();
+  for (const l of FOOD_SPOTS) {
+    if (!MENUS[l.menu]) bad(`${l.id} has no menu`);
+    if (!map.buildings.some(b => b.loc === l.id && b.shop === 'food')) bad(`${l.id} has nothing built on its lot`);
+    if (!LOCATIONS.includes(l)) bad(`${l.id} is not on the map`);
+    // reachable from the street: the road is right outside the marker
+    const back = { N: [0, -1], S: [0, 1], W: [-1, 0], E: [1, 0] }[l.side];
+    if (collideCircle(map, l.x + back[0] * 6, l.z + back[1] * 6, 1.5)) bad(`${l.id}: something blocks the way up to it`);
+  }
+  if (FOOD_SPOTS.filter(l => l.truck).length < 3) bad('Fort Worth needs its taco trucks');
+}
+
+// ---------------- chop shop ----------------
+{
+  const st = createState({ name: 'C', age: 25, look: {}, story: false });
+  game.s = st;
+  const civic = newCar(CARS.find(c => c.make === 'honda' && c.body !== 'super').id, { year: 2012, hot: { kind: 'parked', reported: false } });
+  const ferrari = newCar(CARS.find(c => c.make === 'ferrari').id, { year: 2018, hot: { kind: 'carjack', armed: true, reported: true } });
+  const ev = newCar(CARS.find(c => c.asp === 'ev').id, { year: 2022, hot: { kind: 'parked' } });
+  const full = CHOP.stripPlan(st, civic), quick = CHOP.stripPlan(st, civic, true);
+  if (!(full.total > quick.total && full.mins > quick.mins)) bad('chop: a full strip should pay more and take longer than a quick one');
+  for (const car of [civic, ferrari]) {
+    const whole = Math.round(CHOP.stripPlan(st, car).total), value = Math.round((await import('../js/core/state.js')).carValue(car));
+    if (!(whole > value * 0.3) && !CHOP.isExotic(CAR_BY_ID[car.modelId])) bad(`chop: stripping ${car.modelId} (${whole}) pays less than Sal (${value * 0.3})`);
+    if (whole > value) bad(`chop: parts off ${car.modelId} are worth more than the car`);
+  }
+  if (CHOP.stripPlan(st, ev).parts.some(p => p.id === 'cat')) bad('chop: an EV has no catalytic converter');
+  if (CHOP.carHeat(ferrari) <= CHOP.carHeat(civic)) bad('chop: an armed carjacked exotic should bring more heat than a parked Civic');
+  if (CHOP.sweepChance(st, 0) !== 0) bad('chop: a cold shop should never get swept');
+  CHOP.strip(st, civic);
+  if (!st.chop.shelf.length || st.chop.heat <= 0 || st.stats.carsChopped !== 1) bad('chop: stripping did not put parts on the shelf');
+  const cash0 = st.cash, worth = CHOP.shelfValue(st);
+  if (CHOP.sellParts(st) !== worth || st.cash !== cash0 + worth || st.chop.shelf.length) bad('chop: selling the shelf');
+  st.chop.heat = 90;
+  if (!(CHOP.sweepChance(st, 3) > CHOP.sweepChance(st, 0) && CHOP.sweepChance(st, 0) > 0)) bad('chop: heat and the cops should raise the sweep odds');
+  CHOP.strip(st, civic);
+  let swept = null;
+  for (let i = 0; i < 40 && !swept; i++) swept = CHOP.chopDay(st, () => 0.01);
+  if (!swept?.swept || st.chop.shelf.length || !CHOP.isClosed(st) || !swept.took.parts) bad('chop: a hot shop should get swept and lose the shelf');
+  if (CHOP.chopDay(st)) bad('chop: a padlocked shop got swept again');
+  if (classify(CHOP.CHOP_CHARGE).cls !== 'F3' || classify(CHOP.PARTS_CHARGE).cls !== 'SJF') bad('chop: charge classes');
+  // old saves without a chop shop still load
+  const old = createState({ name: 'O', age: 25, look: {}, story: false }); delete old.chop;
+  if (CHOP.isClosed(old) || CHOP.shelfValue(old) !== 0) bad('chop: an old save');
+  if (!LOCATIONS.some(l => l.id === CHOP.CHOP_LOC && l.type === 'chop')) bad('chop: Marchetti Salvage is not on the map');
+}
+// ---- stolen goods: pawn counter and the fence ----
+{
+  for (const l of LOOT) if (!LOOT_KINDS[l.kind] || !(l.serial >= 0 && l.serial <= 1)) bad(`loot ${l.id}: needs a kind and serial`);
+  for (const [src, r] of Object.entries(STREET_LOOT)) for (const [id] of r.table) if (!LOOT_BY_ID[id]) bad(`${src}: unknown loot ${id}`);
+  if (!LOCATIONS.some(l => l.type === 'pawn')) bad('no pawn shop on the map');
+  const st = createState({ name: 'P', age: 25, look: {}, story: false });
+  const earnFn = (s, n) => { s.cash += n; };
+  const seq = xs => { let i = 0; return () => xs[i++ % xs.length]; };
+  for (const src of Object.keys(STREET_LOOT)) {
+    const got = LOOTC.grabLoot(st, src, 'test', seq([0, 0.99, 0.5, 0.2, 0.7]));
+    if (!got.length || got.some(i => !STREET_LOOT[src].table.some(([x]) => x === i.id))) bad(`grabLoot ${src}`);
+  }
+  if (LOOTC.grabLoot(st, 'mug', '', () => 0.999).length) bad('a mugging should sometimes give nothing');
+  const ph = LOOTC.addLoot(st, 'phone', 'a mugging'), gold = LOOTC.addLoot(st, 'chain', 'Test Mart');
+  if (!ph || LOOTC.lootKind(ph) !== 'electronics' || ph.value !== LOOT_BY_ID.phone.value) bad('addLoot shape');
+  // the fence pays less the hotter you are, and won't deal at high heat
+  const cool = LOOTC.fenceOffer(st, ph, 0), warm = LOOTC.fenceOffer(st, ph, 2.5);
+  if (!(cool > warm && warm > 0)) bad(`fence should pay less with heat (${cool} vs ${warm})`);
+  if (LOOTC.fenceShare(st, PAWN.fenceRefuse) !== null || LOOTC.sellToFence(st, [ph.uid], earnFn, 5).ok) bad('fence should refuse at high heat');
+  if (!(LOOTC.counterOffer(ph) > cool)) bad('the counter should pay more than the fence');
+  // gold has no serial: never flagged; a fresh phone often is, a week-old one less
+  if (LOOTC.flagChance(st, gold) !== 0) bad('gold should never get flagged');
+  const fresh = LOOTC.flagChance(st, ph); st.time.day += 8; const later = LOOTC.flagChance(st, ph); st.time.day -= 8;
+  if (!(fresh > 0.5 && later < fresh / 2)) bad(`hot items should cool off (${fresh} → ${later})`);
+  const r1 = LOOTC.pawnItem(st, gold.uid, earnFn, () => 0);
+  if (!r1.ok || r1.flagged || r1.paid !== LOOTC.counterOffer(gold)) bad('pawning gold');
+  const w0 = (st.warrants || []).length, r2 = LOOTC.pawnItem(st, ph.uid, earnFn, () => 0);
+  if (!r2.flagged || r2.paid || st.warrants.length !== w0 + 1 || st.loot.some(i => i.uid === ph.uid)) bad('a flagged item should be kept and a warrant issued');
+  const wr = takeWarrants(st);
+  if (!wr.items.some(i => i.kind === 'stolen_goods' && i.value === ph.value)) bad('stolen-goods warrant should keep its value');
+  if (classify({ kind: 'stolen_goods', value: 260, guns: 1 }).cls !== 'SJF') bad('a stolen gun should be a felony');
+  // sell to the fence, then busted with the rest: seized and charged
+  const n = st.loot.length, before = st.cash, two = st.loot.slice(0, 2).map(i => i.uid);
+  const f = LOOTC.sellToFence(st, two, earnFn, 0);
+  if (!f.ok || st.cash - before !== f.paid || st.loot.length !== n - 2) bad('selling to the fence');
+  LOOTC.addLoot(st, 'glovebox_gun', 'a stolen car');
+  const seized = LOOTC.seizeLoot(st);
+  if (st.loot.length || seized.length !== 1 || classify(seized[0]).cls !== 'SJF') bad('stolen goods with a gun should be seized and a felony ' + JSON.stringify(seized));
+  // your own guns sell legally at the counter
+  giveWeapon(st, GLOCKS[0].id, false);
+  const g = ensureArms(st).guns[0], sg = LOOTC.sellOwnGun(st, g.uid, earnFn);
+  if (!sg.ok || ensureArms(st).guns.length || sg.paid !== Math.round(GLOCKS[0].price * PAWN.ownGun)) bad('selling your own gun');
+  // the early pawn-shop save shape { items } is repaired
+  const early = { loot: { items: [{ uid: 'x', id: 'phone', name: 'iPhone', value: 500, day: 1 }] } };
+  if (LOOTC.ensureLoot(early).length !== 1) bad('early loot shape');
+}
+
+// ---- Throttle feed + rival texts ----
+{
+  for (const [k, list] of Object.entries(REACT)) for (const [who, tpl] of list) {
+    if (who !== 'local' && !PAGES[who]) bad(`feed ${k}: unknown page ${who}`);
+    if (/\{(?!me|name|npc|car|where|amt|gang\})\w+\}/.test(tpl)) bad(`feed ${k}: unknown placeholder in "${tpl}"`);
+  }
+  const s = createState({ name: 'Feed Test', age: 22, look: {}, story: false });
+  game.s = s;
+  let seq = 0; const rng = () => ((seq = (seq * 9301 + 49297) % 233280) / 233280);
+  // an old save: a plain post of your own, no s.social
+  s.feed = [{ day: 1, text: 'old post', likes: 3 }];
+  s.stats.carsStolen = 4;
+  FEED.ensureSocial(s);
+  FEED.statTick(s, rng);
+  if (s.feed.length !== 1) bad('an old save should not get posts about things it did before the feed existed');
+  // win a race against a racer: the city posts, the racer becomes a rival and texts
+  const racer = RACERS[0];
+  const f0 = s.followers, m0 = s.messages.length;
+  FEED.onRace(s, { won: true, npcId: racer.id, wager: 2000 }, () => 0.1);
+  if (s.feed.length < 2 || !s.feed[0].text.includes(FEED.myHandle(s))) bad('a race win should get posted about you');
+  if (!(s.followers > f0)) bad('posts about you should bring followers');
+  if (!FEED.rival(s, racer.id) || FEED.rival(s, racer.id).heat < 20) bad('beating a racer should make them a rival');
+  const threat = s.messages.find(m => m.action?.type === 'rival');
+  if (s.messages.length <= m0 || !threat || threat.from !== racer.id) bad('a beaten racer should text a threat you can answer');
+  if (!FEED.rivalsList(s).some(r => r.id === racer.id)) bad('rivals list missing the racer');
+  if (FEED.ensureSocial(s).unseen < 1) bad('new posts should badge the app');
+  // talk back: rep, a post of your own, hotter rival
+  const h0 = FEED.rival(s, racer.id).heat, rep0 = s.rep;
+  if (FEED.answerRival(s, threat, 'back', rng)) bad('could not talk back');
+  if (!(FEED.rival(s, racer.id).heat > h0) || !(s.rep > rep0) || !s.feed[0].mine) bad('talking back should heat it up, earn rep and post');
+  if (!FEED.answerRival(s, threat, 'calm')) bad('a threat should only be answered once');
+  // run it back: a challenge text from them
+  { const c = newCar(CARS[0].id); s.cars.push(c); s.activeCar = c.uid; }
+  {
+    FEED.onRace(s, { won: true, npcId: racer.id, wager: 0 }, () => 0.1);
+    const t2 = s.messages.find(m => m.action?.type === 'rival' && !m.action.done);
+    if (!t2) bad('second threat missing');
+    else {
+      const why = FEED.answerRival(s, t2, 'race', rng);
+      if (why) bad('run it back: ' + why);
+      if (!s.messages.some(m => m.action?.type === 'challenge' && m.from === racer.id)) bad('running it back should text a race challenge');
+    }
+  }
+  // stealing a car, a SWAT raid and gang beef all get noticed
+  const n0 = s.feed.length;
+  s.stats.carsStolen = 5; FEED.statTick(s, rng);
+  if (s.feed.length <= n0 || !/stolen|took my/i.test(s.feed.slice(0, 2).map(p => p.text).join(' '))) bad('a stolen car should hit the feed');
+  GANG.ensureGang(s);
+  s.gang.beef.hemphill = 60;
+  const g0 = s.messages.length;
+  FEED.statTick(s, rng);
+  const gt = s.messages.find(m => m.action?.type === 'rival' && m.action.id === 'hemphill');
+  if (s.messages.length <= g0 || !gt || gt.from !== GANGS.hemphill.boss) bad('a set with hot beef should text you a threat');
+  FEED.statTick(s, rng);
+  if (s.messages.filter(m => m.action?.id === 'hemphill').length !== 1) bad('the same beef level should only text once');
+  if (FEED.rivalOptions(s, 'hemphill').length !== 2) bad('gang threats offer talk back or squash');
+  s.cash = 100000;
+  if (FEED.answerRival(s, gt, 'calm')) bad('squashing it by text failed');
+  if (s.gang.beef.hemphill !== 0 || FEED.rival(s, 'hemphill')) bad('squashing should end the beef');
+  // the feed stays bounded and hours tick without errors
+  for (let i = 0; i < 300; i++) FEED.feedHour(s, rng);
+  if (s.feed.length > FEED.FEED_MAX) bad('feed grew past its cap');
+  for (const k of Object.keys(RIVAL_TEXTS)) if (!RIVAL_TEXTS[k].length) bad(`rival texts ${k} empty`);
+}
+
+// ---- store robberies: corner stores, stolen goods, selling and getting caught with it ----
+{
+  const corners = LOCATIONS.filter(l => l.type === 'corner');
+  if (corners.length < 3) bad('expected corner stores to rob');
+  for (const t of ['corner', 'gas', 'food', 'clothing']) {
+    if (!STORE_LOOT[t]?.length) bad(`${t}: nothing behind the counter`);
+    for (const [id] of STORE_LOOT[t] || []) if (!LOOT_BY_ID[id]) bad(`${t}: unknown loot ${id}`);
+  }
+  for (const l of LOOT) if (!(l.value > 0) || !l.name) bad(`loot ${l.id}: needs a name and value`);
+  const rolled = LOOTC.rollLoot('corner', 3);
+  if (rolled.length !== 3 || rolled.some(id => !STORE_LOOT.corner.some(([x]) => x === id))) bad('rollLoot corner: ' + rolled);
+  if (LOOTC.rollLoot('nowhere', 2).length) bad('rollLoot for a store with no shelf');
+  const st = createState({ name: 'R', age: 25, look: {}, story: false });
+  if (!Array.isArray(st.loot)) bad('new career has no loot list');
+  const old = { ...st }; delete old.loot; LOOTC.ensureLoot(old);
+  if (!Array.isArray(old.loot)) bad('old saves should get an empty loot list');
+  LOOTC.addLoot(st, 'chain', 'Test Mart'); LOOTC.addLoot(st, 'cigs', 'Test Mart'); LOOTC.addLoot(st, 'nope');
+  if (st.loot.length !== 2 || !st.loot.every(i => i.hot && i.uid && i.from === 'Test Mart')) bad('addLoot shape ' + JSON.stringify(st.loot));
+  const cash = st.cash, total = LOOTC.lootTotal(st);
+  const paid = LOOTC.sellLoot(st, [st.loot[1].uid]);
+  if (paid !== Math.round(LOOT_BY_ID.cigs.value * LOOTC.FENCE_RATE) || st.cash !== cash + paid || st.loot.length !== 1) bad('selling one item');
+  if (total !== LOOT_BY_ID.chain.value + LOOT_BY_ID.cigs.value) bad('loot total');
+  // busted holding a gold chain: theft over $100 (Class B), goods seized
+  const rec = LOOTC.seizeLoot(st);
+  if (st.loot.length || rec.length !== 1 || rec[0].kind !== 'stolen_goods') bad('seizeLoot ' + JSON.stringify(rec));
+  if (classify(rec[0]).cls !== 'B') bad('a $650 chain should be a Class B theft: ' + JSON.stringify(classify(rec[0])));
+  if (classify({ kind: 'stolen_goods', value: 3000 }).cls !== 'SJF') bad('$3,000 of stolen goods should be a state jail felony');
+  if (classify({ kind: 'stolen_goods', value: 50 }).cls !== 'C') bad('$50 of stolen goods is a Class C');
+  const ch = chargeOf([...rec, { kind: 'robbery', text: 'Armed robbery — Rosedale Food Mart.', fine: 6000 }], 0.9);
+  if (!ch.charges.some(c => c.cls === 'F1') || !ch.charges.some(c => /stolen goods/.test(c.text))) bad('robbery + goods charges ' + JSON.stringify(ch));
+  if (LOOTC.seizeLoot(st).length) bad('nothing to seize twice');
 }
 // ---- JPS hospital: injuries heal, bills go to collections, then garnishment ----
 {

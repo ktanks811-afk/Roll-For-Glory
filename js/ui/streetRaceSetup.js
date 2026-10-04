@@ -6,7 +6,7 @@ import { openPanel, closeAllPanels, bind, esc, toast, modal } from './dom.js';
 import { game, fmtMoney, spend, earn, activeCar, carMetrics, carValue, modelOf, tierOf, addRep, addFollowers, newCar, garageCapacity } from '../core/state.js';
 import { RACERS } from '../data/npcs.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
-import { WAGER_CAP, PROPERTIES, districtAt } from '../data/world.js';
+import { WAGER_CAP, PROPERTIES, districtAt, LOC_BY_ID } from '../data/world.js';
 import { STREET_RACE_BY_ID, raceRoute, courseRecord, racerSpec, fmtRaceTime, pinkSlipCheck, TRIAL_PURSE } from '../data/streetRaces.js';
 import { metrics } from '../sim/powertrain.js';
 import { PERF_IDS, defaultVisual } from '../data/parts.js';
@@ -15,6 +15,7 @@ import { emit } from '../core/events.js';
 import { checkSponsors } from './phone.js';
 import { audio } from '../core/audio.js';
 import { touchUi } from './touch.js';
+import { settleMeetRace } from './nightmeet.js';
 
 const miles = m => (m / 1609.34).toFixed(1) + ' mi';
 
@@ -70,6 +71,7 @@ export function openStreetRace(app, loc, { npcId = null } = {}) {
           ${pinkNo ? `<p class="small muted">${esc(pinkNo)}</p>` : ''}
           ${st.stake === 'cash' ? `<label class="field"><span>Wager — ${fmtMoney(st.wager)} <small class="muted">(max ${fmtMoney(maxW)} · tier cap ${fmtMoney(cap)})</small></span><input type="range" class="input" min="0" max="${maxW}" step="${maxW > 5000 ? 250 : 50}" value="${st.wager}" data-wager></label>`
             : `<p class="small warn">Winner keeps both cars. Lose and ${esc(npc.nick)} drives home in your ${esc(modelOf(car).model)} (worth ${fmtMoney(carValue(car))}). You win their ${esc(CAR_BY_ID[npc.car.model].model)} (worth about ${fmtMoney(rivalValue(npc))}).</p>`}` : ''}
+        ${npc && s.meetRace?.npcId === npc.id && s.meetRace.race === ev.id ? `<p class="small good nm-note">Set up at ${esc(LOC_BY_ID[s.meetRace.loc]?.name || 'the meet')}. The whole lot is watching${s.meetRace.crew ? `, and ${fmtMoney(s.meetRace.pot)} crew pot is on it` : ''}.</p>` : ''}
         <p class="small ${ev.heat > 0.7 ? 'warn' : 'muted'}">⚠ Public streets: live traffic, red lights, and racing here raises police heat.</p>
         <div class="row" style="margin-top:12px"><button class="btn btn-primary" data-action="go" style="flex:1">${npc ? 'Line up' : 'Start the clock'}</button></div>
       </div></div></div>`;
@@ -173,6 +175,8 @@ function results(app, r) {
   if (carLost) loseCar(app, carLost);
   checkSponsors(s);
   emit('raceFinished', { won, npcId: npc?.id, wager: r.stake.wager || 0, type: 'street', dist: ev.id, pinks: r.stake.type === 'pinks' });
+  // set up at the weekend meet: the whole lot was watching
+  const meet = npc ? settleMeetRace(s, { won, npcId: npc.id, raceId: ev.id }) : null;
   if (won || (r.outcome === 'done' && r.pTime < rec.time)) audio.win(); else audio.lose();
 
   const title = won ? 'YOU WIN' : r.outcome === 'done' ? (r.pTime < rec.time ? 'NEW RECORD' : 'FINISHED') : r.outcome === 'dnf' ? 'DNF' : 'YOU LOST';
@@ -195,6 +199,7 @@ function results(app, r) {
         <div class="section-title">Payout</div>
         <div class="kv"><span>Money</span><span class="${money > 0 ? 'good' : money < 0 ? 'bad' : ''}">${money > 0 ? '+' : ''}${fmtMoney(money)}</span>
           <span>Rep</span><span>${repGain >= 0 ? '+' : ''}${repGain}</span><span>Followers</span><span>+${followers}</span><span>Heat</span><span class="warn">${s.heat.toFixed(1)}</span></div>
+        ${meet ? `<div class="section-title">The meet saw it</div><div class="kv nm-bonus">${meet.cash ? `<span>Crew pot</span><span class="${meet.cash > 0 ? 'good' : 'bad'}">${meet.cash > 0 ? '+' : '-'}${fmtMoney(Math.abs(meet.cash))}</span>` : ''}<span>Rep</span><span>${meet.rep >= 0 ? '+' : ''}${meet.rep}</span><span>Followers</span><span>+${meet.followers}</span>${meet.crewRep ? `<span>Crew rep</span><span class="good">+${meet.crewRep}</span>` : ''}</div>` : ''}
         <div class="row" style="margin-top:16px"><button class="btn btn-primary" data-action="leave">Back to the street</button></div>
       </div></div></div>`;
     bind(root, { leave: () => h.close() });

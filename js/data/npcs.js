@@ -178,6 +178,7 @@ export const PEOPLE = {
   ...GANG_CONTACTS,
   jojo:    { name: 'Jojo Mendez', role: 'Friend', color: '#13b3c4', bio: 'Your oldest friend. Knows everyone, owes most of them money.' },
   sal:     { name: 'Sal Marchetti', role: "Dealer · Rusty's Used Autos", color: '#c8b98a', bio: 'Sells cars that mostly run. Honest about the "mostly".' },
+  junior:  { name: 'Junior Marchetti', role: 'Marchetti Salvage · chop shop', color: '#c9752a', bio: 'Sal\'s nephew. Turns a stolen Camry into forty boxes of parts before the coffee\'s done.' },
   rosa:    { name: 'Rosa Vega', role: 'Mechanic · Torque Temple', color: '#e8641a', bio: 'Best wrench in Fort Worth. Will not build you something stupid. Will build you something fast.' },
   manny:   { name: 'Manny Vega', role: 'Body & Paint · Vega Kustoms', color: '#d12a8a', bio: "Rosa's cousin. Paint, wheels, kits — if it shows, Manny does it." },
   kingpin: { name: 'Dre Holloway', role: 'Organizer · "Kingpin"', color: '#e8c21a', bio: 'Runs the meets. If there\'s a race worth watching, Dre set it up.' },

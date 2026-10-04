@@ -268,7 +268,7 @@ export const JOB_KINDS = {
 };
 
 function storeIn(hood) {
-  const spots = LOCATIONS.filter(l => ['gas', 'food', 'clothing'].includes(l.type) && districtAt(l.x, l.z) === hood);
+  const spots = LOCATIONS.filter(l => ['gas', 'food', 'corner', 'clothing'].includes(l.type) && districtAt(l.x, l.z) === hood);
   return spots.length ? spots[Math.floor(Math.random() * spots.length)] : null;
 }
 

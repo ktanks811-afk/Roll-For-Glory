@@ -69,10 +69,17 @@ export function maybeChallenge(s) {
   const tier = tierOf(s.rep).n;
   const pool = RACERS.filter(r => r.tier <= tier + 1 && r.tier >= tier - 1);
   const r = pool[Math.floor(Math.random() * pool.length)];
-  if (!r) return;
+  if (r) challengeFrom(s, r);
+}
+
+// A racer texts you a race: a spot, a wager, and Accept / Decline in Messages.
+// `opener` replaces their usual taunt (a rival running it back, say).
+export function challengeFrom(s, r, opener = null) {
+  const tier = tierOf(s.rep).n;
   const type = r.style === 'drag' ? 'drag' : 'roll';
   const spots = SPOTS[type].filter(id => (LOC_BY_ID[id].tier || 1) <= tier);
   const loc = spots[Math.floor(Math.random() * spots.length)];
+  if (!loc) return null;
   const wager = Math.round(([0, 400, 1500, 5000, 15000, 60000][r.tier] * (0.6 + Math.random() * 0.8)) / 100) * 100;
   const speeds = [30, 40, 50, 60, 70];
   const ch = {
@@ -82,10 +89,11 @@ export function maybeChallenge(s) {
     expires: s.time.day + 2,
   };
   const where = LOC_BY_ID[loc].name;
+  const taunt = opener || r.lines.taunt;
   const text = type === 'drag'
-    ? `${r.lines.taunt} Quarter mile at ${where}. $${wager.toLocaleString()} on it.`
-    : `${r.lines.taunt} ${ch.roll}-roll, ${ch.dist === 'mile' ? 'one mile' : ch.dist === 'half' ? 'half mile' : 'quarter mile'} on ${ROADS[LOC_BY_ID[loc].road]?.name || where}. $${wager.toLocaleString()}.`;
-  sendMessage(s, r.id, text, { action: { type: 'challenge', challenge: ch } });
+    ? `${taunt} Quarter mile at ${where}. $${wager.toLocaleString()} on it.`
+    : `${taunt} ${ch.roll}-roll, ${ch.dist === 'mile' ? 'one mile' : ch.dist === 'half' ? 'half mile' : 'quarter mile'} on ${ROADS[LOC_BY_ID[loc].road]?.name || where}. $${wager.toLocaleString()}.`;
+  return sendMessage(s, r.id, text, { action: { type: 'challenge', challenge: ch } });
 }
 
 export { RACER_BY_ID };

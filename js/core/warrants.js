@@ -15,7 +15,7 @@ import { emit } from './events.js';
 export const CITATION_DAYS = 3;       // a signed ticket is due this many game days later
 export const FTA_FEE = 250;           // failure-to-appear fee added when a ticket becomes a warrant
 export const SURRENDER_DISCOUNT = 0.25;
-const FELONY_KINDS = new Set(['robbery', 'shots', 'assault', 'auto', 'gta', 'carjack']);
+const FELONY_KINDS = new Set(['robbery', 'shots', 'assault', 'auto', 'gta', 'carjack', 'chop']);
 
 export function ensureRecord(s) {
   s.citations ??= [];   // { id, text, fine, due }
@@ -87,12 +87,12 @@ export function warrantForEscape(s, record = [], level = 1, seen = true, rng = M
 // offences for the booking officer (core/justice.js charge() sorts them into
 // court charges and fines), the fine-only total, and how many warrants that was.
 // How strong the State's case on a warrant is (0..1), from what tied it to you.
-const strength = w => /disguise/i.test(w.evidence || '') ? 0.5 : /plate/i.test(w.evidence || '') ? 0.7 : /face|camera/i.test(w.evidence || '') ? 0.75 : 0.6;
+const strength = w => /serial/i.test(w.evidence || '') ? 0.8 : /disguise/i.test(w.evidence || '') ? 0.5 : /plate/i.test(w.evidence || '') ? 0.7 : /face|camera/i.test(w.evidence || '') ? 0.75 : 0.6;
 
 export function takeWarrants(s) {
   ensureRecord(s);
   const n = s.warrants.length;
-  const items = s.warrants.filter(w => w.kind !== 'bailjump').map(w => ({ kind: w.kind, text: w.text, fine: w.fine, felony: w.felony, evidence: strength(w) }));
+  const items = s.warrants.filter(w => w.kind !== 'bailjump').map(w => ({ kind: w.kind, text: w.text, fine: w.fine, felony: w.felony, value: w.value, guns: w.guns, evidence: strength(w) }));
   const tickets = citationTotal(s);
   s.warrants = []; s.citations = [];
   if (n) emit('warrant', { cleared: n });
@@ -139,5 +139,5 @@ export function surrender(s) {
   s.warrants = []; s.citations = [];
   if (n) emit('warrant', { cleared: n });
   s.heat = 0;
-  return { ok: true, total, felonies: felonies.map(w => ({ kind: w.kind, text: w.text, felony: true, evidence: strength(w) })), skipped };
+  return { ok: true, total, felonies: felonies.map(w => ({ kind: w.kind, text: w.text, felony: true, value: w.value, guns: w.guns, evidence: strength(w) })), skipped };
 }

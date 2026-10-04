@@ -12,10 +12,10 @@ import { online } from '../net/online.js';
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', meet: '●', flag: '⚑', trophy: '♛' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
-  { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot'] },
-  { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty'] },
+  { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop'] },
+  { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty', 'pawn'] },
   { id: 'race', label: 'Races & meets', types: ['meet', 'carshow', 'drag', 'roll', 'sprint'] },
-  { id: 'fuel', label: 'Gas & food', types: ['gas', 'food'] },
+  { id: 'fuel', label: 'Gas & food', types: ['gas', 'food', 'corner'] },
   { id: 'work', label: 'Work', types: ['work'] },
   { id: 'home', label: 'Home', types: ['home', 'property', 'trap', 'land'] },
   { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
@@ -24,18 +24,21 @@ const CATS = [
 const WHAT = {
   home: 'Your place: sleep, save, garage, change clothes.',
   property: 'A property: extra garage space.',
-  usedlot: 'Used cars, cheap and honest-ish.',
+  usedlot: 'Used cars, cheap and honest-ish. Sal buys stolen ones.',
+  chop: 'Chop shop. Strip stolen cars for parts and sell them to Junior. Too many and the task force sweeps it.',
   dealer: 'New cars at real prices.',
   perf: 'Install performance parts, dyno and tune.',
   visual: 'Paint, wheels, body kits and looks.',
   repair: 'Collision repair and fixing damage.',
   gas: 'Fill the tank.',
   food: 'Food and energy.',
+  corner: 'Corner store: snacks, drinks, smokes.',
   work: 'Tow yard and gig dispatch: take delivery runs, Ryde riders and tow calls.',
   clothing: 'Outfits and streetwear.',
   realty: 'Buy and sell houses, land and trap houses.',
   trap: 'A trap house. Stock the stash and customers knock. Too many and SWAT does too.',
   land: 'Land for sale. Buy it and build your own house and garage.',
+  pawn: 'Pawn shop with a fence in the back: sell stolen phones, jewelry, electronics and guns.',
   plug: 'Lil Tre sells product out the back of his corner store.',
   police: 'FWPD precinct. Lay low when you have heat.',
   hospital: 'JPS, the county trauma center. Urgent care, clinic follow-ups for injuries, and your medical bills.',
@@ -206,7 +209,7 @@ export function renderMap(scr, ctx) {
       const m = selRoute ? selRoute.meters : 0;
       card.innerHTML = `<div class="mc-name">${t.pin ? '📍 Dropped pin' : esc(shortName(t.name))}${locked ? ' <span class="tag tag-red">🔒 Tier ' + l.tier + '</span>' : ''}</div>
         <div class="mc-sub">${esc(districtAt(t.x, t.z))} · ${fmtDist(m)} by road · ${fmtEta(m)}</div>
-        ${l ? `<div class="mc-what">${esc(WHAT[l.type] || '')}${l.tier ? ` Needs rep tier ${l.tier}.` : ''}</div>` : ''}
+        ${l ? `<div class="mc-what">${esc(l.weekend ? 'Weekend night meet, Friday and Saturday 9 PM to 3 AM: crews, the spotlight, burnouts and races set up from the lot.' : WHAT[l.type] || '')}${l.tier ? ` Needs rep tier ${l.tier}.` : ''}</div>` : ''}
         <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${active
           ? '<button class="btn btn-sm btn-primary" data-go>Start driving</button><button class="btn btn-sm" data-clear>Clear GPS</button>'
           : '<button class="btn btn-sm btn-primary" data-gps>📍 Set GPS</button>'}<button class="btn btn-sm" data-center>Center</button><button class="btn btn-sm" data-x>✕</button></div>`;

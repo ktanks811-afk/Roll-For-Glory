@@ -1,5 +1,6 @@
 import { STREET_RACES, raceStart } from './streetRaces.js';
 import { ESTATE_LOCATIONS, TRAPS } from './estate.js';
+import { FOOD_SPOTS } from './food.js';
 
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
 // with a highway to the north, desert to the south, mountains to the west
@@ -71,6 +72,11 @@ export const LOCATIONS = [
   L('gas_south', 'gas', 'Volt & Petrol', 6, 10, 'N', { color: '#1f8f3a', icon: 'gas' }),
   L('luckys', 'food', "Lucky's 24hr Diner", 6, 7, 'N', { color: '#e8c21a', icon: 'food' }),
   L('noodle', 'food', 'Midnight Noodle Bar', 9, 3, 'S', { color: '#e8c21a', icon: 'food' }),
+  // corner stores: snacks, smokes and scratchers behind bulletproof glass
+  L('corner_rosedale', 'corner', 'Rosedale Food Mart', 6, 9, 'N', { color: '#ff8a1a', icon: 'food' }),
+  L('corner_northside', 'corner', 'Northside Quick Stop', 6, 2, 'S', { color: '#ff8a1a', icon: 'food' }),
+  L('corner_riverside', 'corner', 'Riverside Mini Mart', 9, 4, 'W', { color: '#ff8a1a', icon: 'food' }),
+  L('corner_camp_bowie', 'corner', 'Camp Bowie Corner Store', 2, 5, 'E', { color: '#ff8a1a', icon: 'food' }),
   L('threadline', 'clothing', 'Threadline Streetwear', 4, 6, 'E', { color: '#a01aff', icon: 'shirt' }),
   L('surplus', 'clothing', 'Riverside Army Surplus', 8, 9, 'W', { color: '#a01aff', icon: 'shirt', shop: 'surplus' }),
   L('bayline', 'realty', 'Bayline Realty', 5, 5, 'S', { color: '#1f8f3a', icon: 'key', contact: 'priya' }),
@@ -85,10 +91,14 @@ export const LOCATIONS = [
   L('westover_estate', 'property', 'Westover Hills Estate', 0, 3, 'E', { color: '#ffffff', icon: 'home' }),
   L('rivercrest_mansion', 'property', 'Rivercrest Mansion', 1, 8, 'E', { color: '#ffffff', icon: 'home' }),
   L('trap_riverside', 'trap', 'Riverside Duplex', 10, 4, 'W', { color: '#8a1a1a', icon: 'home' }),
+  L('marchetti_salvage', 'chop', 'Marchetti Salvage', 10, 7, 'N', { color: '#c9752a', icon: 'wrench', contact: 'junior' }),
+  L('cashcow_pawn', 'pawn', 'Cash Cow Pawn & Gold', 9, 7, 'W', { color: '#d4a017', icon: 'tow' }),
   L('hook_haul', 'work', 'Hook & Haul Towing', 10, 6, 'S', { color: '#f0a020', icon: 'tow' }),
   L('stockyards_show', 'carshow', 'Stockyards Car Show', 7, 3, 'W', { color: '#e8c21a', icon: 'trophy' }),
   L('pier9', 'meet', 'Pier 9 Lot', 11, 11, 'W', { color: '#ff1a2e', icon: 'meet', tier: 1 }),
   L('kessler_lot', 'meet', 'Kessler Mall Lot', 2, 9, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  // weekend night meet (Fri + Sat, 9 PM to 3 AM): ui/nightmeet.js
+  L('gran_plaza', 'meet', 'La Gran Plaza Lot', 7, 10, 'N', { color: '#ff1a2e', icon: 'meet', weekend: true }),
   L('old_foundry', 'meet', 'The Old Foundry', 10, 2, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
   // on the lawn in front of the pink granite courthouse (block 5,4; scenery draws the building)
   { id: 'courthouse', type: 'court', name: 'Tarrant County Courthouse', x: -75, z: -163, face: 0, color: '#c9a68a', icon: 'court' },
@@ -101,6 +111,8 @@ export const LOCATIONS = [
   // street race start lines (routes in data/streetRaces.js)
   // trap houses, land for sale and the plug, off the city grid (data/estate.js)
   ...ESTATE_LOCATIONS,
+  // taco trucks and diners, each on its own lot (data/food.js)
+  ...FOOD_SPOTS,
   ...STREET_RACES.map(ev => { const st = raceStart(ev); return { id: ev.id, type: 'sprint', name: ev.name, x: st.x, z: st.z, face: st.h, color: '#ffbe1e', icon: 'flag', tier: ev.tier > 1 ? ev.tier : undefined, race: ev.id }; }),
 ];
 
