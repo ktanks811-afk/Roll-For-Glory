@@ -1851,6 +1851,65 @@ await step('kustoms studio + car show', async () => {
   await clear();
 });
 
+// ---------------- weekend night meet at La Gran Plaza ----------------
+await step('weekend night meet', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+  await clear();
+  const saved = await p.evaluate(() => { const s = window.__rfg.game.s; return { time: { ...s.time }, cash: s.cash, bank: s.bank }; });
+  const open = (day, min) => p.evaluate(async ([day, min]) => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const s = window.__rfg.game.s; s.time.day = day; s.time.min = min; s.heat = 0; openPlace(LOC_BY_ID.gran_plaza, window.__rfg.app); }, [day, min]);
+  // Thursday night: nothing going on
+  await open(11, 22 * 60);
+  await p.waitForSelector('.modal h2:has-text("La Gran Plaza Lot")');
+  if (!/Friday and Saturday nights/.test(await p.textContent('.modal-body'))) throw new Error('a weeknight visit should give the meet nights');
+  await clear();
+  // Friday 10 PM with a crew
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.crew = { name: 'Night Shift', color: '#2a7bff', logo: 'N', rep: 0, members: ['tiny', 'lowkey'], npcCrew: null }; s.meetRace = null; delete s.nightMeet; });
+  await open(12, 22 * 60);
+  await p.waitForSelector('.nm .nm-lot .li');
+  await p.waitForTimeout(200);
+  await snap('33-night-meet');
+  const n = (await p.$$('.nm .nm-lot .li')).length;
+  if (n < 6) throw new Error('only ' + n + ' cars at the meet');
+  if (!(await p.isVisible('.nm-call'))) throw new Error('no crew callout for a player with a crew');
+  if (!/Tiny, Lowkey parked next to you/.test(await p.textContent('.nm'))) throw new Error('crew did not roll in with you');
+  await p.click('.nm [data-action="look"] >> nth=0'); await p.waitForSelector('.modal:has-text("Show score")'); await p.evaluate(() => document.querySelectorAll('.modal-back').forEach(m => m.remove()));
+  const before = await p.evaluate(() => { const s = window.__rfg.game.s; return { cash: s.cash, rep: s.rep, followers: s.followers }; });
+  await p.click('.nm [data-action="spot"]');
+  await p.waitForSelector('.nm-result');
+  await snap('34-night-meet-spotlight');
+  const after = await p.evaluate(() => { const s = window.__rfg.game.s; return { cash: s.cash, rep: s.rep, followers: s.followers, shown: s.nightMeet?.shown, night: s.nightMeet?.night }; });
+  if (!(after.cash > before.cash && after.followers > before.followers && after.shown && after.night === 12)) throw new Error('spotlight paid nothing: ' + JSON.stringify({ before, after }));
+  if (await p.$('.nm [data-action="spot"]')) throw new Error('spotlight should be once a night');
+  // take the crew callout: a street race gets set with a pot and the GPS
+  await p.click('.nm-call [data-action="accept"]'); await p.click('.modal button:has-text("Run it")'); await p.waitForTimeout(150);
+  const mr = await p.evaluate(() => ({ mr: window.__rfg.game.s.meetRace, gps: window.__rfg.game.s.gps?.label || '' }));
+  if (!mr.mr?.crew || !(mr.mr.pot > 0) || !/Race/.test(mr.gps)) throw new Error('callout did not set up a race: ' + JSON.stringify(mr));
+  // the start line knows about it
+  await clear();
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world; const s = window.__rfg.game.s; if (!w.inCar) { w.foot.x = w.vehicle.x + 2; w.foot.z = w.vehicle.z; } openPlace(LOC_BY_ID[s.meetRace.race], window.__rfg.app); });
+  await p.waitForTimeout(150);
+  if (!(await p.evaluate(() => window.__rfg.app.world.inCar))) { await clear(); await key('KeyF'); await p.waitForTimeout(200); await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID[window.__rfg.game.s.meetRace.race], window.__rfg.app); }); await p.waitForTimeout(150); }
+  if (!(await p.isVisible('.nm-note'))) throw new Error('street race setup does not show the meet race');
+  await snap('35-night-meet-race-setup');
+  // settle a win: crew pot, crew rep
+  const won = await p.evaluate(async () => { const { settleMeetRace } = await import('./js/ui/nightmeet.js'); const s = window.__rfg.game.s; const c0 = s.cash + s.bank, cr0 = s.crew.rep; const mr = s.meetRace; const b = settleMeetRace(s, { won: true, npcId: mr.npcId, raceId: mr.race }); return { b, cash: s.cash + s.bank - c0, crew: s.crew.rep - cr0, left: s.meetRace }; });
+  if (!(won.cash === won.b.pot && won.crew > 0 && won.left === null)) throw new Error('crew race did not settle: ' + JSON.stringify(won));
+  await clear();
+  // burnouts can bring the cops: force it and the lot closes for the night
+  await open(12, 23 * 60);
+  await p.waitForSelector('.nm [data-action="burn"]');
+  await p.evaluate(() => { window.__rfg.game.s.heat = 5.9; });
+  for (let i = 0; i < 3 && await p.$('.nm [data-action="burn"]:not([disabled])'); i++) { await p.click('.nm [data-action="burn"]'); await p.waitForTimeout(100); }
+  const cops = await p.evaluate(() => ({ busted: window.__rfg.game.s.nightMeet.busted, modal: document.querySelector('.modal h2')?.textContent }));
+  if (cops.busted === 12) {
+    await clear(); await open(12, 23 * 60 + 30);
+    if (!/shut it down/.test(await p.textContent('.modal-body'))) throw new Error('lot should stay closed after the cops broke it up');
+  }
+  // put the clock and the money back so later steps see the same game they would without this one
+  await p.evaluate(saved => { const s = window.__rfg.game.s; s.heat = 0; s.crew = null; s.meetRace = null; Object.assign(s.time, saved.time); s.cash = saved.cash; s.bank = saved.bank; }, saved);
+  await clear();
+});
+
 // ---------------- every car: own side view + overhead sprite ----------------
 await step('every car draws (side view + overhead)', async () => {
   const r = await p.evaluate(async () => {

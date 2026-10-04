@@ -497,6 +497,12 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 @media (max-height: 500px) { .ks .ks-preview { position: static; } .ks .ks-bars { display: none; } .ks .showroom canvas { max-height: 34vh; object-fit: contain; } }
 
 /* Car shows */
+/* weekend night meet (ui/nightmeet.js) */
+.nm [data-nmlot] { height: min(25vw, 32vh) !important; object-fit: contain; }
+.nm .nm-lot .li .grow { min-width: 0; }
+.nm .nm-btns { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.nm .card h3 { margin: 0 0 6px; }
+.nm .nm-call, .nm .nm-race, .nm .nm-result { margin: 8px 0; }
 .cs-lineup { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .cs-car { border: 1px solid var(--line2); border-radius: var(--r); background: var(--panel2); padding: 6px; display: flex; flex-direction: column; gap: 4px; }
 .cs-car canvas { width: 100%; display: block; border-radius: 4px; }
