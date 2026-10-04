@@ -337,7 +337,7 @@ await step('hellcat widebody art', async () => {
     const { CAR_BY_ID: C, soldNew } = await import('./js/data/cars.js');
     const hc = C.dodge_charger_srt_hellcat_widebody_2020;
     const listed = !!hc && soldNew(hc) && LOC_BY_ID.auto_row.makes.includes(hc.make);
-    const { hasArt } = await import('./js/gfx2d/carArt.js');
+    const { hasArt, CAR_ART } = await import('./js/gfx2d/carArt.js');
     const { drawSideCar } = await import('./js/gfx2d/sideCar.js');
     const { carSprite } = await import('./js/gfx2d/carSprite.js');
     const { CAR_BY_ID } = await import('./js/data/cars.js');
@@ -345,10 +345,12 @@ await step('hellcat widebody art', async () => {
     const red = cv => { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 120 && d[i + 1] < 60 && d[i + 2] < 60) n++; return n; };
     const side = document.createElement('canvas'); drawSideCar(side, { model: m, visual: { paint: '#c41b1b', wheels: 'five' }, levels: {} });
     const top = carSprite(m, { paint: '#c41b1b' }, {}, null).canvas;
-    return { listed, art: hasArt(m.id), side: red(side), top: red(top) };
+    const missing = Object.keys(CAR_ART).filter(id => !CAR_BY_ID[id] || !hasArt(id));
+    return { listed, art: hasArt(m.id), side: red(side), top: red(top), missing };
   });
   if (!r.listed) throw new Error('Hellcat Widebody not on the Cowtown Auto Row lot');
   if (!r.art) throw new Error('Hellcat Widebody art did not load');
+  if (r.missing.length) throw new Error('car art missing or not loaded: ' + r.missing.join(', '));
   if (r.side < 20000 || r.top < 1500) throw new Error('Hellcat Widebody paint not showing: ' + JSON.stringify(r));
 });
 await step('2-step flames (street + meet)', async () => {
@@ -2260,7 +2262,9 @@ await step('gangs', async () => {
     s.gang.job = { ...G.makeJob(s, 'hit', 'hemphill'), deadline: 1e9 };
     s.gang.job.got = 0;
     const cash = s.cash, respect = s.gang.respect;
-    for (const pd of w.gangs.sets.hemphill.peds) if (!pd.down) w.combat.hurtPed(pd, 100);
+    // your homie may already have dropped some of them in the shootout, before the job existed
+    for (const pd of w.gangs.sets.hemphill.peds) { pd.down = 0; pd.counted = false; pd.hp = 40; }
+    for (const pd of w.gangs.sets.hemphill.peds) w.combat.hurtPed(pd, 100);
     await new Promise(r => setTimeout(r, 300));
     return { job: s.gang.job, paid: s.cash - cash, respect: s.gang.respect - respect, beef: s.gang.beef.hemphill };
   });

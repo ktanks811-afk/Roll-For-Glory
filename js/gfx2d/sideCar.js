@@ -550,7 +550,7 @@ function drawSideArt(canvas, opts, art) {
 
   const pa = paintedArt(art.side, v);
   const s = ppm * sh.L / pa.w;                   // art px -> drawing px
-  const R = 0.36 * ppm;                          // 20" wheel on a 275/40 tyre
+  const R = (art.meta.tireR || 0.36) * ppm;      // default: 20" wheel on a 275/40 tyre
   const cy = GROUND - R;
   const x0 = (REF_W - pa.w * s) / 2;
   const y0 = cy - 4 * s - art.meta.archY * s;
@@ -582,7 +582,8 @@ function drawSideArt(canvas, opts, art) {
   if (on('decals') && v.decal && v.decal !== 'none') {
     bg.save(); bg.globalCompositeOperation = 'source-atop';
     const col = rgb(hex(v.decalColor || '#f2f2f2'), 0.95);
-    const X = px => x0 + px * s, Y = py => y0 + py * s;
+    // decal spots were laid out on the 1126x296 Hellcat art; other art scales them
+    const X = px => x0 + px * pa.w / 1126 * s, Y = py => y0 + py * pa.h / 296 * s;
     if (v.decal === 'stripes') { bg.fillStyle = col; bg.fillRect(X(0), Y(105), pa.w * s, 9 * s); }
     if (v.decal === 'side' || v.decal === 'crew') fillPoly(bg, [[X(60), Y(205)], [X(1100), Y(190)], [X(1100), Y(204)], [X(60), Y(219)]], col);
     if (v.decal === 'number') { const nx = X(590), ny = Y(195); bg.fillStyle = '#f2f2f2'; bg.beginPath(); bg.arc(nx, ny, ppm * 0.17, 0, 7); bg.fill(); bg.fillStyle = '#111'; bg.font = `bold ${Math.round(ppm * 0.22)}px sans-serif`; bg.textAlign = 'center'; bg.fillText('7', nx, ny + ppm * 0.08); }
@@ -597,7 +598,7 @@ function drawSideArt(canvas, opts, art) {
   // a wing on stands, if one is fitted (the factory lip is in the art)
   const wing = { gt: 'big', drag: 'huge' }[v.spoiler];
   if (on('spoiler') && wing) {
-    const ax = x0 + 1010 * s, ay = y0 + 92 * s, h = (wing === 'huge' ? 0.4 : 0.27) * ppm, chord = (wing === 'huge' ? 0.42 : 0.3) * ppm;
+    const ax = x0 + 1010 * pa.w / 1126 * s, ay = y0 + 92 * pa.h / 296 * s, h = (wing === 'huge' ? 0.4 : 0.27) * ppm, chord = (wing === 'huge' ? 0.42 : 0.3) * ppm;
     bg.fillStyle = '#121316';
     bg.fillRect(ax + chord * 0.2, ay - h, 10, h); bg.fillRect(ax + chord * 0.7, ay - h, 10, h);
     fillPoly(bg, [[ax - 10, ay - h - 4], [ax + chord + 10, ay - h - 14], [ax + chord + 14, ay - h + 6], [ax - 10, ay - h + 12]], wing === 'huge' ? '#1c1d22' : rgb(darken(hex(v.paint), 0.2)));
