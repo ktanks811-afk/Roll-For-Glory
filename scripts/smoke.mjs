@@ -1336,7 +1336,9 @@ await step('online free roam', async () => {
   const standBy = (pg, c) => pg.evaluate(c => { const w = window.__rfg.app.world; w.inCar = false; w.foot.x = c.x + 3; w.foot.z = c.z; w.nearLoc = null; }, c);
   const sitIn = pg => pg.evaluate(() => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; w.nearLoc = null; });
   // the tab being checked goes to the front: a background tab gets no frames (so no HUD) and slowed timers
-  const until = async (pg, fn, what, arg) => { await pg.bringToFront(); for (let i = 0; i < 50; i++) { if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
+  // and both tabs get a network tick each try, so nothing waits on a throttled background timer
+  const tickBoth = () => Promise.all([p, p2].map(pg => pg.evaluate(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); })));
+  const until = async (pg, fn, what, arg) => { await pg.bringToFront(); for (let i = 0; i < 50; i++) { await tickBoth(); if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
   await sitIn(p2); await standBy(p, await carOf(p2));
   await until(p, () => window.__rfg.app.world.rides.near?.inCar, 'no "ask for a ride" next to their car');
   const askLine = await p.evaluate(() => window.__rfg.app.world.rides.promptHtml(false));
