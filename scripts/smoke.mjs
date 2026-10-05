@@ -1216,14 +1216,24 @@ await step('online free roam', async () => {
   await snap('23-online-panel');
   await p.keyboard.press('Escape');
   // head-to-head: tab 1 calls tab 2 out, tab 2 accepts, both get a race against the other player
-  await p2.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.inCar = true; });
+  // tab 2 has to be able to say yes: in the car, gas in the tank, no cops on it, money for the wager
+  await p2.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { activeCar } = await import('./js/core/state.js');
+    const r = window.__rfg, w = r.app.world, car = activeCar(r.game.s);
+    w.inCar = true; car.fuel = 1; car.broken = false; r.game.s.heat = 0; r.game.s.cash = Math.max(r.game.s.cash, 5000);
+    if (w.police.active) w.police.reset(w);
+  });
   await p.evaluate(async () => {
     const { pvp } = await import('./js/net/pvp.js');
     const peer = window.__rfg.online.list().find(o => o.name !== 'Eve' && o.id !== 'evil2');
-    window.__rfg.app.world.inCar = true;
+    // the heat set above can bring the cops, and a challenger with cops on them can't start the race
+    const { activeCar } = await import('./js/core/state.js');
+    const r = window.__rfg, w = r.app.world;
+    w.inCar = true; activeCar(r.game.s).fuel = 1; r.game.s.heat = 0; if (w.police.active) w.police.reset(w);
     if (!pvp.challenge(peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 500 })) throw new Error('challenge not sent');
   });
-  await p2.waitForSelector('.modal-back button:has-text("Run it")', { timeout: 5000 });
+  await p2.waitForSelector('.modal-back button:has-text("Run it")', { timeout: 5000 }).catch(async e => { throw new Error('no race invite to accept on tab 2: ' + (await p2.evaluate(() => document.querySelector('.modal-back')?.textContent || 'no modal'))); });
   const inviteText = await p2.textContent('.modal-back .modal-body');
   if (!/1\/4 mile drag race/.test(inviteText) || !/\$500/.test(inviteText)) throw new Error('invite reads wrong: ' + inviteText);
   if (shots) await p2.screenshot({ path: `${OUT}/23b-race-invite.png` });
@@ -1325,7 +1335,8 @@ await step('online free roam', async () => {
   const carOf = pg => pg.evaluate(() => { const v = window.__rfg.app.world.vehicle; return { x: v.x, z: v.z, h: v.h }; });
   const standBy = (pg, c) => pg.evaluate(c => { const w = window.__rfg.app.world; w.inCar = false; w.foot.x = c.x + 3; w.foot.z = c.z; w.nearLoc = null; }, c);
   const sitIn = pg => pg.evaluate(() => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; w.nearLoc = null; });
-  const until = async (pg, fn, what, arg) => { for (let i = 0; i < 30; i++) { if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
+  // the tab being checked goes to the front: a background tab gets no frames (so no HUD) and slowed timers
+  const until = async (pg, fn, what, arg) => { await pg.bringToFront(); for (let i = 0; i < 50; i++) { if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
   await sitIn(p2); await standBy(p, await carOf(p2));
   await until(p, () => window.__rfg.app.world.rides.near?.inCar, 'no "ask for a ride" next to their car');
   const askLine = await p.evaluate(() => window.__rfg.app.world.rides.promptHtml(false));
