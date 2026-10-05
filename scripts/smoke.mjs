@@ -324,6 +324,7 @@ await step('street races: 1v1 for cash, pink slips, time trial', async () => {
 });
 await step('pull-ups: a racer rolls up while you drive', async () => {
   const w0 = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; window.__storyWas = s.story.enabled; s.story.enabled = false; s.heat = 0; w.police.reset?.(w);
+    const car = s.cars.find(c => c.uid === s.activeCar); if (car) car.fuel = 1;   // earlier driving can leave the tank too low for a pull-up
     const was = { x: v.x, z: v.z, h: v.h }; v.x = -400; v.z = 598; v.h = Math.PI / 2; v.vx = v.vz = 0; v.sim.v = 14; w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; w.paused = false; return was; });
   const pu = () => p.evaluate(() => { const c = window.__rfg.app.world.pullups.c; return c ? c.phase : null; });
   // off by default in a test browser; forced here: they roll up beside you and wait on an answer
@@ -2533,6 +2534,92 @@ await step('bank: dirty cash, CTRs, washing through a business', async () => {
   if (wide > 2) throw new Error('bank app scrolls sideways on a phone: ' + wide);
   await p.keyboard.press('Escape');
   await p.evaluate(() => { const s = window.__rfg.game.s; s.feds = null; s.wash = {}; delete s.hustle.biz.laundromat; });
+  await p.setViewportSize({ width: 1280, height: 760 });
+});
+
+// ---------------- Cowtown Pay and credit: send money, loans, car financing ----------------
+await step('bank: send money to a player, credit score, loans, financing', async () => {
+  await p.setViewportSize({ width: 844, height: 390 });   // iPhone landscape
+  const saved = await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    localStorage.removeItem('rfg-localdeeds'); localStorage.removeItem('rfg-localpay');
+    window.__rfg.online.kindOverride = 'local';
+    const { deeds } = await import('./js/net/deeds.js');
+    const s = window.__rfg.game.s;
+    const was = { home: s.homeServer || null, cars: s.cars.map(c => c.uid), active: s.activeCar };
+    await deeds.join(s, 'harbor');
+    await deeds.join({ uid: 'frnd1234', crewKey: 'fkey-fkey-fkey', player: { name: 'Tre' }, properties: [], estate: {} }, 'harbor');
+    s.bank = 5000; s.credit = null; s.pay = null;
+    const { openPhone } = await import('./js/ui/phone.js'); openPhone('bank', window.__rfg.app);
+    return was;
+  });
+  await p.waitForTimeout(200);
+  await p.click('button[data-action="tab"][data-id="send"]');
+  await p.waitForSelector('button[data-action="paysend"][data-uid="frnd1234"]', { timeout: 4000 });
+  await p.click('button[data-action="paysend"][data-uid="frnd1234"]');
+  await p.fill('.modal input', '1500'); await p.click('.modal [data-ok]');
+  await p.waitForTimeout(100);
+  await p.fill('.modal input', 'race money'); await p.click('.modal [data-ok]');
+  await p.waitForTimeout(100);
+  await p.click('.modal .btn-primary');
+  await p.waitForTimeout(300);
+  const sent = await p.evaluate(() => ({ bank: window.__rfg.game.s.bank, box: JSON.parse(localStorage.getItem('rfg-localpay') || '{}').list }));
+  if (sent.bank !== 3500 || sent.box?.[0]?.to_uid !== 'frnd1234' || sent.box[0].amount !== 1500) throw new Error('sending money: ' + JSON.stringify(sent));
+  // Tre sends some back; checking the mailbox puts it in checking
+  await p.evaluate(async () => {
+    const { pay } = await import('./js/net/pay.js');
+    const F = { uid: 'frnd1234', crewKey: 'fkey-fkey-fkey', player: { name: 'Tre' }, homeServer: 'harbor', bank: 2000, time: { day: 1, min: 600 }, ledger: [], stats: { earnings: 0, expenses: 0 }, pay: {} };
+    window.__payBack = await pay.send(F, { uid: window.__rfg.game.s.uid, name: 'Me' }, 700, 'gas');
+  });
+  await p.click('button[data-action="paycheck"]');
+  await p.waitForTimeout(300);
+  const got = await p.evaluate(() => ({ back: window.__payBack, bank: window.__rfg.game.s.bank, msg: window.__rfg.game.s.messages[0], log: window.__rfg.game.s.pay.log.length }));
+  if (!got.back?.ok || got.bank !== 4200 || got.msg?.from !== 'cowpay' || got.log !== 2) throw new Error('receiving money: ' + JSON.stringify(got));
+  await snap('27e-send-money');
+  // the credit tab: a score, and a personal loan
+  await p.click('button[data-action="tab"][data-id="credit"]');
+  await p.waitForTimeout(150);
+  const score = await p.textContent('[data-credit-score]');
+  if (!/650/.test(score)) throw new Error('credit score screen: ' + score);
+  await p.click('button[data-action="loan"]');
+  await p.fill('.modal input', '2000'); await p.click('.modal [data-ok]');
+  await p.waitForTimeout(100);
+  await p.click('.modal button:has-text("12 payments")');
+  await p.waitForTimeout(200);
+  const loan = await p.evaluate(() => ({ bank: window.__rfg.game.s.bank, loans: window.__rfg.game.s.credit.loans.length }));
+  if (loan.bank !== 6200 || loan.loans !== 1) throw new Error('personal loan: ' + JSON.stringify(loan));
+  await snap('27f-credit');
+  const wide = await p.evaluate(() => { const b = document.querySelector('.phone-screen'); return b.scrollWidth - b.clientWidth; });
+  if (wide > 2) throw new Error('credit tab scrolls sideways on a phone: ' + wide);
+  await p.keyboard.press('Escape');
+  // finance a car at the dealer
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
+    const { buyFromDealer } = await import('./js/ui/places.js');
+    const { CARS } = await import('./js/data/cars.js');
+    const { LOC_BY_ID } = await import('./js/data/world.js');
+    const s = window.__rfg.game.s;
+    s.cash = 0; s.dirty = 0; s.bank = 20000;
+    const m = CARS.find(c => c.msrp > 30000 && c.msrp < 45000 && !c.market);
+    window.__finCar = buyFromDealer({ m, year: 2025, miles: 10, price: m.msrp, isNew: true }, window.__rfg.app, s, LOC_BY_ID.auto_row, { close() {}, refresh() {} });
+  });
+  await p.waitForSelector('.modal [data-finance]');
+  await snap('27g-finance');
+  await p.click('.modal button:has-text("Finance ·")');
+  await p.waitForTimeout(100);
+  await p.click('.modal button:has-text("24 payments")');
+  await p.waitForTimeout(300);
+  const fin = await p.evaluate(() => { const s = window.__rfg.game.s, l = s.credit.loans[0]; return { kind: l.kind, lien: l.carUid === s.activeCar, fin: l.principal, bank: s.bank }; });
+  if (fin.kind !== 'auto' || !fin.lien || !(fin.fin > 20000) || !(fin.bank < 20000)) throw new Error('dealer financing: ' + JSON.stringify(fin));
+  await p.evaluate(async was => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const s = window.__rfg.game.s;
+    s.cars = s.cars.filter(c => was.cars.includes(c.uid)); s.activeCar = was.active; s.homeServer = was.home;
+    s.credit = null; s.pay = null;
+    localStorage.removeItem('rfg-localdeeds'); localStorage.removeItem('rfg-localpay');
+    window.__rfg.online.kindOverride = null;
+    window.__rfg.app.world?.refreshCar?.();
+  }, saved);
   await p.setViewportSize({ width: 1280, height: 760 });
 });
 

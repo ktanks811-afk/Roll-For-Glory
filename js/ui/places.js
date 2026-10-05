@@ -30,6 +30,7 @@ import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
 import { openRealty, openTrap, openLand, openPlug, openRig, openRanch, openRemodel, openBuild } from './estate.js';
 import { ensureLoot } from '../core/loot.js';
+import { offer as creditOffer, financeCar, payoffOnSale, lienOn, payment as loanPayment, totalCost, AUTO_TERMS, LOAN_CYCLE } from '../core/credit.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
 import { MENUS } from '../data/food.js';
 import { eat, sleep, nap, ensureNeeds } from '../core/needs.js';
@@ -236,20 +237,42 @@ export async function buyFromDealer(c, app, s, loc, h) {
   const cap = garageCapacity(s, PROPERTIES);
   const trade = activeCar(s);
   const tradeVal = trade ? Math.round(carValue(trade) * 0.72 / 100) * 100 : 0;
-  const tax = Math.round(c.price * 0.0725), doc = 499, reg = 185;
-  const total = c.price + tax + doc + reg;
+  // a loan on the trade-in gets paid off out of what they give you for it
+  const lien = trade ? lienOn(s, trade.uid) : null;
+  const tradeNet = Math.max(0, tradeVal - (lien?.balance || 0));
+  const tax = Math.round(c.price * 0.0725), doc = 499, reg = 185, fees = tax + doc + reg;
+  const total = c.price + fees;
   const useTrade = trade && s.cars.length >= cap;
   if (!trade && s.cars.length >= cap) { modal('No garage space', '<p>Buy a bigger place first.</p>'); return; }
+  // financing through Cowtown Credit Union, priced off your credit score (core/credit.js)
+  const fo = creditOffer(s, 'auto', c.price);
+  const finDue = credit => Math.max(0, fo.down + fees - credit);
+  const finAmt = credit => fo.financed - Math.max(0, credit - fo.down - fees);
   const choice = await modal('Sign the paperwork', `<p><b>${esc(carName(c.m, c.year))}</b></p>
     <div class="kv"><span>Price</span><span>${fmtMoney(c.price)}</span><span>Sales tax (7.25%)</span><span>${fmtMoney(tax)}</span><span>Doc fee</span><span>${fmtMoney(doc)}</span><span>Title & registration</span><span>${fmtMoney(reg)}</span>
     ${trade ? `<span>Trade-in offer (${esc(modelOf(trade).model)})</span><span class="good">−${fmtMoney(tradeVal)}</span>` : ''}
-    <span><b>Due today</b></span><span>${fmtMoney(total)}${trade ? ` / ${fmtMoney(total - tradeVal)} with trade` : ''}</span></div>
+    ${lien ? `<span>Loan payoff on the trade</span><span class="bad">${fmtMoney(lien.balance)}</span>` : ''}
+    <span><b>Due today</b></span><span>${fmtMoney(total)}${trade ? ` / ${fmtMoney(total - tradeNet)} with trade` : ''}</span></div>
+    <p class="small ${fo.ok ? 'muted' : 'bad'}" data-finance>${fo.ok ? `Financing: credit score ${fo.score} (${esc(fo.band.name)}) gets ${(fo.apr * 100).toFixed(1)}% APR with ${fmtMoney(fo.down)} down${fo.band.carMax < c.price ? ` (they'll finance up to ${fmtMoney(fo.band.carMax)})` : ''}, plus tax and fees.` : `No financing: ${esc(fo.why)}`}</p>
+    ${lien && lien.balance > tradeVal ? `<p class="warn small">You owe more on the trade than it's worth. The other ${fmtMoney(lien.balance - tradeVal)} stays on that loan.</p>` : ''}
     ${useTrade ? '<p class="warn small">Your garage is full — you\'d need to trade in.</p>' : ''}`,
-    [{ label: 'Cancel', value: 0 }, ...(useTrade ? [] : [{ label: `Pay ${fmtMoney(total)}`, value: 1, primary: !trade }]), ...(trade ? [{ label: `Trade in & pay ${fmtMoney(total - tradeVal)}`, value: 2, primary: true }] : [])]);
+    [{ label: 'Cancel', value: 0 },
+      ...(useTrade ? [] : [{ label: `Pay ${fmtMoney(total)}`, value: 1, primary: !trade }]),
+      ...(trade ? [{ label: `Trade in & pay ${fmtMoney(total - tradeNet)}`, value: 2, primary: true }] : []),
+      ...(fo.ok && !useTrade ? [{ label: `Finance · ${fmtMoney(finDue(0))} down`, value: 3 }] : []),
+      ...(fo.ok && trade ? [{ label: `Trade in & finance · ${fmtMoney(finDue(tradeNet))} down`, value: 4 }] : [])]);
   if (!choice) return;
-  const due = choice === 2 ? total - tradeVal : total;
-  if (!spend(s, due, `Bought ${carName(c.m, c.year)} at ${loc.name.split(' (')[0]}`)) return;
-  if (choice === 2) { s.cars = s.cars.filter(x => x !== trade); s.myListings = s.myListings.filter(x => x.carUid !== trade.uid); }
+  const withTrade = choice === 2 || choice === 4;
+  let due = withTrade ? total - tradeNet : total, term = 0, financed = 0;
+  if (choice >= 3) {
+    financed = finAmt(withTrade ? tradeNet : 0); due = finDue(withTrade ? tradeNet : 0);
+    term = await modal('Finance it', `<p>${fmtMoney(due)} down today, ${fmtMoney(financed)} financed at ${(fo.apr * 100).toFixed(1)}% APR. A payment every ${LOAN_CYCLE} days by autopay from checking. Miss enough of them and the repo truck comes.</p>
+      <div class="kv">${AUTO_TERMS.map(k => `<span>${k} payments</span><span>${fmtMoney(loanPayment(financed, fo.apr, k))} each · ${fmtMoney(totalCost(financed, fo.apr, k))} total</span>`).join('')}</div>`,
+      [{ label: 'Cancel', value: 0 }, ...AUTO_TERMS.map((k, i) => ({ label: `${k} payments`, value: k, primary: i === 1 }))]);
+    if (!term) return;
+  }
+  if (due > 0 && !spend(s, due, `${term ? 'Down payment on' : 'Bought'} ${carName(c.m, c.year)} at ${loc.name.split(' (')[0]}`)) return;
+  if (withTrade) { payoffOnSale(s, trade.uid, tradeVal); s.cars = s.cars.filter(x => x !== trade); s.myListings = s.myListings.filter(x => x.carUid !== trade.uid); }
   const car = newCar(c.m.id, { year: c.year, miles: c.miles, paid: c.price, fuel: 1, cond: c.l ? { ...c.l.cond } : undefined });
   if (!car.cond) car.cond = { body: 100, lights: 100, tires: 100, engine: 100, trans: 100 };
   if (c.l) car.visual.paint = c.l.visual.paint || c.m.color;
@@ -257,6 +280,7 @@ export async function buyFromDealer(c, app, s, loc, h) {
   car.visual.wheelColor = '#c0c4c8';
   s.cars.push(car);
   s.activeCar = car.uid;
+  if (term && financed > 0) financeCar(s, car, financed, term);
   if (c.l) s.dealerStock[loc.id].list = s.dealerStock[loc.id].list.filter(x => x !== c.l);
   const w = app.world;
   if (w) {
@@ -268,7 +292,7 @@ export async function buyFromDealer(c, app, s, loc, h) {
   emit('carBought', { modelId: c.m.id, source: 'dealer' });
   audio.win();
   closeAllPanels();
-  modal('Congratulations!', `<p>The ${esc(carName(c.m, c.year))} is yours. It's parked out front — press <kbd>F</kbd> to get in.</p>`);
+  modal('Congratulations!', `<p>The ${esc(carName(c.m, c.year))} is yours. It's parked out front — press <kbd>F</kbd> to get in.</p>${term ? `<p class="small muted">First payment of ${fmtMoney(loanPayment(financed, fo.apr, term))} comes out of checking in ${LOAN_CYCLE} days. Your loans are in the Bank app under Credit.</p>` : ''}`);
 }
 
 // ---------------- used lot ----------------
