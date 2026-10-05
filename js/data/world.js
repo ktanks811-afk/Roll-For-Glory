@@ -188,6 +188,8 @@ export const LOCATIONS = [
   L('rivercrest_mansion', 'property', 'Rivercrest Mansion', 1, 8, 'E', { color: '#ffffff', icon: 'home' }),
   L('trap_riverside', 'trap', 'Riverside Duplex', 10, 4, 'W', { color: '#8a1a1a', icon: 'home' }),
   L('marchetti_salvage', 'chop', 'Marchetti Salvage', 10, 7, 'N', { color: '#c9752a', icon: 'wrench', contact: 'junior' }),
+  // recording studios: cut records for your label (ui/label.js)
+  L('magnolia_sound', 'studio', 'Magnolia Sound', 4, 8, 'N', { color: '#c04aff', icon: 'mic' }),
   L('cashcow_pawn', 'pawn', 'Cash Cow Pawn & Gold', 9, 7, 'W', { color: '#d4a017', icon: 'tow' }),
   L('hook_haul', 'work', 'Hook & Haul Towing', 10, 6, 'S', { color: '#f0a020', icon: 'tow' }),
   // car haulers and enclosed trailers (ui/trailers.js); only trucks pull them
@@ -223,6 +225,7 @@ export const LOCATIONS = [
   D('corner_grand', 'corner', 'Grand Ave Food Mart', 7, 7, 'W', { color: '#ff8a1a', icon: 'food' }),
   D('corner_ellum', 'corner', 'Elm St Corner Store', 9, 3, 'W', { color: '#ff8a1a', icon: 'food' }),
   D('big_d_customs', 'perf', 'Big D Performance', 0, 3, 'E', { color: '#e8641a', icon: 'wrench', owner: 'Dre', tagline: 'Dre Vega, Rosa\'s cousin · dyno cell · Dallas' }),
+  D('ellum_lab', 'studio', 'Deep Ellum Sound Lab', 8, 2, 'S', { color: '#c04aff', icon: 'mic' }),
   D('ellum_meet', 'meet', 'Deep Ellum Warehouse Lot', 9, 1, 'S', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
   D('uptown_condo', 'property', 'Uptown High-Rise Condo', 4, 0, 'S', { color: '#ffffff', icon: 'home' }),
   D('kessler_tudor', 'property', 'Kessler Park Tudor', 0, 8, 'E', { color: '#ffffff', icon: 'home' }),

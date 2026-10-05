@@ -128,7 +128,7 @@ export function buildMap() {
     else if (side === 'E') bx = x1 - bw - SETBACK;
     else bx = x0 + SETBACK;
     const color = { dealer: '#d9dde2', usedlot: '#8a7a5a', chop: '#4a3f36', perf: '#3a3a3a', visual: '#3a2a3a', repair: '#3d4452',
-      gas: '#e8e8e8', food: '#7a2e24', corner: '#6a4a2a', clothing: '#2a2a3a', realty: '#2f4a3a', pawn: '#5a4a1a', trailers: '#4a4f57', police: '#24324a', meet: '#3a3a3a', carshow: '#4a3a1a', hospital: '#d8d6d0' }[t] || '#444';
+      gas: '#e8e8e8', food: '#7a2e24', corner: '#6a4a2a', clothing: '#2a2a3a', realty: '#2f4a3a', pawn: '#5a4a1a', trailers: '#4a4f57', police: '#24324a', meet: '#3a3a3a', carshow: '#4a3a1a', hospital: '#d8d6d0', studio: '#2a1a3a' }[t] || '#444';
     if (t === 'gas') {
       lots.push({ x: x0 + 2, z: z0 + 2, w: W - 4, d: D - 4, kind: 'gas' });
       // canopy over the pumps right at the kerb, shop behind it
