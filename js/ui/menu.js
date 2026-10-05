@@ -75,6 +75,7 @@ export class MenuBackdrop {
 export function showTitle(app) {
   closeAllPanels();
   setSaveOwner(profile.owner);
+  audio.intro(true);
   const latest = latestSlot();
   const need = !latest;
   const root = $('#screen');

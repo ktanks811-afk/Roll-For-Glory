@@ -1,6 +1,6 @@
-// All sound is synthesized with WebAudio — no audio files to download.
-// Engines are oscillators tuned to firing frequency, music is a small
-// step sequencer with a few moods.
+// Sound is synthesized with WebAudio. Engines are oscillators tuned to firing
+// frequency, music is a small step sequencer with a few moods. The one audio
+// file is the intro song on the loading and title screens.
 
 import { settings } from './save.js';
 import { harmonics } from '../sim/sound.js';
@@ -328,6 +328,41 @@ function bassNote(t, freq, dur) {
   o.start(t); o.stop(t + dur + 0.05);
 }
 
+// ---------------- intro song ----------------
+// Streams from an <audio> element routed into the music bus, so the Music
+// volume slider works on iPhone too (iOS ignores <audio>.volume). Browsers
+// block it until the first tap; the gesture listener above starts it then.
+const INTRO_SRC = 'audio/shooting-stars.m4a';
+const INTRO_GAIN = 1.6;
+let introOn = false, introEl = null, introGain = null, introStop = 0;
+
+function setIntro(on) {
+  if (on === introOn) return;
+  introOn = on;
+  if (!init()) return;
+  clearTimeout(introStop);
+  if (on) {
+    if (!introEl) {
+      introEl = new Audio(INTRO_SRC);
+      introEl.loop = true; introEl.preload = 'auto'; introEl.setAttribute('playsinline', '');
+      introGain = ctx.createGain();
+      ctx.createMediaElementSource(introEl).connect(introGain).connect(musicBus);
+    }
+    introGain.gain.cancelScheduledValues(ctx.currentTime);
+    introGain.gain.setValueAtTime(INTRO_GAIN, ctx.currentTime);
+    if (!document.hidden) introEl.play().catch(() => {});
+  } else if (introEl) {
+    introGain.gain.setTargetAtTime(0, ctx.currentTime, 0.35);
+    introStop = setTimeout(() => { if (!introOn) introEl.pause(); }, 1600);
+  }
+}
+// Leaving the app shouldn't keep the song going in the background.
+document.addEventListener('visibilitychange', () => {
+  if (!introEl) return;
+  if (document.hidden) introEl.pause();
+  else if (introOn) introEl.play().catch(() => {});
+});
+
 export const audio = {
   init,
   get ready() { return !!ctx; },
@@ -337,6 +372,7 @@ export const audio = {
   async analyser() { if (!init()) return null; await ctx.resume(); const an = ctx.createAnalyser(); an.fftSize = 16384; an.smoothingTimeConstant = 0; sfxBus.connect(an); return an; },
   siren: setSiren,
   music: setMusic,
+  intro: setIntro,
   horn() { tone(392, 0.45, 'square', 0.08); tone(494, 0.45, 'square', 0.06); },
   beep(f = 880, d = 0.12) { tone(f, d, 'square', 0.1); },
   treeAmber() { tone(660, 0.12, 'sine', 0.12); },

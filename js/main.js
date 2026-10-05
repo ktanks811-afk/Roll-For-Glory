@@ -92,6 +92,7 @@ export function enterWorld() {
   const away = ensureHustle(game.s).away;
   if (away) { game.s.hustle.away = null; modal('Welcome back', `<p>While you were away (${away.hours} h), your side hustles earned <b>${fmtMoney(away.net)}</b>. It's in your bank.</p>`); }
   touchUi.show(true);
+  audio.intro(false);
   audio.music(null);
 }
 
