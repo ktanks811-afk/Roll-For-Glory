@@ -18,12 +18,16 @@ export const DESERT_ROAD_END = 2700;
 export const RIVER_X = -1650;
 export const TUNNEL = [1450, 1900];
 export const SEA_X = 1000;         // harbor water east of here (south half)
+// Johnson County: farm country past the end of the desert, south of the city
+export const COUNTRY = { x0: -3300, x1: 1000, z0: 3300, z1: 5800 };
+export const COUNTRY_ROADS = { x: [-2800, -1500, 0, 700], z: [3600, 4500, 5400] };
 
 export const STREET_NS = ['Hulen St', 'Montgomery St', 'University Dr', 'Henderson St', 'Throckmorton St', 'Houston St', 'Main St', 'Commerce St', 'Jones St', 'Riverside Dr', 'Beach St', 'Oakland Blvd', 'Lake Worth Blvd'];
 export const STREET_EW = ['NE 28th St', 'Stockyards Blvd', 'Exchange Ave', 'Northside Dr', 'Belknap St', 'Weatherford St', 'W 7th St', 'Lancaster Ave', 'Vickery Blvd', 'Rosedale St', 'Magnolia Ave', 'Berry St', 'Seminary Dr'];
 
 export function districtAt(x, z) {
   if (z < -1000) return 'Loop 820';
+  if (z > COUNTRY.z0) return 'Johnson County';
   if (z > DESERT_Z) return 'Chisholm Flats';
   if (x < -1000) return z < -100 ? 'Cross Timbers' : 'Benbrook Hills';
   if (x > SEA_X) return z > 190 ? 'Lake Worth' : z > -1000 ? 'Stop Six' : 'Lake Worth Shore';
@@ -110,6 +114,8 @@ export const LOCATIONS = [
   { id: 'dustline_start', type: 'roll', name: 'Chisholm Trail Pkwy', x: 12, z: 1120, face: 0, color: '#ff1a2e', icon: 'flag', road: 'desert', tier: 2 },
   { id: 'northridge_start', type: 'roll', name: 'Cross Timbers Pass', x: -1120, z: -330, face: -Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'mountain', tier: 4 },
   { id: 'gas_desert', type: 'gas', name: 'Last Chance Gas', x: -24, z: 1700, face: -Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
+  // Joshua, out in Johnson County (world2d/country.js draws the town)
+  { id: 'gas_joshua', type: 'gas', name: 'Joshua Country Store', x: 36, z: 3705, face: Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
   // street race start lines (routes in data/streetRaces.js)
   // trap houses, land for sale and the plug, off the city grid (data/estate.js)
   ...ESTATE_LOCATIONS,
@@ -124,12 +130,16 @@ export const LOC_BY_ID = Object.fromEntries(LOCATIONS.map(l => [l.id, l]));
 export const PROPERTIES = {
   eastgate_studio:   { name: 'Eastgate Studio', price: 0, slots: 2, desc: 'One room, one window, a two-car shared carport. Home.' },
   harbor_loft:       { name: 'Lakeside Loft', price: 42000, slots: 3, desc: 'Converted cannery loft with a view of the cranes.' },
-  westside_house:    { name: 'Arlington Heights House', price: 135000, slots: 4, desc: 'Quiet street, four-car garage with a lift.' },
-  hillcrest_villa:   { name: 'Hillcrest Villa', price: 780000, slots: 8, desc: 'Hillside glass house with a heated showroom garage.', tier: 4 },
+  westside_house:    { name: 'Arlington Heights House', price: 135000, slots: 4, house: 'one', desc: 'Brick 1-story ranch on a quiet street, four-car garage with a lift.' },
+  hillcrest_villa:   { name: 'Hillcrest Villa', price: 780000, slots: 8, house: 'two', desc: 'Hillside 2-story glass house with a heated showroom garage.', tier: 4 },
   foundry_warehouse: { name: 'Foundry Warehouse Garage', price: 260000, slots: 12, desc: 'A crew HQ: dyno cell, paint booth, twelve bays.', tier: 3 },
-  fairmount_craftsman: { name: 'Fairmount Craftsman', price: 340000, slots: 6, desc: 'Restored 1920s craftsman on a Southside street, six-car garage out back.', tier: 3, wall: '#7f8a6a', roof: '#4a3a2e' },
-  westover_estate:   { name: 'Westover Hills Estate', price: 1450000, slots: 10, desc: 'Gated, a pool, and a ten-car gallery garage with a turntable.', tier: 4, wall: '#d9d0bc', roof: '#3a4a3a' },
-  rivercrest_mansion: { name: 'Rivercrest Mansion', price: 3600000, slots: 14, desc: 'Country club money. Fourteen climate-controlled bays and a car elevator.', tier: 5, wall: '#e8e2d8', roof: '#2f3b4a', wallH: 5.2 },
+  fairmount_craftsman: { name: 'Fairmount Craftsman', price: 340000, slots: 6, house: 'two', desc: 'Restored 1920s 2-story craftsman on a Southside street, six-car garage out back.', tier: 3, wall: '#7f8a6a', roof: '#4a3a2e' },
+  westover_estate:   { name: 'Westover Hills Estate', price: 1450000, slots: 10, house: 'two', desc: 'Gated 2-story, a pool, and a ten-car gallery garage with a turntable.', tier: 4, wall: '#d9d0bc', roof: '#3a4a3a' },
+  // Stop Six houses off the grid (data/estate.js has where they are)
+  six_bungalow:      { name: 'Cass St Bungalow', price: 64000, slots: 2, house: 'starter', desc: '1-story, two bedrooms, a porch and a carport you can close up. Stop Six.' },
+  six_twostory:      { name: 'Amanda Ave Two-Story', price: 148000, slots: 4, house: 'two', desc: '2-story with the bedrooms upstairs and a four-car garage. Stop Six.' },
+  six_threestory:    { name: 'Stalcup Heights Three-Story', price: 295000, slots: 6, house: 'three', desc: '3-story new build with a rooftop game room and a six-car garage. Stop Six.', tier: 2 },
+  rivercrest_mansion: { name: 'Rivercrest Mansion', price: 3600000, slots: 14, house: 'three', desc: 'Country club money. Three stories, fourteen climate-controlled bays and a car elevator.', tier: 5, wall: '#e8e2d8', roof: '#2f3b4a', wallH: 5.2 },
   // trap houses (data/estate.js): customers knock, SWAT might too
   ...Object.fromEntries(Object.entries(TRAPS).map(([id, t]) => [id, { ...t, trap: true }])),
 };

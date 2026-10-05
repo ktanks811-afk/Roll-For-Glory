@@ -1,7 +1,7 @@
 // Road graph: intersections (nodes) and straight segments (edges).
 // Traffic, police routing, GPS and the minimap all read from this.
 
-import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W } from '../data/world.js';
+import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS } from '../data/world.js';
 
 export function buildRoads() {
   const nodes = [];
@@ -39,6 +39,15 @@ export function buildRoads() {
   const DES = { kind: 'desert', width: 11, lanes: [2.6], speed: 25, name: 'Chisholm Trail Pkwy' };
   edge(node(0, 900), node(0, 1800), DES);
   edge(node(0, 1800), node(0, DESERT_ROAD_END), DES);
+  // Johnson County: the parkway runs on south into farm country, then a grid
+  // of farm-to-market and county roads (world2d/country.js fills it in)
+  edge(node(0, DESERT_ROAD_END), node(0, COUNTRY_ROADS.z[0]), DES);
+  const FARM = { kind: 'desert', width: 10, lanes: [2.5], speed: 22 };
+  const [cz0, cz1, cz2] = COUNTRY_ROADS.z, [cx0, cx1, cx2, cx3] = COUNTRY_ROADS.x;
+  for (const [z, name] of [[cz0, 'FM 917'], [cz1, 'FM 4'], [cz2, 'County Road 1200']])
+    for (const [a, b] of [[cx0, cx1], [cx1, cx2], [cx2, cx3]]) edge(node(a, z), node(b, z), { ...FARM, name });
+  for (const [x, name] of [[cx0, 'County Road 802'], [cx1, 'County Road 1016'], [cx2, 'Old Cleburne Rd'], [cx3, 'Hwy 174']])
+    for (const [a, b] of [[cz0, cz1], [cz1, cz2]]) edge(node(x, a), node(x, b), { ...FARM, name });
 
   const graph = { nodes, edges, byKey };
 

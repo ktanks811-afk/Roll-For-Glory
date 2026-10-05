@@ -14,6 +14,8 @@ import { Gigs } from './gigs.js';
 import { GangWorld } from './gangs.js';
 import { StreetRaces } from './streetRace.js';
 import { Trailers } from './trailer.js';
+import { Ranch } from './ranch.js';
+import { inHouse } from './house.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
@@ -74,6 +76,7 @@ export class World {
     this.gpsPath = null;
     this.nearLoc = null;
     this.inGarage = null;       // garage you're standing in (roof fades away)
+    this.inHouse = null;        // house you've walked into (the house fades away)
     this.garageHint = '';
     this.garageCars = [];
     this.garageT = 0;
@@ -89,6 +92,7 @@ export class World {
     this.gangs = new GangWorld(this);
     this.races = new StreetRaces(this);
     this.trailers = new Trailers(this);
+    this.ranch = new Ranch(this);
     this.spawnPlayer();
   }
 
@@ -218,6 +222,8 @@ export class World {
     this.updateInteractions();
     this.updateGarageCars(dt);
     for (const g of this.map.garages) g.roof.a += ((g === this.inGarage ? 0 : 1) - g.roof.a) * Math.min(1, dt * 4);
+    for (const h of this.map.houses) if (h.mass) h.mass.a += ((h === this.inHouse ? 0 : 1) - h.mass.a) * Math.min(1, dt * 4);
+    this.ranch.update(dt);
 
     // camera
     const focus = this.inCar && this.vehicle ? this.vehicle : this.foot;
@@ -771,6 +777,18 @@ export class World {
     }
     if (inside && inside !== this.inGarage) this.ui.toast(`${inside.loc.name.split(' (')[0]} — your garage. Press ${pad.inUse ? 'A' : 'E'} to manage your cars.`, 'info');
     this.inGarage = inside;
+    // houses: the front door opens for the ones you own, and the house fades
+    // away when you walk in so you can see the rooms
+    let home = null;
+    for (const h of this.map.houses) {
+      if (Math.abs(h.door?.x - p.x) > 80 || Math.abs(h.door?.z - p.z) > 80) { if (h.panel) h.panel.off = st.properties.includes(h.id); continue; }
+      const owned = st.properties.includes(h.id);
+      if (h.panel) h.panel.off = owned;
+      if (owned && !this.inCar && inHouse(h, p.x, p.z)) home = h;
+    }
+    if (home && home !== this.inHouse) this.ui.toast(`${home.loc.name.split(' (')[0]}: home. Press ${pad.inUse ? 'A' : 'E'} to sleep, save or change clothes.`, 'info');
+    this.inHouse = home;
+    if (home && !inside) best = home.loc;
     this.garageHint = inside ? '' : hint;
     if (inside) best = inside.loc;   // anywhere inside counts as being at the door
     if (this.inCar && this.vehicle && this.vehicle.speed > 4 && !inside) best = null;
@@ -940,6 +958,7 @@ export class World {
     this.combat.draw(ctx, cam);
     this.carjacks.draw(ctx, cam);
     this.thefts.draw(ctx, cam);
+    this.ranch.draw(ctx, cam);
     this.gigs.draw(ctx, cam);
     this.gangs.draw(ctx, cam);
 
@@ -1021,6 +1040,7 @@ export class World {
       if (this.police.heli) blobs.push({ x: this.police.heli.spot.x, z: this.police.heli.spot.z, r: 22, a: 1 });
       for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
+      if (this.inHouse) { const b = this.inHouse.box; if (b) glows.push({ x: b.x + b.w / 2, z: b.z + b.d / 2, r: Math.max(b.w, b.d) * 0.7, color: 'rgba(255,236,200,1)', a: 0.8 }); }
       drawLighting(ctx, cam, night, this.map.lights, { cars: carsLit, glows, blobs });
       this.drawGpsRoute(ctx, cam, night * 0.85, true);   // the route glows through the dark
       this.races.drawRoute(ctx, cam, night * 0.7, true);

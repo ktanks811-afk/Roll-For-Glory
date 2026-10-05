@@ -605,3 +605,36 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 
 /* controller focus (ui/padnav.js) */
 .pad-focus { outline: 3px solid #2cff7a !important; outline-offset: 2px; box-shadow: 0 0 0 6px rgba(44,255,122,.25), 0 0 18px rgba(44,255,122,.45) !important; }
+
+/* ---------------- house builder (ui/builder.js) ---------------- */
+.bld { display: flex; gap: 12px; align-items: flex-start; }
+.bld-plan { flex: 1 1 56%; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.bld-floors { display: flex; gap: 6px; flex-wrap: wrap; }
+.bld-cv { display: block; touch-action: none; border-radius: 6px; border: 1px solid var(--line2); outline: none; max-width: 100%; }
+.bld-cv.pad-focus { box-shadow: 0 0 0 2px var(--yellow); }
+.bld-panel .p-body { display: flex; overflow: hidden; }
+.bld-side { flex: 1 1 44%; min-width: 240px; display: flex; flex-direction: column; gap: 8px; align-self: stretch; min-height: 0; }
+.bld-tools { flex: 1; min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.bld-foot { flex: none; }
+.bld-tabs { padding: 0 6px; flex: none; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+.bld-tabs button { flex: none; }
+.bld-tabs button { padding: 8px 9px; font-size: 13px; }
+.bld-body { padding: 10px; overflow: auto; -webkit-overflow-scrolling: touch; }
+.bld-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.bld-room, .bld-item { display: flex; align-items: center; gap: 6px; text-align: left; line-height: 1.1; }
+.bld-room small, .bld-item small { display: block; color: var(--dim); font-size: 11px; font-weight: 600; }
+.bld-room.on, .bld-item.on { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
+.bld-sw { width: 14px; height: 14px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.5); }
+.bld-item canvas { width: 34px; height: 34px; flex: none; background: #2c2a26; border-radius: 4px; }
+.bld-cats { margin-bottom: 8px; gap: 4px; }
+.bld-foot .bld-sum { font-size: 14px; }
+@media (max-width: 760px), (max-height: 500px) {
+  .bld { gap: 8px; }
+  .bld-side { min-width: 200px; }
+  .bld-grid { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); }
+  .bld-panel .p-head h1 { font-size: 17px; }
+  .bld-panel .p-head h1 small { display: none; }
+  .bld-panel .p-body { padding: 8px 10px; }
+  .bld-foot .bld-sum { font-size: 13px; }
+}
+@media (max-width: 560px) { .bld-panel .p-body { flex-direction: column; overflow: auto; } .bld-side { width: 100%; min-width: 0; } .bld-tools { max-height: 46vh; } }
