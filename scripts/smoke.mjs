@@ -1267,6 +1267,44 @@ await step('online free roam', async () => {
   });
   console.log('     deeds', JSON.stringify(deedCheck));
   if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
+  // riding along: tab 1 walks up and asks tab 2 for a ride, tab 2 lets them in, then the other way round
+  const ridePump = pg => pg.evaluate(() => { clearInterval(window.__pump); window.__pump = setInterval(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); }, 120); });
+  await ridePump(p); await ridePump(p2);
+  const carOf = pg => pg.evaluate(() => { const v = window.__rfg.app.world.vehicle; return { x: v.x, z: v.z, h: v.h }; });
+  const standBy = (pg, c) => pg.evaluate(c => { const w = window.__rfg.app.world; w.inCar = false; w.foot.x = c.x + 3; w.foot.z = c.z; w.nearLoc = null; }, c);
+  const sitIn = pg => pg.evaluate(() => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; w.nearLoc = null; });
+  const until = async (pg, fn, what, arg) => { for (let i = 0; i < 30; i++) { if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
+  await sitIn(p2); await standBy(p, await carOf(p2));
+  await until(p, () => window.__rfg.app.world.rides.near?.inCar, 'no "ask for a ride" next to their car');
+  const askLine = await p.evaluate(() => window.__rfg.app.world.rides.promptHtml(false));
+  if (!/Ask .* for a ride/.test(askLine)) throw new Error('ask prompt reads wrong: ' + askLine);
+  await p.evaluate(() => window.__rfg.app.world.rides.tryUse());
+  await until(p2, () => window.__rfg.app.world.rides.promptHtml(false).includes('ride with you'), 'driver never got the ride request');
+  await p2.evaluate(() => { const w = window.__rfg.app.world; w.nearLoc = null; w.rides.tryUse(); });
+  await until(p, () => !!window.__rfg.app.world.rides.riding, 'passenger never got in');
+  // the driver drives off: the passenger goes with the car and everyone else stops drawing them
+  await p2.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.x += 60; v.z += 20; });
+  const c2 = await carOf(p2);
+  await until(p, ([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z) < 3; }, 'passenger did not move with the car', [c2.x, c2.z]);
+  await p.evaluate(() => window.__rfg.app.world.rides.view()).then(v => { if (!v) throw new Error('camera is not riding with the car'); });
+  await until(p2, () => window.__rfg.app.world.rides.riders().length === 1 && window.__rfg.online.list().filter(o => o.ride).length === 1, 'driver does not see the passenger aboard');
+  if (shots) { await p.evaluate(() => { const w = window.__rfg.app.world; w.update(0.05); }); await snap('23c-riding-along'); }
+  // the driver drops them off: back on foot beside the car
+  await p2.evaluate(async () => { const { rides } = await import('./js/net/ride.js'); rides.drop(rides.riders()[0]); });
+  await until(p, () => !window.__rfg.app.world.rides.riding, 'drop-off did not put the passenger out');
+  const outAt = await p.evaluate(([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z); }, [c2.x, c2.z]);
+  if (!(outAt > 0.5 && outAt < 5)) throw new Error('passenger got out ' + outAt.toFixed(1) + ' m from the car');
+  // vice versa: tab 1 drives up and offers tab 2 a ride
+  await sitIn(p); await standBy(p2, await carOf(p));
+  await until(p, () => window.__rfg.app.world.rides.near && !window.__rfg.app.world.rides.near.inCar, 'no "offer a ride" next to them');
+  await p.evaluate(() => window.__rfg.app.world.rides.tryUse());
+  await until(p2, () => window.__rfg.app.world.rides.promptHtml(false).includes('Hop in'), 'offer never arrived');
+  await p2.evaluate(() => { const w = window.__rfg.app.world; w.nearLoc = null; w.rides.tryUse(); });
+  await until(p2, () => !!window.__rfg.app.world.rides.riding, 'did not hop in on the offer');
+  await until(p, () => window.__rfg.app.world.rides.riders().length === 1, 'offering driver does not see the passenger');
+  await p2.evaluate(() => window.__rfg.app.world.rides.getOut());
+  await until(p, () => window.__rfg.app.world.rides.riders().length === 0, 'passenger still shown aboard after getting out');
+  await pump(p); await pump(p2);
   // leaving makes you vanish from the other tab
   await p2.evaluate(() => window.__rfg.online.leave());
   await p.waitForTimeout(300);

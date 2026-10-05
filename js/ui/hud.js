@@ -234,6 +234,8 @@ export class Hud {
     const gp = pad.inUse;   // controller: Xbox button names
     const pu = w.pullups?.promptHtml(tch);
     if (pu) parts.push(pu);
+    const rd = w.rides?.promptHtml(tch);
+    if (rd) parts.push(rd);
     const tp = w.trailers?.promptHtml(tch);
     if (tp) parts.push(tp);
     if (w.garageHint && !w.nearLoc) parts.push(`<span style="color:#2cff7a">▶</span> ${esc(w.garageHint)}`);
@@ -241,7 +243,8 @@ export class Hud {
     const rp = cb ? cb.robPrompt() : '';
     if (rp) parts.push(`<kbd>${gp ? 'A' : tch ? 'USE' : 'E'}</kbd> <b style="color:#ff5a5a">${esc(rp)}</b>`);
     if (w.nearLoc && !(cb && cb.armed)) parts.push(`<kbd>${gp ? (w.inCar ? 'B' : 'A') : tch ? 'USE' : w.inCar ? 'Enter' : 'E'}</kbd> ${esc(w.nearLoc.name)}`);
-    if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${gp ? 'Y' : tch ? 'GET IN' : 'F'}</kbd> ${w.vehicle.car.hot ? 'the stolen car' : tch ? 'your car' : 'Get in'}`);
+    if (w.rides?.riding) { /* the ride prompt covers getting out */ }
+    else if (!w.inCar && w.vehicle && Math.hypot(w.vehicle.x - w.foot.x, w.vehicle.z - w.foot.z) < 4.5) parts.push(`<kbd>${gp ? 'Y' : tch ? 'GET IN' : 'F'}</kbd> ${w.vehicle.car.hot ? 'the stolen car' : tch ? 'your car' : 'Get in'}`);
     else if (w.inCar && w.vehicle && w.vehicle.speed < 2) parts.push(`<kbd>${gp ? 'Y' : tch ? 'GET OUT' : 'F'}</kbd> ${tch ? '' : 'Get out'}`);
     const own = w.thefts?.own?.vehicle;
     if (!w.inCar && own && Math.hypot(own.x - w.foot.x, own.z - w.foot.z) < 4.5) parts.push(`<kbd>${gp ? 'Y' : tch ? 'GET IN' : 'F'}</kbd> your car`);

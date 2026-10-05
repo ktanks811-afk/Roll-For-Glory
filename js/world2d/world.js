@@ -15,6 +15,7 @@ import { GangWorld } from './gangs.js';
 import { StreetRaces } from './streetRace.js';
 import { Trailers } from './trailer.js';
 import { Pullups } from './pullups.js';
+import { RideAlong } from './rides.js';
 import { Ranch } from './ranch.js';
 import { inHouse } from './house.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
@@ -95,6 +96,7 @@ export class World {
     this.races = new StreetRaces(this);
     this.trailers = new Trailers(this);
     this.pullups = new Pullups(this);
+    this.rides = new RideAlong(this);
     this.ranch = new Ranch(this);
     this.spawnPlayer();
   }
@@ -180,7 +182,7 @@ export class World {
     s.playTime += dt;
     this.advanceClock(dt);
 
-    if (input.pressed('enterExit')) this.toggleCar();
+    if (input.pressed('enterExit')) { if (this.rides.riding) this.rides.getOut(); else this.toggleCar(); }
     if (input.pressed('phone')) { this.ui.openPhone(); return; }
     if (input.pressed('map')) { this.ui.openPhone('map'); return; }
     if (input.pressed('pause')) { this.ui.openPause(); return; }
@@ -195,7 +197,8 @@ export class World {
     this.offence = null;
     if (this.inCar && !this.vehicle) this.inCar = false;
     if (this.inCar && this.vehicle) this.updateDriving(dt);
-    else this.updateFoot(dt);
+    else if (!this.rides.riding) this.updateFoot(dt);
+    this.rides.update(dt);   // riding in another player's car: you go where it goes
     this.combat.update(dt);
     this.carjacks.update(dt);
     this.thefts.update(dt);
@@ -230,21 +233,23 @@ export class World {
     this.ranch.update(dt);
 
     // camera
-    const focus = this.inCar && this.vehicle ? this.vehicle : this.foot;
-    const vx = this.inCar && this.vehicle ? this.vehicle.vx : 0, vz = this.inCar && this.vehicle ? this.vehicle.vz : 0;
+    // riding along in another player's car, the camera rides with that car
+    const car = this.inCar && this.vehicle ? this.vehicle : this.rides.view();
+    const focus = car || this.foot;
+    const vx = car ? car.vx : 0, vz = car ? car.vz : 0;
     const spd = Math.hypot(vx, vz);
     const base = (window.innerWidth < 700 ? 7.5 : 11) * [1, 0.55, 1.5][this.zoomLevel ?? 0];
     // a traffic stop pulls the camera in so you can watch the officer walk up
     const stop = this.police.phase === 'stop' ? this.police.stop : null;
-    const targetZoom = stop ? base * 1.35 : this.inCar ? base / (1 + spd / 48) : base * 1.2;
+    const targetZoom = stop ? base * 1.35 : car ? base / (1 + spd / 48) : base * 1.2;
     this.cam.zoom += (targetZoom - this.cam.zoom) * Math.min(1, dt * 2);
     // Keep the car near the middle of the screen at any speed: only a whisker
     // of look-ahead, and a follow fast enough that the lag cancels it out.
     // Third-person (chase) camera: the world turns so the car always points up
     // the screen, and the view is pushed ahead so you see more road than
     // what's behind you. On foot, or with the top-down view, rot eases to 0.
-    const cam = this.cam, chase = settings.camMode === 'chase' && this.inCar && this.vehicle;
-    let dRot = (chase ? -this.vehicle.h : 0) - cam.rot; dRot = Math.atan2(Math.sin(dRot), Math.cos(dRot));
+    const cam = this.cam, chase = settings.camMode === 'chase' && !!car;
+    let dRot = (chase ? -car.h : 0) - cam.rot; dRot = Math.atan2(Math.sin(dRot), Math.cos(dRot));
     cam.rot += dRot * Math.min(1, dt * (chase ? 7 : 5));
     // In a race the car stays dead centre so you can see rivals beside and behind you.
     const pushAhead = chase && !this.races.active;
@@ -252,7 +257,7 @@ export class World {
     const lead = this.camLead * (cam.vh || 600) * 0.2 / cam.zoom;   // cruising: car sits in the lower part of the screen
     const mid = stop?.unit && Math.hypot(stop.unit.x - focus.x, stop.unit.z - focus.z) < 20 ? stop.unit : null;
     const tx = (mid ? (focus.x + mid.x) / 2 : focus.x + vx * 0.1) - Math.sin(cam.rot) * lead, tz = (mid ? (focus.z + mid.z) / 2 : focus.z + vz * 0.1) - Math.cos(cam.rot) * lead;
-    const follow = this.inCar ? 1 - Math.exp(-dt * 12) : Math.min(1, dt * 5);
+    const follow = car ? 1 - Math.exp(-dt * 12) : Math.min(1, dt * 5);
     this.cam.x += (tx - this.cam.x) * follow;
     this.cam.z += (tz - this.cam.z) * follow;
 
@@ -289,7 +294,7 @@ export class World {
       if (car) online.me = { name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n, crew: this.s.onlineCrew ? { tag: this.s.onlineCrew.tag, color: this.s.onlineCrew.color } : null };
     }
     const speed = this.inCar ? (this.vehicle.rev < 0 ? -p.speed : p.speed) : walking ? 3 : 0;
-    online.tick(dt, { x: p.x, z: p.z, h: p.h, speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0 });
+    online.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0 });
   }
 
   // Sprite for another player's car (cached until their build changes).
@@ -301,7 +306,7 @@ export class World {
 
   drawPeers(ctx, v) {
     const cam = this.cam;
-    const peers = online.list().filter(p => !p.fresh && p.x > v.x0 - 8 && p.x < v.x1 + 8 && p.z > v.z0 - 8 && p.z < v.z1 + 8);
+    const peers = online.list().filter(p => !p.fresh && !p.ride && p.x > v.x0 - 8 && p.x < v.x1 + 8 && p.z > v.z0 - 8 && p.z < v.z1 + 8);
     for (const p of peers) {
       if (p.inCar) {
         this.drawShadow(ctx, p.x, p.z, p.h, dimsFor(p.model));
@@ -328,7 +333,8 @@ export class World {
     ctx.save();
     ctx.font = '600 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const p of peers) {
-      const label = p.crew ? `[${p.crew.tag}] ${p.name}` : p.name;
+      const aboard = p.inCar ? online.list().filter(o => o.ride === p.id).length + (this.rides.riding?.id === p.id ? 1 : 0) : 0;
+      const label = (p.crew ? `[${p.crew.tag}] ${p.name}` : p.name) + (aboard ? ` +${aboard}` : '');
       const w = ctx.measureText(label).width + 14;
       ctx.save();
       ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(-cam.rot);   // keep tags upright in the chase camera
@@ -776,7 +782,7 @@ export class World {
       const owned = st.properties.includes(g.id);
       g.panel.off = owned;
       const inn = g.inner;
-      if (owned && p.x > inn.x && p.x < inn.x + inn.w && p.z > inn.z && p.z < inn.z + inn.d) inside = g;
+      if (owned && !this.rides.riding && p.x > inn.x && p.x < inn.x + inn.w && p.z > inn.z && p.z < inn.z + inn.d) inside = g;
       else if (owned && !inside && Math.hypot(p.x - g.park.x, p.z - g.park.z) < 22 && true) {
         hint = this.inCar ? `Drive into the garage — ${g.loc.name.split(' (')[0]}` : `Walk into your garage — ${g.loc.name.split(' (')[0]}`;
       }
@@ -790,19 +796,21 @@ export class World {
       if (Math.abs(h.door?.x - p.x) > 80 || Math.abs(h.door?.z - p.z) > 80) { if (h.panel) h.panel.off = st.properties.includes(h.id); continue; }
       const owned = st.properties.includes(h.id);
       if (h.panel) h.panel.off = owned;
-      if (owned && !this.inCar && inHouse(h, p.x, p.z)) home = h;
+      if (owned && !this.inCar && !this.rides.riding && inHouse(h, p.x, p.z)) home = h;
     }
     if (home && home !== this.inHouse) this.ui.toast(`${home.loc.name.split(' (')[0]}: home. Press ${pad.inUse ? 'A' : 'E'} to sleep, save or change clothes.`, 'info');
     this.inHouse = home;
     if (home && !inside) best = home.loc;
-    this.garageHint = inside ? '' : hint;
+    this.garageHint = inside || this.rides.riding ? '' : hint;
     if (inside) best = inside.loc;   // anywhere inside counts as being at the door
     if (this.inCar && this.vehicle && this.vehicle.speed > 4 && !inside) best = null;
     if (inside && this.inCar && this.vehicle.speed > 6) best = null;
     if (this.races.active) best = null;
+    if (this.rides.riding) best = null;   // a passenger can't stop in anywhere
     this.nearLoc = best;
     if (input.pressed('interact')) {
-      if (this.pullups.tryUse()) { /* said bet to the racer beside you */ }
+      if (this.rides.tryUse()) { /* got out, answered a ride request, or asked/offered one */ }
+      else if (this.pullups.tryUse()) { /* said bet to the racer beside you */ }
       else if (this.trailers.tryUse()) { /* unloaded the car off the trailer, or loaded it back up */ }
       else if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
       else if (best && this.combat.armed && this.combat.storeNear()) this.ui.toast(`Holster your weapon (${pad.inUse ? 'LT' : 'G'}) to go inside.`, 'info');
@@ -910,6 +918,7 @@ export class World {
   }
 
   teleport(x, z, label, locId) {
+    if (this.rides.riding) { this.ui.toast(`You're riding with ${this.rides.riding.name}. Get out first.`, 'bad'); return false; }
     const s = this.s, plan = this.teleportPlan(x, z);
     if (plan.block) { this.ui.toast(plan.block, 'bad'); return false; }
     const q = plan.quote;
@@ -1018,7 +1027,7 @@ export class World {
     // the officer walking up during a traffic stop
     const cop = this.police.officer;
     if (cop) drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
-    if (!this.inCar) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
+    if (!this.inCar && !this.rides.riding) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
     this.combat.draw(ctx, cam);
     this.carjacks.draw(ctx, cam);
     this.thefts.draw(ctx, cam);
@@ -1263,6 +1272,7 @@ export class World {
   destroy() {
     this.races.destroy();
     this.pullups.destroy();
+    this.rides.destroy();
     if (this.engine) this.engine.stop();
     audio.siren(false);
     audio.music(null);

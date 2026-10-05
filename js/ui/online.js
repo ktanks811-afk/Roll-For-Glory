@@ -11,6 +11,7 @@ import { LAND } from '../data/estate.js';
 import { audio } from '../core/audio.js';
 import { initPvp, openChallenge } from './pvp.js';
 import { pvp } from '../net/pvp.js';
+import { rides } from '../net/ride.js';
 
 const QUICK = ['🏁 Race me!', '🔥 Nice build', '👍', '😂', 'Meet at Pier 9?'];
 
@@ -45,7 +46,7 @@ export function openOnline(app) {
         <div class="p-body"><div class="split"><div>
           <div class="section-title" style="margin-top:0">Racers around</div>
           <div class="list" data-peers></div>
-          <p class="small muted">Tap <b>Race</b> next to someone to call them out: a roll race or a drag race, with or without money on it. Other racers show up on the map and minimap. Cars don't collide online — it's a shared cruise, not a demolition derby.</p>
+          <p class="small muted">Tap <b>Race</b> next to someone to call them out: a roll race or a drag race, with or without money on it. Tap <b>Ride</b> to ask for a ride in their car, or offer them one in yours. You can also walk up to their car and press USE. Other racers show up on the map and minimap. Cars don't collide online — it's a shared cruise, not a demolition derby.</p>
         </div><div>
           <div class="section-title" style="margin-top:0">Chat</div>
           <div data-chat style="height:200px;overflow:auto;background:#101114;border:1px solid #2a2c33;padding:8px;font-size:14px"></div>
@@ -56,6 +57,17 @@ export function openOnline(app) {
       const msg = root.querySelector('[data-msg]');
       root.querySelector('[data-form]').onsubmit = e => { e.preventDefault(); online.say(msg.value); msg.value = ''; };
       root.querySelector('[data-peers]').onclick = e => {
+        const rb = e.target.closest('[data-ride]');
+        const rp = rb && online.peers.get(rb.dataset.ride);
+        if (rp && app.world) {
+          audio.click?.();
+          const ra = app.world.rides;
+          if (rides.with?.id === rp.id) ra.getOut();
+          else if (rp.ride === online.id) { rides.drop(rp); toast(`Dropped ${rp.name} off.`, 'info'); }
+          else if (ra.request(rp)) h.close();
+          drawPeers(root, app);
+          return;
+        }
         const b = e.target.closest('[data-race]');
         const p = b && online.peers.get(b.dataset.race);
         if (p) { audio.click?.(); openChallenge(app, p); }
@@ -157,7 +169,11 @@ function drawPeers(root, app) {
   box.innerHTML = peers.length ? peers.map(p => {
     const d = me ? Math.round(Math.hypot(p.x - me.x, p.z - me.z)) : 0;
     const asked = pvp.out?.to === p.id;
-    return `<div class="li"><span class="avatar" style="background:#2a6bff">${esc(p.name[0] || '?')}</span><div class="grow"><div class="t">${esc(p.name)}</div><div class="s">${esc(carName(p.model))} · ${d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m'} away</div></div><button class="btn btn-sm ${asked ? '' : 'btn-primary'}" data-race="${esc(p.id)}" ${asked ? 'disabled' : ''}>${asked ? 'Asked…' : '🏁 Race'}</button></div>`;
+    const withMe = p.ride && p.ride === online.id, mine = rides.with?.id === p.id;
+    const riding = p.ride && !withMe ? online.peers.get(p.ride)?.name || 'someone' : '';
+    const ride = mine ? 'Get out' : withMe ? 'Drop off' : rides.out?.to === p.id ? 'Asked…' : p.inCar ? '🚗 Ride' : '🚗 Offer ride';
+    const where = mine ? 'you\'re riding with them' : withMe ? 'riding with you' : riding ? `riding with ${esc(riding)}` : `${d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m'} away`;
+    return `<div class="li"><span class="avatar" style="background:#2a6bff">${esc(p.name[0] || '?')}</span><div class="grow"><div class="t">${esc(p.name)}</div><div class="s">${esc(carName(p.model))} · ${where}</div></div><button class="btn btn-sm" data-ride="${esc(p.id)}" ${rides.out?.to === p.id || (riding && !mine) ? 'disabled' : ''}>${ride}</button> <button class="btn btn-sm ${asked ? '' : 'btn-primary'}" data-race="${esc(p.id)}" ${asked ? 'disabled' : ''}>${asked ? 'Asked…' : '🏁 Race'}</button></div>`;
   }).join('') : '<p class="small muted">Nobody else is here yet. Tell a friend to join this server, or switch to a busier one.</p>';
 }
 

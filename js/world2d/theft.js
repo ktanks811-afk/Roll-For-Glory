@@ -50,9 +50,9 @@ export class Thefts {
 
   update(dt) {
     const w = this.w, s = this.s;
-    this.target = this.findTarget();
+    this.target = w.rides?.riding ? null : this.findTarget();
     if (this.act) this.working(dt);
-    else if (input.pressed('steal')) {
+    else if (input.pressed('steal') && !w.rides?.riding) {
       if (this.target) this.start(this.target);
       else if (!w.inCar) w.ui.toast('Nothing to steal here. Walk up to a parked car, or one stopped at a light.', 'info');
     }
