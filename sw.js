@@ -16,6 +16,8 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  // Songs stream in byte ranges; let the browser fetch those itself.
+  if (req.destination === 'audio' || req.headers.has('range')) return;
   e.respondWith((async () => {
     try {
       const res = await fetch(req, { cache: 'no-cache' });
