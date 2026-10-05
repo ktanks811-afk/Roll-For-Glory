@@ -149,7 +149,7 @@ function launch(app, cfg) {
   startRace(Race, opts);
 }
 
-function results(app, cfg, r) {
+export function results(app, cfg, r) {
   const s = game.s;
   const car = activeCar(s);
   const npc = cfg.npc;

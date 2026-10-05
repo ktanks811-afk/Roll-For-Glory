@@ -1214,6 +1214,59 @@ await step('online free roam', async () => {
   if (!(await p.$('[data-peers] .li'))) throw new Error('online panel lists nobody');
   await snap('23-online-panel');
   await p.keyboard.press('Escape');
+  // head-to-head: tab 1 calls tab 2 out, tab 2 accepts, both get a race against the other player
+  await p2.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.inCar = true; });
+  await p.evaluate(async () => {
+    const { pvp } = await import('./js/net/pvp.js');
+    const peer = window.__rfg.online.list().find(o => o.name !== 'Eve' && o.id !== 'evil2');
+    window.__rfg.app.world.inCar = true;
+    if (!pvp.challenge(peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 500 })) throw new Error('challenge not sent');
+  });
+  await p2.waitForSelector('.modal-back button:has-text("Run it")', { timeout: 5000 });
+  const inviteText = await p2.textContent('.modal-back .modal-body');
+  if (!/1\/4 mile drag race/.test(inviteText) || !/\$500/.test(inviteText)) throw new Error('invite reads wrong: ' + inviteText);
+  if (shots) await p2.screenshot({ path: `${OUT}/23b-race-invite.png` });
+  await p2.click('.modal-back button:has-text("Run it")');
+  const raced = async pg => pg.waitForFunction(() => window.__rfg.app.race?.link, null, { timeout: 6000 });
+  await raced(p2); await raced(p);
+  // both sides find each other on the private race channel and the challenger starts it
+  for (let i = 0; i < 30; i++) { if (await p.evaluate(() => window.__rfg.app.race.link.started) && await p2.evaluate(() => window.__rfg.app.race.link.started)) break; await p2.evaluate(() => window.__rfg.app.race.link.tick(0.1)); await p.evaluate(() => window.__rfg.app.race.update(0.03)); await p.waitForTimeout(100); }
+  const linkState = await Promise.all([p, p2].map(pg => pg.evaluate(() => { const r = window.__rfg.app.race; return { host: r.link.host, started: r.link.started, them: r.n.name, remote: !!r.n.remote, phase: r.phase, type: r.o.type }; })));
+  console.log('     pvp race', JSON.stringify(linkState));
+  if (!linkState.every(x => x.started && x.remote && x.type === 'drag') || !linkState[0].host || linkState[1].host) throw new Error('pvp race did not start on both sides');
+  // the other side's finish decides it: they red-lit, so tab 1 wins
+  await p2.evaluate(() => window.__rfg.app.race.link.sendFin({ fin: 0, red: 1, jump: 0, rt: -0.05, time: null }));
+  await p.waitForFunction(() => window.__rfg.app.race.link.fin, null, { timeout: 4000 });
+  const fin = await p.evaluate(() => window.__rfg.app.race.link.fin);
+  if (!fin.red) throw new Error('finish did not arrive: ' + JSON.stringify(fin));
+  for (const pg of [p, p2]) await pg.evaluate(async () => { const r = window.__rfg.app.race; r.link.close(); r.destroy(); window.__rfg.app.race = null; const { enterWorld } = await import('./js/main.js'); enterWorld(); });
+  // house deeds: one owner per house per server, 15 players per server
+  const deedCheck = await p.evaluate(async () => {
+    localStorage.removeItem('rfg-localdeeds');
+    window.__rfg.online.kindOverride = 'local';
+    const { deeds } = await import('./js/net/deeds.js');
+    const A = { uid: 'aaaa1111', crewKey: 'akey-akey-akey', player: { name: 'Ann' }, properties: ['six_bungalow'], estate: {} };
+    const B = { uid: 'bbbb2222', crewKey: 'bkey-bkey-bkey', player: { name: 'Bo' }, properties: ['eastgate_studio'], estate: {} };
+    const out = {};
+    out.a = (await deeds.join(A, 'harbor')).ok;
+    out.b = (await deeds.join(B, 'harbor')).ok;
+    out.taken = deeds.takenBy(B, 'six_bungalow');
+    out.bClaim = (await deeds.claim(B, 'six_bungalow')).ok;
+    out.bFree = (await deeds.claim(B, 'six_twostory')).ok;
+    const C = { uid: 'cccc3333', crewKey: 'ckey-ckey-ckey', player: { name: 'Cy' }, properties: ['six_bungalow'], estate: {} };
+    const cj = await deeds.join(C, 'harbor');
+    out.cConflict = !cj.ok && cj.conflicts?.[0]?.name;
+    out.cElsewhere = (await deeds.join(C, 'downtown')).ok;
+    await deeds.release(A, 'six_bungalow');
+    out.afterSale = (await deeds.claim(B, 'six_bungalow')).ok;
+    for (let i = 0; i < 15; i++) await deeds.join({ uid: 'fill' + String(i).padStart(4, '0'), crewKey: 'fill-key-fill-key', player: { name: 'F' + i }, properties: [], estate: {} }, 'glory');
+    out.full = (await deeds.join({ uid: 'late9999', crewKey: 'late-key-late-key', player: { name: 'Late' }, properties: [], estate: {} }, 'glory')).full;
+    localStorage.removeItem('rfg-localdeeds');
+    window.__rfg.online.kindOverride = null;
+    return out;
+  });
+  console.log('     deeds', JSON.stringify(deedCheck));
+  if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
   // leaving makes you vanish from the other tab
   await p2.evaluate(() => window.__rfg.online.leave());
   await p.waitForTimeout(300);

@@ -155,7 +155,24 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
 {
   if (SERVERS.length < 6) bad('need a real list of servers');
   if (new Set(SERVERS.map(sv => sv.id)).size !== SERVERS.length) bad('duplicate server ids');
-  if (!(SERVER_CAP >= 8 && SERVER_CAP <= 32)) bad('server cap');
+  if (SERVER_CAP !== 15) bad('servers hold 15 players');
+{
+  // online sync: the prediction everyone runs must follow a car going straight, turning and speeding up
+  const { predict } = await import('../js/net/online.js');
+  const st = { x: 0, z: 0, h: 0, v: 20, r: 0, a: 0 };
+  const g = predict(st, 0.5);
+  if (Math.abs(g.z + 10) > 1e-6 || Math.abs(g.x) > 1e-6) bad('straight-line prediction');
+  const t = predict({ ...st, r: 1 }, 0.5);
+  if (!(t.x > 1 && Math.abs(t.h - 0.5) < 1e-9)) bad('turning prediction');
+  if (!(predict({ ...st, a: 4 }, 0.5).v === 22)) bad('accelerating prediction');
+  if (predict(st, 30).z !== predict(st, 0.8).z) bad('prediction must stop guessing after a lost packet');
+  // pvp: anything a peer sends is cleaned before it's used
+  const PV = await import('../js/net/pvp.js');
+  const c = PV.cleanCfg({ ty: 'drag', di: 'mile', ro: 999, wa: 123456 });
+  if (c.type !== 'drag' || !PV.PVP_DISTS.drag.includes(c.dist) || c.wager !== 0 || !PV.PVP_ROLLS.includes(c.roll)) bad('pvp race settings not cleaned: ' + JSON.stringify(c));
+  const f = PV.cleanFin({ fin: 1, red: 0, time: 1e99, rt: 'x', splits: { quarter: 11.2, evil: 5, eighth: NaN }, shifts: -4 });
+  if (f.time !== 999 || f.rt !== null || f.splits.quarter !== 11.2 || 'evil' in f.splits || 'eighth' in f.splits || f.shifts !== 0) bad('pvp finish not cleaned: ' + JSON.stringify(f));
+}
 }
 // side hustles: passive income balance + rules
 {
