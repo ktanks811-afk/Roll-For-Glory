@@ -298,7 +298,15 @@ export class World {
       if (car) online.me = { name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n, crew: this.s.onlineCrew ? { tag: this.s.onlineCrew.tag, color: this.s.onlineCrew.color } : null };
     }
     const speed = this.inCar ? (this.vehicle.rev < 0 ? -p.speed : p.speed) : walking ? 3 : 0;
-    online.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0 });
+    // with passengers aboard, the gear and revs go out too so their dash shows yours
+    const dash = this.inCar && this.vehicle && this.rides.riders().length ? this.dashOf(this.vehicle) : null;
+    online.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0, dash });
+  }
+
+  // Gear and how far up the tach you are (the HUD's dash reads the same thing).
+  dashOf(v) {
+    const ev = v.model.asp === 'ev';
+    return { gear: v.rev < 0 ? 'R' : v.sim.shiftT > 0 ? '–' : ev ? 'D' : String(v.sim.gear + 1), rpm: ev ? v.speed / 70 : v.sim.rpm / v.spec.redline };
   }
 
   // Sprite for another player's car (cached until their build changes).

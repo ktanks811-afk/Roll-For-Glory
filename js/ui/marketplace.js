@@ -4,7 +4,8 @@
 
 import { bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
 import { ensureTow } from '../core/tow.js';
-import { game, fmtMoney, newCar, spend, earn, carValue, activeCar, carSpec, carMetrics, modelOf, garageCapacity, uid } from '../core/state.js';
+import { game, fmtMoney, newCar, spend, earn, carValue, activeCar, carSpec, carMetrics, modelOf, garageCapacity, uid, gameTimeStr } from '../core/state.js';
+import { payoffOnSale } from '../core/credit.js';
 import { CAR_BY_ID, carName, MAKES, CURRENT_YEAR } from '../data/cars.js';
 import { negotiate, avgCond, makeListing } from '../data/market.js';
 import { partLevels } from '../data/parts.js';
@@ -217,7 +218,10 @@ export function sellCar(s, c, amount, app) {
   s.cars = s.cars.filter(x => x !== c);
   ensureTow(s);   // it can't stay on (or pull) a trailer once it's gone
   s.myListings = s.myListings.filter(m => m.carUid !== c.uid);
+  // a car with a loan on it: the credit union gets paid off first (core/credit.js)
+  const { payoff } = payoffOnSale(s, c.uid, amount);
   earn(s, amount, `Sold ${carName(modelOf(c), c.year)}`);
+  if (payoff) { s.cash -= payoff; s.stats.expenses += payoff; s.ledger.unshift({ day: s.time.day, t: gameTimeStr(s.time), label: `Auto loan payoff from the sale`, amount: -payoff }); }
   if (s.activeCar === c.uid) {
     s.activeCar = s.cars[0]?.uid || null;
     s.carPos = null;

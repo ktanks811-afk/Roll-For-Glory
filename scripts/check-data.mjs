@@ -1602,5 +1602,69 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!(hogs >= 12 && pay > 0)) bad(`12 hunts on the river bottoms caught ${hogs} hogs for ${pay}`);
   if (HH.startHunt(st, 'nolan', [], [], 1).ok) bad('a hunt with no bay dogs');
 }
+// credit scores, loans, car financing, repos (core/credit.js)
+{
+  const CR = await import('../js/core/credit.js');
+  const HL = await import('../js/core/health.js');
+  const { newCar: mkCar } = await import('../js/core/state.js');
+  const mk = () => { const s = createState({ name: 'Credit', age: 25, look: {}, story: false }); s.time.day = 10; game.s = s; return s; };
+  const s = mk();
+  if (CR.creditScore(s) !== CR.START) bad(`a new career should start at ${CR.START}, got ${CR.creditScore(s)}`);
+  // a personal loan: money in checking, autopay pays it on time, the score climbs
+  let r = CR.takeLoan(s, 2000, 6);
+  if (!r.ok || s.bank !== 2000) bad('personal loan: ' + r.text);
+  s.bank += 5000;
+  for (let i = 0; i < 60 && r.loan.status !== 'paid'; i++) { s.time.day++; CR.creditDay(s); }
+  if (r.loan.status !== 'paid' || r.loan.missed) bad(`loan should pay off on time: ${r.loan.status}, ${r.loan.balance} left`);
+  const paidTotal = 7000 - s.bank;
+  if (!(paidTotal > 2000 && paidTotal < 2000 * 1.1)) bad(`a 6-payment loan at ${r.loan.apr} cost ${paidTotal}`);
+  s.time.day += CR.INQ_DAYS;
+  if (!(CR.creditScore(s) > CR.START + 20)) bad(`six on-time payments and a payoff should help: ${CR.creditScore(s)}`);
+  // miss payments: late fee, a mark, then default to collections, a judgment, garnishment
+  const d = mk(); const l = CR.takeLoan(d, 3000, 12).loan; d.bank = 0;
+  const before = CR.creditScore(d);
+  d.time.day = l.next; CR.creditDay(d);
+  if (l.late == null || l.balance <= 3000 || !(CR.creditScore(d) < before - 30)) bad(`a missed payment: late ${l.late}, owe ${l.balance}, score ${CR.creditScore(d)}`);
+  for (let i = 0; i < CR.DEFAULT_AFTER; i++) { d.time.day++; CR.creditDay(d); }
+  if (l.status !== 'collections') bad('a loan unpaid for weeks should go to collections: ' + l.status);
+  if (CR.offer(d, 'personal').ok) bad('no new loans with one in collections');
+  d.bank = 500;
+  for (let i = 0; i <= CR.SUE_AFTER; i++) { d.time.day++; CR.creditDay(d); }
+  if (l.status !== 'judgment' || d.bank !== 0) bad(`collections should sue and garnish: ${l.status}, bank ${d.bank}`);
+  if (!(CR.creditScore(d) < 500)) bad('a default and a judgment should wreck the score: ' + CR.creditScore(d));
+  if (CR.bandOf(CR.creditScore(d)).ins <= 1) bad('bad credit should cost more on insurance');
+  d.bank = 1e6; if (!CR.payLoan(d, l).paid || l.status !== 'paid') bad('paying off a judgment');
+  // marks fade and drop off
+  d.time.day += CR.DROP + 1;
+  if (!(CR.creditScore(d) > 600)) bad('old marks should fall off: ' + CR.creditScore(d));
+  // car financing: down payment by band, a lien, repossession when it goes unpaid
+  const c = mk(); c.bank = 0;
+  const o = CR.offer(c, 'auto', 40000);
+  if (!o.ok || o.down !== 8000 || o.financed !== 32000) bad(`fair credit should finance 40k with 20% down: ${JSON.stringify({ down: o.down, fin: o.financed })}`);
+  const car = mkCar(Object.keys((await import('../js/data/cars.js')).CAR_BY_ID)[0]);
+  c.cars.push(car); c.activeCar = car.uid;
+  const al = CR.financeCar(c, car, o.financed, 12).loan;
+  if (!al || CR.lienOn(c, car.uid) !== al) bad('auto loan lien');
+  for (let i = 0; i < CR.LOAN_CYCLE + CR.DEFAULT_AFTER + 1; i++) { c.time.day++; CR.creditDay(c); }
+  if (c.cars.includes(car) || c.activeCar === car.uid) bad('an unpaid auto loan should get the car repossessed');
+  if (!c.credit.marks.some(m => m.kind === 'repo')) bad('a repo should show on credit');
+  // selling a financed car pays the loan off first
+  const e = mk(); const car2 = mkCar(car.modelId); e.cars.push(car2);
+  const el = CR.financeCar(e, car2, 10000, 12).loan;
+  const so = CR.payoffOnSale(e, car2.uid, 15000);
+  if (so.payoff !== 10000 || so.proceeds !== 5000 || el.status !== 'paid') bad('sale payoff ' + JSON.stringify(so));
+  // JPS bills report to credit: paid on time helps, collections hurts
+  const j = mk(); j.cash = 0; j.bank = 0;
+  HL.ensureHealth(j).bills.push({ id: 'b1', acct: 'JPS-1', day: 10, due: 12, total: 900, balance: 900, status: 'open' });
+  for (let i = 0; i < 6; i++) { j.time.day++; HL.healthDay(j); }
+  if (!j.credit?.marks.some(m => m.kind === 'collections') || !(CR.creditScore(j) < CR.START - 80)) bad('a JPS bill in collections should hit credit: ' + CR.creditScore(j));
+  const k = mk(); k.bank = 5000;
+  const kb = { id: 'b2', acct: 'JPS-2', day: 10, due: 15, total: 900, balance: 900, status: 'open' };
+  HL.ensureHealth(k).bills.push(kb); HL.payBill(k, kb);
+  if (k.credit?.ontime !== 1) bad('paying a JPS bill on time should count as an on-time payment');
+  // loan payment math
+  if (CR.payment(12000, 0.12, 12) !== 1067) bad('payment math: ' + CR.payment(12000, 0.12, 12));
+  game.s = null;
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

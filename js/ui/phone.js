@@ -27,6 +27,9 @@ import { renderMap } from './mapapp.js';
 import { recordHtml } from './record.js';
 import { hasWarrant, hasFelony, payableTotal, payFines } from '../core/warrants.js';
 import * as B from '../core/bank.js';
+import * as CR from '../core/credit.js';
+import { pay, ensurePay } from '../net/pay.js';
+import { SERVER_BY_ID } from '../net/online.js';
 import { wx } from '../core/weather.js';
 import { GANGS } from '../data/gangs.js';
 import { ensureSocial, myHandle, markSeen, likePost, rivalsList, heatWord, rivalOptions, answerRival, HEATED_AT } from '../core/feed.js';
@@ -290,12 +293,14 @@ RENDER.map = renderMap;
 RENDER.bank = (scr, ctx) => {
   const s = ctx.s;
   const car = activeCar(s);
-  const ins = Math.round(40 + s.cars.reduce((a, c) => a + carValue(c), 0) * 0.0022);
+  const ins = CR.insurancePremium(s);
   const f = B.ensureFeds(s), dirty = dirtyOf(s), clean = cleanOf(s), stage = B.stageOf(f.heat);
   const tab = ctx.st.bankTab || 'account';
   const prev = B.depositPreview(s, 0, false);
   const owned = B.ownedBiz(s);
-  const tabs = [['account', 'Account'], ['wash', `Wash money${B.washQueued(s) ? ' 🫧' : ''}`], ['feds', `Feds${f.heat >= 30 ? ' ⚠' : ''}`]];
+  const cr = CR.ensureCredit(s), sc = CR.scoreParts(s), band = CR.bandOf(sc.score);
+  const owing = CR.activeLoans(s);
+  const tabs = [['account', 'Account'], ['send', 'Send money'], ['credit', `Credit ${sc.score}${owing.some(l => l.late != null || l.status !== 'open') ? ' ⚠' : ''}`], ['wash', `Wash money${B.washQueued(s) ? ' 🫧' : ''}`], ['feds', `Feds${f.heat >= 30 ? ' ⚠' : ''}`]];
   let body = '';
   if (tab === 'account') {
     body = `
@@ -311,6 +316,49 @@ RENDER.bank = (scr, ctx) => {
     <div class="li"><div class="grow"><div class="t">Tow to the nearest mechanic</div><div class="s">$185 flat rate</div></div><button class="btn btn-sm" data-action="tow" ${car ? '' : 'disabled'}>Call</button></div>
     <div class="section-title">Recent activity</div>
     <div class="list">${s.ledger.slice(0, 40).map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.label)}</div><div class="s">Day ${l.day} · ${l.t}</div></div><b class="${l.amount > 0 ? 'good' : l.amount < 0 ? 'bad' : ''}">${l.amount ? (l.amount > 0 ? '+' : '') + fmtMoney(l.amount, true) : ''}</b></div>`).join('') || '<div class="empty">Nothing yet</div>'}</div>`;
+  } else if (tab === 'send') {
+    const p = ensurePay(s), home = s.homeServer && SERVER_BY_ID[s.homeServer];
+    const st = ctx.st;
+    if (home && !st.payLoading && (!st.payAt || performance.now() - st.payAt > 20000 || st.payServer !== s.homeServer)) {
+      st.payLoading = true;
+      pay.players(s).then(list => { st.payRoster = list; st.payErr = ''; }).catch(e => { st.payRoster = null; st.payErr = e.message; })
+        .finally(() => { st.payLoading = false; st.payAt = performance.now(); st.payServer = s.homeServer; if (st.bankTab === 'send' && scr.isConnected) ctx.h.refresh(); });
+    }
+    const roster = st.payServer === s.homeServer ? st.payRoster : null;
+    body = `<p class="small muted">💸 <b>Cowtown Pay</b>. Send money from your checking account to another player on your server. It lands in their checking right away if they're on, or the next time they play. If they don't pick it up in 7 days, it comes back to you.</p>
+      ${home ? `<div class="section-title">Players on ${esc(home.name)}</div>
+        <div class="list" data-pay-roster>${roster ? roster.map(r => `<div class="li"><div class="grow"><div class="t">👤 ${esc(r.name)}</div></div><button class="btn btn-sm btn-primary" data-action="paysend" data-uid="${esc(r.uid)}" data-name="${esc(r.name)}" ${s.bank >= 1 ? '' : 'disabled'}>Send</button></div>`).join('') || '<div class="empty">Nobody else calls this server home yet.</div>'
+          : `<div class="empty">${st.payErr ? `Couldn't reach the bank: ${esc(st.payErr)}` : 'Loading players…'}</div>`}</div>
+        <div class="row" style="margin:8px 0;gap:6px"><button class="btn btn-sm" data-action="paycheck">Check for money</button></div>`
+      : '<div class="empty">You can send money to players on your home server. Pick one in Online (the pause menu) first.</div>'}
+      <div class="section-title">Transfers</div>
+      <div class="list" data-pay-log>${p.log.slice(0, 20).map(l => `<div class="li"><div class="grow"><div class="t">${l.dir === 'in' ? `From ${esc(l.name)}` : l.dir === 'out' ? `To ${esc(l.name)}` : `Returned: ${esc(l.name)} didn't pick it up`}</div><div class="s">Day ${l.day} · ${l.t}${l.memo ? ` · "${esc(l.memo)}"` : ''}</div></div><b class="${l.dir === 'out' ? 'bad' : 'good'}">${l.dir === 'out' ? '−' : '+'}${fmtMoney(l.amount)}</b></div>`).join('') || '<div class="empty">No transfers yet</div>'}</div>`;
+  } else if (tab === 'credit') {
+    const pct = (sc.score - CR.MIN) / (CR.MAX - CR.MIN) * 100;
+    const wk = cr.hist.find(h => h.day >= s.time.day - 7);
+    const delta = wk ? sc.score - wk.score : 0;
+    const po = CR.offer(s, 'personal');
+    body = `<div class="stat-lbl">Credit score</div>
+      <div class="stat-big ${band.color}" data-credit-score>${sc.score} <span class="small">${esc(band.name)}${delta ? ` · ${delta > 0 ? '▲' : '▼'} ${Math.abs(delta)} this week` : ''}</span></div>
+      ${bar(pct, band.color === 'bad' ? 'feds hot' : '')}
+      <p class="small muted">${CR.MIN}–${CR.MAX}. Pay loans and bills on time and it climbs. Late payments, collections, judgments and repos drag it down for a long time. It sets your loan rates, how much a dealer wants down on a car, and your insurance price.</p>
+      <div class="section-title">What's in your score</div>
+      <div class="list" data-credit-parts>${sc.parts.map(x => `<div class="li"><div class="grow"><div class="s">${esc(x.label)}</div></div><b class="${x.pts > 0 ? 'good' : 'bad'}">${x.pts > 0 ? '+' : ''}${x.pts}</b></div>`).join('') || '<div class="empty">No credit history yet. Everybody starts at ' + CR.START + '. A small loan paid on time builds it.</div>'}</div>
+      <div class="section-title">Your loans</div>
+      <div class="list" data-loans>${owing.map(l => {
+        const coll = l.status !== 'open';
+        return `<div class="li"><div class="grow"><div class="t">${esc(l.label)} <span class="tag">${esc(l.acct)}</span></div>
+          <div class="s">${coll ? `<b class="bad">${l.status === 'judgment' ? 'JUDGMENT · GARNISHING' : 'IN COLLECTIONS'}</b> · Lone Star Recovery` : `${fmtMoney(l.pmt)} every ${CR.LOAN_CYCLE} days · ${(l.apr * 100).toFixed(1)}% APR · ${l.late != null ? `<b class="bad">PAST DUE since day ${l.late}</b>` : `next autopay day ${l.next}`}`}</div>
+          <div class="s">Owe <b>${fmtMoney(l.balance)}</b>${coll ? '' : ` of ${fmtMoney(l.principal)}`}</div></div>
+          <div style="text-align:right"><button class="btn btn-sm ${l.late != null || coll ? 'btn-primary' : ''}" data-action="loanpay" data-id="${l.id}" ${s.bank >= 1 ? '' : 'disabled'}>Pay</button></div></div>`;
+      }).join('') || '<div class="empty">No loans</div>'}</div>
+      <p class="small muted">Autopay comes out of checking, not your pocket. Keep money in the bank on payment day.</p>
+      <div class="section-title">Personal loan</div>
+      ${po.ok ? `<p>With a <b>${po.score}</b> Denise can lend you up to <b class="good">${fmtMoney(po.max)}</b> at <b>${(po.apr * 100).toFixed(1)}% APR</b>.</p>
+        <div class="row" style="margin:6px 0"><button class="btn btn-sm btn-primary" data-action="loan" ${po.max >= 500 ? '' : 'disabled'}>Apply</button></div>`
+        : `<p class="small bad">${esc(po.why)}</p>`}
+      <div class="section-title">Rates by score</div>
+      <div class="list">${CR.BANDS.map(b => `<div class="li"><div class="grow"><div class="t">${b.min}+ · ${esc(b.name)}${b.name === band.name ? ' ← you' : ''}</div><div class="s">${b.apr ? `Loans to ${fmtMoney(b.max)} at ${(b.apr * 100).toFixed(1)}%` : 'No personal loans'} · cars ${(b.autoApr * 100).toFixed(1)}% with ${Math.round(b.down * 100)}% down · insurance ×${b.ins}</div></div></div>`).join('')}</div>`;
   } else if (tab === 'wash') {
     body = `<p class="small muted">Drop dirty cash at a business you own and Keisha "Books" Moore runs it through the register as sales. It comes out clean in your checking account, minus her ${Math.round(B.WASH_CUT * 100)}% cut. Each business can wash so much a day before the numbers look off. Rush it to wash ${B.RUSH_MULT}× faster, but the feds notice when a taco truck makes what a car dealership does.</p>
       ${owned.length ? `<div class="list" data-wash-list>${owned.map(o => {
@@ -360,6 +408,41 @@ RENDER.bank = (scr, ctx) => {
     },
     depd: depositDirty,
     wd: async () => { const v = await prompt('Withdraw', `<p>Checking: ${fmtMoney(s.bank)}</p><p class="small muted">Comes out as clean cash.</p>`, 'Amount', String(Math.floor(s.bank))); if (v) { withdraw(s, +v.replace(/\D/g, '')); ctx.h.refresh(); } },
+    paycheck: async () => { const got = await pay.check(s); toast(got.length ? `${got.length} transfer${got.length > 1 ? 's' : ''} came in` : 'Nothing new', got.length ? 'good' : 'info'); ctx.h.refresh(); },
+    paysend: async d => {
+      const v = await prompt(`Send money to ${d.name}`, `<p>Checking: ${fmtMoney(s.bank)}</p><p class="small muted">Comes out of your checking account. Deposit cash first if you need to.</p>`, 'Amount', '');
+      if (!v) return;
+      const amount = +String(v).replace(/[^\d]/g, '');
+      if (!amount) return;
+      const memo = await prompt('What\'s it for?', `<p>Sending <b>${fmtMoney(amount)}</b> to ${esc(d.name)}. Add a note (optional).</p>`, 'Gas money, the race, rent…', '');
+      if (memo === null) return;
+      if (!await confirm('Send it?', `<p>Send <b>${fmtMoney(amount)}</b> to <b>${esc(d.name)}</b>${memo ? ` for "${esc(memo)}"` : ''}? You can't take it back once they pick it up.</p>`, 'Send')) return;
+      const r = await pay.send(s, { uid: d.uid, name: d.name }, amount, memo);
+      toast(r.text, r.ok ? 'good' : 'bad'); ctx.h.refresh();
+    },
+    loanpay: async d => {
+      const l = CR.ensureCredit(s).loans.find(x => x.id === d.id);
+      if (!l) return;
+      const due = l.late != null ? Math.min(l.balance, l.pmt) : l.status === 'open' ? Math.min(l.balance, l.pmt) : l.balance;
+      const v = await prompt(`Pay ${l.acct}`, `<p>Owe ${fmtMoney(l.balance)} · checking ${fmtMoney(s.bank)}</p><p class="small muted">${l.status === 'open' ? (l.late != null ? 'Pay at least the missed payment to get current.' : 'Extra goes to principal, so you pay it off sooner and pay less interest.') : 'Paying a collections account stops the lawsuit and the garnishment, but the mark stays on your credit for a while.'}</p>`, 'Amount', String(Math.min(Math.floor(s.bank), Math.ceil(l.status === 'open' && l.late == null ? l.balance : due))));
+      if (!v) return;
+      const r = CR.payLoan(s, l, +String(v).replace(/[^\d]/g, ''));
+      toast(r.text, r.ok ? 'good' : 'bad'); ctx.h.refresh();
+    },
+    loan: async () => {
+      const o = CR.offer(s, 'personal');
+      if (!o.ok) { toast(o.why, 'bad'); return; }
+      const v = await prompt('Personal loan', `<p>Up to <b>${fmtMoney(o.max)}</b> at ${(o.apr * 100).toFixed(1)}% APR. The money goes in your checking account.</p><p class="small muted">Applying is a hard inquiry: a few points off your score for ${CR.INQ_DAYS} days.</p>`, 'Amount', String(Math.min(o.max, 5000)));
+      if (!v) return;
+      const amount = Math.round(+String(v).replace(/[^\d]/g, '') / 100) * 100;
+      if (!amount) return;
+      const n = await modal('Pick a term', `<p>${fmtMoney(amount)} at ${(o.apr * 100).toFixed(1)}% APR. A payment every ${CR.LOAN_CYCLE} days, by autopay from checking.</p>
+        <div class="kv">${CR.PERSONAL_TERMS.map(k => `<span>${k} payments</span><span>${fmtMoney(CR.payment(amount, o.apr, k))} each · ${fmtMoney(CR.totalCost(amount, o.apr, k))} total</span>`).join('')}</div>`,
+        [{ label: 'Cancel', value: 0 }, ...CR.PERSONAL_TERMS.map((k, i) => ({ label: `${k} payments`, value: k, primary: i === 1 }))]);
+      if (!n) return;
+      const r = CR.takeLoan(s, amount, n);
+      toast(r.text, r.ok ? 'good' : 'bad'); ctx.h.refresh();
+    },
     drop: async d => {
       const v = await prompt(`Drop off at ${B.BIZ_NAME(d.id)}`, `<p>Dirty cash: ${fmtMoney(dirtyOf(s))}</p><p class="small muted">It washes ${fmtMoney(B.washCap(s, d.id))} a day at a normal pace. You get back ${Math.round((1 - B.WASH_CUT) * 100)}% as clean money in your bank.</p>`, 'Amount', String(Math.floor(dirtyOf(s))));
       if (!v) return;
