@@ -303,6 +303,7 @@ class Online {
       this.peers.set(m.id, p);
       // we don't know this car yet: introduce ourselves so they can draw us too
       if (now - this.helloReplyT > 1) { this.helloReplyT = now; this.sendHello(); }
+      this.emit('newpeer', p);   // … and show them our place (net/builds.js)
     }
     p.seen = now;
     if (m.k === 'h') {
@@ -331,6 +332,9 @@ class Online {
       p.honkAt = now; this.emit('honk', p);
     } else if (m.k === 'deed') {
       this.emit('deed', m);
+    } else if (m.k === 'bld') {
+      // what a player has built on their property (net/builds.js)
+      this.emit('bld', m);
     } else if (m.k === 'pv') {
       // head-to-head race invites (net/pvp.js); only the one it's for reads it
       if (m.to === this.id) this.emit('pvp', { ...m, from: m.id, peer: p });

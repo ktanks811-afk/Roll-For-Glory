@@ -1267,6 +1267,57 @@ await step('online free roam', async () => {
   });
   console.log('     deeds', JSON.stringify(deedCheck));
   if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
+  // your place on their screen: tab 2 (another player) builds a house, garage and pasture on Lake Worth
+  // and parks cars in it; tab 1 sees it go up and can walk into the garage and look at the cars
+  const shown = await p2.evaluate(async () => {
+    const r = window.__rfg, s = r.game.s, w = r.app.world;
+    const { packMine } = await import('./js/world2d/showcase.js');
+    const { builds } = await import('./js/net/builds.js');
+    const { fromPreset, sanitize } = await import('./js/core/homes.js');
+    const { applyEstate } = await import('./js/world2d/estate.js');
+    s.uid = 'zzzz9999'; s.homeServer = 'harbor'; s.player.name = 'Zed';
+    s.estate.land.land_lakeworth = { owned: true, plan: 'modern', ready: 0, done: true, design: sanitize(fromPreset('two')), designOk: true, fence: 'wire', animals: { cow: 4, horse: 1 } };
+    for (let i = 0; i < 3; i++) s.cars.push({ ...structuredClone(s.cars[0]), uid: 'show' + i, visual: { ...s.cars[0].visual, paint: ['#d01818', '#18a0d0', '#e8c020'][i] } });
+    applyEstate(w.map, s);
+    s.home = 'land_lakeworth';
+    const mine = packMine(w);
+    builds.sendT = 0; builds.tick(s, 0.1, mine);
+    return { props: Object.keys(mine), lw: { cars: mine.land_lakeworth?.cars.length, plan: mine.land_lakeworth?.land?.plan, floors: mine.land_lakeworth?.land?.design?.floors.length } };
+  });
+  console.log('     tab 2 shows', JSON.stringify(shown));
+  if (!(shown.lw.cars >= 3 && shown.lw.plan === 'modern' && shown.lw.floors === 2)) throw new Error('your place did not pack up: ' + JSON.stringify(shown));
+  const seenPlace = await p.evaluate(async () => {
+    const r = window.__rfg, s = r.game.s, w = r.app.world;
+    const { builds } = await import('./js/net/builds.js');
+    if (s.estate?.land?.land_lakeworth?.owned) delete s.estate.land.land_lakeworth;
+    s.homeServer = 'harbor';
+    await builds.load('harbor', true);
+    for (let i = 0; i < 20 && !builds.all(s).length; i++) await new Promise(res => setTimeout(res, 150));
+    w.showcase.t = 0; w.showcase.update(0.1); w.updateGarageCars(1);
+    const g = w.map.garages.find(q => q.id === 'land_lakeworth'), h = w.map.houses.find(q => q.id === 'land_lakeworth');
+    if (!g) return { err: 'no garage on their land', all: builds.all(s).map(x => x[0]) };
+    const cars = w.garageCars.filter(c => c.garage === 'land_lakeworth').length;
+    // walk in through the open door
+    w.inCar = false; w.foot.x = g.center.x; w.foot.z = g.center.z; w.updateInteractions();
+    const visiting = w.visiting === g, door = g.panel.off;
+    for (let i = 0; i < 30; i++) w.update(0.05);
+    w.cam.x = g.center.x; w.cam.z = g.center.z;
+    return { cars, visiting, door, roof: g.roof.label, roofA: +g.roof.a.toFixed(2), house: !!h, houseOwner: h?.owner, animals: w.ranch.list.filter(a => a.home === 'land_lakeworth').length };
+  });
+  console.log('     tab 1 sees', JSON.stringify(seenPlace));
+  if (seenPlace.err || seenPlace.cars < 3 || !seenPlace.visiting || !seenPlace.door || !seenPlace.house || seenPlace.houseOwner !== 'Zed' || seenPlace.animals !== 5 || seenPlace.roofA > 0.3) throw new Error('their place does not show right: ' + JSON.stringify(seenPlace));
+  await snap('23d-their-garage');
+  // hostile builds are cleaned up or dropped
+  await p.evaluate(() => {
+    const ch = new BroadcastChannel('rfg:harbor');
+    ch.postMessage({ k: 'bld', id: 'evil3', u: 'evil3', n: '<b>x</b>', p: '__proto__', b: { cars: [{ m: '__proto__' }] } });
+    ch.postMessage({ k: 'bld', id: 'evil3', u: 'evil3', n: 'Eve', p: 'land_six_bunche', b: { cars: [{ m: 'nope' }], land: { plan: 'vault', design: { floors: ['<script>'.repeat(99)], furn: [[{ id: 'bed', x: 1e9 }]] }, animals: { cow: 1e9 } } } });
+    ch.close();
+  });
+  await p.waitForTimeout(400);
+  const evilBuild = await p.evaluate(async () => { const { builds } = await import('./js/net/builds.js'); const e = builds.at(window.__rfg.game.s, 'land_six_bunche'); return { proto: builds.live.has('__proto__'), cows: e?.b.land?.animals.cow, plan: e?.b.land?.plan || null }; });
+  console.log('     hostile build cleaned to', JSON.stringify(evilBuild));
+  if (evilBuild.proto || evilBuild.cows > 80 || evilBuild.plan) throw new Error('hostile build got through: ' + JSON.stringify(evilBuild));
   // riding along: tab 1 walks up and asks tab 2 for a ride, tab 2 lets them in, then the other way round
   const ridePump = pg => pg.evaluate(() => { clearInterval(window.__pump); window.__pump = setInterval(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); }, 120); });
   await ridePump(p); await ridePump(p2);
