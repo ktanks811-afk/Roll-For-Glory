@@ -692,3 +692,9 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .hunt-act:disabled { opacity: .55; background: #333; border-color: #555; }
 .hunt-act.pulse { animation: huntpulse 1s ease-in-out infinite; }
 @keyframes huntpulse { 50% { box-shadow: 0 0 0 8px rgba(224, 25, 46, .25); } }
+
+/* ---------------- TDCJ (ui/prison.js): the compound reuses the hunt canvas layout ---------------- */
+.pris { background: #3c4a2a; }
+.pris .hunt-hud b { letter-spacing: .04em; }
+.pris .hunt-log .good { color: #9ef0a8; }
+.pris .hunt-log .bad { color: #ff9a9a; }

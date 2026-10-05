@@ -11,11 +11,13 @@
 
 import { spend, fmtMoney, uid } from './state.js';
 import { emit } from './events.js';
+import { CHARGE_BY_KIND } from '../data/charges.js';
 
 export const CITATION_DAYS = 3;       // a signed ticket is due this many game days later
 export const FTA_FEE = 250;           // failure-to-appear fee added when a ticket becomes a warrant
 export const SURRENDER_DISCOUNT = 0.25;
-const FELONY_KINDS = new Set(['robbery', 'shots', 'assault', 'auto', 'gta', 'carjack', 'chop']);
+const FELONY_KINDS = new Set(['robbery', 'shots', 'assault', 'auto', 'gta', 'carjack', 'chop', 'murder', 'capital_murder', 'capital_murder_po']);
+const isFelonyKind = k => FELONY_KINDS.has(k) || ['SJF', 'F3', 'F2', 'F1', 'CF'].includes(CHARGE_BY_KIND[k]?.cls);
 
 export function ensureRecord(s) {
   s.citations ??= [];   // { id, text, fine, due }
@@ -68,7 +70,7 @@ export function citationsDue(s) {
 // stay open cases against an unknown suspect. `evidence` says what ties a
 // warrant to you, for the day it goes in front of a judge.
 export function warrantForEscape(s, record = [], level = 1, seen = true, rng = Math.random) {
-  const felonyCrime = record.some(r => FELONY_KINDS.has(r.kind));
+  const felonyCrime = record.some(r => isFelonyKind(r.kind));
   const out = [];
   out.unidentified = 0;
   if (seen) out.push(addWarrant(s, level >= 2 || felonyCrime
@@ -77,7 +79,7 @@ export function warrantForEscape(s, record = [], level = 1, seen = true, rng = M
   for (const r of record) {
     if (r.kind === 'noise' || r.kind === 'evading') continue;
     if (r.conceal > 0 && rng() < r.conceal) { out.unidentified++; s.stats && (s.stats.unsolved = (s.stats.unsolved || 0) + 1); continue; }
-    out.push(addWarrant(s, { kind: r.kind, text: r.text, fine: r.fine || 250, felony: FELONY_KINDS.has(r.kind),
+    out.push(addWarrant(s, { kind: r.kind, text: r.text, fine: r.fine || 250, felony: isFelonyKind(r.kind),
       evidence: r.conceal > 0 ? 'A witness picked you out despite the disguise' : 'Witnesses and cameras got your face' }));
   }
   return out;

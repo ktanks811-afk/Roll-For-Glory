@@ -22,6 +22,7 @@ import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
 import { book } from './ui/court.js';
 import { wakeAtHospital } from './ui/hospital.js';
+import { servePrison } from './ui/prison.js';
 import { heal, healthDay, INJURIES, HOSPITAL } from './core/health.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
@@ -96,6 +97,8 @@ export function enterWorld() {
   touchUi.show(true);
   audio.intro(false);
   audio.music(null);
+  // still doing time in TDCJ: back on the compound (ui/prison.js)
+  if (game.s.prison) servePrison(app);
 }
 
 export function leaveWorld() {
