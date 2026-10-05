@@ -1461,6 +1461,54 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   }
 }
 
+// ---- North Texas up I-35W: Alliance, the speedway, Roanoke, Denton, Lake Lewisville ----
+{
+  const W = await import('../js/data/world.js');
+  const map = buildMap();
+  const R = map.roads;
+  const at = id => W.LOC_BY_ID[id];
+  // I-35W runs from Loop 820 all the way to Denton, and it's open the whole way
+  const trip = R.routeBetween(0, 0, at('denton_motor').x, at('denton_motor').z);
+  if (!trip.names.includes('I-35W')) bad(`downtown Fort Worth to Denton should take I-35W: ${[...new Set(trip.names)].join(', ')}`);
+  if (trip.meters < 5000 || trip.meters > 9000) bad(`Fort Worth to Denton is ${trip.meters.toFixed(0)} m by road`);
+  for (let z = W.HWY_Z - 20; z > W.I35_END + 20; z -= 20) if (collideCircle(map, 7, z, 1.1)) { bad(`I-35W blocked at z ${z}`); break; }
+  for (let x = W.TX114_X[0] + 20; x < W.TX114_X[1] - 20; x += 20) if (collideCircle(map, x, W.TX114_Z + 4, 1.1)) { bad(`TX-114 blocked at x ${x}`); break; }
+  for (let z = W.TX114_Z - 20; z > W.US377_Z + 20; z -= 20) if (collideCircle(map, W.ROANOKE_X + 4, z, 1.1)) { bad(`US-377 blocked at z ${z}`); break; }
+  // Roanoke and Denton by road from the speedway; Dallas still the other way
+  const r2 = R.routeBetween(at('tms_lot').x, at('tms_lot').z, at('roanoke_repair').x, at('roanoke_repair').z);
+  if (!r2.names.includes('TX-114')) bad('the speedway to Roanoke should take 114');
+  // the oval is a ring of track: closed, no traffic, no speed limit
+  const oval = R.edges.filter(e => e.track);
+  if (oval.length < 4 || oval.some(e => e.kind !== 'highway')) bad('the speedway oval should be a ring of track');
+  for (const e of oval) for (let t = 0.05; t < 1; t += 0.1) if (collideCircle(map, e.ax + (e.bx - e.ax) * t, e.az + (e.bz - e.az) * t, 1.5)) { bad(`the oval is blocked on ${e.ax},${e.az}`); break; }
+  // open up north, closed past it; the lake is water
+  if (collideCircle(map, 600, -4000, 1) && collideCircle(map, 600, -3990, 1)) bad('Alliance should be open');
+  if (!collideCircle(map, 0, W.NORTH.z0 - 50, 1) || !collideCircle(map, W.NORTH.x0 - 100, -5000, 1) || !collideCircle(map, W.NORTH.x1 + 50, -5000, 1)) bad('the world should end past North Texas');
+  if (!collideCircle(map, (W.LEWISVILLE.x0 + W.LEWISVILLE.x1) / 2, -6000, 1)) bad('Lake Lewisville should be water');
+  if (W.districtAt(-2000, -2000) !== 'Loop 820' && W.districtAt(-2000, -2000) !== 'Cross Timbers') bad(`north of 820 out west moved: ${W.districtAt(-2000, -2000)}`);
+  for (const [x, z, d] of [[675, -6475, 'The Square'], [225, -6300, 'UNT'], [675, -6900, 'TWU'], [900, -5900, 'Southeast Denton'], [600, -5075, 'Texas Motor Speedway'], [2200, -4400, 'Roanoke'], [-500, -3700, 'Alliance'], [1250, -4300, 'Alliance Airport'], [-600, -4250, 'Northlake'], [-700, -5200, 'Argyle'], [2800, -6000, 'Lake Lewisville']])
+    if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
+  // every North Texas business is reachable, with a building and a way in
+  const north = LOCATIONS.filter(l => W.inNorth(l.x, l.z));
+  if (north.length < 18) bad(`only ${north.length} places up north`);
+  for (const l of north) {
+    if (collideCircle(map, l.x, l.z, 1.5)) bad(`${l.id}: the marker is blocked`);
+    const r = R.nearestOnRoad(l.x, l.z);
+    if (!r || r.dist > 24) bad(`${l.id} is ${r?.dist.toFixed(0)} m from a road`);
+    if (!['property', 'meet', 'sprint'].includes(l.type) && !map.buildings.some(b => b.loc === l.id)) bad(`${l.id} has no building`);
+  }
+  if (north.filter(l => l.type === 'repair').length < 3) bad('North Texas needs mechanic shops');
+  // every Denton place is on its own Denton block, none fronting I-35
+  const seen = new Set();
+  for (const l of LOCATIONS.filter(l => l.city === 'denton')) {
+    const k = l.block.join();
+    if (seen.has(k)) bad(`two Denton places on block ${k}`); seen.add(k);
+    if (!W.inDenton(l.x, l.z)) bad(`${l.id} is not in Denton`);
+    if (l.block[0] === 0 && l.side === 'W') bad(`${l.id} fronts the freeway`);
+    if (l.type === 'property' && !PROPERTIES[l.id]) bad(`${l.id} has no listing`);
+  }
+}
+
 // ---------------- teleport (fast travel) ----------------
 {
   const st = createState({ name: 'T', age: 25, look: {}, story: false });
