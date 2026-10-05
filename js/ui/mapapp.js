@@ -1,13 +1,15 @@
 // Phone → Map. A real map you can drag, pinch and zoom: every place you can go
 // is pinned and named, filter by type or search, tap a pin (or a row in the
 // list) to see what's there and how far it is, and hit Set GPS to get a route.
-// You can also tap any empty spot to drop a pin and navigate to it.
+// You can also tap any empty spot to drop a pin and navigate to it, or hit
+// Teleport to skip the drive and land there with your car (core/travel.js).
 
 import { esc } from './dom.js';
 import { tierOf } from '../core/state.js';
 import { LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
 import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { online } from '../net/online.js';
+import { fmtMoney } from '../core/state.js';
 
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛' };
 const CATS = [
@@ -199,13 +201,22 @@ export function renderMap(scr, ctx) {
     if (target && opts.center) { st.cx = target.x; st.cz = target.z; st.k = Math.max(st.k, 0.32); }
     dirty = true; drawCard(); drawList();
   };
+  // the Teleport button for a target, with the fee and time, or why you can't
+  const tele = (x, z) => {
+    if (!w?.teleportPlan) return '';
+    const p = w.teleportPlan(x, z), q = p.quote;
+    const time = q.minutes >= 60 ? `${Math.floor(q.minutes / 60)}h ${q.minutes % 60}m` : `${q.minutes}m`;
+    return p.block
+      ? `<div class="mc-tele bad small">⚡ ${esc(p.block)}</div>`
+      : `<button class="btn btn-sm btn-tele" data-tele>⚡ Teleport${p.withCar ? ' with car' : ''} · ${fmtMoney(q.fee)} · clock +${time}</button>`;
+  };
   const drawCard = () => {
     const t = st.sel, active = t && s.gps && s.gps.x === t.x && s.gps.z === t.z;
     const job = s.missions?.active, jl = job && LOC_BY_ID[job.stops[job.stage]];
     const jobRow = job && jl ? `<div class="mc-job">📦 <b>${esc(job.title)}</b> · stop ${job.stage + 1} of ${job.stops.length}: ${esc(shortName(jl.name))}${s.gps && s.gps.x === jl.x && s.gps.z === jl.z ? '' : ' <button class="btn btn-sm" data-job>Route there</button>'}</div>` : '';
     if (!t) {
       card.innerHTML = jobRow + (s.gps
-        ? `<div class="mc-name">🚩 GPS: ${esc(s.gps.label)}</div><div class="mc-sub">${fmtDist(drive(s.gps.x, s.gps.z).meters)} by road · ${fmtEta(drive(s.gps.x, s.gps.z).meters)}</div><div class="row" style="gap:6px;margin-top:8px"><button class="btn btn-sm btn-primary" data-go>Start driving</button><button class="btn btn-sm" data-clear>Clear GPS</button></div>`
+        ? `<div class="mc-name">🚩 GPS: ${esc(s.gps.label)}</div><div class="mc-sub">${fmtDist(drive(s.gps.x, s.gps.z).meters)} by road · ${fmtEta(drive(s.gps.x, s.gps.z).meters)}</div><div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" data-go>Start driving</button>${tele(s.gps.x, s.gps.z)}<button class="btn btn-sm" data-clear>Clear GPS</button></div>`
         : `<div class="mc-name">Where to?</div><div class="mc-sub">Tap a pin or a place below to see what's there and get directions. Tap anywhere on the map to drop a pin.</div>`);
     } else {
       const l = LOC_BY_ID[t.id], locked = l && l.tier && tier < l.tier;
@@ -215,12 +226,18 @@ export function renderMap(scr, ctx) {
         ${l ? `<div class="mc-what">${esc(l.weekend ? 'Weekend night meet, Friday and Saturday 9 PM to 3 AM: crews, the spotlight, burnouts and races set up from the lot.' : WHAT[l.type] || '')}${l.tier ? ` Needs rep tier ${l.tier}.` : ''}</div>` : ''}
         <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${active
           ? '<button class="btn btn-sm btn-primary" data-go>Start driving</button><button class="btn btn-sm" data-clear>Clear GPS</button>'
-          : '<button class="btn btn-sm btn-primary" data-gps>📍 Set GPS</button>'}<button class="btn btn-sm" data-center>Center</button><button class="btn btn-sm" data-x>✕</button></div>`;
+          : '<button class="btn btn-sm btn-primary" data-gps>📍 Set GPS</button>'}${tele(t.x, t.z)}<button class="btn btn-sm" data-center>Center</button><button class="btn btn-sm" data-x>✕</button></div>`;
     }
     const q = sel => card.querySelector(sel);
     q('[data-job]')?.addEventListener('click', () => { select(jl, { center: true }); setGps(jl); });
     q('[data-gps]')?.addEventListener('click', () => setGps(t));
     q('[data-go]')?.addEventListener('click', () => ctx.h.close());
+    q('[data-tele]')?.addEventListener('click', () => {
+      const to = t || s.gps, l = t && LOC_BY_ID[t.id];
+      const label = t ? (t.pin ? 'Dropped pin' : shortName(t.name)) : s.gps.label;
+      if (w.teleport(to.x, to.z, label, l ? l.id : null)) { st.sel = null; st.pin = null; ctx.h.close(); }
+      else drawCard();
+    });
     q('[data-clear]')?.addEventListener('click', () => { s.gps = null; if (w) w.gpsPath = null; select(st.sel); });
     q('[data-center]')?.addEventListener('click', () => { st.cx = t.x; st.cz = t.z; st.k = Math.max(st.k, 0.32); dirty = true; });
     q('[data-x]')?.addEventListener('click', () => select(null));

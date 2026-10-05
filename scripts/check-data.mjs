@@ -41,6 +41,7 @@ import * as LOOTC from '../js/core/loot.js';
 import { LOOT, LOOT_BY_ID, STORE_LOOT, STREET_LOOT, LOOT_KINDS, PAWN } from '../js/data/loot.js';
 import { takeWarrants } from '../js/core/warrants.js';
 import * as TOW from '../js/core/tow.js';
+import * as TRAVEL from '../js/core/travel.js';
 import { TRAILERS } from '../js/data/trailers.js';
 import { existsSync } from 'node:fs';
 
@@ -1397,6 +1398,26 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (!W.inDallas(l.x, l.z)) bad(`${l.id} is not in Dallas`);
     if (l.block[1] === W.I30_ROW - 1 && l.side === 'S' || l.block[1] === W.I30_ROW && l.side === 'N') bad(`${l.id} fronts the freeway`);
   }
+}
+
+// ---------------- teleport (fast travel) ----------------
+{
+  const st = createState({ name: 'T', age: 25, look: {}, story: false });
+  const car = newCar('honda_civic_ex_1996');
+  car.fuel = 1;
+  const q = TRAVEL.travelQuote(3000, car);
+  if (!(q.fee > TRAVEL.TRAVEL_BASE && q.minutes >= TRAVEL.TRAVEL_MIN && q.fuel > 0 && q.fuel < 1)) bad(`teleport quote looks wrong: ${JSON.stringify(q)}`);
+  if (TRAVEL.travelQuote(10, car).minutes !== TRAVEL.TRAVEL_MIN) bad('a short teleport should still take the minimum time');
+  if (TRAVEL.travelBlock(st, { car, meters: 3000, policePhase: 'none', heat: 0 })) bad('a clean player in a good car should be able to teleport');
+  if (!TRAVEL.travelBlock(st, { car, meters: 3000, policePhase: 'chase' })) bad('no teleporting out of a police chase');
+  if (!TRAVEL.travelBlock(st, { car, meters: 3000, heat: 2 })) bad('no teleporting with heat on you');
+  if (!TRAVEL.travelBlock(st, { car, meters: 3000, hot: true })) bad('no teleporting in a stolen car');
+  if (!TRAVEL.travelBlock(st, { car: { ...car, broken: 'stall' }, meters: 3000 })) bad('a broken-down car should not teleport');
+  if (!TRAVEL.travelBlock(st, { car: { ...car, fuel: 0.0001 }, meters: 3000 })) bad('an empty tank should not teleport');
+  if (!TRAVEL.travelBlock(st, { car, meters: 20 })) bad('teleporting 20 m should say you are already there');
+  const e = { dx: 1, dz: 0, lanes: [2, 6] };
+  const a = TRAVEL.curbSpot({ edge: e, x: 0, z: 0 }, 0, 20), b = TRAVEL.curbSpot({ edge: e, x: 0, z: 0 }, 0, -20);
+  if (!(a.z > 0 && b.z < 0)) bad('the car should land on the curb on the same side as the place');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

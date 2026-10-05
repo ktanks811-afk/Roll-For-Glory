@@ -1340,6 +1340,41 @@ await step('phone map on its side shows the whole map (Dallas too)', async () =>
   if (!r.wide || r.cvBottom > r.scrBottom + 1 || !r.cardBeside) throw new Error('landscape map is cut off or not side by side: ' + JSON.stringify(r));
 });
 
+// ---------------- teleport from the Map: you and the car land there ----------------
+await step('teleport with your car', async () => {
+  const before = await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle;
+    if (!v) return null;
+    w.inCar = true; s.heat = 0; w.police.phase = 'none'; s.gps = null; w.gpsPath = null; if (s.missions) s.missions.active = null;
+    v.car.fuel = 1; delete v.car.broken; s.cash += 5000;
+    const { openPhone } = await import('./js/ui/phone.js'); openPhone('map', window.__rfg.app);
+    return { x: v.x, z: v.z, h: v.h, cash: s.cash, min: s.time.min, day: s.time.day, fuel: v.car.fuel };
+  });
+  if (!before) throw new Error('no car to teleport with');
+  await p.waitForSelector('[data-map]'); await p.waitForTimeout(400);
+  await p.fill('.mapapp [data-q]', 'pier'); await p.dispatchEvent('.mapapp [data-q]', 'input'); await p.waitForTimeout(100);
+  await p.click('.mapapp .li[data-loc="pier9"]'); await p.waitForTimeout(300);
+  // heat on you: no button, a reason instead
+  await p.evaluate(() => { window.__rfg.game.s.heat = 2; }); await p.click('.mapapp .li[data-loc="pier9"]'); await p.waitForTimeout(200);
+  if (await p.$('.map-card [data-tele]')) throw new Error('teleport offered with heat on you');
+  if (!/cops/.test(await p.textContent('.map-card'))) throw new Error('no reason shown for a blocked teleport');
+  await p.evaluate(() => { window.__rfg.game.s.heat = 0; }); await p.click('.mapapp .li[data-loc="pier9"]'); await p.waitForTimeout(200);
+  await snap('32-teleport-card');
+  await p.click('.map-card [data-tele]'); await p.waitForTimeout(500);
+  const r = await p.evaluate(async () => {
+    const { LOC_BY_ID } = await import('./js/data/world.js'); const l = LOC_BY_ID.pier9;
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle;
+    return { d: Math.hypot(v.x - l.x, v.z - l.z), inCar: w.inCar, cash: s.cash, mins: s.time.day * 1440 + s.time.min, fuel: v.car.fuel, phone: !!document.querySelector('[data-map]') };
+  });
+  await snap('33-teleported');
+  if (!(r.d < 60 && r.inCar)) throw new Error('did not land at Pier 9 in the car: ' + JSON.stringify(r));
+  if (!(r.cash < before.cash && r.mins > before.day * 1440 + before.min && r.fuel < before.fuel)) throw new Error('teleport was free: ' + JSON.stringify({ before, r }));
+  if (r.phone) throw new Error('the phone stayed open after teleporting');
+  // put things back for the steps after this one
+  await p.evaluate(b => { const w = window.__rfg.app.world, s = window.__rfg.game.s, v = w.vehicle; Object.assign(v, { x: b.x, z: b.z, h: b.h }); s.time.min = b.min; s.time.day = b.day; s.carPos = { x: b.x, z: b.z, h: b.h }; w.cam.x = b.x; w.cam.z = b.z; w.warpT = 0; }, before);
+});
+
 // ---------------- loud exhaust → cops notice → traffic stop ----------------
 // ---------------- phone: status cards, texted missions, chat threads ----------------
 await step('phone missions (text offer → stops → paid)', async () => {
