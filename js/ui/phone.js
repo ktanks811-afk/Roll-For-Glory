@@ -53,6 +53,7 @@ const APPS = [
   { id: 'turf', name: 'Turf', icon: '🚩', bg: '#7a1414' },
   { id: 'gang', name: 'Gang', icon: '✊', bg: '#4a1a6b' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
+  { id: 'dogs', name: 'Kennel', icon: '🐕', bg: '#8a5a3a' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
   { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
   { id: 'jps', name: 'JPS Health', icon: '🏥', bg: '#e0192e' },
@@ -109,6 +110,7 @@ function renderHome(scr, ctx) {
   bind(scr, {
     open: d => {
       if (d.id === 'partshub') { ctx.h.close(); openPartsHub(ctx.app); return; }
+      if (d.id === 'dogs') { ctx.h.close(); import('./kennel.js').then(m => m.openKennel(ctx.app)); return; }
       if (d.id === 'settings') { openSettings(ctx.app); return; }
       ctx.go(d.id);
     },

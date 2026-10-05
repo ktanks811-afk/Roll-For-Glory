@@ -12,6 +12,7 @@ import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { estateDay } from './core/estate.js';
+import { dogsDay, ensureKennel } from './core/dogs.js';
 import { drugsDay } from './core/drugs.js';
 import { fedsDay } from './core/bank.js';
 import { chopDay, PARTS_CHARGE } from './core/chop.js';
@@ -87,6 +88,7 @@ export function enterWorld() {
   else app.world.refreshCar();
   app.world.paused = false;
   $('#screen').innerHTML = '';
+  ensureKennel(game.s);    // old saves: ranch dogs become real dogs
   const away = ensureHustle(game.s).away;
   if (away) { game.s.hustle.away = null; modal('Welcome back', `<p>While you were away (${away.hours} h), your side hustles earned <b>${fmtMoney(away.net)}</b>. It's in your bank.</p>`); }
   touchUi.show(true);
@@ -167,6 +169,8 @@ function newDay() {
   hustleDay(s);
   // oil leases pay out, the ranch settles up (core/estate.js)
   for (const n of estateDay(s).notes) toast(n, 'good');
+  // the kennel: feed, pups, the dog market restocks (core/dogs.js)
+  for (const n of dogsDay(s).notes) toast(n, 'good');
   // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at
   const dr = drugsDay(s);
   for (const n of dr.notes) toast(n, 'info');

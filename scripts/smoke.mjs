@@ -2264,6 +2264,82 @@ await step('big rig, stock trailer, HD cows, hauling cattle to the sale barn', a
     w.vehicle = null; w.refreshCar(); w.inCar = sv.inCar;
   });
 });
+await step('hog dogs: kennel, dog profiles, breeding, a hog hunt', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  const art = () => p.waitForFunction(() => { const i = [...document.querySelectorAll('img.dogimg')]; return i.length && i.every(x => x.getAttribute('src')); }, null, { timeout: 30000 });
+  await clear();
+  // the kennel on FM 4: dogs painted from their genes
+  await p.evaluate(async () => {
+    const s = window.__rfg.game.s, EST = await import('./js/core/estate.js'), DG = await import('./js/core/dogs.js');
+    s.cash += 500000; EST.buyLand(s, 'land_crosscreek'); DG.refreshMarket(s, true);
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    openPlace(LOC_BY_ID.dog_kennel, window.__rfg.app);
+  });
+  await p.waitForSelector('.dogcard');
+  await art(); await snap('dogs-1-kennel-for-sale');
+  // buy one through the profile, the rest straight off the rules
+  await p.click('.dogcard >> nth=0');
+  await p.waitForSelector('.dogprofile [data-action=buy]');
+  await art(); await snap('dogs-2-profile-for-sale');
+  await p.click('.dogprofile [data-action=buy]'); await p.click('.modal [data-ok], .modal button:has-text("Buy")');
+  await p.waitForTimeout(300);
+  const bought = await p.evaluate(async () => {
+    const s = window.__rfg.game.s, DG = await import('./js/core/dogs.js'), k = DG.ensureKennel(s);
+    const want = ['Black Mouth Cur', 'Catahoula Leopard Dog', 'Plott Hound', 'Dogo Argentino', 'American Bulldog'];
+    for (const [i, b] of want.entries()) k.dogs.push(DG.makeDog(s, { breed: b, age: 26, sex: i % 2 ? 'F' : 'M', home: 'land_crosscreek' }));
+    return k.dogs.length;
+  });
+  if (bought < 6) throw new Error('kennel has ' + bought);
+  await clear();
+  await p.waitForTimeout(400);
+  // (once in a while the evaluate right after the buy confirm loses its context; one retry)
+  const openK = () => p.evaluate(async () => { (await import('./js/ui/kennel.js')).openKennel(window.__rfg.app); });
+  try { await openK(); } catch (e) { if (!/context was destroyed/.test(e.message)) throw e; await p.waitForTimeout(800); await openK(); }
+  await p.waitForSelector('.dogcard'); await art(); await snap('dogs-3-my-dogs');
+  await p.click('.dogcard >> nth=1');
+  await p.waitForSelector('.dogprofile [data-action=train]'); await art(); await snap('dogs-4-dog-profile');
+  const before = await p.evaluate(() => JSON.stringify(window.__rfg.game.s.kennel.dogs[1].stats));
+  await p.click('.dogprofile [data-action=train]:not([disabled]) >> nth=0'); await p.waitForTimeout(200);
+  if (before === await p.evaluate(() => JSON.stringify(window.__rfg.game.s.kennel.dogs[1].stats))) throw new Error('training did nothing');
+  await p.evaluate(async () => { const { closePanel } = await import('./js/ui/dom.js'); closePanel(); });
+  // breeding with coat odds
+  await p.click('.tabs button[data-id=breed]');
+  const pair = await p.evaluate(() => { const d = window.__rfg.game.s.kennel.dogs.filter(x => x.age >= 12); return [d.find(x => x.sex === 'M').id, d.find(x => x.sex === 'F').id]; });
+  await p.selectOption('select[data-pick=sire]', pair[0]); await p.waitForTimeout(100);
+  await p.selectOption('select[data-pick=dam]', pair[1]);
+  await p.waitForSelector('[data-action=breed]'); await art(); await snap('dogs-5-breeding-odds');
+  await p.click('[data-action=breed]');
+  if (!(await p.evaluate(() => window.__rfg.game.s.kennel.preg.length))) throw new Error('breeding did nothing');
+  await clear();
+  // dogs in the yard on the map
+  const yard = await p.evaluate(async () => { const w = window.__rfg.app.world; w.ranch.t = 0; w.ranch.update(0.016); return w.ranch.list.filter(a => a.kind === 'dog' && a.home === 'land_crosscreek').length; });
+  if (yard < 6) throw new Error('dogs in the yard: ' + yard);
+  // the hog lease: pick dogs and turn out
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.hog_lease, window.__rfg.app); });
+  await p.waitForSelector('[data-action=go]:not([disabled])'); await art(); await snap('dogs-6-hunt-setup');
+  await p.click('[data-action=go]');
+  await p.waitForSelector('.hunt-cv');
+  // play it out: walk to the bay, turn them loose, tie it
+  await p.evaluate(async () => {
+    const HH = await import('./js/core/hoghunt.js'), h = (await import('./js/ui/hoghunt.js')).activeHunt();
+    for (let i = 0; i < 4000 && !HH.baying(h).length; i++) { HH.autoHunter(h); HH.step(h, 0.05); }
+    const g = HH.baying(h)[0]; if (g) HH.walkTo(h, g.x - 8, g.y);
+  });
+  await p.waitForTimeout(1500); await snap('dogs-7-hunt-bay');
+  const sum = await p.evaluate(async () => {
+    const HH = await import('./js/core/hoghunt.js'), h = (await import('./js/ui/hoghunt.js')).activeHunt();
+    for (let i = 0; i < 3000 && !h.bag.length; i++) { HH.autoHunter(h); HH.step(h, 0.05); }
+    return { bag: h.bag.length, t: h.t };
+  });
+  await p.waitForTimeout(800); await snap('dogs-8-hunt-caught');
+  await p.click('[data-action=leave]'); await p.click('.modal button:has-text("Load up")');
+  await p.waitForSelector('.p-head h1:has-text("Back at the truck")'); await art(); await snap('dogs-9-hunt-results');
+  const after = await p.evaluate(() => ({ hunts: window.__rfg.game.s.kennel.st.hunts, hogs: window.__rfg.game.s.kennel.st.hogs }));
+  if (after.hunts !== 1 || after.hogs !== sum.bag) throw new Error('hunt did not settle ' + JSON.stringify({ sum, after }));
+  console.log('     hunt', JSON.stringify(sum));
+  await clear();
+  await p.evaluate(async () => { const s = window.__rfg.game.s; delete s.estate.land.land_crosscreek; s.kennel.dogs = []; s.kennel.preg = []; (await import('./js/world2d/estate.js')).applyEstate(window.__rfg.app.world.map, s); });
+});
 await step('hustle (jobs, business, rentals)', async () => {
   await p.evaluate(async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());

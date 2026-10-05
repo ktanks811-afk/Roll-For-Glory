@@ -38,6 +38,9 @@ import { openPawn } from './pawn.js';
 import { openHospital } from './hospital.js';
 import { openTrailerLot, openTrailerHome } from './trailers.js';
 import { openSaleBarn } from './livestock.js';
+import { openKennel } from './kennel.js';
+import { openHogLease } from './hoghunt.js';
+import { ensureKennel } from '../core/dogs.js';
 import { describe as towLine } from '../core/tow.js';
 import { stockRig } from '../core/livestock.js';
 import { BREAKDOWNS, needsOil, oilChangeCost, changeOil, clearBreakdown, oilInterval } from '../core/upkeep.js';
@@ -69,6 +72,8 @@ const HANDLERS = {
   pawn: (loc, app) => openPawn(loc, app),
   trailers: (loc, app) => openTrailerLot(loc, app),
   salebarn: (loc, app) => openSaleBarn(loc, app),
+  kennel: (loc, app) => openKennel(app, { shop: true, tab: 'buy' }),
+  hoghunt: (loc, app) => openHogLease(loc, app),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
@@ -100,6 +105,7 @@ export function homeScreen(loc, app, s) {
       ${prop.land ? `<div class="card click" data-action="remodel"><h3>🏗 Redesign the house</h3><p class="muted small">Rooms, floors, furniture, colors. Sims style.</p></div>
       <div class="card click" data-action="biggarage"><h3>🚗 Bigger garage</h3><p class="muted small">${prop.slots} cars now. Up to a 100-car vault.</p></div>
       <div class="card click" data-action="ranch"><h3>🐄 Ranch</h3><p class="muted small">Fence the back, buy cows, horses and dogs.${stockRig(s) ? ' <b class="good">Your stock trailer is here: load or turn out cattle.</b>' : ''}</p></div>` : ''}
+      <div class="card click" data-action="kennel"><h3>🐕 Kennel</h3><p class="muted small">${(() => { const n = ensureKennel(s).dogs.filter(d => d.home === loc.id).length; return n ? `${n} dog${n > 1 ? 's' : ''} here.` : 'Your hog dogs: profiles, breeding, training.'; })()}</p></div>
       <div class="card click" data-action="garage"><h3>🔧 Garage</h3><p class="muted small">Install parts (DIY), switch cars, dyno, tune.</p></div>
       <div class="card click" data-action="sleep" data-to="8"><h3>🛏 Sleep until morning</h3><p class="muted small">Skip to 8:00 AM, fully rested. Saves your game.</p></div>
       <div class="card click" data-action="sleep" data-to="21"><h3>🌙 Rest until night</h3><p class="muted small">Skip to 9:00 PM, fully rested. Meets are on. Saves your game.</p></div>
@@ -113,6 +119,7 @@ export function homeScreen(loc, app, s) {
     bind(root, {
       close: () => h.close(),
       garage: () => openGarage(app, { mode: 'home' }),
+      kennel: () => openKennel(app, { home: loc.id }),
       remodel: () => openRemodel(app, loc.id),
       biggarage: () => openBuild(app, loc.id),
       ranch: () => openRanch(app, loc.id),

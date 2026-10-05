@@ -647,3 +647,48 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
   .bld-foot .bld-sum { font-size: 13px; }
 }
 @media (max-width: 560px) { .bld-panel .p-body { flex-direction: column; overflow: auto; } .bld-side { width: 100%; min-width: 0; } .bld-tools { max-height: 46vh; } }
+
+/* ---------------- hog dogs: kennel, dog profiles, the hunt (ui/kennel.js, ui/hoghunt.js) ---------------- */
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 10px; scrollbar-width: none; }
+.chip { flex: none; background: var(--panel2); border: 1px solid var(--line2); color: var(--silver); border-radius: 16px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; min-height: 36px; }
+.chip.on { border-color: var(--red); color: var(--text); }
+.dgrid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.dogcard { padding: 8px; }
+.dogcard h3 { font-size: 16px; }
+.dogpic { display: flex; justify-content: center; align-items: flex-end; background: radial-gradient(ellipse at 50% 85%, #2a2f36, #15171b 70%); border-radius: 6px; margin-bottom: 6px; aspect-ratio: 3 / 2; overflow: hidden; }
+.dogpic img, .dpick img, .mini img { display: block; max-width: 100%; height: auto; aspect-ratio: 3 / 2; }
+.dogpic img:not([src]), .dpick img:not([src]), .mini img:not([src]) { visibility: hidden; }
+.dogpic.big { max-width: 420px; width: 100%; }
+.dp-top { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 640px) and (orientation: portrait) { .dp-top { grid-template-columns: 1fr; } }
+.dstat { position: relative; height: 9px; background: #23262c; border-radius: 5px; overflow: hidden; margin-top: 4px; }
+.dstat i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
+.dstat .pot { background: #4a4f58; }
+.dstat .cur { background: linear-gradient(90deg, #c8892a, #ffc14a); }
+.dsrow .btn { min-width: 118px; min-height: 40px; }
+.gt { font-family: ui-monospace, Menlo, monospace; letter-spacing: .03em; }
+.card.pickd { border-color: var(--green); }
+.card[aria-disabled="true"] { opacity: .55; }
+.dpicks { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+.dpick { flex: none; width: 124px; background: var(--panel); border: 2px solid var(--line); border-radius: 8px; color: var(--text); padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; cursor: pointer; }
+.dpick b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.dpick.on { border-color: var(--green); background: #14261a; }
+.dpick:disabled { opacity: .4; }
+.mini { width: 72px; flex: none; }
+.hunt-panel { padding: 0; }
+.hunt-panel .panel-inner { padding: 0; width: 100%; height: 100%; border: none; border-radius: 0; }
+.hunt { position: relative; width: 100%; height: 100%; min-height: 100vh; min-height: 100dvh; background: #1b2414; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+.hunt-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hunt-top { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: 8px; align-items: center; padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); background: linear-gradient(#000a, #0000); pointer-events: none; }
+.hunt-top .btn { pointer-events: auto; }
+.hunt-hud { display: flex; flex-direction: column; color: #fff; text-shadow: 0 1px 2px #000; }
+.hunt-hud b { font-family: var(--head); font-size: 20px; }
+.hunt-hud span { font-size: 12px; color: #dde; }
+.hunt-log { position: absolute; left: max(10px, env(safe-area-inset-left)); right: 40%; bottom: calc(76px + env(safe-area-inset-bottom)); font-size: 12px; color: #eee; text-shadow: 0 1px 2px #000; pointer-events: none; }
+.hunt-log div { background: #0008; border-radius: 4px; padding: 3px 6px; margin-top: 3px; display: inline-block; }
+@media (orientation: portrait) { .hunt-log { right: 10px; } }
+.hunt-acts { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; padding: 10px 10px max(12px, env(safe-area-inset-bottom)); }
+.hunt-act { min-height: 54px; min-width: min(320px, 90vw); font-size: 16px; border-radius: 28px; }
+.hunt-act:disabled { opacity: .55; background: #333; border-color: #555; }
+.hunt-act.pulse { animation: huntpulse 1s ease-in-out infinite; }
+@keyframes huntpulse { 50% { box-shadow: 0 0 0 8px rgba(224, 25, 46, .25); } }
