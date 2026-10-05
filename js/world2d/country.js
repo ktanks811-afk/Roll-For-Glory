@@ -59,7 +59,8 @@ export function addCountry({ buildings, lots, trees, props, roads }) {
     { x: 250, z: Z0 + 16, w: 26, d: 22, h: 6, color: '#7a4a32', kind: 'store', label: 'Joshua Cafe' },
     { x: 300, z: Z0 + 18, w: 22, d: 34, h: 9, color: '#e8e2d8', kind: 'church' },
     { x: 140, z: Z0 - 50, w: 40, d: 26, h: 6, color: '#5d636b', kind: 'store', label: 'Johnson Co. Co-op' },
-    { x: 200, z: Z0 - 46, w: 30, d: 22, h: 5, color: '#9a7a5a', kind: 'store', label: 'Tire & Lube' },
+    // a real mechanic (data/world.js: joshua_lube)
+    { x: 200, z: Z0 - 46, w: 30, d: 30, h: 6, color: '#9a7a5a', kind: 'landmark', label: 'Joshua Tire & Lube', labelColor: '#1b4fc4', loc: 'joshua_lube', shop: 'repair', side: 'S', accent: '#1b4fc4' },
   ];
   for (const b of town) { buildings.push(b); claim(b.x - 4, b.z - 4, b.x + b.w + 4, b.z + b.d + 4); lots.push({ x: b.x - 3, z: b.z > Z0 ? Z0 + 6 : b.z + b.d + 2, w: b.w + 6, d: b.z > Z0 ? b.z - Z0 - 7 : Z0 - 6 - b.z - b.d - 2, kind: 'parking' }); }
   buildings.push({ x: 360, z: Z0 + 30, w: 10, d: 10, h: 26, color: '#c8ccd2', kind: 'watertower', round: true, label: 'JOSHUA', labelColor: '#1b4fc4' });

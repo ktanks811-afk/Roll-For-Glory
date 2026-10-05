@@ -1,7 +1,7 @@
 // Road graph: intersections (nodes) and straight segments (edges).
 // Traffic, police routing, GPS and the minimap all read from this.
 
-import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS } from '../data/world.js';
+import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS, DGRID_X, DGRID_Z, DSTREET_NS, DSTREET_EW, I30_ROW, I30_END, ARLINGTON_X, ARLINGTON_END } from '../data/world.js';
 
 export function buildRoads() {
   const nodes = [];
@@ -48,6 +48,21 @@ export function buildRoads() {
     for (const [a, b] of [[cx0, cx1], [cx1, cx2], [cx2, cx3]]) edge(node(a, z), node(b, z), { ...FARM, name });
   for (const [x, name] of [[cx0, 'County Road 802'], [cx1, 'County Road 1016'], [cx2, 'Old Cleburne Rd'], [cx3, 'Hwy 174']])
     for (const [a, b] of [[cz0, cz1], [cz1, cz2]]) edge(node(x, a), node(x, b), { ...FARM, name });
+
+  // I-30: on east from the end of Loop 820, past Arlington, over the Trinity
+  // and right through Dallas, then a little way on out of town
+  const I30 = { ...HWY, name: 'I-30' };
+  const ix = [HWY_X[1], ARLINGTON_X, DGRID_X[0]];
+  for (let i = 0; i < ix.length - 1; i++) edge(node(ix[i], HWY_Z), node(ix[i + 1], HWY_Z), I30);
+  // the Arlington exit: Collins St runs south off the freeway into town
+  edge(node(ARLINGTON_X, HWY_Z), node(ARLINGTON_X, ARLINGTON_END), { ...CITY, name: 'Collins St' });
+  // Dallas: its own street grid; the I-30 row is freeway, the cross streets meet it at grade
+  for (let i = 0; i < DGRID_X.length; i++) for (let j = 0; j < DGRID_Z.length; j++) node(DGRID_X[i], DGRID_Z[j]);
+  for (let i = 0; i < DGRID_X.length; i++) for (let j = 0; j < DGRID_Z.length - 1; j++)
+    edge(node(DGRID_X[i], DGRID_Z[j]), node(DGRID_X[i], DGRID_Z[j + 1]), { ...CITY, name: DSTREET_NS[i] });
+  for (let j = 0; j < DGRID_Z.length; j++) for (let i = 0; i < DGRID_X.length - 1; i++)
+    edge(node(DGRID_X[i], DGRID_Z[j]), node(DGRID_X[i + 1], DGRID_Z[j]), j === I30_ROW ? I30 : { ...CITY, name: DSTREET_EW[j] });
+  edge(node(DGRID_X[DGRID_X.length - 1], HWY_Z), node(I30_END, HWY_Z), I30);
 
   const graph = { nodes, edges, byKey };
 

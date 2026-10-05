@@ -19,8 +19,8 @@ const PAINT = ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4',
 const TOPS = ['#1b4fc4', '#e8641a', '#2a2a3a', '#f2f2f2', '#7a1414', '#1f8f3a', '#a01aff', '#c8b98a'];
 const SKIN = ['#8d5a3b', '#c68e65', '#e0b48c', '#5a3622', '#f1c9a5'];
 const RIDER_NAMES = ['Keisha', 'Marcus', 'Dolores', 'Trey', 'Ana', 'Big Mike', 'Jasmine', 'Hector', 'Brianna', 'Darnell'];
-const FOOD = LOCATIONS.filter(l => l.type === 'food' && l.block);
-const RIDE_DEST = LOCATIONS.filter(l => l.block && !['home', 'property'].includes(l.type));
+const FOOD = LOCATIONS.filter(l => l.type === 'food' && l.block && !l.city);
+const RIDE_DEST = LOCATIONS.filter(l => l.block && !l.city && !['home', 'property'].includes(l.type));
 const pick = (a, r = Math.random) => a[Math.floor(r() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fmtClock = t => `${t < 0 ? '-' : ''}${Math.floor(Math.abs(t) / 60)}:${String(Math.floor(Math.abs(t) % 60)).padStart(2, '0')}`;

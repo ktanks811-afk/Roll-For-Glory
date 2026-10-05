@@ -5,7 +5,7 @@
 import { CARS } from '../data/cars.js';
 import { carSprite, dimsFor } from '../gfx2d/carSprite.js';
 import { signalState } from './render.js';
-import { ROAD_W } from '../data/world.js';
+import { ROAD_W, DALLAS, inDallas } from '../data/world.js';
 
 export const COMMON = CARS.filter(c => !c.market && c.msrp < 70000);
 const COLORS = ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4', '#c8b98a', '#5a5d63', '#0d0d0d', '#4a5232', '#8c9196', '#e0e0e0'];
@@ -136,10 +136,13 @@ export class TrafficSystem {
     let guard = 0;
     while (this.peds.length < want && guard++ < 4) {
       // walk around a block on the sidewalk
-      const bi = Math.floor((px + 900) / 150 + (Math.random() - 0.5) * 4);
-      const bj = Math.floor((pz + 900) / 150 + (Math.random() - 0.5) * 4);
-      if (bi < 0 || bj < 0 || bi > 11 || bj > 11) continue;
-      const x0 = -900 + bi * 150 + 10.5, z0 = -900 + bj * 150 + 10.5, size = 150 - 21;
+      // Fort Worth's grid, or Dallas's when you're over there
+      const dal = inDallas(px, pz), gx = dal ? DALLAS.x0 : -900, gz = dal ? DALLAS.z0 : -900, nb = dal ? 9 : 11;
+      const bi = Math.floor((px - gx) / 150 + (Math.random() - 0.5) * 4);
+      const bj = Math.floor((pz - gz) / 150 + (Math.random() - 0.5) * 4);
+      if (bi < 0 || bj < 0 || bi > nb || bj > nb) continue;
+      if (dal && (bj === 4 || bj === 5)) continue;     // not along I-30
+      const x0 = gx + bi * 150 + 10.5, z0 = gz + bj * 150 + 10.5, size = 150 - 21;
       const p = { x0, z0, size, t: Math.random() * size * 4, sp: 1.1 + Math.random() * 0.6, dir: Math.random() < 0.5 ? 1 : -1, color: pick(['#c41b1b', '#1b4fc4', '#e8e8e8', '#222', '#e8c21a', '#4a5232', '#6b2bd1']), dodge: 0, dx: 0, dz: 0 };
       this.placePed(p);
       if (Math.hypot(p.x - px, p.z - pz) > 60) this.peds.push(p);

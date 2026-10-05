@@ -1,7 +1,7 @@
 // Draws Fort Worth top-down: ground, roads, lots, buildings (with a
 // parallax lean so they read as 3D), trees, night lighting and weather.
 
-import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, LOCATIONS } from '../data/world.js';
+import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, DALLAS, DALLAS_ZONE, LOCATIONS } from '../data/world.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
 import { BACKROAD } from './map.js';
 import { LOT_COLOR } from './mapTiles.js';
@@ -59,6 +59,7 @@ export function drawGround(ctx, cam) {
   rect(COUNTRY.x0, COUNTRY.z0, COUNTRY.x1, COUNTRY.z1, COLORS.country);
   rect(-3300, -1000, -1000, DESERT_Z, '#34402a');
   rect(-985, -985, 985, 985, COLORS.city);
+  rect(DALLAS.x0 - 15, DALLAS.z0 - 15, DALLAS.x1 + 15, DALLAS.z1 + 15, COLORS.city);
 }
 
 export function drawWater(ctx, cam, map, t) {
@@ -300,6 +301,8 @@ export function drawRoads(ctx, cam, map, signalT) {
   // intersections (cover markings) + crosswalks + signals
   for (const n of map.roads.nodes) {
     if (n.x < v.x0 || n.x > v.x1 || n.z < v.z0 || n.z > v.z1) continue;
+    // a bend-free join of two pieces of the same road (I-30 at Loop 820) needs no intersection
+    if (n.edges.length === 2) { const [a, b] = n.edges.map(id => map.roads.edges[id]); if (a.kind === b.kind && Math.abs(a.dx * b.dx + a.dz * b.dz) > 0.99) continue; }
     const city = n.edges.every(id => map.roads.edges[id].kind === 'city');
     const hw = n.edges.some(id => map.roads.edges[id].kind === 'highway') ? HWY_W / 2 : ROAD_W / 2;
     ctx.fillStyle = hw > ROAD_W / 2 ? COLORS.asphaltHwy : COLORS.asphalt;
@@ -810,7 +813,7 @@ export function shadeHex(hex, amt) {
 
 // Static overview of the whole map for the minimap and phone map.
 export function renderOverview(map, scale = 0.12) {
-  const W = 8000, H = COUNTRY.z1 + 4600, x0 = -4000, z0 = -4000;
+  const W = DALLAS_ZONE.x1 + 4400, H = COUNTRY.z1 + 4600, x0 = -4000, z0 = -4000;
   const c = document.createElement('canvas');
   c.width = W * scale; c.height = H * scale;
   const g = c.getContext('2d');
@@ -820,6 +823,7 @@ export function renderOverview(map, scale = 0.12) {
   g.fillStyle = '#2c3a22'; g.fillRect(sx(COUNTRY.x0), sy(COUNTRY.z0), (COUNTRY.x1 - COUNTRY.x0) * scale, (COUNTRY.z1 - COUNTRY.z0) * scale);
   g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
   g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
+  g.fillRect(sx(DALLAS.x0 - 15), sy(DALLAS.z0 - 15), (DALLAS.x1 - DALLAS.x0 + 30) * scale, (DALLAS.z1 - DALLAS.z0 + 30) * scale);
   for (const l of map.lots) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
   for (const w of map.water) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
   g.fillStyle = 'rgba(80,90,100,0.9)';

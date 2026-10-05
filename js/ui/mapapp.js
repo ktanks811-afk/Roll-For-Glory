@@ -67,10 +67,10 @@ export function renderMap(scr, ctx) {
       <div class="map-wrap"><canvas data-map></canvas>
         <div class="map-tools"><button data-z="1" aria-label="Zoom in">+</button><button data-z="-1" aria-label="Zoom out">−</button><button data-me aria-label="My location">◎</button><button data-fit aria-label="Show all places">▦</button></div>
         </div>
-      <div class="map-card" data-card></div>
+      <div class="map-side"><div class="map-card" data-card></div>
       <input class="input" data-q placeholder="Search places…" value="${esc(st.q)}" autocomplete="off">
       <div class="map-chips">${CATS.map(c => `<button class="sr-chip ${st.cat === c.id ? 'on' : ''}" data-cat="${c.id}">${c.label}</button>`).join('')}</div>
-      <div class="list" data-list></div></div>`;
+      <div class="list" data-list></div></div></div>`;
   scr.querySelector('[data-back]').onclick = () => ctx.go(null);
   const cv = scr.querySelector('[data-map]'), g = cv.getContext('2d');
   const card = scr.querySelector('[data-card]'), listEl = scr.querySelector('[data-list]');
@@ -113,8 +113,8 @@ export function renderMap(scr, ctx) {
     // districts, faint, when zoomed out
     if (k < 0.2) {
       g.font = '700 13px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.55)';
-      const inner = k > 0.11 ? [['STOCKYARDS', 0, -650], ['NEAR SOUTHSIDE', 0, 650], ['ARLINGTON HEIGHTS', -650, 0], ['RIVERSIDE', 650, -300], ['LAKESIDE', 650, 800]] : [];
-      for (const [t, x, z] of [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['LAKE WORTH', 1900, 700], ['LOOP 820', 0, -1330], ['CROSS TIMBERS', -2100, -500], ['CHISHOLM FLATS', -300, 1250], ['JOHNSON COUNTY', -1200, 4300], ['JOSHUA', 300, 3650]]) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
+      const inner = k > 0.11 ? [['STOCKYARDS', 0, -650], ['NEAR SOUTHSIDE', 0, 650], ['ARLINGTON HEIGHTS', -650, 0], ['RIVERSIDE', 650, -300], ['LAKESIDE', 650, 800], ['UPTOWN', 5550, -1950], ['DOWNTOWN DALLAS', 5100, -1580], ['DEEP ELLUM', 5950, -1580], ['OAK CLIFF', 4950, -1000], ['SOUTH DALLAS', 5850, -1000], ['WEST DALLAS', 4800, -1880]] : [];
+      for (const [t, x, z] of [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['LAKE WORTH', 1900, 700], ['LOOP 820', 0, -1330], ['CROSS TIMBERS', -2100, -500], ['CHISHOLM FLATS', -300, 1250], ['JOHNSON COUNTY', -1200, 4300], ['JOSHUA', 300, 3650], ['I-30', 3200, -1380], ['ARLINGTON', 3800, -1120], ['DALLAS', 5400, -2260], ['TRINITY RIVER', 4440, -620]]) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
     }
 
     // route preview (dashed) and the active GPS route
@@ -259,7 +259,7 @@ export function renderMap(scr, ctx) {
     if (ptrs.size === 1) {
       const dx = cur[0] - prev[0], dy = cur[1] - prev[1];
       if (tap) tap.moved += Math.abs(dx) + Math.abs(dy);
-      st.cx = clamp(st.cx - dx / st.k, -3600, 3600); st.cz = clamp(st.cz - dy / st.k, -3600, 6000); dirty = true;
+      st.cx = clamp(st.cx - dx / st.k, -3600, 7000); st.cz = clamp(st.cz - dy / st.k, -3600, 6000); dirty = true;
     } else if (ptrs.size === 2 && pinch) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
       st.k = clamp(pinch.k * d / Math.max(20, pinch.d), 0.025, 1.6); dirty = true;
@@ -294,12 +294,27 @@ export function renderMap(scr, ctx) {
   scr.querySelector('[data-q]').oninput = e => { st.q = e.target.value; drawList(); dirty = true; };
   scr.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { st.cat = b.dataset.cat; scr.querySelectorAll('[data-cat]').forEach(x => x.classList.toggle('on', x === b)); drawList(); dirty = true; });
 
+  // A phone on its side: the map on the left at the full height of the
+  // screen (nothing cut off at the bottom), the card and the list beside it.
+  const body = scr.querySelector('.mapapp'), headEl = scr.querySelector('.app-head');
+  scr.closest('.phone')?.classList.add('phone-map');     // a wider phone in landscape (css)
+  const layout = () => {
+    const sw = scr.clientWidth, sh = scr.clientHeight, hh = headEl?.offsetHeight || 0;
+    const wide = sw > sh * 1.2 && sw >= 520;
+    body.classList.toggle('wide', wide);
+    // never taller than the screen, so the bottom of the map is never cut off
+    cv.style.height = wide ? Math.max(150, sh - hh - 18) + 'px' : sw * 1.02 > sh - hh - 18 ? Math.max(150, sh - hh - 18) + 'px' : '';
+    body.querySelector('.map-wrap').style.top = wide ? hh + 8 + 'px' : '';
+  };
+
   // ------------------------------------------------------------ go
+  layout();
   size();
   if (!st.k) { const p = me(); if (s.gps) fitAll([[p.x, p.z], [s.gps.x, s.gps.z]]); else fitAll(); }
   if (st.sel && st.sel.id !== '_pin') st.sel = LOC_BY_ID[st.sel.id] || null;
   selRoute = st.sel ? drive(st.sel.x, st.sel.z) : null;
   drawCard(); drawList(); dirty = true;
   const ro = new ResizeObserver(() => { if (cv.isConnected) { size(); dirty = true; } }); ro.observe(cv);
+  const ro2 = new ResizeObserver(() => { if (!cv.isConnected) { ro2.disconnect(); return; } layout(); }); ro2.observe(scr);
   raf = requestAnimationFrame(loop);
 }
