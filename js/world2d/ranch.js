@@ -4,6 +4,7 @@
 
 import { ESTATE_LOCATIONS, ANIMAL_BY_ID } from '../data/estate.js';
 import { pasture } from '../core/estate.js';
+import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 
 const SIZE = { cow: [1.25, 0.6], longhorn: [1.3, 0.62], horse: [1.35, 0.45], dog: [0.55, 0.22] };
 
@@ -78,6 +79,8 @@ export class Ranch {
     for (const a of this.list) {
       if (a.x < v.x0 || a.x > v.x1 || a.z < v.z0 || a.z > v.z1) continue;
       const [L, W] = SIZE[a.kind];
+      // cattle: the hand-drawn cow (gfx2d/cowArt.js), swaying a little as it walks
+      if ((a.kind === 'cow' || a.kind === 'longhorn') && drawCow(ctx, cam.sx(a.x), cam.sy(a.z), a.h, z, breedOf(a.color, a.kind), { sway: Math.sin(a.step) * 0.04 })) continue;
       ctx.save();
       ctx.translate(cam.sx(a.x), cam.sy(a.z)); ctx.rotate(a.h);
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(0.25 * z, 0.3 * z, W * z, L * z, 0, 0, Math.PI * 2); ctx.fill();

@@ -554,7 +554,7 @@ function drawSideArt(canvas, opts, art) {
   const cy = GROUND - R;
   const x0 = (REF_W - pa.w * s) / 2;
   const y0 = cy - 4 * s - art.meta.archY * s;
-  const [fx, rx] = art.meta.wheels.map(x => x0 + x * s);
+  const [fx, rx, ...more] = art.meta.wheels.map(x => x0 + x * s);   // a big rig has a second rear axle
   const size = +v.wheelSize || 20, offset = v.offset || 'flush';
   const caliper = CALIPER_COLORS[Math.min(4, lv.brakes || 0)] || '#3a3a3a';
   const drop = [0, 0.022, 0.04, 0.055, 0.066][Math.min(4, lv.suspension || 0)] * ppm;
@@ -569,9 +569,9 @@ function drawSideArt(canvas, opts, art) {
   }
   // dark wheel wells, then the wheels; the body goes over both
   g.save(); g.translate(0, drop);
-  wheelArch(g, fx, cy, v, 0, R); wheelArch(g, rx, cy, v, 0, R);
+  for (const x of [fx, rx, ...more]) wheelArch(g, x, cy, v, 0, R);
   g.restore();
-  if (on('wheels')) { drawWheel(g, fx, cy, v, size, offset, caliper, 'front', R); drawWheel(g, rx, cy, v, size, offset, caliper, 'rear', R); }
+  if (on('wheels')) { drawWheel(g, fx, cy, v, size, offset, caliper, 'front', R); for (const x of [rx, ...more]) drawWheel(g, x, cy, v, size, offset, caliper, 'rear', R); }
   g.restore();
 
   // body on its own layer so graphics can be clipped to the paint

@@ -15,7 +15,7 @@ import * as GIG from '../js/core/gigs.js';
 import { SERVERS, SERVER_CAP } from '../js/net/online.js';
 import { Vehicle } from '../js/world2d/vehicle.js';
 import { GLOCKS, ARPS, WEAPONS, WEAPON_BY_ID, CAL, buyWeapon, buyAmmo, ensureArms, giveWeapon, minAge, canFrt, toggleFrt } from '../js/data/weapons.js';
-import { spend } from '../js/core/state.js';
+import { spend, earn } from '../js/core/state.js';
 import { buildMap, collideCircle } from '../js/world2d/map.js';
 import { PROPERTIES } from '../js/data/world.js';
 import { shapeOf, hasShape, dimsOf } from '../js/data/carShapes.js';
@@ -54,7 +54,7 @@ for (const c of CARS) {
   ids.add(c.id);
   const m = metrics(buildSpec(c, {}, {}));
   if (!m.quarter || m.quarter < 8 || m.quarter > 19) bad(`${c.id} quarter ${m.quarter}`);
-  if (!m.zero60 || m.zero60 < 1.8 || m.zero60 > 12) bad(`${c.id} 0-60 ${m.zero60}`);
+  if (!m.zero60 || m.zero60 < 1.8 || m.zero60 > (c.rig ? 20 : 12)) bad(`${c.id} 0-60 ${m.zero60}`);   // a big rig is allowed to be slow
   if (Math.abs(buildSpec(c, {}, {}).hp - c.hp) / c.hp > 0.03) bad(`${c.id} hp drifts from spec`);
 }
 for (const p of CATALOG) {
@@ -319,8 +319,8 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const c of CARS) {
     if (!hasShape(c.id)) { bad(`${c.id} has no design sheet in carShapes.js`); continue; }
     const sh = shapeOf(c), d = dimsOf(c);
-    if (!(sh.L > 3.5 && sh.L < 6.1 && sh.W > 1.6 && sh.W < 2.25 && sh.H > 1.05 && sh.H < 2.1)) bad(`${c.id} odd size ${sh.L}x${sh.W}x${sh.H}`);
-    if (!(sh.WB / sh.L > 0.5 && sh.WB / sh.L < 0.68)) bad(`${c.id} wheelbase ${sh.WB} of ${sh.L}`);
+    if (c.rig ? !(sh.L > 6.5 && sh.L < 9.5 && sh.W < 2.7) : !(sh.L > 3.5 && sh.L < 6.1 && sh.W > 1.6 && sh.W < 2.25 && sh.H > 1.05 && sh.H < 2.1)) bad(`${c.id} odd size ${sh.L}x${sh.W}x${sh.H}`);
+    if (!c.rig && !(sh.WB / sh.L > 0.5 && sh.WB / sh.L < 0.68)) bad(`${c.id} wheelbase ${sh.WB} of ${sh.L}`);
     if (!(sh.fo > sh.tr && sh.ro > sh.tr)) bad(`${c.id} wheels hang off the car (fo ${sh.fo.toFixed(2)}, ro ${sh.ro.toFixed(2)})`);
     if (!(sh.xCowl < sh.xA && sh.xA < sh.xC && sh.xC <= sh.xD && sh.xD < 1)) bad(`${c.id} roofline fractions out of order`);
     if (!(d.L === sh.L && d.W === sh.W)) bad(`${c.id} dimsOf mismatch`);
@@ -995,7 +995,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   // loading another career clears it all off the map
   const fresh = createState({ name: 'F', age: 25, look: {}, story: false });
   applyEstate(map, fresh);
-  if (map.houses.some(h => h.id === land) || map.buildings.some(b => b.kind === 'fence')) bad('another career\'s house or fence stayed up');
+  if (map.houses.some(h => h.id === land) || map.buildings.some(b => b.kind === 'fence' && b.loc === land)) bad('another career\'s house or fence stayed up');
   for (const id of Object.keys(LAND)) delete PROPERTIES[id];
   game.s = null;
 }
@@ -1355,6 +1355,44 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   st.cars = st.cars.filter(c => c !== truck); TOW.ensureTow(st);
   if (st.tow.trailer || st.tow.truck) bad('selling the truck should unhitch the trailer');
   if (!TOW.fits(TRAILERS.find(t => t.id === 'enclosed_28'), CAR_BY_ID[trx.modelId])) bad('the 28 ft trailer should fit a TRX');
+}
+// ---- the Peterbilt, the stock trailer, hauling cattle to the sale barn ----
+{
+  const LV = await import('../js/core/livestock.js');
+  const W = await import('../js/data/world.js');
+  const semiM = CAR_BY_ID.peterbilt_389_sleeper_2022;
+  if (!semiM || semiM.cls !== 'Truck' || !semiM.rig || !TOW.canPull(semiM)) bad('the Peterbilt should be a Truck-class big rig that can tow');
+  const mt = metrics(buildSpec(semiM, {}, {}));
+  if (!(mt.zero60 > 8 && mt.zero60 < 20 && mt.topSpeed < 80)) bad(`the Peterbilt should be slow and governed (0-60 ${mt.zero60}, top ${mt.topSpeed})`);
+  if (!existsSync(new URL('../img/animals/cow-top.png', import.meta.url))) bad('cow art missing');
+  if (!W.LOCATIONS.some(l => l.type === 'salebarn')) bad('the sale barn is not on the map');
+  const st = createState({ name: 'Cattle', age: 30, look: {}, story: false });
+  st.cash = 2000000;
+  const semi = newCar(semiM.id), vette = newCar('chevrolet_corvette_z06_c8_2023');
+  st.cars.push(semi, vette); st.activeCar = semi.uid;
+  const r = TOW.buyTrailer(st, 'stock_24', spend);
+  if (!r.ok || !TOW.hitch(st, r.trailer.uid).ok) bad('the Peterbilt should hitch the stock trailer');
+  if (TOW.loadBlock(st, vette.uid) === '') bad('a car should not ride in a stock trailer');
+  // a ranch with a fence and ten head
+  EST.buyLand(st, 'land_crosscreek'); EST.buildFence(st, 'land_crosscreek', 'wire'); EST.buyAnimal(st, 'land_crosscreek', 'cow', 10);
+  const l = LV.loadStock(st, 'land_crosscreek', 'cow', 99);
+  if (!l.ok || l.n !== 10 || LV.headOn(st) !== 10 || EST.herd(st, 'land_crosscreek').cow) bad(`loading the herd failed: ${l.text}`);
+  if (!(TOW.towDrag(st) === r.def.loadedSlow)) bad('cattle on the trailer should slow the truck');
+  if (TOW.sellTrailer(st, r.trailer.uid, () => {}).ok) bad('you should not sell a stock trailer with cattle on it');
+  st.time.day = 5;
+  const before = st.cash + st.bank, each = LV.sellPrice(st, 'cow');
+  const sale = LV.sellStock(st, 'cow', 4, earn);
+  if (!sale.ok || st.cash + st.bank - before !== each * 4 || LV.headOn(st) !== 6) bad('selling at the barn failed');
+  if (!(each >= 2200 * 0.85 * 0.92 - 10 && each <= 2200 * 1.3)) bad(`barn price out of range: ${each}`);
+  const b = LV.buyStock(st, 'longhorn', 50, spend);
+  if (!b.ok || b.n !== 10 || LV.roomOn(st) !== 0) bad('buying should stop when the trailer is full');
+  const u = LV.unloadStock(st, 'land_crosscreek');
+  if (!u.ok || EST.penCount(st, 'land_crosscreek') !== 16 || LV.headOn(st) !== 0) bad(`turning the cattle out failed: ${u.text}`);
+  st.activeCar = vette.uid;
+  if (LV.loadStock(st, 'land_crosscreek', 'cow', 1).ok) bad('you need the truck with the stock trailer to load cattle');
+  // prices move from day to day
+  const rates = new Set(Array.from({ length: 10 }, (_, d) => { st.time.day = d; return LV.buyPrice(st, 'cow'); }));
+  if (rates.size < 4) bad('barn prices should change from day to day');
 }
 // ---- Dallas down I-30, and mechanic shops all over ----
 {

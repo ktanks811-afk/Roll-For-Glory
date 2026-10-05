@@ -41,6 +41,7 @@ import { generateListings, makeListing, buyerOffer } from './data/market.js';
 import { ITEM_BY_ID } from './data/catalog.js';
 import { contactInfo } from './data/npcs.js';
 import { loadCarArt } from './gfx2d/carArt.js';
+import { loadCowArt } from './gfx2d/cowArt.js';
 
 const canvas = $('#game');
 const ctx = canvas.getContext('2d');
@@ -288,6 +289,7 @@ function hideBoot() {
 async function boot() {
   try {
     getMap();
+    loadCowArt();
     await loadCarArt();
     initGameFeel();
     touchUi.mount($('#touch'));

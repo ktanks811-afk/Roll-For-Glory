@@ -156,6 +156,7 @@ const T = {
   chrysler_300c_srt8_2012: ['S', 5.04, 1.90, 1.49, 3.05, { lights: 'slim', tl: 'bar', belt: .70, xA: .44, xC: .69, xD: .80, deck: .76 }],
   ram_1500_big_horn_5_7_2013: ['P', 5.82, 2.02, 1.92, 3.57, { lights: 'swept', tl: 'rect', bed: 1.7 }],
   ram_1500_trx_2021: ['P', 5.92, 2.17, 2.06, 3.57, { lights: 'led', tl: 'led', bed: 1.7, lift: 0.1, scoop: true }],
+  peterbilt_389_sleeper_2022: ['P', 8.2, 2.6, 3.4, 6.05, { lights: 'round', tl: 'rect', fo: .094, tr: .52 }],
   jeep_wrangler_sport_2007: ['Q', 3.83, 1.88, 1.80, 2.42, { lights: 'round', tl: 'rect', doors: 2, xCowl: .28, xA: .31, xC: .94, rails: false, boxy: true, hoodF: .56, hoodB: .60 }],
   jeep_grand_cherokee_srt_2017: ['U', 4.88, 1.95, 1.80, 2.92, { lights: 'led', tl: 'led', rails: true, xA: .44, xC: .90, scoop: true }],
   jeep_grand_cherokee_trackhawk_2018: ['U', 4.88, 1.95, 1.80, 2.92, { lights: 'led', tl: 'led', rails: true, xA: .44, xC: .90, scoop: true }],

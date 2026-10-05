@@ -477,7 +477,7 @@ function artSprite({ art, c, g, key, v, lv, cond, opts, sh, W, L, pad, S, paint,
   if (v.rearBumper === 'diffuser') { g.fillStyle = '#1c1d22'; g.fillRect(-bodyW / 2 + 0.25, L / 2, bodyW - 0.5, 0.1); }
   const tips = { single: [-0.55], dual: [-0.6, 0.6], quad: [-0.68, -0.52, 0.52, 0.68], cannon: [-0.38, 0.38] }[v.exhaustTips || 'dual'] || [-0.6, 0.6];
   const tipR = 0.05 + (lv.exhaust || 0) * 0.008 + (v.exhaustTips === 'cannon' ? 0.04 : 0);
-  for (const x of tips) {
+  for (const x of art.meta.stacks ? [] : tips) {   // a big rig's stacks are in the art
     const tx = x * (bodyW / 2) / 0.9;
     g.fillStyle = '#1a1c20'; g.beginPath(); g.arc(tx, L / 2, tipR + 0.012, 0, Math.PI * 2); g.fill();
     g.fillStyle = (lv.exhaust || 0) >= 4 ? '#8a7fc0' : '#c9ccd1'; g.beginPath(); g.arc(tx, L / 2, tipR, 0, Math.PI * 2); g.fill();

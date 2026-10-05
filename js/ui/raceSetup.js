@@ -23,7 +23,7 @@ const NICKS = ['Boost', 'Lowride', 'Two-Step', 'Clutch', 'Redline', 'Smoke', 'Tu
 export function streetRacer(s) {
   const car = activeCar(s);
   const myPi = carMetrics(car).pi;
-  const pool = CARS.filter(c => !c.market || Math.random() < 0.3).map(c => ({ c, pi: metrics(buildSpec(c, {}, {})).pi })).filter(x => Math.abs(x.pi - myPi) < 140 && x.c.msrp < 400000);
+  const pool = CARS.filter(c => !c.rig && (!c.market || Math.random() < 0.3)).map(c => ({ c, pi: metrics(buildSpec(c, {}, {})).pi })).filter(x => Math.abs(x.pi - myPi) < 140 && x.c.msrp < 400000);
   const pick = (pool.length ? pool : [{ c: CARS[0] }])[Math.floor(Math.random() * Math.max(1, pool.length))].c;
   const lvl = Math.max(0, Math.min(4, Math.round((myPi - metrics(buildSpec(pick, {}, {})).pi) / 90 + Math.random())));
   const parts = { engine: lvl, intake: lvl, exhaust: lvl, ecu: lvl, fuel: Math.min(4, lvl + 1), tires: lvl, turbo: pick.asp === 'na' && lvl >= 2 ? 1 : pick.asp === 'turbo' ? lvl : 0, nitrous: Math.random() < 0.3 ? 1 : 0 };

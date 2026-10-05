@@ -13,7 +13,8 @@ import { CAR_BY_ID } from '../data/cars.js';
 import { LOCATIONS } from '../data/world.js';
 import { carSprite, drawCar, dimsFor } from '../gfx2d/carSprite.js';
 import { esc } from '../ui/dom.js';
-import { ensureTow, hitched, dropRig, pickUpRig, loadBlock, meetEntrance } from '../core/tow.js';
+import { ensureTow, hitched, dropRig, pickUpRig, loadBlock, meetEntrance, headOnTrailer } from '../core/tow.js';
+import { shapeOf } from '../data/carShapes.js';
 
 const IMG = {};
 function img(src) {
@@ -23,6 +24,13 @@ function img(src) {
 const fwd = h => [Math.sin(h), -Math.cos(h)];
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const MAX_BEND = 1.35;   // how far the trailer can swing before it jackknifes (rad)
+
+// How far behind the truck's centre the trailer couples: behind the bumper,
+// or (a gooseneck) over the rear axle, in the pickup bed or on the fifth wheel.
+function hitchBack(def, model, L) {
+  if (def?.hitch === 'goose' && model) return L / 2 - shapeOf(model).ro;
+  return L / 2 + 0.25;
+}
 
 export class Trailers {
   constructor(world) {
@@ -46,7 +54,7 @@ export class Trailers {
   }
 
   hitchPoint(v) {
-    const [fx, fz] = fwd(v.h), back = v.dims.L / 2 + 0.25;
+    const [fx, fz] = fwd(v.h), back = hitchBack(hitched(this.s)?.def, v.model, v.dims.L);
     return { x: v.x - fx * back, z: v.z - fz * back };
   }
 
@@ -54,7 +62,7 @@ export class Trailers {
   slowFor(v) {
     const h = hitched(this.s);
     if (!h || this.s.tow.rig || v !== this.truckVehicle()) return 0;
-    return this.s.tow.car ? h.def.loadedSlow : h.def.slow;
+    return this.s.tow.car || headOnTrailer(h) ? h.def.loadedSlow : h.def.slow;
   }
 
   update(dt) {
@@ -103,9 +111,10 @@ export class Trailers {
   // the spot just behind the parked trailer's ramps
   rigBack() {
     const r = this.s.tow.rig, h = hitched(this.s);
-    const truckL = dimsFor(CAR_BY_ID[this.s.cars.find(c => c.uid === this.s.tow.truck)?.modelId] || 'truck').L;
+    const truckM = CAR_BY_ID[this.s.cars.find(c => c.uid === this.s.tow.truck)?.modelId];
+    const back = hitchBack(h.def, truckM, dimsFor(truckM || 'truck').L);
     const [fx, fz] = fwd(r.h), [tx, tz] = fwd(r.th);
-    const Hx = r.x - fx * (truckL / 2 + 0.25), Hz = r.z - fz * (truckL / 2 + 0.25);
+    const Hx = r.x - fx * back, Hz = r.z - fz * back;
     const out = h.def.len + 2.5;
     return { x: Hx - tx * out, z: Hz - tz * out };
   }
@@ -170,7 +179,8 @@ export class Trailers {
     const ob = (x, z, W) => out.push({ x, z, h: r.h, v: 0, dims: { W, L: W }, own: true, parked: true, hit() {} });
     ob(r.x + fx * tL * 0.25, r.z + fz * tL * 0.25, 2);
     ob(r.x - fx * tL * 0.25, r.z - fz * tL * 0.25, 2);
-    const Hx = r.x - fx * (tL / 2 + 0.25), Hz = r.z - fz * (tL / 2 + 0.25);
+    const back = hitchBack(h.def, truckM, tL);
+    const Hx = r.x - fx * back, Hz = r.z - fz * back;
     const n = Math.max(2, Math.round(h.def.len / 2.2));
     for (let i = 0; i < n; i++) {
       const d = h.def.len * (i + 0.5) / n;
@@ -222,10 +232,12 @@ export class Trailers {
       const r = t.rig, truck = s.cars.find(c => c.uid === t.truck);
       if (!truck || r.x < v.x0 || r.x > v.x1 || r.z < v.z0 || r.z > v.z1) return;
       const m = CAR_BY_ID[truck.modelId], dims = dimsFor(m);
-      const [fx, fz] = fwd(r.h);
-      this.drawTrailer(ctx, cam, h.def, r.x - fx * (dims.L / 2 + 0.25), r.z - fz * (dims.L / 2 + 0.25), r.th, null);
+      const [fx, fz] = fwd(r.h), back = hitchBack(h.def, m, dims.L), goose = h.def.hitch === 'goose';
+      const trailer = () => this.drawTrailer(ctx, cam, h.def, r.x - fx * back, r.z - fz * back, r.th, null);
+      if (!goose) trailer();
       this.w.drawShadow(ctx, r.x, r.z, r.h, dims);
       drawCar(ctx, this.carSpriteOf(truck), cam.sx(r.x), cam.sy(r.z), r.h, cam.zoom);
+      if (goose) trailer();   // the gooseneck rides over the truck's bed
       // a pulsing marker behind the ramps while you're in the car you unloaded
       if (this.w.inCar && this.w.vehicle?.car.uid === s.activeCar) {
         const b = this.rigBack(), pulse = (this.w.t * 0.8) % 1;
@@ -236,10 +248,23 @@ export class Trailers {
       }
       return;
     }
+    if (h.def.hitch === 'goose') return;   // drawn over the truck (drawOver)
+    this.drawMoving(ctx, cam, h, loaded);
+  }
+
+  drawMoving(ctx, cam, h, loaded) {
     const tv = this.truckVehicle();
     if (!tv || this.th == null) return;
     const H = this.hitchPoint(tv);
     this.drawTrailer(ctx, cam, h.def, H.x, H.z, this.th, loaded);
+  }
+
+  // Over the player's car: a gooseneck trailer, whose neck sits above the
+  // pickup bed or the big rig's fifth wheel.
+  drawOver(ctx, cam) {
+    const s = this.s, t = ensureTow(s), h = hitched(s);
+    if (!h || h.def.hitch !== 'goose' || t.rig) return;
+    this.drawMoving(ctx, cam, h, null);
   }
 
   promptHtml(tch) {

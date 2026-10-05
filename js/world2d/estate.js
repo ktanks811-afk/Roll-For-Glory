@@ -34,7 +34,8 @@ export function addEstate(out) {
       const dirt = { x: r.x0, z: r.z0, w, d, kind: 'dirt', loc: loc.id, landLot: true };
       dirt.w0 = w; dirt.d0 = d;
       lots.push(dirt);
-    } else if (loc.type === 'plug') {
+    } else if (loc.type === 'salebarn') saleBarn(out, loc);
+    else if (loc.type === 'plug') {
       // corner store: the building at the back of the lot, a strip of parking in front
       lots.push({ x: r.x0 + 2, z: r.z0 + 1, w: w - 4, d: 14, kind: 'parking', loc: loc.id });
       buildings.push({ x: r.x0 + 8, z: r.z0 + 17, w: w - 16, d: d - 22, h: 5, color: '#5a4a3a', kind: 'landmark', label: "Lil Tre's", labelColor: loc.color, loc: loc.id, shop: 'plug', side: loc.side, accent: loc.color });
@@ -60,6 +61,23 @@ function oilPad(out, loc) {
   for (let k = 0; k < Math.min(6, R.jacks + 2); k++) buildings.push({ x: r.x0 + 10 + k * 9, z: r.z1 - 22, w: 7, d: 7, h: 7, color: '#c8c2b4', kind: 'tank', round: true, loc: loc.id });
   buildings.push({ x: r.x1 - 30, z: r.z1 - 24, w: 14, d: 6, h: 3.5, color: '#5d636b', kind: 'store', loc: loc.id });
   out.oil.push({ id: loc.id, jacks });
+}
+
+// The sale barn: a caliche lot to swing a trailer round in, the auction barn
+// at the back, and holding pens of cattle down the side.
+function saleBarn(out, loc) {
+  const { buildings, lots, props } = out, r = loc.lot, w = r.x1 - r.x0, d = r.z1 - r.z0;
+  lots.push({ x: r.x0 + 2, z: r.z0 + 2, w: w - 4, d: d - 4, kind: 'caliche', loc: loc.id });
+  buildings.push({ x: r.x0 + 40, z: r.z1 - 58, w: 80, d: 44, h: 9, color: '#8a3b2a', kind: 'landmark', label: 'Joshua Livestock Auction', labelColor: loc.color, loc: loc.id, shop: 'salebarn', side: 'N', accent: loc.color });
+  // pens along the west side, four of them, with a few head waiting in each
+  let seed = 11;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const px0 = r.x0 + 8, pw = 26, pd = 22, t = 0.25;
+  for (let k = 0; k < 4; k++) {
+    const pz = r.z0 + 30 + k * (pd + 2);
+    for (const [x, z, ww, dd] of [[px0, pz, pw, t], [px0, pz + pd, pw, t], [px0, pz, t, pd], [px0 + pw, pz, t, pd - 6]]) buildings.push({ x, z, w: ww, d: dd, h: 1.3, color: '#9aa0a6', kind: 'fence', loc: loc.id });
+    if (props) for (let c = 0; c < 3 + (k % 3); c++) props.push({ k: 'cow', x: px0 + 3 + rnd() * (pw - 6), z: pz + 3 + rnd() * (pd - 6), w: 0, d: 0, c: ['#1e1e20', '#6a3a22', '#b06a32'][(k + c) % 3], a: rnd() * 6.28 });
+  }
 }
 
 // ---------------------------------------------------------------- run time

@@ -17,6 +17,7 @@ import { applyEstate } from '../world2d/estate.js';
 import { homeScreen } from './places.js';
 import { openGarage } from './garage.js';
 import { audio } from '../core/audio.js';
+import { ranchTrailerHtml, ranchTrailerActions } from './livestock.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 const say = r => { toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) audio.buy(); else audio.error(); return r.ok; };
@@ -164,6 +165,7 @@ export function openRanch(app, id) {
         return `<div class="li"><span style="font-size:22px">${A.icon}</span><div class="grow"><div class="t">${esc(A.name)}${k ? ` <span class="tag">${k}</span>` : ''}</div><div class="s">${esc(A.desc)} ${A.pays ? `Brings in ${fmtMoney(A.pays)}, eats ${fmtMoney(A.feed)} a day.` : `Eats ${fmtMoney(A.feed)} a day.`}${A.pen && !F ? ' <b class="warn">Build a fence first.</b>' : ''}</div></div>
           <div style="text-align:right;white-space:nowrap"><button class="btn btn-sm btn-primary" data-action="buy" data-id="${A.id}" data-n="1" ${blocked ? 'disabled' : ''}>Buy ${fmtMoney(A.price)}</button>${A.pen ? ` <button class="btn btn-sm" data-action="buy" data-id="${A.id}" data-n="5" ${blocked || n + 5 > cap ? 'disabled' : ''}>5</button>` : ''}${k ? ` <button class="btn btn-sm" data-action="sell" data-id="${A.id}">Sell</button>` : ''}</div></div>`;
       }).join('')}</div>
+      ${ranchTrailerHtml(s, app, id)}
       <p class="small muted">Cattle and horses stay inside the fence out back; the dogs run the whole yard and come find you when you pull up. Calves, stud fees and feed settle up every morning in your bank.</p></div>`;
     const done = r => { if (say(r)) { app.world && applyEstate(app.world.map, s); h.refresh(); } };
     bind(root, {
@@ -171,6 +173,7 @@ export function openRanch(app, id) {
       fence: d => done(buildFence(s, id, d.id)),
       buy: d => done(buyAnimal(s, id, d.id, +d.n)),
       sell: d => done(sellAnimal(s, id, d.id)),
+      ...ranchTrailerActions(s, id, { refresh: () => { app.world && applyEstate(app.world.map, s); h.refresh(); } }),
     });
   });
 }
