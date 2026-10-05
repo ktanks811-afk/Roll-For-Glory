@@ -1650,6 +1650,58 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!(hogs >= 12 && pay > 0)) bad(`12 hunts on the river bottoms caught ${hogs} hogs for ${pay}`);
   if (HH.startHunt(st, 'nolan', [], [], 1).ok) bad('a hunt with no bay dogs');
 }
+// ---------------- record label (core/label.js)
+{
+  const LB = await import('../js/core/label.js'), LD = await import('../js/data/label.js');
+  const { LOC_BY_ID } = await import('../js/data/world.js');
+  for (const a of LD.ARTISTS) if (!LOC_BY_ID[a.hang]) bad(`artist ${a.id} hangs out at missing location ${a.hang}`);
+  for (const id of Object.keys(LD.STUDIOS)) if (LOC_BY_ID[id]?.type !== 'studio') bad(`studio ${id} is not on the map`);
+  {
+    const { FOOD_SPOTS } = await import('../js/data/food.js'), { ESTATE_LOCATIONS } = await import('../js/data/estate.js');
+    const m = buildMap();
+    for (const id of Object.keys(LD.STUDIOS)) {
+      const bl = m.buildings.find(x => x.loc === id);
+      if (!bl) { bad(`studio ${id} has no building`); continue; }
+      for (const o of [...FOOD_SPOTS, ...ESTATE_LOCATIONS]) if (bl.x < o.lot.x1 && bl.x + bl.w > o.lot.x0 && bl.z < o.lot.z1 && bl.z + bl.d > o.lot.z0) bad(`studio ${id} sits on ${o.id}`);
+    }
+  }
+  const s = createState({ name: 'Label' }); s.cash = 0; s.bank = 500000;
+  const L = LB.ensureLabel(s);
+  if (L.known.length !== 6) bad('six artists should be known at the start');
+  if (L.known.some(id => LB.cloutNeeded(LD.ARTIST_BY_ID[id]))) bad('every artist you know at the start should be signable');
+  const a = LD.ARTIST_BY_ID[L.known[0]];
+  if (LB.signArtist(s, a.id, 'standard', true).ok) bad('signing before starting a label');
+  if (!LB.startLabel(s, 'Cowtown Records').ok || s.bank !== 500000 - LD.LABEL_COST) bad('starting a label');
+  if (LB.signArtist(s, a.id, 'standard', false).ok) bad('signing someone you never met');
+  const ask = LB.askOf(s, a);
+  if (!LB.signArtist(s, a.id, 'cheap', true).ok || LB.signed(s, a.id).cut !== LB.CHEAP_CUT || !(s.bank < 500000 - LD.LABEL_COST - ask * 0.3)) bad('cheap deal');
+  if (LB.signArtist(s, 'dfw_ghost', 'standard', true).ok) bad('a star should not sign with a label that has no clout');
+  // the studio: a single takes a day, then it drops and pays every morning
+  const r = LB.bookSession(s, 'magnolia_sound', a.id, 'single');
+  if (!r.ok || LB.bookSession(s, 'magnolia_sound', a.id, 'album').ok) bad('booking, and not twice at once');
+  if (LB.release(s, r.ses.id).ok) bad('releasing before it is mixed');
+  s.time.day += 1;
+  if (!LB.labelDay(s, () => 0.9).texts.some(t => /mastered/.test(t))) bad('the A&R should text when a record is done');
+  const rel = LB.release(s, r.ses.id, 'street', () => 0.99);
+  if (!rel.ok || rel.rel.viral || L.sessions.length) bad('dropping a single');
+  const bank0 = s.bank; let paid = 0;
+  for (let i = 0; i < 40; i++) { s.time.day++; paid += LB.labelDay(s, () => 0.9).paid; }
+  if (!(paid > 0 && s.bank === bank0 + paid)) bad(`a single should pay the label: ${paid}`);
+  if (!(rel.rel.daily < rel.rel.peak / 5)) bad('streams should cool off');
+  if (Math.abs(rel.rel.earned - Math.round(rel.rel.total * LD.STREAM_PAY * (1 - LB.CHEAP_CUT))) > 50) bad('the artist cut');
+  // a fire album by a big artist is real money
+  const big = LB.dayOne(85, 50000, 'album') * LD.STREAM_PAY * 0.8, small = LB.dayOne(45, 1500, 'single') * LD.STREAM_PAY * 0.8;
+  if (!(big > 10000 && big < 200000 && small > 100 && small < 2000)) bad(`label pay: album ${big}/day, single ${small}/day`);
+  // jail: bail frees them; no studio while locked up
+  const rr = LB.signed(s, a.id); rr.jailed = { day: s.time.day, bail: LB.bailOf(rr) };
+  if (LB.bookSession(s, 'magnolia_sound', a.id, 'single').ok || !LB.postBail(s, a.id).ok || rr.jailed) bad('jail and bail');
+  // a demand you turn down can cost you the artist
+  rr.demand = { cut: 0.5 };
+  LB.answerDemand(s, a.id, false, () => 0.1);
+  if (LB.signed(s, a.id) || L.releases[0].earned <= 0) bad('an artist who walks leaves their records behind');
+  if (LB.signArtist(s, a.id, 'standard', true).ok) bad('they should not re-sign right away');
+  if (LB.chartPos(5e6) !== 1 && LB.chartPos(5e6) > 5) bad('chart');
+}
 // credit scores, loans, car financing, repos (core/credit.js)
 {
   const CR = await import('../js/core/credit.js');
