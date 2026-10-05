@@ -16,6 +16,7 @@ import { checkSponsors } from './phone.js';
 import { audio } from '../core/audio.js';
 import { touchUi } from './touch.js';
 import { settleMeetRace } from './nightmeet.js';
+import { pickChallenger, pullupWager, pullupLine } from '../core/pullups.js';
 
 const miles = m => (m / 1609.34).toFixed(1) + ' mi';
 
@@ -97,6 +98,28 @@ export function openStreetRace(app, loc, { npcId = null } = {}) {
   });
 }
 
+// Somebody pulling up on you while you drive (world2d/pullups.js): a named
+// racer near your rep or a street racer built to your speed, what they want
+// to put on it, and their opening line.
+export function pullupOffer(s) {
+  const car = activeCar(s);
+  if (!car) return null;
+  const myPi = carMetrics(car).pi;
+  const npc = pickChallenger(s, myPi, () => streetRacer(s));
+  if (!npc) return null;
+  const spec = racerSpec(npc);
+  return { npc, spec, mt: metrics(spec), wager: pullupWager(s, npc, myPi), line: pullupLine(npc) };
+}
+
+// You stopped beside them: the countdown starts, the finish is down the road.
+export function startPullupRace(app, { npc, wager, ev }) {
+  const s = game.s, w = app.world, car = activeCar(s);
+  if (!w || !car || !w.inCar || w.police.active || w.races.active) return false;
+  if (car.broken || car.engineBlown || car.fuel < 0.05) return false;
+  const stake = { type: 'cash', wager: Math.min(wager || 0, Math.max(0, s.cash + s.bank)) };
+  return w.races.start({ ev, rival: npc, rivalModel: CAR_BY_ID[npc.car.model], rivalSpec: racerSpec(npc), stake, recordTime: null, onDone: r => results(app, r) });
+}
+
 function rivalValue(r) {
   const m = CAR_BY_ID[r.car.model];
   const lv = Object.values(r.car.parts || {}).reduce((a, v) => a + (+v || 0), 0);
@@ -136,9 +159,9 @@ function results(app, r) {
   const lost = r.outcome === 'loss' || (r.outcome === 'dnf' && npc);
   let money = 0, repGain = 0, followers = 0, carWon = null, carLost = null;
   s.streetRecords ??= {};
-  const rec = courseRecord(ev);
+  const rec = ev.adhoc ? null : courseRecord(ev);   // a pull-up runs from wherever you stopped: no course record
   const prevBest = s.streetRecords[ev.id];
-  if (r.pTime != null && (!prevBest || r.pTime < prevBest)) s.streetRecords[ev.id] = r.pTime;
+  if (!ev.adhoc && r.pTime != null && (!prevBest || r.pTime < prevBest)) s.streetRecords[ev.id] = r.pTime;
   s.stats.races++;
   if (car) car.stats.races++;
   if (npc) {
@@ -174,7 +197,7 @@ function results(app, r) {
   if (won && npc) s.feed.unshift({ day: s.time.day, text: `Smoked ${npc.name} "${npc.nick}" on the ${ev.name}${carWon ? ` and took the pink slip to their ${CAR_BY_ID[npc.car.model].model}` : r.stake.wager ? ` for ${fmtMoney(r.stake.wager)}` : ''}.`, likes: followers * 4 });
   if (carLost) loseCar(app, carLost);
   checkSponsors(s);
-  emit('raceFinished', { won, npcId: npc?.id, wager: r.stake.wager || 0, type: 'street', dist: ev.id, pinks: r.stake.type === 'pinks' });
+  emit('raceFinished', { won, npcId: npc?.id, wager: r.stake.wager || 0, type: 'street', dist: ev.id, pinks: r.stake.type === 'pinks', pullup: !!ev.adhoc });
   // set up at the weekend meet: the whole lot was watching
   const meet = npc ? settleMeetRace(s, { won, npcId: npc.id, raceId: ev.id }) : null;
   if (won || (r.outcome === 'done' && r.pTime < rec.time)) audio.win(); else audio.lose();
@@ -188,7 +211,7 @@ function results(app, r) {
         <table><tr><th></th><th>You</th><th>${npc ? esc(npc.nick) : 'Record'}</th></tr>
           <tr><td>Time</td><td class="${r.pTime != null && (won || (!npc && r.pTime < rec.time)) ? 'winner' : ''}">${r.pTime != null ? fmtRaceTime(r.pTime) : 'DNF'}</td><td class="${lost || (!npc && !(r.pTime < rec.time)) ? 'winner' : ''}">${npc ? (r.rTime != null ? fmtRaceTime(r.rTime) : '—') : fmtRaceTime(rec.time)}</td></tr>
           <tr><td>Checkpoints</td><td>${Math.min(r.checkpoints, r.total)}/${r.total}</td><td>${npc ? (r.rTime != null ? `${r.total}/${r.total}` : '—') : ''}</td></tr>
-          <tr><td>Your best here</td><td>${s.streetRecords[ev.id] ? fmtRaceTime(s.streetRecords[ev.id]) : '—'}</td><td></td></tr>
+          ${ev.adhoc ? '' : `<tr><td>Your best here</td><td>${s.streetRecords[ev.id] ? fmtRaceTime(s.streetRecords[ev.id]) : '—'}</td><td></td></tr>`}
         </table>
         ${r.pTime != null && r.rTime != null ? `<p class="muted small">Margin: ${Math.abs(r.pTime - r.rTime).toFixed(2)}s.</p>` : ''}
         ${r.outcome === 'dnf' ? `<p class="small warn">You never finished${npc ? `, so ${esc(npc.nick)} takes it` : ''}.</p>` : ''}

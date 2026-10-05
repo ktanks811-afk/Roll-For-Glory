@@ -1419,5 +1419,45 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const a = TRAVEL.curbSpot({ edge: e, x: 0, z: 0 }, 0, 20), b = TRAVEL.curbSpot({ edge: e, x: 0, z: 0 }, 0, -20);
   if (!(a.z > 0 && b.z < 0)) bad('the car should land on the curb on the same side as the place');
 }
+// ---- pull-ups: racers rolling up on you while you drive ----
+{
+  const PU = await import('../js/core/pullups.js');
+  const { buildRoads } = await import('../js/world2d/roads.js');
+  const { raceRoute } = await import('../js/data/streetRaces.js');
+  const roads = buildRoads();
+  const ok = { inCar: true, speed: 15 };
+  if (PU.pullupBlock(ok)) bad('a clean cruise should get pull-ups');
+  for (const [k, v] of [['policePhase', 'chase'], ['policePhase', 'notice'], ['racing', true], ['hot', true], ['broken', true], ['towing', true], ['fuel', 0.05], ['speed', 2], ['inCar', false], ['meetRace', true]])
+    if (!PU.pullupBlock({ ...ok, [k]: v })) bad(`pull-ups should hold off when ${k} = ${v}`);
+  // a route from anywhere on any road, both directions: a real sprint, finishing on a straight
+  let none = 0;
+  for (let i = 0; i < roads.edges.length; i++) for (const back of [0, Math.PI]) {
+    const e = roads.edges[i], at = e.len * ((i * 0.37) % 1);
+    const ev = PU.pullupRoute(roads, e.ax + e.dx * at, e.az + e.dz * at, Math.atan2(e.dx, -e.dz) + back, () => (i % 7) / 7);
+    if (!ev) { none++; continue; }
+    const r = raceRoute(ev);
+    if (!(r.length > 340 && r.length < 1700)) bad(`pull-up route on ${e.name} is ${Math.round(r.length)} m`);
+    if (Math.hypot(r.pts[0][0] - (e.ax + e.dx * at), r.pts[0][1] - (e.az + e.dz * at)) > 1) bad(`pull-up on ${e.name} does not start where you stopped`);
+    for (const [x, z] of r.pts) if (!roads.onRoad(x, z)) { bad(`pull-up route on ${e.name} leaves the road at ${Math.round(x)},${Math.round(z)}`); break; }
+  }
+  if (none > roads.edges.length * 0.05) bad(`${none} spots with no pull-up route`);
+  // Fort Worth, Johnson County and Dallas all have a road to run
+  for (const [x, z, where] of [[0, 120, 'downtown'], [-1000, 4500, 'Johnson County'], [4950, -1760, 'Dallas'], [3000, -1350, 'I-30']])
+    if (!PU.pullupRoute(roads, x, z, Math.PI / 2) && !PU.pullupRoute(roads, x, z, 0)) bad(`no pull-up route in ${where}`);
+  // who pulls up: near your rep and speed; what they bet
+  const st = createState({ name: 'T' });
+  st.rep = 0; st.cash = 1000;
+  const street = () => ({ id: 'street_x', name: 'Rico', nick: 'Boost', generic: true, tier: 1, money: 2500, car: RACERS[0].car, lines: {} });
+  for (let i = 0; i < 40; i++) {
+    const n = PU.pickChallenger(st, 300, street, () => (i % 10) / 10);
+    if (!n.generic && (n.tier > 2 || n.style === 'drag')) bad(`${n.id} pulled up on a tier 1 player`);
+  }
+  const wg = PU.pullupWager(st, RACERS[0], PU.racerPi(RACERS[0]), () => 1);
+  if (wg > st.cash || wg % 50) bad(`pull-up wager ${wg} is off`);
+  if (PU.pullupWager({ ...st, cash: 20, bank: 0 }, RACERS[0], PU.racerPi(RACERS[0])) !== 0) bad('a broke player should race for rep only');
+  if (PU.pullupWager(st, RACERS[0], PU.racerPi(RACERS[0]) + 300) !== 0) bad('nobody bets against a way faster car');
+  const day = { ...st, time: { day: 2, min: 12 * 60 } }, night = { ...st, time: { day: 2, min: 23 * 60 } };
+  if (!(PU.nextPullupIn(night, () => 0.5) < PU.nextPullupIn(day, () => 0.5))) bad('pull-ups should come more often at night');
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

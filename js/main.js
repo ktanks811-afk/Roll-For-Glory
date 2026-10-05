@@ -36,6 +36,7 @@ import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
 import { openPhone } from './ui/phone.js';
 import { openPlace } from './ui/places.js';
+import { pullupOffer, startPullupRace } from './ui/streetRaceSetup.js';
 import { generateListings, makeListing, buyerOffer } from './data/market.js';
 import { ITEM_BY_ID } from './data/catalog.js';
 import { contactInfo } from './data/npcs.js';
@@ -67,6 +68,7 @@ export const ui = {
   openPhone: appId => openPhone(appId, app),
   openPause: () => openPause(app),
   openPlace: (loc, world) => openPlace(loc, app),
+  pullup: { offer: () => pullupOffer(game.s), race: o => startPullupRace(app, o) },
   onNewDay() { newDay(); },
   onMorning() { morning(); },
   onHour() { hourly(); },

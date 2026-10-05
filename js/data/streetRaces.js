@@ -10,7 +10,7 @@ import { RACER_BY_ID } from './npcs.js';
 
 // corners: [x, z] intersections, driven in order. The race starts START_IN
 // metres down the first leg. laps > 1 makes it a circuit back to the start.
-const START_IN = 45;
+export const START_IN = 45;
 
 export const STREET_RACES = [
   { id: 'sr_sundance', name: 'Sundance Square Sprint', tier: 1, kind: 'sprint', heat: 0.7, record: 'tiny',

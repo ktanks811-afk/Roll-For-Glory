@@ -322,6 +322,47 @@ await step('street races: 1v1 for cash, pink slips, time trial', async () => {
   await p.click('text=Back to the street');
   await p.evaluate(w0 => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; v.x = w0.x; v.z = w0.z; v.h = w0.h; v.vx = v.vz = 0; v.sim.v = 0; s.heat = 0; w.police.reset?.(w); s.gps = null; w.gpsPath = null; }, w0);
 });
+await step('pull-ups: a racer rolls up while you drive', async () => {
+  const w0 = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; window.__storyWas = s.story.enabled; s.story.enabled = false; s.heat = 0; w.police.reset?.(w);
+    const was = { x: v.x, z: v.z, h: v.h }; v.x = -400; v.z = 598; v.h = Math.PI / 2; v.vx = v.vz = 0; v.sim.v = 14; w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; w.paused = false; return was; });
+  const pu = () => p.evaluate(() => { const c = window.__rfg.app.world.pullups.c; return c ? c.phase : null; });
+  // off by default in a test browser; forced here: they roll up beside you and wait on an answer
+  if (await pu()) throw new Error('a pull-up spawned on its own in the test browser');
+  await p.evaluate(() => { if (!window.__rfg.app.world.pullups.spawn(true)) throw new Error('no spawn'); });
+  await p.waitForFunction(() => window.__rfg.app.world.pullups.c?.phase === 'side', null, { timeout: 8000 });
+  await p.waitForFunction(() => /Race .+ (on it|for rep)/.test(document.querySelector('[data-prompt]')?.textContent || ''), null, { timeout: 3000 })
+    .catch(async () => { throw new Error('no race prompt: ' + await p.textContent('[data-prompt]')); });
+  await snap('25-pullup');
+  // Enter says bet; stop the car and the countdown starts right there
+  await p.keyboard.press('Enter'); await p.waitForTimeout(100);
+  if (await pu() !== 'lineup') throw new Error('Enter did not accept the pull-up: ' + await pu());
+  const cash0 = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; v.vx = v.vz = 0; v.sim.v = 0; const s = window.__rfg.game.s; return s.cash + s.bank; });
+  await p.waitForFunction(() => window.__rfg.app.world.races.race, null, { timeout: 6000 });
+  const r = await p.evaluate(() => { const w = window.__rfg.app.world, r = w.races.race, v = w.vehicle; return { adhoc: r.ev.adhoc, rival: !!r.rival, wager: r.cfg.stake.wager, len: r.route.length, d: Math.hypot(r.route.pts[0][0] - v.x, r.route.pts[0][1] - v.z), left: !!w.pullups.c }; });
+  if (!r.adhoc || !r.rival || r.left || r.len < 340 || r.d > 12) throw new Error('pull-up race not set up where you stopped ' + JSON.stringify(r));
+  await p.waitForFunction(() => window.__rfg.app.world.races.race?.phase === 'race', null, { timeout: 6000 });
+  for (let k = 0; k < 12; k++) { if (await p.evaluate(() => { const w = window.__rfg.app.world, r = w.races.race; if (!r) return true; if (r.phase !== 'race') return false; const c = r.route.checkpoints[r.next], v = w.vehicle; v.x = c.x; v.z = c.z; v.vx = v.vz = 0; return false; })) break; await p.waitForTimeout(250); }
+  await p.waitForSelector('.p-head h1:has-text("YOU WIN")');
+  if (await p.isVisible('td:has-text("Your best here")')) throw new Error('a pull-up has no course record');
+  const won = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  if (won !== cash0 + r.wager) throw new Error(`pull-up payout wrong: ${cash0} + ${r.wager} != ${won}`);
+  await p.click('text=Back to the street');
+  // leave one hanging and they peel off; the horn says bet too; nobody races a car that's hot
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.vehicle.sim.v = 14; w.pullups.spawn(true); w.pullups.c.rel = 0; });
+  await p.waitForFunction(() => window.__rfg.app.world.pullups.c?.phase === 'side');
+  await p.evaluate(() => { window.__rfg.app.world.pullups.c.answer = 0.01; }); await p.waitForTimeout(150);
+  if (await pu() !== 'leave') throw new Error('ignored pull-up did not peel off');
+  await p.evaluate(() => window.__rfg.app.world.pullups.remove());
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.pullups.spawn(true); w.pullups.c.rel = 0; });
+  await p.waitForFunction(() => window.__rfg.app.world.pullups.c?.phase === 'side');
+  await key('KeyH');
+  if (await pu() !== 'lineup') throw new Error('the horn did not accept the pull-up');
+  await p.evaluate(() => { window.__rfg.app.world.vehicle.car.hot = true; }); await p.waitForTimeout(100);
+  const hot = await pu();
+  await p.evaluate(() => { const w = window.__rfg.app.world; delete w.vehicle.car.hot; w.pullups.remove(); });
+  if (hot !== 'leave') throw new Error('pull-up stayed beside a hot car: ' + hot);
+  await p.evaluate(w0 => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; s.story.enabled = window.__storyWas; v.x = w0.x; v.z = w0.z; v.h = w0.h; v.vx = v.vz = 0; v.sim.v = 0; s.heat = 0; }, w0);
+});
 await step('places', async () => {
   for (const id of ['eastgate_studio', 'auto_row', 'halo_exotics', 'rusty_used', 'torque_temple', 'vega_kustoms', 'second_chance', 'gas_westbrook', 'luckys', 'threadline', 'bayline', 'pspd_central', 'pier9']) {
     await p.evaluate(async id => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); window.__rfg.game.s.rep = 40000; openPlace(LOC_BY_ID[id], window.__rfg.app); }, id);
@@ -2813,6 +2854,13 @@ await step('xbox controller', async () => {
   expect(c.v > 3, 'RT did not drive the car ' + JSON.stringify(c));
   await btn('RT', 0); await btn('LT', 1); await g.waitForTimeout(500); await btn('LT', 0);
   expect((await st()).v < c.v - 1, 'LT did not brake');
+  // a racer pulls up: B says bet
+  await g.evaluate(() => { const w = window.__rfg.app.world; w.pullups.spawn(true); w.pullups.c.rel = 0; });
+  await g.waitForFunction(() => window.__rfg.app.world.pullups.c?.phase === 'side');
+  await g.waitForFunction(() => /B.*Race/.test(document.querySelector('[data-prompt]')?.textContent || ''), null, { timeout: 3000 }).catch(() => expect(false, 'pull-up prompt does not show the B button'));
+  await tap('B');
+  expect(await g.evaluate(() => window.__rfg.app.world.pullups.c?.phase) === 'lineup', 'B did not accept the pull-up');
+  await g.evaluate(() => window.__rfg.app.world.pullups.remove());
   await g.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; v.speed = 0; });
   await tap('Y'); await g.waitForTimeout(200);
   expect(!(await st()).inCar, 'Y did not get out of the car');
