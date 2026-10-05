@@ -1620,6 +1620,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const s = createState({ name: 'Label' }); s.cash = 0; s.bank = 500000;
   const L = LB.ensureLabel(s);
   if (L.known.length !== 6) bad('six artists should be known at the start');
+  if (L.known.some(id => LB.cloutNeeded(LD.ARTIST_BY_ID[id]))) bad('every artist you know at the start should be signable');
   const a = LD.ARTIST_BY_ID[L.known[0]];
   if (LB.signArtist(s, a.id, 'standard', true).ok) bad('signing before starting a label');
   if (!LB.startLabel(s, 'Cowtown Records').ok || s.bank !== 500000 - LD.LABEL_COST) bad('starting a label');
