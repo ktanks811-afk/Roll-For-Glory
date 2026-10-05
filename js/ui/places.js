@@ -330,8 +330,8 @@ function usedlot(loc, app, s) {
 // ---------------- shops ----------------
 function perf(loc, app, s) {
   openPanel((root, h) => {
-    root.innerHTML = head('Torque Temple Performance', 'Rosa Vega, owner · dyno cell · two lifts · no drama') + `<div class="p-body">
-      <p class="muted">Rosa: "${activeCar(s) ? `What are we doing to the ${esc(modelOf(activeCar(s)).model)} today?` : 'No car? Come back when you have something for me to work on.'}"</p>
+    root.innerHTML = head(loc.name, loc.tagline || 'Rosa Vega, owner · dyno cell · two lifts · no drama') + `<div class="p-body">
+      <p class="muted">${esc(loc.owner || 'Rosa')}: "${activeCar(s) ? `What are we doing to the ${esc(modelOf(activeCar(s)).model)} today?` : 'No car? Come back when you have something for me to work on.'}"</p>
       <div class="grid">
         <div class="card click" data-action="counter"><h3>🛒 Parts counter</h3><p class="muted small">Buy in-stock parts, installed today.</p></div>
         <div class="card click" data-action="bay"><h3>🔧 Service bay</h3><p class="muted small">Install parts you ordered, remove parts, tune gearing, dyno.</p></div>
@@ -365,7 +365,7 @@ function visual(loc, app, s) {
   });
 }
 
-function repairCosts(car) {
+function repairCosts(car, rate = 1) {
   const m = modelOf(car);
   const c = car.cond;
   const lux = m.msrp;
@@ -376,24 +376,26 @@ function repairCosts(car) {
     engine: car.engineBlown ? rebuildCost(m) : (100 - c.engine) / 100 * (1800 + lux * 0.05),
     trans: (100 - c.trans) / 100 * (1400 + lux * 0.035),
   };
-  for (const k in cost) cost[k] = Math.round(cost[k] / 5) * 5;
+  for (const k in cost) cost[k] = Math.round(cost[k] * rate / 5) * 5;
   return cost;
 }
 
 function repair(loc, app, s) {
   openPanel((root, h) => {
     const car = activeCar(s);
-    if (!car) { root.innerHTML = head('Second Chance Collision') + '<div class="p-body"><div class="empty">Nothing to fix — you don\'t have a car.</div></div>'; bind(root, { close: () => h.close() }); return; }
-    const costs = repairCosts(car);
+    if (!car) { root.innerHTML = head(loc.name) + '<div class="p-body"><div class="empty">Nothing to fix — you don\'t have a car.</div></div>'; bind(root, { close: () => h.close() }); return; }
+    const costs = repairCosts(car, loc.rate || 1);
     const ins = s.insurance ? 0.3 : 1;
     const oilDue = needsOil(car) && (car.oil ?? 100) < 99;
-    const oilCost = oilDue ? oilChangeCost(car) : 0;   // maintenance: insurance doesn't cover it
+    const rate = loc.rate || 1;
+    const oilCost = oilDue ? Math.round(oilChangeCost(car) * rate * 100) / 100 : 0;   // maintenance: insurance doesn't cover it
     const total = Object.values(costs).reduce((a, b) => a + b, 0) * ins + oilCost;
     const names = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (replace set)', engine: car.engineBlown ? '💥 Engine rebuild' : 'Engine', trans: 'Transmission' };
-    root.innerHTML = head('Second Chance Collision', 'Body · mechanical · tires · we work with all insurers') + `<div class="p-body" style="max-width:720px">
+    const priceNote = rate < 0.97 ? `<span class="good">${Math.round((1 - rate) * 100)}% under Second Chance prices</span>` : rate > 1.03 ? `<span class="bad">${Math.round((rate - 1) * 100)}% over Second Chance prices</span>` : '';
+    root.innerHTML = head(loc.name, loc.tagline || 'Body · mechanical · tires') + `<div class="p-body" style="max-width:720px">
       ${car.broken ? `<p class="bad"><b>🛠 ${esc(BREAKDOWNS[car.broken].name)}.</b> ${car.broken === 'trans' ? 'Fix the transmission and it\'ll drive again.' : 'Change the oil and fix the engine and it\'ll run again.'}</p>` : ''}
       ${car.engineBlown ? `<p class="bad"><b>Blown motor.</b> Spun a bearing and put a rod through the block. It needs a full rebuild before it'll run again.</p>` : ''}
-      <p class="muted">${esc(carName(modelOf(car), car.year))}${s.insurance ? ' · <span class="good">Insurance covers 70%</span>' : ' · <span class="muted">Not insured (Bank app)</span>'}</p>
+      <p class="muted">${esc(carName(modelOf(car), car.year))}${s.insurance ? ' · <span class="good">Insurance covers 70%</span>' : ' · <span class="muted">Not insured (Bank app)</span>'}${priceNote ? ' · ' + priceNote : ''}</p>
       <div class="list">${Object.entries(costs).map(([k, v]) => `<div class="li"><div style="width:150px">${names[k]}</div><div class="grow">${bar(car.cond[k], car.cond[k] < 40 ? 'red' : car.cond[k] < 70 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.cond[k])}%</span>
         <button class="btn btn-sm" data-action="fix" data-k="${k}" ${v > 0 ? '' : 'disabled'}>${v > 0 ? fmtMoney(v * ins) : 'OK'}</button></div>`).join('')}
         ${needsOil(car) ? `<div class="li"><div style="width:150px">Oil change</div><div class="grow">${bar(car.oil ?? 100, (car.oil ?? 100) < 20 ? 'red' : (car.oil ?? 100) < 45 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.oil ?? 100)}%</span>

@@ -306,7 +306,7 @@ RENDER.bank = (scr, ctx) => {
     <div class="section-title">Roadside</div>
     <div class="li"><div class="grow"><div class="t">Gas delivery (2 gal)</div><div class="s">$45 — when you're stranded</div></div><button class="btn btn-sm" data-action="gas" ${car ? '' : 'disabled'}>Call</button></div>
     <div class="li"><div class="grow"><div class="t">Mobile mechanic</div><div class="s">${fmtMoney(MECHANIC_COST)} — ${car?.broken ? (BREAKDOWNS[car.broken].roadside ? `<b class="bad">${BREAKDOWNS[car.broken].name}.</b> Tops up the oil and gets it running` : `<b class="bad">${BREAKDOWNS[car.broken].name}.</b> Can't fix that on the side of the road. Tow it.`) : 'when your car breaks down'}</div></div><button class="btn btn-sm ${car?.broken && BREAKDOWNS[car.broken].roadside ? 'btn-primary' : ''}" data-action="mech" ${car?.broken && BREAKDOWNS[car.broken].roadside ? '' : 'disabled'}>Call</button></div>
-    <div class="li"><div class="grow"><div class="t">Tow to Second Chance Collision</div><div class="s">$185 flat rate</div></div><button class="btn btn-sm" data-action="tow" ${car ? '' : 'disabled'}>Call</button></div>
+    <div class="li"><div class="grow"><div class="t">Tow to the nearest mechanic</div><div class="s">$185 flat rate</div></div><button class="btn btn-sm" data-action="tow" ${car ? '' : 'disabled'}>Call</button></div>
     <div class="section-title">Recent activity</div>
     <div class="list">${s.ledger.slice(0, 40).map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.label)}</div><div class="s">Day ${l.day} · ${l.t}</div></div><b class="${l.amount > 0 ? 'good' : l.amount < 0 ? 'bad' : ''}">${l.amount ? (l.amount > 0 ? '+' : '') + fmtMoney(l.amount, true) : ''}</b></div>`).join('') || '<div class="empty">Nothing yet</div>'}</div>`;
   } else if (tab === 'wash') {
@@ -377,10 +377,12 @@ RENDER.bank = (scr, ctx) => {
     },
     tow: () => {
       if (!spend(s, 185, 'Tow truck')) return;
-      const l = LOC_BY_ID.second_chance;
       const w = ctx.app.world;
+      // the nearest mechanic
+      const here = w?.vehicle || { x: 0, z: 0 };
+      const l = LOCATIONS.filter(x => x.type === 'repair').sort((a, b) => Math.hypot(a.x - here.x, a.z - here.z) - Math.hypot(b.x - here.x, b.z - here.z))[0] || LOC_BY_ID.second_chance;
       if (w?.vehicle) { w.vehicle.x = l.x; w.vehicle.z = l.z + 8; w.vehicle.vx = w.vehicle.vz = 0; w.inCar = false; w.foot.x = l.x + 3; w.foot.z = l.z; s.time.min += 40; }
-      toast('Towed to Second Chance Collision', 'good'); ctx.h.close();
+      toast(`Towed to ${l.name}`, 'good'); ctx.h.close();
     },
   });
 };

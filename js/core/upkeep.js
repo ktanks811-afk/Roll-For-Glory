@@ -101,12 +101,12 @@ export function wearTick(car, miles, { spec, slip = 0, dt = 0, rng = Math.random
 
 export function wearMessage(ev, car) {
   const b = BREAKDOWNS[ev];
-  if (b) return `🛠 Broke down: ${b.name}. ${b.roadside ? 'Call the mobile mechanic or a tow from your phone (Bank → Roadside).' : 'Call a tow from your phone (Bank → Roadside) to Second Chance Collision.'}`;
+  if (b) return `🛠 Broke down: ${b.name}. ${b.roadside ? 'Call the mobile mechanic or a tow from your phone (Bank → Roadside).' : 'Call a tow from your phone (Bank → Roadside) to the nearest mechanic.'}`;
   return {
-    oilLow: '🛢 Oil change due. Hit a gas station or Second Chance Collision before the engine starts paying for it.',
+    oilLow: '🛢 Oil change due. Hit a gas station or a mechanic shop before the engine starts paying for it.',
     oilOut: '🛢 Oil is shot. The engine is wearing every mile now. Change it before it overheats.',
-    tiresLow: '🛞 Tires are getting bald. Bald tires blow out. Replace them at Second Chance Collision.',
-    blowout: '💥 BLOWOUT! A bald tire let go. Grip is gone. Get new tires at Second Chance Collision.',
+    tiresLow: '🛞 Tires are getting bald. Bald tires blow out. Replace them at any mechanic shop.',
+    blowout: '💥 BLOWOUT! A bald tire let go. Grip is gone. Get new tires at a mechanic shop.',
   }[ev] || '';
 }
 

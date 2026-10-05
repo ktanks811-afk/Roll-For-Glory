@@ -18,7 +18,7 @@ import { Ranch } from './ranch.js';
 import { inHouse } from './house.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
-import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W } from '../data/world.js';
+import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W, inDallas } from '../data/world.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
@@ -204,7 +204,7 @@ export class World {
     this.updateOnline(dt);
 
     // traffic + police
-    const inCity = Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000;
+    const inCity = (Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000) || inDallas(p.x, p.z);
     this.inCity = inCity;
     const hour = hourOf(s.time);
     const density = (hour > 1 && hour < 5 ? 0.35 : hour > 7 && hour < 9 || hour > 16 && hour < 19 ? 1.25 : 0.9) * (inCity ? 1 : 0.45) * (settings.quality === 'low' ? 0.6 : 1);
@@ -448,7 +448,7 @@ export class World {
     const p = { x: v.x, z: v.z };
     // surface + weather grip
     const onRoad = this.map.roads.onRoad(v.x, v.z);
-    const paved = onRoad || (Math.abs(v.x) < 985 && Math.abs(v.z) < 985) || onBackroad(v.x, v.z, 6) || (v.x > 20 && v.x < 180 && v.z > 1150 && v.z < 1960);
+    const paved = onRoad || (Math.abs(v.x) < 985 && Math.abs(v.z) < 985) || inDallas(v.x, v.z) || onBackroad(v.x, v.z, 6) || (v.x > 20 && v.x < 180 && v.z > 1150 && v.z < 1960);
     const sand = !paved && v.z > DESERT_Z;
     let grip = paved ? 1 : sand ? 0.62 : 0.72;
     grip *= wx(s).grip;
@@ -569,7 +569,7 @@ export class World {
     if (v.sim.slip > 0.4 && v.speed < 8) this.setOffence(dt * 0.25, 'Exhibition of speed (burnout).', undefined, 'burnout', 450);
     // red lights
     const node = this.map.roads.nearestNode(v.x, v.z);
-    if (node && node.edges.length >= 3 && Math.abs(node.x) <= 900 && Math.abs(node.z) <= 900 && Math.abs(v.x - node.x) < ROAD_W / 2 && Math.abs(v.z - node.z) < ROAD_W / 2) {
+    if (node && node.edges.length >= 3 && ((Math.abs(node.x) <= 900 && Math.abs(node.z) <= 900) || inDallas(node.x, node.z)) && Math.abs(v.x - node.x) < ROAD_W / 2 && Math.abs(v.z - node.z) < ROAD_W / 2) {
       if (this.redLightNode !== node.id && v.speed > 6) {
         const sig = signalState(node, this.signalT);
         const ns = Math.abs(v.vz) > Math.abs(v.vx);

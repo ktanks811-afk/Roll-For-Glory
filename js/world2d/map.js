@@ -2,12 +2,13 @@
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
-import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
 import { addEstate } from './estate.js';
 import { addEats } from './eats.js';
 import { addCountry } from './country.js';
+import { addDallas } from './dallas.js';
 import { houseBlock } from './house.js';
 import { fromPreset } from '../core/homes.js';
 
@@ -49,7 +50,7 @@ export function buildMap() {
   const half = BLOCK / 2;
   const inset = ROAD_W / 2 + 6;          // road half width + sidewalk
   const locBlocks = new Map();
-  for (const l of LOCATIONS) if (l.block) locBlocks.set(`${l.block[0]},${l.block[1]}`, l);
+  for (const l of LOCATIONS) if (l.block && !l.city) locBlocks.set(`${l.block[0]},${l.block[1]}`, l);
 
   for (let i = 0; i < GRID.length - 1; i++) {
     for (let j = 0; j < GRID.length - 1; j++) {
@@ -108,10 +109,10 @@ export function buildMap() {
   // A landmark block: the building sits right behind the kerb marker, front
   // door and awning facing the street, so you pull up to it. Homes and
   // properties are drive-in garages instead (see garageBlock).
-  function landmarkBlock(loc, x0, z0, x1, z1) {
+  function landmarkBlock(loc, x0, z0, x1, z1, out = gout) {
     const W = x1 - x0, D = z1 - z0;
     const t = loc.type;
-    if (t === 'home' || t === 'property' || t === 'trap') { garageBlock(gout, loc, x0, z0, x1, z1); return; }
+    if (t === 'home' || t === 'property' || t === 'trap') { garageBlock(out, loc, x0, z0, x1, z1); return; }
     const side = loc.side;
     const big = t === 'dealer' || t === 'usedlot' || t === 'chop' || t === 'meet' || t === 'carshow' || t === 'police' || t === 'perf' || t === 'hospital';
     const ns = side === 'N' || side === 'S';
@@ -214,6 +215,10 @@ export function buildMap() {
       : { x: cx - span / 2, z: cz - thick / 2, w: span, d: thick, h: 7.5, color: '#1a1c22', kind: 'gantry', noCollide: true, label: l.name, labelColor: l.color, loc: l.id, horiz });
   }
 
+  // ---------------- Dallas, down I-30 (world2d/dallas.js) ----------------
+  const dallas = addDallas(gout, { landmarkBlock });
+  water.push(...dallas.water);
+
   // ---------------- filling in the empty ground ----------------
   const extra = addScenery({ roads, buildings, lots, trees, rocks, props, water, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
   // trap houses, land for sale and the plug, outside the city grid: cleared of filler, then built (world2d/estate.js)
@@ -234,7 +239,7 @@ export function buildMap() {
   colliders.push({ x0: RIVER_X - 45, z0: -3200, x1: RIVER_X + 45, z1: HWY_Z - HWY_W / 2 - 4, h: 0, water: true });
   colliders.push({ x0: RIVER_X - 45, z0: HWY_Z + HWY_W / 2 + 4, x1: RIVER_X + 45, z1: -1000, h: 0, water: true });
   colliders.push({ x0: SEA_X + 10, z0: 250, x1: SEA_X + 3000, z1: 4100, h: 0, water: true });
-  for (const w of extra.water) colliders.push({ x0: w.x, z0: w.z, x1: w.x + w.w, z1: w.z + w.d, h: 0, water: true });
+  for (const w of [...extra.water, ...dallas.water]) colliders.push({ x0: w.x, z0: w.z, x1: w.x + w.w, z1: w.z + w.d, h: 0, water: true });
   // tunnel hill walls (the tunnel itself is open)
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z - 300, x1: TUNNEL[1], z1: HWY_Z - HWY_W / 2 - 2, h: 30, hill: true });
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z + HWY_W / 2 + 2, x1: TUNNEL[1], z1: HWY_Z + 300, h: 30, hill: true });
@@ -242,7 +247,10 @@ export function buildMap() {
   colliders.push({ x0: -4000, z0: -4000, x1: 4000, z1: -3300, h: 0 });
   colliders.push({ x0: -4000, z0: COUNTRY.z1, x1: 4000, z1: COUNTRY.z1 + 700, h: 0 });
   colliders.push({ x0: -4000, z0: -4000, x1: -3300, z1: COUNTRY.z1 + 700, h: 0 });
-  colliders.push({ x0: 3300, z0: -4000, x1: 4000, z1: COUNTRY.z1 + 700, h: 0 });
+  // east: open only along the I-30 corridor out to Dallas
+  colliders.push({ x0: 3300, z0: -4000, x1: DALLAS_ZONE.x1 + 700, z1: DALLAS_ZONE.z0, h: 0 });
+  colliders.push({ x0: 3300, z0: DALLAS_ZONE.z1, x1: DALLAS_ZONE.x1 + 700, z1: COUNTRY.z1 + 700, h: 0 });
+  colliders.push({ x0: DALLAS_ZONE.x1, z0: -4000, x1: DALLAS_ZONE.x1 + 700, z1: COUNTRY.z1 + 700, h: 0 });
   colliders.push({ x0: COUNTRY.x1, z0: 4050, x1: 3300, z1: COUNTRY.z1, h: 0 });   // past the lake's south shore, the county line
 
   const grid = new SpatialGrid(100);

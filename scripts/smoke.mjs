@@ -495,12 +495,18 @@ await step('upkeep: oil, tread, breakdowns, roadside', async () => {
     const shop = document.querySelector('#panels')?.textContent || '';
     const oilBtn = !!document.querySelector('#panels [data-action="oil"]:not([disabled])');
     closeAllPanels();
+    // the same counter at the other mechanics, at their own prices
+    const price = id => { openPlace(LOC_BY_ID[id], window.__rfg.app); const t = document.querySelector('#panels [data-action="all"]')?.textContent || ''; const name = document.querySelector('#panels h1')?.textContent || ''; closeAllPanels(); return { n: +t.replace(/[^0-9.]/g, ''), name }; };
+    car.cond.body = 60;
+    const prices = { sc: price('second_chance'), mlk: price('mlk_wrench'), uptown: price('uptown_euro'), joshua: price('joshua_lube') };
     // old saves (no oil field, no breakdowns) load with fresh oil
     const { importSave } = await import('./js/core/save.js');
     const old = JSON.parse(JSON.stringify(s)); for (const c of old.cars) { delete c.oil; delete c.broken; }
     const mig = importSave(JSON.stringify({ game: 'roll-for-glory', state: old })).cars.every(c => c.oil === 100 && !c.broken);
-    return { worn, ev, broke, hud, shopBreak: /Overheated|Stalled/.test(shop), shopOil: /Oil change/.test(shop), oilBtn, mig, saved };
+    return { worn, ev, broke, hud, shopBreak: /Overheated|Stalled/.test(shop), shopOil: /Oil change/.test(shop), oilBtn, mig, saved, prices };
   });
+  const pr = r.prices;
+  if (!(pr.mlk.n < pr.sc.n && pr.uptown.n > pr.sc.n && pr.joshua.n < pr.sc.n) || !/MLK Wrench House/.test(pr.mlk.name) || !/Uptown Euro/.test(pr.uptown.name)) throw new Error('mechanic shops should have their own names and prices: ' + JSON.stringify(pr));
   console.log('     upkeep', JSON.stringify({ ...r, saved: undefined }));
   if (!(r.worn.oil < 60 && r.worn.tires < 95)) throw new Error('driving did not wear the oil and tires');
   if (!r.broke) throw new Error('no oil did not break the car down');
@@ -1315,6 +1321,23 @@ await step('phone map (places + GPS)', async () => {
   const k0 = await p.evaluate(() => 0); await p.click('.map-tools [data-z="1"]'); await p.waitForTimeout(100);
   await p.evaluate(() => { window.__rfg.game.s.gps = null; window.__rfg.app.world.gpsPath = null; });
   await p.keyboard.press('Escape');
+});
+await step('phone map on its side shows the whole map (Dallas too)', async () => {
+  await p.setViewportSize({ width: 844, height: 390 });
+  const r = await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels();
+    const { openPhone } = await import('./js/ui/phone.js'); openPhone('map', window.__rfg.app);
+    await new Promise(r => setTimeout(r, 500));
+    document.querySelector('.mapapp [data-fit]').click();
+    await new Promise(r => setTimeout(r, 300));
+    const cv = document.querySelector('[data-map]').getBoundingClientRect(), scr = document.querySelector('.phone-screen').getBoundingClientRect();
+    const card = document.querySelector('.map-card').getBoundingClientRect();
+    const out = { wide: document.querySelector('.mapapp').classList.contains('wide'), cvBottom: cv.bottom, scrBottom: scr.bottom, cardBeside: card.left >= cv.right - 1 };
+    closeAllPanels();
+    return out;
+  });
+  await p.setViewportSize({ width: 1280, height: 760 });
+  if (!r.wide || r.cvBottom > r.scrBottom + 1 || !r.cardBeside) throw new Error('landscape map is cut off or not side by side: ' + JSON.stringify(r));
 });
 
 // ---------------- teleport from the Map: you and the car land there ----------------

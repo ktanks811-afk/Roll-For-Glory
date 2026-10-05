@@ -21,11 +21,29 @@ export const SEA_X = 1000;         // harbor water east of here (south half)
 // Johnson County: farm country past the end of the desert, south of the city
 export const COUNTRY = { x0: -3300, x1: 1000, z0: 3300, z1: 5800 };
 export const COUNTRY_ROADS = { x: [-2800, -1500, 0, 700], z: [3600, 4500, 5400] };
+// Dallas: east of Fort Worth down I-30, which carries on from the east end of
+// Loop 820 past Arlington. Its own 10x10-block grid (150 m blocks); I-30 cuts
+// through the middle of it (row 5), downtown and Deep Ellum north of the
+// freeway, Oak Cliff and South Dallas south of it. world2d/dallas.js fills it in.
+export const DALLAS = { x0: 4650, x1: 6150, z0: -2100, z1: -600 };
+export const DGRID_X = [], DGRID_Z = [];
+for (let v = DALLAS.x0; v <= DALLAS.x1; v += 150) DGRID_X.push(v);
+for (let v = DALLAS.z0; v <= DALLAS.z1; v += 150) DGRID_Z.push(v);
+export const I30_ROW = 5;                    // DGRID_Z[5] === HWY_Z: I-30 runs on that street line
+export const I30_END = 6600;                 // where the freeway runs out east of Dallas
+export const DALLAS_ZONE = { x0: 3300, x1: 6800, z0: -2500, z1: -250 };   // the corridor and the city, open to drive
+export const DTRINITY_X = 4440;              // the Trinity River, west of downtown Dallas (80 m wide)
+export const ARLINGTON_X = 3800;             // I-30 exit at the stadium
+export const ARLINGTON_END = -700;           // Collins St runs south from the exit to here
+export const inDallas = (x, z) => x > DALLAS.x0 - 12 && x < DALLAS.x1 + 12 && z > DALLAS.z0 - 12 && z < DALLAS.z1 + 12;
 
 export const STREET_NS = ['Hulen St', 'Montgomery St', 'University Dr', 'Henderson St', 'Throckmorton St', 'Houston St', 'Main St', 'Commerce St', 'Jones St', 'Riverside Dr', 'Beach St', 'Oakland Blvd', 'Lake Worth Blvd'];
+export const DSTREET_NS = ['Sylvan Ave', 'Riverfront Blvd', 'Lamar St', 'Griffin St', 'Akard St', 'Ervay St', 'Harwood St', 'Pearl St', 'Good Latimer Expy', 'Exposition Ave', 'Haskell Ave'];
+export const DSTREET_EW = ['Lemmon Ave', 'McKinney Ave', 'Ross Ave', 'Elm St', 'Commerce St', 'I-30', 'Jefferson Blvd', 'Davis St', 'MLK Jr Blvd', 'Illinois Ave', 'Kiest Blvd'];
 export const STREET_EW = ['NE 28th St', 'Stockyards Blvd', 'Exchange Ave', 'Northside Dr', 'Belknap St', 'Weatherford St', 'W 7th St', 'Lancaster Ave', 'Vickery Blvd', 'Rosedale St', 'Magnolia Ave', 'Berry St', 'Seminary Dr'];
 
 export function districtAt(x, z) {
+  if (x > DALLAS_ZONE.x0 && z < DALLAS_ZONE.z1 + 400) return dallasDistrict(x, z);
   if (z < -1000) return 'Loop 820';
   if (z > COUNTRY.z0) return 'Johnson County';
   if (z > DESERT_Z) return 'Chisholm Flats';
@@ -37,13 +55,28 @@ export function districtAt(x, z) {
   return z < 0 ? 'Stockyards' : 'Near Southside';
 }
 
-export function blockCenter(i, j) {
+function dallasDistrict(x, z) {
+  if (x < DTRINITY_X - 60) return Math.abs(x - ARLINGTON_X) < 350 ? 'Arlington' : 'I-30';
+  if (x > DALLAS.x1 + 40 || z < DALLAS.z0 - 40 || z > DALLAS.z1 + 40) return x > DALLAS.x1 ? 'East Dallas' : 'Dallas';
+  const i = Math.floor((x - DALLAS.x0) / BLOCK), j = Math.floor((z - DALLAS.z0) / BLOCK);
+  if (x < DALLAS.x0) return z < HWY_Z ? 'Trinity Groves' : 'Oak Cliff';
+  if (j <= 4) {
+    if (i <= 1) return 'West Dallas';
+    if (j <= 1) return 'Uptown';
+    return i >= 7 ? 'Deep Ellum' : 'Downtown Dallas';
+  }
+  return i <= 4 ? 'Oak Cliff' : 'South Dallas';
+}
+export const DALLAS_DISTRICTS = ['Uptown', 'Downtown Dallas', 'Deep Ellum', 'West Dallas', 'Oak Cliff', 'South Dallas'];
+
+export function blockCenter(i, j, city) {
+  if (city === 'dallas') return { x: DALLAS.x0 + BLOCK / 2 + BLOCK * i, z: DALLAS.z0 + BLOCK / 2 + BLOCK * j };
   return { x: -825 + BLOCK * i, z: -825 + BLOCK * j };
 }
 
 // Point on the kerb of block (i,j), facing the street on `side`.
-function front(i, j, side, along = 0) {
-  const c = blockCenter(i, j);
+function front(i, j, side, along = 0, city) {
+  const c = blockCenter(i, j, city);
   const d = BLOCK / 2 - 13;
   switch (side) {
     case 'N': return { x: c.x + along, z: c.z - d, face: Math.PI };
@@ -55,6 +88,8 @@ function front(i, j, side, along = 0) {
 
 // type: what pressing E does there. tier: rep tier to use it.
 const L = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], side, ...front(i, j, side), ...extra });
+// the same on a Dallas block
+const D = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'dallas', side, ...front(i, j, side, 0, 'dallas'), ...extra });
 
 export const LOCATIONS = [
   L('eastgate_studio', 'home', 'Eastgate Studio (Home)', 8, 6, 'W', { color: '#ffffff', icon: 'home' }),
@@ -70,7 +105,10 @@ export const LOCATIONS = [
     makes: ['ferrari', 'lamborghini', 'mclaren', 'astonmartin', 'bentley', 'rollsroyce', 'maserati', 'lotus', 'bugatti', 'koenigsegg', 'pagani'] }),
   L('torque_temple', 'perf', 'Torque Temple Performance', 9, 5, 'W', { color: '#e8641a', icon: 'wrench', contact: 'rosa' }),
   L('vega_kustoms', 'visual', 'Vega Kustoms', 3, 7, 'E', { color: '#d12a8a', icon: 'spray', contact: 'manny' }),
-  L('second_chance', 'repair', 'Second Chance Collision', 7, 8, 'N', { color: '#1b4fc4', icon: 'repair' }),
+  L('second_chance', 'repair', 'Second Chance Collision', 7, 8, 'N', { color: '#1b4fc4', icon: 'repair', tagline: 'Body · mechanical · tires · we work with all insurers' }),
+  // more mechanic shops (same repair counter, own prices: `rate`)
+  L('cowtown_tire', 'repair', 'Cowtown Tire & Lube', 4, 10, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.85, tagline: 'Tires, oil, brakes · cash price beats the dealer' }),
+  L('northside_garage', 'repair', 'Northside Garage', 4, 1, 'S', { color: '#1b4fc4', icon: 'repair', rate: 0.95, tagline: 'Family shop since 1971 · trucks and classics' }),
   L('gas_westbrook', 'gas', 'Volt & Petrol', 2, 4, 'E', { color: '#1f8f3a', icon: 'gas' }),
   L('gas_harbor', 'gas', 'Gas-N-Go', 10, 8, 'W', { color: '#1f8f3a', icon: 'gas' }),
   L('gas_south', 'gas', 'Volt & Petrol', 6, 10, 'N', { color: '#1f8f3a', icon: 'gas' }),
@@ -116,6 +154,24 @@ export const LOCATIONS = [
   { id: 'gas_desert', type: 'gas', name: 'Last Chance Gas', x: -24, z: 1700, face: -Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
   // Joshua, out in Johnson County (world2d/country.js draws the town)
   { id: 'gas_joshua', type: 'gas', name: 'Joshua Country Store', x: 36, z: 3705, face: Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
+  // Joshua's tire shop on FM 917 (world2d/country.js puts the building there)
+  { id: 'joshua_lube', type: 'repair', name: 'Joshua Tire & Lube', x: 215, z: 3592, face: 0, side: 'S', color: '#1b4fc4', icon: 'repair', rate: 0.75, tagline: 'Country prices · farm trucks first, but we\'ll get to you' },
+  // Arlington: the I-30 exit by the stadium (world2d/dallas.js)
+  { id: 'arlington_service', type: 'repair', name: 'I-30 Truck & Auto', x: ARLINGTON_X + 250, z: HWY_Z + 20, face: 0, side: 'N', color: '#1b4fc4', icon: 'repair', rate: 1.05, tagline: 'Off the Arlington exit · open 24 hours · diesel and gas' },
+  { id: 'gas_arlington', type: 'gas', name: 'Gas-N-Go Arlington', x: ARLINGTON_X - 250, z: HWY_Z + 20, face: 0, side: 'N', color: '#1f8f3a', icon: 'gas' },
+  // ---------------- Dallas (block i,j on the Dallas grid; I-30 runs between rows 4 and 5) ----------------
+  D('deep_ellum_motor', 'repair', 'Deep Ellum Motorworks', 8, 3, 'N', { color: '#1b4fc4', icon: 'repair', tagline: 'Tuner shop and full service · we fix what you broke at the meet' }),
+  D('oakcliff_trans', 'repair', 'Oak Cliff Auto & Transmission', 2, 6, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.9, tagline: 'Transmissions our specialty · se habla español' }),
+  D('uptown_euro', 'repair', 'Uptown Euro Service', 6, 1, 'S', { color: '#1b4fc4', icon: 'repair', rate: 1.3, tagline: 'BMW · Mercedes · Porsche · loaner cars, espresso, Uptown prices' }),
+  D('mlk_wrench', 'repair', 'MLK Wrench House', 6, 8, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.8, tagline: 'Cheapest labor in Dallas · used parts when you ask' }),
+  D('gas_deep_ellum', 'gas', 'Volt & Petrol', 7, 2, 'S', { color: '#1f8f3a', icon: 'gas' }),
+  D('gas_oakcliff', 'gas', 'Gas-N-Go', 1, 7, 'E', { color: '#1f8f3a', icon: 'gas' }),
+  D('corner_grand', 'corner', 'Grand Ave Food Mart', 7, 7, 'W', { color: '#ff8a1a', icon: 'food' }),
+  D('corner_ellum', 'corner', 'Elm St Corner Store', 9, 3, 'W', { color: '#ff8a1a', icon: 'food' }),
+  D('big_d_customs', 'perf', 'Big D Performance', 0, 3, 'E', { color: '#e8641a', icon: 'wrench', owner: 'Dre', tagline: 'Dre Vega, Rosa\'s cousin · dyno cell · Dallas' }),
+  D('ellum_meet', 'meet', 'Deep Ellum Warehouse Lot', 9, 1, 'S', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  D('uptown_condo', 'property', 'Uptown High-Rise Condo', 4, 0, 'S', { color: '#ffffff', icon: 'home' }),
+  D('kessler_tudor', 'property', 'Kessler Park Tudor', 0, 8, 'E', { color: '#ffffff', icon: 'home' }),
   // street race start lines (routes in data/streetRaces.js)
   // trap houses, land for sale and the plug, off the city grid (data/estate.js)
   ...ESTATE_LOCATIONS,
@@ -139,6 +195,8 @@ export const PROPERTIES = {
   six_bungalow:      { name: 'Cass St Bungalow', price: 64000, slots: 2, house: 'starter', desc: '1-story, two bedrooms, a porch and a carport you can close up. Stop Six.' },
   six_twostory:      { name: 'Amanda Ave Two-Story', price: 148000, slots: 4, house: 'two', desc: '2-story with the bedrooms upstairs and a four-car garage. Stop Six.' },
   six_threestory:    { name: 'Stalcup Heights Three-Story', price: 295000, slots: 6, house: 'three', desc: '3-story new build with a rooftop game room and a six-car garage. Stop Six.', tier: 2 },
+  uptown_condo:      { name: 'Uptown High-Rise Condo', price: 520000, slots: 6, desc: 'Dallas. A corner unit over McKinney Ave with six spots in the private garage.', tier: 3 },
+  kessler_tudor:     { name: 'Kessler Park Tudor', price: 410000, slots: 5, house: 'two', desc: 'Dallas. A 2-story Tudor on the Oak Cliff bluffs, five-car garage.', tier: 2, wall: '#c8b8a0', roof: '#3a3030' },
   rivercrest_mansion: { name: 'Rivercrest Mansion', price: 3600000, slots: 14, house: 'three', desc: 'Country club money. Three stories, fourteen climate-controlled bays and a car elevator.', tier: 5, wall: '#e8e2d8', roof: '#2f3b4a', wallH: 5.2 },
   // trap houses (data/estate.js): customers knock, SWAT might too
   ...Object.fromEntries(Object.entries(TRAPS).map(([id, t]) => [id, { ...t, trap: true }])),

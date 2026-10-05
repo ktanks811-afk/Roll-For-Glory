@@ -1356,6 +1356,50 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (st.tow.trailer || st.tow.truck) bad('selling the truck should unhitch the trailer');
   if (!TOW.fits(TRAILERS.find(t => t.id === 'enclosed_28'), CAR_BY_ID[trx.modelId])) bad('the 28 ft trailer should fit a TRX');
 }
+// ---- Dallas down I-30, and mechanic shops all over ----
+{
+  const W = await import('../js/data/world.js');
+  const map = buildMap();
+  const R = map.roads;
+  const at = id => W.LOC_BY_ID[id];
+  // I-30 joins Loop 820 and runs through Dallas
+  const trip = R.routeBetween(0, 0, at('deep_ellum_motor').x, at('deep_ellum_motor').z);
+  if (!trip.names.includes('I-30') || !trip.names.includes('Loop 820')) bad(`downtown Fort Worth to Deep Ellum should take Loop 820 and I-30: ${[...new Set(trip.names)].join(', ')}`);
+  if (trip.meters < 4500 || trip.meters > 9000) bad(`Fort Worth to Dallas is ${trip.meters.toFixed(0)} m by road`);
+  // the freeway is open all the way, over the Trinity too; the river beside the bridge is not
+  for (let x = W.HWY_X[1]; x <= W.I30_END - 20; x += 20) if (collideCircle(map, x, W.HWY_Z + 7, 1.1)) { bad(`I-30 blocked at x ${x}`); break; }
+  if (!collideCircle(map, W.DTRINITY_X, W.HWY_Z - 120, 1)) bad('the Trinity in Dallas should be water');
+  // the corridor is open, the land past it is not
+  if (collideCircle(map, 3500, -1800, 1)) bad('the I-30 corridor north of the freeway should be open');
+  if (!collideCircle(map, 5000, 600, 1) || !collideCircle(map, W.DALLAS_ZONE.x1 + 50, -1350, 1)) bad('the world should end past Dallas');
+  // the neighbourhoods
+  for (const [x, z, d] of [[5100, -1580, 'Downtown Dallas'], [5950, -1580, 'Deep Ellum'], [5550, -1950, 'Uptown'], [4950, -1000, 'Oak Cliff'], [5850, -1000, 'South Dallas'], [4800, -1880, 'West Dallas'], [3800, -1300, 'Arlington']])
+    if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
+  if (W.districtAt(1800, -420) !== 'Stop Six' || W.districtAt(0, 0) !== 'Downtown') bad('Fort Worth districts moved');
+  // mechanic shops: Fort Worth, Johnson County, Arlington and Dallas, every one with a building and a way in
+  const shops = LOCATIONS.filter(l => l.type === 'repair');
+  if (shops.length < 9) bad(`only ${shops.length} mechanic shops`);
+  for (const [area, n] of [['Dallas', 4], ['Johnson County', 1], ['Arlington', 1]]) {
+    const k = shops.filter(l => (area === 'Dallas' ? W.DALLAS_DISTRICTS.includes(W.districtAt(l.x, l.z)) : W.districtAt(l.x, l.z) === area)).length;
+    if (k < n) bad(`${area} has ${k} mechanic shops, wants ${n}`);
+  }
+  for (const l of shops) {
+    if (!map.buildings.some(b => b.loc === l.id && b.shop === 'repair')) bad(`${l.id} has no shop building`);
+    if (collideCircle(map, l.x, l.z, 1)) bad(`${l.id}: the marker is blocked`);
+    const r = R.nearestOnRoad(l.x, l.z);
+    if (!r || r.dist > 20) bad(`${l.id} is ${r?.dist.toFixed(0)} m from a road`);
+    if (l.rate && (l.rate < 0.6 || l.rate > 1.5)) bad(`${l.id}: price rate ${l.rate}`);
+  }
+  // every Dallas business is on a Dallas block and none share one
+  const seen = new Set();
+  for (const l of LOCATIONS.filter(l => l.city === 'dallas')) {
+    const k = l.block.join();
+    if (seen.has(k)) bad(`two Dallas places on block ${k}`); seen.add(k);
+    if (!W.inDallas(l.x, l.z)) bad(`${l.id} is not in Dallas`);
+    if (l.block[1] === W.I30_ROW - 1 && l.side === 'S' || l.block[1] === W.I30_ROW && l.side === 'N') bad(`${l.id} fronts the freeway`);
+  }
+}
+
 // ---------------- teleport (fast travel) ----------------
 {
   const st = createState({ name: 'T', age: 25, look: {}, story: false });

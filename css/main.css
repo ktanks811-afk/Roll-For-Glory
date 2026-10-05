@@ -418,6 +418,13 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 /* phone map app */
 .mapapp { display: flex; flex-direction: column; gap: 8px; padding: 8px !important; }
 .map-wrap { position: relative; }
+.map-side { display: contents; }
+/* phone on its side: map left at full height, card and list on the right */
+.mapapp.wide { flex-direction: row; align-items: flex-start; }
+.mapapp.wide .map-wrap { flex: 1.35 1 0; min-width: 0; position: sticky; z-index: 1; }
+.mapapp.wide .map-wrap canvas { aspect-ratio: auto; max-height: none; }
+.mapapp.wide .map-side { display: flex; flex-direction: column; gap: 8px; flex: 1 1 0; min-width: 0; }
+@media (orientation: landscape) and (max-height: 600px) { .phone.phone-map { width: min(880px, 96vw); } }
 .map-wrap canvas { width: 100%; aspect-ratio: 1 / 1.02; max-height: 440px; display: block; border-radius: 10px; background: #0c0d10; border: 1px solid var(--line2); cursor: grab; touch-action: none; }
 .map-tools { position: absolute; right: 8px; top: 40px; display: flex; flex-direction: column; gap: 6px; }
 .map-tools button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(10,10,12,.82); color: #fff; font: 700 18px var(--ui); cursor: pointer; padding: 0; }
