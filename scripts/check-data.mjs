@@ -1556,8 +1556,10 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const bank0 = st.bank + st.cash;
   st.time.day += 1; DG.dogsDay(st); if (k.dogs.length !== 2) bad('pups came early');
   st.time.day += 1; const r = DG.dogsDay(st);
-  if (!(k.dogs.length > 2 && k.dogs.length <= 6) || !r.notes.some(n => /whelped/.test(n))) bad(`litter: ${k.dogs.length} dogs, ${r.notes}`);
-  if (k.dogs.some(d => d.home !== 'six_bungalow')) bad('pups should stay with the dam');
+  if (!(k.dogs.length > 2 && k.dogs.length <= DG.totalRoom(st)) || !r.notes.some(n => /whelped/.test(n))) bad(`litter: ${k.dogs.length} dogs, ${r.notes}`);
+  // pups stay with the dam until her place is full, then go to your other places
+  const free = DG.roomAt(st, 'six_bungalow');
+  if (free < 0 || (free > 0 && k.dogs.some(d => d.home !== 'six_bungalow'))) bad('pups should stay with the dam while there is room');
   if (!(st.bank + st.cash < bank0 + 50000)) bad('the day should charge feed');
   // the kennel and the hog lease are on the map, out in Johnson County
   for (const id of ['dog_kennel', 'hog_lease']) {
