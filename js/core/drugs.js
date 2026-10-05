@@ -30,6 +30,7 @@ export function ensureDrugs(s) {
   s.estate ??= {};
   s.estate.traps ??= {};
   s.estate.land ??= {};
+  s.estate.rigs ??= {};    // oil leases you own (core/estate.js)
   return d;
 }
 

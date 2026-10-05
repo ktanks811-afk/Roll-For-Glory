@@ -2,11 +2,14 @@
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
-import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
 import { addEstate } from './estate.js';
 import { addEats } from './eats.js';
+import { addCountry } from './country.js';
+import { houseBlock } from './house.js';
+import { fromPreset } from '../core/homes.js';
 
 function mulberry32(a) {
   return () => {
@@ -39,7 +42,9 @@ export function buildMap() {
   const signs = [];       // { x, z, text, color }
   const garages = [];     // drive-in garages (homes and properties)
   const SETBACK = 5;      // landmark buildings sit this far behind the sidewalk
-  const gout = { buildings, lots, garages, trees, R };
+  const houses = [];      // houses you can walk into (world2d/house.js)
+  const props = [];       // ground-level detail: shrubs, hedges, pools, flowerbeds, benches, furniture
+  const gout = { buildings, lots, garages, trees, R, props, houses };
 
   const half = BLOCK / 2;
   const inset = ROAD_W / 2 + 6;          // road half width + sidewalk
@@ -210,18 +215,20 @@ export function buildMap() {
   }
 
   // ---------------- filling in the empty ground ----------------
-  const props = [];       // ground-level detail: shrubs, hedges, pools, flowerbeds, benches
   const extra = addScenery({ roads, buildings, lots, trees, rocks, props, water, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
   // trap houses, land for sale and the plug, outside the city grid: cleared of filler, then built (world2d/estate.js)
-  addEstate({ ...gout, props });
+  addEstate(gout);
   // taco trucks and diners: same idea, their own lots cleared and built on (world2d/eats.js)
   addEats({ ...gout, props });
+  // Johnson County: farm roads, pastures, ranch land and oil leases south of the desert (world2d/country.js)
+  addCountry({ ...gout, props, rocks, water, roads });
 
   // ---------------- colliders ----------------
   const colliders = [];
   for (const b of buildings) if (!b.noCollide) colliders.push({ x0: b.x, z0: b.z, x1: b.x + b.w, z1: b.z + b.d, h: b.h, b });
   // the garage door: solid until you own the place (World flips `off`)
   for (const g of garages) { g.panel = { x0: g.door.x, z0: g.door.z, x1: g.door.x + g.door.w, z1: g.door.z + g.door.d, h: 4, off: false, door: g.id }; colliders.push(g.panel); }
+  for (const h of houses) colliders.push(h.panel);
   for (const r of rocks) colliders.push({ x0: r.x, z0: r.z, x1: r.x + r.w, z1: r.z + r.d, h: r.h });
   // water is solid
   colliders.push({ x0: RIVER_X - 45, z0: -3200, x1: RIVER_X + 45, z1: HWY_Z - HWY_W / 2 - 4, h: 0, water: true });
@@ -233,9 +240,10 @@ export function buildMap() {
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z + HWY_W / 2 + 2, x1: TUNNEL[1], z1: HWY_Z + 300, h: 30, hill: true });
   // world edge
   colliders.push({ x0: -4000, z0: -4000, x1: 4000, z1: -3300, h: 0 });
-  colliders.push({ x0: -4000, z0: 3300, x1: 4000, z1: 4000, h: 0 });
-  colliders.push({ x0: -4000, z0: -4000, x1: -3300, z1: 4000, h: 0 });
-  colliders.push({ x0: 3300, z0: -4000, x1: 4000, z1: 4000, h: 0 });
+  colliders.push({ x0: -4000, z0: COUNTRY.z1, x1: 4000, z1: COUNTRY.z1 + 700, h: 0 });
+  colliders.push({ x0: -4000, z0: -4000, x1: -3300, z1: COUNTRY.z1 + 700, h: 0 });
+  colliders.push({ x0: 3300, z0: -4000, x1: 4000, z1: COUNTRY.z1 + 700, h: 0 });
+  colliders.push({ x0: COUNTRY.x1, z0: 4050, x1: 3300, z1: COUNTRY.z1, h: 0 });   // past the lake's south shore, the county line
 
   const grid = new SpatialGrid(100);
   colliders.forEach(c => grid.insert(c, c.x0, c.z0, c.x1, c.z1));
@@ -246,20 +254,23 @@ export function buildMap() {
   rocks.forEach(r => drawGrid.insert({ type: 'r', o: r }, r.x, r.z, r.x + r.w, r.z + r.d));
   props.forEach(p => { const r = p.r || 0; drawGrid.insert({ type: 'p', o: p }, p.x - r, p.z - r, p.x + (p.w || 0) + r, p.z + (p.d || 0) + r); });
 
-  return { roads, buildings, lots, trees, water, rocks, hills, signs, props, colliders, grid, drawGrid, garages, backroad: BACKROAD };
+  return { roads, buildings, lots, trees, water, rocks, hills, signs, props, colliders, grid, drawGrid, garages, houses, backroad: BACKROAD };
 }
 
 // Drive-in garage. Local frame: u runs along the street, v runs from the
 // street into the block. Walls are solid, the roof is its own object so it
 // can fade out when you're inside, and the door gap is open for the home you
 // own (closed, with a collider, for properties you haven't bought).
-export function garageBlock(out, loc, x0, z0, x1, z1, P = PROPERTIES[loc.id] || { slots: 2 }) {
+export function garageBlock(out, loc, x0, z0, x1, z1, P = PROPERTIES[loc.id] || { slots: 2 }, design = P.house ? fromPreset(P.house) : null) {
   const { buildings, lots, garages, trees, R } = out;
   const SETBACK = 5;
   const slots = P.slots || 2;
   const side = loc.side;
-  const perSide = Math.max(1, Math.ceil((slots - 1) / 2));
-  const Wg = slots <= 4 ? 18 : slots <= 8 ? 20 : 22;      // interior width
+  // big shops (25, 50, 100 cars) keep a drivable floor: the first 24 bays are
+  // on the floor, the rest are on the lifts and the levels below
+  const shown = Math.min(slots, MAX_FLOOR_BAYS + 1);
+  const perSide = Math.max(1, Math.ceil((shown - 1) / 2));
+  const Wg = slots <= 4 ? 18 : slots <= 8 ? 20 : slots <= 14 ? 22 : 24;      // interior width
   const Dg = Math.max(16, 8 + perSide * 3.3);              // interior depth
   const t = 0.8, doorW = 5.6;
   const Wo = Wg + 2 * t, Do = Dg + 2 * t;
@@ -292,7 +303,7 @@ export function garageBlock(out, loc, x0, z0, x1, z1, P = PROPERTIES[loc.id] || 
   lots.push(floorLot);
   // bays: nose-in to the side walls, door end kept clear to turn around
   const bays = [];
-  const total = Math.max(0, slots - 1);
+  const total = Math.max(0, shown - 1);
   for (let k = 0; k < total; k++) {
     const right = k % 2 === 1, idx = k >> 1;
     const u = right ? Wg / 2 - 2.7 : -Wg / 2 + 2.7, v = t + 5.6 + idx * 3.3;
@@ -305,14 +316,20 @@ export function garageBlock(out, loc, x0, z0, x1, z1, P = PROPERTIES[loc.id] || 
   const pc = pt(0, t + Dg * 0.5);
   const g = { id: loc.id, loc, side, inner, door, roof, bays, park, center: pc, slots, panel: null, doorLine: pt(0, 0), inDir: { x: V.x, z: V.z }, label: loc.name };
   garages.push(g);
+  // the house goes up beside the garage (world2d/house.js)
+  const frame = { O, U, V, pt, rect };
+  const house = design ? houseBlock(out, loc, design, frame, Wo / 2 + 4, SETBACK) : null;
   // a few trees and a yard around it
   for (let k = 0; k < 5; k++) {
     const tx = x0 + R(5, x1 - x0 - 5), tz = z0 + R(5, z1 - z0 - 5);
     const q = { x: tx, z: tz };
     if (q.x > inner.x - 8 && q.x < inner.x + inner.w + 8 && q.z > inner.z - 8 && q.z < inner.z + inner.d + 8) continue;
+    if (house && q.x > house.box.x - 6 && q.x < house.box.x + house.box.w + 6 && q.z > house.box.z - 6 && q.z < house.box.z + house.box.d + 6) continue;
     trees.push({ x: tx, z: tz, r: R(2.5, 4), kind: 'tree' });
   }
+  return { g, frame, house, Wo, Do };
 }
+export const MAX_FLOOR_BAYS = 24;
 
 // Cross Timbers Pass: a winding two-lane through the west hills.
 export const BACKROAD = [

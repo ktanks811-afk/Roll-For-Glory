@@ -235,7 +235,6 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     const v5 = mk(m); const bo = run(v5, 2.5, () => ({ throttle: 1, brake: 1, burnout: true }));
     if (!v5.burning || v5.sim.slip < 0.5 || v5.skid < 0.5 || v5.speed > 3) bad(`${m.id} burnout: burning ${v5.burning} slip ${v5.sim.slip} speed ${v5.speed}`);
   }
-  if (process.env.DBG) console.error("radius ratios", radiusAfterFloorIt);
   if (!(radiusAfterFloorIt.FWD > 1.25)) bad(`FWD on worn tires should understeer when you floor it mid-corner (${radiusAfterFloorIt.FWD?.toFixed(2)}x radius)`);
   if (!(radiusAfterFloorIt.RWD < 0.85)) bad(`RWD on worn tires should tighten its line when you floor it mid-corner (${radiusAfterFloorIt.RWD?.toFixed(2)}x radius)`);
   // burnout needs gas AND brake, and a 2-step turns it into launch hold instead
@@ -814,7 +813,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
 // ---- drugs, trap houses, land you build on ----
 {
   const st = createState({ name: 'D', age: 25, look: {}, story: false });
-  game.s = st; st.cash = 5e6; st.rep = 40000;
+  game.s = st; st.cash = 5e7; st.rep = 40000;
   // the plug: buying puts it in your bag, prices hold for the day
   const pr = DR.prices(st);
   for (const g of DRUGS) if (!(pr[g.id].buy > 0 && pr[g.id].street > pr[g.id].buy)) bad(`${g.id}: street price should beat the plug's`);
@@ -868,6 +867,136 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   game.s = st; applyEstate(map, st);
   if (!EST.sellLand(st, 'land_stopsix').ok || PROPERTIES.land_stopsix) bad('selling land you built on');
   for (const id of Object.keys(LAND)) { delete PROPERTIES[id]; }
+}
+// houses you design, 1-3 stories, 100-car garages, Johnson County, oil leases, ranching
+{
+  const HM = await import('../js/core/homes.js');
+  const HD = await import('../js/data/homes.js');
+  const { inHouse } = await import('../js/world2d/house.js');
+  const { RIGS, RIG_PAY, FENCES, ANIMALS, ESTATE_LOCATIONS, PLAN_BY_ID } = await import('../js/data/estate.js');
+  const { LOC_BY_ID, COUNTRY, districtAt } = await import('../js/data/world.js');
+  // the starter plans are buildable, and they're 1, 2 and 3 stories
+  const want = { starter: 1, one: 1, two: 2, three: 3 };
+  for (const id of HD.PRESET_IDS) {
+    const d = HM.fromPreset(id), c = HM.check(d);
+    if (!c.ok || c.warnings.length) bad(`preset ${id}: ${[...c.errors, ...c.warnings].join('; ')}`);
+    if (HM.stories(d) !== want[id]) bad(`preset ${id} should be ${want[id]} stories, is ${HM.stories(d)}`);
+    for (let fl = 0; fl < d.floors.length; fl++) for (const f of d.furn[fl]) { const why = HM.canPlace(d, fl, f, f); if (why) bad(`preset ${id}: ${f.id} at ${f.x},${f.y} floor ${fl}: ${why}`); }
+    if (HM.allFurn(d).length !== HD.PRESETS[id].furn.flat().length) bad(`preset ${id}: furniture got dropped`);
+  }
+  for (const f of HD.FURNITURE) if (!(f.price > 0) || !(f.w >= 1 && f.d >= 1) || !HD.FURN_CATS.includes(f.cat)) bad(`furniture ${f.id} is malformed`);
+  // the rules: upper floors need a room under them and a staircase to reach them
+  {
+    const d = HM.blankDesign();
+    HM.paint(d, 0, 0, 0, 5, 4, 'L');
+    if (HM.paint(d, 1, 7, 0, 9, 2, 'B')) bad('an upper floor painted over nothing');
+    if (HM.paint(d, 0, 0, 0, 2, 0, 'P') !== 3) bad('painting the porch');
+    if (HM.paint(d, 1, 0, 0, 2, 2, 'B') !== 6) bad('the 2nd floor should only go over the rooms, not the porch');
+    if (HM.check(d).ok) bad('a 2nd floor without stairs should not pass');
+    if (!HM.place(d, 0, 'stairs', 4, 1).ok || !HM.check(d).ok) bad('stairs should fix it');
+    if (HM.place(d, 0, 'toilet', 1, 2).ok) bad('a toilet outside the bathroom');
+    if (HM.place(d, 0, 'couch', 4, 2).ok) bad('a couch on top of the stairs');
+    if (!HM.place(d, 0, 'rug', 2, 2).ok || !HM.place(d, 0, 'couch', 2, 2).ok) bad('a couch on a rug should be fine');
+    if (HM.stories(d) !== 2 || HM.cost(d) <= 0) bad('stories / cost of a 2-story design');
+    HM.paint(d, 0, 0, 0, 15, 11, '.');
+    if (d.floors.length !== 1 || HM.allFurn(d).length) bad('knocking down the ground floor should take the floor above and the furniture with it');
+    if (HM.sanitize({ floors: ['ZZ' + 'L'.repeat(300)], furn: [[{ id: 'nope', x: 0, y: 0 }]] })?.floors[0].length !== HD.GW * HD.GD) bad('sanitize should clean bad saves');
+  }
+  // the map: every house can be walked into through its front door, and it has walls
+  const map = buildMap();
+  if (!map.houses.length) bad("no houses on the map");
+  for (const h of map.houses) {
+    if (!h.panel || !h.door || !h.mass) { bad(`${h.id}: house without a door or a roof`); continue; }
+    const walls = map.buildings.filter(b => b.kind === 'hwall' && b.loc === h.id);
+    if (walls.length < 4) bad(`${h.id}: only ${walls.length} walls`);
+    if (!h.mass.pieces.some(p => p.floors === h.stories)) bad(`${h.id}: tallest part isn't ${h.stories} stories`);
+    const mx = (h.panel.x0 + h.panel.x1) / 2, mz = (h.panel.z0 + h.panel.z1) / 2;
+    if (!collideCircle(map, mx, mz, 0.4)) bad(`${h.id}: the front door of a house you don't own is open`);
+    h.panel.off = true;
+    const inx = mx + (mx - h.door.x) * 0.5, inz = mz + (mz - h.door.z) * 0.5;
+    for (let i = 0; i <= 30; i++) { const k = i / 30, x = h.door.x + (inx - h.door.x) * k, z = h.door.z + (inz - h.door.z) * k; if (collideCircle(map, x, z, 0.4)) { bad(`${h.id}: can't walk in the front door`); break; } }
+    if (!inHouse(h, inx, inz)) bad(`${h.id}: just inside the door doesn't count as inside`);
+    h.panel.off = false;
+    const P = PROPERTIES[h.id];
+    if (P?.house && HM.stories(HM.fromPreset(P.house)) !== h.stories) bad(`${h.id}: ${h.stories} stories on the map`);
+  }
+  for (const id of ['six_bungalow', 'six_twostory', 'six_threestory']) if (!map.houses.some(h => h.id === id) || !map.garages.some(g => g.id === id)) bad(`${id}: no house or garage in Stop Six`);
+  // land and leases sit off the roads, in the right district, and the GPS gets you there
+  const onRoad = (r, pad = 2) => map.roads.edges.some(e => { const h = e.width / 2 + pad; return r.x0 < Math.max(e.ax, e.bx) + h && r.x1 > Math.min(e.ax, e.bx) - h && r.z0 < Math.max(e.az, e.bz) + h && r.z1 > Math.min(e.az, e.bz) - h; });
+  for (const l of ESTATE_LOCATIONS) {
+    if (onRoad(l.lot)) bad(`${l.id}: the lot is on a road`);
+    for (const o of ESTATE_LOCATIONS) if (o !== l && l.lot.x0 < o.lot.x1 && l.lot.x1 > o.lot.x0 && l.lot.z0 < o.lot.z1 && l.lot.z1 > o.lot.z0) bad(`${l.id} overlaps ${o.id}`);
+    const r = map.roads.routeBetween(0, 0, l.x, l.z);
+    if (!r?.path?.length || r.meters > 9000) bad(`${l.id}: no road route from downtown (${r?.meters})`);
+  }
+  for (const id of ['land_six_bunche', 'land_six_stalcup', 'six_bungalow']) if (districtAt(LOC_BY_ID[id].x, LOC_BY_ID[id].z) !== 'Stop Six') bad(`${id} isn't in Stop Six`);
+  for (const id of Object.keys(RIGS)) if (districtAt(LOC_BY_ID[id].x, LOC_BY_ID[id].z) !== 'Johnson County') bad(`${id} isn't in Johnson County`);
+  if (!map.colliders.some(c => c.z0 >= COUNTRY.z1 - 1)) bad('no south edge past Johnson County');
+  for (const b of map.buildings) if (b.z > COUNTRY.z0 && !b.noCollide && onRoad({ x0: b.x, z0: b.z, x1: b.x + b.w, z1: b.z + b.d }, 0)) { bad(`a ${b.kind} in Johnson County sits on a road`); break; }
+  if (map.buildings.filter(b => b.kind === 'pumpjack').length !== Object.values(RIGS).reduce((t, r) => t + r.jacks, 0)) bad('pumpjacks missing');
+  // oil: at least a million, $40k a day
+  const st = createState({ name: 'Rancher', age: 30, look: {}, story: false });
+  game.s = st; st.cash = 2e7; st.rep = 40000;
+  for (const [id, R] of Object.entries(RIGS)) {
+    if (R.price < 1e6) bad(`${id} costs less than a million`);
+    if (!EST.buyRig(st, id).ok) bad(`buying ${id}`);
+  }
+  if (RIG_PAY !== 40000) bad('oil leases should pay $40,000 a day');
+  const bank0 = st.bank, day = EST.estateDay(st);
+  if (day.oil !== RIG_PAY * Object.keys(RIGS).length || st.bank - bank0 !== day.oil) bad(`oil paid ${day.oil}`);
+  if (!EST.sellRig(st, 'rig_godley').ok || EST.ownsRig(st, 'rig_godley')) bad('selling a lease');
+  // a 100-car vault on country land, with a 3-story house you designed
+  const land = 'land_buffalo';
+  if (!EST.buyLand(st, land).ok) bad('buying ranch land');
+  const mine = HM.fromPreset('three'); mine.wall = '#8a3b2a';
+  if (!EST.build(st, land, 'vault', mine).ok) bad('building a 100-car vault');
+  st.time.day += 6; EST.finishBuilds(st);
+  if (PROPERTIES[land]?.slots !== 100 || PROPERTIES[land]?.stories !== 3) bad(`the vault: ${PROPERTIES[land]?.slots} cars, ${PROPERTIES[land]?.stories} stories`);
+  { const { garageCapacity } = await import('../js/core/state.js'); if (garageCapacity(st, PROPERTIES) < 100) bad('garage capacity with the vault'); }
+  applyEstate(map, st);
+  const vg = map.garages.find(g => g.id === land), vh = map.houses.find(h => h.id === land);
+  if (!vg || !vh || vh.stories !== 3) bad('the vault and its house are not on the map');
+  else {
+    if (vg.bays.length < 20) bad(`the vault shows ${vg.bays.length} bays`);
+    vg.panel.off = true;
+    for (let i = 0; i <= 40; i++) { const k = i / 40; if (collideCircle(map, vg.park.x + (vg.center.x - vg.park.x) * k, vg.park.z + (vg.center.z - vg.park.z) * k, 1.1)) { bad('can\'t drive into the vault'); break; } }
+    for (const b of vg.bays) if (collideCircle(map, b.x, b.z, 0.9)) { bad('a vault bay is inside a wall'); break; }
+    const hb = vh.box, gb = vg.inner;
+    if (hb.x < gb.x + gb.w && hb.x + hb.w > gb.x && hb.z < gb.z + gb.d && hb.z + hb.d > gb.z) bad('the house overlaps the garage');
+  }
+  // remodel: pay for what's new, get half back for what comes out
+  const bigger = HM.cloneDesign(EST.houseDesign(st, land)); HM.place(bigger, 2, 'jacuzzi', 2, 0);
+  HM.paint(bigger, 0, 12, 1, 14, 5, 'G');
+  const c1 = EST.remodelCost(st, land, bigger);
+  if (!(c1 > 0) || !EST.remodel(st, land, bigger).ok) bad('remodelling bigger');
+  const smaller = HM.cloneDesign(EST.houseDesign(st, land)); HM.paint(smaller, 0, 12, 1, 14, 5, '.');
+  if (!(EST.remodelCost(st, land, smaller) < 0)) bad('tearing a room out should pay something back');
+  // ranching: no cattle without a fence, the fence caps the herd, dogs don't need one
+  if (EST.buyAnimal(st, land, 'cow').ok) bad('cows without a fence');
+  if (!EST.buyAnimal(st, land, 'dog', 2).ok) bad('buying dogs');
+  if (EST.buyAnimal(st, land, 'dog', 3).ok) bad('more than 4 dogs');
+  if (EST.buildFence(st, 'land_stopsix', 'ranch').ok) bad('a white ranch fence on a city lot');
+  if (!EST.buildFence(st, land, 'wire').ok || EST.penCap(st, land) !== 20) bad('barbed wire pasture');
+  if (!EST.buyAnimal(st, land, 'cow', 5).ok || !EST.buyAnimal(st, land, 'horse', 2).ok) bad('stocking the pasture');
+  if (EST.buyAnimal(st, land, 'longhorn', 14).ok) bad('the pasture should be full at 20');
+  if (!EST.buildFence(st, land, 'ranch').ok || !EST.buyAnimal(st, land, 'longhorn', 14).ok) bad('a bigger fence makes room');
+  const r2 = EST.estateDay(st);
+  const expect = Object.entries(EST.herd(st, land)).reduce((t, [a, n]) => { const A = ANIMALS.find(x => x.id === a); return t + (A.pays - A.feed) * n; }, 0);
+  if (r2.stock !== expect || !(expect > 0)) bad(`ranch day paid ${r2.stock}, expected ${expect}`);
+  applyEstate(map, st);
+  const P = EST.pasture(LOC_BY_ID[land]);
+  const fences = map.buildings.filter(b => b.kind === 'fence' && b.loc === land);
+  if (fences.length < 5) bad(`pasture fence has ${fences.length} pieces`);
+  if (vh && vh.box.z + vh.box.d > P.z0) bad('the pasture fence cuts through the house');
+  if (FENCES.length !== 3 || !(FENCES[2].cap >= 40)) bad('fence sizes');
+  if (!(EST.landValue(st, land) > 1e6)) bad('ranch land value should count the vault, house and herd');
+  if (!EST.sellAnimal(st, land, 'horse').ok) bad('selling a horse');
+  // loading another career clears it all off the map
+  const fresh = createState({ name: 'F', age: 25, look: {}, story: false });
+  applyEstate(map, fresh);
+  if (map.houses.some(h => h.id === land) || map.buildings.some(b => b.kind === 'fence')) bad('another career\'s house or fence stayed up');
+  for (const id of Object.keys(LAND)) delete PROPERTIES[id];
+  game.s = null;
 }
 // dirty money, the bank, washing it through a business, and the feds
 {

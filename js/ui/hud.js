@@ -42,7 +42,7 @@ const navDist = (m, kmh) => kmh
   ? (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.max(10, Math.round(m / 10) * 10) + ' m')
   : (m >= 402 ? (m / 1609.34).toFixed(1) + ' mi' : Math.max(10, Math.round(m * 3.28084 / 50) * 50) + ' ft');
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', meet: '●', flag: '⚑' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑' };
 
 export class Hud {
   constructor() {

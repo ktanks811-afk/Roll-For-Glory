@@ -1,7 +1,8 @@
 // Draws Fort Worth top-down: ground, roads, lots, buildings (with a
 // parallax lean so they read as 3D), trees, night lighting and weather.
 
-import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, LOCATIONS } from '../data/world.js';
+import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, LOCATIONS } from '../data/world.js';
+import { drawFurniture } from '../gfx2d/furniture.js';
 import { BACKROAD } from './map.js';
 import { LOT_COLOR } from './mapTiles.js';
 
@@ -26,6 +27,7 @@ const COLORS = {
   grass: '#2f3a26', city: '#5d5f63', sand: '#c2a172', asphalt: '#2c2d31', asphaltHwy: '#26272b', line: '#e9e9e2',
   yellow: '#e8c21a', water: '#1d3b52', river: '#244861', park: '#3c5a30', yard: '#4a6338', parking: '#323338', gas: '#77797e',
   track: '#a0503a', gridiron: '#3f7a34', plaza: '#9a6a52', trail: '#b59a6a', lane: '#36373c', dirt: '#6e5b42', sand: '#d9c493', pond: '#2b5d7a', court: '#a85a35', lot: '#4a4b50', junk: '#5b5348',
+  country: '#3a4a2a', deck: '#8a6038', iwall: '#2a2622', caliche: '#cfc3a4',
 };
 
 export function buildStreetLights(map) {
@@ -53,7 +55,8 @@ export function drawGround(ctx, cam) {
     ctx.fillStyle = col;
     ctx.fillRect(cam.sx(ax), cam.sy(az), (bx - ax) * cam.zoom + 1, (bz - az) * cam.zoom + 1);
   };
-  rect(-4000, DESERT_Z, 4000, 4000, COLORS.sand);
+  rect(-4000, DESERT_Z, 4000, COUNTRY.z0, COLORS.sand);
+  rect(COUNTRY.x0, COUNTRY.z0, COUNTRY.x1, COUNTRY.z1, COLORS.country);
   rect(-3300, -1000, -1000, DESERT_Z, '#34402a');
   rect(-985, -985, 985, 985, COLORS.city);
 }
@@ -110,11 +113,13 @@ let cam0 = null;
 export function drawLots(ctx, cam, items) {
   const z = cam.zoom;
   cam0 = cam;
+  const walls = [];
   for (const it of items) {
     if (it.type !== 'l') continue;
     const l = it.o;
+    if (l.kind === 'iwall') { walls.push(l); continue; }     // inside walls go over the floors, below
     const x = cam.sx(l.x), y = cam.sy(l.z), w = l.w * z, h = l.d * z;
-    ctx.fillStyle = l.kind === 'field' ? l.c : COLORS[l.kind] || '#444';
+    ctx.fillStyle = l.kind === 'field' || l.kind === 'room' ? l.c : COLORS[l.kind] || '#444';
     if (l.kind === 'pond') {
       ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = 'rgba(150,200,220,0.35)'; ctx.lineWidth = Math.max(1, 0.5 * z); ctx.stroke();
@@ -142,7 +147,8 @@ export function drawLots(ctx, cam, items) {
       ctx.fillStyle = '#fff'; ctx.fillRect(x, y + h - 30 * z, w, 0.6 * z);
       ctx.fillStyle = '#e8c21a'; ctx.fillRect(x + w / 2 - 0.3 * z, y, 0.6 * z, h);
     }
-    if (l.kind === 'field' && z > 0.5) drawCropRows(ctx, cam, l);
+    if (l.kind === 'field' && z > 0.5 && l.dir !== 'none') drawCropRows(ctx, cam, l);
+    if ((l.kind === 'room' || l.kind === 'deck') && z > 1.6) drawFloorBoards(ctx, l, x, y, w, h, z);
     if (l.kind === 'gridiron' && z > 0.8) {
       ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = Math.max(1, 0.15 * z);
       ctx.strokeRect(x, y, w, h);
@@ -159,7 +165,22 @@ export function drawLots(ctx, cam, items) {
       ctx.beginPath(); ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2); ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h); ctx.stroke();
     }
   }
+  ctx.fillStyle = COLORS.iwall;
+  for (const l of walls) ctx.fillRect(cam.sx(l.x), cam.sy(l.z), Math.max(1, l.w * z), Math.max(1, l.d * z));
   drawProps(ctx, cam, items);
+}
+
+// Floorboards, tiles or carpet, so the rooms read when the house fades away.
+function drawFloorBoards(ctx, l, x, y, w, h, z) {
+  ctx.strokeStyle = l.room === 'A' || l.room === 'K' ? 'rgba(255,255,255,0.22)' : l.kind === 'deck' ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const step = (l.room === 'A' || l.room === 'K' ? 1 : 0.5) * z;
+  if (l.room === 'B' || l.room === 'G') { ctx.stroke(); return; }      // carpet
+  if (w > h) for (let t = step; t < h; t += step) { ctx.moveTo(x, y + t); ctx.lineTo(x + w, y + t); }
+  else for (let t = step; t < w; t += step) { ctx.moveTo(x + t, y); ctx.lineTo(x + t, y + h); }
+  if (l.room === 'A' || l.room === 'K') { if (w > h) for (let t = step; t < w; t += step) { ctx.moveTo(x + t, y); ctx.lineTo(x + t, y + h); } else for (let t = step; t < h; t += step) { ctx.moveTo(x, y + t); ctx.lineTo(x + w, y + t); } }
+  ctx.stroke();
 }
 
 // Furrows across a field, only where the field is on screen.
@@ -213,6 +234,10 @@ function drawProps(ctx, cam, items) {
       const cx = cam.sx(p.x), cy = cam.sy(p.z);
       ctx.fillStyle = p.c; ctx.beginPath(); ctx.ellipse(cx, cy, 1.3 * z, 0.7 * z, p.a, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(cx + Math.cos(p.a) * 1.45 * z, cy + Math.sin(p.a) * 1.45 * z, 0.45 * z, 0, Math.PI * 2); ctx.fill();
+    } else if (p.k === 'furn') {
+      if (z > 1.1) drawFurniture(ctx, p.id, x, y, w, h, p.fx, p.fz, z);
+    } else if (p.k === 'bale') {
+      if (z > 0.9) { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(cam.sx(p.x) + 0.3 * z, cam.sy(p.z) + 0.4 * z, p.r * z, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), p.r * z, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(90,70,20,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), p.r * z * 0.55, 0, Math.PI * 2); ctx.stroke(); }
     } else if (p.k === 'towel') {
       ctx.fillStyle = p.c; ctx.fillRect(x, y, w, h);
     } else if (p.k === 'bench') {
@@ -287,7 +312,7 @@ export function drawRoads(ctx, cam, map, signalT) {
       ctx.fillRect(cam.sx(n.x - hw - 3), cam.sy(n.z + k * 2 - 0.5), 2.5 * z, 1 * z);
       ctx.fillRect(cam.sx(n.x + hw + 0.5), cam.sy(n.z + k * 2 - 0.5), 2.5 * z, 1 * z);
     }
-    if (n.edges.length >= 3) {
+    if (n.edges.length >= 3 && !n.edges.every(id => map.roads.edges[id].kind === 'desert')) {
       const ns = signalState(n, signalT);
       const r = Math.max(2, 0.6 * z);
       for (const [dx, dz, axis] of [[-1, -1, 'ns'], [1, 1, 'ns'], [1, -1, 'ew'], [-1, 1, 'ew']]) {
@@ -337,6 +362,9 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
     const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
     const ox = cx * b.h * k, oy = cy * b.h * k;
     if (b.kind === 'roof') { drawGarageRoof(ctx, b, x0 + ox, y0 + oy, w, d, z, showLabels); continue; }
+    if (b.kind === 'home') { drawHome(ctx, cam, b, z, night, showLabels); continue; }
+    if (b.kind === 'pumpjack') { drawPumpjack(ctx, b, x0, y0, w, d, z); continue; }
+    if (b.kind === 'fence') { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x0 + 0.4 * z, y0 + 0.5 * z, Math.max(1, w), Math.max(1, d)); ctx.fillStyle = b.color; ctx.fillRect(x0 + ox, y0 + oy, Math.max(1.2, w), Math.max(1.2, d)); continue; }
     if (b.kind === 'parked') { if (!b.gone) drawParked(ctx, b, x0, y0, w, d, z); continue; }   // gone: stolen (world2d/theft.js)
     if (b.round) { drawRound(ctx, b, x0, y0, ox, oy, w, d, z, night); continue; }
     // shadow
@@ -406,6 +434,89 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
       ctx.fillText(b.label.toUpperCase(), tx, ty + 1);
     }
   }
+}
+
+// A house: one block per part of equal height (1, 2 or 3 stories), walls
+// first and roofs over them, windows on every floor. Fades out (b.a) when
+// you walk in, like the garage roof.
+function drawHome(ctx, cam, b, z, night, showLabels) {
+  if (b.a < 0.03) return;
+  const k = 0.0011;
+  const ps = b.pieces.map(p => {
+    const x0 = cam.sx(p.x), y0 = cam.sy(p.z), w = p.w * z, d = p.d * z;
+    const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
+    return { p, x0, y0, w, d, ox: cx * p.h * k, oy: cy * p.h * k };
+  }).sort((a, c) => a.p.h - c.p.h);
+  ctx.save();
+  ctx.globalAlpha = b.a;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  for (const q of ps) ctx.fillRect(q.x0 + q.p.h * 0.1 * z, q.y0 + q.p.h * 0.12 * z, q.w, q.d);
+  const wallC = shadeHex(b.wall, -0.3), winC = night > 0.3 ? `rgba(255,214,140,${0.45 + 0.4 * night})` : 'rgba(40,60,80,0.75)';
+  for (const q of ps) {
+    const { x0, y0, w, d, ox, oy } = q;
+    ctx.fillStyle = wallC;
+    const quad = (ax, ay, bx, by) => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(bx + ox, by + oy); ctx.lineTo(ax + ox, ay + oy); ctx.closePath(); ctx.fill(); };
+    quad(x0, y0, x0 + w, y0); quad(x0 + w, y0, x0 + w, y0 + d); quad(x0, y0 + d, x0 + w, y0 + d); quad(x0, y0, x0, y0 + d);
+    // a row of windows per floor on the walls you can see
+    if (z > 1.2) {
+      ctx.fillStyle = winC;
+      const n = q.p.floors, ww = Math.max(1, 0.9 * z * 0.4);
+      for (let f = 0; f < n; f++) {
+        const t = (f + 0.55) / (n + 0.15);
+        if (Math.abs(ox) > 2) { const xx = ox > 0 ? x0 + w + ox * t : x0 + ox * t; for (let s = 1.5 * z; s < d - z; s += 3 * z) ctx.fillRect(xx - ww / 2, y0 + oy * t + s, ww, 1.2 * z); }
+        if (Math.abs(oy) > 2) { const yy = oy > 0 ? y0 + d + oy * t : y0 + oy * t; for (let s = 1.5 * z; s < w - z; s += 3 * z) ctx.fillRect(x0 + ox * t + s, yy - ww / 2, 1.2 * z, ww); }
+      }
+    }
+  }
+  for (const q of ps) {
+    const rx = q.x0 + q.ox, ry = q.y0 + q.oy, w = q.w, d = q.d;
+    ctx.fillStyle = b.color; ctx.fillRect(rx, ry, w, d);
+    if (z > 1) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
+      const along = w >= d;
+      if (b.style === 'flat') { ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.strokeRect(rx + 0.6 * z, ry + 0.6 * z, w - 1.2 * z, d - 1.2 * z); }
+      else {
+        const step = (b.style === 'metal' ? 1.4 : 0.9) * z;
+        ctx.beginPath();
+        if (along) for (let t = step; t < d; t += step) { ctx.moveTo(rx, ry + t); ctx.lineTo(rx + w, ry + t); }
+        else for (let t = step; t < w; t += step) { ctx.moveTo(rx + t, ry); ctx.lineTo(rx + t, ry + d); }
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = Math.max(1, 0.25 * z); ctx.beginPath();
+        if (along) { ctx.moveTo(rx, ry + d / 2); ctx.lineTo(rx + w, ry + d / 2); } else { ctx.moveTo(rx + w / 2, ry); ctx.lineTo(rx + w / 2, ry + d); }
+        ctx.stroke();
+      }
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1.2; ctx.strokeRect(rx, ry, w, d);
+  }
+  if (b.label && showLabels && z > 1.3) {
+    const top = ps[ps.length - 1], fs = Math.max(10, Math.min(16, 2.2 * z));
+    ctx.font = `700 ${fs}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const txt = b.label.toUpperCase(), tw = ctx.measureText(txt).width, tx = top.x0 + top.ox + top.w / 2, ty = top.y0 + top.oy + top.d / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(tx - tw / 2 - 6, ty - fs * 0.7, tw + 12, fs * 1.4);
+    ctx.fillStyle = '#fff'; ctx.fillText(txt, tx, ty + 1);
+  }
+  ctx.restore();
+}
+
+// A pumpjack nodding on its pad: the walking beam rocks on the samson post.
+function drawPumpjack(ctx, b, x, y, w, d, z) {
+  const t = performance.now() / 1000, along = b.w >= b.d;
+  const len = (along ? w : d), cx = x + w / 2, cy = y + d / 2;
+  ctx.save(); ctx.translate(cx, cy); if (!along) ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-len / 2 + 0.6 * z, -1.2 * z + 0.8 * z, len, 2.4 * z);
+  ctx.fillStyle = '#5a5248'; ctx.fillRect(-len / 2, -1.4 * z, len, 2.8 * z);                         // skid
+  const nod = Math.sin(t * 1.6 + (b.phase || 0));
+  ctx.fillStyle = '#3a3d42'; ctx.fillRect(-0.6 * z, -0.6 * z, 1.2 * z, 1.2 * z);                       // samson post
+  ctx.save(); ctx.translate(0, -1.6 * z); ctx.scale(1, 1);
+  const lift = nod * 1.2 * z;
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = Math.max(2, 0.7 * z);
+  ctx.beginPath(); ctx.moveTo(-len * 0.42, lift); ctx.lineTo(len * 0.36, -lift); ctx.stroke();              // walking beam
+  ctx.fillStyle = '#c41b1b'; ctx.beginPath(); ctx.moveTo(-len * 0.48, lift - 1.1 * z); ctx.lineTo(-len * 0.38, lift - 1.1 * z); ctx.lineTo(-len * 0.38, lift + 1.1 * z); ctx.lineTo(-len * 0.48, lift + 1.1 * z); ctx.closePath(); ctx.fill();   // horse head
+  ctx.restore();
+  ctx.fillStyle = '#2a2b2e'; ctx.beginPath(); ctx.arc(len * 0.36, 0, 1.1 * z, 0, Math.PI * 2); ctx.fill();          // crank and counterweight
+  ctx.fillStyle = '#c41b1b'; ctx.save(); ctx.translate(len * 0.36, 0); ctx.rotate(t * 1.6 + (b.phase || 0)); ctx.fillRect(-0.3 * z, -1.4 * z, 0.6 * z, 1.4 * z); ctx.restore();
+  ctx.fillStyle = '#6a6f75'; ctx.beginPath(); ctx.arc(-len * 0.44, 0, 0.5 * z, 0, Math.PI * 2); ctx.fill();          // wellhead
+  ctx.restore();
 }
 
 // A parked car (or a rig, when it's long) seen from above.
@@ -699,13 +810,14 @@ export function shadeHex(hex, amt) {
 
 // Static overview of the whole map for the minimap and phone map.
 export function renderOverview(map, scale = 0.12) {
-  const W = 8000, H = 8000, x0 = -4000, z0 = -4000;
+  const W = 8000, H = COUNTRY.z1 + 4600, x0 = -4000, z0 = -4000;
   const c = document.createElement('canvas');
   c.width = W * scale; c.height = H * scale;
   const g = c.getContext('2d');
   const sx = x => (x - x0) * scale, sy = z => (z - z0) * scale;
   g.fillStyle = '#1e2619'; g.fillRect(0, 0, c.width, c.height);
-  g.fillStyle = '#7d6a4c'; g.fillRect(0, sy(DESERT_Z), c.width, c.height);
+  g.fillStyle = '#7d6a4c'; g.fillRect(0, sy(DESERT_Z), c.width, (COUNTRY.z0 - DESERT_Z) * scale);
+  g.fillStyle = '#2c3a22'; g.fillRect(sx(COUNTRY.x0), sy(COUNTRY.z0), (COUNTRY.x1 - COUNTRY.x0) * scale, (COUNTRY.z1 - COUNTRY.z0) * scale);
   g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
   g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
   for (const l of map.lots) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }

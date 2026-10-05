@@ -8,6 +8,7 @@
 //   right stick         scroll
 //   Start / View        close the panel (pause menu, phone)
 //   ◀ ▶ on a slider or dropdown change its value
+//   on a plan with its own cursor (data-padgrid), the D-pad moves that cursor
 //
 // The highlighted button gets the .pad-focus ring (css/main.css).
 
@@ -108,6 +109,15 @@ function adjust(n, d) {
   return true;
 }
 
+// A plan or board with its own cursor (data-padgrid, like the house
+// builder): it gets the D-pad until the cursor runs off its edge.
+function gridMove(n, dx, dy) {
+  if (!n.matches('[data-padgrid]')) return false;
+  const detail = { dx, dy, used: false };
+  n.dispatchEvent(new CustomEvent('padmove', { detail }));
+  return detail.used;
+}
+
 function press(n) {
   if (n.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea')) { n.focus(); return; }
   n.click();
@@ -157,7 +167,7 @@ export function padNav() {
   } else repeatDir = d;
   if (d) {
     const [dx, dy] = DIRS[d];
-    if (!(dx && cur && adjust(cur, dx))) move(layer, dx, dy);
+    if (!(cur && gridMove(cur, dx, dy)) && !(dx && cur && adjust(cur, dx))) move(layer, dx, dy);
   } else if (!cur && Object.keys(DIRS).some(b => pad.down.has(b))) move(layer, 0, 0);
 
   if (pad.edge.has('A')) { if (cur) press(cur); else move(layer, 0, 0); }

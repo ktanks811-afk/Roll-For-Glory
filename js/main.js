@@ -11,6 +11,7 @@ import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
+import { estateDay } from './core/estate.js';
 import { drugsDay } from './core/drugs.js';
 import { fedsDay } from './core/bank.js';
 import { chopDay, PARTS_CHARGE } from './core/chop.js';
@@ -161,6 +162,8 @@ function newDay() {
   // the weekend night meet: Dre texts the spot on Friday and Saturday
   if (MEET_NIGHTS.includes(dayName(s.time))) sendMessage(s, 'kingpin', `Meet tonight at La Gran Plaza, 9 PM till 3. Crews are pulling up. Bring something clean.`, { action: { type: 'gps', loc: MEET_LOC } });
   hustleDay(s);
+  // oil leases pay out, the ranch settles up (core/estate.js)
+  for (const n of estateDay(s).notes) toast(n, 'good');
   // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at
   const dr = drugsDay(s);
   for (const n of dr.notes) toast(n, 'info');

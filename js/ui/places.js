@@ -28,7 +28,7 @@ import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
 import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
-import { openRealty, openTrap, openLand, openPlug } from './estate.js';
+import { openRealty, openTrap, openLand, openPlug, openRig, openRanch, openRemodel, openBuild } from './estate.js';
 import { ensureLoot } from '../core/loot.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
 import { MENUS } from '../data/food.js';
@@ -39,6 +39,7 @@ import { openHospital } from './hospital.js';
 import { openTrailerLot, openTrailerHome } from './trailers.js';
 import { describe as towLine } from '../core/tow.js';
 import { BREAKDOWNS, needsOil, oilChangeCost, changeOil, clearBreakdown, oilInterval } from '../core/upkeep.js';
+import { fromPreset, summary as houseLine } from '../core/homes.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 
@@ -61,6 +62,7 @@ const HANDLERS = {
   realty: (loc, app) => openRealty(app),
   trap: (loc, app) => openTrap(loc, app),
   land: (loc, app) => openLand(loc, app),
+  rig: (loc, app) => openRig(loc, app),
   plug: (loc, app) => openPlug(loc, app),
   pawn: (loc, app) => openPawn(loc, app),
   trailers: (loc, app) => openTrailerLot(loc, app),
@@ -90,7 +92,11 @@ export function homeScreen(loc, app, s) {
   if (s.home !== loc.id) s.home = loc.id;
   openPanel((root, h) => {
     const hr = hourOf(s.time);
-    root.innerHTML = head(prop.name, `Home · ${prop.slots} car garage · ${esc(prop.desc)}`) + `<div class="p-body"><div class="grid">
+    const kind = prop.land ? `${prop.stories}-story · comfort ${prop.comfort}` : prop.house ? houseLine(fromPreset(prop.house)) : '';
+    root.innerHTML = head(prop.name, `Home · ${kind ? `${kind} · ` : ''}${prop.slots} car garage · ${esc(prop.desc)}`) + `<div class="p-body"><div class="grid">
+      ${prop.land ? `<div class="card click" data-action="remodel"><h3>🏗 Redesign the house</h3><p class="muted small">Rooms, floors, furniture, colors. Sims style.</p></div>
+      <div class="card click" data-action="biggarage"><h3>🚗 Bigger garage</h3><p class="muted small">${prop.slots} cars now. Up to a 100-car vault.</p></div>
+      <div class="card click" data-action="ranch"><h3>🐄 Ranch</h3><p class="muted small">Fence the back, buy cows, horses and dogs.</p></div>` : ''}
       <div class="card click" data-action="garage"><h3>🔧 Garage</h3><p class="muted small">Install parts (DIY), switch cars, dyno, tune.</p></div>
       <div class="card click" data-action="sleep" data-to="8"><h3>🛏 Sleep until morning</h3><p class="muted small">Skip to 8:00 AM, fully rested. Saves your game.</p></div>
       <div class="card click" data-action="sleep" data-to="21"><h3>🌙 Rest until night</h3><p class="muted small">Skip to 9:00 PM, fully rested. Meets are on. Saves your game.</p></div>
@@ -104,6 +110,9 @@ export function homeScreen(loc, app, s) {
     bind(root, {
       close: () => h.close(),
       garage: () => openGarage(app, { mode: 'home' }),
+      remodel: () => openRemodel(app, loc.id),
+      biggarage: () => openBuild(app, loc.id),
+      ranch: () => openRanch(app, loc.id),
       trailer: () => openTrailerHome(app),
       keephot: () => {
         if (!w.thefts.canKeep()) { toast('No room. Sell a car or buy a bigger place first.', 'bad'); return; }
