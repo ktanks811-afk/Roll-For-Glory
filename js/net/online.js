@@ -303,6 +303,7 @@ class Online {
       this.peers.set(m.id, p);
       // we don't know this car yet: introduce ourselves so they can draw us too
       if (now - this.helloReplyT > 1) { this.helloReplyT = now; this.sendHello(); }
+      this.emit('newpeer', p);   // … and show them our place (net/builds.js)
     }
     p.seen = now;
     if (m.k === 'h') {
@@ -333,6 +334,9 @@ class Online {
       p.honkAt = now; this.emit('honk', p);
     } else if (m.k === 'deed') {
       this.emit('deed', m);
+    } else if (m.k === 'bld') {
+      // what a player has built on their property (net/builds.js)
+      this.emit('bld', m);
     } else if (m.k === 'pay') {
       // Cowtown Pay: "check your mailbox" for whoever got paid (net/pay.js)
       if (typeof m.u === 'string' && m.u.length <= 16) this.emit('pay', { u: m.u });

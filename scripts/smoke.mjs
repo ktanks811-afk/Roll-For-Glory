@@ -1216,14 +1216,24 @@ await step('online free roam', async () => {
   await snap('23-online-panel');
   await p.keyboard.press('Escape');
   // head-to-head: tab 1 calls tab 2 out, tab 2 accepts, both get a race against the other player
-  await p2.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.inCar = true; });
+  // tab 2 has to be able to say yes: in the car, gas in the tank, no cops on it, money for the wager
+  await p2.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { activeCar } = await import('./js/core/state.js');
+    const r = window.__rfg, w = r.app.world, car = activeCar(r.game.s);
+    w.inCar = true; car.fuel = 1; car.broken = false; r.game.s.heat = 0; r.game.s.cash = Math.max(r.game.s.cash, 5000);
+    if (w.police.active) w.police.reset(w);
+  });
   await p.evaluate(async () => {
     const { pvp } = await import('./js/net/pvp.js');
     const peer = window.__rfg.online.list().find(o => o.name !== 'Eve' && o.id !== 'evil2');
-    window.__rfg.app.world.inCar = true;
+    // the heat set above can bring the cops, and a challenger with cops on them can't start the race
+    const { activeCar } = await import('./js/core/state.js');
+    const r = window.__rfg, w = r.app.world;
+    w.inCar = true; activeCar(r.game.s).fuel = 1; r.game.s.heat = 0; if (w.police.active) w.police.reset(w);
     if (!pvp.challenge(peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 500 })) throw new Error('challenge not sent');
   });
-  await p2.waitForSelector('.modal-back button:has-text("Run it")', { timeout: 5000 });
+  await p2.waitForSelector('.modal-back button:has-text("Run it")', { timeout: 5000 }).catch(async e => { throw new Error('no race invite to accept on tab 2: ' + (await p2.evaluate(() => document.querySelector('.modal-back')?.textContent || 'no modal'))); });
   const inviteText = await p2.textContent('.modal-back .modal-body');
   if (!/1\/4 mile drag race/.test(inviteText) || !/\$500/.test(inviteText)) throw new Error('invite reads wrong: ' + inviteText);
   if (shots) await p2.screenshot({ path: `${OUT}/23b-race-invite.png` });
@@ -1268,13 +1278,67 @@ await step('online free roam', async () => {
   });
   console.log('     deeds', JSON.stringify(deedCheck));
   if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
+  // your place on their screen: tab 2 (another player) builds a house, garage and pasture on Lake Worth
+  // and parks cars in it; tab 1 sees it go up and can walk into the garage and look at the cars
+  const shown = await p2.evaluate(async () => {
+    const r = window.__rfg, s = r.game.s, w = r.app.world;
+    const { packMine } = await import('./js/world2d/showcase.js');
+    const { builds } = await import('./js/net/builds.js');
+    const { fromPreset, sanitize } = await import('./js/core/homes.js');
+    const { applyEstate } = await import('./js/world2d/estate.js');
+    s.uid = 'zzzz9999'; s.homeServer = 'harbor'; s.player.name = 'Zed';
+    s.estate.land.land_lakeworth = { owned: true, plan: 'modern', ready: 0, done: true, design: sanitize(fromPreset('two')), designOk: true, fence: 'wire', animals: { cow: 4, horse: 1 } };
+    for (let i = 0; i < 3; i++) s.cars.push({ ...structuredClone(s.cars[0]), uid: 'show' + i, visual: { ...s.cars[0].visual, paint: ['#d01818', '#18a0d0', '#e8c020'][i] } });
+    applyEstate(w.map, s);
+    s.home = 'land_lakeworth';
+    const mine = packMine(w);
+    builds.sendT = 0; builds.tick(s, 0.1, mine);
+    return { props: Object.keys(mine), lw: { cars: mine.land_lakeworth?.cars.length, plan: mine.land_lakeworth?.land?.plan, floors: mine.land_lakeworth?.land?.design?.floors.length } };
+  });
+  console.log('     tab 2 shows', JSON.stringify(shown));
+  if (!(shown.lw.cars >= 3 && shown.lw.plan === 'modern' && shown.lw.floors === 2)) throw new Error('your place did not pack up: ' + JSON.stringify(shown));
+  const seenPlace = await p.evaluate(async () => {
+    const r = window.__rfg, s = r.game.s, w = r.app.world;
+    const { builds } = await import('./js/net/builds.js');
+    if (s.estate?.land?.land_lakeworth?.owned) delete s.estate.land.land_lakeworth;
+    s.homeServer = 'harbor';
+    await builds.load('harbor', true);
+    for (let i = 0; i < 20 && !builds.all(s).length; i++) await new Promise(res => setTimeout(res, 150));
+    w.showcase.t = 0; w.showcase.update(0.1); w.updateGarageCars(1);
+    const g = w.map.garages.find(q => q.id === 'land_lakeworth'), h = w.map.houses.find(q => q.id === 'land_lakeworth');
+    if (!g) return { err: 'no garage on their land', all: builds.all(s).map(x => x[0]) };
+    const cars = w.garageCars.filter(c => c.garage === 'land_lakeworth').length;
+    // walk in through the open door
+    w.inCar = false; w.foot.x = g.center.x; w.foot.z = g.center.z; w.updateInteractions();
+    const visiting = w.visiting === g, door = g.panel.off;
+    for (let i = 0; i < 30; i++) w.update(0.05);
+    w.cam.x = g.center.x; w.cam.z = g.center.z;
+    return { cars, visiting, door, roof: g.roof.label, roofA: +g.roof.a.toFixed(2), house: !!h, houseOwner: h?.owner, animals: w.ranch.list.filter(a => a.home === 'land_lakeworth').length };
+  });
+  console.log('     tab 1 sees', JSON.stringify(seenPlace));
+  if (seenPlace.err || seenPlace.cars < 3 || !seenPlace.visiting || !seenPlace.door || !seenPlace.house || seenPlace.houseOwner !== 'Zed' || seenPlace.animals !== 5 || seenPlace.roofA > 0.3) throw new Error('their place does not show right: ' + JSON.stringify(seenPlace));
+  await snap('23d-their-garage');
+  // hostile builds are cleaned up or dropped
+  await p.evaluate(() => {
+    const ch = new BroadcastChannel('rfg:harbor');
+    ch.postMessage({ k: 'bld', id: 'evil3', u: 'evil3', n: '<b>x</b>', p: '__proto__', b: { cars: [{ m: '__proto__' }] } });
+    ch.postMessage({ k: 'bld', id: 'evil3', u: 'evil3', n: 'Eve', p: 'land_six_bunche', b: { cars: [{ m: 'nope' }], land: { plan: 'vault', design: { floors: ['<script>'.repeat(99)], furn: [[{ id: 'bed', x: 1e9 }]] }, animals: { cow: 1e9 } } } });
+    ch.close();
+  });
+  await p.waitForTimeout(400);
+  const evilBuild = await p.evaluate(async () => { const { builds } = await import('./js/net/builds.js'); const e = builds.at(window.__rfg.game.s, 'land_six_bunche'); return { proto: builds.live.has('__proto__'), cows: e?.b.land?.animals.cow, plan: e?.b.land?.plan || null }; });
+  console.log('     hostile build cleaned to', JSON.stringify(evilBuild));
+  if (evilBuild.proto || evilBuild.cows > 80 || evilBuild.plan) throw new Error('hostile build got through: ' + JSON.stringify(evilBuild));
   // riding along: tab 1 walks up and asks tab 2 for a ride, tab 2 lets them in, then the other way round
   const ridePump = pg => pg.evaluate(() => { clearInterval(window.__pump); window.__pump = setInterval(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); }, 120); });
   await ridePump(p); await ridePump(p2);
   const carOf = pg => pg.evaluate(() => { const v = window.__rfg.app.world.vehicle; return { x: v.x, z: v.z, h: v.h }; });
   const standBy = (pg, c) => pg.evaluate(c => { const w = window.__rfg.app.world; w.inCar = false; w.foot.x = c.x + 3; w.foot.z = c.z; w.nearLoc = null; }, c);
   const sitIn = pg => pg.evaluate(() => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; w.nearLoc = null; });
-  const until = async (pg, fn, what, arg) => { for (let i = 0; i < 30; i++) { if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
+  // the tab being checked goes to the front: a background tab gets no frames (so no HUD) and slowed timers
+  // and both tabs get a network tick each try, so nothing waits on a throttled background timer
+  const tickBoth = () => Promise.all([p, p2].map(pg => pg.evaluate(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); })));
+  const until = async (pg, fn, what, arg) => { await pg.bringToFront(); for (let i = 0; i < 50; i++) { await tickBoth(); if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
   await sitIn(p2); await standBy(p, await carOf(p2));
   await until(p, () => window.__rfg.app.world.rides.near?.inCar, 'no "ask for a ride" next to their car');
   const askLine = await p.evaluate(() => window.__rfg.app.world.rides.promptHtml(false));

@@ -41,6 +41,7 @@ import { toggleMask, masked } from '../core/disguise.js';
 import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
 import { tickNeeds, runMul } from '../core/needs.js';
 import { applyEstate } from './estate.js';
+import { Showcase } from './showcase.js';
 import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
 import { seizeCash } from '../core/bank.js';
@@ -98,6 +99,8 @@ export class World {
     this.pullups = new Pullups(this);
     this.rides = new RideAlong(this);
     this.ranch = new Ranch(this);
+    this.showcase = new Showcase(this);   // other players' places on your server, and yours on theirs
+    this.visiting = null;       // another player's garage or house you've walked into
     this.spawnPlayer();
   }
 
@@ -228,8 +231,9 @@ export class World {
     // interactions
     this.updateInteractions();
     this.updateGarageCars(dt);
-    for (const g of this.map.garages) g.roof.a += ((g === this.inGarage ? 0 : 1) - g.roof.a) * Math.min(1, dt * 4);
-    for (const h of this.map.houses) if (h.mass) h.mass.a += ((h === this.inHouse ? 0 : 1) - h.mass.a) * Math.min(1, dt * 4);
+    for (const g of this.map.garages) g.roof.a += ((g === this.inGarage || g === this.visiting ? 0 : 1) - g.roof.a) * Math.min(1, dt * 4);
+    for (const h of this.map.houses) if (h.mass) h.mass.a += ((h === this.inHouse || h === this.visiting ? 0 : 1) - h.mass.a) * Math.min(1, dt * 4);
+    this.showcase.update(dt);
     this.ranch.update(dt);
 
     // camera
@@ -784,13 +788,16 @@ export class World {
       const d = Math.hypot(l.x - p.x, l.z - p.z);
       if (d < bd) { bd = d; best = l; }
     }
-    // garages: doors open for places you own, the roof fades when you're inside
-    let inside = null, hint = '';
+    // garages: doors open for places you own, and for other players' places
+    // on your server so you can look around; the roof fades when you're inside
+    let inside = null, hint = '', visit = null;
     for (const g of this.map.garages) {
-      const owned = st.properties.includes(g.id);
-      g.panel.off = owned;
+      const owned = st.properties.includes(g.id), theirs = !owned && this.showcase.ownerOf(g.id);
+      g.panel.off = owned || !!theirs;
       const inn = g.inner;
-      if (owned && !this.rides.riding && p.x > inn.x && p.x < inn.x + inn.w && p.z > inn.z && p.z < inn.z + inn.d) inside = g;
+      const inn2 = p.x > inn.x && p.x < inn.x + inn.w && p.z > inn.z && p.z < inn.z + inn.d;
+      if (theirs && inn2 && !this.rides.riding) visit = g;
+      if (owned && !this.rides.riding && inn2) inside = g;
       else if (owned && !inside && Math.hypot(p.x - g.park.x, p.z - g.park.z) < 22 && true) {
         hint = this.inCar ? `Drive into the garage — ${g.loc.name.split(' (')[0]}` : `Walk into your garage — ${g.loc.name.split(' (')[0]}`;
       }
@@ -801,11 +808,14 @@ export class World {
     // away when you walk in so you can see the rooms
     let home = null;
     for (const h of this.map.houses) {
-      if (Math.abs(h.door?.x - p.x) > 80 || Math.abs(h.door?.z - p.z) > 80) { if (h.panel) h.panel.off = st.properties.includes(h.id); continue; }
-      const owned = st.properties.includes(h.id);
-      if (h.panel) h.panel.off = owned;
+      const owned = st.properties.includes(h.id), theirs = !owned && this.showcase.ownerOf(h.id);
+      if (Math.abs(h.door?.x - p.x) > 80 || Math.abs(h.door?.z - p.z) > 80) { if (h.panel) h.panel.off = owned || !!theirs; continue; }
+      if (h.panel) h.panel.off = owned || !!theirs;
       if (owned && !this.inCar && !this.rides.riding && inHouse(h, p.x, p.z)) home = h;
+      if (theirs && !this.inCar && !this.rides.riding && inHouse(h, p.x, p.z)) visit = h;
     }
+    if (visit && visit !== this.visiting) this.ui.toast(`${this.showcase.ownerOf(visit.id)}'s ${visit.mass || visit.floor0 ? 'house' : 'garage'}. Have a look around.`, 'info');
+    this.visiting = visit;
     if (home && home !== this.inHouse) this.ui.toast(`${home.loc.name.split(' (')[0]}: home. Press ${pad.inUse ? 'A' : 'E'} to sleep, save or change clothes.`, 'info');
     this.inHouse = home;
     if (home && !inside) best = home.loc;
@@ -826,11 +836,9 @@ export class World {
     }
   }
 
-  // Your other cars, parked in the bays of the garages you own.
-  updateGarageCars(dt) {
-    this.garageT -= dt;
-    if (this.garageT > 0) return;
-    this.garageT = 0.5;
+  // Which of your other cars sits in which bay: [{ g, bay, car }], garages in
+  // the order you fill them (your home first).
+  garageAssign() {
     const st = this.s;
     const away = awayFromGarage(st);   // on the trailer, or the truck parked out with it
     const others = st.cars.filter(c => c.uid !== st.activeCar && !c.stolen && !away.has(c.uid));
@@ -841,16 +849,29 @@ export class World {
       for (const bay of g.bays) {
         const car = others[k++];
         if (!car) break;
-        const model = CAR_BY_ID[car.modelId];
-        if (!model) continue;
-        const key = car.uid + JSON.stringify([car.visual, levels(car), (car.cond?.body ?? 100) | 0]);
-        let spr = this.garageSprites.get(key);
-        if (!spr) { spr = carSprite(model, car.visual, levels(car), car.cond, { crewColor: st.crew?.color }); this.garageSprites.set(key, spr); }
-        out.push({ x: bay.x, z: bay.z, h: bay.h, sprite: spr, dims: dimsFor(model), garage: g.id, car });
+        if (CAR_BY_ID[car.modelId]) out.push({ g, bay, car });
       }
     }
+    return out;
+  }
+
+  // Your other cars, parked in the bays of the garages you own, and other
+  // players' cars in theirs (world2d/showcase.js).
+  updateGarageCars(dt) {
+    this.garageT -= dt;
+    if (this.garageT > 0) return;
+    this.garageT = 0.5;
+    const st = this.s;
+    const sprite = (model, visual, lv, cond, key, crewColor) => {
+      let spr = this.garageSprites.get(key);
+      if (!spr) { spr = carSprite(model, visual, lv, cond, { crewColor }); this.garageSprites.set(key, spr); }
+      return { sprite: spr, dims: dimsFor(model) };
+    };
+    const out = this.garageAssign().map(({ g, bay, car }) => ({ x: bay.x, z: bay.z, h: bay.h, garage: g.id, car,
+      ...sprite(CAR_BY_ID[car.modelId], car.visual, levels(car), car.cond, car.uid + JSON.stringify([car.visual, levels(car), (car.cond?.body ?? 100) | 0]), st.crew?.color) }));
+    out.push(...this.showcase.cars(c => sprite(CAR_BY_ID[c.m], c.v, c.l, c.cond, 'o:' + JSON.stringify(c), null)));
     this.garageCars = out;
-    if (this.garageSprites.size > 40) this.garageSprites.clear();
+    if (this.garageSprites.size > 80) this.garageSprites.clear();
   }
 
   // The road route from where you are to (x, z): { path: [[x, z], …], names, meters }.
