@@ -14,6 +14,7 @@ import { Gigs } from './gigs.js';
 import { GangWorld } from './gangs.js';
 import { StreetRaces } from './streetRace.js';
 import { Trailers } from './trailer.js';
+import { Pullups } from './pullups.js';
 import { Ranch } from './ranch.js';
 import { inHouse } from './house.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
@@ -93,6 +94,7 @@ export class World {
     this.gangs = new GangWorld(this);
     this.races = new StreetRaces(this);
     this.trailers = new Trailers(this);
+    this.pullups = new Pullups(this);
     this.ranch = new Ranch(this);
     this.spawnPlayer();
   }
@@ -200,6 +202,7 @@ export class World {
     this.gigs.update(dt);
     this.gangs.update(dt);
     this.races.update(dt);
+    this.pullups.update(dt);
     this.trailers.update(dt);
     this.updateOnline(dt);
 
@@ -212,7 +215,7 @@ export class World {
       signalT: this.signalT, px: p.x, pz: p.z, density, inCity, night: isNight(s.time),
       weatherSlow: isWet(s) || s.weather === 'fog' ? 0.8 : 1,
       movers: this.vehicle ? [this.vehicleMover()] : [],
-      extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars(), ...this.thefts.obstacles(), ...this.trailers.obstacles()],
+      extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars(), ...this.pullups.cars(), ...this.thefts.obstacles(), ...this.trailers.obstacles()],
     });
     this.traffic.update(dt, this.trafficCtx);
     this.police.update(dt, this);
@@ -797,7 +800,8 @@ export class World {
     if (this.races.active) best = null;
     this.nearLoc = best;
     if (input.pressed('interact')) {
-      if (this.trailers.tryUse()) { /* unloaded the car off the trailer, or loaded it back up */ }
+      if (this.pullups.tryUse()) { /* said bet to the racer beside you */ }
+      else if (this.trailers.tryUse()) { /* unloaded the car off the trailer, or loaded it back up */ }
       else if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
       else if (best && this.combat.armed && this.combat.storeNear()) this.ui.toast(`Holster your weapon (${pad.inUse ? 'LT' : 'G'}) to go inside.`, 'info');
       else if (best) this.ui.openPlace(best, this);
@@ -929,6 +933,7 @@ export class World {
     this.cam.x = p.x; this.cam.z = p.z;
     this.skids.length = 0; this.smoke.length = 0;
     this.traffic.cars = [];   // fresh traffic around where you landed
+    this.pullups.remove();     // whoever was riding beside you stays behind
     // the clock moves on in half-hour steps so hourly and daily events still fire
     for (let left = q.minutes; left > 0; left -= 30) this.advanceClock(Math.min(30, left));
     if (s.gps && Math.hypot(s.gps.x - x, s.gps.z - z) < 30) { s.gps = null; this.gpsPath = null; }
@@ -983,7 +988,7 @@ export class World {
       else drawPerson(ctx, cam.sx(pd.x), cam.sy(pd.z), pd.cower ? Math.PI : 0, cam.zoom, { top: pd.color, skin: '#c68e65', hair: '#222' }, pd.cower ? 0 : this.t * 6 * pd.sp);
     }
     // cars
-    const cars = [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.police.blocks.flatMap(b => b.cars), ...this.races.cars()];
+    const cars = [...this.traffic.cars, ...this.police.patrols, ...this.police.units, ...this.police.blocks.flatMap(b => b.cars), ...this.races.cars(), ...this.pullups.cars()];
     const night = this.darkness();
     for (const c of cars) {
       if (c.x < v.x0 || c.x > v.x1 || c.z < v.z0 || c.z > v.z1) continue;
@@ -1110,6 +1115,7 @@ export class World {
       }
       ctx.restore();
     }
+    this.pullups.drawFlash(ctx, cam);
     if (this.police.heli) {
       // spotlight: a faint beam from Air One down to the pool of light on the target
       const hl = this.police.heli, hx = cam.sx(hl.x), hy = cam.sy(hl.z), lx = cam.sx(hl.spot.x), ly = cam.sy(hl.spot.z), lr = 20 * cam.zoom;
@@ -1160,6 +1166,7 @@ export class World {
       }
     }
     this.races.drawOverlay(ctx, W, H);
+    this.pullups.drawOverlay(ctx, W, H);
   }
 
   // The GPS route painted on the road: a dark casing, a bright red ribbon
@@ -1251,6 +1258,7 @@ export class World {
 
   destroy() {
     this.races.destroy();
+    this.pullups.destroy();
     if (this.engine) this.engine.stop();
     audio.siren(false);
     audio.music(null);

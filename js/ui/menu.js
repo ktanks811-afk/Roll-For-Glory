@@ -269,6 +269,7 @@ export function openSettings(app) {
         <label class="field"><span>Music volume — ${Math.round(settings.music * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.music}" data-range="music" class="input"></label>
         <label class="field"><span>Camera view (driving) — V</span>${opt('camMode', [['top', 'Top-down'], ['chase', 'Third person']])}</label>
         <label class="field"><span>Camera shake</span>${opt('shake', [[true, 'On'], [false, 'Off']])}</label>
+        <label class="field"><span>Racers pulling up on you to race</span>${opt('pullups', [[true, 'On'], [false, 'Off']])}</label>
         <label class="field"><span>Touch controls</span>${opt('touch', [['auto', 'Auto'], ['on', 'Always'], ['off', 'Off']])}</label>
         ${settings.touch === 'on' || (settings.touch === 'auto' && isTouchDevice()) ? `<label class="field"><span>Touch button layout</span><div class="opts"><button data-action="editTouch">Edit button layout</button></div></label>` : ''}
         <label class="field"><span>FPS counter</span>${opt('showFps', [[true, 'On'], [false, 'Off']])}</label>
