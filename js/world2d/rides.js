@@ -135,6 +135,7 @@ export class RideAlong {
   update(dt) {
     const w = this.w;
     this.near = null;
+    this.shareCops();
     const r = rides.with;
     if (r) {
       const p = this.peer;
@@ -155,6 +156,24 @@ export class RideAlong {
       if (d < bd) { bd = d; best = p; }
     }
     this.near = best; this.nearD = bd;
+  }
+
+  // One car, one chase: when the cops get on anyone in the car (the driver or
+  // a passenger), they get on everyone in it. Only the moment it starts is
+  // passed on, so whoever shakes them first isn't pulled back in for ever.
+  shareCops() {
+    const w = this.w, pol = w.police;
+    if (!online.active || !pol) return;
+    const mates = rides.with ? [this.peer].filter(Boolean) : w.inCar ? rides.riders() : [];
+    for (const p of mates) {
+      const was = p.copsSeen;
+      p.copsSeen = p.cops;
+      if (!p.cops || was) continue;
+      if (pol.phase === 'chase') continue;
+      if (w.s.heat < 1.05) pol.addHeat(1.05 - w.s.heat, 'Vehicle with a suspect inside.', w.hud);
+      pol.startChase(w, true);
+      w.ui.toast(rides.with ? `The cops are on ${p.name}, and you're in the car.` : `The cops are on ${p.name}. You're driving, so they're on you too.`, 'bad');
+    }
   }
 
   // Where the camera should sit while you ride: their car.

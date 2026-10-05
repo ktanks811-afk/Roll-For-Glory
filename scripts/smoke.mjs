@@ -1291,6 +1291,15 @@ await step('online free roam', async () => {
   // the passenger's dash shows the driver's speed, gear and revs (sent while someone rides along)
   await until(p, () => { const d = document.querySelector('[data-dash]'), r = window.__rfg.app.world.rides.peer; return d && !d.classList.contains('hidden') && r?.gear && document.querySelector('[data-gear]').textContent === r.gear && /passenger/.test(document.querySelector('[data-carname]').textContent); }, 'passenger dash does not show the driver\'s gauges');
   if (shots) { await p.evaluate(() => { const w = window.__rfg.app.world; w.update(0.05); }); await snap('23c-riding-along'); }
+  // one car, one chase: the cops get on the driver, so they're on the passenger too
+  await p2.evaluate(() => { const w = window.__rfg.app.world; w.police.addHeat(1.5, 'test', w.hud); w.police.startChase(w, true); });
+  await until(p, () => window.__rfg.app.world.police.phase === 'chase', 'the driver\'s chase did not reach the passenger');
+  for (const pg of [p, p2]) await pg.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); window.__rfg.game.s.heat = 0; });
+  // a passenger's gunshot shows up on the driver's screen
+  await p2.evaluate(() => { window.__rfg.app.world.combat.tracers.length = 0; });
+  await p.evaluate(() => { const f = window.__rfg.app.world.foot; window.__rfg.online.shotT = 0; window.__rfg.online.shot(f.x, f.z, f.x + 12, f.z); });
+  await until(p2, () => window.__rfg.app.world.combat.tracers.length > 0, 'the passenger\'s shot never reached the driver');
+  if (!(await p.evaluate(() => window.__rfg.app.world.rides.riding))) throw new Error('passenger fell out of the car during the chase test');
   // the driver drops them off: back on foot beside the car
   await p2.evaluate(async () => { const { rides } = await import('./js/net/ride.js'); rides.drop(rides.riders()[0]); });
   await until(p, () => !window.__rfg.app.world.rides.riding, 'drop-off did not put the passenger out');

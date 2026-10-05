@@ -47,6 +47,11 @@ const IDLE_EVERY = 2;        // … while parked
 const ERR_POS = 0.5;         // metres of prediction error before we send
 const ERR_HEAD = 0.05;       // radians
 const ERR_SPD = 1.2;         // m/s
+// With passengers aboard the driver sends tighter: on the passenger's phone
+// the camera rides that car, so every correction would show as a skip.
+const CARRY = { hz: 24, keep: 0.12, pos: 0.15, head: 0.02, spd: 0.4 };
+const SMOOTH = 7;            // how quickly other cars settle onto each update (per s)
+const SHOT_GAP = 0.08;       // fastest we pass on gunshots (s)
 const HELLO_EVERY = 6;       // seconds between car-appearance refreshes
 const PEER_TIMEOUT = 7;      // seconds of silence before a peer disappears
 const MAX_PEERS = 24;
@@ -284,6 +289,12 @@ class Online {
     this.addChat(this.name, t, true);
   }
   honk() { this.send({ k: 'ho' }); }
+  shot(x0, z0, x1, z1) {
+    const now = performance.now() / 1000;
+    if (now - (this.shotT || 0) < SHOT_GAP) return;
+    this.shotT = now;
+    this.send({ k: 'sh', x0: +x0.toFixed(1), z0: +z0.toFixed(1), x1: +x1.toFixed(1), z1: +z1.toFixed(1) });
+  }
 
   addChat(name, text, mine = false) {
     this.chat.push({ name, text, mine, t: Date.now() });
@@ -322,10 +333,18 @@ class Online {
       p.q = q;
       const x = num(m.x, -9000, 9000), z = num(m.z, -9000, 9000);
       p.st = { x, z, h: num(m.h, -20, 20), v: num(m.v, -80, 120), r: num(m.r, -4, 4), a: num(m.a, -30, 30) };
-      p.sp = p.st.v; p.inCar = !!m.c; p.sflame = num(m.f, 0, 2); p.t = now;
+      p.sp = p.st.v; p.inCar = !!m.c; p.sflame = num(m.f, 0, 2);
+      // When was this sample taken, on our clock? Arrival time alone is off by
+      // however long this packet happened to take, and at speed that wobble
+      // shows as the car skipping. Their send time plus the quickest trip
+      // we've seen (allowed to creep up slowly, for clock drift) evens it out.
+      const ts = num(m.ts, 0, 1e9, 0), lag = now - ts;
+      if (ts) { p.clk = p.clk == null || lag < p.clk ? lag : p.clk + Math.min(0.02, (now - (p.t || now)) * 0.01); p.t = Math.min(now, ts + p.clk); }
+      else p.t = now;
       p.ride = typeof m.rd === 'string' && m.rd.length <= 16 ? m.rd : '';
       // gear and revs: only sent while they have passengers, for the passenger's dash
       p.gear = typeof m.g === 'string' && /^[RDN–1-9]$/.test(m.g) ? m.g : ''; p.rpm = num(m.rp, 0, 1.2, 0);
+      p.cops = !!m.pc;   // police are on them (shared with whoever they ride with)
       if (p.fresh) { p.x = x; p.z = z; p.h = p.st.h; p.fresh = false; }
     } else if (m.k === 'c') {
       this.addChat(cleanName(m.n, p.name), cleanText(m.x));
@@ -336,6 +355,10 @@ class Online {
     } else if (m.k === 'pv') {
       // head-to-head race invites (net/pvp.js); only the one it's for reads it
       if (m.to === this.id) this.emit('pvp', { ...m, from: m.id, peer: p });
+    } else if (m.k === 'sh') {
+      // a gunshot: muzzle to where it hit
+      const s = { x0: num(m.x0, -9000, 9000), z0: num(m.z0, -9000, 9000), x1: num(m.x1, -9000, 9000), z1: num(m.z1, -9000, 9000) };
+      if (Math.hypot(s.x1 - s.x0, s.z1 - s.z0) < 400) this.emit('shot', { ...s, peer: p });
     } else if (m.k === 'rq') {
       // ride-along requests (net/ride.js)
       if (m.to === this.id) this.emit('ride', { ...m, from: m.id, peer: p });
@@ -363,19 +386,22 @@ class Online {
       const sent = this.sent;
       let need = !sent || sent.c !== (me.inCar ? 1 : 0) || Math.abs((sent.f || 0) - me.flame) > 0.3 || (sent.rd || '') !== this.ride;
       const since = sent ? now - sent.t : 99;
+      const tight = me.carrying && me.inCar;
       if (!need && this.ride) need = since >= IDLE_EVERY;
       else if (!need) {
-        if (since >= (moving ? KEEPALIVE : IDLE_EVERY)) need = true;
+        if (since >= (moving ? (tight ? CARRY.keep : KEEPALIVE) : IDLE_EVERY)) need = true;
         else {
           const g = predict(sent, since);
-          need = Math.hypot(g.x - me.x, g.z - me.z) > ERR_POS || Math.abs(norm(g.h - me.h)) > ERR_HEAD || Math.abs(g.v - me.speed) > ERR_SPD;
+          need = Math.hypot(g.x - me.x, g.z - me.z) > (tight ? CARRY.pos : ERR_POS) || Math.abs(norm(g.h - me.h)) > (tight ? CARRY.head : ERR_HEAD) || Math.abs(g.v - me.speed) > (tight ? CARRY.spd : ERR_SPD);
         }
       }
+      if (!need && (sent.pc || 0) !== (me.cops ? 1 : 0)) need = true;
       if (need) {
-        this.sendT = 1 / MAX_HZ;
-        const msg = { k: 's', q: ++this.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) };
+        this.sendT = 1 / (tight ? CARRY.hz : MAX_HZ);
+        const msg = { k: 's', q: ++this.seq, ts: +now.toFixed(3), x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) };
         if (this.ride) { msg.rd = this.ride; msg.v = msg.r = msg.a = 0; }
         if (me.dash) { msg.g = me.dash.gear; msg.rp = +Math.min(1.2, me.dash.rpm).toFixed(2); }
+        if (me.cops) msg.pc = 1;
         this.sent = { ...msg, t: now };
         this.send(msg);
       }
@@ -387,11 +413,15 @@ class Online {
       if (p.fresh || !p.st) continue;
       // the same prediction they're sending against, then ease out any jump
       const g = predict(p.st, now - p.t);
-      const k = Math.min(1, dt * 12);
-      const dx = g.x - p.x, dz = g.z - p.z;
-      if (Math.hypot(dx, dz) > 40) { p.x = g.x; p.z = g.z; }     // teleported / respawned
-      else { p.x += dx * k; p.z += dz * k; }
-      p.h = p.h + norm(g.h - p.h) * k;
+      // Ease toward where they'll be a moment from now (1/SMOOTH s ahead), which
+      // cancels out the lag easing would add: corrections blend in over a few
+      // frames instead of showing as a skip.
+      const k = Math.min(1, dt * SMOOTH);
+      if (Math.hypot(g.x - p.x, g.z - p.z) > 40) { p.x = g.x; p.z = g.z; p.h = g.h; }     // teleported / respawned
+      else {
+        const t = predict(p.st, now - p.t + 1 / SMOOTH);
+        p.x += (t.x - p.x) * k; p.z += (t.z - p.z) * k; p.h += norm(t.h - p.h) * k;
+      }
       p.sp = g.v;
       p.flame += ((p.sflame || 0) - p.flame) * Math.min(1, dt * 14);
       if (!p.inCar && Math.abs(p.sp) > 0.1) p.walk += dt * 9;
