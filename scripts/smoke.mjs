@@ -1288,6 +1288,8 @@ await step('online free roam', async () => {
   await until(p, ([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z) < 3; }, 'passenger did not move with the car', [c2.x, c2.z]);
   await p.evaluate(() => window.__rfg.app.world.rides.view()).then(v => { if (!v) throw new Error('camera is not riding with the car'); });
   await until(p2, () => window.__rfg.app.world.rides.riders().length === 1 && window.__rfg.online.list().filter(o => o.ride).length === 1, 'driver does not see the passenger aboard');
+  // the passenger's dash shows the driver's speed, gear and revs (sent while someone rides along)
+  await until(p, () => { const d = document.querySelector('[data-dash]'), r = window.__rfg.app.world.rides.peer; return d && !d.classList.contains('hidden') && r?.gear && document.querySelector('[data-gear]').textContent === r.gear && /passenger/.test(document.querySelector('[data-carname]').textContent); }, 'passenger dash does not show the driver\'s gauges');
   if (shots) { await p.evaluate(() => { const w = window.__rfg.app.world; w.update(0.05); }); await snap('23c-riding-along'); }
   // the driver drops them off: back on foot beside the car
   await p2.evaluate(async () => { const { rides } = await import('./js/net/ride.js'); rides.drop(rides.riders()[0]); });
