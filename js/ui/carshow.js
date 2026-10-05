@@ -36,7 +36,7 @@ export function openCarShow(loc, app) {
 }
 
 function entriesOf(st, s, car) {
-  const me = { id: 'me', name: `${s.player.name} (you)`, modelId: car.modelId, year: car.year, visual: car.visual, cond: car.cond, levels: levels(car), me: true, parts: car.parts };
+  const me = { id: 'me', name: `${s.player.name} (you)`, modelId: car.modelId, year: car.year, visual: car.visual, cond: car.cond, levels: levels(car), tune: car.tune, me: true, parts: car.parts };
   return [...st.entrants, me];
 }
 
@@ -54,7 +54,7 @@ function render(root, h, app, st, s, car, loc) {
       <p class="small muted">The crowd likes builds that hang together. Every voter has a taste, so the best score usually wins but not always.</p>
       <div class="row" style="gap:8px;margin-top:10px"><button class="btn btn-primary" data-action="enter">Enter · ${fmtMoney(ENTRY_FEE)}</button><button class="btn" data-action="kustoms">Fix it up at Vega Kustoms first</button></div>
       </div></div></div>`;
-    drawSideCar(root.querySelector('[data-side]'), { model: m, visual: car.visual, levels: levels(car), cond: car.cond });
+    drawSideCar(root.querySelector('[data-side]'), { model: m, visual: car.visual, levels: levels(car), tune: car.tune, cond: car.cond });
     bind(root, {
       close: () => h.close(),
       enter: () => {
@@ -93,7 +93,7 @@ function render(root, h, app, st, s, car, loc) {
       modal(`${e.name}`, `<p class="muted small">${esc(carName(em, e.year))}</p><div class="showroom"><div class="sr-stage"><canvas id="${id}"></canvas></div></div>
         <div class="kv" style="margin-top:8px;text-transform:capitalize"><span>Paint</span><span>${esc(v.finish)} <span class="swatch" style="width:14px;height:14px;vertical-align:middle;background:${v.paint}"></span></span><span>Wheels</span><span>${esc(v.wheels)} ${esc(String(v.wheelSize || ''))}" ${esc(v.offset || '')}</span><span>Body</span><span>${esc(v.kit)} kit · ${esc(v.spoiler)} wing</span><span>Tint</span><span>${esc(v.tint)}</span><span>Graphics</span><span>${esc(v.decal)}</span></div>
         ${st.phase !== 'vote' ? `<p>Show score <b>${j.total}</b></p>` : ''}`);
-      setTimeout(() => { const c = document.getElementById(id); if (c) drawSideCar(c, { model: em, visual: e.visual, levels: e.levels, cond: e.cond }); }, 0);
+      setTimeout(() => { const c = document.getElementById(id); if (c) drawSideCar(c, { model: em, visual: e.visual, levels: e.levels, tune: e.tune, cond: e.cond }); }, 0);
     },
     vote: x => {
       st.vote = +x.i;
