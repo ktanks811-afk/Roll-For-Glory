@@ -20,6 +20,19 @@ import { audio } from '../core/audio.js';
 import { ranchTrailerHtml, ranchTrailerActions } from './livestock.js';
 import { openKennel } from './kennel.js';
 import { dogsAt, roomAt } from '../core/dogs.js';
+import { deeds } from '../net/deeds.js';
+import { SERVER_BY_ID } from '../net/online.js';
+
+// Online: a house another real player owns on your server is off the market.
+const takenTag = (s, id) => { const who = deeds.takenBy(s, id); return who ? `<span class="tag tag-red">Owned by ${esc(who)}</span>` : ''; };
+// Lock the deed on your server, then buy; give it back if the sale falls through.
+async function buyDeeded(s, id, buy) {
+  const c = await deeds.claim(s, id);
+  if (!c.ok) return { ok: false, text: `${c.name || 'Another player'} already owns that on ${SERVER_BY_ID[s.homeServer]?.name || 'your server'}.` };
+  const r = buy();
+  if (!r.ok) deeds.release(s, id);
+  return r;
+}
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 const say = r => { toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) audio.buy(); else audio.error(); return r.ok; };
@@ -31,7 +44,8 @@ const tierTag = (t, tier) => t && tier < t ? `<span class="tag">Tier ${t}</span>
 export function openRealty(app, focusId = null) {
   const s = game.s;
   let tab = focusId ? (TRAPS[focusId] ? 'traps' : LAND[focusId] ? 'land' : RIGS[focusId] ? 'oil' : 'homes') : 'homes';
-  openPanel((root, h) => {
+  let unsub = null;
+  const panel = openPanel((root, h) => {
     const tier = tierOf(s.rep).n, pf = portfolio(s);
     const tabs = [['homes', 'Houses'], ['land', 'Land'], ['oil', 'Oil'], ['traps', 'Trap houses']];
     const card = (id, title, desc, kv, actions, hot) => `<div class="card" style="${focusId === id ? 'border-color:var(--red)' : ''}"><h3>${esc(title)}</h3><p class="muted small">${esc(desc)}</p>
@@ -43,7 +57,7 @@ export function openRealty(app, focusId = null) {
         const kind = p.house ? houseLine(fromPreset(p.house)) : 'Apartment';
         return card(id, p.name, p.desc, `<span>House</span><span>${kind}</span><span>Garage</span><span>${p.slots} cars</span><span>Where</span><span>${esc(districtAt(LOC_BY_ID[id]?.x ?? 0, LOC_BY_ID[id]?.z ?? 0))}</span><span>Price</span><span>${p.price ? fmtMoney(p.price) : 'Rented'}</span>`,
           owned ? `<span class="tag tag-green">${s.home === id ? 'Home' : 'Owned'}</span>${s.home !== id ? `<button class="btn btn-sm" data-action="home" data-id="${id}">Make home</button>` : ''}${p.price ? `<button class="btn btn-sm" data-action="sell" data-id="${id}">Sell ${fmtMoney(Math.round(p.price * SELL_RATE))}</button>` : ''}`
-            : `<button class="btn btn-sm btn-primary" data-action="buy" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${p.tier}` : `Buy ${fmtMoney(p.price)}`}</button>`);
+            : takenTag(s, id) || `<button class="btn btn-sm btn-primary" data-action="buy" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${p.tier}` : `Buy ${fmtMoney(p.price)}`}</button>`);
       }).join('');
     } else if (tab === 'land') {
       body = Object.entries(LAND).sort((a, b) => a[1].price - b[1].price).map(([id, L]) => {
@@ -52,7 +66,7 @@ export function openRealty(app, focusId = null) {
         const loc = LOC_BY_ID[id], fence = fenceOptions(id).at(-1);
         return card(id, L.name, L.desc, `<span>Where</span><span>${esc(districtAt(loc.x, loc.z))}</span><span>Livestock</span><span>Up to ${fence.cap} head</span><span>Price</span><span>${fmtMoney(L.price)}</span>${own ? `<span>Status</span><span>${status}</span>` : ''}`,
           own ? `<span class="tag tag-green">Owned</span><button class="btn btn-sm btn-primary" data-action="landgo" data-id="${id}">Go build</button><button class="btn btn-sm" data-action="sellland" data-id="${id}">Sell ${fmtMoney(landValue(s, id))}</button>`
-            : `<button class="btn btn-sm btn-primary" data-action="buyland" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${L.tier}` : `Buy ${fmtMoney(L.price)}`}</button>`);
+            : takenTag(s, id) || `<button class="btn btn-sm btn-primary" data-action="buyland" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${L.tier}` : `Buy ${fmtMoney(L.price)}`}</button>`);
       }).join('') + `<p class="small muted" style="grid-column:1/-1">Buy a lot in Stop Six or ranch land out in Johnson County, then drive out to it. Pick a house (1, 2 or 3 stories, or design your own room by room) and a garage from 2 cars up to a 100-car vault. Fence the back and run cattle and horses, and keep a kennel of hog dogs.</p>`;
     } else if (tab === 'oil') {
       body = Object.entries(RIGS).map(([id, R]) => {
@@ -66,12 +80,13 @@ export function openRealty(app, focusId = null) {
         const owned = s.properties.includes(id), locked = T.tier && tier < T.tier;
         return card(id, T.name, T.desc, `<span>Garage</span><span>${T.slots} cars</span><span>Customers</span><span>${T.rush >= 1.2 ? 'Steady' : 'Slower'}</span><span>Attention</span><span>${T.risk >= 1 ? 'The block watches' : 'Quieter street'}</span>`,
           owned ? `<span class="tag tag-green">Owned</span><button class="btn btn-sm" data-action="sell" data-id="${id}">Sell ${fmtMoney(Math.round(T.price * SELL_RATE))}</button>`
-            : `<button class="btn btn-sm btn-primary" data-action="buy" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${T.tier}` : `Buy ${fmtMoney(T.price)}`}</button>`);
+            : takenTag(s, id) || `<button class="btn btn-sm btn-primary" data-action="buy" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${T.tier}` : `Buy ${fmtMoney(T.price)}`}</button>`);
       }).join('') + `<p class="small muted" style="grid-column:1/-1">Priya doesn't ask what the house is for. Stock it with product from the plug and customers knock while you're there. The more people you serve, the more the neighbours call it in.</p>`;
     }
     root.innerHTML = head('Bayline Realty', 'Priya Shah · "I sell garages with houses attached."') + `<div class="p-body">
       <div class="tabs" style="margin:0 -12px 10px">${tabs.map(([id, label]) => `<button class="${tab === id ? 'on' : ''}" data-action="tab" data-id="${id}">${label}</button>`).join('')}</div>
       ${pf.worth ? `<p class="small muted">Your real estate would sell for about <b>${fmtMoney(pf.worth)}</b>.</p>` : ''}
+      ${s.homeServer && SERVER_BY_ID[s.homeServer] ? `<p class="small muted">🌐 Listings for <b>${esc(SERVER_BY_ID[s.homeServer].name)}</b>, your online server. Houses other players there already own are off the market.</p>` : ''}
       <div class="grid">${body}</div><p class="small muted">Prices include closing costs. Every house is a safehouse and adds garage space. Each one after your first costs $120 a week in taxes and utilities.</p></div>`;
     const done = r => { if (say(r)) { app.world && applyEstate(app.world.map, s); h.refresh(); } };
     bind(root, {
@@ -79,15 +94,17 @@ export function openRealty(app, focusId = null) {
       tab: d => { tab = d.id; h.refresh(); },
       gps: d => gps(app, d.id),
       home: d => { s.home = d.id; h.refresh(); },
-      buy: async d => { const p = PROPERTIES[d.id]; if (await confirm(`Buy ${p.name}?`, `<p>${fmtMoney(p.price)} · ${p.slots}-car garage.</p>`, 'Buy')) done(buyProperty(s, d.id)); },
-      sell: async d => { const p = PROPERTIES[d.id]; if (await confirm(`Sell ${p.name}?`, `<p>Priya can get you <b>${fmtMoney(Math.round(p.price * SELL_RATE))}</b> for it.${p.trap ? ' Anything in the stash goes in your bag, the safe goes to your bank.' : ''}</p>`, 'Sell', true)) done(sellProperty(s, d.id)); },
-      buyland: async d => { const L = LAND[d.id]; if (await confirm(`Buy ${L.name}?`, `<p>${fmtMoney(L.price)}. It's an empty lot until you build on it.</p>`, 'Buy')) done(buyLand(s, d.id)); },
-      sellland: async d => { if (await confirm(`Sell ${LAND[d.id].name}?`, '<p>The land and anything you built on it.</p>', 'Sell', true)) done(sellLand(s, d.id)); },
+      buy: async d => { const p = PROPERTIES[d.id]; if (await confirm(`Buy ${p.name}?`, `<p>${fmtMoney(p.price)} · ${p.slots}-car garage.</p>`, 'Buy')) done(await buyDeeded(s, d.id, () => buyProperty(s, d.id))); },
+      sell: async d => { const p = PROPERTIES[d.id]; if (await confirm(`Sell ${p.name}?`, `<p>Priya can get you <b>${fmtMoney(Math.round(p.price * SELL_RATE))}</b> for it.${p.trap ? ' Anything in the stash goes in your bag, the safe goes to your bank.' : ''}</p>`, 'Sell', true)) { const r = sellProperty(s, d.id); if (r.ok) deeds.release(s, d.id); done(r); } },
+      buyland: async d => { const L = LAND[d.id]; if (await confirm(`Buy ${L.name}?`, `<p>${fmtMoney(L.price)}. It's an empty lot until you build on it.</p>`, 'Buy')) done(await buyDeeded(s, d.id, () => buyLand(s, d.id))); },
+      sellland: async d => { if (await confirm(`Sell ${LAND[d.id].name}?`, '<p>The land and anything you built on it.</p>', 'Sell', true)) { const r = sellLand(s, d.id); if (r.ok) deeds.release(s, d.id); done(r); } },
       landgo: d => gps(app, d.id, LAND[d.id].name),
       buyrig: async d => { const R = RIGS[d.id]; if (await confirm(`Buy ${R.name}?`, `<p>${fmtMoney(R.price)}. It pays <b>${fmtMoney(RIG_PAY)}</b> into your bank every game day.</p>`, 'Buy')) done(buyRig(s, d.id)); },
       sellrig: async d => { const R = RIGS[d.id]; if (await confirm(`Sell ${R.name}?`, `<p>The operator will buy the lease back for <b>${fmtMoney(Math.round(R.price * RIG_SELL))}</b>.</p>`, 'Sell', true)) done(sellRig(s, d.id)); },
     });
-  });
+  }, { onClose: () => unsub?.() });
+  // who owns what on your server, live
+  if (s.homeServer) { unsub = deeds.on(() => { if (panel.root.isConnected) panel.refresh(); }); deeds.load(s.homeServer); }
 }
 
 // ---------------------------------------------------------------- your land

@@ -20,6 +20,7 @@ import { drawRain } from '../world2d/render.js';
 import { wx } from '../core/weather.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const n = (v, lo, hi, d = 0) => (typeof v === 'number' && isFinite(v) ? clamp(v, lo, hi) : d);
 // instruction text: phone wording when the on-screen controls are showing
 // controller: the touch wording with the triggers named
 const padText = t => t.replace('drag the shift knob down to downshift', 'LB to downshift').replace(/\bBRAKE\b/g, 'LT').replace(/\bGAS\b/g, 'RT');
@@ -73,6 +74,9 @@ export class Race {
     this.p = new Driver({ ...opts.player, isPlayer: true });
     this.drivers = [this.p];
     if (opts.npc) { this.n = new Driver({ ...opts.npc, isPlayer: false }); this.drivers.push(this.n); }
+    // a real player on the other end (net/pvp.js): their car follows what their game reports
+    this.link = opts.link || null;
+    if (this.link && this.n) { this.n.remote = true; this.n.skill = 0; }
     // Wet street: both cars lose grip. The strip is prepped and stays dry.
     const sky = wx(game.s);
     this.rain = opts.road === 'strip' ? 0 : sky.rain;
@@ -106,6 +110,8 @@ export class Race {
       for (let i = 0; i < n; i++) this.spawnTraffic(80 + Math.random() * (this.dist + 300));
     }
     if (this.rain > 0) this.sub += ` · ${this.storm ? '⛈ Flooded' : '🌧 Wet'} roads: ease on the gas`;
+    if (this.link) { this.firstPhase = this.phase; this.phase = 'wait'; this.firstMsg = [this.msg, this.sub]; this.msg = 'WAITING'; this.sub = `Waiting for ${opts.npc?.name || 'them'} to pull up…`; }
+    this.startLane = this.p.lane; this.nLane = this.n ? this.n.lane : 0;
     this.cam = { y: this.p.y, zoom: 13 };
     this.engineP = audio.engine({ profile: soundProfile(this.p.model, this.p.spec.lv, this.p.car?.parts) });
     this.engineN = this.n ? audio.engine({ profile: soundProfile(this.n.model, this.n.spec.lv, this.n.car?.parts), volume: 0.65 }) : null;
@@ -134,12 +140,15 @@ export class Race {
     dt = Math.min(dt, 0.033);
     this.t += dt;
     const P = this.p, N = this.n;
-    if (this.phase === 'done') { this.updateCoast(dt); return; }
+    if (this.phase === 'done') { this.updateCoast(dt); if (this.link) this.syncLink(dt); return; }
+    if (this.phase === 'wait') { this.updateWait(dt); this.updateAudio(); this.updateHud(); return; }
     if (this.isDrag) this.updateDrag(dt); else this.updateRoll(dt);
+    if (this.link) this.syncLink(dt);
     // traffic
     for (const c of this.traffic) {
       c.y += c.v * dt;
       for (const d of this.drivers) {
+        if (d.remote) continue;   // their traffic is on their screen
         if (Math.abs(d.x - c.x) < (d.dims.W + c.dims.W) / 2 + 0.2 && Math.abs(d.y - c.y) < (d.dims.L + c.dims.L) / 2) {
           if (d.y < c.y) {
             // rear-ended traffic
@@ -169,6 +178,43 @@ export class Race {
     const P = this.p, N = this.n;
     this.engineP?.update({ rpm: P.sim.rpm, throttle: P.thr || 0, boost: P.sim.boost, slip: P.sim.slip, turbo: P.spec.asp === 'turbo', speed: P.sim.v });
     if (N) this.engineN?.update({ rpm: N.sim.rpm, throttle: N.thr || 0, boost: N.sim.boost, slip: N.sim.slip, turbo: N.spec.asp === 'turbo', volume: clamp(1 - Math.abs(N.y - P.y) / 120, 0.1, 1), pan: N.x > P.x ? 0.5 : -0.5, speed: N.sim.v });
+  }
+
+  // ---------------- online head-to-head ----------------
+  updateWait(dt) {
+    if (this.link.tick(dt)) {
+      this.phase = this.firstPhase; this.t = 0;
+      [this.msg, this.sub] = this.firstMsg;
+      return;
+    }
+    if (this.link.gone || this.t > 20) { this.flash('NO SHOW', `${this.n.name} never pulled up.`); this.noShow = true; this.finish('noshow'); }
+  }
+
+  // Send our car, move theirs. Their y is in their own race clock, which
+  // runs within a few hundredths of ours.
+  syncLink(dt) {
+    const L = this.link, P = this.p, N = this.n, tr = this.tree;
+    L.tick(dt);
+    L.sendState(dt, { y: +P.y.toFixed(2), v: +P.sim.v.toFixed(2), rpm: Math.round(P.sim.rpm), g: P.sim.gear, dl: P.lane - this.startLane, sl: +P.sim.slip.toFixed(2), pi: +(P.sim.pitch || 0).toFixed(2), no: P.sim.nosOn ? 1 : 0, fl: +(P.flame || 0).toFixed(2), st: P.staged ? 1 : 0, ps: P.preStaged ? 1 : 0, la: P.launched ? 1 : 0, rd: P.redLight ? 1 : 0, ph: this.phase, b: P.burn > 0 && P.thr > 0.5 && this.phase === 'burnout' ? 1 : 0 });
+    const st = L.state;
+    if (st) {
+      const age = Math.min(0.4, performance.now() / 1000 - L.stateAt);
+      const v = n(st.v, 0, 200);
+      const ty = n(st.y, -50, 5000) + (this.phase === 'race' && st.ph === 'race' ? v * age : 0);
+      N.y += (ty - N.y) * Math.min(1, dt * 10);
+      N.sim.v = v; N.sim.rpm = n(st.rpm, 0, 20000); N.sim.gear = Math.round(n(st.g, 0, 9)); N.sim.slip = n(st.sl, 0, 2); N.sim.pitch = n(st.pi, -1, 2); N.sim.nosOn = !!st.no;
+      N.thr = st.ph === 'race' || st.b ? 1 : 0.25;
+      N.flame = n(st.fl, 0, 2);
+      if (this.isDrag) { N.staged = !!st.st; N.preStaged = !!st.ps; if (st.la) N.launched = true; if (st.rd) tr.red[1] = true; if (st.b) this.puff(N, 2); }
+      else { N.lane = Math.max(0, Math.min(this.theme.lanes - 1, this.nLane + Math.round(n(st.dl, -9, 9)))); N.x += (this.laneX(N.lane) - N.x) * Math.min(1, dt * 4); }
+      if (N.sim.slip > 0.25) this.puff(N);
+    }
+    if (L.fin && !N.finished && !N.gotFin) {
+      N.gotFin = true;
+      if (L.fin.finished) { N.finished = true; N.y = Math.max(N.y, this.dist); }
+      if (!this.firstAcross && L.fin.finished && !L.fin.red && !L.fin.jump && !P.finished) { this.firstAcross = N; this.flash('THEY\'RE IN', `${N.name} crossed the line`); }
+    }
+    if (L.gone && this.phase !== 'done') { this.flash('THEY LEFT', `${N.name} dropped out. You win.`); this.finish('forfeit'); }
   }
 
   playerInput() {
@@ -210,7 +256,7 @@ export class Race {
     // racing
     const raceT = this.t - this.goT;
     this.drivePlayer(P, inp, dt, true);
-    if (N) this.driveAI(N, dt, raceT);
+    if (N && !N.remote) this.driveAI(N, dt, raceT);
     this.checkSplits(raceT);
     this.drafting();
   }
@@ -279,16 +325,18 @@ export class Race {
 
   checkSplits(raceT) {
     for (const d of this.drivers) {
-      if (d.finished) continue;
+      if (d.finished || d.remote) continue;
       const marks = { sixty: 18.29, three30: 100.58, eighth: DIST.eighth, thousand: 304.8, quarter: DIST.quarter, half: DIST.half };
       for (const [k, m] of Object.entries(marks)) {
         if (d.splits[k] == null && d.y >= m && m <= this.dist + 0.1) { d.splits[k] = raceT - (d.rt || 0); d.splits[k + 'Mph'] = d.sim.v * MPH; }
       }
       if (d.y >= this.dist) {
         d.finished = true; d.time = raceT - (this.isDrag ? (d.rt ?? 0) : 0); d.elapsed = raceT; d.trap = d.sim.v * MPH;
-        if (!this.firstAcross) { this.firstAcross = d; this.flash(d.isPlayer ? 'WIN' : this.n ? 'LOSS' : 'FINISH', ''); }
+        if (!this.firstAcross) { this.firstAcross = d; this.flash(this.link ? 'FINISH' : d.isPlayer ? 'WIN' : this.n ? 'LOSS' : 'FINISH', ''); }
       }
     }
+    // online: our run is over the moment we cross; their time decides it
+    if (this.link && this.p.finished) { this.finish('done'); return; }
     if (this.drivers.every(d => d.finished) || (this.firstAcross && this.t - this.goT > (this.firstAcrossT ??= this.t - this.goT) + 4)) this.finish('done');
   }
 
@@ -317,14 +365,21 @@ export class Race {
       // roll up fast, then inch into the beams; the car stops itself once staged
       const creep = inp.throttle > 0.5 ? (P.y < -0.8 ? 7 : 0.9) : 0;
       P.y = Math.min(-0.1, P.y + creep * dt);
-      if (N && N.y < -0.1) { N.y = Math.min(-0.1, N.y + dt * (N.y < -0.8 ? 6 : 0.8)); }
+      if (N && !N.remote && N.y < -0.1) { N.y = Math.min(-0.1, N.y + dt * (N.y < -0.8 ? 6 : 0.8)); }
       P.preStaged = P.y > -0.55; P.staged = P.y > -0.18;
-      if (N) { N.preStaged = N.y > -0.55; N.staged = N.y > -0.18; }
-      if (P.staged && (!N || N.staged)) {
+      if (N && !N.remote) { N.preStaged = N.y > -0.55; N.staged = N.y > -0.18; }
+      // online: the challenger's game starts the tree once both cars are staged and tells the other side
+      const L = this.link;
+      if (L && !L.host) {
+        if (P.staged && L.tree != null) { this.phase = 'tree'; tr.startAt = this.t + L.tree; this.msg = ''; this.sub = this.loadHint(); }
+        else if (P.staged) this.sub = `Staged. Waiting on ${N.name}…`;
+      } else if (P.staged && (!N || N.staged)) {
         this.phase = 'tree';
-        tr.startAt = this.t + 0.6 + Math.random() * 0.9;
+        const d = 0.6 + Math.random() * 0.9;
+        tr.startAt = this.t + d;
+        L?.sendTree(d);
         this.msg = ''; this.sub = this.loadHint();
-      }
+      } else if (P.staged && N?.remote) this.sub = `Staged. Waiting on ${N.name}…`;
       return;
     }
     if (this.phase === 'tree') {
@@ -361,7 +416,7 @@ export class Race {
         P.flame = 0;
         if (!this.goT) this.goT = tr.greenAt;
       }
-      if (N && !N.launched && N.spec.twoStep && N.staged) {
+      if (N && !N.remote && !N.launched && N.spec.twoStep && N.staged) {
         const r = N.rev.update(dt, true);
         N.sim.rpm = r.rpm; N.flame = r.flame; N.thr = 1;
         if (r.bang) { N.flameCount++; audio.pop(0.5); }
@@ -370,13 +425,13 @@ export class Race {
       if (P.launched) this.phase = 'race';
       else if (tr.green && this.t - tr.greenAt > 4) { this.flash('ASLEEP', 'You never left the line'); P.redLight = true; this.finish('redlight'); return; }
       // NPC can go first; we still wait for the player
-      if (N?.launched) this.driveLaunched(N, dt);
+      if (N?.launched && !N.remote) this.driveLaunched(N, dt);
       return;
     }
     if (this.phase === 'race') {
       const raceT = this.t - this.goT;
       this.drivePlayer(P, inp, dt, false);
-      if (N) { this.aiLaunch(N); if (N.launched) this.driveLaunched(N, dt); }
+      if (N && !N.remote) { this.aiLaunch(N); if (N.launched) this.driveLaunched(N, dt); }
       this.checkSplits(raceT);
     }
   }
@@ -392,6 +447,7 @@ export class Race {
 
   aiLaunch(N) {
     const tr = this.tree;
+    if (N?.remote) return;
     {
       if (N && !N.launched && tr.startAt && this.t > tr.startAt) {
         if (N.foulRoll === undefined) N.foulRoll = Math.random() < (1 - N.skill) * 0.07;
@@ -432,7 +488,7 @@ export class Race {
   }
 
   updateCoast(dt) {
-    for (const d of this.drivers) { stepSim(d.spec, d.sim, { throttle: 0, brake: 0.5 }, dt); d.y += d.sim.v * dt; d.thr = 0; }
+    for (const d of this.drivers) { if (d.remote) { d.sim.v = Math.max(0, d.sim.v - 8 * dt); d.y += d.sim.v * dt; continue; } stepSim(d.spec, d.sim, { throttle: 0, brake: 0.5 }, dt); d.y += d.sim.v * dt; d.thr = 0; }
     for (const c of this.traffic) c.y += c.v * dt;
     this.cam.y += ((this.p.y + this.p.sim.v / 4) - this.cam.y) * Math.min(1, dt * 4);
     this.updateAudio();
@@ -443,13 +499,38 @@ export class Race {
     this.phase = 'done';
     this.endReason = reason;
     audio.music(null);
+    if (this.link) {
+      const P = this.p;
+      this.link.sendFin({ fin: P.finished ? 1 : 0, red: P.redLight ? 1 : 0, jump: reason === 'jump' ? 1 : 0, ...summary(P) });
+      this.finAt = this.t;
+      this.waitResult();
+      return;
+    }
     setTimeout(() => this.showResults(), reason === 'done' ? 1600 : 1200);
+  }
+
+  // Online: hold the results until their time comes in (or they're gone).
+  waitResult() {
+    const L = this.link;
+    const ready = L.fin || L.gone || this.endReason === 'forfeit' || this.endReason === 'noshow' || this.t - this.finAt > 15;
+    if (!ready) { if (this.p.finished) this.sub = `Waiting on ${this.n.name}'s time…`; setTimeout(() => this.waitResult(), 200); return; }
+    setTimeout(() => this.showResults(), 900);
   }
 
   showResults() {
     const P = this.p, N = this.n;
     let won = false, voided = false;
-    if (this.endReason === 'jump') { voided = true; }
+    const F = this.link?.fin;
+    if (this.link) {
+      // their side's numbers, as their game measured them
+      if (F) Object.assign(N, { rt: F.rt, time: F.time, elapsed: F.elapsed, trap: F.trap ?? 0, splits: F.splits, redLight: F.red, finished: F.finished, crashes: F.crashes, remoteSum: F });
+      else N.finished = false;
+    }
+    if (this.link && this.endReason === 'noshow') { voided = true; }
+    else if (this.link && (this.endReason === 'forfeit' || !F)) { won = !P.redLight && this.endReason !== 'jump'; this.forfeit = true; }
+    else if (this.link && this.endReason === 'jump') { won = false; }   // jumping the honk online is a loss, not a do-over
+    else if (this.link && F.jump) { won = true; }
+    else if (this.endReason === 'jump') { voided = true; }
     else if (this.endReason === 'redlight') won = !P.redLight;
     else if (!N) won = true;
     else if (P.redLight && !N.redLight) won = false;
@@ -461,7 +542,7 @@ export class Race {
       won = pt <= nt;
       if (P.finished && N.finished) this.margin = Math.abs(pt - nt);
     }
-    const result = { won, voided, reason: this.endReason, type: this.o.type, dist: this.o.dist, player: summary(P), npc: N ? summary(N) : null, margin: this.margin, crashDamage: this.crashDamage || 0, nosUsed: P.spec.nosSecs ? (P.car.nos ?? P.spec.nosSecs) - P.sim.nos : 0, tired: P.tired || 0, burn: P.burn || 0 };
+    const result = { won, voided, online: !!this.link, forfeit: !!this.forfeit, reason: this.endReason, type: this.o.type, dist: this.o.dist, player: summary(P), npc: N ? summary(N) : null, margin: this.margin, crashDamage: this.crashDamage || 0, nosUsed: P.spec.nosSecs ? (P.car.nos ?? P.spec.nosSecs) - P.sim.nos : 0, tired: P.tired || 0, burn: P.burn || 0 };
     this.destroy();
     this.onDone(result);
   }
@@ -672,5 +753,6 @@ export class Race {
 }
 
 function summary(d) {
+  if (d.remoteSum) { const F = d.remoteSum; return { name: d.name, rt: F.rt, time: F.time, elapsed: F.elapsed, trap: F.trap, splits: F.splits, redLight: F.red, finished: F.finished, crashes: F.crashes, shifts: F.shifts, spin: F.spin, peak: F.peak, wheelie: F.wheelie, stoodUp: false }; }
   return { name: d.name, rt: d.rt, time: d.time, elapsed: d.elapsed, trap: d.trap, splits: d.splits, redLight: d.redLight, finished: d.finished, crashes: d.crashes || 0, shifts: d.sim.shifts, spin: d.sim.spinTime, peak: d.sim.peakV * MPH, wheelie: Math.round((d.sim.maxPitch || 0) * 30), stoodUp: !!d.stoodUp };
 }

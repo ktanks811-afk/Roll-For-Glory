@@ -19,9 +19,10 @@ const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 // Named game servers, like a real server browser. Each is its own realtime
 // channel with a player cap, so the world never gets crowded. Player counts
-// come from realtime presence (nobody is stored anywhere). The cap is enforced
-// by the clients themselves: a full server turns you away.
-export const SERVER_CAP = 16;
+// come from realtime presence. The cap is enforced by the clients themselves: a
+// full server turns you away. Each career also has one home server, which
+// holds SERVER_CAP careers, and houses are deeded per server (net/deeds.js).
+export const SERVER_CAP = 15;
 export const SERVERS = [
   { id: 'harbor',    name: 'Lake Worth',    blurb: 'Lakefront docks and warehouses, never sleeps' },
   { id: 'downtown',  name: 'Downtown',  blurb: 'Lights, traffic, and a lot of cops' },
@@ -34,9 +35,19 @@ export const SERVERS = [
 ];
 export const SERVER_BY_ID = Object.fromEntries(SERVERS.map(sv => [sv.id, sv]));
 export const DEFAULT_ROOM = SERVERS[2].id;
-const SEND_HZ = 6;           // state updates per second while moving
-const IDLE_HZ = 1;           // … while standing still
-const HELLO_EVERY = 4;       // seconds between car-appearance refreshes
+// Sync: everyone runs the same prediction for your car (position + speed +
+// heading + how fast you're turning and speeding up). You only send an update
+// when the real car drifts from that prediction, so a car going straight
+// costs a couple of messages a second and a car carving through traffic gets
+// up to MAX_HZ. That keeps cars tight on screen while staying inside the
+// realtime message budget with a full server.
+const MAX_HZ = 15;           // fastest we ever send
+const KEEPALIVE = 0.5;       // send at least this often while moving (s)
+const IDLE_EVERY = 2;        // … while parked
+const ERR_POS = 0.5;         // metres of prediction error before we send
+const ERR_HEAD = 0.05;       // radians
+const ERR_SPD = 1.2;         // m/s
+const HELLO_EVERY = 6;       // seconds between car-appearance refreshes
 const PEER_TIMEOUT = 7;      // seconds of silence before a peer disappears
 const MAX_PEERS = 24;
 
@@ -65,6 +76,16 @@ export function cleanLevels(lv) {
 }
 
 const norm = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+
+// Where a car will be `age` seconds after a state sample: holds its turn rate
+// and acceleration (capped so a lost packet doesn't send it into orbit).
+export function predict(st, age) {
+  age = Math.min(0.8, Math.max(0, age));
+  const r = st.r || 0, a = st.a || 0;
+  const v = st.v + a * age;
+  const vm = (st.v + v) / 2, hm = st.h + r * age / 2;
+  return { x: st.x + Math.sin(hm) * vm * age, z: st.z - Math.cos(hm) * vm * age, h: st.h + r * age, v };
+}
 
 export class LocalTransport {
   constructor(room, onMsg, id, onPresence) {
@@ -167,6 +188,9 @@ class Online {
     this.chat = [];
     this.listeners = new Set();
     this.sendT = 0; this.helloT = 0; this.helloReplyT = 0;
+    this.sent = null;             // the state everyone else is predicting from
+    this.seq = 0;
+    this.prev = null;             // last frame, for turn rate and acceleration
     this.me = null;
     this.transportKind = 'supabase';
   }
@@ -190,7 +214,7 @@ class Online {
     this.me = me;
     this.name = cleanName(me.name);
     this.id = Math.random().toString(36).slice(2, 10);
-    this.peers.clear(); this.chat = [];
+    this.peers.clear(); this.chat = []; this.sent = null; this.prev = null; this.seq = 0;
     this.status = 'connecting'; this.error = '';
     this.transportKind = kind || this.kind;
     this.presence = null;
@@ -291,13 +315,23 @@ class Online {
       p.crew = cr && /^[A-Z0-9]{2,4}$/.test(String(cr.t)) && /^#[0-9a-fA-F]{6}$/.test(String(cr.c)) ? { tag: cr.t, color: cr.c } : null;
       this.emit('peers');
     } else if (m.k === 's') {
-      const x = num(m.x, -5000, 5000), z = num(m.z, -5000, 5000);
-      p.sx = x; p.sz = z; p.sh = num(m.h, -20, 20); p.sp = num(m.v, -80, 120); p.inCar = !!m.c; p.sflame = num(m.f, 0, 2); p.t = now;
-      if (p.fresh) { p.x = x; p.z = z; p.h = p.sh; p.fresh = false; }
+      // out-of-order packets are dropped
+      const q = num(m.q, 0, 1e9, 0);
+      if (q && p.q && q <= p.q && p.q - q < 1e6) return;
+      p.q = q;
+      const x = num(m.x, -9000, 9000), z = num(m.z, -9000, 9000);
+      p.st = { x, z, h: num(m.h, -20, 20), v: num(m.v, -80, 120), r: num(m.r, -4, 4), a: num(m.a, -30, 30) };
+      p.sp = p.st.v; p.inCar = !!m.c; p.sflame = num(m.f, 0, 2); p.t = now;
+      if (p.fresh) { p.x = x; p.z = z; p.h = p.st.h; p.fresh = false; }
     } else if (m.k === 'c') {
       this.addChat(cleanName(m.n, p.name), cleanText(m.x));
     } else if (m.k === 'ho') {
       p.honkAt = now; this.emit('honk', p);
+    } else if (m.k === 'deed') {
+      this.emit('deed', m);
+    } else if (m.k === 'pv') {
+      // head-to-head race invites (net/pvp.js); only the one it's for reads it
+      if (m.to === this.id) this.emit('pvp', { ...m, from: m.id, peer: p });
     }
   }
 
@@ -307,24 +341,48 @@ class Online {
     if (!this.active) return;
     const now = performance.now() / 1000;
     this.sendT -= dt; this.helloT -= dt;
+    // turn rate and acceleration from the last frame, smoothed
+    const pv = this.prev;
+    let r = 0, a = 0;
+    if (pv && dt > 0) {
+      r = pv.r + (norm(me.h - pv.h) / dt - pv.r) * Math.min(1, dt * 8);
+      a = pv.a + ((me.speed - pv.v) / dt - pv.a) * Math.min(1, dt * 6);
+    }
+    this.prev = { h: me.h, v: me.speed, r, a };
     const moving = Math.abs(me.speed) > 0.3 || me.flame > 0.04 || !me.inCar;
     if (this.sendT <= 0) {
-      this.sendT = 1 / (moving ? SEND_HZ : IDLE_HZ);
-      this.send({ k: 's', x: +me.x.toFixed(1), z: +me.z.toFixed(1), h: +me.h.toFixed(2), v: +me.speed.toFixed(1), c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) });
+      const sent = this.sent;
+      let need = !sent || sent.c !== (me.inCar ? 1 : 0) || Math.abs((sent.f || 0) - me.flame) > 0.3;
+      const since = sent ? now - sent.t : 99;
+      if (!need) {
+        if (since >= (moving ? KEEPALIVE : IDLE_EVERY)) need = true;
+        else {
+          const g = predict(sent, since);
+          need = Math.hypot(g.x - me.x, g.z - me.z) > ERR_POS || Math.abs(norm(g.h - me.h)) > ERR_HEAD || Math.abs(g.v - me.speed) > ERR_SPD;
+        }
+      }
+      if (need) {
+        this.sendT = 1 / MAX_HZ;
+        const msg = { k: 's', q: ++this.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) };
+        this.sent = { ...msg, t: now };
+        this.send(msg);
+      }
     }
     if (this.helloT <= 0) { this.helloT = HELLO_EVERY; this.sendHello(); }
     let gone = false;
     for (const p of this.peers.values()) {
       if (now - p.seen > PEER_TIMEOUT) { this.peers.delete(p.id); gone = true; continue; }
-      if (p.fresh) continue;
-      // dead-reckon from the last state, then ease toward it
-      const age = Math.min(0.5, now - p.t);
-      const tx = p.sx + Math.sin(p.sh) * p.sp * age, tz = p.sz - Math.cos(p.sh) * p.sp * age;
-      const k = Math.min(1, dt * 9);
-      p.x += (tx - p.x) * k; p.z += (tz - p.z) * k;
-      p.h = p.h + norm(p.sh - p.h) * k;
+      if (p.fresh || !p.st) continue;
+      // the same prediction they're sending against, then ease out any jump
+      const g = predict(p.st, now - p.t);
+      const k = Math.min(1, dt * 12);
+      const dx = g.x - p.x, dz = g.z - p.z;
+      if (Math.hypot(dx, dz) > 40) { p.x = g.x; p.z = g.z; }     // teleported / respawned
+      else { p.x += dx * k; p.z += dz * k; }
+      p.h = p.h + norm(g.h - p.h) * k;
+      p.sp = g.v;
       p.flame += ((p.sflame || 0) - p.flame) * Math.min(1, dt * 14);
-      if (!p.inCar && p.sp !== 0) p.walk += dt * 9;
+      if (!p.inCar && Math.abs(p.sp) > 0.1) p.walk += dt * 9;
     }
     if (gone) this.emit('peers');
   }
