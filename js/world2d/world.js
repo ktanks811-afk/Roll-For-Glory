@@ -1011,6 +1011,8 @@ export class World {
         ctx.restore();
       }
     }
+    // a gooseneck trailer's neck rides over the truck bed
+    this.trailers.drawOver(ctx, cam);
     // the officer walking up during a traffic stop
     const cop = this.police.officer;
     if (cop) drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);

@@ -102,7 +102,7 @@ export function makeEntrants(tier, n = 5, rnd = Math.random) {
   const names = [...FIRST].sort(() => rnd() - 0.5);
   while (out.length < n) {
     const theme = pickR(rnd, Object.keys(THEMES));
-    const pool = CARS.filter(m => THEMES[theme].cls.includes(m.cls) && m.msrp <= priceCap);
+    const pool = CARS.filter(m => !m.rig && THEMES[theme].cls.includes(m.cls) && m.msrp <= priceCap);
     const m = pickR(rnd, pool.length ? pool : CARS.filter(c => c.msrp <= priceCap));
     const level = Math.max(1, Math.min(5, tier + Math.floor(rnd() * 3) - 1));
     out.push({ id: 'l' + out.length, name: `${names.pop()} ${pickR(rnd, CLUB)}`, modelId: m.id, year: m.years[1], visual: themedBuild(m, theme, level, rnd), cond: { body: 88 + Math.round(rnd() * 12) }, levels: {}, theme, color: pickR(rnd, ['#c41b1b', '#1b4fc4', '#e8c21a', '#1f8f3a', '#a01aff', '#13b3c4']) });

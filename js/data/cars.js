@@ -15,7 +15,7 @@ export const MAKES = {
   honda: 'Honda', hyundai: 'Hyundai', infiniti: 'Infiniti', jaguar: 'Jaguar', jeep: 'Jeep', kia: 'Kia',
   koenigsegg: 'Koenigsegg', lamborghini: 'Lamborghini', landrover: 'Land Rover', lexus: 'Lexus',
   lincoln: 'Lincoln', lotus: 'Lotus', lucid: 'Lucid', maserati: 'Maserati', mazda: 'Mazda', mclaren: 'McLaren',
-  mercedes: 'Mercedes-Benz', mini: 'MINI', mitsubishi: 'Mitsubishi', nissan: 'Nissan', pagani: 'Pagani',
+  mercedes: 'Mercedes-Benz', mini: 'MINI', mitsubishi: 'Mitsubishi', nissan: 'Nissan', pagani: 'Pagani', peterbilt: 'Peterbilt',
   pontiac: 'Pontiac', porsche: 'Porsche', ram: 'Ram', rivian: 'Rivian', rollsroyce: 'Rolls-Royce',
   scion: 'Scion', subaru: 'Subaru', tesla: 'Tesla', toyota: 'Toyota', volkswagen: 'Volkswagen', volvo: 'Volvo',
 };
@@ -92,7 +92,7 @@ function C(make, model, trim, y0, y1, cls, msrp, hp, tq, kg, drive, asp, engine,
     redline, peakTqRpm: Math.round(redline * peak), body, color,
     wf: x.wf ?? (body === 'super' ? 0.42 : drive === 'FWD' ? 0.61 : drive === 'AWD' ? 0.57 : 0.53),
     cd, area, grip: x.grip ?? clsGrip + modern, lim: x.lim || null,
-    lastCall: !!x.lastCall,
+    lastCall: !!x.lastCall, rig: !!x.rig,
     rarity: msrp > 400000 || (x.market || 0) > 400000 ? 5 : msrp > 150000 || (x.market || 0) > 90000 ? 4 : msrp > 60000 || x.market ? 3 : msrp > 30000 ? 2 : 1,
   };
 }
@@ -190,6 +190,8 @@ export const CARS = [
   C('ford', 'F-150', 'Raptor', 2021, 2025, 'Truck', 78000, 450, 510, 2600, 'AWD', 'turbo', '3.5L EcoBoost HO TT V6', '10AT', 6000, 'truck', '#e8641a'),
   C('ford', 'F-150', 'Raptor R', 2023, 2025, 'Truck', 110000, 720, 640, 2700, 'AWD', 'sc', '5.2L Predator Supercharged V8', '10AT', 7000, 'truck', '#24262b'),
   C('ford', 'GT', '', 2017, 2022, 'Supercar', 500000, 660, 550, 1385, 'RWD', 'turbo', '3.5L EcoBoost TT V6', '7DCT', 7000, 'super', '#1b4fc4', { market: 1000000, grip: 1.15 }),
+  // ---------------- big rigs (sold at Cowtown Trailer & Truck Sales, not the car dealers) ----------------
+  C('peterbilt', '389', 'Sleeper', 2022, 2025, 'Truck', 198000, 565, 1850, 7600, 'RWD', 'turbo', '15.0L Cummins X15 Turbo-Diesel I6', '10AT', 2100, 'truck', '#f2f2f2', { rig: true, lim: 75, cd: 0.7, area: 9.5 }),
   C('lincoln', 'Town Car', 'Signature', 2003, 2011, 'Sedan', 45000, 239, 287, 1880, 'RWD', 'na', '4.6L Modular V8', '4AT', 5500, 'sedan', '#24262b'),
 
   // ---------------- GM: Chevrolet / GMC / Cadillac / Buick / Pontiac ----------------

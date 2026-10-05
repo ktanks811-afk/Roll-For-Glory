@@ -5,6 +5,8 @@
 // (tongue at the top), so `axle` and `deck` are fractions of that length
 // measured from the tongue tip. maxCar: the longest car that fits (m).
 // slow: how much a trailer takes off the truck's pull (more with a car on it).
+// hitch: 'goose' couples over the truck's rear axle instead of behind the bumper.
+// head: how many cattle or horses a stock trailer carries.
 
 export const TRAILERS = [
   {
@@ -27,6 +29,16 @@ export const TRAILERS = [
     desc: 'Triple axle, room for anything up to a full-size truck plus tools and tires. The pro setup.',
     len: 10.2, axle: 0.69, deck: [0.12, 0.98], maxCar: 8, slow: 0.24, loadedSlow: 0.32,
     side: 'img/trailers/enclosed-triple-side.png', top: 'img/trailers/enclosed-triple-top.png',
+  },
+  // Kimari's livestock sheet, 2026-10-05: an aluminum gooseneck stock trailer.
+  // It couples over the truck's rear axle (a gooseneck ball in a pickup bed, or
+  // the fifth wheel on a big rig), carries `head` cattle or horses and no cars.
+  {
+    id: 'stock_24', kind: 'stock', axles: 2, price: 34500, hitch: 'goose', head: 16,
+    name: '24 ft Aluminum Stock Trailer',
+    desc: 'Gooseneck, slat sides, a cut gate in the middle and a full swing door on the back. Haul cattle from your ranch to the sale barn and back.',
+    len: 9.2, axle: 0.83, deck: [0.2, 0.98], maxCar: 0, slow: 0.16, loadedSlow: 0.3,
+    side: 'img/trailers/stock-gooseneck-side.png', top: 'img/trailers/stock-gooseneck-top.png',
   },
 ];
 

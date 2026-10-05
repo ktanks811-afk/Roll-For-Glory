@@ -3,6 +3,7 @@
 
 import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, DALLAS, DALLAS_ZONE, LOCATIONS } from '../data/world.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
+import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
 import { LOT_COLOR } from './mapTiles.js';
 
@@ -233,6 +234,7 @@ function drawProps(ctx, cam, items) {
       for (let k = 0; k < 6; k++) { ctx.fillStyle = k % 2 ? '#f4f4f4' : p.c; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, k * Math.PI / 3, (k + 1) * Math.PI / 3); ctx.fill(); }
     } else if (p.k === 'cow') {
       const cx = cam.sx(p.x), cy = cam.sy(p.z);
+      if (drawCow(ctx, cx, cy, p.a + Math.PI / 2, z, breedOf(p.c))) continue;
       ctx.fillStyle = p.c; ctx.beginPath(); ctx.ellipse(cx, cy, 1.3 * z, 0.7 * z, p.a, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(cx + Math.cos(p.a) * 1.45 * z, cy + Math.sin(p.a) * 1.45 * z, 0.45 * z, 0, Math.PI * 2); ctx.fill();
     } else if (p.k === 'furn') {

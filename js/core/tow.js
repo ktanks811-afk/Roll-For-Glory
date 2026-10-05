@@ -5,7 +5,8 @@
 // and you're in the truck again.
 //
 // Save state (created lazily):
-//   s.trailers = [{ uid, id }]                       trailers you own
+//   s.trailers = [{ uid, id, stock? }]               trailers you own (stock:
+//                                                    head on a stock trailer, core/livestock.js)
 //   s.tow = { trailer, truck, car, rig, shown }
 //     trailer: uid of the hitched trailer (null = nothing hitched)
 //     truck:   uid of the truck it's hitched to
@@ -44,6 +45,8 @@ export function ensureTow(s) {
 export const canPull = model => model?.cls === 'Truck';
 export const carModel = (s, uid) => CAR_BY_ID[s.cars.find(c => c.uid === uid)?.modelId];
 export const trailerDef = tr => tr ? TRAILER_BY_ID[tr.id] : null;
+// Head of cattle or horses riding on a trailer.
+export const headOnTrailer = tr => Object.values(tr?.stock || {}).reduce((a, b) => a + b, 0);
 export const ownedTrailers = s => (s.trailers || []).map(t => ({ ...t, def: TRAILER_BY_ID[t.id] })).filter(t => t.def);
 
 // The trailer hitched up right now and its definition, or null.
@@ -71,7 +74,7 @@ export function awayFromGarage(s) {
 export function towDrag(s) {
   const h = hitched(s);
   if (!h || s.tow.rig) return 0;
-  return s.tow.car ? h.def.loadedSlow : h.def.slow;
+  return s.tow.car || headOnTrailer(h) ? h.def.loadedSlow : h.def.slow;
 }
 
 // ---------------------------------------------------------------- buying
@@ -94,6 +97,7 @@ export function sellTrailer(s, uid, earn) {
   if (!tr) return err('That trailer isn\'t yours.');
   if (t.trailer === uid && t.rig) return err('That trailer is parked out with your truck. Go load up and bring it home first.');
   if (t.trailer === uid && t.car) return err('There\'s a car on that trailer. Unload it first.');
+  if (headOnTrailer(tr)) return err('There\'s livestock on that trailer. Sell them at the sale barn or turn them out at your ranch first.');
   if (t.trailer === uid) Object.assign(t, { trailer: null, truck: null, car: null, rig: null });
   s.trailers = s.trailers.filter(x => x !== tr);
   const pay = resaleOf(tr);
@@ -128,6 +132,7 @@ export function loadBlock(s, uid) {
   const t = ensureTow(s), h = hitched(s);
   const car = s.cars.find(c => c.uid === uid);
   if (!h) return 'Hitch a trailer first.';
+  if (h.def.kind === 'stock') return 'That\'s a stock trailer. It hauls cattle and horses, not cars.';
   if (!car) return 'That car isn\'t yours.';
   if (uid === t.truck) return 'That\'s the truck pulling it.';
   if (t.car && t.car !== uid) return 'There\'s already a car on the trailer.';
@@ -204,8 +209,8 @@ export function meetEntrance(s, def) {
 export function describe(s) {
   const t = ensureTow(s), h = hitched(s);
   if (!h) return 'No trailer hitched.';
-  const truck = carModel(s, t.truck), load = carModel(s, t.car);
-  return `${h.def.name} on the ${truck ? carName(truck) : 'truck'}${load ? `, carrying the ${carName(load)}` : ', empty'}${t.rig ? ' (parked out)' : ''}.`;
+  const truck = carModel(s, t.truck), load = carModel(s, t.car), head = headOnTrailer(h);
+  return `${h.def.name} on the ${truck ? carName(truck) : 'truck'}${load ? `, carrying the ${carName(load)}` : head ? `, ${head} head on board` : ', empty'}${t.rig ? ' (parked out)' : ''}.`;
 }
 
 export { TRAILERS, TRAILER_BY_ID };

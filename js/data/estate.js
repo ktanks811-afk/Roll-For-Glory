@@ -36,6 +36,8 @@ export const ESTATE_LOCATIONS = [
   P('land_nolan', 'land', 'Nolan River Acreage', 'W', -2780, 4700, -2500, 4980, { color: '#c8a46a', icon: 'key' }),
   P('land_homestead', 'land', 'Old Cleburne Rd Homestead', 'W', 20, 3980, 240, 4200, { color: '#c8a46a', icon: 'key' }),
   P('land_bluebonnet', 'land', 'Bluebonnet Hill Ranch', 'S', -700, 5100, -380, 5380, { color: '#c8a46a', icon: 'key' }),
+  // the livestock auction on FM 4, where the stock trailer earns its keep (core/livestock.js)
+  P('salebarn', 'salebarn', 'Joshua Livestock Auction', 'N', 500, 4520, 660, 4680, { color: '#d9822b', icon: 'tow' }),
   // oil leases: pumpjacks and a tank battery, $40k a day once they're yours
   P('rig_godley', 'rig', 'Godley Pumpjack Lease', 'N', -2400, 3620, -2240, 3760, { color: '#e8c21a', icon: 'oil' }),
   P('rig_cleburne', 'rig', 'Cleburne Well Pad', 'N', -900, 3620, -740, 3760, { color: '#e8c21a', icon: 'oil' }),
@@ -126,7 +128,7 @@ export const FENCE_BY_ID = Object.fromEntries(FENCES.map(f => [f.id, f]));
 // feed: what it costs to keep one a day. pays: what it brings in a day
 // (calves, milk, stud fees). Dogs don't need a pasture.
 export const ANIMALS = [
-  { id: 'cow',      name: 'Angus cow',      price: 2200, feed: 14, pays: 80,  pen: true, color: '#1e1e20', icon: '🐄', desc: 'Black Angus. Calves sell at the Cleburne sale barn.' },
+  { id: 'cow',      name: 'Angus cow',      price: 2200, feed: 14, pays: 80,  pen: true, color: '#1e1e20', icon: '🐄', desc: 'Black Angus and red baldies. Haul them to the Joshua sale barn when the price is right.' },
   { id: 'longhorn', name: 'Texas Longhorn', price: 4800, feed: 18, pays: 140, pen: true, color: '#b06a32', icon: '🐂', desc: 'Horns six feet tip to tip. People pay to see them.' },
   { id: 'horse',    name: 'Quarter horse',  price: 8500, feed: 35, pays: 240, pen: true, color: '#7a4a2a', icon: '🐎', desc: 'A sorrel quarter horse. Stud and boarding fees.' },
   { id: 'dog',      name: 'Dog',            price: 450,  feed: 4,  pays: 0,   max: 4, color: '#8a6a4a', icon: '🐕', desc: 'Runs the yard and comes when you pull up.',

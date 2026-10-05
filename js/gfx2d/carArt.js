@@ -63,6 +63,19 @@ export const CAR_ART = {
     archY: 283,
     tireR: 0.42,
   },
+  // Kimari's 18-wheeler sheet, 2026-10-05: a long-hood sleeper tractor. Three
+  // axles (steer + tandem drive), so `wheels` has three entries. `chrome` lists
+  // art rectangles [x0, y0, x1, y1] (px) that keep their own colour when the
+  // body is painted: the stacks, air cleaners, fuel tank and step boxes.
+  peterbilt_389_sleeper_2022: {
+    side: 'img/cars/peterbilt-389-side.png',
+    top: 'img/cars/peterbilt-389-top.png',
+    wheels: [101, 795, 980],
+    archY: 309,
+    tireR: 0.52,
+    stacks: true,
+    chrome: { side: [[316, 0, 348, 272], [238, 146, 294, 250], [428, 258, 624, 344], [298, 258, 408, 344], [618, 250, 692, 344]], top: [[0, 228, 84, 304], [236, 228, 319, 304]] },
+  },
   audi_rs3_2022: {
     side: 'img/cars/audi-rs3-side.png',
     top: 'img/cars/audi-rs3-top.png',
@@ -153,6 +166,14 @@ export function paintedArt(layer, v = {}) {
   return res;
 }
 
+// Parts of the art that never take paint (chrome, tanks), as rectangles in art px.
+function keepChrome(layer, rects) {
+  for (const [x0, y0, x1, y1] of rects || []) {
+    for (let y = Math.max(0, y0); y < Math.min(layer.h, y1); y++) for (let x = Math.max(0, x0); x < Math.min(layer.w, x1); x++) layer.paint[y * layer.w + x] = 0;
+  }
+  return layer;
+}
+
 function loadImg(src) {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('art ' + src)); im.src = src; });
 }
@@ -163,7 +184,7 @@ export function loadCarArt(ms = 4000) {
   const jobs = Object.entries(CAR_ART).map(async ([id, a]) => {
     try {
       const [side, top] = await Promise.all([loadImg(a.side), loadImg(a.top)]);
-      ready[id] = { meta: a, side: analyse(side), top: analyse(top) };
+      ready[id] = { meta: a, side: keepChrome(analyse(side), a.chrome?.side), top: keepChrome(analyse(top), a.chrome?.top) };
     } catch (e) { console.warn(e); }
   });
   return Promise.race([Promise.all(jobs), new Promise(r => setTimeout(r, ms))]);

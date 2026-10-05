@@ -2124,7 +2124,7 @@ await step('trailers: buy, hitch, load, unload at the meet, load back up', async
   });
   // the lot: buy the open hauler (confirm dialog)
   await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.trailer_lot, window.__rfg.app); });
-  await p.waitForSelector('.p-head:has-text("Cowtown Trailer Sales")');
+  await p.waitForSelector('.p-head:has-text("Cowtown Trailer & Truck Sales")');
   await p.waitForTimeout(300); await snap('trailer-lot');
   await p.click('[data-action=buy][data-id=open_hauler]');
   await p.click('.modal button:has-text("Buy")');
@@ -2176,6 +2176,93 @@ await step('trailers: buy, hitch, load, unload at the meet, load back up', async
     w.vehicle = null; w.refreshCar(); w.inCar = sv.inCar;
   });
   await clear();
+});
+await step('big rig, stock trailer, HD cows, hauling cattle to the sale barn', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await clear();
+  // the lot sells the Peterbilt: its card, and the paperwork opens
+  await p.evaluate(async () => { const s = window.__rfg.game.s; s.cash += 3000000; const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.trailer_lot, window.__rfg.app); });
+  await p.waitForSelector('[data-action=rig]');
+  await p.waitForTimeout(400); await snap('semi-1-truck-lot');
+  await p.click('[data-action=rig]');
+  await p.waitForSelector('.modal:has-text("Sign the paperwork")');
+  await p.click('.modal button:has-text("Cancel")');
+  await clear();
+  const setup = await p.evaluate(async () => {
+    const st = await import('./js/core/state.js'), TOW = await import('./js/core/tow.js'), EST = await import('./js/core/estate.js');
+    const { applyEstate } = await import('./js/world2d/estate.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    w.police.reset(w); s.heat = 0;
+    window.__cowSaved = { active: s.activeCar, inCar: w.inCar };
+    const semi = st.newCar('peterbilt_389_sleeper_2022'); semi.visual.paint = '#b51818';
+    s.cars.push(semi); s.activeCar = semi.uid; s.carPos = null; window.__semi = semi.uid;
+    const tr = TOW.buyTrailer(s, 'stock_24', st.spend); const h = TOW.hitch(s, tr.trailer.uid);
+    EST.buyLand(s, 'land_crosscreek'); EST.buildFence(s, 'land_crosscreek', 'wire'); EST.buyAnimal(s, 'land_crosscreek', 'cow', 8); EST.buyAnimal(s, 'land_crosscreek', 'longhorn', 3);
+    applyEstate(w.map, s);
+    w.vehicle = null; w.refreshCar();
+    // park the rig on the farm road at the ranch gate
+    const l = LOC_BY_ID.land_crosscreek, v = w.vehicle;
+    v.x = l.x - 14; v.z = l.z - 30; v.h = Math.PI; v.vx = v.vz = 0; v.sim.v = 0; v.car.fuel = 1;
+    w.inCar = true; w.cam.x = v.x + 30; w.cam.z = v.z; w.cam.zoom = 6; w.trailers.th = null;
+    const { input } = await import('./js/core/input.js'); input.setContext('car');
+    return { tr: tr.ok, hitch: h.ok, cows: EST.penCount(s, 'land_crosscreek') };
+  });
+  if (!setup.tr || !setup.hitch || setup.cows !== 11) throw new Error('setup failed ' + JSON.stringify(setup));
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(1600); await p.keyboard.up('KeyW');
+  await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; v.vx = v.vz = 0; v.sim.v = 0; v.rev = 0; });
+  await p.waitForTimeout(1500);
+  const look = await p.evaluate(async () => { const { cowArtReady } = await import('./js/gfx2d/cowArt.js'); const { hasArt } = await import('./js/gfx2d/carArt.js'); const w = window.__rfg.app.world; return { cows: cowArtReady(), semi: hasArt('peterbilt_389_sleeper_2022'), herd: w.ranch.list.filter(a => a.home === 'land_crosscreek').length, slow: w.trailers.slowFor(w.vehicle) }; });
+  if (!look.cows || !look.semi || look.herd !== 11 || !(look.slow > 0)) throw new Error('art or herd missing ' + JSON.stringify(look));
+  // frame the herd in the pasture with the rig at the gate
+  await p.evaluate(async () => { const { pasture } = await import('./js/core/estate.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world, P = pasture(LOC_BY_ID.land_crosscreek), v = w.vehicle; w.cam.x = (v.x + P.x0 + 28) / 2; w.cam.z = v.z; w.cam.zoom = 5.5; });
+  await p.waitForTimeout(300); await snap('semi-2-rig-at-the-ranch');
+  await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; w.cam.x = v.x; w.cam.z = v.z + 5; w.cam.zoom = 11; });
+  await p.waitForTimeout(300); await snap('semi-3-semi-and-trailer-close');
+  const cow = await p.evaluate(() => { const w = window.__rfg.app.world, a = w.ranch.list.find(x => x.home === 'land_crosscreek' && x.kind === 'cow'); w.cam.x = a.x; w.cam.z = a.z; w.cam.zoom = 22; return !!a; });
+  await p.waitForTimeout(300); await snap('semi-4-hd-cows');
+  // the ranch screen: load the herd onto the trailer
+  await p.evaluate(async () => { const { openRanch } = await import('./js/ui/estate.js'); openRanch(window.__rfg.app, 'land_crosscreek'); });
+  await p.waitForSelector('[data-action=haulload][data-id=cow]');
+  await snap('semi-5-ranch-load');
+  await p.click('[data-action=haulload][data-id=cow]');
+  await p.waitForTimeout(200);
+  const on = await p.evaluate(async () => (await import('./js/core/livestock.js')).headOn(window.__rfg.game.s));
+  if (on !== 8) throw new Error('loading the cows did nothing: ' + on);
+  await clear();
+  // haul them to the sale barn and sell
+  await p.evaluate(async () => {
+    const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world, l = LOC_BY_ID.salebarn, v = w.vehicle;
+    v.x = l.x + 30; v.z = l.z + 30; v.h = -Math.PI / 2; v.vx = v.vz = 0; v.sim.v = 0; w.trailers.th = null;
+    w.cam.x = l.x + 10; w.cam.z = l.z + 60; w.cam.zoom = 3.2;
+  });
+  await p.waitForTimeout(800); await snap('semi-6-sale-barn');
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.salebarn, window.__rfg.app); });
+  await p.waitForSelector('[data-action=sell][data-id=cow]');
+  await snap('semi-7-auction-board');
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash + window.__rfg.game.s.bank);
+  await p.click('[data-action=sell][data-id=cow]');
+  await p.waitForTimeout(200);
+  const sold = await p.evaluate(async () => ({ on: (await import('./js/core/livestock.js')).headOn(window.__rfg.game.s), money: window.__rfg.game.s.cash + window.__rfg.game.s.bank }));
+  if (sold.on !== 0 || !(sold.money > cash0)) throw new Error('selling at the barn did nothing ' + JSON.stringify(sold));
+  await snap('semi-8-sold');
+  console.log('     cattle', JSON.stringify({ sold: sold.money - cash0 }));
+  // the semi's painted side view (garage and showroom art), on all three axles
+  await clear();
+  await p.evaluate(async () => {
+    const { drawSideCar } = await import('./js/gfx2d/sideCar.js'); const { CAR_BY_ID } = await import('./js/data/cars.js');
+    const c = document.createElement('canvas'); c.id = 'semi-side'; c.style.cssText = 'position:fixed;left:0;top:0;width:100vw;background:#1a1d24;z-index:99999';
+    drawSideCar(c, { model: CAR_BY_ID.peterbilt_389_sleeper_2022, visual: { paint: '#b51818', finish: 'gloss', wheels: 'five', wheelColor: '#c0c4c8' }, levels: {} });
+    document.body.appendChild(c);
+  });
+  await p.waitForTimeout(200); await snap('semi-9-side-view-painted');
+  await p.evaluate(async () => {
+    document.getElementById('semi-side')?.remove();
+    const s = window.__rfg.game.s, w = window.__rfg.app.world, sv = window.__cowSaved;
+    delete s.estate.land.land_crosscreek; (await import('./js/world2d/estate.js')).applyEstate(w.map, s);
+    s.tow = null; s.trailers = [];
+    s.cars = s.cars.filter(c => c.uid !== window.__semi); s.activeCar = sv.active; s.carPos = null;
+    w.vehicle = null; w.refreshCar(); w.inCar = sv.inCar;
+  });
 });
 await step('hustle (jobs, business, rentals)', async () => {
   await p.evaluate(async () => {
