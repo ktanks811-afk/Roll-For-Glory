@@ -16,7 +16,7 @@ import { LAND } from '../data/estate.js';
 
 const rnd = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
 export function ensureIdentity(s) { s.uid ??= rnd(10); s.crewKey ??= rnd(24); return s.uid; }
-const me = s => { ensureIdentity(s); return { uid: s.uid, tok: s.crewKey, name: String(s.player?.name || 'Racer').slice(0, 16) }; };
+export const me = s => { ensureIdentity(s); return { uid: s.uid, tok: s.crewKey, name: String(s.player?.name || 'Racer').slice(0, 16) }; };
 
 // Everything this career owns that can be deeded: bought houses and trap
 // houses (not the free starter apartment) and land.
@@ -27,7 +27,7 @@ export function deedable(s) {
 }
 export const isDeedable = id => !!LAND[id] || (PROPERTIES[id] && PROPERTIES[id].price > 0);
 
-async function rpc(fn, args = {}) {
+export async function rpc(fn, args = {}) {
   const ctl = new AbortController();
   const to = setTimeout(() => ctl.abort(), 9000);
   try {

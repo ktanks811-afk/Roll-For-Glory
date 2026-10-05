@@ -331,6 +331,9 @@ class Online {
       p.honkAt = now; this.emit('honk', p);
     } else if (m.k === 'deed') {
       this.emit('deed', m);
+    } else if (m.k === 'pay') {
+      // Cowtown Pay: "check your mailbox" for whoever got paid (net/pay.js)
+      if (typeof m.u === 'string' && m.u.length <= 16) this.emit('pay', { u: m.u });
     } else if (m.k === 'pv') {
       // head-to-head race invites (net/pvp.js); only the one it's for reads it
       if (m.to === this.id) this.emit('pvp', { ...m, from: m.id, peer: p });

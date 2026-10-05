@@ -119,8 +119,11 @@ export const statusLabel = b => ({ open: 'Due', plan: 'Payment plan', late: 'PAS
 export function payBill(s, b, amount = b.balance) {
   amount = Math.min(Math.round(amount), b.balance);
   if (amount <= 0 || !spend(s, amount, inCollections(b) ? 'Lone Star Recovery (JPS debt)' : `JPS Health Network · ${b.acct}`)) return false;
+  const was = b.status;
   b.balance -= amount;
   if (b.balance <= 0) { b.balance = 0; b.status = 'paid'; b.plan = null; }
+  // paid by the due date or on the plan: that's an on-time payment on your credit (core/credit.js)
+  if (was === 'plan' || (was === 'open' && b.status === 'paid')) emit('credit', { s, kind: 'ontime' });
   emit('health', { paid: amount });
   return true;
 }
@@ -158,17 +161,21 @@ export function healthDay(s) {
         notes.push({ from: 'jps', text: b.status === 'paid' ? `Your JPS account ${b.acct} is paid in full. Thank you.` : `Payment plan: ${fmtMoney(amt)} paid on ${b.acct}. ${fmtMoney(b.balance)} left.` });
       } else {
         b.plan = null; b.status = 'late'; b.due = day;
+        emit('credit', { s, kind: 'bill_late', text: `JPS ${b.acct}` });
         notes.push({ from: 'jps', text: `Your payment plan installment on ${b.acct} bounced, so the plan is cancelled. ${fmtMoney(b.balance)} is now past due.` });
       }
     } else if (b.status === 'open' && day > b.due) {
       b.status = 'late';
+      emit('credit', { s, kind: 'bill_late', text: `JPS ${b.acct}` });
       notes.push({ from: 'jps', text: `Your JPS bill (${b.acct}) is past due: ${fmtMoney(b.balance)}. Pay it, set up a payment plan, or apply for JPS Connection in the JPS Health app. Unpaid accounts go to collections.` });
     } else if (b.status === 'late' && day > b.due + COLLECTIONS_AFTER) {
       b.status = 'collections'; b.sold = day; b.plan = null;
       b.balance = Math.round(b.balance * (1 + COLLECTION_FEE));
+      emit('credit', { s, kind: 'collections', text: `JPS ${b.acct}` });
       notes.push({ from: 'collections', text: `This is Lone Star Recovery Services, a debt collector. JPS placed account ${b.acct} with us. You owe ${fmtMoney(b.balance)} (includes a ${Math.round(COLLECTION_FEE * 100)}% collection fee). Pay now to avoid legal action.` });
     } else if (b.status === 'collections' && day > b.sold + SUIT_AFTER) {
       b.status = 'judgment'; b.balance += SUIT_COSTS; b.garnish = day;
+      emit('credit', { s, kind: 'judgment', text: `JPS ${b.acct}` });
       notes.push({ from: 'collections', text: `You were sued in Tarrant County Justice Court, Precinct 1, and didn't answer. Default judgment: ${fmtMoney(b.balance)}. A writ of garnishment has been served on your bank account.` });
       notes.push(...garnish(s, b));
     } else if (b.status === 'judgment' && day >= b.garnish + GARNISH_EVERY) {

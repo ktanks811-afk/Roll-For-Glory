@@ -15,6 +15,7 @@ import { estateDay } from './core/estate.js';
 import { dogsDay, ensureKennel } from './core/dogs.js';
 import { drugsDay } from './core/drugs.js';
 import { fedsDay } from './core/bank.js';
+import { creditDay, insurancePremium } from './core/credit.js';
 import { chopDay, PARTS_CHARGE } from './core/chop.js';
 import { raidWhileAway } from './world2d/trap.js';
 import { citationsDue, addWarrant } from './core/warrants.js';
@@ -33,6 +34,7 @@ import { initOrientation } from './ui/orientation.js';
 import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
 import { profile } from './net/profile.js';
+import { pay } from './net/pay.js';
 import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
 import { openPhone } from './ui/phone.js';
@@ -190,7 +192,7 @@ function newDay() {
   // weekly bills
   if (s.time.day % 7 === 0) {
     if (s.insurance) {
-      const prem = Math.round(40 + s.cars.reduce((a, c) => a + carValue(c), 0) * 0.0022);
+      const prem = insurancePremium(s);   // your cars, then your credit (core/credit.js)
       if (!spend(s, prem, 'Weekly insurance premium')) { s.insurance = false; sendMessage(s, 'insurance', 'Your policy lapsed — the payment bounced.'); }
     }
     const upkeep = s.properties.length > 1 ? 120 * (s.properties.length - 1) : 0;
@@ -201,6 +203,8 @@ function newDay() {
   if (late.length) sendMessage(s, 'brenner', `You didn't pay your ticket${late.length > 1 ? 's' : ''}. There's a warrant out for you now (${fmtMoney(late.reduce((t, w) => t + w.fine, 0))} with the late fee). Pay it at a precinct or in the FWPD app before one of my officers runs your plate.`);
   // medical bills: plan payments, past due, collections, garnishment
   for (const n of healthDay(s)) sendMessage(s, n.from, n.text, n.from === 'jps' ? { action: { type: 'gps', loc: HOSPITAL } } : {});
+  // loans: autopay, late fees, defaults, repos; your credit score for the day
+  for (const n of creditDay(s)) sendMessage(s, n.from, n.text);
   // probation runs out
   const pr = probationDay(s);
   if (pr?.done) sendMessage(s, 'clerk', pr.deferred ? 'You completed deferred adjudication. Your case is dismissed and there is no conviction on your record.' : 'You completed your probation. Your supervision is discharged.');
@@ -311,6 +315,7 @@ async function boot() {
     initGangs();
     initFeed();
     initOrientation();
+    pay.start();   // Cowtown Pay: money other players sent you
   } catch (e) {
     console.error(e);
     $('#boot-msg').textContent = 'Failed to start: ' + e.message;
