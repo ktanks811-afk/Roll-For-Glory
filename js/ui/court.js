@@ -168,7 +168,7 @@ export async function hearing(app, c, { custody = false } = {}) {
     ${sent.life ? `<p class="bad">${sent.lwop ? 'You will die in the Texas Department of Criminal Justice. There is no parole.' : `Parole doesn't come up for ${sent.paroleYears} years.`} You can fight the case from the law library for the rest of your life.</p>` : sent.kind === 'jail' ? `<p>With ${sent.facility === 'prison' ? (sent.tg ? 'parole at half time (aggravated offense)' : 'parole') : sent.facility === 'county' ? 'good-time credit' : 'state jail credit'}${r.credit ? ` and ${fmtDays(r.credit)} for time served` : ''}, you'll do about <b>${fmtDays(sent.served)}</b>.</p>` : ''}
     ${f.layout ? `<p class="bad">You can't cover the ${fmtMoney(sent.fine)} fine. You'll sit out the rest in jail: ${f.layout} day${f.layout > 1 ? 's' : ''} at ${fmtMoney(150)} a day.</p>` : ''}
     ${r.refund ? `<p class="small muted">Your ${fmtMoney(r.refund)} cash bail is refunded${sent.fine ? ' (applied to the fine first)' : ''}.</p>` : ''}`,
-    [{ label: jailDays ? 'Go with the bailiff' : 'Leave the courtroom', primary: true }]);
+    [{ label: jailDays || sent.kind === 'jail' ? 'Go with the bailiff' : 'Leave the courtroom', primary: true }]);
   // TDCJ: you do the time for real, on the compound (ui/prison.js)
   if (sent.kind === 'jail' && sent.facility !== 'county') {
     const top = r.guilty.reduce((a, g) => (CLASSES[g.cls].rank > CLASSES[a.cls].rank ? g : a), r.guilty[0]);
