@@ -2266,6 +2266,18 @@ await step('big rig, stock trailer, HD cows, hauling cattle to the sale barn', a
 });
 await step('hog dogs: kennel, dog profiles, breeding, a hog hunt', async () => {
   const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  // something async from an earlier step can open a panel over the kennel (openPanel hides the ones
+  // under it); say what it was, close it and look again
+  const kennelUp = async () => {
+    for (let i = 0; ; i++) {
+      try { await p.waitForSelector('.dogcard', { timeout: 4000 }); return; } catch (e) {
+        const top = await p.evaluate(async () => { const t = (await import('./js/ui/dom.js')).topPanel(); return t ? t.root.className + ' | ' + (t.root.querySelector('h1,h2')?.textContent || '') : 'no panel'; });
+        console.log('     kennel covered by', top);
+        if (i === 2) throw e;
+        await p.evaluate(async () => { (await import('./js/ui/dom.js')).closePanel(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); });
+      }
+    }
+  };
   const art = () => p.waitForFunction(() => { const i = [...document.querySelectorAll('img.dogimg')]; return i.length && i.every(x => x.getAttribute('src')); }, null, { timeout: 30000 });
   await clear();
   // the kennel on FM 4: dogs painted from their genes
@@ -2275,7 +2287,7 @@ await step('hog dogs: kennel, dog profiles, breeding, a hog hunt', async () => {
     const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
     openPlace(LOC_BY_ID.dog_kennel, window.__rfg.app);
   });
-  await p.waitForSelector('.dogcard');
+  await kennelUp();
   await art(); await snap('dogs-1-kennel-for-sale');
   // buy one through the profile, the rest straight off the rules
   await p.click('.dogcard >> nth=0');
@@ -2295,7 +2307,7 @@ await step('hog dogs: kennel, dog profiles, breeding, a hog hunt', async () => {
   // (once in a while the evaluate right after the buy confirm loses its context; one retry)
   const openK = () => p.evaluate(async () => { (await import('./js/ui/kennel.js')).openKennel(window.__rfg.app); });
   try { await openK(); } catch (e) { if (!/context was destroyed/.test(e.message)) throw e; await p.waitForTimeout(800); await openK(); }
-  await p.waitForSelector('.dogcard'); await art(); await snap('dogs-3-my-dogs');
+  await kennelUp(); await art(); await snap('dogs-3-my-dogs');
   await p.click('.dogcard >> nth=1');
   await p.waitForSelector('.dogprofile [data-action=train]'); await art(); await snap('dogs-4-dog-profile');
   const before = await p.evaluate(() => JSON.stringify(window.__rfg.game.s.kennel.dogs[1].stats));
