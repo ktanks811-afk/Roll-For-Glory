@@ -12,7 +12,8 @@
 
 import { CALIPER_COLORS } from '../data/parts.js';
 import { shapeOf } from '../data/carShapes.js';
-import { hex, rgb, mix, lighten, darken, poly, fillPoly, drawWheel, wheelArch, archLip, drawEngineBay, drawSideMustang } from './sideMustang.js';
+import { hex, rgb, mix, lighten, darken, poly, fillPoly, drawWheel, wheelArch, archLip, drawEngineBay, drawSideMustang, lowerBody } from './sideMustang.js';
+import { rideDrop } from '../sim/tuning.js';
 import { artOf, paintedArt } from './carArt.js';
 
 export const hasSideView = () => true;
@@ -479,7 +480,7 @@ function engineBay(g, geo, v, lv) {
 }
 
 // ------------------------------------------------------------------ main
-// opts: { model, visual, levels, cond, showEngine, layers }
+// opts: { model, visual, levels, tune, cond, showEngine, layers }
 export function drawSideCar(canvas, opts) {
   const model = opts.model;
   if (model && MUSTANG_ART.has(model.id)) return drawSideMustang(canvas, opts);
@@ -498,7 +499,7 @@ export function drawSideCar(canvas, opts) {
   const size = +v.wheelSize || sh.rim || 18, offset = v.offset || 'flush';
   const caliper = CALIPER_COLORS[Math.min(4, lv.brakes || 0)] || '#3a3a3a';
   const flare = v.kit === 'wide' ? 26 : 0;
-  const drop = [0, 0.022, 0.04, 0.055, 0.066][Math.min(4, lv.suspension || 0)] * geo.ppm;
+  const drop = rideDrop(lv, opts.tune), lower = c => lowerBody(c, drop, geo.fx, geo.rx, geo.ppm / 1000);
 
   // ground shadow + underglow
   const cxm = (geo.X(0) + geo.X(sh.L)) / 2, hw = (geo.X(sh.L) - geo.X(0)) / 2;
@@ -508,7 +509,7 @@ export function drawSideCar(canvas, opts) {
     g.globalAlpha = 0.5; g.fillStyle = gr; g.beginPath(); g.ellipse(cxm, GROUND + 4, hw, 60, 0, 0, 7); g.fill(); g.globalAlpha = 1;
   }
 
-  g.save(); g.translate(0, drop);
+  g.save(); lower(g);
   if (flare) { const base = hex(v.paint); for (const cx of [geo.fx, geo.rx]) { g.fillStyle = rgb(darken(base, 0.1)); g.beginPath(); g.arc(cx, geo.cy, geo.R + 46, Math.PI * 0.98, Math.PI * 2.02); g.fill(); } }
   if (on('body')) paintBody(g, geo, v);
   if (on('skirts')) paintSkirts(g, geo, v);
@@ -526,7 +527,7 @@ export function drawSideCar(canvas, opts) {
   g.restore();
 
   if (on('wheels')) { drawWheel(g, geo.fx, geo.cy, v, size, offset, caliper, 'front', geo.R); drawWheel(g, geo.rx, geo.cy, v, size, offset, caliper, 'rear', geo.R); }
-  g.save(); g.translate(0, drop);
+  g.save(); lower(g);
   if (offset !== 'poke') { archLip(g, geo.fx, geo.cy, v, flare, geo.R); archLip(g, geo.rx, geo.cy, v, flare, geo.R); }
   g.restore();
   g.restore();
@@ -557,7 +558,7 @@ function drawSideArt(canvas, opts, art) {
   const [fx, rx, ...more] = art.meta.wheels.map(x => x0 + x * s);   // a big rig has a second rear axle
   const size = +v.wheelSize || 20, offset = v.offset || 'flush';
   const caliper = CALIPER_COLORS[Math.min(4, lv.brakes || 0)] || '#3a3a3a';
-  const drop = [0, 0.022, 0.04, 0.055, 0.066][Math.min(4, lv.suspension || 0)] * ppm;
+  const drop = rideDrop(lv, opts.tune), lower = c => lowerBody(c, drop, fx, rx, ppm / 1000);
 
   g.save(); g.scale(K, K);
   g.imageSmoothingEnabled = true;
@@ -568,7 +569,7 @@ function drawSideArt(canvas, opts, art) {
     g.globalAlpha = 0.5; g.fillStyle = gr; g.beginPath(); g.ellipse(cxm, GROUND + 4, hw, 60, 0, 0, 7); g.fill(); g.globalAlpha = 1;
   }
   // dark wheel wells, then the wheels; the body goes over both
-  g.save(); g.translate(0, drop);
+  g.save(); lower(g);
   for (const x of [fx, rx, ...more]) wheelArch(g, x, cy, v, 0, R);
   g.restore();
   if (on('wheels')) { drawWheel(g, fx, cy, v, size, offset, caliper, 'front', R); for (const x of [rx, ...more]) drawWheel(g, x, cy, v, size, offset, caliper, 'rear', R); }
@@ -577,7 +578,7 @@ function drawSideArt(canvas, opts, art) {
   // body on its own layer so graphics can be clipped to the paint
   const b = document.createElement('canvas'); b.width = SW; b.height = SH;
   const bg = b.getContext('2d');
-  bg.scale(K, K); bg.translate(0, drop); bg.imageSmoothingEnabled = true;
+  bg.scale(K, K); lower(bg); bg.imageSmoothingEnabled = true;
   if (on('body')) bg.drawImage(pa.full, x0, y0, pa.w * s, pa.h * s);
   if (on('decals') && v.decal && v.decal !== 'none') {
     bg.save(); bg.globalCompositeOperation = 'source-atop';

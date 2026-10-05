@@ -465,6 +465,27 @@ await step('tuning: engine map, chassis setup, knock', async () => {
   if (!r.same) throw new Error('an untouched tune changed the car');
   if (r.groups < 8 || !/changed/.test(r.changed) || r.saved !== 20) throw new Error('tune tab did not edit + save');
 });
+await step('ride height shows on the car', async () => {
+  const r = await p.evaluate(async () => {
+    const { drawSideCar } = await import('./js/gfx2d/sideCar.js');
+    const { CAR_BY_ID } = await import('./js/data/cars.js');
+    const { rideDrop } = await import('./js/sim/tuning.js');
+    const v = { paint: '#b0121b', wheels: '5-spoke', wheelColor: '#222' };
+    // lowest painted row of the body, away from the wheels
+    const bodyBottom = (id, lv, tune) => {
+      const c = drawSideCar(document.createElement('canvas'), { model: CAR_BY_ID[id], visual: v, levels: lv, tune, cond: {} });
+      const g = c.getContext('2d'), x = c.width / 2 | 0, d = g.getImageData(x, 0, 1, c.height).data;
+      for (let y = c.height - 1; y >= 0; y--) { const i = y * 4; if (d[i + 3] > 200 && d[i] > 120 && d[i + 1] < 60) return y; }
+      return -1;
+    };
+    const out = {};
+    for (const id of ['ford_mustang_gt_s650_2024', 'honda_civic_ex_1996']) out[id] = [bodyBottom(id, { suspension: 3 }, { rideF: 0, rideR: 0 }), bodyBottom(id, { suspension: 3 }, { rideF: 90, rideR: 90 })];
+    return { out, springs: rideDrop({ suspension: 1 }, { rideF: 90 }), coils: rideDrop({ suspension: 2 }, { rideF: 10, rideR: 99 }) };
+  });
+  console.log('     ride', JSON.stringify(r));
+  for (const [id, [hi, lo]] of Object.entries(r.out)) if (!(hi > 0 && lo > hi + 5)) throw new Error(`${id} didn't sit lower when the tune lowered it`);
+  if (r.springs.f !== 25 || r.coils.f !== 10 || r.coils.r !== 70) throw new Error('ride drop ignores the suspension limits');
+});
 await step('part profiles + blowing the motor', async () => {
   const r = await p.evaluate(async () => {
     const st = await import('./js/core/state.js');

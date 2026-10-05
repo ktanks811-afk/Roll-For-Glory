@@ -128,6 +128,15 @@ export function tuneValue(tune, item) {
   return typeof v === 'number' && isFinite(v) ? clamp(v, item.min, item.max) : item.def;
 }
 
+// How far the body sits below stock (mm), front and rear, as the saved tune
+// sets it. Below coilovers it's the springs' fixed drop.
+export function rideDrop(lv = {}, tune = {}) {
+  const s = Math.min(4, lv.suspension || 0), max = s >= 3 ? 90 : 70;
+  if (s < 2) return { f: DROP_DEF[s], r: DROP_DEF[s] };
+  const at = k => typeof tune?.[k] === 'number' && isFinite(tune[k]) ? clamp(tune[k], 0, max) : DROP_DEF[s];
+  return { f: at('rideF'), r: at('rideR') };
+}
+
 // What the setup does to the car. Every number is relative to the default
 // setup, so an untouched car gets all-neutral values.
 export function tuneEffects(model, lv, tune = {}, visual = {}, redline = model.redline) {
