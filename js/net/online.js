@@ -192,6 +192,7 @@ class Online {
     this.seq = 0;
     this.prev = null;             // last frame, for turn rate and acceleration
     this.me = null;
+    this.ride = '';               // id of the driver whose car you're riding in (net/ride.js)
     this.transportKind = 'supabase';
   }
 
@@ -214,7 +215,7 @@ class Online {
     this.me = me;
     this.name = cleanName(me.name);
     this.id = Math.random().toString(36).slice(2, 10);
-    this.peers.clear(); this.chat = []; this.sent = null; this.prev = null; this.seq = 0;
+    this.peers.clear(); this.chat = []; this.sent = null; this.prev = null; this.seq = 0; this.ride = '';
     this.status = 'connecting'; this.error = '';
     this.transportKind = kind || this.kind;
     this.presence = null;
@@ -322,6 +323,7 @@ class Online {
       const x = num(m.x, -9000, 9000), z = num(m.z, -9000, 9000);
       p.st = { x, z, h: num(m.h, -20, 20), v: num(m.v, -80, 120), r: num(m.r, -4, 4), a: num(m.a, -30, 30) };
       p.sp = p.st.v; p.inCar = !!m.c; p.sflame = num(m.f, 0, 2); p.t = now;
+      p.ride = typeof m.rd === 'string' && m.rd.length <= 16 ? m.rd : '';
       if (p.fresh) { p.x = x; p.z = z; p.h = p.st.h; p.fresh = false; }
     } else if (m.k === 'c') {
       this.addChat(cleanName(m.n, p.name), cleanText(m.x));
@@ -332,11 +334,16 @@ class Online {
     } else if (m.k === 'pv') {
       // head-to-head race invites (net/pvp.js); only the one it's for reads it
       if (m.to === this.id) this.emit('pvp', { ...m, from: m.id, peer: p });
+    } else if (m.k === 'rq') {
+      // ride-along requests (net/ride.js)
+      if (m.to === this.id) this.emit('ride', { ...m, from: m.id, peer: p });
     }
   }
 
   // ---------------------------------------------------------------- per frame
   // me = { x, z, h, speed, inCar, flame }
+  // While you ride in someone's car, everyone hides you and the driver's car
+  // carries you, so only a slow keepalive goes out.
   tick(dt, me) {
     if (!this.active) return;
     const now = performance.now() / 1000;
@@ -352,9 +359,10 @@ class Online {
     const moving = Math.abs(me.speed) > 0.3 || me.flame > 0.04 || !me.inCar;
     if (this.sendT <= 0) {
       const sent = this.sent;
-      let need = !sent || sent.c !== (me.inCar ? 1 : 0) || Math.abs((sent.f || 0) - me.flame) > 0.3;
+      let need = !sent || sent.c !== (me.inCar ? 1 : 0) || Math.abs((sent.f || 0) - me.flame) > 0.3 || (sent.rd || '') !== this.ride;
       const since = sent ? now - sent.t : 99;
-      if (!need) {
+      if (!need && this.ride) need = since >= IDLE_EVERY;
+      else if (!need) {
         if (since >= (moving ? KEEPALIVE : IDLE_EVERY)) need = true;
         else {
           const g = predict(sent, since);
@@ -364,6 +372,7 @@ class Online {
       if (need) {
         this.sendT = 1 / MAX_HZ;
         const msg = { k: 's', q: ++this.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) };
+        if (this.ride) { msg.rd = this.ride; msg.v = msg.r = msg.a = 0; }
         this.sent = { ...msg, t: now };
         this.send(msg);
       }

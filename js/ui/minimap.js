@@ -126,7 +126,7 @@ export class MiniMap {
 
     // other players
     if (online.active) for (const o of online.list()) {
-      if (o.fresh) continue;
+      if (o.fresh || o.ride) continue;   // riding in someone's car
       const [a, b] = P(o.x, o.z);
       if (Math.hypot(a - S / 2, b - S / 2) > S / 2 + 6) continue;
       g.fillStyle = 'rgba(0,0,0,.7)'; g.beginPath(); g.arc(a, b, 6.4, 0, 7); g.fill();
