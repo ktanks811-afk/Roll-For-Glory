@@ -36,14 +36,44 @@ export const DTRINITY_X = 4440;              // the Trinity River, west of downt
 export const ARLINGTON_X = 3800;             // I-30 exit at the stadium
 export const ARLINGTON_END = -700;           // Collins St runs south from the exit to here
 export const inDallas = (x, z) => x > DALLAS.x0 - 12 && x < DALLAS.x1 + 12 && z > DALLAS.z0 - 12 && z < DALLAS.z1 + 12;
+// North Texas: up I-35W from Loop 820, past the Alliance warehouses and the
+// airport, Texas Motor Speedway at TX-114, Northlake and Argyle, Roanoke down
+// 114, and Denton at the top with Lake Lewisville to the east. Denton is its
+// own 8x8-block grid (150 m blocks); its west street line is I-35 itself.
+// world2d/north.js fills it in.
+export const NORTH = { x0: -1400, x1: 3200, z0: -7700, z1: -3300 };     // open to drive, north of the old map edge
+export const DENTON = { x0: 0, x1: 1200, z0: -7000, z1: -5800 };
+export const DNGRID_X = [], DNGRID_Z = [];
+for (let v = DENTON.x0; v <= DENTON.x1; v += 150) DNGRID_X.push(v);
+for (let v = DENTON.z0; v <= DENTON.z1; v += 150) DNGRID_Z.push(v);
+export const I35_END = -7550;                // where I-35 runs out north of Denton
+export const HTRACE_Z = -3900;               // Heritage Trace Pkwy, Alliance
+export const WESTPORT_Z = -3660;             // Westport Pkwy, through the warehouses
+export const TX114_Z = -4600;                // TX-114, west to Rhome and east to Roanoke
+export const TX114_X = [-1300, 3150];
+export const ROANOKE_X = 2200;               // Oak St; US-377 runs north from here to Denton
+export const ROANOKE_END = -4220;            // Oak St runs south from 114 to here
+export const US377_Z = -6250;                // US-377 comes into Denton on Dallas Dr (Denton row 5)
+export const TMS = { x0: 300, x1: 1000, z0: -5300, z1: -4850 };   // Texas Motor Speedway: the oval (a ring of track)
+export const TMS_PIT_X = 650;                // pit road from 114 up to the oval
+export const AIRPORT_X = 900;                // Alliance Blvd, from Heritage Trace into the airport
+export const LEWISVILLE = { x0: 2450, x1: 3150, z0: -6900, z1: -4900 };   // Lake Lewisville
+export const inDenton = (x, z) => x > DENTON.x0 - 12 && x < DENTON.x1 + 12 && z > DENTON.z0 - 12 && z < DENTON.z1 + 12;
+export const inNorth = (x, z) => z < NORTH.z1 && x > NORTH.x0 && x < NORTH.x1;
+// either city grid outside Fort Worth (sidewalks, red lights, pavement)
+export const inCityGrid = (x, z) => inDallas(x, z) || inDenton(x, z);
 
 export const STREET_NS = ['Hulen St', 'Montgomery St', 'University Dr', 'Henderson St', 'Throckmorton St', 'Houston St', 'Main St', 'Commerce St', 'Jones St', 'Riverside Dr', 'Beach St', 'Oakland Blvd', 'Lake Worth Blvd'];
 export const DSTREET_NS = ['Sylvan Ave', 'Riverfront Blvd', 'Lamar St', 'Griffin St', 'Akard St', 'Ervay St', 'Harwood St', 'Pearl St', 'Good Latimer Expy', 'Exposition Ave', 'Haskell Ave'];
 export const DSTREET_EW = ['Lemmon Ave', 'McKinney Ave', 'Ross Ave', 'Elm St', 'Commerce St', 'I-30', 'Jefferson Blvd', 'Davis St', 'MLK Jr Blvd', 'Illinois Ave', 'Kiest Blvd'];
+export const DNSTREET_NS = ['I-35', 'Bonnie Brae St', 'Avenue C', 'Carroll Blvd', 'Elm St', 'Locust St', 'Bell Ave', 'Wood St', 'Loop 288'];
+export const DNSTREET_EW = ['University Dr', 'Sherman Dr', 'Oak St', 'Hickory St', 'Mulberry St', 'Dallas Dr', 'Eagle Dr', 'Teasley Ln', 'Hwy 380 Bypass'];
 export const STREET_EW = ['NE 28th St', 'Stockyards Blvd', 'Exchange Ave', 'Northside Dr', 'Belknap St', 'Weatherford St', 'W 7th St', 'Lancaster Ave', 'Vickery Blvd', 'Rosedale St', 'Magnolia Ave', 'Berry St', 'Seminary Dr'];
 
 export function districtAt(x, z) {
   if (x > DALLAS_ZONE.x0 && z < DALLAS_ZONE.z1 + 400) return dallasDistrict(x, z);
+  if (z < NORTH.z1 && x > NORTH.x0 - 200) return northDistrict(x, z);
+  if (z < HWY_Z - 60 && Math.abs(x) < 60) return 'I-35W';
   if (z < -1000) return 'Loop 820';
   if (z > COUNTRY.z0) return 'Johnson County';
   if (z > DESERT_Z) return 'Chisholm Flats';
@@ -67,9 +97,31 @@ function dallasDistrict(x, z) {
   }
   return i <= 4 ? 'Oak Cliff' : 'South Dallas';
 }
+function northDistrict(x, z) {
+  if (inDenton(x, z)) {
+    const i = Math.floor((x - DENTON.x0) / BLOCK), j = Math.floor((z - DENTON.z0) / BLOCK);
+    if (i >= 3 && i <= 5 && j <= 1) return 'TWU';
+    if (i >= 3 && i <= 5 && j <= 4) return 'The Square';
+    if (i <= 2 && j >= 3) return 'UNT';
+    if (i <= 2) return 'North Denton';
+    if (i >= 6 && j <= 4) return 'East Denton';
+    return 'Southeast Denton';
+  }
+  if (z < DENTON.z1 + 40 && z > DENTON.z0 - 400 && x > -400 && x < LEWISVILLE.x0 - 100) return 'Denton';
+  if (x > LEWISVILLE.x0 - 100 && z < LEWISVILLE.z1 + 60) return 'Lake Lewisville';
+  if (x > TMS.x0 - 160 && x < TMS.x1 + 160 && z > TMS.z0 - 120 && z < TX114_Z) return 'Texas Motor Speedway';
+  if (Math.abs(x - ROANOKE_X) < 380 && z > TX114_Z - 250 && z < ROANOKE_END + 120) return 'Roanoke';
+  if (z > HTRACE_Z) return 'Alliance';
+  if (z > TX114_Z - 20) return x > 300 ? 'Alliance Airport' : x > -40 ? 'I-35W' : 'Northlake';
+  if (Math.abs(x) < 40) return 'I-35W';
+  return x < 0 ? 'Argyle' : x > ROANOKE_X - 120 ? 'US-377' : 'Justin Prairie';
+}
+export const DENTON_DISTRICTS = ['TWU', 'The Square', 'UNT', 'North Denton', 'East Denton', 'Southeast Denton'];
+export const NORTH_DISTRICTS = [...DENTON_DISTRICTS, 'Denton', 'Lake Lewisville', 'Texas Motor Speedway', 'Roanoke', 'Alliance', 'Alliance Airport', 'Northlake', 'Argyle', 'US-377', 'Justin Prairie'];
 export const DALLAS_DISTRICTS = ['Uptown', 'Downtown Dallas', 'Deep Ellum', 'West Dallas', 'Oak Cliff', 'South Dallas'];
 
 export function blockCenter(i, j, city) {
+  if (city === 'denton') return { x: DENTON.x0 + BLOCK / 2 + BLOCK * i, z: DENTON.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'dallas') return { x: DALLAS.x0 + BLOCK / 2 + BLOCK * i, z: DALLAS.z0 + BLOCK / 2 + BLOCK * j };
   return { x: -825 + BLOCK * i, z: -825 + BLOCK * j };
 }
@@ -90,6 +142,8 @@ function front(i, j, side, along = 0, city) {
 const L = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], side, ...front(i, j, side), ...extra });
 // the same on a Dallas block
 const D = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'dallas', side, ...front(i, j, side, 0, 'dallas'), ...extra });
+// and on a Denton block
+const N = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'denton', side, ...front(i, j, side, 0, 'denton'), ...extra });
 
 export const LOCATIONS = [
   L('eastgate_studio', 'home', 'Eastgate Studio (Home)', 8, 6, 'W', { color: '#ffffff', icon: 'home' }),
@@ -175,6 +229,30 @@ export const LOCATIONS = [
   D('ellum_meet', 'meet', 'Deep Ellum Warehouse Lot', 9, 1, 'S', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
   D('uptown_condo', 'property', 'Uptown High-Rise Condo', 4, 0, 'S', { color: '#ffffff', icon: 'home' }),
   D('kessler_tudor', 'property', 'Kessler Park Tudor', 0, 8, 'E', { color: '#ffffff', icon: 'home' }),
+  // ---------------- North Texas (world2d/north.js) ----------------
+  // Alliance: the Heritage Trace exit off I-35W, a travel center and a diesel shop on the south frontage
+  { id: 'gas_alliance', type: 'gas', name: 'Speedway Travel Center', x: -130, z: HTRACE_Z + 14, face: 0, side: 'N', color: '#1f8f3a', icon: 'gas' },
+  { id: 'alliance_diesel', type: 'repair', name: 'Alliance Truck & Diesel', x: 190, z: HTRACE_Z + 14, face: 0, side: 'N', color: '#1b4fc4', icon: 'repair', rate: 0.95, tagline: 'Big rigs, trailers and pickups · off I-35W at Heritage Trace' },
+  // the Texas Motor Speedway lot, on 114 by the pit road (the oval itself is open to drive)
+  { id: 'tms_lot', type: 'meet', name: 'Texas Motor Speedway Lot', x: TMS_PIT_X + 60, z: TX114_Z - 14, face: Math.PI, side: 'S', color: '#ff1a2e', icon: 'meet', tier: 3 },
+  // Roanoke: Oak St off 114
+  { id: 'roanoke_food', type: 'food', name: 'Oak Street Smokehouse', x: ROANOKE_X - 14, z: -4440, face: -Math.PI / 2, side: 'E', color: '#e8c21a', icon: 'food' },
+  { id: 'roanoke_repair', type: 'repair', name: 'Roanoke Lube & Brake', x: ROANOKE_X + 14, z: -4360, face: Math.PI / 2, side: 'W', color: '#1b4fc4', icon: 'repair', rate: 0.85, tagline: 'Small-town shop on Oak St · oil, brakes and tires' },
+  // Denton (block i,j on the Denton grid; I-35 is its west street line)
+  N('denton_motor', 'repair', 'Denton Square Auto & Tire', 6, 4, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.9, tagline: 'A block off the Square · college-kid prices' }),
+  N('gas_denton', 'gas', 'Volt & Petrol', 2, 2, 'S', { color: '#1f8f3a', icon: 'gas' }),
+  N('gas_denton_east', 'gas', 'Gas-N-Go', 7, 5, 'W', { color: '#1f8f3a', icon: 'gas' }),
+  N('corner_fry', 'corner', 'Fry St Food Mart', 2, 3, 'N', { color: '#ff8a1a', icon: 'food' }),
+  N('corner_se_denton', 'corner', 'Southeast Quick Stop', 5, 6, 'W', { color: '#ff8a1a', icon: 'food' }),
+  N('north_star_perf', 'perf', 'North Star Performance', 6, 1, 'S', { color: '#e8641a', icon: 'wrench', owner: 'Tee', tagline: 'Tee Mosley · built Speedway track cars for twenty years · Denton' }),
+  N('fry_meet', 'meet', 'Fry Street Lot', 1, 2, 'S', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  N('denton_pd', 'police', 'Denton PD', 5, 5, 'N', { color: '#1b4fc4', icon: 'shield' }),
+  N('denton_trucks', 'dealer', 'Denton County Trucks (Ford · Chevy · Ram · GMC)', 7, 2, 'W', { color: '#f2f2f2', icon: 'car', makes: ['ford', 'chevrolet', 'ram', 'gmc'] }),
+  N('denton_diner', 'food', 'Mean Green Diner', 3, 5, 'N', { color: '#e8c21a', icon: 'food' }),
+  N('denton_pawn', 'pawn', 'Denton Gold & Pawn', 6, 6, 'N', { color: '#d4a017', icon: 'tow' }),
+  N('oak_victorian', 'property', 'Oak St Victorian', 7, 0, 'S', { color: '#ffffff', icon: 'home' }),
+  N('bonnie_brae_ranch', 'property', 'Bonnie Brae Ranch House', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
+  N('se_denton_starter', 'property', 'Southeast Denton Starter', 4, 7, 'N', { color: '#ffffff', icon: 'home' }),
   // street race start lines (routes in data/streetRaces.js)
   // trap houses, land for sale and the plug, off the city grid (data/estate.js)
   ...ESTATE_LOCATIONS,
@@ -200,6 +278,9 @@ export const PROPERTIES = {
   six_threestory:    { name: 'Stalcup Heights Three-Story', price: 295000, slots: 6, house: 'three', desc: '3-story new build with a rooftop game room and a six-car garage. Stop Six.', tier: 2 },
   uptown_condo:      { name: 'Uptown High-Rise Condo', price: 520000, slots: 6, desc: 'Dallas. A corner unit over McKinney Ave with six spots in the private garage.', tier: 3 },
   kessler_tudor:     { name: 'Kessler Park Tudor', price: 410000, slots: 5, house: 'two', desc: 'Dallas. A 2-story Tudor on the Oak Cliff bluffs, five-car garage.', tier: 2, wall: '#c8b8a0', roof: '#3a3030' },
+  oak_victorian:     { name: 'Oak St Victorian', price: 365000, slots: 6, house: 'three', desc: 'Denton. A restored 1890s Victorian on Oak St, three stories and a six-car carriage house.', tier: 3, wall: '#c9b48a', roof: '#4a2f3a' },
+  bonnie_brae_ranch: { name: 'Bonnie Brae Ranch House', price: 118000, slots: 4, house: 'one', desc: 'Denton. A 1-story brick ranch by UNT, four-car garage. The freeway is right out back.' },
+  se_denton_starter: { name: 'Southeast Denton Starter', price: 58000, slots: 2, house: 'starter', desc: 'Denton. Two bedrooms, a porch and a carport on Teasley Ln.' },
   rivercrest_mansion: { name: 'Rivercrest Mansion', price: 3600000, slots: 14, house: 'three', desc: 'Country club money. Three stories, fourteen climate-controlled bays and a car elevator.', tier: 5, wall: '#e8e2d8', roof: '#2f3b4a', wallH: 5.2 },
   // trap houses (data/estate.js): customers knock, SWAT might too
   ...Object.fromEntries(Object.entries(TRAPS).map(([id, t]) => [id, { ...t, trap: true }])),

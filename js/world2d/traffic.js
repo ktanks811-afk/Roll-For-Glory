@@ -5,7 +5,7 @@
 import { CARS } from '../data/cars.js';
 import { carSprite, dimsFor } from '../gfx2d/carSprite.js';
 import { signalState } from './render.js';
-import { ROAD_W, DALLAS, inDallas } from '../data/world.js';
+import { ROAD_W, DALLAS, DENTON, inDallas, inDenton } from '../data/world.js';
 
 export const COMMON = CARS.filter(c => !c.market && c.msrp < 70000);
 const COLORS = ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4', '#c8b98a', '#5a5d63', '#0d0d0d', '#4a5232', '#8c9196', '#e0e0e0'];
@@ -78,7 +78,7 @@ export class TrafficCar {
 
   turn() {
     const node = this.endNode();
-    const opts = node.edges.filter(id => id !== this.edge.id).map(id => this.roads.edges[id]);
+    const opts = node.edges.filter(id => id !== this.edge.id).map(id => this.roads.edges[id]).filter(e => !e.track);   // nobody commutes on the speedway
     const over = this.s - this.edge.len;
     if (!opts.length) { this.dir = -this.dir; this.s = 0; return; }
     const straight = opts.find(e => Math.abs(e.dx * this.edge.dx + e.dz * this.edge.dz) > 0.9);
@@ -102,6 +102,7 @@ export class TrafficSystem {
   spawnNear(px, pz, minD, maxD, opts) {
     for (let tries = 0; tries < 30; tries++) {
       const e = this.roads.edges[Math.floor(Math.random() * this.roads.edges.length)];
+      if (e.track) continue;
       const s = Math.random() * e.len;
       const x = e.ax + e.dx * s, z = e.az + e.dz * s;
       const d = Math.hypot(x - px, z - pz);
@@ -136,8 +137,9 @@ export class TrafficSystem {
     let guard = 0;
     while (this.peds.length < want && guard++ < 4) {
       // walk around a block on the sidewalk
-      // Fort Worth's grid, or Dallas's when you're over there
-      const dal = inDallas(px, pz), gx = dal ? DALLAS.x0 : -900, gz = dal ? DALLAS.z0 : -900, nb = dal ? 9 : 11;
+      // Fort Worth's grid, or Dallas's or Denton's when you're over there
+      const dal = inDallas(px, pz), den = inDenton(px, pz);
+      const gx = dal ? DALLAS.x0 : den ? DENTON.x0 : -900, gz = dal ? DALLAS.z0 : den ? DENTON.z0 : -900, nb = dal ? 9 : den ? 7 : 11;
       const bi = Math.floor((px - gx) / 150 + (Math.random() - 0.5) * 4);
       const bj = Math.floor((pz - gz) / 150 + (Math.random() - 0.5) * 4);
       if (bi < 0 || bj < 0 || bi > nb || bj > nb) continue;
