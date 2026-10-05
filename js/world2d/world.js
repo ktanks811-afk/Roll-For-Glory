@@ -46,6 +46,7 @@ import { seizeLoot } from '../core/loot.js';
 import { healthMods } from '../core/health.js';
 import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
 import { awayFromGarage } from '../core/tow.js';
+import { travelQuote, travelBlock, curbSpot, CAR_REACH } from '../core/travel.js';
 
 const st0 = (w, g) => w.s.properties.includes(g.id);
 
@@ -886,6 +887,60 @@ export class World {
     this.ui.toast(`GPS set: ${label}`, 'info');
   }
 
+  // ---------------------------------------------------------------- teleport
+  // Fast travel from the Map app (core/travel.js has the rules). In your car,
+  // or standing next to it, the car comes too, with the trailer if one's
+  // hitched. On foot away from it you go alone and the car stays parked.
+  teleportPlan(x, z) {
+    const s = this.s, v = this.vehicle;
+    const near = !this.inCar && v && !v.car.impound && Math.hypot(v.x - this.foot.x, v.z - this.foot.z) < CAR_REACH;
+    const withCar = !!v && (this.inCar || near) && !v.car.hot;
+    const hot = this.inCar && !!v?.car?.hot;
+    const r = this.routeTo(x, z), p = this.playerState();
+    const meters = r.meters > 0 ? r.meters : Math.hypot(x - p.x, z - p.z) * 1.3;
+    const car = withCar ? v.car : null;
+    const block = travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car, meters });
+    return { meters, withCar, block, quote: travelQuote(meters, car) };
+  }
+
+  teleport(x, z, label, locId) {
+    const s = this.s, plan = this.teleportPlan(x, z);
+    if (plan.block) { this.ui.toast(plan.block, 'bad'); return false; }
+    const q = plan.quote;
+    if (!spend(s, q.fee, `Teleport: ${label}`)) { this.ui.toast(`Teleporting there costs ${fmtMoney(q.fee)}. You're short.`, 'bad'); return false; }
+    // where you land: your driveway if it's one of your places, else the curb out front
+    const g = locId && this.map.garages.find(o => o.id === locId);
+    const road = this.map.roads.nearestOnRoad(x, z);
+    const spot = g ? { x: g.park.x, z: g.park.z, h: g.park.h } : road ? curbSpot(road, x, z) : { x, z, h: 0 };
+    if (plan.withCar) {
+      const v = this.vehicle, car = v.car;
+      v.x = spot.x; v.z = spot.z; v.h = spot.h;
+      v.vx = v.vz = 0; v.rev = 0; v.steer = v.steerIn = 0; v.yawRate = 0; v.sim.v = 0; v.skid = 0;
+      car.fuel = Math.max(0, (car.fuel ?? 1) - q.fuel);
+      const mi = plan.meters / 1609.34; car.miles = (car.miles || 0) + mi; s.stats.miles += mi;
+      s.carPos = { x: v.x, z: v.z, h: v.h };
+      if (!this.inCar) { this.inCar = true; input.setContext('car'); this.restartEngineSound(); }
+    } else {
+      // on foot: dropped at the door (or the sidewalk by the pin)
+      const l = locId && LOC_BY_ID[locId];
+      this.foot.x = l ? l.x : road ? road.x : x; this.foot.z = l ? l.z : road ? road.z : z; this.foot.h = l?.face ?? 0;
+    }
+    const p = this.playerState();
+    this.cam.x = p.x; this.cam.z = p.z;
+    this.skids.length = 0; this.smoke.length = 0;
+    this.traffic.cars = [];   // fresh traffic around where you landed
+    // the clock moves on in half-hour steps so hourly and daily events still fire
+    for (let left = q.minutes; left > 0; left -= 30) this.advanceClock(Math.min(30, left));
+    if (s.gps && Math.hypot(s.gps.x - x, s.gps.z - z) < 30) { s.gps = null; this.gpsPath = null; }
+    this.warpT = 0.9;
+    s.stats.teleports = (s.stats.teleports || 0) + 1;
+    const hrs = q.minutes >= 60 ? `${Math.floor(q.minutes / 60)} h ${q.minutes % 60} min` : `${q.minutes} min`;
+    this.ui.toast(`⚡ Teleported to ${label}${plan.withCar ? ' with your car' : ''}. ${fmtMoney(q.fee)}, ${hrs} passed.`, 'good');
+    emit('teleport', { to: label, fee: q.fee });
+    saveGame('auto', true);
+    return true;
+  }
+
   // ---------------------------------------------------------------- draw
   draw(ctx, W, H, dt) {
     const s = this.s;
@@ -1086,6 +1141,10 @@ export class World {
     if (rotated) { ctx.restore(); cam.w = W; cam.h = H; }   // rain and fog are screen effects: not rotated
     drawRain(ctx, cam, wx(s).rain, dt);
     if (s.weather === 'storm') this.lightning(ctx, W, H, dt);
+    if (this.warpT > 0) {   // teleport flash: white that fades out
+      this.warpT = Math.max(0, this.warpT - dt);
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = Math.min(1, this.warpT / 0.9) ** 2; ctx.fillStyle = '#eaf6ff'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); ctx.restore();
+    }
     if (s.weather === 'fog') { ctx.fillStyle = 'rgba(180,185,195,0.28)'; ctx.fillRect(0, 0, W, H); }
     ctx.restore();
 

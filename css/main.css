@@ -425,6 +425,8 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 .map-card { background: #15161a; border: 1px solid var(--line2); border-radius: 10px; padding: 10px 12px; }
 .map-card .mc-name { font: 700 17px var(--head); }
 .map-card .mc-sub { color: #aab0ba; font-size: 13px; margin-top: 2px; }
+.map-card .btn-tele { background: linear-gradient(135deg, #6a3dff, #2aa8ff); border-color: #8fb8ff; color: #fff; font-weight: 700; }
+.map-card .mc-tele { width: 100%; font-size: 12px; margin: 2px 0; }
 .map-card .mc-what { color: #d3d6dc; font-size: 13px; margin-top: 6px; }
 .map-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
 .map-chips .sr-chip { white-space: nowrap; }
