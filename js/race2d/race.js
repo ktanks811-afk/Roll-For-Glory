@@ -158,9 +158,8 @@ export class Race {
     for (const s of this.smoke) { s.life -= dt; s.r += dt * 3; s.y += s.vy * dt; }
     this.smoke = this.smoke.filter(s => s.life > 0);
     // camera
-    const lead = Math.max(P.y, N && Math.abs(N.y - P.y) < 30 ? N.y : P.y);
-    const target = (P.y * 0.7 + lead * 0.3) + P.sim.v * 0.35;
-    this.cam.y += (target - this.cam.y) * Math.min(1, dt * 6);
+    // keep your car in the middle of the screen: the v/6 lead cancels the follow lag
+    this.cam.y += ((P.y + P.sim.v / 6) - this.cam.y) * Math.min(1, dt * 6);
     this.cam.zoom += ((Math.min(14, Math.max(8, H_ZOOM())) / (1 + P.sim.v / 90)) - this.cam.zoom) * Math.min(1, dt * 1.5);
     this.updateAudio();
     this.updateHud();
@@ -435,7 +434,7 @@ export class Race {
   updateCoast(dt) {
     for (const d of this.drivers) { stepSim(d.spec, d.sim, { throttle: 0, brake: 0.5 }, dt); d.y += d.sim.v * dt; d.thr = 0; }
     for (const c of this.traffic) c.y += c.v * dt;
-    this.cam.y += ((this.p.y + this.p.sim.v * 0.3) - this.cam.y) * Math.min(1, dt * 4);
+    this.cam.y += ((this.p.y + this.p.sim.v / 4) - this.cam.y) * Math.min(1, dt * 4);
     this.updateAudio();
   }
 
@@ -510,7 +509,7 @@ export class Race {
     const z = this.cam.zoom;
     const cy = this.cam.y;
     // screen: cars go up. world y -> screen Y
-    const baseY = H * 0.68;
+    const baseY = H * 0.5;   // your car sits mid-screen
     const SY = y => baseY - (y - cy) * z;
     const SX = x => W / 2 + x * z;
     ctx.fillStyle = th.ground; ctx.fillRect(0, 0, W, H);
