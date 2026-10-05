@@ -1,7 +1,8 @@
 // Road graph: intersections (nodes) and straight segments (edges).
 // Traffic, police routing, GPS and the minimap all read from this.
 
-import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS, DGRID_X, DGRID_Z, DSTREET_NS, DSTREET_EW, I30_ROW, I30_END, ARLINGTON_X, ARLINGTON_END } from '../data/world.js';
+import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS, DGRID_X, DGRID_Z, DSTREET_NS, DSTREET_EW, I30_ROW, I30_END, ARLINGTON_X, ARLINGTON_END,
+  DNGRID_X, DNGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X } from '../data/world.js';
 
 export function buildRoads() {
   const nodes = [];
@@ -63,6 +64,37 @@ export function buildRoads() {
   for (let j = 0; j < DGRID_Z.length; j++) for (let i = 0; i < DGRID_X.length - 1; i++)
     edge(node(DGRID_X[i], DGRID_Z[j]), node(DGRID_X[i + 1], DGRID_Z[j]), j === I30_ROW ? I30 : { ...CITY, name: DSTREET_EW[j] });
   edge(node(DGRID_X[DGRID_X.length - 1], HWY_Z), node(I30_END, HWY_Z), I30);
+
+  // North Texas: I-35W on north from Loop 820 through Alliance, past the
+  // speedway, to Denton (world2d/north.js builds what's along it)
+  const I35 = { ...HWY, name: 'I-35W' };
+  const nx = [HWY_Z, WESTPORT_Z, HTRACE_Z, TX114_Z, DNGRID_Z[DNGRID_Z.length - 1]];
+  for (let i = 0; i < nx.length - 1; i++) edge(node(0, nx[i]), node(0, nx[i + 1]), I35);
+  const PKWY = { ...CITY, speed: 22 };
+  for (const [z, name, xs] of [[HTRACE_Z, 'Heritage Trace Pkwy', [-1200, 0, AIRPORT_X, 1700]], [WESTPORT_Z, 'Westport Pkwy', [-1200, 0, 1600]]])
+    for (let i = 0; i < xs.length - 1; i++) edge(node(xs[i], z), node(xs[i + 1], z), { ...PKWY, name });
+  edge(node(AIRPORT_X, HTRACE_Z), node(AIRPORT_X, HTRACE_Z - 230), { ...CITY, name: 'Alliance Blvd' });
+  // TX-114, with the speedway's pit road and Roanoke on it
+  const T114 = { ...PKWY, name: 'TX-114', speed: 25 };
+  const tx = [TX114_X[0], 0, TMS_PIT_X, ROANOKE_X, TX114_X[1]];
+  for (let i = 0; i < tx.length - 1; i++) edge(node(tx[i], TX114_Z), node(tx[i + 1], TX114_Z), T114);
+  edge(node(TMS_PIT_X, TX114_Z), node(TMS_PIT_X, TMS.z1), { ...CITY, name: 'Speedway Pit Rd' });
+  // the oval: a ring of track, no traffic, no speed limit
+  const OVAL = { ...HWY, speed: 45, name: 'Texas Motor Speedway', track: true };
+  const ring = [[TMS_PIT_X, TMS.z1], [TMS.x1, TMS.z1], [TMS.x1, TMS.z0], [TMS.x0, TMS.z0], [TMS.x0, TMS.z1], [TMS_PIT_X, TMS.z1]];
+  for (let i = 0; i < ring.length - 1; i++) edge(node(...ring[i]), node(...ring[i + 1]), OVAL);
+  // Roanoke: Oak St south off 114; US-377 north along the lake and into Denton on Dallas Dr
+  edge(node(ROANOKE_X, TX114_Z), node(ROANOKE_X, ROANOKE_END), { ...CITY, name: 'Oak St' });
+  const U377 = { ...PKWY, name: 'US-377', speed: 25 };
+  edge(node(ROANOKE_X, TX114_Z), node(ROANOKE_X, US377_Z), U377);
+  edge(node(ROANOKE_X, US377_Z), node(DNGRID_X[DNGRID_X.length - 1], US377_Z), U377);
+  // Denton: its own grid; the west street line is I-35 itself, cross streets meet it at grade
+  for (let i = 0; i < DNGRID_X.length; i++) for (let j = 0; j < DNGRID_Z.length; j++) node(DNGRID_X[i], DNGRID_Z[j]);
+  for (let i = 0; i < DNGRID_X.length; i++) for (let j = 0; j < DNGRID_Z.length - 1; j++)
+    edge(node(DNGRID_X[i], DNGRID_Z[j]), node(DNGRID_X[i], DNGRID_Z[j + 1]), i === 0 ? { ...I35, name: 'I-35' } : { ...CITY, name: DNSTREET_NS[i] });
+  for (let j = 0; j < DNGRID_Z.length; j++) for (let i = 0; i < DNGRID_X.length - 1; i++)
+    edge(node(DNGRID_X[i], DNGRID_Z[j]), node(DNGRID_X[i + 1], DNGRID_Z[j]), { ...CITY, name: DNSTREET_EW[j] });
+  edge(node(0, DNGRID_Z[0]), node(0, I35_END), { ...I35, name: 'I-35' });
 
   const graph = { nodes, edges, byKey };
 

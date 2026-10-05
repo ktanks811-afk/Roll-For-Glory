@@ -34,6 +34,15 @@ export const STREET_RACES = [
   { id: 'sr_chisholm', name: 'Chisholm Trail Top End', tier: 3, kind: 'sprint', heat: 0.4, record: 'redline',
     desc: 'Out of the city and down the parkway into the flats. Nothing but top speed.',
     corners: [[0, 750], [0, 900], [0, 2700]] },
+  { id: 'sr_i35w', name: 'I-35W Speedway Run', tier: 3, kind: 'sprint', heat: 1.1, record: 'static',
+    desc: 'From Loop 820 straight up I-35W past the Alliance warehouses, then east on 114 to the speedway gates.',
+    corners: [[0, -1350], [0, -4600], [650, -4600], [650, -4850]] },
+  { id: 'sr_tms', name: 'Texas Motor Speedway Oval', tier: 4, kind: 'circuit', laps: 3, heat: 0.2, record: 'ghostline',
+    desc: 'Three laps of the speedway. No cops, no traffic, no speed limit. Just flat out.',
+    corners: [[650, -4850], [1000, -4850], [1000, -5300], [300, -5300], [300, -4850]] },
+  { id: 'sr_denton', name: 'Denton Square Circuit', tier: 2, kind: 'circuit', laps: 2, heat: 0.7, record: 'keys',
+    desc: 'Two laps round the courthouse: Elm, Oak, Locust and Mulberry, past Fry Street.',
+    corners: [[600, -6400], [600, -6700], [750, -6700], [750, -6400]] },
 ];
 export const STREET_RACE_BY_ID = Object.fromEntries(STREET_RACES.map(r => [r.id, r]));
 
