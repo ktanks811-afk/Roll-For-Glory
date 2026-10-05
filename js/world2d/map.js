@@ -2,13 +2,14 @@
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
-import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, NORTH, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
 import { addEstate } from './estate.js';
 import { addEats } from './eats.js';
 import { addCountry } from './country.js';
 import { addDallas } from './dallas.js';
+import { addNorth } from './north.js';
 import { houseBlock } from './house.js';
 import { fromPreset } from '../core/homes.js';
 
@@ -159,7 +160,8 @@ export function buildMap() {
   for (let x = HWY_X[0]; x < HWY_X[1]; x += 60) {
     if (x > TUNNEL[0] - 40 && x < TUNNEL[1] + 40) continue;
     if (Math.abs(x - RIVER_X) < 70) continue;
-    trees.push({ x: x + R(-10, 10), z: HWY_Z - HWY_W / 2 - R(14, 40), r: R(4, 7), kind: 'pine' });
+    const px = Math.abs(x) > 40 ? x : x + 80;   // I-35W runs north from the interchange
+    trees.push({ x: px + R(-10, 10), z: HWY_Z - HWY_W / 2 - R(14, 40), r: R(4, 7), kind: 'pine' });
     trees.push({ x: x + R(-10, 10), z: HWY_Z + HWY_W / 2 + R(14, 40), r: R(4, 7), kind: 'pine' });
   }
   // between the city and the highway
@@ -218,6 +220,9 @@ export function buildMap() {
   // ---------------- Dallas, down I-30 (world2d/dallas.js) ----------------
   const dallas = addDallas(gout, { landmarkBlock });
   water.push(...dallas.water);
+  // ---------------- North Texas up I-35W: Alliance, the speedway, Roanoke, Denton (world2d/north.js) ----------------
+  const north = addNorth(gout, { landmarkBlock, roads });
+  water.push(...north.water);
 
   // ---------------- filling in the empty ground ----------------
   const extra = addScenery({ roads, buildings, lots, trees, rocks, props, water, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
@@ -239,18 +244,21 @@ export function buildMap() {
   colliders.push({ x0: RIVER_X - 45, z0: -3200, x1: RIVER_X + 45, z1: HWY_Z - HWY_W / 2 - 4, h: 0, water: true });
   colliders.push({ x0: RIVER_X - 45, z0: HWY_Z + HWY_W / 2 + 4, x1: RIVER_X + 45, z1: -1000, h: 0, water: true });
   colliders.push({ x0: SEA_X + 10, z0: 250, x1: SEA_X + 3000, z1: 4100, h: 0, water: true });
-  for (const w of [...extra.water, ...dallas.water]) colliders.push({ x0: w.x, z0: w.z, x1: w.x + w.w, z1: w.z + w.d, h: 0, water: true });
+  for (const w of [...extra.water, ...dallas.water, ...north.water]) colliders.push({ x0: w.x, z0: w.z, x1: w.x + w.w, z1: w.z + w.d, h: 0, water: true });
   // tunnel hill walls (the tunnel itself is open)
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z - 300, x1: TUNNEL[1], z1: HWY_Z - HWY_W / 2 - 2, h: 30, hill: true });
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z + HWY_W / 2 + 2, x1: TUNNEL[1], z1: HWY_Z + 300, h: 30, hill: true });
-  // world edge
-  colliders.push({ x0: -4000, z0: -4000, x1: 4000, z1: -3300, h: 0 });
+  // world edge (north: open only up I-35W, see NORTH)
+  const top = NORTH.z0 - 800;
+  colliders.push({ x0: -4000, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: NORTH.z0, h: 0 });
+  colliders.push({ x0: -4000, z0: NORTH.z0, x1: NORTH.x0, z1: -3300, h: 0 });
+  colliders.push({ x0: NORTH.x1, z0: NORTH.z0, x1: 3300, z1: -3300, h: 0 });
   colliders.push({ x0: -4000, z0: COUNTRY.z1, x1: 4000, z1: COUNTRY.z1 + 700, h: 0 });
-  colliders.push({ x0: -4000, z0: -4000, x1: -3300, z1: COUNTRY.z1 + 700, h: 0 });
+  colliders.push({ x0: -4000, z0: top, x1: -3300, z1: COUNTRY.z1 + 700, h: 0 });
   // east: open only along the I-30 corridor out to Dallas
-  colliders.push({ x0: 3300, z0: -4000, x1: DALLAS_ZONE.x1 + 700, z1: DALLAS_ZONE.z0, h: 0 });
+  colliders.push({ x0: 3300, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: DALLAS_ZONE.z0, h: 0 });
   colliders.push({ x0: 3300, z0: DALLAS_ZONE.z1, x1: DALLAS_ZONE.x1 + 700, z1: COUNTRY.z1 + 700, h: 0 });
-  colliders.push({ x0: DALLAS_ZONE.x1, z0: -4000, x1: DALLAS_ZONE.x1 + 700, z1: COUNTRY.z1 + 700, h: 0 });
+  colliders.push({ x0: DALLAS_ZONE.x1, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: COUNTRY.z1 + 700, h: 0 });
   colliders.push({ x0: COUNTRY.x1, z0: 4050, x1: 3300, z1: COUNTRY.z1, h: 0 });   // past the lake's south shore, the county line
 
   const grid = new SpatialGrid(100);

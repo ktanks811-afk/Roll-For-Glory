@@ -1,7 +1,7 @@
 // Draws Fort Worth top-down: ground, roads, lots, buildings (with a
 // parallax lean so they read as 3D), trees, night lighting and weather.
 
-import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, DALLAS, DALLAS_ZONE, LOCATIONS } from '../data/world.js';
+import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, DALLAS, DALLAS_ZONE, DENTON, NORTH, LOCATIONS } from '../data/world.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
 import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
@@ -61,6 +61,7 @@ export function drawGround(ctx, cam) {
   rect(-3300, -1000, -1000, DESERT_Z, '#34402a');
   rect(-985, -985, 985, 985, COLORS.city);
   rect(DALLAS.x0 - 15, DALLAS.z0 - 15, DALLAS.x1 + 15, DALLAS.z1 + 15, COLORS.city);
+  rect(DENTON.x0 - 15, DENTON.z0 - 15, DENTON.x1 + 15, DENTON.z1 + 15, COLORS.city);
 }
 
 export function drawWater(ctx, cam, map, t) {
@@ -289,9 +290,14 @@ export function drawRoads(ctx, cam, map, signalT) {
     if (e.kind === 'city') {
       dash(-0.2, COLORS.yellow, 0.14, false); dash(0.2, COLORS.yellow, 0.14, false);
       dash(-4, 'rgba(233,233,226,0.8)'); dash(4, 'rgba(233,233,226,0.8)');
+    } else if (e.track) {
+      // the speedway oval: white edge lines and the racing groove, no median
+      dash(e.width / 2 - 1.2, 'rgba(233,233,226,0.9)', 0.25, false); dash(-(e.width / 2 - 1.2), 'rgba(233,233,226,0.9)', 0.25, false);
+      dash(0, 'rgba(20,20,22,0.35)', 3, false);
     } else if (e.kind === 'highway') {
       ctx.fillStyle = '#8a8b8f';
       if (horiz) ctx.fillRect(cam.sx(minx), cam.sy(e.az - 0.6), (maxx - minx) * z, 1.2 * z);
+      else ctx.fillRect(cam.sx(e.ax - 0.6), cam.sy(minz), 1.2 * z, (maxz - minz) * z);
       for (const o of [5.6, 9.6]) { dash(o, 'rgba(233,233,226,0.8)'); dash(-o, 'rgba(233,233,226,0.8)'); }
       dash(1.4, COLORS.yellow, 0.14, false); dash(-1.4, COLORS.yellow, 0.14, false);
       dash(13.8, 'rgba(233,233,226,0.9)', 0.15, false); dash(-13.8, 'rgba(233,233,226,0.9)', 0.15, false);
@@ -317,7 +323,7 @@ export function drawRoads(ctx, cam, map, signalT) {
       ctx.fillRect(cam.sx(n.x - hw - 3), cam.sy(n.z + k * 2 - 0.5), 2.5 * z, 1 * z);
       ctx.fillRect(cam.sx(n.x + hw + 0.5), cam.sy(n.z + k * 2 - 0.5), 2.5 * z, 1 * z);
     }
-    if (n.edges.length >= 3 && !n.edges.every(id => map.roads.edges[id].kind === 'desert')) {
+    if (n.edges.length >= 3 && !n.edges.every(id => map.roads.edges[id].kind === 'desert') && !n.edges.some(id => map.roads.edges[id].track)) {
       const ns = signalState(n, signalT);
       const r = Math.max(2, 0.6 * z);
       for (const [dx, dz, axis] of [[-1, -1, 'ns'], [1, 1, 'ns'], [1, -1, 'ew'], [-1, 1, 'ew']]) {
@@ -815,7 +821,7 @@ export function shadeHex(hex, amt) {
 
 // Static overview of the whole map for the minimap and phone map.
 export function renderOverview(map, scale = 0.12) {
-  const W = DALLAS_ZONE.x1 + 4400, H = COUNTRY.z1 + 4600, x0 = -4000, z0 = -4000;
+  const x0 = -4000, z0 = NORTH.z0 - 400, W = DALLAS_ZONE.x1 + 4400, H = COUNTRY.z1 + 600 - z0;
   const c = document.createElement('canvas');
   c.width = W * scale; c.height = H * scale;
   const g = c.getContext('2d');
@@ -826,6 +832,7 @@ export function renderOverview(map, scale = 0.12) {
   g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
   g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
   g.fillRect(sx(DALLAS.x0 - 15), sy(DALLAS.z0 - 15), (DALLAS.x1 - DALLAS.x0 + 30) * scale, (DALLAS.z1 - DALLAS.z0 + 30) * scale);
+  g.fillRect(sx(DENTON.x0 - 15), sy(DENTON.z0 - 15), (DENTON.x1 - DENTON.x0 + 30) * scale, (DENTON.z1 - DENTON.z0 + 30) * scale);
   for (const l of map.lots) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
   for (const w of map.water) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
   g.fillStyle = 'rgba(80,90,100,0.9)';
