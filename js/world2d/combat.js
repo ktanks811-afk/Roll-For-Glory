@@ -15,6 +15,7 @@
 // Get caught after a robbery and you lose the gun and a lot of cash.
 
 import { input } from '../core/input.js';
+import { online } from '../net/online.js';
 import { pad, rumble } from '../core/gamepad.js';
 import { audio } from '../core/audio.js';
 import { addRep, spend, fmtMoney } from '../core/state.js';
@@ -145,6 +146,7 @@ export class Combat {
     const hit = this.hitscan(mx, mz, ang, CAL[def.cal].range, CAL[def.cal].dmg);
     this.tracers.push({ x0: mx, z0: mz, x1: hit.x, z1: hit.z, t: 0.09 });
     this.flashes.push({ x: mx, z: mz, a: ang0, t: 0.07 });
+    online.shot(mx, mz, hit.x, hit.z);   // other players on the server see and hear it
     audio.gunshot(def.cal === '.22 LR' ? 0.5 : def.kind === 'arp' ? 1.3 : 1);
     rumble(0.6, 0.3, 70);
     if (this.w.cam) this.w.cam.shake = Math.max(this.w.cam.shake, 0.1);

@@ -59,6 +59,7 @@ export async function wakeAtHospital(app, { cause = 'shot', sev = 0.5, why = '' 
     input.setContext('foot');
     if (w.engine) { w.engine.stop(); w.engine = null; }
     if (!pursuit) P?.reset(w);
+    w.rides?.getOut(true);
     const l = JPS();
     w.foot.x = l.x; w.foot.z = l.z + 3; w.foot.h = l.face;
     if (w.cam) { w.cam.x = w.foot.x; w.cam.z = w.foot.z; }

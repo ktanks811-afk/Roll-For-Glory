@@ -324,7 +324,7 @@ await step('street races: 1v1 for cash, pink slips, time trial', async () => {
 });
 await step('pull-ups: a racer rolls up while you drive', async () => {
   const w0 = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; window.__storyWas = s.story.enabled; s.story.enabled = false; s.heat = 0; w.police.reset?.(w);
-    const was = { x: v.x, z: v.z, h: v.h }; v.x = -400; v.z = 598; v.h = Math.PI / 2; v.vx = v.vz = 0; v.sim.v = 14; w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; w.paused = false; return was; });
+    const was = { x: v.x, z: v.z, h: v.h }; v.x = -400; v.z = 598; v.h = Math.PI / 2; v.vx = v.vz = 0; v.sim.v = 14; v.car.fuel = 1; w.inCar = true;   /* a full tank: by now the run has burned most of it */ w.cam.x = v.x; w.cam.z = v.z; w.paused = false; return was; });
   const pu = () => p.evaluate(() => { const c = window.__rfg.app.world.pullups.c; return c ? c.phase : null; });
   // off by default in a test browser; forced here: they roll up beside you and wait on an answer
   if (await pu()) throw new Error('a pull-up spawned on its own in the test browser');
@@ -1291,6 +1291,15 @@ await step('online free roam', async () => {
   // the passenger's dash shows the driver's speed, gear and revs (sent while someone rides along)
   await until(p, () => { const d = document.querySelector('[data-dash]'), r = window.__rfg.app.world.rides.peer; return d && !d.classList.contains('hidden') && r?.gear && document.querySelector('[data-gear]').textContent === r.gear && /passenger/.test(document.querySelector('[data-carname]').textContent); }, 'passenger dash does not show the driver\'s gauges');
   if (shots) { await p.evaluate(() => { const w = window.__rfg.app.world; w.update(0.05); }); await snap('23c-riding-along'); }
+  // one car, one chase: the cops get on the driver, so they're on the passenger too
+  await p2.evaluate(() => { const w = window.__rfg.app.world; w.police.addHeat(1.5, 'test', w.hud); w.police.startChase(w, true); });
+  await until(p, () => window.__rfg.app.world.police.phase === 'chase', 'the driver\'s chase did not reach the passenger');
+  for (const pg of [p, p2]) await pg.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); window.__rfg.game.s.heat = 0; });
+  // a passenger's gunshot shows up on the driver's screen
+  await p2.evaluate(() => { window.__rfg.app.world.combat.tracers.length = 0; });
+  await p.evaluate(() => { const f = window.__rfg.app.world.foot; window.__rfg.online.shotT = 0; window.__rfg.online.shot(f.x, f.z, f.x + 12, f.z); });
+  await until(p2, () => window.__rfg.app.world.combat.tracers.length > 0, 'the passenger\'s shot never reached the driver');
+  if (!(await p.evaluate(() => window.__rfg.app.world.rides.riding))) throw new Error('passenger fell out of the car during the chase test');
   // the driver drops them off: back on foot beside the car
   await p2.evaluate(async () => { const { rides } = await import('./js/net/ride.js'); rides.drop(rides.riders()[0]); });
   await until(p, () => !window.__rfg.app.world.rides.riding, 'drop-off did not put the passenger out');

@@ -97,6 +97,15 @@ export class World {
     this.trailers = new Trailers(this);
     this.pullups = new Pullups(this);
     this.rides = new RideAlong(this);
+    // other players' gunshots (a passenger shooting out of your car, say)
+    this.offShot = online.on((ev, d) => {
+      if (ev !== 'shot') return;
+      const p = this.playerState(), dist = Math.hypot(d.x0 - p.x, d.z0 - p.z);
+      if (dist > 250) return;
+      this.combat.tracers.push({ x0: d.x0, z0: d.z0, x1: d.x1, z1: d.z1, t: 0.09 });
+      this.combat.flashes.push({ x: d.x0, z: d.z0, a: Math.atan2(d.x1 - d.x0, -(d.z1 - d.z0)), t: 0.07 });
+      audio.gunshot(Math.max(0.15, 1 - dist / 250));
+    });
     this.ranch = new Ranch(this);
     this.spawnPlayer();
   }
@@ -295,8 +304,10 @@ export class World {
     }
     const speed = this.inCar ? (this.vehicle.rev < 0 ? -p.speed : p.speed) : walking ? 3 : 0;
     // with passengers aboard, the gear and revs go out too so their dash shows yours
-    const dash = this.inCar && this.vehicle && this.rides.riders().length ? this.dashOf(this.vehicle) : null;
-    online.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0, dash });
+    const carrying = this.inCar && !!this.vehicle && this.rides.riders().length > 0;
+    const dash = carrying ? this.dashOf(this.vehicle) : null;
+    const cops = ['notice', 'stop', 'chase'].includes(this.police.phase);
+    online.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0, dash, carrying, cops });
   }
 
   // Gear and how far up the tach you are (the HUD's dash reads the same thing).
@@ -361,6 +372,10 @@ export class World {
   }
 
   playerState() {
+    // riding in another player's car: to the cops, the minimap and the rest of
+    // the world you're a person in a moving car
+    const ride = !this.inCar && this.rides?.view();
+    if (ride) return { x: ride.x, z: ride.z, vx: ride.vx, vz: ride.vz, speed: Math.hypot(ride.vx, ride.vz), h: ride.h, inCar: true, riding: true, carName: '' };
     if (this.inCar && this.vehicle) {
       const v = this.vehicle;
       return { x: v.x, z: v.z, vx: v.vx, vz: v.vz, speed: v.speed, h: v.h, inCar: true, carName: carName(v.model) };
@@ -662,6 +677,7 @@ export class World {
       emit('busted', { fine, ticket: true });
       return;
     }
+    this.rides.getOut(true);   // they take you out of whoever's car you were riding in
     fine += this.combat.onBusted(record);
     const hotCar = !!this.vehicle?.car?.hot;
     // they chased you down: that's evading, on top of whatever they saw
@@ -1281,6 +1297,7 @@ export class World {
     this.races.destroy();
     this.pullups.destroy();
     this.rides.destroy();
+    this.offShot?.();
     if (this.engine) this.engine.stop();
     audio.siren(false);
     audio.music(null);
