@@ -329,7 +329,8 @@ await step('pull-ups: a racer rolls up while you drive', async () => {
   // off by default in a test browser; forced here: they roll up beside you and wait on an answer
   if (await pu()) throw new Error('a pull-up spawned on its own in the test browser');
   await p.evaluate(() => { if (!window.__rfg.app.world.pullups.spawn(true)) throw new Error('no spawn'); });
-  await p.waitForFunction(() => window.__rfg.app.world.pullups.c?.phase === 'side', null, { timeout: 8000 });
+  await p.waitForFunction(() => window.__rfg.app.world.pullups.c?.phase === 'side', null, { timeout: 8000 })
+    .catch(async () => { throw new Error('the racer never pulled up beside you ' + JSON.stringify(await p.evaluate(() => { const w = window.__rfg.app.world, c = w.pullups.c; return { c: c && { phase: c.phase, rel: c.rel, t: c.t, why: c.why }, blocked: w.pullups.blocked(), paused: w.paused, inCar: w.inCar, racing: !!w.races.race, panels: [...document.querySelectorAll('#panels > *')].map(e => e.className), modal: document.querySelector('.modal h2')?.textContent }; }))); });
   await p.waitForFunction(() => /Race .+ (on it|for rep)/.test(document.querySelector('[data-prompt]')?.textContent || ''), null, { timeout: 3000 })
     .catch(async () => { throw new Error('no race prompt: ' + await p.textContent('[data-prompt]')); });
   await snap('25-pullup');

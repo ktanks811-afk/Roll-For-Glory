@@ -246,8 +246,10 @@ export class World {
     const cam = this.cam, chase = settings.camMode === 'chase' && this.inCar && this.vehicle;
     let dRot = (chase ? -this.vehicle.h : 0) - cam.rot; dRot = Math.atan2(Math.sin(dRot), Math.cos(dRot));
     cam.rot += dRot * Math.min(1, dt * (chase ? 7 : 5));
-    this.camLead = (this.camLead || 0) + ((chase ? 1 : 0) - (this.camLead || 0)) * Math.min(1, dt * 4);
-    const lead = this.camLead * (cam.vh || 600) * 0.2 / cam.zoom;   // car sits in the lower part of the screen
+    // In a race the car stays dead centre so you can see rivals beside and behind you.
+    const pushAhead = chase && !this.races.active;
+    this.camLead = (this.camLead || 0) + ((pushAhead ? 1 : 0) - (this.camLead || 0)) * Math.min(1, dt * 4);
+    const lead = this.camLead * (cam.vh || 600) * 0.2 / cam.zoom;   // cruising: car sits in the lower part of the screen
     const mid = stop?.unit && Math.hypot(stop.unit.x - focus.x, stop.unit.z - focus.z) < 20 ? stop.unit : null;
     const tx = (mid ? (focus.x + mid.x) / 2 : focus.x + vx * 0.1) - Math.sin(cam.rot) * lead, tz = (mid ? (focus.z + mid.z) / 2 : focus.z + vz * 0.1) - Math.cos(cam.rot) * lead;
     const follow = this.inCar ? 1 - Math.exp(-dt * 12) : Math.min(1, dt * 5);
