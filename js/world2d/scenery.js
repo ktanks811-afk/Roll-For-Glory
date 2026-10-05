@@ -47,13 +47,13 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
   const TRINITY = { x: RIVER_X + 45, z: -1745, w: 2650 - RIVER_X - 45, d: 60 };
   const riverOut = [];
   {
-    const gaps = [-1080, 540];
+    const gaps = [[-1080, 5], [0, 19], [540, 5]];          // the farm roads, and I-35W on its way north
     let x0 = TRINITY.x;
-    for (const gx of [...gaps, null]) {
-      const x1 = gx == null ? TRINITY.x + TRINITY.w : gx - 5;
+    for (const [gx, half] of [...gaps, [null, 0]]) {
+      const x1 = gx == null ? TRINITY.x + TRINITY.w : gx - half;
       const w = { x: x0, z: TRINITY.z, w: x1 - x0, d: TRINITY.d, kind: 'river' };
       water.push(w); riverOut.push(w);
-      if (gx != null) { buildings.push({ x: gx - 7, z: TRINITY.z - 4, w: 14, d: TRINITY.d + 8, h: 1, color: '#8a8b8f', kind: 'pier', noCollide: true }); x0 = gx + 5; }
+      if (gx != null) { buildings.push({ x: gx - half - 2, z: TRINITY.z - 4, w: half * 2 + 4, d: TRINITY.d + 8, h: 1, color: '#8a8b8f', kind: 'pier', noCollide: true }); x0 = gx + half; }
     }
   }
 
@@ -386,7 +386,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
     }
     // Trinity Trail along the south bank
     lot({ x: TRINITY.x, z: TRINITY.z + TRINITY.d + 1, w: TRINITY.w, d: 3, kind: 'trail' });
-    for (let x = TRINITY.x + 10; x < TRINITY.x + TRINITY.w; x += R(14, 30)) tree(x, TRINITY.z + TRINITY.d + R(6, 12), R(3, 5));
+    for (let x = TRINITY.x + 10; x < TRINITY.x + TRINITY.w; x += R(14, 30)) { const tz = TRINITY.z + TRINITY.d + R(6, 12), r = R(3, 5); if (Math.abs(x) > 26) tree(x, tz, r); }
   }
 
   function rebuildSolid() { solid.map.clear(); buildings.forEach(addSolid); rocks.forEach(addSolid); }
