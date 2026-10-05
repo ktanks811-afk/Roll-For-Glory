@@ -11,7 +11,7 @@ import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { online } from '../net/online.js';
 import { fmtMoney } from '../core/state.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop', 'trailers'] },
@@ -20,6 +20,7 @@ const CATS = [
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food', 'corner'] },
   { id: 'work', label: 'Work', types: ['work'] },
   { id: 'home', label: 'Home & land', types: ['home', 'property', 'trap', 'land', 'rig', 'salebarn'] },
+  { id: 'dogs', label: 'Dogs & hogs', types: ['kennel', 'hoghunt'] },
   { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
   { id: 'health', label: 'Hospital', types: ['hospital'] },
 ];
@@ -28,6 +29,8 @@ const WHAT = {
   property: 'A house: 1, 2 or 3 stories, a garage and a safehouse.',
   land: 'Land for sale. Build a house and a garage up to 100 cars, fence it, run cattle.',
   rig: 'An oil lease. Pays $40,000 a day once it\'s yours.',
+  kennel: 'Cross Timbers Hog Dogs: curs, hounds, bulldogs, Dogos and Corsos for sale, plus collars and cut vests.',
+  hoghunt: 'The hog lease. Take your bay and catch dogs after feral hogs; the processor pays by the pound.',
   salebarn: 'The livestock auction. Sell the cattle on your stock trailer or buy more to haul home.',
   usedlot: 'Used cars, cheap and honest-ish. Sal buys stolen ones.',
   chop: 'Chop shop. Strip stolen cars for parts and sell them to Junior. Too many and the task force sweeps it.',

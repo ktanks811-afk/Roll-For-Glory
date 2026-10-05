@@ -38,6 +38,9 @@ export const ESTATE_LOCATIONS = [
   P('land_bluebonnet', 'land', 'Bluebonnet Hill Ranch', 'S', -700, 5100, -380, 5380, { color: '#c8a46a', icon: 'key' }),
   // the livestock auction on FM 4, where the stock trailer earns its keep (core/livestock.js)
   P('salebarn', 'salebarn', 'Joshua Livestock Auction', 'N', 500, 4520, 660, 4680, { color: '#d9822b', icon: 'tow' }),
+  // hog dogs (core/dogs.js, core/hoghunt.js): the kennel that sells them on FM 4, and the hog lease down on the river
+  P('dog_kennel', 'kennel', 'Cross Timbers Hog Dogs', 'S', 300, 4340, 460, 4480, { color: '#d9a85a', icon: 'dog' }),
+  P('hog_lease', 'hoghunt', 'Nolan River Hog Lease', 'N', -2300, 5420, -2000, 5700, { color: '#8a5a3a', icon: 'hog' }),
   // oil leases: pumpjacks and a tank battery, $40k a day once they're yours
   P('rig_godley', 'rig', 'Godley Pumpjack Lease', 'N', -2400, 3620, -2240, 3760, { color: '#e8c21a', icon: 'oil' }),
   P('rig_cleburne', 'rig', 'Cleburne Well Pad', 'N', -900, 3620, -740, 3760, { color: '#e8c21a', icon: 'oil' }),
@@ -126,12 +129,11 @@ export const FENCES = [
 ];
 export const FENCE_BY_ID = Object.fromEntries(FENCES.map(f => [f.id, f]));
 // feed: what it costs to keep one a day. pays: what it brings in a day
-// (calves, milk, stud fees). Dogs don't need a pasture.
+// (calves, milk, stud fees). Dogs are real dogs now, kept in the kennel
+// (core/dogs.js), so they aren't a head count here.
 export const ANIMALS = [
   { id: 'cow',      name: 'Angus cow',      price: 2200, feed: 14, pays: 80,  pen: true, color: '#1e1e20', icon: '🐄', desc: 'Black Angus and red baldies. Haul them to the Joshua sale barn when the price is right.' },
   { id: 'longhorn', name: 'Texas Longhorn', price: 4800, feed: 18, pays: 140, pen: true, color: '#b06a32', icon: '🐂', desc: 'Horns six feet tip to tip. People pay to see them.' },
   { id: 'horse',    name: 'Quarter horse',  price: 8500, feed: 35, pays: 240, pen: true, color: '#7a4a2a', icon: '🐎', desc: 'A sorrel quarter horse. Stud and boarding fees.' },
-  { id: 'dog',      name: 'Dog',            price: 450,  feed: 4,  pays: 0,   max: 4, color: '#8a6a4a', icon: '🐕', desc: 'Runs the yard and comes when you pull up.',
-    breeds: [['Pit bull', '#9a8a7a'], ['German shepherd', '#6a4a2a'], ['Blue heeler', '#6a7a8a'], ['Rottweiler', '#1e1a18'], ['Golden retriever', '#d9a85a']] },
 ];
 export const ANIMAL_BY_ID = Object.fromEntries(ANIMALS.map(a => [a.id, a]));

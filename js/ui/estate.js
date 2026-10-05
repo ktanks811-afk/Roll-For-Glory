@@ -18,6 +18,8 @@ import { homeScreen } from './places.js';
 import { openGarage } from './garage.js';
 import { audio } from '../core/audio.js';
 import { ranchTrailerHtml, ranchTrailerActions } from './livestock.js';
+import { openKennel } from './kennel.js';
+import { dogsAt, roomAt } from '../core/dogs.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 const say = r => { toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) audio.buy(); else audio.error(); return r.ok; };
@@ -51,7 +53,7 @@ export function openRealty(app, focusId = null) {
         return card(id, L.name, L.desc, `<span>Where</span><span>${esc(districtAt(loc.x, loc.z))}</span><span>Livestock</span><span>Up to ${fence.cap} head</span><span>Price</span><span>${fmtMoney(L.price)}</span>${own ? `<span>Status</span><span>${status}</span>` : ''}`,
           own ? `<span class="tag tag-green">Owned</span><button class="btn btn-sm btn-primary" data-action="landgo" data-id="${id}">Go build</button><button class="btn btn-sm" data-action="sellland" data-id="${id}">Sell ${fmtMoney(landValue(s, id))}</button>`
             : `<button class="btn btn-sm btn-primary" data-action="buyland" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${L.tier}` : `Buy ${fmtMoney(L.price)}`}</button>`);
-      }).join('') + `<p class="small muted" style="grid-column:1/-1">Buy a lot in Stop Six or ranch land out in Johnson County, then drive out to it. Pick a house (1, 2 or 3 stories, or design your own room by room) and a garage from 2 cars up to a 100-car vault. Fence the back and run cattle, horses and dogs.</p>`;
+      }).join('') + `<p class="small muted" style="grid-column:1/-1">Buy a lot in Stop Six or ranch land out in Johnson County, then drive out to it. Pick a house (1, 2 or 3 stories, or design your own room by room) and a garage from 2 cars up to a 100-car vault. Fence the back and run cattle and horses, and keep a kennel of hog dogs.</p>`;
     } else if (tab === 'oil') {
       body = Object.entries(RIGS).map(([id, R]) => {
         const own = ownsRig(s, id), r = s.estate?.rigs?.[id];
@@ -164,7 +166,8 @@ export function openRanch(app, id) {
         const k = hd[A.id] || 0, blocked = A.pen ? !F || n >= cap : k >= A.max;
         return `<div class="li"><span style="font-size:22px">${A.icon}</span><div class="grow"><div class="t">${esc(A.name)}${k ? ` <span class="tag">${k}</span>` : ''}</div><div class="s">${esc(A.desc)} ${A.pays ? `Brings in ${fmtMoney(A.pays)}, eats ${fmtMoney(A.feed)} a day.` : `Eats ${fmtMoney(A.feed)} a day.`}${A.pen && !F ? ' <b class="warn">Build a fence first.</b>' : ''}</div></div>
           <div style="text-align:right;white-space:nowrap"><button class="btn btn-sm btn-primary" data-action="buy" data-id="${A.id}" data-n="1" ${blocked ? 'disabled' : ''}>Buy ${fmtMoney(A.price)}</button>${A.pen ? ` <button class="btn btn-sm" data-action="buy" data-id="${A.id}" data-n="5" ${blocked || n + 5 > cap ? 'disabled' : ''}>5</button>` : ''}${k ? ` <button class="btn btn-sm" data-action="sell" data-id="${A.id}">Sell</button>` : ''}</div></div>`;
-      }).join('')}</div>
+      }).join('')}
+        <div class="li"><span style="font-size:22px">🐕</span><div class="grow"><div class="t">Hog dogs${dogsAt(s, id).length ? ` <span class="tag">${dogsAt(s, id).length}</span>` : ''}</div><div class="s">Curs, hounds and catch dogs with real genetics. Room for ${dogsAt(s, id).length + roomAt(s, id)} here. Breed them, train them, run hogs with them.</div></div><button class="btn btn-sm btn-primary" data-action="kennel">Kennel</button></div></div>
       ${ranchTrailerHtml(s, app, id)}
       <p class="small muted">Cattle and horses stay inside the fence out back; the dogs run the whole yard and come find you when you pull up. Calves, stud fees and feed settle up every morning in your bank.</p></div>`;
     const done = r => { if (say(r)) { app.world && applyEstate(app.world.map, s); h.refresh(); } };
@@ -173,6 +176,7 @@ export function openRanch(app, id) {
       fence: d => done(buildFence(s, id, d.id)),
       buy: d => done(buyAnimal(s, id, d.id, +d.n)),
       sell: d => done(sellAnimal(s, id, d.id)),
+      kennel: () => openKennel(app, { home: id }),
       ...ranchTrailerActions(s, id, { refresh: () => { app.world && applyEstate(app.world.map, s); h.refresh(); } }),
     });
   });

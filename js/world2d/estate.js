@@ -35,6 +35,8 @@ export function addEstate(out) {
       dirt.w0 = w; dirt.d0 = d;
       lots.push(dirt);
     } else if (loc.type === 'salebarn') saleBarn(out, loc);
+    else if (loc.type === 'kennel') kennel(out, loc);
+    else if (loc.type === 'hoghunt') hogLease(out, loc);
     else if (loc.type === 'plug') {
       // corner store: the building at the back of the lot, a strip of parking in front
       lots.push({ x: r.x0 + 2, z: r.z0 + 1, w: w - 4, d: 14, kind: 'parking', loc: loc.id });
@@ -77,6 +79,38 @@ function saleBarn(out, loc) {
     const pz = r.z0 + 30 + k * (pd + 2);
     for (const [x, z, ww, dd] of [[px0, pz, pw, t], [px0, pz + pd, pw, t], [px0, pz, t, pd], [px0 + pw, pz, t, pd - 6]]) buildings.push({ x, z, w: ww, d: dd, h: 1.3, color: '#9aa0a6', kind: 'fence', loc: loc.id });
     if (props) for (let c = 0; c < 3 + (k % 3); c++) props.push({ k: 'cow', x: px0 + 3 + rnd() * (pw - 6), z: pz + 3 + rnd() * (pd - 6), w: 0, d: 0, c: ['#1e1e20', '#6a3a22', '#b06a32'][(k + c) % 3], a: rnd() * 6.28 });
+  }
+}
+
+// Cross Timbers Hog Dogs: the kennel building up front, chain-link runs out
+// back with a dog house in each, and a gravel lot.
+function kennel(out, loc) {
+  const { buildings, lots } = out, r = loc.lot, w = r.x1 - r.x0;
+  lots.push({ x: r.x0 + 2, z: r.z0 + 2, w: w - 4, d: r.z1 - r.z0 - 4, kind: 'caliche', loc: loc.id });
+  buildings.push({ x: r.x0 + 50, z: r.z1 - 44, w: 60, d: 26, h: 6, color: '#7a5a3a', kind: 'landmark', label: 'Cross Timbers Hog Dogs', labelColor: loc.color, loc: loc.id, shop: 'kennel', side: 'S', accent: loc.color });
+  for (let k = 0; k < 6; k++) {
+    const x = r.x0 + 12 + k * 23, z = r.z0 + 12, t = 0.2;
+    for (const [fx, fz, fw, fd] of [[x, z, 18, t], [x, z + 34, 18, t], [x, z, t, 34], [x + 18, z, t, 34]]) buildings.push({ x: fx, z: fz, w: fw, d: fd, h: 1.8, color: '#a8adb3', kind: 'fence', loc: loc.id });
+    buildings.push({ x: x + 6, z: z + 4, w: 6, d: 5, h: 2.2, color: ['#8a3b2a', '#c8b28a', '#5d636b'][k % 3], kind: 'house', loc: loc.id });
+  }
+}
+
+// The hog lease: a caliche pad by the gate, a deer stand, and the river
+// bottoms behind it (the woods stay; only the pad is cleared).
+function hogLease(out, loc) {
+  const { buildings, lots, trees } = out, r = loc.lot;
+  lots.push({ x: r.x0 + 110, z: r.z0 + 2, w: 80, d: 40, kind: 'caliche', loc: loc.id });
+  buildings.push({ x: r.x0 + 130, z: r.z0 + 46, w: 40, d: 18, h: 4, color: '#6a5a42', kind: 'landmark', label: 'Nolan River Hog Lease', labelColor: '#e8c89a', loc: loc.id, shop: 'hoghunt', side: 'N', accent: loc.color });
+  let seed = 23;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let k = 0; k < 140; k++) {
+    const x = r.x0 + 6 + rnd() * (r.x1 - r.x0 - 12), z = r.z0 + 70 + rnd() * (r.z1 - r.z0 - 76);
+    trees.push({ x, z, r: 3 + rnd() * 3.5, kind: rnd() < 0.7 ? 'tree' : 'pine' });
+  }
+  for (let k = 0; k < 40; k++) {
+    const x = r.x0 + 6 + rnd() * (r.x1 - r.x0 - 12), z = r.z0 + 70 + rnd() * 40;
+    if (x > r.x0 + 100 && x < r.x0 + 200) continue;
+    trees.push({ x, z, r: 2.5 + rnd() * 3, kind: 'tree' });
   }
 }
 

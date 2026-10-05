@@ -353,6 +353,9 @@ export const audio = {
   pop(vol = 1) { noiseHit(0.09, 0.2 * vol, 1500, 'bandpass'); tone(95, 0.1, 'sine', 0.22 * vol, -50); },
   // a gunshot: sharp crack plus a low thump (kind scales the size)
   gunshot(size = 1) { noiseHit(0.22, Math.min(0.7, 0.4 * size), 2400, 'highpass'); noiseHit(0.35, Math.min(0.6, 0.3 * size), 700); tone(70, 0.22, 'sine', 0.35 * size, -40); },
+  // hog dogs (ui/hoghunt.js): a bay dog's chop, and a hog squealing on the catch
+  bark(pitch = 1) { tone(320 * pitch, 0.06, 'sawtooth', 0.05, -80); setTimeout(() => tone(270 * pitch, 0.08, 'sawtooth', 0.045, -60), 95); },
+  squeal() { tone(1400, 0.35, 'sawtooth', 0.04, 600); },
   phone() { tone(1046, 0.08, 'sine', 0.1); setTimeout(() => tone(1318, 0.1, 'sine', 0.1), 110); },
   radio() { noiseHit(0.12, 0.06, 2200, 'bandpass'); },
   thunder() { noiseHit(1.8, 0.35, 220); tone(48, 1.4, 'sine', 0.25, -20); setTimeout(() => noiseHit(1.2, 0.18, 160), 350); },

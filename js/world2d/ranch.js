@@ -5,6 +5,7 @@
 import { ESTATE_LOCATIONS, ANIMAL_BY_ID } from '../data/estate.js';
 import { pasture } from '../core/estate.js';
 import { drawCow, breedOf } from '../gfx2d/cowArt.js';
+import { phenotype } from '../core/dogs.js';
 
 const SIZE = { cow: [1.25, 0.6], longhorn: [1.3, 0.62], horse: [1.35, 0.45], dog: [0.55, 0.22] };
 
@@ -32,6 +33,16 @@ export class Ranch {
         }
       }
     }
+    // your hog dogs (core/dogs.js) run the yard wherever they live
+    const at = Object.fromEntries(ESTATE_LOCATIONS.map(l => [l.id, l]));
+    for (const d of s.kennel?.dogs || []) {
+      const loc = at[d.home];
+      if (!loc) continue;
+      const area = { x0: loc.lot.x0 + 3, z0: loc.lot.z0 + 3, x1: loc.lot.x1 - 3, z1: loc.lot.z1 - 3 };
+      const x = area.x0 + rnd() * (area.x1 - area.x0), z = area.z0 + rnd() * (area.z1 - area.z0), ph = phenotype(d.genes);
+      const big = Math.max(0.6, Math.min(1.35, (d.kg || 25) / 28)) * (d.age < 12 ? 0.6 + d.age / 30 : 1);
+      out.push({ kind: 'dog', area, x, z, h: rnd() * 6.28, tx: x, tz: z, wait: rnd() * 4, color: ph.white === 'extreme' || ph.white === 'heavy' ? ph.white2 : ph.baseHex, dark: ph.euHex, big, step: 0, home: loc.id, dog: d.id });
+    }
     this.list = out;
   }
 
@@ -39,7 +50,7 @@ export class Ranch {
     this.t -= dt;
     if (this.t <= 0) {
       this.t = 1;
-      const key = JSON.stringify(Object.entries(this.w.s.estate?.land || {}).map(([id, l]) => [id, l.owned, l.animals, l.fence]));
+      const key = JSON.stringify(Object.entries(this.w.s.estate?.land || {}).map(([id, l]) => [id, l.owned, l.animals, l.fence])) + (this.w.s.kennel?.dogs || []).map(d => d.id + d.home + (d.age < 12 ? d.age : '')).join();
       if (key !== this.key) { this.key = key; this.rebuild(); }
     }
     if (!this.list.length) return;
@@ -78,7 +89,7 @@ export class Ranch {
     if (z < 0.8) return;
     for (const a of this.list) {
       if (a.x < v.x0 || a.x > v.x1 || a.z < v.z0 || a.z > v.z1) continue;
-      const [L, W] = SIZE[a.kind];
+      const [L, W] = SIZE[a.kind].map(v => v * (a.big || 1));
       // cattle: the hand-drawn cow (gfx2d/cowArt.js), swaying a little as it walks
       if ((a.kind === 'cow' || a.kind === 'longhorn') && drawCow(ctx, cam.sx(a.x), cam.sy(a.z), a.h, z, breedOf(a.color, a.kind), { sway: Math.sin(a.step) * 0.04 })) continue;
       ctx.save();
@@ -95,6 +106,7 @@ export class Ranch {
         ctx.beginPath(); ctx.moveTo(0, L * z); ctx.lineTo(Math.sin(a.step * 0.5) * 0.2 * z, (L + 0.6) * z); ctx.stroke();    // tail
       } else if (a.kind === 'dog') {
         ctx.beginPath(); ctx.arc(0, -L * 1.05 * z, W * 1.05 * z, 0, Math.PI * 2); ctx.fill();
+        if (a.dark) { ctx.fillStyle = a.dark; ctx.fillRect(-W * 1.05 * z, -L * 1.2 * z, 0.12 * z, 0.18 * z); ctx.fillRect(W * 0.93 * z, -L * 1.2 * z, 0.12 * z, 0.18 * z); }   // ears
         ctx.strokeStyle = a.color; ctx.lineWidth = Math.max(1, 0.08 * z); ctx.beginPath(); ctx.moveTo(0, L * z); ctx.lineTo(Math.sin(performance.now() / 90) * 0.25 * z, (L + 0.35) * z); ctx.stroke();   // wagging
       } else {
         ctx.beginPath(); ctx.arc(0, -L * 1.0 * z, W * 0.55 * z, 0, Math.PI * 2); ctx.fill();

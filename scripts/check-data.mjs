@@ -974,8 +974,14 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!(EST.remodelCost(st, land, smaller) < 0)) bad('tearing a room out should pay something back');
   // ranching: no cattle without a fence, the fence caps the herd, dogs don't need one
   if (EST.buyAnimal(st, land, 'cow').ok) bad('cows without a fence');
-  if (!EST.buyAnimal(st, land, 'dog', 2).ok) bad('buying dogs');
-  if (EST.buyAnimal(st, land, 'dog', 3).ok) bad('more than 4 dogs');
+  // an old save's ranch dogs (a head count) become real kennel dogs living on that land
+  {
+    const DGm = await import('../js/core/dogs.js');
+    EST.landState(st, land).animals = { dog: 2 };
+    const kk = DGm.ensureKennel(st);
+    if (kk.dogs.filter(d => d.home === land).length !== 2 || EST.herd(st, land).dog) bad('old ranch dogs did not move into the kennel');
+    kk.dogs = [];
+  }
   if (EST.buildFence(st, 'land_stopsix', 'ranch').ok) bad('a white ranch fence on a city lot');
   if (!EST.buildFence(st, land, 'wire').ok || EST.penCap(st, land) !== 20) bad('barbed wire pasture');
   if (!EST.buyAnimal(st, land, 'cow', 5).ok || !EST.buyAnimal(st, land, 'horse', 2).ok) bad('stocking the pasture');
@@ -1496,6 +1502,88 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (PU.pullupWager(st, RACERS[0], PU.racerPi(RACERS[0]) + 300) !== 0) bad('nobody bets against a way faster car');
   const day = { ...st, time: { day: 2, min: 12 * 60 } }, night = { ...st, time: { day: 2, min: 23 * 60 } };
   if (!(PU.nextPullupIn(night, () => 0.5) < PU.nextPullupIn(day, () => 0.5))) bad('pull-ups should come more often at night');
+}
+// ---------------- hog dogs (core/dogs.js, core/hoghunt.js, gfx2d/dogCoat.js)
+{
+  const DG = await import('../js/core/dogs.js'), HH = await import('../js/core/hoghunt.js'), DD = await import('../js/data/dogs.js');
+  const { Coat } = await import('../js/gfx2d/dogCoat.js');
+  const { ESTATE_LOCATIONS } = await import('../js/data/estate.js');
+  const { LOC_BY_ID, COUNTRY } = await import('../js/data/world.js');
+  const fs = await import('fs');
+  // every breed has a body to paint on, and the masters are in img/dogs/masters
+  for (const b of DD.BREED_NAMES) {
+    const t = Coat.TEMPLATES[b];
+    if (!t?.body) { bad(`dog breed ${b} has no coat body`); continue; }
+    for (const m of Object.values(Coat.BODIES[t.body].maps)) if (!fs.existsSync(m)) bad(`dog master ${m} is missing`);
+    if (DD.BREEDS[b].pot.length !== DD.STATS.length) bad(`${b} pot has ${DD.BREEDS[b].pot.length} stats`);
+  }
+  const st = createState({ name: 'Dogs' });
+  st.cash = 200000;
+  const k = DG.ensureKennel(st);
+  // a dog: stats under potential, real coat name, genes for every locus
+  for (const b of DD.BREED_NAMES) {
+    const d = DG.makeDog(st, { breed: b, age: 24, home: 'eastgate_studio' });
+    if (Object.keys(DD.LOCI).some(L => d.genes[L]?.length !== 2)) bad(`${b}: genes missing`);
+    if (DD.STATS.some(([x]) => !(d.stats[x] <= d.pot[x] && d.pot[x] >= 15 && d.pot[x] <= 99))) bad(`${b}: stats out of range`);
+    if (!DG.coatName(d) || /undefined|NaN/.test(DG.coatName(d))) bad(`${b}: coat name "${DG.coatName(d)}"`);
+    if (!(DG.dogValue(d) > 0)) bad(`${b}: value`);
+  }
+  if (DD.BREEDS['Dogo Argentino'] && !/white/i.test(DG.coatName(DG.makeDog(st, { breed: 'Dogo Argentino', age: 24 })))) bad('a Dogo should be white');
+  // inheritance: two homozygous parents only make homozygous pups (bar a rare mutation)
+  const sire = DG.makeDog(st, { breed: 'Black Mouth Cur', sex: 'M', age: 24 }), dam = DG.makeDog(st, { breed: 'Black Mouth Cur', sex: 'F', age: 24 });
+  sire.genes.B = ['b', 'b']; dam.genes.B = ['b', 'b']; sire.genes.D = ['D', 'D']; dam.genes.D = ['d', 'd'];
+  let off = 0;
+  for (let i = 0; i < 200; i++) { const p = DG.makePuppy(st, sire, dam); if (p.genes.B.join() !== 'b,b') off++; if (p.genes.D.join() !== 'D,d') off++; if (p.breed !== 'Black Mouth Cur' || p.gen !== 1 || p.parents.length !== 2) bad('a purebred litter came out wrong'); }
+  if (off > 20) bad(`${off} of 400 alleles broke Mendel`);
+  const odds = DG.predictCoats(sire, dam);
+  if (Math.abs(odds.reduce((t, o) => t + o.p, 0) - 1) > 0.01 || !odds.every(o => o.n)) bad('coat odds should add up to 100%');
+  const x = DG.makePuppy(st, DG.makeDog(st, { breed: 'Catahoula Leopard Dog', sex: 'M', age: 24 }), DG.makeDog(st, { breed: 'American Bulldog', sex: 'F', age: 24 }));
+  if (x.breed !== 'Cross' || x.cross !== 'Bulldog × Catahoula' || !Coat.TEMPLATES[DG.coatBreed(x)]?.body) bad(`a cross: ${x.breed} ${x.cross} ${DG.coatBreed(x)}`);
+  // room: the apartment keeps 2; the market sells; a third dog needs a house
+  const mk = DG.refreshMarket(st);
+  if (mk.length !== 13 || mk.some(d => !(d.price > 0)) || mk.some(d => DG.rarTier(d) >= 4)) bad('the dog market');
+  if (!DG.buyDog(st, mk[0].id).ok || !DG.buyDog(st, mk[1].id).ok) bad('buying two dogs');
+  if (DG.buyDog(st, mk[2].id).ok) bad('a third dog at the apartment');
+  st.properties.push('six_bungalow');
+  if (!DG.buyDog(st, mk[2].id).ok || k.dogs.find(d => d.id === mk[2].id).home !== 'six_bungalow') bad('a dog should go to the house');
+  // training: once a day
+  const t0 = k.dogs[0]; t0.age = 20;
+  const key = DD.STATS.find(([q]) => t0.stats[q] < t0.pot[q])?.[0];
+  if (key && (!DG.trainDog(st, t0.id, key).ok || DG.trainDog(st, t0.id, key).ok)) bad('training once a day');
+  // breeding: a litter in 2 days, room or sold
+  k.dogs.length = 0; k.dogs.push(Object.assign(sire, { home: 'six_bungalow' }), Object.assign(dam, { home: 'six_bungalow' }));
+  if (!DG.breed(st, sire.id, dam.id).ok || DG.breed(st, sire.id, dam.id).ok) bad('breeding, and not twice');
+  const bank0 = st.bank + st.cash;
+  st.time.day += 1; DG.dogsDay(st); if (k.dogs.length !== 2) bad('pups came early');
+  st.time.day += 1; const r = DG.dogsDay(st);
+  if (!(k.dogs.length > 2 && k.dogs.length <= DG.totalRoom(st)) || !r.notes.some(n => /whelped/.test(n))) bad(`litter: ${k.dogs.length} dogs, ${r.notes}`);
+  // pups stay with the dam until her place is full, then go to your other places
+  const free = DG.roomAt(st, 'six_bungalow');
+  if (free < 0 || (free > 0 && k.dogs.some(d => d.home !== 'six_bungalow'))) bad('pups should stay with the dam while there is room');
+  if (!(st.bank + st.cash < bank0 + 50000)) bad('the day should charge feed');
+  // the kennel and the hog lease are on the map, out in Johnson County
+  for (const id of ['dog_kennel', 'hog_lease']) {
+    const l = LOC_BY_ID[id];
+    if (!l || l.z < COUNTRY.z0 || l.x < COUNTRY.x0 || l.x > COUNTRY.x1) { bad(`${id} is not in Johnson County`); continue; }
+    for (const o of ESTATE_LOCATIONS) if (o.id !== id && o.lot.x0 < l.lot.x1 && o.lot.x1 > l.lot.x0 && o.lot.z0 < l.lot.z1 && o.lot.z1 > l.lot.z0) bad(`${id} overlaps ${o.id}`);
+  }
+  // hunts: a decent pack brings hogs home from the river bottoms and gets paid
+  let hogs = 0, pay = 0;
+  for (let i = 0; i < 12; i++) {
+    const s2 = createState({ name: 'H' }); const k2 = DG.ensureKennel(s2);
+    for (const b of ['Black Mouth Cur', 'Plott Hound', 'Treeing Walker', 'American Bulldog', 'American Pit Bull Terrier']) k2.dogs.push(DG.makeDog(s2, { breed: b, age: 24, home: 'eastgate_studio' }));
+    const pk = HH.autoPick(s2);
+    if (pk.bay.length !== 3 || pk.ctch.length !== 2) bad('auto pick');
+    const h = HH.startHunt(s2, 'nolan', pk.bay, pk.ctch, 100 + i).hunt;
+    let n = 0; while (!h.over && n++ < 100000) { HH.autoHunter(h); HH.step(h, 0.05); }
+    if (!h.over) bad('a hunt never ended');
+    const sum = HH.settleHunt(s2, h);
+    hogs += sum.hogs.length; pay += sum.pay;
+    if (sum.pay && !(s2.cash > 4500)) bad('hog money did not land');
+    if (k2.dogs.some(d => !(d.health >= 1 && d.health <= d.hcap) || d.hunt.n !== 1)) bad('dogs after a hunt');
+  }
+  if (!(hogs >= 12 && pay > 0)) bad(`12 hunts on the river bottoms caught ${hogs} hogs for ${pay}`);
+  if (HH.startHunt(st, 'nolan', [], [], 1).ok) bad('a hunt with no bay dogs');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);
