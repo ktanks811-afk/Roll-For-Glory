@@ -1223,7 +1223,8 @@ await step('online free roam', async () => {
     window.__rfg.app.world.inCar = true;
     if (!pvp.challenge(peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 500 })) throw new Error('challenge not sent');
   });
-  await p2.waitForSelector('.modal-back button:has-text("Run it")', { timeout: 5000 });
+  // tab 2 is a background tab: no animation frames, so poll on a timer instead of waitForSelector
+  await p2.waitForFunction(() => [...document.querySelectorAll('.modal-back button')].some(b => /Run it/i.test(b.textContent)), null, { timeout: 8000, polling: 200 });
   const inviteText = await p2.textContent('.modal-back .modal-body');
   if (!/1\/4 mile drag race/.test(inviteText) || !/\$500/.test(inviteText)) throw new Error('invite reads wrong: ' + inviteText);
   if (shots) await p2.screenshot({ path: `${OUT}/23b-race-invite.png` });
@@ -1285,8 +1286,10 @@ await step('online free roam', async () => {
   await until(p, () => !!window.__rfg.app.world.rides.riding, 'passenger never got in');
   // the driver drives off: the passenger goes with the car and everyone else stops drawing them
   await p2.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.x += 60; v.z += 20; });
-  const c2 = await carOf(p2);
-  await until(p, ([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z) < 3; }, 'passenger did not move with the car', [c2.x, c2.z]);
+  // compare with where the driver's car really is now (it can get nudged out of a building after the move)
+  let moved = false;
+  for (let i = 0; i < 30 && !moved; i++) { const c2 = await carOf(p2); moved = await p.evaluate(([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z) < 3; }, [c2.x, c2.z]); if (!moved) await p.waitForTimeout(150); }
+  if (!moved) throw new Error('passenger did not move with the car');
   await p.evaluate(() => window.__rfg.app.world.rides.view()).then(v => { if (!v) throw new Error('camera is not riding with the car'); });
   await until(p2, () => window.__rfg.app.world.rides.riders().length === 1 && window.__rfg.online.list().filter(o => o.ride).length === 1, 'driver does not see the passenger aboard');
   // the passenger's dash shows the driver's speed, gear and revs (sent while someone rides along)
@@ -1295,6 +1298,7 @@ await step('online free roam', async () => {
   // the driver drops them off: back on foot beside the car
   await p2.evaluate(async () => { const { rides } = await import('./js/net/ride.js'); rides.drop(rides.riders()[0]); });
   await until(p, () => !window.__rfg.app.world.rides.riding, 'drop-off did not put the passenger out');
+  const c2 = await carOf(p2);
   const outAt = await p.evaluate(([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z); }, [c2.x, c2.z]);
   if (!(outAt > 0.5 && outAt < 5)) throw new Error('passenger got out ' + outAt.toFixed(1) + ' m from the car');
   // vice versa: tab 1 drives up and offers tab 2 a ride
@@ -2473,7 +2477,7 @@ await step('record label: start it, sign an artist in person, cut a single, drop
   const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
   const stand = id => p.evaluate(async id => { const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world, l = LOC_BY_ID[id]; w.inCar = false; w.foot.x = l.x; w.foot.z = l.z; w.cam.x = l.x; w.cam.z = l.z; }, id);
   const openL = (opts = {}) => p.evaluate(async opts => { (await import('./js/ui/label.js')).openLabel(window.__rfg.app, opts); }, opts);
-  const ok = () => p.click('.modal [data-ok]');
+  const ok = () => p.click('.modal [data-ok], .modal button[data-i="1"]');
   await clear();
   await p.evaluate(() => { const s = window.__rfg.game.s; delete s.label; s.bank += 400000; });
   // the studio on the map, then start the label from the phone app
