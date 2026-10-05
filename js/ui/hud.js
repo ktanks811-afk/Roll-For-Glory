@@ -15,6 +15,7 @@ import { pad } from '../core/gamepad.js';
 import { audio } from '../core/audio.js';
 import { online } from '../net/online.js';
 import { MiniMap } from './minimap.js';
+import { carName } from '../data/cars.js';
 import { LEGAL_DB } from '../sim/sound.js';
 import { PULL_OVER_S } from '../world2d/police.js';
 import { masked, ownsMask, disguiseLabel } from '../core/disguise.js';
@@ -71,7 +72,7 @@ export class Hud {
         <div class="dash-speed"><b data-speed>0</b><small data-unit>MPH</small></div>
         <div class="dash-gear" data-gear>N</div>
         <div class="dash-tach"><div data-rpm></div><i data-redline></i></div>
-        <div class="dash-row"><span>FUEL</span><div class="bar thin"><div data-fuel></div></div></div>
+        <div class="dash-row" data-fuelrow><span>FUEL</span><div class="bar thin"><div data-fuel></div></div></div>
         <div class="dash-row hidden" data-oilrow><span>OIL</span><div class="bar thin"><div data-oil></div></div></div>
         <div class="dash-row hidden" data-engrow><span>ENG</span><div class="bar thin"><div data-eng></div></div></div>
         <div class="dash-row hidden" data-noiserow><span>NOISE</span><b data-noise>—</b></div>
@@ -265,8 +266,20 @@ export class Hud {
     pr.innerHTML = prompt; pr.classList.toggle('hidden', !prompt);
     // dash
     const dash = this.q('dash');
-    dash.classList.toggle('hidden', !w.inCar);
-    if (w.inCar && w.vehicle) {
+    // riding in another player's car: their speedo and tach
+    const ride = !w.inCar && w.rides?.riding ? w.rides.peer : null;
+    dash.classList.toggle('hidden', !w.inCar && !ride);
+    this.q('fuelrow').classList.toggle('hidden', !!ride);
+    if (ride) {
+      const kmh = settings.units === 'kmh';
+      this.q('speed').textContent = Math.round(Math.abs(ride.sp) * (kmh ? 3.6 : MPH));
+      this.q('unit').textContent = kmh ? 'KM/H' : 'MPH';
+      this.q('gear').textContent = ride.gear || (Math.abs(ride.sp) < 0.3 ? 'N' : 'D');
+      this.q('rpm').style.width = `${Math.min(100, (ride.rpm || 0) * 100)}%`;
+      this.q('rpm').classList.toggle('hot', ride.rpm > 0.9);
+      for (const r of ['oilrow', 'engrow', 'noiserow', 'nosrow']) this.q(r).classList.add('hidden');
+      this.q('carname').textContent = `${ride.name}'s ${ride.model ? carName(ride.model) : 'car'} · passenger`;
+    } else if (w.inCar && w.vehicle) {
       const v = w.vehicle;
       const kmh = settings.units === 'kmh';
       this.q('speed').textContent = Math.round(v.speed * (kmh ? 3.6 : MPH));

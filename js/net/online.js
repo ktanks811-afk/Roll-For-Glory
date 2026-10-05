@@ -324,6 +324,8 @@ class Online {
       p.st = { x, z, h: num(m.h, -20, 20), v: num(m.v, -80, 120), r: num(m.r, -4, 4), a: num(m.a, -30, 30) };
       p.sp = p.st.v; p.inCar = !!m.c; p.sflame = num(m.f, 0, 2); p.t = now;
       p.ride = typeof m.rd === 'string' && m.rd.length <= 16 ? m.rd : '';
+      // gear and revs: only sent while they have passengers, for the passenger's dash
+      p.gear = typeof m.g === 'string' && /^[RDN–1-9]$/.test(m.g) ? m.g : ''; p.rpm = num(m.rp, 0, 1.2, 0);
       if (p.fresh) { p.x = x; p.z = z; p.h = p.st.h; p.fresh = false; }
     } else if (m.k === 'c') {
       this.addChat(cleanName(m.n, p.name), cleanText(m.x));
@@ -373,6 +375,7 @@ class Online {
         this.sendT = 1 / MAX_HZ;
         const msg = { k: 's', q: ++this.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) };
         if (this.ride) { msg.rd = this.ride; msg.v = msg.r = msg.a = 0; }
+        if (me.dash) { msg.g = me.dash.gear; msg.rp = +Math.min(1.2, me.dash.rpm).toFixed(2); }
         this.sent = { ...msg, t: now };
         this.send(msg);
       }
