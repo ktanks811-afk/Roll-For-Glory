@@ -6,7 +6,8 @@
 import { bind, esc, toast } from './dom.js';
 import { fmtMoney, spend, tierOf } from '../core/state.js';
 import { audio } from '../core/audio.js';
-import { GLOCKS, ARPS, MELEE, GEAR, CAL, AMMO_BOX, ammoBoxPrice, WEAPON_BY_ID, ensureArms, buyWeapon, buyAmmo, minAge, canFrt, toggleFrt } from '../data/weapons.js';
+import { GLOCKS, ARPS, MELEE, GEAR, CAL, AMMO_BOX, ammoBoxPrice, WEAPON_BY_ID, ensureArms, buyWeapon, buyAmmo, minAge, canFrt, toggleFrt,
+  MAGS, MAG_BY_ID, SWITCH, magCap, setMag, buyMag, buySwitch, canSwitch, toggleSwitch } from '../data/weapons.js';
 
 const head = title => `<div class="app-head"><button class="back" data-action="back">‹ Back</button><h2>${esc(title)}</h2></div>`;
 const GLOCK_CALS = ['9mm', '.40 S&W', '10mm', '.45 ACP', '.380 ACP', '.357 SIG', '.45 GAP', '.22 LR'];
@@ -30,7 +31,7 @@ function card(d, s, tier) {
 export function renderShop(scr, ctx) {
   const s = ctx.s, a = ensureArms(s), tier = tierOf(s.rep).n;
   const st = ctx.st.shop ??= { tab: 'hand', cal: 'all', q: '', gen: 'all' };
-  const tabs = [['hand', 'Handguns'], ['arp', 'AR Pistols'], ['melee', 'Melee'], ['ammo', 'Ammo'], ['gear', 'Gear'], ['mine', `My gear (${a.guns.length})`]];
+  const tabs = [['hand', 'Handguns'], ['arp', 'AR Pistols'], ['melee', 'Melee'], ['ammo', 'Ammo'], ['mags', 'Mags & switches'], ['gear', 'Gear'], ['mine', `My gear (${a.guns.length})`]];
   const done = r => { toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) audio.buy(); ctx.h.refresh(); };
   const tabBar = `<div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${tabs.map(([k, l]) => `<button class="btn btn-sm ${st.tab === k ? 'btn-primary' : ''}" data-action="tab" data-id="${k}">${l}</button>`).join('')}</div>`;
   const banner = `<div class="row" style="justify-content:space-between;align-items:center;background:#131a22;border-radius:8px;padding:8px 10px;margin-bottom:6px"><b style="color:#ff9900;font-size:18px">amazin'<span style="color:#ff9900">⌣</span></b><span class="small muted">same-minute delivery to your mailbox</span></div>`;
@@ -51,6 +52,13 @@ export function renderShop(scr, ctx) {
     body = `<p class="small muted">Boxes of ${AMMO_BOX}. Your reserve: ${cals.filter(c => a.ammo[c]).map(c => `${a.ammo[c]} ${c}`).join(' · ') || 'none'}.</p>
       <div class="list">${cals.map(c => `<div class="li"><div class="grow"><div class="t">${c}</div><div class="s">${CAL[c].dmg} dmg · ${fmtMoney(ammoBoxPrice(c), true)} per box · you have ${a.ammo[c] || 0}</div></div>
         <button class="btn btn-sm btn-primary" data-action="ammo" data-cal="${c}" data-n="1">+1 box</button><button class="btn btn-sm" data-action="ammo" data-cal="${c}" data-n="5">+5</button></div>`).join('')}</div>`;
+  } else if (st.tab === 'mags') {
+    const mk = a.magKits || {};
+    body = `<p class="small muted">Extended mags and drums fit any gun you own; put one in under My gear. A switch only fits a Glock.</p>
+      <div class="list">${MAGS.map(m => `<div class="li"><div class="grow"><div class="t">${esc(m.name)}${mk[m.id] ? ` <span class="tag tag-green">In locker ${mk[m.id]}</span>` : ''}</div><div class="s">${esc(m.blurb)}</div><div class="s"><b>${fmtMoney(m.price)}</b> · reload ×${m.reload}</div></div>
+        <button class="btn btn-sm btn-primary" data-action="mag" data-id="${m.id}">Buy</button></div>`).join('')}
+      <div class="li"><div class="grow"><div class="t">${esc(SWITCH.name)} <span class="tag tag-red">Illegal</span>${a.switchKits ? ` <span class="tag tag-green">In locker ${a.switchKits}</span>` : ''}</div><div class="s">${esc(SWITCH.blurb)}</div><div class="s"><b>${fmtMoney(SWITCH.price)}</b>${s.player.age < 21 ? ' · <span class="bad">21+ (ID check)</span>' : ''}</div></div>
+        <button class="btn btn-sm btn-primary" data-action="switch" ${s.player.age < 21 ? 'disabled' : ''}>Buy</button></div></div>`;
   } else if (st.tab === 'gear') {
     body = `<div class="list">${GEAR.map(g => {
       const have = g.id === 'vest' ? a.armor >= 1 : g.id === 'frt' ? false : a.holster;
@@ -61,11 +69,13 @@ export function renderShop(scr, ctx) {
     body = a.guns.length ? `<p class="small muted">Draw and holster with <b>G</b> (or the ARM button). Equip chooses what comes out. Robberies: draw a gun next to a gas station, diner or clothing store and press <b>E</b>.</p>
       <div class="list">${a.guns.map(g => {
         const d = WEAPON_BY_ID[g.id], eq = a.equipped === g.uid;
-        return `<div class="li"><div class="grow"><div class="t">${esc(d.name)} ${eq ? '<span class="tag tag-green">Equipped</span>' : ''}${g.frt ? ' <span class="tag tag-red">FRT</span>' : ''}</div>
-          <div class="s">${d.melee ? 'Melee' : `${g.loaded}/${d.mag} loaded · ${a.ammo[d.cal] || 0} ${d.cal} in reserve`}</div></div>
+        return `<div class="li"><div class="grow"><div class="t">${esc(d.name)} ${eq ? '<span class="tag tag-green">Equipped</span>' : ''}${g.frt ? ' <span class="tag tag-red">FRT</span>' : ''}${g.sw ? ' <span class="tag tag-red">Switch</span>' : ''}${MAG_BY_ID[g.mag] ? ` <span class="tag">${MAG_BY_ID[g.mag].short}</span>` : ''}</div>
+          <div class="s">${d.melee ? 'Melee' : `${g.loaded}/${magCap(d, g)} loaded · ${a.ammo[d.cal] || 0} ${d.cal} in reserve`}</div></div>
           <div style="text-align:right"><button class="btn btn-sm ${eq ? '' : 'btn-primary'}" data-action="equip" data-id="${g.uid}" ${eq ? 'disabled' : ''}>Equip</button>
           ${d.melee ? '' : `<button class="btn btn-sm" data-action="topoff" data-id="${g.uid}">Load</button>`}
-          ${g.frt || canFrt(d) ? (g.frt ? `<button class="btn btn-sm" data-action="frt" data-id="${g.uid}">Remove FRT</button>` : `<button class="btn btn-sm" data-action="frt" data-id="${g.uid}" ${(a.frtKits || 0) ? '' : 'disabled'}>Install FRT</button>`) : ''}
+          ${!g.sw && (g.frt || canFrt(d)) ? (g.frt ? `<button class="btn btn-sm" data-action="frt" data-id="${g.uid}">Remove FRT</button>` : `<button class="btn btn-sm" data-action="frt" data-id="${g.uid}" ${(a.frtKits || 0) ? '' : 'disabled'}>Install FRT</button>`) : ''}
+          ${!g.frt && (g.sw || canSwitch(d)) ? `<button class="btn btn-sm" data-action="sw" data-id="${g.uid}" ${g.sw || a.switchKits ? '' : 'disabled'}>${g.sw ? 'Remove switch' : 'Install switch'}</button>` : ''}
+          ${d.melee ? '' : `<select class="field" data-magsel="${g.uid}" style="font-size:12px;padding:2px"><option value="">Stock ${d.mag}-rd mag</option>${MAGS.filter(m => m.cap > d.mag && (g.mag === m.id || (a.magKits || {})[m.id])).map(m => `<option value="${m.id}" ${g.mag === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}</select>`}
           <button class="btn btn-sm" data-action="sell" data-id="${g.uid}">Sell ${fmtMoney(Math.round(d.price * 0.5))}</button></div></div>`;
       }).join('')}</div>` : '<div class="empty">No weapons yet. Browse Handguns or AR Pistols.</div>';
     body += `<p class="small muted">Stolen so far: ${fmtMoney(s.stats.stolen || 0)} in ${a.robberies} job${a.robberies === 1 ? '' : 's'}.</p>`;
@@ -86,6 +96,13 @@ export function renderShop(scr, ctx) {
       done({ ok: true, text: `${g.name} delivered.` });
     },
     equip: d => { a.equipped = d.id; toast('Equipped.', 'good'); rerender(); },
+    mag: d => done(buyMag(s, d.id, spend)),
+    switch: () => done(buySwitch(s, spend)),
+    sw: d => {
+      const r = toggleSwitch(s, d.id);
+      toast(r.text, r.ok ? (a.guns.find(x => x.uid === d.id)?.sw ? 'good' : 'info') : 'bad');
+      rerender();
+    },
     frt: d => {
       const r = toggleFrt(s, d.id);
       toast(r.text, r.ok ? (a.guns.find(x => x.uid === d.id)?.frt ? 'good' : 'info') : 'bad');
@@ -93,8 +110,8 @@ export function renderShop(scr, ctx) {
     },
     topoff: d => {
       const g = a.guns.find(x => x.uid === d.id), def = WEAPON_BY_ID[g.id];
-      const put = Math.min(def.mag - g.loaded, a.ammo[def.cal] || 0);
-      if (put <= 0) return toast(g.loaded >= def.mag ? 'Already full.' : `No ${def.cal} in reserve.`, 'bad');
+      const put = Math.min(magCap(def, g) - g.loaded, a.ammo[def.cal] || 0);
+      if (put <= 0) return toast(g.loaded >= magCap(def, g) ? 'Already full.' : `No ${def.cal} in reserve.`, 'bad');
       g.loaded += put; a.ammo[def.cal] -= put; audio.click(); rerender();
     },
     sell: d => {
@@ -102,11 +119,14 @@ export function renderShop(scr, ctx) {
       a.guns = a.guns.filter(x => x.uid !== d.id);
       if (a.equipped === d.id) a.equipped = a.guns[0]?.uid || null;
       if (!def.melee) a.ammo[def.cal] = (a.ammo[def.cal] || 0) + g.loaded;
+      if (g.mag) a.magKits[g.mag] = (a.magKits[g.mag] || 0) + 1;   // you keep the mag
+      if (g.sw) a.switchKits = (a.switchKits || 0) + 1;              // and the switch
       s.cash += Math.round(def.price * 0.5);
       toast(`Sold for ${fmtMoney(Math.round(def.price * 0.5))}.`, 'good'); rerender();
     },
   };
   bind(scr, handlers);
+  for (const sel of scr.querySelectorAll('[data-magsel]')) sel.addEventListener('change', () => { const r = setMag(s, sel.dataset.magsel, sel.value || null); toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) audio.click(); rerender(); });
   const q = scr.querySelector('[data-q]');
   if (q) q.addEventListener('input', () => { st.q = q.value; const l = scr.querySelector('[data-list]'); if (l) { l.innerHTML = listHtml(); bind(l, handlers); } });
 }
