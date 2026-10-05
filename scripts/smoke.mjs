@@ -324,6 +324,7 @@ await step('street races: 1v1 for cash, pink slips, time trial', async () => {
 });
 await step('pull-ups: a racer rolls up while you drive', async () => {
   const w0 = await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, s = window.__rfg.game.s; window.__storyWas = s.story.enabled; s.story.enabled = false; s.heat = 0; w.police.reset?.(w);
+    const car = s.cars.find(c => c.uid === s.activeCar); if (car) car.fuel = 1;   // earlier driving can leave the tank too low for a pull-up
     const was = { x: v.x, z: v.z, h: v.h }; v.x = -400; v.z = 598; v.h = Math.PI / 2; v.vx = v.vz = 0; v.sim.v = 14; w.inCar = true; w.cam.x = v.x; w.cam.z = v.z; w.paused = false; return was; });
   const pu = () => p.evaluate(() => { const c = window.__rfg.app.world.pullups.c; return c ? c.phase : null; });
   // off by default in a test browser; forced here: they roll up beside you and wait on an answer
