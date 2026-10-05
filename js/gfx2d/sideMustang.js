@@ -13,6 +13,7 @@
 import { drawRimSprite, rimHasTire } from './rimSprites.js';
 
 import { CALIPER_COLORS } from '../data/parts.js';
+import { rideDrop } from '../sim/tuning.js';
 
 export const SIDE_VIEW_CARS = new Set(['ford_mustang_gt_s650_2024', 'ford_mustang_dark_horse_2024']);
 export const hasSideView = modelId => SIDE_VIEW_CARS.has(modelId);
@@ -22,6 +23,7 @@ const K = LW / 1983;
 const GROUND = 700;                           // y of the road in reference px
 const TIRE_R = 143;                           // overall tyre radius
 const FRONT_X = 412, REAR_X = 1510;
+const PX_PER_MM = 0.4;                        // 1098 px between the axles = 2.72 m wheelbase
 
 // ----- colour helpers -----
 export const hex = c => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); const n = m ? parseInt(m[1], 16) : 0x888888; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
@@ -321,8 +323,15 @@ export function drawEngineBay(g, v, lv) {
   if (lv.nitrous > 0) { g.strokeStyle = '#3a6bff'; g.lineWidth = 7; g.beginPath(); g.moveTo(560, 470); g.bezierCurveTo(620, 480, 640, 420, 600, 400); g.stroke(); }
 }
 
+// Drop the body by the tuned ride height: drop.f mm at the front axle (fx),
+// drop.r mm at the rear (rx), sloping between them so rake shows.
+export function lowerBody(g, drop, fx, rx, pxPerMm) {
+  const k = (drop.r - drop.f) * pxPerMm / (rx - fx);
+  g.transform(1, k, 0, 1, 0, drop.f * pxPerMm - k * fx);
+}
+
 // ------------------------------------------------------------------ main
-// opts: { visual, levels, cond, showEngine, layers: {name:false to hide} }
+// opts: { visual, levels, tune, cond, showEngine, layers: {name:false to hide} }
 export function drawSideMustang(canvas, opts) {
   const v = opts.visual || {}, lv = opts.levels || {};
   const off = opts.layers || {};
@@ -336,7 +345,7 @@ export function drawSideMustang(canvas, opts) {
   const size = +v.wheelSize || 19, offset = v.offset || 'flush';
   const caliper = CALIPER_COLORS[Math.min(4, lv.brakes || 0)] || '#3a3a3a';
   const flare = v.kit === 'wide' ? 26 : 0;
-  const drop = [0, 9, 16, 22, 26][Math.min(4, lv.suspension || 0)];     // lower with suspension stages
+  const drop = rideDrop(lv, opts.tune);     // mm lower, from the suspension and the tune
 
   // ground shadow + underglow
   g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.ellipse(980, GROUND + 6, 960, 20, 0, 0, 7); g.fill();
@@ -346,7 +355,7 @@ export function drawSideMustang(canvas, opts) {
   }
 
   // body layers ride lower on lowered suspension
-  g.save(); g.translate(0, drop);
+  g.save(); lowerBody(g, drop, FRONT_X, REAR_X, PX_PER_MM);
   if (flare) { const base = hex(v.paint); for (const cx of [FRONT_X, REAR_X]) { g.fillStyle = rgb(darken(base, 0.1)); g.beginPath(); g.arc(cx, 560, TIRE_R + 46, Math.PI * 0.98, Math.PI * 2.02); g.fill(); } }
   if (on('body')) paintBody(g, v);
   if (on('skirts')) paintSkirts(g, v);
@@ -365,7 +374,7 @@ export function drawSideMustang(canvas, opts) {
 
   const cy = GROUND - TIRE_R;
   if (on('wheels')) { drawWheel(g, FRONT_X, cy, v, size, offset, caliper, 'front'); drawWheel(g, REAR_X, cy, v, size, offset, caliper, 'rear'); }
-  g.save(); g.translate(0, drop);
+  g.save(); lowerBody(g, drop, FRONT_X, REAR_X, PX_PER_MM);
   if (offset !== 'poke') { archLip(g, FRONT_X, 560, v, flare); archLip(g, REAR_X, 560, v, flare); }
   g.restore();
   g.restore();

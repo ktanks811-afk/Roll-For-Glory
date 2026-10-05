@@ -10,7 +10,7 @@ import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, part
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { buildSpec, dynoCurve, metrics, MPH } from '../sim/powertrain.js';
 import { launchRpmSetting } from '../sim/twostep.js';
-import { tuneSchema, tuneValue, PRESETS } from '../sim/tuning.js';
+import { tuneSchema, tuneValue, rideDrop, PRESETS } from '../sim/tuning.js';
 import { openPartProfile } from './partProfile.js';
 import { drawSideCar } from '../gfx2d/sideCar.js';
 import { shapeOf } from '../data/carShapes.js';
@@ -263,7 +263,7 @@ function showroom(body, h, app, st, s, car, m) {
     ['lights', 'Headlights / taillights', `${esc(v.headlights)} / ${esc(v.taillights)}`, 'headlights'],
     ['windows', 'Windows / tint', nameOf('t', v.tint), 'tint'],
     ['hood', 'Hood', nameOf('h', v.hood), 'hood'],
-    ['suspension', 'Suspension / ride height', `${esc(part('suspension'))}${lv.suspension ? ` · −${[0, 9, 16, 22, 26][Math.min(4, lv.suspension)] * 0.4 | 0} mm` : ''}`, 'suspension'],
+    ['suspension', 'Suspension / ride height', `${esc(part('suspension'))}${lv.suspension ? ((d) => d.f === d.r ? ` · −${Math.round(d.f)} mm` : ` · −${Math.round(d.f)} mm front, −${Math.round(d.r)} mm rear`)(rideDrop(lv, car.tune)) : ''}`, 'suspension'],
     ['engine', 'Engine upgrades', `Engine S${lv.engine || 0} · ${lv.turbo ? 'turbo S' + lv.turbo + ' · ' : ''}${lv.supercharger ? 'supercharger S' + lv.supercharger + ' · ' : ''}ECU S${lv.ecu || 0}`, 'engine'],
     ['decals', 'Decals / livery', nameOf('d', v.decal), 'decal'],
     ['underglow', 'Underglow', v.neon && v.neon !== 'none' ? swatch(v.neon) : 'None', 'neon'],
@@ -279,7 +279,7 @@ function showroom(body, h, app, st, s, car, m) {
     <div class="list">${rows.map(([key, label, val, cat], i) => `<div class="li"><label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer"><input type="checkbox" data-layer="${layerKey(key)}" ${st.layers[layerKey(key)] === false ? '' : 'checked'}><span class="grow"><span class="t">${label}</span><br><span class="s">${val}</span></span></label>
       ${cat ? `<button class="btn btn-sm" data-action="change" data-cat="${cat}">Change</button>` : ''}</div>`).join('')}</div></div>`;
   const cv = body.querySelector('[data-side]');
-  const draw = () => drawSideCar(cv, { model: m, visual: car.visual, levels: levels(car), cond: car.cond, showEngine: !!st.engineView, layers: st.layers });
+  const draw = () => drawSideCar(cv, { model: m, visual: car.visual, levels: levels(car), tune: car.tune, cond: car.cond, showEngine: !!st.engineView, layers: st.layers });
   draw();
   body.querySelectorAll('[data-layer]').forEach(cb => cb.onchange = () => { st.layers[cb.dataset.layer] = cb.checked; draw(); });
   const fit = async (what, apply) => { if (!spend(s, 180, 'Wheel & tire fitting')) return; apply(); app.world?.refreshCar(); h.refresh(); };
@@ -371,7 +371,7 @@ function tune(body, h, app, st, s, car, m) {
   const open = st.tuneOpen || (st.tuneOpen = new Set(['engine', 'gearing']));
   const groupsHtml = schema.map(grp => `<details class="tune-grp" data-g="${grp.id}" ${open.has(grp.id) ? 'open' : ''}>
       <summary>${grp.lock ? '🔒 ' : ''}${esc(grp.name)}<span class="tune-chg" data-chg="${grp.id}"></span></summary>
-      ${grp.lock ? `<p class="small muted">${esc(grp.lock)}</p>` : `<p class="small muted">${esc(grp.note)}</p>${grp.items.map(it => row(grp, it)).join('')}`}
+      ${grp.lock ? `<p class="small muted">${esc(grp.lock)}</p>` : `<p class="small muted">${esc(grp.note)}</p>${grp.id === 'susp' ? '<div class="showroom"><div class="sr-stage"><canvas data-ride></canvas></div></div>' : ''}${grp.items.map(it => row(grp, it)).join('')}`}
     </details>`).join('');
   body.innerHTML = `<div class="tune">
     <div class="tune-out" data-out></div>
@@ -441,6 +441,10 @@ function tune(body, h, app, st, s, car, m) {
     body.querySelector('[data-cost]').textContent = !ch.length ? 'No changes yet.' : `${ch.map(id => TUNE_COST[id][2]).join(', ')} — ${st.mode === 'perf' ? (c.$ ? `${fmtMoney(c.$)} at the shop` : 'free') : `DIY, ${c.min >= 60 ? `${(c.min / 60).toFixed(c.min % 60 ? 1 : 0)}h` : `${c.min} min`} of your time`}.`;
   };
   const queue = () => { if (!raf) raf = requestAnimationFrame(out); };
+  // the car on its new ride height while you slide it
+  const rideCv = body.querySelector('[data-ride]');
+  const drawRide = () => { if (rideCv) drawSideCar(rideCv, { model: m, visual: car.visual, levels: lv, tune: draft, cond: car.cond }); };
+  drawRide();
   body.querySelectorAll('[data-k]').forEach(inp => {
     const it = schema.flatMap(g => g.items).find(x => x.k === inp.dataset.k);
     inp.oninput = () => {
@@ -448,6 +452,7 @@ function tune(body, h, app, st, s, car, m) {
       // single-adjustable dampers move bump and rebound together
       if ((lv.suspension || 0) < 3 && (it.k === 'bumpF' || it.k === 'bumpR')) draft[it.k === 'bumpF' ? 'rebF' : 'rebR'] = +inp.value;
       body.querySelector(`[data-v="${it.k}"]`).textContent = it.fmt(+inp.value);
+      if (it.k === 'rideF' || it.k === 'rideR') drawRide();
       queue();
     };
   });

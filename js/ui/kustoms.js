@@ -70,7 +70,7 @@ export function openKustoms(app) {
   const st = { tab: 'paint', draft: { ...car.visual }, picks: {}, view: 'side' };
   const h = openPanel((root, hh) => render(root, hh, app, st, s, car), { cls: 'kustoms' });
   // redraw the preview once the rim pack art has loaded
-  onRimsReady(() => { const cv = h.root.querySelector('[data-side]'); if (cv) drawSideCar(cv, { model: modelOf(car), visual: st.draft, levels: levels(car), cond: car.cond }); });
+  onRimsReady(() => { const cv = h.root.querySelector('[data-side]'); if (cv) drawSideCar(cv, { model: modelOf(car), visual: st.draft, levels: levels(car), tune: car.tune, cond: car.cond }); });
   return h;
 }
 
@@ -118,7 +118,7 @@ function render(root, h, app, st, s, car) {
         <div class="ks-total"><span>Total</span><b>${fmtMoney(q.total)}</b></div>
         <button class="btn btn-primary" data-action="book" style="width:100%">Build it · ${fmtMoney(q.total)}</button>` : '<p class="small muted" style="margin:0">Pick anything on the right to try it on. Nothing is charged until you build it.</p>'}</div>
     </div><div class="ks-pick">${tab[2].map(cat => (extras[cat] || '') + optList(cat)).join('')}</div></div></div>`;
-  if (st.view === 'side') drawSideCar(root.querySelector('[data-side]'), { model: m, visual: d, levels: levels(car), cond: car.cond });
+  if (st.view === 'side') drawSideCar(root.querySelector('[data-side]'), { model: m, visual: d, levels: levels(car), tune: car.tune, cond: car.cond });
   else drawThumb(root.querySelector('[data-top]'), m, d, car.parts, car.cond);
   const keepScroll = fn => { const b = root.querySelector('.ks-pick'), y = b?.scrollTop || 0, py = root.querySelector('.p-body')?.scrollTop || 0; fn(); h.refresh(); const b2 = root.querySelector('.ks-pick'); if (b2) b2.scrollTop = y; const p2 = root.querySelector('.p-body'); if (p2) p2.scrollTop = py; };
   const restore = cat => {   // undo a pick: put the car's current look back for that slot
