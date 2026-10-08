@@ -78,7 +78,7 @@ export function openLabel(app, opts = {}) {
 
 function startCard(studio) {
   return `<div class="card"><h3>🎤 Start a record label</h3>
-    <p>Sign artists you find around Fort Worth and Dallas, cut their records at ${studio ? 'this studio' : 'Magnolia Sound or the Deep Ellum Sound Lab'}, drop them, and the label gets paid on every stream. Artists play shows on the weekend and you take a cut.</p>
+    <p>Sign artists you find around Fort Worth and Dallas, cut their records at ${studio ? 'this studio' : 'Magnolia Sound, Trap House Studios, The Kitchen, Inner Circle or Deep Ellum Sound Lab'}, drop them, and the label gets paid on every stream. Artists play shows on the weekend and you take a cut.</p>
     <p class="small muted">Costs ${fmtMoney(LABEL_COST)}. Bigger names won't talk to you until your label has some clout, and clout comes from streams.</p>
     <button class="btn btn-primary" data-action="start">Start a label · ${fmtMoney(LABEL_COST)}</button></div>`;
 }
@@ -105,7 +105,7 @@ function rosterTab(s, ready) {
       <div class="s">${r.buzz.toLocaleString()} fans · keeps ${pct(r.cut)} · ${statusLine(s, r)}</div></div><span class="muted">›</span></div>`; }).join('')}</div>`
     : `<p class="muted">Nobody signed yet. Check the Scene tab, then go meet an artist where they hang out.</p>`;
   html += `<p class="small muted" style="margin-top:10px">The label pays into your bank every morning. Record at a studio:</p>
-    <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn btn-sm" data-action="gps" data-id="magnolia_sound">📍 Magnolia Sound · Fort Worth</button><button class="btn btn-sm" data-action="gps" data-id="ellum_lab">📍 Deep Ellum Sound Lab · Dallas</button></div>`;
+    <div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(STUDIOS).map(([id, S]) => `<button class="btn btn-sm" data-action="gps" data-id="${id}">📍 ${esc(S.name)}</button>`).join('')}</div>`;
   return html;
 }
 
