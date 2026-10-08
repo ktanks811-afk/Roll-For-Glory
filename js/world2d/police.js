@@ -181,11 +181,11 @@ export class PoliceSystem {
 
     this.gunHeat = Math.max(0, this.gunHeat - dt * 0.25);
     if (w.taseT > 0) w.taseT = Math.max(0, w.taseT - dt);
-    this.syncFootPursuit(dt, w, lvl);
     this.hear(dt, w);
 
     // ---- state machine ----
     const lvl = this.level;
+    this.syncFootPursuit(dt, w, lvl);
     if (this.phase === 'notice') {
       // lit up: pull over within the countdown or it turns into a chase. The
       // clock only runs once a cop is actually behind you (a unit sent to a
