@@ -591,6 +591,28 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!toggleFrt(st, ar.uid).ok || ar.frt || st.arms.frtKits !== 1) bad('removing an FRT should return the kit');
   if (toggleFrt(st, bat.uid).ok || bat.frt) bad('FRT on a bat');
   if (!toggleFrt(st, gun.uid).ok || !gun.frt) bad('FRT should install on a Glock 19');
+  // mags, drums and switches
+  const W = await import('../js/data/weapons.js');
+  const ms = createState({ name: 'M', age: 25, look: {}, story: false }); ms.cash = 5000;
+  W.buyAmmo(ms, '9mm', 4, spend);
+  const gl = W.giveWeapon(ms, 'glock_19_g5'), arp = W.giveWeapon(ms, 'arp_ruger_ar556');
+  if (W.setMag(ms, gl.uid, 'drum50').ok) bad('drum without one in the locker');
+  for (const m of ['mag30', 'drum50', 'mag100']) if (!W.buyMag(ms, m, spend).ok) bad('buy ' + m);
+  if (!W.setMag(ms, gl.uid, 'mag100').ok || W.magCap(WEAPON_BY_ID[gl.id], gl) !== 100 || ms.arms.magKits.mag100 !== 0) bad('100-round drum should go in a Glock');
+  if (W.setMag(ms, arp.uid, 'mag30').ok) bad('a 30 mag adds nothing to a 30-round AR');
+  gl.loaded = 100; const res = ms.arms.ammo['9mm'];
+  if (!W.setMag(ms, gl.uid, 'drum50').ok || gl.loaded !== 50 || ms.arms.ammo['9mm'] !== res + 50 || ms.arms.magKits.mag100 !== 1) bad('swapping to a 50 drum returns extra rounds and the 100 drum');
+  if (!W.setMag(ms, gl.uid, null).ok || gl.loaded !== 15 || ms.arms.magKits.drum50 !== 1) bad('stock mag back');
+  if (!W.canSwitch(WEAPON_BY_ID.glock_17_g5) || W.canSwitch(WEAPON_BY_ID.glock_18) || W.canSwitch(WEAPON_BY_ID.arp_ruger_ar556) || W.canSwitch(WEAPON_BY_ID.bat)) bad('switch fits Glocks only');
+  const kid = createState({ name: 'K', age: 19, look: {}, story: false }); kid.cash = 5000;
+  if (W.buySwitch(kid, spend).ok) bad('switch is 21+');
+  W.buySwitch(ms, spend); W.buySwitch(ms, spend);
+  if (!W.toggleSwitch(ms, gl.uid).ok || !gl.sw || ms.arms.switchKits !== 1) bad('switch should install on a Glock');
+  if (W.toggleSwitch(ms, arp.uid).ok) bad('switch on an AR');
+  if (toggleFrt(ms, gl.uid).ok) bad('FRT on top of a switch');
+  const sz = W.seizeSwitches(ms);
+  if (sz.length !== 1 || sz[0].n !== 2 || gl.sw || ms.arms.switchKits || classify(sz[0]).cls !== 'F3') bad('switches get seized at booking as a felony ' + JSON.stringify(sz));
+  if (W.seizeSwitches(ms).length) bad('nothing left to seize');
 }
 
 // carjackings: rare, only when it makes sense, and resisting is a real risk

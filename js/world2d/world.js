@@ -45,6 +45,7 @@ import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
 import { seizeCash } from '../core/bank.js';
 import { seizeLoot } from '../core/loot.js';
+import { seizeSwitches } from '../data/weapons.js';
 import { healthMods } from '../core/health.js';
 import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
 import { awayFromGarage } from '../core/tow.js';
@@ -662,7 +663,8 @@ export class World {
       emit('busted', { fine, ticket: true });
       return;
     }
-    fine += this.combat.onBusted(record);
+    const sw = seizeSwitches(s);   // they search you before the gun goes in an evidence bag
+    fine += this.combat.onBusted([...record, ...sw]);
     const hotCar = !!this.vehicle?.car?.hot;
     // they chased you down: that's evading, on top of whatever they saw
     const ph = this.police.phase, items = record.slice();
@@ -670,6 +672,7 @@ export class World {
     const cash = seizeCash(s);    // and a dirty stack gets seized (a laundering charge if it's big)
     items.push(...cash.items);
     items.push(...seizeLoot(s));  // and stolen goods are evidence
+    items.push(...sw);   // a switch on you (on a gun or loose) is a machine-gun charge
     if (ph !== 'none' && ph !== 'notice' && ph !== 'stop' && this.police.eyesOn !== false && !items.some(r => r.kind === 'evading')) {
       items.push(this.inCar && this.police.level >= 2 ? { kind: 'evading', text: 'Evading arrest (in a vehicle).' } : { kind: 'evading', text: 'Evading arrest.' });
     }
