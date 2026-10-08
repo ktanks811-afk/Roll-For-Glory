@@ -138,8 +138,7 @@ export class PoliceSystem {
     for (const c of this.patrols) c.update(dt, w.trafficCtx);
 
     // ---- detection ----
-    // With a warrant out, officers have your plate and your photo: they look
-    // harder (longer detection range) and recognise you even on foot.
+    // A warrant is not an automatic police detection signal. Officers only learn about it when recognition() gets a valid rear-plate read.
     const wanted = hasWarrant(s);
     const look = s.player?.look;
     this.disguise = p.inCar ? 0 : concealment(look, (w.darkness?.() || 0) > 0.4);
@@ -261,23 +260,45 @@ export class PoliceSystem {
     }
   }
 
-  // A patrol near you runs your plate (in a car) or recognises your face (on
-  // foot, closer). Takes a few seconds of being watched; a felony warrant is
-  // a felony stop, everything else starts as a pull-over.
+  // Warrant checks happen through a realistic plate read: an officer must be
+  // behind the player's vehicle, close enough to see the rear plate, moving in
+  // roughly the same direction, and maintain that position long enough to run it.
+  // Police do NOT magically recognize a warrant just by seeing the player.
   recognition(dt, w, wanted) {
     if (!wanted) { this.recognise = 0; return; }
     const p = w.player;
-    // a covered face can't be matched to a mugshot; a plate always can
-    const range = p.inCar ? 70 : masked(this.s.player?.look) ? 0 : 28 * (1 - this.disguise);
-    if (range < 5) { this.recognise = Math.max(0, this.recognise - dt * 0.2); return; }
-    const near = this.patrols.some(c => Math.hypot(c.x - p.x, c.z - p.z) < range && lineOfSight(this.map, c.x, c.z, p.x, p.z));
-    this.recognise = near ? this.recognise + dt / (p.inCar ? 2.5 : 4) : Math.max(0, this.recognise - dt * 0.2);
+    if (!p.inCar) { this.recognise = 0; return; }
+
+    let reader = null;
+    for (const c of this.patrols) {
+      const dx = c.x - p.x, dz = c.z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 6 || d > 24 || !lineOfSight(this.map, c.x, c.z, p.x, p.z)) continue;
+
+      // Rear-plate cone: the patrol has to be behind the player, not beside or ahead.
+      const rearX = -Math.cos(p.h), rearZ = -Math.sin(p.h);
+      const along = dx * rearX + dz * rearZ;
+      const lateral = Math.abs(dx * (-rearZ) + dz * rearX);
+      if (along < 4 || lateral > 7) continue;
+
+      // They should be following rather than crossing perpendicular to the car.
+      const carSpeed = Math.max(1, p.speed);
+      const patrolHeading = Math.atan2(c.vz || Math.sin(c.h), c.vx || Math.cos(c.h));
+      const carHeading = p.h;
+      const hd = Math.abs(Math.atan2(Math.sin(patrolHeading - carHeading), Math.cos(patrolHeading - carHeading)));
+      if (hd > 0.85) continue;
+      reader = c;
+      break;
+    }
+
+    this.recognise = reader ? this.recognise + dt / 1.8 : Math.max(0, this.recognise - dt * 0.5);
     if (this.recognise < 1) return;
+
     this.recognise = 0;
     const felony = hasFelony(this.s);
     this.s.heat = Math.max(this.s.heat, felony ? 2 : 1);
     this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz };
-    w.hud.radio(p.inCar ? `Plate hit: ${felony ? 'felony' : 'active'} warrant on file.` : `Subject on foot matches a ${felony ? 'felony ' : ''}warrant.`);
+    w.hud.radio(`Plate reader: ${felony ? 'felony' : 'active'} warrant hit. Unit ${reader?.id || 14} checking the vehicle.`);
     this.startChase(w, felony);
     this.eyesOn = true;
   }
