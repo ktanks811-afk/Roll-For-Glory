@@ -6,7 +6,7 @@
 
 import { spend, earnBank, fmtMoney, dayName } from './state.js';
 import { LOC_BY_ID } from '../data/world.js';
-import { LABEL_COST, STREAM_PAY, MAX_ROSTER, STUDIOS, KINDS, PROMO_BY_ID, ARTISTS, ARTIST_BY_ID, TITLE_A, TITLE_B } from '../data/label.js';
+import { LABEL_COST, STREAM_PAY, MAX_ROSTER, STUDIOS, KINDS, PROMO_BY_ID, ARTISTS, ARTIST_BY_ID, TITLE_A, TITLE_B, PRODUCER_BY_ID } from '../data/label.js';
 
 const err = text => ({ ok: false, text });
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -93,7 +93,7 @@ export function dropArtist(s, id) {
 // ---------------------------------------------------------------- the studio
 export function sessionCost(studioId, kind) { return Math.round(KINDS[kind].cost * (STUDIOS[studioId]?.rate || 1)); }
 
-export function bookSession(s, studioId, artistId, kind) {
+export function bookSession(s, studioId, artistId, kind, producerId = null) {
   const L = ensureLabel(s), r = signed(s, artistId), K = KINDS[kind], st = STUDIOS[studioId];
   if (!L.name) return err('Start your label first.');
   if (!st || !K) return err('Pick a studio and a project.');
