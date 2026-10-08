@@ -217,7 +217,13 @@ export class World {
     const inCity = (Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000) || inCityGrid(p.x, p.z);
     this.inCity = inCity;
     const hour = hourOf(s.time);
-    const density = (hour > 1 && hour < 5 ? 0.35 : hour > 7 && hour < 9 || hour > 16 && hour < 19 ? 1.25 : 0.9) * (inCity ? 1 : 0.45) * (settings.quality === 'low' ? 0.6 : 1);
+    const baseDensity = (hour > 1 && hour < 5 ? 0.35 : hour > 7 && hour < 9 || hour > 16 && hour < 19 ? 1.25 : 0.9) * (inCity ? 1 : 0.45) * (settings.quality === 'low' ? 0.6 : 1);
+    // During an active vehicle pursuit, thin civilian traffic so the player
+    // can actually use speed, alternate routes, and evasive driving instead of
+    // getting boxed in by normal traffic. The ten-second police warning keeps
+    // normal traffic; the reduction begins when the chase is live.
+    const pursuitTraffic = this.police?.phase === 'chase' ? 0.32 : this.police?.phase === 'search' || this.police?.phase === 'cooldown' ? 0.45 : 1;
+    const density = baseDensity * pursuitTraffic;
     Object.assign(this.trafficCtx, {
       signalT: this.signalT, px: p.x, pz: p.z, density, inCity, night: isNight(s.time),
       weatherSlow: isWet(s) || s.weather === 'fog' ? 0.8 : 1,
