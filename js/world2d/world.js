@@ -675,6 +675,7 @@ export class World {
     const cash = seizeCash(s);    // and a dirty stack gets seized (a laundering charge if it's big)
     items.push(...cash.items);
     items.push(...seizeLoot(s));  // and stolen goods are evidence
+    items.push(...sw);   // a switch on you (on a gun or loose) is a machine-gun charge
     if (ph !== 'none' && ph !== 'notice' && ph !== 'stop' && this.police.eyesOn !== false && !items.some(r => r.kind === 'evading')) {
       items.push(this.inCar && this.police.level >= 2 ? { kind: 'evading', text: 'Evading arrest (in a vehicle).' } : { kind: 'evading', text: 'Evading arrest.' });
     }
