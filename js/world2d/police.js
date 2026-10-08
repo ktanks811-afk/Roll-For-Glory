@@ -80,6 +80,7 @@ export class PoliceSystem {
     this.footOnly = true;   // this pursuit never saw you in a car (no plate to run)
     this.maskSus = 0;    // 0..1: a patrol watching someone walk around in a ski mask
     this.maskStopAt = -99;
+    this.footOfficers = []; // officers who have bailed out of pursuit cars to chase the suspect on foot
   }
   get level() { return Math.floor(clamp(this.s.heat, 0, 5.99)); }
   get active() { return this.phase !== 'none'; }
@@ -179,10 +180,12 @@ export class PoliceSystem {
     }
 
     this.gunHeat = Math.max(0, this.gunHeat - dt * 0.25);
+    if (w.taseT > 0) w.taseT = Math.max(0, w.taseT - dt);
     this.hear(dt, w);
 
     // ---- state machine ----
     const lvl = this.level;
+    this.syncFootPursuit(dt, w, lvl);
     if (this.phase === 'notice') {
       // lit up: pull over within the countdown or it turns into a chase. The
       // clock only runs once a cop is actually behind you (a unit sent to a
@@ -208,7 +211,8 @@ export class PoliceSystem {
       }
       // busted: stopped with a cop on top of you
       const near = this.units.some(u => Math.hypot(u.x - p.x, u.z - p.z) < 9) || this.patrols.some(u => Math.hypot(u.x - p.x, u.z - p.z) < 9);
-      if ((p.inCar || w.combat?.armed) && p.speed < 1.5 && near) this.bustT += dt; else this.bustT = Math.max(0, this.bustT - dt * 2);
+      const footNear = this.footOfficers.some(o => Math.hypot(o.x - p.x, o.z - p.z) < 3.2);
+      if ((p.inCar || w.combat?.armed || footNear) && p.speed < 1.5 && (near || footNear)) this.bustT += dt; else this.bustT = Math.max(0, this.bustT - dt * 2);
       if (this.bustT > 3.5) { this.busted(w); return; }
     } else if (this.phase === 'search') {
       const d = Math.hypot(p.x - this.lastSeen.x, p.z - this.lastSeen.z);
@@ -238,7 +242,7 @@ export class PoliceSystem {
       this.units = this.units.filter(u => Math.hypot(u.x - p.x, u.z - p.z) < 300);
     }
     if (this.phase === 'stop' && this.stop && !this.stop.unit && this.units.length) this.stop.unit = this.nearestUnit(this.stop.x, this.stop.z);
-    for (const u of this.units) if (!(this.phase === 'stop' && u === this.stop?.unit)) this.driveUnit(u, dt, w, lvl);
+    for (const u of this.units) if (!u.foot && !(this.phase === 'stop' && u === this.stop?.unit)) this.driveUnit(u, dt, w, lvl);
 
     // ---- roadblocks + spikes (level 4+) ----
     this.blockT -= dt;
@@ -346,6 +350,86 @@ export class PoliceSystem {
       w.hud.radio('Eyes back on the suspect!');
     }
     this.unseenT = 0;
+  }
+
+  // When a pursuit suspect bails out, the nearest pursuit unit stops and the officer
+  // gets out. The officer then runs the suspect down instead of magically keeping
+  // the police car glued to them.
+  syncFootPursuit(dt, w, lvl) {
+    const p = w.player;
+    if (this.phase !== 'chase') {
+      if (this.footOfficers.length) {
+        for (const o of this.footOfficers) {
+          if (o.unit) { o.unit.foot = false; o.unit.x = o.x; o.unit.z = o.z; o.unit.h = o.h; o.unit.v = 0; }
+        }
+        this.footOfficers = [];
+      }
+      return;
+    }
+
+    // If the suspect gets back in the car, officers return to their units.
+    if (p.inCar) {
+      for (const o of this.footOfficers) {
+        if (o.unit) { o.unit.foot = false; o.unit.x = o.x; o.unit.z = o.z; o.unit.h = o.h; o.unit.v = 0; }
+      }
+      this.footOfficers = [];
+      return;
+    }
+
+    // Let the closest pursuit cars arrive before they dismount.
+    for (const u of this.units) {
+      if (u.foot || this.footOfficers.some(o => o.unit === u)) continue;
+      const d = Math.hypot(u.x - p.x, u.z - p.z);
+      if (d > 55 || !lineOfSight(this.map, u.x, u.z, p.x, p.z)) continue;
+      u.foot = true; u.v = 0;
+      const o = { unit: u, x: u.x, z: u.z, h: Math.atan2(p.x - u.x, -(p.z - u.z)), walk: 0, moving: 0, fireT: 0.7, taserT: 1.0 };
+      this.footOfficers.push(o);
+      w.hud.radio(`Unit ${u.id}: suspect bailed out. Officer pursuing on foot.`);
+    }
+
+    for (const o of this.footOfficers) this.updateFootOfficer(o, dt, w, lvl);
+  }
+
+  updateFootOfficer(o, dt, w, lvl) {
+    const p = w.player;
+    const dx = p.x - o.x, dz = p.z - o.z, d = Math.hypot(dx, dz);
+    const los = d < 42 && lineOfSight(this.map, o.x, o.z, p.x, p.z);
+    const want = Math.atan2(dx, -dz);
+    let dh = want - o.h; while (dh > Math.PI) dh -= Math.PI * 2; while (dh < -Math.PI) dh += Math.PI * 2;
+    o.h += clamp(dh, -3.8 * dt, 3.8 * dt);
+
+    // Armed suspect: keep distance and fire controlled shots when there is a clear line.
+    if (w.combat?.armed) {
+      o.fireT -= dt;
+      if (los && d < 27 && o.fireT <= 0) {
+        o.fireT = Math.max(0.55, 1.15 - lvl * 0.08);
+        w.combat.hurt(10 + lvl * 1.5, 'Officer fired during the foot pursuit.');
+        w.hud.radio(`Unit ${o.unit?.id || 14}: suspect has a firearm out. Shots fired.`);
+      }
+      // Don't stand directly on the armed player.
+      if (d > 11) this.moveOfficer(o, dt, 2.8 + lvl * 0.12);
+      else o.moving = 0;
+      return;
+    }
+
+    // Unarmed suspect: close in and use a taser instead of lethal force.
+    o.taserT -= dt;
+    if (los && d < 15 && o.taserT <= 0) {
+      o.taserT = 4.0;
+      w.taseT = Math.max(w.taseT || 0, 2.5);
+      w.hud.radio(`Unit ${o.unit?.id || 14}: Taser! Suspect is going down.`);
+    }
+    if (d > 2.5) this.moveOfficer(o, dt, 3.2 + lvl * 0.1);
+    else o.moving = 0;
+  }
+
+  moveOfficer(o, dt, speed) {
+    const f = { x: Math.sin(o.h), z: -Math.cos(o.h) };
+    const nx = o.x + f.x * speed * dt, nz = o.z + f.z * speed * dt;
+    const hit = collideCircle(this.map, nx, nz, 0.38);
+    if (hit) { o.x += hit.nx * hit.pen; o.z += hit.nz * hit.pen; o.h += 0.7; }
+    else { o.x = nx; o.z = nz; }
+    o.walk += dt * speed * 2.2; o.moving = speed;
   }
 
   driveUnit(u, dt, w, lvl) {
