@@ -1788,5 +1788,66 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (CR.payment(12000, 0.12, 12) !== 1067) bad('payment math: ' + CR.payment(12000, 0.12, 12));
   game.s = null;
 }
+// ---- the rest of the Penal Code, murder is life, TDCJ (data/charges.js, core/prison.js) ----
+{
+  const J = await import('../js/core/justice.js');
+  const C = await import('../js/data/charges.js');
+  const PR = await import('../js/core/prison.js');
+  const W = await import('../js/core/warrants.js');
+  if (C.CHARGES.length < 200) bad('the charge catalog should have 200+ charges: ' + C.CHARGES.length);
+  if (new Set(C.CHARGES.map(c => c.kind)).size !== C.CHARGES.length) bad('duplicate charge kinds');
+  for (const c of C.CHARGES) if (!J.CLASSES[c.cls] || !c.text || (c.cls === 'C' && !(c.fine > 0))) bad('bad charge row ' + c.kind);
+  // classify() knows every catalog kind
+  if (J.classify({ kind: 'resisting' }).cls !== 'A' || J.classify({ kind: 'felon_firearm' }).cls !== 'F3') bad('catalog kinds should classify');
+  // stacking: off by default (tests stay deterministic), on adds related charges
+  const base = [{ kind: 'robbery', text: 'Armed robbery — Amazin\' Mart.', fine: 6000 }];
+  if (J.charge(base).charges.length !== 1) bad('charge() without stack should not add charges');
+  const st = J.charge(base, 0.85, { stack: true, armed: true, rng: () => 0 });
+  if (st.charges.length < 3 || !st.charges.some(c => /Unlawful carrying/.test(c.text))) bad('stacking should add charges like UCW: ' + JSON.stringify(st.charges.map(c => c.text)));
+  if (J.charge(base, 0.85, { stack: true, rng: () => 0 }).charges.some(c => /felon/.test(c.text))) bad('felon-in-possession needs a prior felony');
+  if (C.extraTickets([{ kind: 'speeding' }], () => 0).some(t => t.cls && t.cls !== 'C')) bad('extra tickets are Class C');
+  // murder: held without bond, life, no deal; capital murder: no parole
+  const s = createState({ name: 'Lifer', age: 25, look: {}, story: false }); s.cash = 10; s.bank = 0; s.time.day = 5; s.time.min = 9 * 60;
+  const m = J.charge([{ kind: 'murder', text: 'Murder on Rosedale St.' }]).charges;
+  if (!m[0]?.life || m[0].cls !== 'F1') bad('murder should be a life charge');
+  const c = J.fileCase(s, m);
+  if (!J.bailFor(s, c).held) bad('murder should be held without bond');
+  const offer = J.pleaOffer(s, c);
+  if (!offer.life || offer.paroleYears !== 30 || !/Life/.test(J.describe(offer))) bad('murder plea is still life: ' + JSON.stringify(offer));
+  const cap = J.sentence(s, J.charge([{ kind: 'capital_murder' }]).charges);
+  if (!cap.life || !cap.lwop || cap.paroleYears) bad('capital murder is life without parole');
+  if (W.warrantForEscape(s, [{ kind: 'murder', text: 'Murder.', fine: 50000 }], 1, true, () => 1).filter(w => w.felony).length !== 2) bad('a murder warrant is a felony');
+  s.warrants = [];
+  const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })));
+  if (!r.sentence.life || r.sentence.served !== 0 || !s.justice.convictions.length) bad('life sentence through resolveCase');
+  // TDCJ: each sleep is a year; a life sentence never runs out, appeals go on forever
+  const p = PR.enterPrison(s, r.sentence, { crime: 'Murder.', evidence: 0.85 });
+  if (!p.life || p.years !== null || PR.yearsLeft(p) !== Infinity) bad('a lifer has no out date');
+  for (let i = 0; i < 40; i++) {
+    if (!p.appeal.pending) PR.fileAppeal(s, false);
+    const ev = PR.sleepYear(s, () => 0.99);
+    if (ev.out) { bad('a lifer who loses every appeal should never walk: ' + JSON.stringify(ev)); break; }
+  }
+  if (p.served !== 40 || p.appeal.stage < 6 || PR.appealAt(p.appeal.stage).id !== 'successive') bad('appeals should climb to successive writs and keep going: ' + p.appeal.stage);
+  // a won appeal throws out the conviction
+  PR.fileAppeal(s, false);
+  let ev;
+  for (let i = 0; i < 3 && !ev?.out; i++) ev = PR.sleepYear(s, () => 0);
+  if (ev?.out !== 'appeal') bad('a granted appeal should release you: ' + JSON.stringify(ev));
+  PR.leavePrison(s, 'appeal');
+  if (s.prison || s.justice.convictions.some(x => /Murder/.test(x.text))) bad('a reversed murder conviction should come off the record');
+  // a 10-year bid with parole: years from served days, one per sleep
+  const s2 = createState({ name: 'Short', age: 25, look: {}, story: false });
+  const sent = { kind: 'jail', facility: 'prison', days: 3650, served: 1095 };
+  const p2 = PR.enterPrison(s2, sent, { crime: 'Aggravated robbery.' });
+  if (p2.years !== 3) bad('1,095 days should be 3 years: ' + p2.years);
+  const outs = [1, 2, 3].map(() => PR.sleepYear(s2, () => 0.99).out);
+  if (outs[0] || outs[1] || outs[2] !== 'served') bad('should walk after the third sleep: ' + outs);
+  // contraband caught: a new felony and more years
+  const s3 = createState({ name: 'Hustler', age: 25, look: {}, story: false });
+  const p3 = PR.enterPrison(s3, sent, {});
+  const h = PR.hustle(s3, () => 0);
+  if (!h.caught || p3.years !== 5 || !s3.justice.convictions.length) bad('caught hustling: new case and +2 years ' + JSON.stringify(h));
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

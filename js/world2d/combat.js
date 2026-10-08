@@ -196,7 +196,7 @@ export class Combat {
     for (const c of this.w.police.allCars()) test(c, 1.1, 'police', c);
     if (best) {
       this.sparks.push({ x: best.x, z: best.z, t: 0.18 });
-      if (best.kind === 'ped') this.hurtPed(best.ref, dmg);
+      if (best.kind === 'ped') this.hurtPed(best.ref, dmg, true);
       else if (best.kind === 'police') { this.w.setOffence(1.5, 'Shooting at police!', 'shootcop', 'assault', 2500); if (best.ref.hit) best.ref.hit(3); }
       else if (best.ref.hit) best.ref.hit(2);
       return { x: best.x, z: best.z, kind: best.kind };
@@ -205,10 +205,14 @@ export class Combat {
     return { x: x + dx * tEnd, z: z + dz * tEnd, kind: wall ? 'wall' : 'air' };
   }
 
-  hurtPed(p, dmg) {
+  // byPlayer: you did it, so a death is a murder charge (gang crossfire isn't yours)
+  hurtPed(p, dmg, byPlayer = false) {
     p.hp = (p.hp ?? 40) - dmg;
     p.scared = 8;
-    if (p.hp <= 0) { p.down = 14; p.cower = false; }
+    if (p.hp <= 0 && !p.down) {
+      p.down = 14; p.cower = false;
+      if (byPlayer && !p.friend) { p.dead = true; this.w.police.homicide?.(this.w); }
+    }
   }
 
   swing(def) {
@@ -224,7 +228,7 @@ export class Combat {
       if (d > def.reach + 0.4) continue;
       const da = Math.atan2(Math.sin(Math.atan2(dx, -dz) - a), Math.cos(Math.atan2(dx, -dz) - a));
       if (Math.abs(da) > 1.0) continue;
-      this.hurtPed(p, def.dmg * 1.6); hitAny = true;
+      this.hurtPed(p, def.dmg * 1.6, true); hitAny = true;
     }
     if (hitAny) { this.w.setOffence(0.7, 'Assault with a weapon.', 'swing', 'assault', 1800); this.w.police.gunshot(this.w, 'hit', true); }
   }

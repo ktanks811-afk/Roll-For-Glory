@@ -310,7 +310,7 @@ export class GangWorld {
     bset.angry = true;
     this.w.setOffence(1.6, `Drive-by shooting${g.set ? ' (gang activity)' : ''}.`, 'driveby', 'driveby', 3500);
     this.w.police.gunshot(this.w, 'shot');
-    if (Math.random() < 0.4) this.w.combat.hurtPed(best, 40);
+    if (Math.random() < 0.4) this.w.combat.hurtPed(best, 40, true);
   }
 
   // ------------------------------------------------------------ the hit

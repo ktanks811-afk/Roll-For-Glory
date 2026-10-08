@@ -50,7 +50,7 @@ export const REACT = {
   ],
   escaped: [
     ['scanner', 'Pursuit terminated near {where}. The suspect got away.'],
-    ['streetz', '{me} just shook FWPD in the {car}. Helicopter and all 🚁💨'],
+    ['streetz', '{me} just shook FWPD in the {car}. Lost them on the Southside 💨'],
     ['tea', 'Ain\'t no way {me} got away AGAIN. FWPD stay losing 😂'],
   ],
   carStolen: [

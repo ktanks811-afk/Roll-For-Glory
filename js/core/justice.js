@@ -15,6 +15,7 @@
 import { uid, spend, canAfford } from './state.js';
 import { emit } from './events.js';
 import { theftClass } from './loot.js';
+import { CHARGE_BY_KIND, stackCharges } from '../data/charges.js';
 
 // Real Texas punishment ranges (days) and what bail usually looks like.
 export const CLASSES = {
@@ -25,8 +26,13 @@ export const CLASSES = {
   F3:  { rank: 4, name: 'Third-degree felony', short: '3rd-degree felony', felony: true, days: [730, 3650], fine: [2000, 10000], bail: 10000 },
   F2:  { rank: 5, name: 'Second-degree felony', short: '2nd-degree felony', felony: true, days: [730, 7300], fine: [3000, 10000], bail: 25000 },
   F1:  { rank: 6, name: 'First-degree felony', short: '1st-degree felony', felony: true, days: [1825, 36135], fine: [5000, 10000], bail: 75000 },
+  CF:  { rank: 7, name: 'Capital felony', short: 'Capital felony', felony: true, days: [36135, 36135], fine: [0, 0], bail: 0 },
 };
-const BY_RANK = Object.keys(CLASSES).sort((a, b) => CLASSES[a].rank - CLASSES[b].rank);
+// the ladder drug and money charges climb (a capital felony is only ever murder)
+const BY_RANK = Object.keys(CLASSES).filter(k => k !== 'CF').sort((a, b) => CLASSES[a].rank - CLASSES[b].rank);
+
+// Murder is life. Parole comes up after 30 years; capital murder never does.
+export const LIFE_PAROLE_YEARS = 30;
 
 export const COURT_COSTS = 290;
 export const BOND_FEE = 0.10;          // a bondsman keeps 10% of the bail
@@ -68,7 +74,12 @@ export function classify(o) {
     case 'auto': return { cls: 'F3', text: 'Possession of a prohibited weapon (machine gun).' };
     case 'switch': return { cls: 'F3', text: 'Possession of a prohibited weapon: machine-gun conversion device (Glock switch).' };
     case 'bailjump': return { cls: o.felony ? 'F3' : 'A', text: o.felony ? 'Bail jumping and failure to appear (felony).' : 'Bail jumping and failure to appear.' };
-    default: return { cls: 'B', text: o.text || 'Misdemeanor offense.' };
+    default: {
+      // the rest of the Penal Code (data/charges.js)
+      const c = CHARGE_BY_KIND[o.kind];
+      if (c) return { cls: c.cls, text: c.text, tg: !!c.tg, life: !!c.life, lwop: !!c.lwop };
+      return { cls: 'B', text: o.text || 'Misdemeanor offense.' };
+    }
   }
 }
 
@@ -94,16 +105,24 @@ export const fmtCourt = d => `day ${d.day}, ${d.hour > 12 ? d.hour - 12 : d.hour
 // fine-only tickets (paid at booking). evidence: how solid the State's case
 // is for each charge (0..1): caught in the act ≈ 0.85, a warrant from a
 // plate photo ≈ 0.6.
-export function charge(items, evidence = 0.85) {
+// stack: let the DA add the related charges from data/charges.js on top
+// (armed: you had a gun on you; felon: you have a prior felony conviction).
+export function charge(items, evidence = 0.85, { stack = false, armed = false, felon = false, rng = Math.random } = {}) {
   const charges = [], tickets = [];
-  for (const o of items) {
+  const all = stack ? [...items, ...stackCharges(items, { armed, felon, rng })] : items;
+  for (const o of all) {
     const c = classify(o);
-    if (c.cls === 'C') { tickets.push({ ...o }); continue; }
+    if (c.cls === 'C') { tickets.push({ ...o, fine: o.fine || CHARGE_BY_KIND[o.kind]?.fine || 0 }); continue; }
     if (charges.some(x => x.text === c.text)) continue;
-    charges.push({ cls: c.cls, text: c.text, tg: !!c.tg, evidence: o.evidence ?? evidence });
+    const ch = { cls: c.cls, text: c.text, tg: !!c.tg, evidence: (o.evidence ?? evidence) * (o.stacked ? 0.85 : 1) };
+    if (c.life) { ch.life = true; if (c.lwop) ch.lwop = true; }
+    charges.push(ch);
   }
   return { charges, tickets };
 }
+
+export const isLifeCase = c => c.charges.some(x => x.life);
+export const hasFelonyPrior = s => ensureJustice(s).convictions.some(c => CLASSES[c.cls]?.felony);
 
 // File a case, or add the new charges to the one you already have pending.
 export function fileCase(s, charges, { surrender = false } = {}) {
@@ -124,6 +143,7 @@ export function fileCase(s, charges, { surrender = false } = {}) {
 // What the magistrate does at booking.
 export function bailFor(s, c) {
   const top = topClass(c.charges);
+  if (isLifeCase(c)) return { held: true, amount: 0, pr: false, why: 'Charged with murder. No bond.' };
   if (c.fta || c.violation || (top === 'F1' && priorScore(s) >= 2)) return { held: true, amount: 0, pr: false, why: c.fta ? 'You skipped court before.' : c.violation ? 'Probation violation hold.' : 'Danger to the community.' };
   const sorted = c.charges.map(x => CLASSES[x.cls].bail).sort((a, b) => b - a);
   let amount = sorted[0] + sorted.slice(1).reduce((t, b) => t + b * 0.25, 0);
@@ -184,7 +204,7 @@ export function convictChance(s, ch, privateLawyer) {
   return Math.max(0.08, Math.min(0.95, ch.evidence - (privateLawyer ? 0.2 : 0) + priorScore(s) * 0.03));
 }
 
-export const lawyerFee = c => ({ B: 1500, A: 2500, SJF: 5000, F3: 10000, F2: 20000, F1: 40000 })[topClass(c.charges)] || 1500;
+export const lawyerFee = c => ({ B: 1500, A: 2500, SJF: 5000, F3: 10000, F2: 20000, F1: 40000, CF: 75000 })[topClass(c.charges)] || 1500;
 
 // Before anything else, a weak misdemeanour case can get dropped.
 export function dismissChance(c) {
@@ -203,6 +223,12 @@ const roundDays = d => d >= 730 ? Math.round(d / 365) * 365 : d >= 120 ? Math.ro
 export function sentence(s, convicted, { plea = false, rng = Math.random } = {}) {
   if (!convicted.length) return { kind: 'none', fine: 0, days: 0, served: 0 };
   const cls = topClass(convicted), K = CLASSES[cls], tg = convicted.some(x => x.tg && x.cls === cls);
+  // murder: life in TDCJ, plea or no plea. Capital murder is life without parole.
+  const life = convicted.find(x => x.life);
+  if (life) {
+    const lwop = convicted.some(x => x.lwop);
+    return { kind: 'jail', facility: 'prison', life: true, lwop, cls, tg: true, fine: 0, days: 0, served: 0, paroleYears: lwop ? 0 : LIFE_PAROLE_YEARS, text: lwop ? 'Life without parole' : 'Life' };
+  }
   const priors = priorScore(s);
   const fine = Math.round(lerp(K.fine[0], K.fine[1], Math.min(1, (plea ? 0.15 : 0.45) + priors * 0.1)) / 50) * 50 + COURT_COSTS;
   // where in the range you land: pleas low, trials higher, priors and extra counts push it up
@@ -222,6 +248,9 @@ export function sentence(s, convicted, { plea = false, rng = Math.random } = {})
   const frac = facility === 'county' ? 0.5 : facility === 'statejail' ? 0.8 : tg ? 0.5 : 0.3;
   return { ...base, kind: 'jail', facility, served: Math.max(1, Math.round(days * frac)) };
 }
+
+// Years you actually sit in TDCJ: each night you sleep in your bunk is a year.
+export const prisonYears = sent => sent.life ? Infinity : Math.max(1, Math.ceil((sent.served || 0) / 365));
 
 // Real days inside → game minutes. Square-root compressed: 30 days ≈ a day
 // and a half, 2 years ≈ a week, 10 years ≈ two weeks.
@@ -259,13 +288,13 @@ export function resolveCase(s, c, verdicts, { plea = false, rng = Math.random, s
     revoked = { text: p.text, days: old.days };
     const oldFrac = old.cls === 'SJF' ? 0.8 : CLASSES[old.cls]?.felony ? (old.tg ? 0.5 : 0.3) : 0.5;
     const extra = Math.max(1, Math.round(old.days * oldFrac));
-    if (sent.kind === 'jail') sent.served += extra;
+    if (sent.kind === 'jail') { if (!sent.life) sent.served += extra; }
     else sent = { ...sent, kind: 'jail', facility: CLASSES[old.cls]?.felony ? (old.cls === 'SJF' ? 'statejail' : 'prison') : 'county', served: extra, days: old.days };
     if (p.deferred) j.convictions.push({ day: s.time.day, text: p.text, cls: old.cls, sentence: 'Adjudicated guilty (probation revoked)' });
     j.probation = null;
   }
   const credit = served;   // time already sat in jail waiting for court
-  if (sent.kind === 'jail') sent.served = Math.max(0, sent.served - credit);
+  if (sent.kind === 'jail' && !sent.life) sent.served = Math.max(0, sent.served - credit);
   if (guilty.length && sent.kind !== 'deferred') for (const g of guilty) j.convictions.push({ day: s.time.day, text: g.text, cls: g.cls, sentence: describe(sent) });
   if (sent.kind === 'deferred' || sent.kind === 'probation') {
     j.probation = { until: s.time.day + sent.probationDays, text: guilty[0].text, deferred: sent.kind === 'deferred', suspended: { days: sent.days, cls: sent.cls, tg: sent.tg }, caseId: c.id };
@@ -281,7 +310,8 @@ export function describe(sent) {
     case 'fine': return 'Fine';
     case 'deferred': return `Deferred adjudication (${fmtDays(sent.days)} suspended)`;
     case 'probation': return `Probation (${fmtDays(sent.days)} suspended)`;
-    case 'jail': return `${fmtDays(sent.days)} ${sent.facility === 'county' ? 'county jail' : sent.facility === 'statejail' ? 'state jail' : 'TDCJ'}`;
+    case 'jail': if (sent.life) return sent.lwop ? 'Life without parole in TDCJ' : 'Life in TDCJ';
+      return `${fmtDays(sent.days)} ${sent.facility === 'county' ? 'county jail' : sent.facility === 'statejail' ? 'state jail' : 'TDCJ'}`;
     default: return '';
   }
 }

@@ -36,7 +36,9 @@ import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
-import { charge, fileCase, openCase, IMPOUND_LOT } from '../core/justice.js';
+import { charge, fileCase, openCase, hasFelonyPrior, IMPOUND_LOT } from '../core/justice.js';
+import { extraTickets } from '../data/charges.js';
+import { equippedGun } from '../data/weapons.js';
 import { toggleMask, masked } from '../core/disguise.js';
 import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
 import { tickNeeds, runMul } from '../core/needs.js';
@@ -663,6 +665,7 @@ export class World {
       emit('busted', { fine, ticket: true });
       return;
     }
+    const armed = !!equippedGun(s);   // before they take it off you
     const sw = seizeSwitches(s);   // they search you before the gun goes in an evidence bag
     fine += this.combat.onBusted([...record, ...sw]);
     const hotCar = !!this.vehicle?.car?.hot;
@@ -678,7 +681,8 @@ export class World {
     }
     // every open warrant and unpaid ticket comes off the board too
     const wr = takeWarrants(s);
-    const now = charge(items, 0.85), old = charge(wr.items, 0.6);
+    // the DA stacks everything else the Penal Code lets them (data/charges.js)
+    const now = charge(items, 0.85, { stack: true, armed, felon: hasFelonyPrior(s) }), old = charge(wr.items, 0.6);
     const tickets = [...now.tickets, ...old.tickets].reduce((t, r) => t + (r.fine || 0), 0) + wr.tickets;
     const insured = s.insurance;
     const total = Math.round(fine * (insured ? 0.75 : 1)) + tickets;
@@ -701,6 +705,7 @@ export class World {
   async onTrafficStop(record) {
     const s = this.s;
     const items = record.map(r => ({ ...r }));
+    items.push(...extraTickets(items));   // and whatever else they spot at the window
     let total = items.reduce((t, r) => t + r.fine, 0);
     const hasNoise = items.some(r => r.kind === 'noise');
     const priors = s.stats.noiseTickets || 0;
@@ -1088,16 +1093,6 @@ export class World {
     this.combat.drawOverlay(ctx, cam);
     drawTunnel(ctx, cam);
 
-    // helicopter shadow + searchlight
-    if (this.police.heli) {
-      const hx = cam.sx(this.police.heli.x), hy = cam.sy(this.police.heli.z);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(hx + 30, hy + 30, 6 * cam.zoom, 2 * cam.zoom, 0.6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#1a1d24'; ctx.beginPath(); ctx.ellipse(hx, hy, 4.5 * cam.zoom, 1.6 * cam.zoom, 0.6, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(200,200,200,0.5)'; ctx.lineWidth = 1;
-      const r = this.police.heli.rot;
-      ctx.beginPath(); ctx.moveTo(hx - Math.cos(r) * 6 * cam.zoom, hy - Math.sin(r) * 6 * cam.zoom); ctx.lineTo(hx + Math.cos(r) * 6 * cam.zoom, hy + Math.sin(r) * 6 * cam.zoom); ctx.stroke();
-    }
-
     // lighting
     if (night > 0.03) {
       const glows = [], blobs = [];
@@ -1121,7 +1116,6 @@ export class World {
           glows.push({ x: bx, z: bz, r: 4, color: 'rgba(255,0,0,1)', a: 0.8 });
         }
       }
-      if (this.police.heli) blobs.push({ x: this.police.heli.spot.x, z: this.police.heli.spot.z, r: 22, a: 1 });
       for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       if (this.inHouse) { const b = this.inHouse.box; if (b) glows.push({ x: b.x + b.w / 2, z: b.z + b.d / 2, r: Math.max(b.w, b.d) * 0.7, color: 'rgba(255,236,200,1)', a: 0.8 }); }
@@ -1140,19 +1134,6 @@ export class World {
       ctx.restore();
     }
     this.pullups.drawFlash(ctx, cam);
-    if (this.police.heli) {
-      // spotlight: a faint beam from Air One down to the pool of light on the target
-      const hl = this.police.heli, hx = cam.sx(hl.x), hy = cam.sy(hl.z), lx = cam.sx(hl.spot.x), ly = cam.sy(hl.spot.z), lr = 20 * cam.zoom;
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      const ang = Math.atan2(ly - hy, lx - hx), nx = -Math.sin(ang), ny = Math.cos(ang);
-      const beam = ctx.createLinearGradient(hx, hy, lx, ly);
-      beam.addColorStop(0, 'rgba(255,255,230,0.12)'); beam.addColorStop(1, 'rgba(255,255,230,0.03)');
-      ctx.fillStyle = beam; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(lx + nx * lr * 0.6, ly + ny * lr * 0.6); ctx.lineTo(lx - nx * lr * 0.6, ly - ny * lr * 0.6); ctx.closePath(); ctx.fill();
-      const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
-      g.addColorStop(0, 'rgba(255,255,230,0.25)'); g.addColorStop(1, 'rgba(255,255,230,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, lr, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
     // search zone
     if ((this.police.phase === 'search' || this.police.phase === 'cooldown') && this.police.lastSeen) {
       ctx.strokeStyle = this.police.phase === 'cooldown' ? 'rgba(255,200,0,0.6)' : 'rgba(255,40,40,0.6)';
