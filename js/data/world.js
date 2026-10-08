@@ -25,6 +25,11 @@ export const COUNTRY_ROADS = { x: [-2800, -1500, 0, 700], z: [3600, 4500, 5400] 
 // Loop 820 past Arlington. Its own 10x10-block grid (150 m blocks); I-30 cuts
 // through the middle of it (row 5), downtown and Deep Ellum north of the
 // freeway, Oak Cliff and South Dallas south of it. world2d/dallas.js fills it in.
+export const WEATHERFORD = { x0: -5700, x1: -3900, z0: -2100, z1: -600 };
+export const WGRID_X = [], WGRID_Z = [];
+for (let v = WEATHERFORD.x0; v <= WEATHERFORD.x1; v += 150) WGRID_X.push(v);
+for (let v = WEATHERFORD.z0; v <= WEATHERFORD.z1; v += 150) WGRID_Z.push(v);
+export const I20_WEST_END = -6000;
 export const DALLAS = { x0: 4650, x1: 6150, z0: -2100, z1: -600 };
 export const DGRID_X = [], DGRID_Z = [];
 for (let v = DALLAS.x0; v <= DALLAS.x1; v += 150) DGRID_X.push(v);
@@ -35,6 +40,7 @@ export const DALLAS_ZONE = { x0: 3300, x1: 6800, z0: -2500, z1: -250 };   // the
 export const DTRINITY_X = 4440;              // the Trinity River, west of downtown Dallas (80 m wide)
 export const ARLINGTON_X = 3800;             // I-30 exit at the stadium
 export const ARLINGTON_END = -700;           // Collins St runs south from the exit to here
+export const inWeatherford = (x, z) => x > WEATHERFORD.x0 - 12 && x < WEATHERFORD.x1 + 12 && z > WEATHERFORD.z0 - 12 && z < WEATHERFORD.z1 + 12;
 export const inDallas = (x, z) => x > DALLAS.x0 - 12 && x < DALLAS.x1 + 12 && z > DALLAS.z0 - 12 && z < DALLAS.z1 + 12;
 // North Texas: up I-35W from Loop 820, past the Alliance warehouses and the
 // airport, Texas Motor Speedway at TX-114, Northlake and Argyle, Roanoke down
@@ -71,6 +77,7 @@ export const DNSTREET_EW = ['University Dr', 'Sherman Dr', 'Oak St', 'Hickory St
 export const STREET_EW = ['NE 28th St', 'Stockyards Blvd', 'Exchange Ave', 'Northside Dr', 'Belknap St', 'Weatherford St', 'W 7th St', 'Lancaster Ave', 'Vickery Blvd', 'Rosedale St', 'Magnolia Ave', 'Berry St', 'Seminary Dr'];
 
 export function districtAt(x, z) {
+  if (inWeatherford(x, z)) return weatherfordDistrict(x, z);
   if (x > DALLAS_ZONE.x0 && z < DALLAS_ZONE.z1 + 400) return dallasDistrict(x, z);
   if (z < NORTH.z1 && x > NORTH.x0 - 200) return northDistrict(x, z);
   if (z < HWY_Z - 60 && Math.abs(x) < 60) return 'I-35W';
@@ -85,6 +92,7 @@ export function districtAt(x, z) {
   return z < 0 ? 'Stockyards' : 'Near Southside';
 }
 
+function weatherfordDistrict(x, z) { const i=Math.floor((x-WEATHERFORD.x0)/BLOCK), j=Math.floor((z-WEATHERFORD.z0)/BLOCK); if(j<=1) return 'Weatherford North'; if(i>=7) return 'Weatherford East'; if(j>=8) return 'Weatherford South'; return 'Weatherford'; }
 function dallasDistrict(x, z) {
   if (x < DTRINITY_X - 60) return Math.abs(x - ARLINGTON_X) < 350 ? 'Arlington' : 'I-30';
   if (x > DALLAS.x1 + 40 || z < DALLAS.z0 - 40 || z > DALLAS.z1 + 40) return x > DALLAS.x1 ? 'East Dallas' : 'Dallas';
@@ -118,6 +126,7 @@ function northDistrict(x, z) {
 }
 export const DENTON_DISTRICTS = ['TWU', 'The Square', 'UNT', 'North Denton', 'East Denton', 'Southeast Denton'];
 export const NORTH_DISTRICTS = [...DENTON_DISTRICTS, 'Denton', 'Lake Lewisville', 'Texas Motor Speedway', 'Roanoke', 'Alliance', 'Alliance Airport', 'Northlake', 'Argyle', 'US-377', 'Justin Prairie'];
+export const WEATHERFORD_DISTRICTS = ['Weatherford','Weatherford North','Weatherford East','Weatherford South'];
 export const DALLAS_DISTRICTS = ['Uptown', 'Downtown Dallas', 'Deep Ellum', 'West Dallas', 'Oak Cliff', 'South Dallas'];
 
 export function blockCenter(i, j, city) {
