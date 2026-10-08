@@ -59,6 +59,8 @@ export function buildRoads() {
 
   // West Texas expansion: keep I-20 continuous from Weatherford toward Mineral Wells.
   edge(node(I20_WEST_END, HWY_Z), node(WEST.x0, HWY_Z), I20);
+  // Keep the shared Parkway road profile initialized before the westward roads use it.
+  const PKWY = { ...CITY, speed: 22 };
   const WUS = { ...PKWY, speed: 24 };
   // US-180 runs through Mineral Wells and continues west/east across the expansion.
   edge(node(WEST.x0, -1350), node(WEST_CITY.x0, -1350), { ...WUS, name: 'US-180' });
@@ -101,7 +103,6 @@ export function buildRoads() {
   const I35 = { ...HWY, name: 'I-35W' };
   const nx = [HWY_Z, WESTPORT_Z, HTRACE_Z, TX114_Z, DNGRID_Z[DNGRID_Z.length - 1]];
   for (let i = 0; i < nx.length - 1; i++) edge(node(0, nx[i]), node(0, nx[i + 1]), I35);
-  const PKWY = { ...CITY, speed: 22 };
   for (const [z, name, xs] of [[HTRACE_Z, 'Heritage Trace Pkwy', [-1200, 0, AIRPORT_X, 1700]], [WESTPORT_Z, 'Westport Pkwy', [-1200, 0, 1600]]])
     for (let i = 0; i < xs.length - 1; i++) edge(node(xs[i], z), node(xs[i + 1], z), { ...PKWY, name });
   edge(node(AIRPORT_X, HTRACE_Z), node(AIRPORT_X, HTRACE_Z - 230), { ...CITY, name: 'Alliance Blvd' });
