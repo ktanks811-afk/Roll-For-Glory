@@ -27,6 +27,10 @@ export function ensureDrugs(s) {
   d.sold ??= 0;            // customers served, all time
   d.earned ??= 0;
   d.raids ??= 0;
+  d.reputation ??= {};       // trap/drug customer trust
+  d.surveillance ??= {};     // how much attention each address has attracted
+  d.lastSaleDay ??= 0;
+  d.market ??= {};            // demand/quality modifiers for the current day
   s.estate ??= {};
   s.estate.traps ??= {};
   s.estate.land ??= {};
@@ -52,11 +56,17 @@ export function prices(s) {
   if (!d.prices || d.priceDay !== s.time.day) {
     d.prices = Object.fromEntries(DRUGS.map((g, k) => {
       const swing = 0.82 + hash(s.time.day * 31 + k * 977) * 0.36;
-      return [g.id, { buy: Math.round(g.buy * swing / 5) * 5, street: Math.round(g.street * (0.9 + hash(s.time.day * 17 + k * 131) * 0.25) / 5) * 5 }];
+      const demand = 0.78 + hash(s.time.day * 97 + k * 71) * 0.44;
+      return [g.id, { buy: Math.round(g.buy * swing / 5) * 5, street: Math.round(g.street * demand / 5) * 5, demand }];
     }));
     d.priceDay = s.time.day;
   }
   return d.prices;
+}
+
+export function marketMood(s, id) {
+  const p = prices(s)[id]; const q = p?.demand || 1;
+  return q > 1.12 ? 'Very strong demand' : q > 1.03 ? 'Strong demand' : q < 0.88 ? 'Soft demand' : 'Normal demand';
 }
 
 // ---------------------------------------------------------------- the plug
@@ -95,14 +105,19 @@ export function moveStash(s, trapId, toStash) {
 // Who's at the door: they want something you have (stash first, then your bag).
 export function customer(s, trapId, rng = Math.random) {
   const t = trapState(s, trapId), bag = ensureDrugs(s).bag;
-  const have = DRUGS.filter(g => (t.stash[g.id] || 0) + (bag[g.id] || 0) > 0);
+  const have = DRUGS.filter(g => (t.stash[g.id] || 0) + (bag[g.id] || 0) > 0).sort((a,b) => (prices(s)[b.id].demand || 1) - (prices(s)[a.id].demand || 1));
   if (!have.length) return null;
   const g = have[Math.floor(rng() * have.length)];
   const avail = (t.stash[g.id] || 0) + (bag[g.id] || 0);
-  const qty = Math.min(avail, 1 + (rng() < 0.35 ? 1 : 0) + (rng() < 0.12 ? 1 : 0));
+  const repKey = `${trapId}:${g.id}`;
+  const trust = Math.min(0.22, (ensureDrugs(s).reputation[repKey] || 0) * 0.025);
+  const qty = Math.min(avail, 1 + (rng() < (0.35 + trust) ? 1 : 0) + (rng() < (0.12 + trust * 0.5) ? 1 : 0));
   const night = isNight(s.time) ? 1.12 : 1;
-  const each = Math.round(prices(s)[g.id].street * (0.85 + rng() * 0.3) * night / 5) * 5;
-  return { drug: g.id, qty, price: each * qty, who: WHO[Math.floor(rng() * WHO.length)] };
+  const each = Math.round(prices(s)[g.id].street * (0.88 + rng() * 0.24) * night * (1 + trust) / 5) * 5;
+  const types = WHO;
+  const who = types[Math.floor(rng() * types.length)];
+  const attention = Math.min(1, (t.traffic / 45) + (ensureDrugs(s).surveillance[trapId] || 0));
+  return { drug: g.id, qty, price: each * qty, who, trust, attention, mood: marketMood(s, g.id) };
 }
 const WHO = ['a nervous college kid', 'a regular in a work vest', 'a dude on a bike', 'two girls in a Charger', 'an older man who says "you know me"', 'a guy who won\'t take his hood off', 'somebody\'s cousin', 'a lady in scrubs', 'a kid from Dunbar\'s old class', 'a trucker passing through'];
 
@@ -111,7 +126,9 @@ const WHO = ['a nervous college kid', 'a regular in a work vest', 'a dude on a b
 // 15%+ once the whole block is talking.
 export function raidChance(s, trapId, heat = s.heat || 0) {
   const t = trapState(s, trapId), risk = TRAPS[trapId]?.risk ?? 1;
-  return Math.min(0.35, 0.0007 * Math.pow(t.traffic + 1, 1.4) * risk * (heat >= 2 ? 1.5 : 1));
+  const d = ensureDrugs(s), attention = Math.min(1, (d.surveillance[trapId] || 0) + t.traffic / 60);
+  const timeRisk = isNight(s.time) ? 0.82 : 1.08;
+  return Math.min(0.35, 0.00045 * Math.pow(t.traffic + 1, 1.38) * risk * (1 + attention * 1.8) * timeRisk * (heat >= 2 ? 1.5 : 1));
 }
 export function heatLabel(p) {
   return p < 0.02 ? ['Quiet', 'good'] : p < 0.05 ? ['People are noticing', 'warn'] : p < 0.1 ? ['Hot. The block is talking', 'bad'] : ['SWAT is watching the house', 'bad'];
@@ -130,6 +147,10 @@ export function serve(s, trapId, c, rng = Math.random) {
   const d = ensureDrugs(s);
   d.sold++; d.earned += c.price;
   t.served++;
+  const d = ensureDrugs(s), key = `${trapId}:${c.drug}`;
+  d.reputation[key] = Math.min(12, (d.reputation[key] || 0) + (c.trust > 0 ? 1 : 0.35));
+  d.surveillance[trapId] = Math.min(1, (d.surveillance[trapId] || 0) + 0.018 + t.traffic * 0.0007);
+  d.lastSaleDay = s.time.day;
   const raid = rng() < raidChance(s, trapId);
   t.traffic += 1;
   return { ok: true, pay: c.price, raid };
@@ -187,6 +208,7 @@ export function drugsDay(s, rng = Math.random) {
   for (const id of myTraps(s)) {
     const t = trapState(s, id), T = TRAPS[id];
     t.traffic = Math.round(t.traffic * DECAY * 10) / 10;
+    ensureDrugs(s).surveillance[id] = Math.max(0, (ensureDrugs(s).surveillance[id] || 0) * 0.72);
     if (!t.worker || t.closed > s.time.day) continue;
     if (!spend(s, WORKER_PAY, `${T.name}: paid the door`, { street: true })) { t.worker = false; notes.push(`${T.name}: you couldn't pay your worker, so he walked.`); continue; }
     let n = 0, take = 0, raided = false;
@@ -203,6 +225,7 @@ export function drugsDay(s, rng = Math.random) {
     }
     t.safe += take; t.served += n;
     ensureDrugs(s).sold += n; ensureDrugs(s).earned += take;
+    ensureDrugs(s).surveillance[id] = Math.min(1, (ensureDrugs(s).surveillance[id] || 0) + n * 0.012);
     if (raided) raids.push({ trapId: id, took: raidHouse(s, id), sold: n });
     else if (n) notes.push(`${T.name}: your worker served ${n} customer${n > 1 ? 's' : ''}. ${fmtMoney(take)} in the safe.`);
     else notes.push(`${T.name}: the stash is empty, so your worker sat on the porch all day.`);
