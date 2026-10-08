@@ -19,7 +19,7 @@ export const STANDARD_CUT = 0.2, CHEAP_CUT = 0.4, CHEAP_ADVANCE = 0.35;
 export function ensureLabel(s) {
   s.label ??= { name: null, founded: null, clout: 0, known: [], roster: [], sessions: [], releases: [], earned: 0, streams: 0, log: [] };
   const L = s.label;
-  if (!L.known.length) {\n    const featured = ARTISTS.filter(a => a.featured).map(a => a.id);\n    const starter = ARTISTS.filter(a => !a.featured && !cloutNeeded(a)).sort(() => Math.random() - 0.5).slice(0, KNOWN_AT_START).map(a => a.id);\n    L.known = [...new Set([...featured, ...starter])];\n  }
+  if (!L.known.length) L.known = ARTISTS.filter(a => !cloutNeeded(a)).sort(() => Math.random() - 0.5).slice(0, KNOWN_AT_START).map(a => a.id);
   return L;
 }
 export const hasLabel = s => !!s.label?.name;
@@ -101,13 +101,17 @@ export function bookSession(s, studioId, artistId, kind, producerId = null) {
   if (r.jailed) return err(`${artistName(artistId)} is in jail. Bail them out first.`);
   if (L.sessions.some(x => x.artist === artistId && !x.done)) return err(`${artistName(artistId)} is already in the studio.`);
   const cost = sessionCost(studioId, kind);
-  if (!spend(s, cost, `${st.name}: ${K.name} session`)) return err(`The session is ${fmtMoney(cost)}.`);
+  const producer = producerId ? PRODUCER_BY_ID[producerId] : null;
+  if (producerId && !producer) return err('That producer is unavailable.');
   const a = ARTIST_BY_ID[artistId];
-  // the room, the artist and the day: a great artist in a great room still has off weeks
-  const quality = Math.round(clamp(a.talent * 0.82 + st.q + R(-10, 14) + (kind === 'album' ? 3 : 0), 5, 99));
-  const ses = { id: 'ses' + Math.random().toString(36).slice(2, 8), artist: artistId, kind, studio: studioId, start: s.time.day, ready: s.time.day + K.days, quality, title: makeTitle(), done: false };
+  const producerQ = producer?.q || 0;
+  const producerRate = producer?.rate || 1;
+  const finalCost = Math.round(cost * producerRate);
+  if (!spend(s, finalCost, `${st.name}: ${K.name}${producer ? ` with ${producer.name}` : ''}`)) return err(`The session is ${fmtMoney(finalCost)}.`);
+  const quality = Math.round(clamp(a.talent * 0.82 + st.q + producerQ + R(-10, 14) + (kind === 'album' ? 3 : 0), 5, 99));
+  const ses = { id: 'ses' + Math.random().toString(36).slice(2, 8), artist: artistId, producer: producerId || null, kind, studio: studioId, start: s.time.day, ready: s.time.day + K.days, quality, title: makeTitle(), done: false };
   L.sessions.push(ses);
-  return { ok: true, ses, text: `${a.name} is in the booth at ${st.name}. The ${K.name.toLowerCase()} is done in ${K.days} day${K.days > 1 ? 's' : ''}.` };
+  return { ok: true, ses, text: `${a.name} is in the booth at ${st.name}${producer ? ` with ${producer.name}` : ''}. The ${K.name.toLowerCase()} is done in ${K.days} day${K.days > 1 ? 's' : ''}.` };
 }
 export const makeTitle = () => `${pick(TITLE_A)} ${pick(TITLE_B)}`;
 export const finished = s => (s.label?.sessions || []).filter(x => !x.done && x.ready <= s.time.day);
