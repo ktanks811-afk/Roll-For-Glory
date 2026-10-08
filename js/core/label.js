@@ -19,7 +19,7 @@ export const STANDARD_CUT = 0.2, CHEAP_CUT = 0.4, CHEAP_ADVANCE = 0.35;
 export function ensureLabel(s) {
   s.label ??= { name: null, founded: null, clout: 0, known: [], roster: [], sessions: [], releases: [], earned: 0, streams: 0, log: [] };
   const L = s.label;
-  if (!L.known.length) L.known = ARTISTS.filter(a => !cloutNeeded(a)).sort(() => Math.random() - 0.5).slice(0, KNOWN_AT_START).map(a => a.id);
+  if (!L.known.length) {\n    const featured = ARTISTS.filter(a => a.featured).map(a => a.id);\n    const starter = ARTISTS.filter(a => !a.featured && !cloutNeeded(a)).sort(() => Math.random() - 0.5).slice(0, KNOWN_AT_START).map(a => a.id);\n    L.known = [...new Set([...featured, ...starter])];\n  }
   return L;
 }
 export const hasLabel = s => !!s.label?.name;
