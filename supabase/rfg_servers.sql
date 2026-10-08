@@ -5,6 +5,7 @@
 -- Players are a career id plus a private key (the same pair online crews use);
 -- only a sha256 hash of the key is stored. Tables have RLS and no policies:
 -- everything goes through these functions.
+-- Property deeds are permanent: leaving/changing servers never releases a deed.
 
 create table if not exists public.rfg_server_members (
   uid text primary key,
@@ -34,7 +35,7 @@ create or replace function public.rfg_srv_ok(p text) returns boolean language sq
   select p in ('harbor','downtown','eastgate','ironside','dustline','northridge','pier9','glory')
 $$;
 
--- Careers that haven't been online in 30 days give up their spot and their deeds.
+-- Careers that haven't been online in 30 days give up their server spot; permanent deeds remain.
 create or replace function public.rfg_srv_purge() returns void language sql security definer set search_path = public as $$
   delete from public.rfg_deeds d using public.rfg_server_members m where d.uid = m.uid and m.seen_at < now() - interval '30 days';
   delete from public.rfg_server_members where seen_at < now() - interval '30 days';
@@ -82,8 +83,8 @@ begin
   insert into public.rfg_server_members(uid, tok_hash, name, server) values (p_uid, public.rfg_h(p_tok), left(coalesce(p_name, 'Racer'), 16), p_server)
     on conflict (uid) do update set name = excluded.name, server = excluded.server, seen_at = now(),
       joined_at = case when public.rfg_server_members.server = excluded.server then public.rfg_server_members.joined_at else now() end;
-  -- your deeds are exactly what you own now, on this server
-  delete from public.rfg_deeds where uid = p_uid and (server <> p_server or not (prop = any(props)));
+  -- Permanent deeds are never deleted or reassigned. Sync any properties
+  -- present in the career save that are still unclaimed on this server.
   insert into public.rfg_deeds(server, prop, uid, name) select p_server, x, p_uid, left(coalesce(p_name, 'Racer'), 16) from unnest(props) x
     on conflict (server, prop) do nothing;
   update public.rfg_deeds set name = left(coalesce(p_name, 'Racer'), 16) where uid = p_uid;
@@ -96,7 +97,7 @@ declare m public.rfg_server_members;
 begin
   m := public.rfg_srv_me(p_uid, p_tok);
   if m.uid is null then return; end if;
-  delete from public.rfg_deeds where uid = p_uid;
+  -- Leaving the server does not release property ownership.
   delete from public.rfg_server_members where uid = p_uid;
 end $$;
 
@@ -120,12 +121,10 @@ end $$;
 
 create or replace function public.rfg_deed_release(p_uid text, p_tok text, p_prop text) returns void
 language plpgsql security definer set search_path = public as $$
-declare m public.rfg_server_members;
 begin
-  m := public.rfg_srv_me(p_uid, p_tok);
-  if m.uid is null then return; end if;
-  delete from public.rfg_deeds where uid = m.uid and server = m.server and prop = p_prop;
-end $$;
+  -- Permanent deed. Kept for backwards compatibility with older clients.
+  perform public.rfg_srv_me(p_uid, p_tok);
+end $;
 
 revoke execute on function public.rfg_srv_purge(), public.rfg_srv_me(text, text) from public, anon, authenticated;
 grant execute on function public.rfg_server_counts(), public.rfg_server_join(text, text, text, text, text[]), public.rfg_server_leave(text, text),
