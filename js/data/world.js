@@ -156,6 +156,7 @@ export function blockCenter(i, j, city) {
   if (city === 'denton') return { x: DENTON.x0 + BLOCK / 2 + BLOCK * i, z: DENTON.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'dallas') return { x: DALLAS.x0 + BLOCK / 2 + BLOCK * i, z: DALLAS.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'weatherford') return { x: WEATHERFORD.x0 + BLOCK / 2 + BLOCK * i, z: WEATHERFORD.z0 + BLOCK / 2 + BLOCK * j };
+  if (city === 'west') return { x: WEST_CITY.x0 + BLOCK / 2 + BLOCK * i, z: WEST_CITY.z0 + BLOCK / 2 + BLOCK * j };
   return { x: -825 + BLOCK * i, z: -825 + BLOCK * j };
 }
 
