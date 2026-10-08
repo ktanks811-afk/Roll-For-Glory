@@ -132,6 +132,7 @@ export const DALLAS_DISTRICTS = ['Uptown', 'Downtown Dallas', 'Deep Ellum', 'Wes
 export function blockCenter(i, j, city) {
   if (city === 'denton') return { x: DENTON.x0 + BLOCK / 2 + BLOCK * i, z: DENTON.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'dallas') return { x: DALLAS.x0 + BLOCK / 2 + BLOCK * i, z: DALLAS.z0 + BLOCK / 2 + BLOCK * j };
+  if (city === 'weatherford') return { x: WEATHERFORD.x0 + BLOCK / 2 + BLOCK * i, z: WEATHERFORD.z0 + BLOCK / 2 + BLOCK * j };
   return { x: -825 + BLOCK * i, z: -825 + BLOCK * j };
 }
 
@@ -153,6 +154,7 @@ const L = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: 
 const D = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'dallas', side, ...front(i, j, side, 0, 'dallas'), ...extra });
 // and on a Denton block
 const N = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'denton', side, ...front(i, j, side, 0, 'denton'), ...extra });
+const W = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'weatherford', side, ...front(i, j, side, 0, 'weatherford'), ...extra });
 
 export const LOCATIONS = [
   L('eastgate_studio', 'home', 'Eastgate Studio (Home)', 8, 6, 'W', { color: '#ffffff', icon: 'home' }),
@@ -238,6 +240,14 @@ export const LOCATIONS = [
   D('ellum_meet', 'meet', 'Deep Ellum Warehouse Lot', 9, 1, 'S', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
   D('uptown_condo', 'property', 'Uptown High-Rise Condo', 4, 0, 'S', { color: '#ffffff', icon: 'home' }),
   D('kessler_tudor', 'property', 'Kessler Park Tudor', 0, 8, 'E', { color: '#ffffff', icon: 'home' }),
+  // ---------------- Weatherford / Parker County ----------------
+  W('weatherford_perf', 'perf', 'Parker County Performance', 6, 3, 'S', { color: '#e8641a', icon: 'wrench', owner: 'Marcus' }),
+  W('weatherford_repair', 'repair', 'Weatherford Auto & Tire', 2, 6, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.9, tagline: 'Local shop · trucks, classics and street cars' }),
+  W('weatherford_gas', 'gas', 'Parker County Fuel', 8, 5, 'W', { color: '#1f8f3a', icon: 'gas' }),
+  W('weatherford_meet', 'meet', 'Weatherford Backroad Lot', 4, 8, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  W('weatherford_luxury', 'property', 'Aledo Ridge Estate', 2, 1, 'S', { color: '#ffffff', icon: 'home' }),
+  W('weatherford_ranch', 'property', 'Parker County Ranch House', 8, 8, 'N', { color: '#ffffff', icon: 'home' }),
+  W('weatherford_warehouse', 'property', 'I-20 Warehouse Garage', 10, 4, 'W', { color: '#ffffff', icon: 'home' }),
   // ---------------- North Texas (world2d/north.js) ----------------
   // Alliance: the Heritage Trace exit off I-35W, a travel center and a diesel shop on the south frontage
   { id: 'gas_alliance', type: 'gas', name: 'Speedway Travel Center', x: -130, z: HTRACE_Z + 14, face: 0, side: 'N', color: '#1f8f3a', icon: 'gas' },
