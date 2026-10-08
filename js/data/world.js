@@ -327,6 +327,9 @@ export const PROPERTIES = {
   mineral_wells_home: { name: 'Mineral Wells Ranch House', price: 175000, slots: 6, house: 'one', desc: 'A west-side ranch house with six garage spots and room to grow.' },
   palo_pinto_warehouse: { name: 'Palo Pinto Warehouse Garage', price: 385000, slots: 16, house: 'two', desc: 'A large west-side warehouse with a private showroom and sixteen bays.', tier: 3 },
   west_i20_estate: { name: 'West I-20 Estate', price: 620000, slots: 10, house: 'two', desc: 'A gated acreage estate west of Mineral Wells with a ten-car gallery.', tier: 4 },
+  weatherford_luxury: { name: 'Aledo Ridge Estate', price: 540000, slots: 10, house: 'two', desc: 'A gated Parker County estate with a ten-car gallery garage.', tier: 3 },
+  weatherford_ranch: { name: 'Parker County Ranch House', price: 185000, slots: 6, house: 'one', desc: 'A country ranch house with six garage spots and room to grow.' },
+  weatherford_warehouse: { name: 'I-20 Warehouse Garage', price: 310000, slots: 12, house: 'two', desc: 'A large I-20 warehouse with a private showroom and twelve bays.', tier: 3 },
   fairmount_craftsman: { name: 'Fairmount Craftsman', price: 340000, slots: 6, house: 'two', desc: 'Restored 1920s 2-story craftsman on a Southside street, six-car garage out back.', tier: 3, wall: '#7f8a6a', roof: '#4a3a2e' },
   westover_estate:   { name: 'Westover Hills Estate', price: 1450000, slots: 10, house: 'two', desc: 'Gated 2-story, a pool, and a ten-car gallery garage with a turntable.', tier: 4, wall: '#d9d0bc', roof: '#3a4a3a' },
   // Stop Six houses off the grid (data/estate.js has where they are)

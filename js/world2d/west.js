@@ -3,7 +3,7 @@
 // from WEST.x0 without moving Fort Worth, Weatherford or Dallas.
 import { WEST, WEST_CITY, BLOCK, XGRID_X, XGRID_Z, LOCATIONS } from '../data/world.js';
 
-export function addWest({ buildings, lots, trees, props }, { landmarkBlock } = {}) {
+export function addWest({ buildings, lots, trees, props }, { landmarkBlock, roads } = {}) {
   const R = (a, b) => a + Math.random() * (b - a);
   const water = [];
 
@@ -48,7 +48,9 @@ export function addWest({ buildings, lots, trees, props }, { landmarkBlock } = {
   // Mineral Wells / Palo Pinto terrain: low mesas and wooded hills.
   for (let k = 0; k < 22; k++) {
     const x = R(WEST.x0 + 250, WEST.x1 - 250), z = R(WEST.z0 + 100, WEST.z1 - 100);
-    if (Math.abs(z + 1350) < 160) continue;
+    if (Math.abs(z + 1350) < 160) { k--; continue; }
+    const roadHit = roads?.nearestOnRoad(x, z);
+    if (roadHit && roadHit.dist < roadHit.edge.width / 2 + 18) { k--; continue; }
     buildings.push({ x, z, w: R(35, 100), d: R(35, 90), h: R(8, 24), color: ['#66513e','#705944','#574837'][k % 3], kind: 'rock' });
   }
 

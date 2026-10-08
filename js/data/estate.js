@@ -39,9 +39,9 @@ export const ESTATE_LOCATIONS = [
   P('land_homestead', 'land', 'Old Cleburne Rd Homestead', 'W', 20, 3980, 240, 4200, { color: '#c8a46a', icon: 'key' }),
   P('land_bluebonnet', 'land', 'Bluebonnet Hill Ranch', 'S', -700, 5100, -380, 5380, { color: '#c8a46a', icon: 'key' }),
   // Parker County / Weatherford expansion
-  P('land_weatherford_north', 'land', 'Weatherford North Acreage', 'S', -5350, -900, -5050, -650, { color: '#c8a46a', icon: 'key' }),
-  P('land_parker_ridge', 'land', 'Parker County Ridge Land', 'E', -4550, -1350, -4250, -1050, { color: '#c8a46a', icon: 'key' }),
-  P('land_aledo_pasture', 'land', 'Aledo Pasture Estate', 'N', -5200, -300, -4750, -80, { color: '#c8a46a', icon: 'key' }),
+  P('land_weatherford_north', 'land', 'Weatherford North Acreage', 'S', -5450, -450, -5150, -200, { color: '#c8a46a', icon: 'key' }),
+  P('land_parker_ridge', 'land', 'Parker County Ridge Land', 'E', -4550, -500, -4250, -250, { color: '#c8a46a', icon: 'key' }),
+  P('land_aledo_pasture', 'land', 'Aledo Pasture Estate', 'N', -3700, -450, -3300, -200, { color: '#c8a46a', icon: 'key' }),
   // the livestock auction on FM 4, where the stock trailer earns its keep (core/livestock.js)
   P('salebarn', 'salebarn', 'Joshua Livestock Auction', 'N', 500, 4520, 660, 4680, { color: '#d9822b', icon: 'tow' }),
   // hog dogs (core/dogs.js, core/hoghunt.js): the kennel that sells them on FM 4, and the hog lease down on the river

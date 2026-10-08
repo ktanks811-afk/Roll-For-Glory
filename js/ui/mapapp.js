@@ -280,7 +280,7 @@ export function renderMap(scr, ctx) {
     if (ptrs.size === 1) {
       const dx = cur[0] - prev[0], dy = cur[1] - prev[1];
       if (tap) tap.moved += Math.abs(dx) + Math.abs(dy);
-      st.cx = clamp(st.cx - dx / st.k, -3600, 7000); st.cz = clamp(st.cz - dy / st.k, -3600, 6000); dirty = true;
+      st.cx = clamp(st.cx - dx / st.k, -11200, 7000); st.cz = clamp(st.cz - dy / st.k, -3600, 6000); dirty = true;
     } else if (ptrs.size === 2 && pinch) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
       st.k = clamp(pinch.k * d / Math.max(20, pinch.d), 0.025, 1.6); dirty = true;
