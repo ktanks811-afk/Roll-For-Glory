@@ -288,6 +288,14 @@ class Online {
     this.addChat(this.name, t, true);
   }
   honk() { this.send({ k: 'ho' }); }
+  pvpHit(to, damage, weapon, x, z, h) {
+    if (!this.active || !to) return;
+    this.send({ k: 'pvp', t: 'hit', to, d: num(damage, 1, 100, 1), w: weapon === 'melee' ? 'melee' : 'gun', x: +num(x, -9000, 9000).toFixed(2), z: +num(z, -9000, 9000).toFixed(2), h: +num(h, -20, 20).toFixed(3) });
+  }
+  pvpState(type) {
+    if (!this.active || (type !== 'dead' && type !== 'alive')) return;
+    this.send({ k: 'pvp', t: type, target: this.id, to: '*' });
+  }
 
   addChat(name, text, mine = false) {
     this.chat.push({ name, text, mine, t: Date.now() });
@@ -303,7 +311,7 @@ class Online {
     if (m.k === 'bye') { if (p) { this.peers.delete(m.id); this.emit('peers'); } return; }
     if (!p) {
       if (this.peers.size >= MAX_PEERS) return;
-      p = { id: m.id, name: 'Racer', model: null, visual: null, levels: cleanLevels(), tier: 1, x: 0, z: 0, h: 0, sp: 0, inCar: true, flame: 0, walk: 0, seen: now, t: now, fresh: true, sprite: null, spriteKey: '', snaps: [], interp: INTERP_BASE, lastPacketAt: now, jitter: 0 };
+      p = { id: m.id, name: 'Racer', model: null, visual: null, levels: cleanLevels(), tier: 1, x: 0, z: 0, h: 0, sp: 0, inCar: true, flame: 0, walk: 0, seen: now, t: now, fresh: true, sprite: null, spriteKey: '', snaps: [], interp: INTERP_BASE, lastPacketAt: now, jitter: 0, hp: 100, dead: false };
       this.peers.set(m.id, p);
       // we don't know this car yet: introduce ourselves so they can draw us too
       if (now - this.helloReplyT > 1) { this.helloReplyT = now; this.sendHello(); }
@@ -340,6 +348,19 @@ class Online {
       // gear and revs: only sent while they have passengers, for the passenger's dash
       p.gear = typeof m.g === 'string' && /^[RDN–1-9]$/.test(m.g) ? m.g : ''; p.rpm = num(m.rp, 0, 1.2, 0);
       if (p.fresh) { p.x = x; p.z = z; p.h = p.st.h; p.fresh = false; }
+    } else if (m.k === 'pvp') {
+      const type = m.t === 'hit' ? 'hit' : m.t === 'dead' ? 'dead' : m.t === 'alive' ? 'alive' : '';
+      if (!type) return;
+      if (type === 'hit') {
+        if (m.to !== this.id) return;
+        const dmg = num(m.d, 1, 100, 1), ax = num(m.x, -9000, 9000), az = num(m.z, -9000, 9000);
+        const p = this.peers.get(m.id);
+        if (!p || Math.hypot(p.x - ax, p.z - az) > 14) return;
+        this.emit('pvp', { type: 'hit', from: m.id, peer: p, damage: dmg, weapon: String(m.w || 'gun').slice(0, 12) });
+      } else if (m.to === '*' || m.to === this.id) {
+        const target = this.peers.get(String(m.target || ''));
+        if (target) { target.dead = type === 'dead'; target.hp = type === 'dead' ? 0 : 100; target.seen = now; this.emit('pvp', { type, target }); }
+      }
     } else if (m.k === 'c') {
       this.addChat(cleanName(m.n, p.name), cleanText(m.x));
     } else if (m.k === 'ho') {
