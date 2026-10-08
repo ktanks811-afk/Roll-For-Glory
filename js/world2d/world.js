@@ -47,6 +47,7 @@ import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
 import { seizeCash } from '../core/bank.js';
 import { seizeLoot } from '../core/loot.js';
+import { seizeSwitches } from '../data/weapons.js';
 import { healthMods } from '../core/health.js';
 import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
 import { awayFromGarage } from '../core/tow.js';
