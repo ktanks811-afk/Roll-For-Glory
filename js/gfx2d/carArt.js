@@ -83,6 +83,13 @@ export const CAR_ART = {
     archY: 258,
     tireR: 0.357,
   },
+  cadillac_ct5_v_blackwing_2022: {
+    side: 'img/cars/cadillac-ct5-v-blackwing-side.webp',
+    top: 'img/cars/cadillac-ct5-v-blackwing-top.webp',
+    wheels: [102, 307],
+    archY: 78,
+    tireR: 0.365,
+  },
 };
 
 const ready = {};   // id -> { side, top } processed layers
