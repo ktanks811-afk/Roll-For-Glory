@@ -127,7 +127,19 @@ export const profile = {
     addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && this.dirty) this.push(); });
     // Don't hold the title screen hostage to a slow signal.
     await Promise.race([this.pull(), new Promise(r => setTimeout(r, 4000))]);
-    if (auth.user) await this.switchToAuth(auth.user);
+    if (auth.user) {
+      try {
+        await Promise.race([
+          this.switchToAuth(auth.user),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('account save boot timeout')), 3500)),
+        ]);
+      } catch (e) {
+        console.warn('auth save boot skipped:', e.message);
+        // Keep the local career usable even when the cloud account is slow.
+        this.authUser = null;
+        setSaveOwner(this.p?.id);
+      }
+    }
   },
 
   async switchToAuth(user) {
