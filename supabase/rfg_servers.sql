@@ -37,8 +37,8 @@ $$;
 
 -- Careers that haven't been online in 30 days give up their server spot; permanent deeds remain.
 create or replace function public.rfg_srv_purge() returns void language sql security definer set search_path = public as $$
-  delete from public.rfg_deeds d using public.rfg_server_members m where d.uid = m.uid and m.seen_at < now() - interval '30 days';
-  delete from public.rfg_server_members where seen_at < now() - interval '30 days';
+  -- Permanent property deeds are never purged. Server membership is considered active
+  -- by the count/join queries using seen_at instead.
 $$;
 
 create or replace function public.rfg_srv_me(p_uid text, p_tok text) returns public.rfg_server_members
@@ -72,7 +72,7 @@ begin
   select * into m from public.rfg_server_members where uid = p_uid;
   if m.uid is not null and m.tok_hash <> public.rfg_h(p_tok) then raise exception 'That career belongs to someone else'; end if;
   if m.uid is null or m.server <> p_server then
-    select count(*) into n from public.rfg_server_members where server = p_server and uid <> p_uid;
+    select count(*) into n from public.rfg_server_members where server = p_server and uid <> p_uid and seen_at > now() - interval '30 days';
     if n >= 15 then return json_build_object('ok', false, 'full', true); end if;
   end if;
   select coalesce(json_agg(json_build_object('prop', d.prop, 'name', d.name)), '[]'::json) into conflicts
