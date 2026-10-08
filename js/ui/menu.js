@@ -22,7 +22,8 @@ import { openRaceMenu } from './raceSetup.js';
 import { openOnline } from './online.js';
 import { online } from '../net/online.js';
 import { profile } from '../net/profile.js';
-import { profileChip } from './account.js';
+import { profileChip, showAccount } from './account.js';
+import { auth } from '../net/auth.js';
 
 // ---------------- animated backdrop ----------------
 const HERO = [
@@ -72,6 +73,8 @@ export class MenuBackdrop {
 }
 
 // ---------------- title ----------------
+const authLabel = () => auth.isSignedIn ? `Signed in as ${auth.email}` : 'Sign in to sync your career across devices';
+
 export function showTitle(app) {
   closeAllPanels();
   setSaveOwner(profile.owner);
@@ -94,6 +97,7 @@ export function showTitle(app) {
       <button data-action="map" ${need ? 'disabled' : ''}>Map</button>
       <button data-action="race" ${need ? 'disabled' : ''}>Race</button>
       <button data-action="crew" ${need ? 'disabled' : ''}>Crew</button>
+      <button data-action="account">☁ Account / Login<small>${authLabel()}</small></button>
       <button data-action="settings">Settings</button>
     </nav>
     <div class="title-foot">A fan-made street racing sim. Real car and parts brand names are used for flavor only — no affiliation or endorsement. The city is a loose take on Fort Worth, TX; its people and businesses are fictional.</div>
@@ -119,6 +123,7 @@ export function showTitle(app) {
     map: () => resume(() => openPhone('map', app)),
     race: () => resume(() => openRaceMenu(app)),
     crew: () => resume(() => openPhone('crew', app)),
+    account: () => showAccount(() => showTitle(app)),
     settings: () => openSettings(app),
   });
   t.querySelector('button:not([disabled])')?.focus();
