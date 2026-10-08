@@ -1,7 +1,7 @@
 // Draws Fort Worth top-down: ground, roads, lots, buildings (with a
 // parallax lean so they read as 3D), trees, night lighting and weather.
 
-import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, DALLAS, DALLAS_ZONE, DENTON, NORTH, LOCATIONS } from '../data/world.js';
+import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, DALLAS, DALLAS_ZONE, DENTON, NORTH, WEST, WEST_CITY, LOCATIONS } from '../data/world.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
 import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
@@ -821,7 +821,8 @@ export function shadeHex(hex, amt) {
 
 // Static overview of the whole map for the minimap and phone map.
 export function renderOverview(map, scale = 0.12) {
-  const x0 = -4000, z0 = NORTH.z0 - 400, W = DALLAS_ZONE.x1 + 4400, H = COUNTRY.z1 + 600 - z0;
+  // Overview covers every currently playable region, including the new westward expansion.
+  const x0 = WEST.x0 - 400, z0 = NORTH.z0 - 400, W = DALLAS_ZONE.x1 + 4400 - x0, H = COUNTRY.z1 + 600 - z0;
   const c = document.createElement('canvas');
   c.width = W * scale; c.height = H * scale;
   const g = c.getContext('2d');
@@ -833,6 +834,7 @@ export function renderOverview(map, scale = 0.12) {
   g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
   g.fillRect(sx(DALLAS.x0 - 15), sy(DALLAS.z0 - 15), (DALLAS.x1 - DALLAS.x0 + 30) * scale, (DALLAS.z1 - DALLAS.z0 + 30) * scale);
   g.fillRect(sx(DENTON.x0 - 15), sy(DENTON.z0 - 15), (DENTON.x1 - DENTON.x0 + 30) * scale, (DENTON.z1 - DENTON.z0 + 30) * scale);
+  g.fillRect(sx(WEST_CITY.x0 - 15), sy(WEST_CITY.z0 - 15), (WEST_CITY.x1 - WEST_CITY.x0 + 30) * scale, (WEST_CITY.z1 - WEST_CITY.z0 + 30) * scale);
   for (const l of map.lots) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
   for (const w of map.water) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
   g.fillStyle = 'rgba(80,90,100,0.9)';
