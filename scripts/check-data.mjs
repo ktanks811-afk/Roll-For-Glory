@@ -281,6 +281,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const id of Object.keys(PROPERTIES)) if (!gar.find(g => g.id === id)) bad(`no garage building for ${id}`);
   for (const g of gar) {
     const P = PROPERTIES[g.id];
+    if (!P) { bad(`${g.id} has a garage building but no PROPERTIES definition`); continue; }
     if (g.bays.length < P.slots - 1) bad(`${g.id} has ${g.bays.length} bays for ${P.slots} slots`);
     if (!g.roof || g.roof.kind !== 'roof' || g.roof.a !== 1) bad(`${g.id} roof`);
     // the door is solid until you own the place, and open after
