@@ -813,6 +813,28 @@ await step('Amazin\' shop + guns + robbery', async () => {
   if (burst < 3) throw new Error('burst-fire malfunction did not fire a burst: ' + burst);
   await p.evaluate(() => { const g = window.__rfg.game.s.arms.guns[0]; g.frt = false; const c = window.__rfg.app.world.combat; c.jamChance = undefined; c.burstChance = undefined; c.jammed = false; c.burstLeft = 0; c.gun.g.loaded = 15; });
   await calm();
+  // mags, drums and a switch: buy them, put a 100 drum and a switch on the Glock, hold the trigger
+  await p.evaluate(async () => { const s = window.__rfg.game.s; s.arms.frtKits = 0; s.arms.ammo['9mm'] = 400; const { openPhone } = await import('./js/ui/phone.js'); openPhone('shop', window.__rfg.app); });
+  await p.waitForTimeout(250);
+  await p.click('button[data-action="tab"][data-id="mags"]');
+  await p.click('button[data-action="mag"][data-id="mag100"]');
+  await p.click('button[data-action="mag"][data-id="drum50"]');
+  await p.click('button[data-action="switch"]');
+  await snap('30b-mags');
+  await p.click('button[data-action="tab"][data-id="mine"]');
+  await p.selectOption('select[data-magsel]', 'mag100'); await p.waitForTimeout(100);
+  await p.click('button[data-action="sw"]');
+  await p.click('button[data-action="topoff"]');
+  const kit = await p.evaluate(() => { const a = window.__rfg.game.s.arms; return { g: a.guns[0], mk: a.magKits, sk: a.switchKits }; });
+  if (kit.g.mag !== 'mag100' || !kit.g.sw || kit.g.loaded !== 100 || kit.mk.mag100 !== 0 || kit.mk.drum50 !== 1 || kit.sk !== 0) throw new Error('drum/switch did not go on the Glock ' + JSON.stringify(kit));
+  await calm();
+  await p.evaluate(() => { const c = window.__rfg.app.world.combat; c.cd = 0; c.shots = 0; c.jamChance = 0; c.drawn = true; c.jammed = false; });
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(1000); await p.keyboard.up('KeyJ');
+  const sw = await p.evaluate(() => { const c = window.__rfg.app.world.combat; return { shots: c.shots, loaded: c.gun.g.loaded, hud: c.hudLine() }; });
+  if (sw.shots < 12 || sw.loaded !== 100 - sw.shots || !/SWITCH/.test(sw.hud) || !/100 DRUM/.test(sw.hud) || !/\/100/.test(sw.hud)) throw new Error('switched Glock with a 100 drum: ' + JSON.stringify(sw));
+  await snap('31b-switch-hud');
+  await p.evaluate(() => { const g = window.__rfg.game.s.arms.guns[0]; g.sw = false; g.mag = null; g.loaded = 15; const c = window.__rfg.app.world.combat; c.jamChance = undefined; c.jammed = false; c.burstLeft = 0; });
+  await calm();
   // reload
   await p.evaluate(() => { window.__rfg.app.world.combat.gun.g.loaded = 3; });
   await p.keyboard.press('KeyR'); await p.waitForTimeout(2300);
