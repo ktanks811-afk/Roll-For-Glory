@@ -576,7 +576,7 @@ export class PoliceSystem {
     w.hud.pit?.(0.9);
     w.hud.radio(`Unit ${best.id}: PIT maneuver! Suspect vehicle is losing control.`);
     w.audio.crash?.(0.75);
-    if (speed > 30) w.ui?.toast?.('PIT HIT — vehicle damaged', 'bad');
+    if (speed > 30) w.hud.radio('PIT HIT — vehicle damaged. Control the vehicle.');
   }
 
   driveUnit(u, dt, w, lvl) {
