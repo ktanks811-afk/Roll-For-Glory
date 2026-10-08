@@ -2,7 +2,7 @@
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
-import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, NORTH, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, NORTH, WEST, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
 import { addEstate } from './estate.js';
@@ -11,6 +11,7 @@ import { addCountry } from './country.js';
 import { addDallas } from './dallas.js';
 import { addNorth } from './north.js';
 import { addWeatherford } from './weatherford.js';
+import { addWest } from './west.js';
 import { houseBlock } from './house.js';
 import { fromPreset } from '../core/homes.js';
 
@@ -226,6 +227,9 @@ export function buildMap() {
   water.push(...north.water);
   // ---------------- Weatherford west of Fort Worth (I-20) ----------------
   addWeatherford(gout, { landmarkBlock });
+  // ---------------- West Texas: Mineral Wells / Palo Pinto (world2d/west.js) ----------------
+  const west = addWest(gout, { landmarkBlock, roads });
+  water.push(...west.water);
 
   // ---------------- filling in the empty ground ----------------
   const extra = addScenery({ roads, buildings, lots, trees, rocks, props, water, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
@@ -251,10 +255,8 @@ export function buildMap() {
   // tunnel hill walls (the tunnel itself is open)
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z - 300, x1: TUNNEL[1], z1: HWY_Z - HWY_W / 2 - 2, h: 30, hill: true });
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z + HWY_W / 2 + 2, x1: TUNNEL[1], z1: HWY_Z + 300, h: 30, hill: true });
-  // world edge (north: open only up I-35W, see NORTH)
-  colliders.push({ x0: -6500, z0: -3000, x1: -5700, z1: 900, h: 0 });
-  colliders.push({ x0: -6500, z0: -3000, x1: -3900, z1: -2100, h: 0 });
-  colliders.push({ x0: -6500, z0: -600, x1: -3900, z1: 1800, h: 0 });
+  // world edge: west expansion now reaches to WEST.x0 instead of stopping at -6500.
+  colliders.push({ x0: WEST.x0 - 400, z0: WEST.z0, x1: WEST.x0, z1: WEST.z1, h: 0 });
   const top = NORTH.z0 - 800;
   colliders.push({ x0: -4000, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: NORTH.z0, h: 0 });
   colliders.push({ x0: -4000, z0: NORTH.z0, x1: NORTH.x0, z1: -3300, h: 0 });
