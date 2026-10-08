@@ -24,6 +24,7 @@ import { online } from '../net/online.js';
 import { profile } from '../net/profile.js';
 import { profileChip, showAccount } from './account.js';
 import { auth } from '../net/auth.js';
+import { openInventory } from './inventory.js';
 
 // ---------------- animated backdrop ----------------
 const HERO = [
@@ -91,6 +92,7 @@ export function showTitle(app) {
       <button data-action="online" ${need ? 'disabled' : ''}>Play Online<small>Free roam with other players</small></button>
       <button data-action="new">New Game</button>
       <button data-action="load">Load Game</button>
+      <button data-action="inventory" ${need ? "disabled" : ""}>Inventory<small>Items · hotbar · 30 slots</small></button>
       <button data-action="garage" ${need ? 'disabled' : ''}>Garage</button>
       <button data-action="collection" ${need ? 'disabled' : ''}>Car Collection</button>
       <button data-action="customize" ${need ? 'disabled' : ''}>Customize</button>
@@ -118,6 +120,7 @@ export function showTitle(app) {
     new: () => openCreate(app),
     load: () => openSlots('load', app),
     garage: () => resume(() => openGarage(app)),
+    inventory: () => resume(() => openInventory()),
     collection: () => resume(() => openGarage(app, { tab: 'collection' })),
     customize: () => resume(() => openGarage(app, { tab: 'visual' })),
     map: () => resume(() => openPhone('map', app)),
