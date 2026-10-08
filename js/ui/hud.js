@@ -248,6 +248,8 @@ export class Hud {
     if (rd) parts.push(rd);
     const tp = w.trailers?.promptHtml(tch);
     if (tp) parts.push(tp);
+    const doorPrompt = w.doors?.promptHtml?.();
+    if (doorPrompt) parts.push(doorPrompt);
     if (w.garageHint && !w.nearLoc) parts.push(`<span style="color:#2cff7a">▶</span> ${esc(w.garageHint)}`);
     const cb = w.combat;
     const rp = cb ? cb.robPrompt() : '';
