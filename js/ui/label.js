@@ -111,7 +111,7 @@ function rosterTab(s, ready) {
 
 function sceneTab(s, app) {
   const L = s.label;
-  const list = L.known.map(id => ARTIST_BY_ID[id]).filter(a => a && !LB.signed(s, a.id));
+  const featured = Object.values(ARTIST_BY_ID).filter(a => a.featured).map(a => a.id);\n  const list = [...new Set([...L.known, ...featured])].map(id => ARTIST_BY_ID[id]).filter(a => a && !LB.signed(s, a.id));
   return `<p class="small muted">Your A&amp;R texts you when she hears about somebody. To sign an artist you have to go where they hang out and talk to them in person.</p>
     <div class="list">${list.map(a => { const here = near(app, a.hang), need = LB.cloutNeeded(a); return `<div class="li click" data-action="view" data-id="${a.id}">${avatar(a)}<div class="grow"><div class="t">${esc(a.name)} <small class="muted">${esc(a.genre)} · ${esc(a.hood)}</small></div>
       <div class="s">${starRow(a.talent)} · ${LB.buzzOf(s, a.id).toLocaleString()} fans · wants ${fmtMoney(LB.askOf(s, a))}${need > L.clout ? ` · <span class="bad">needs clout ${need}</span>` : ''}</div>
