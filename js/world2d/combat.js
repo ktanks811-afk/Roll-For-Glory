@@ -19,7 +19,7 @@ import { pad, rumble } from '../core/gamepad.js';
 import { audio } from '../core/audio.js';
 import { addRep, spend, fmtMoney } from '../core/state.js';
 import { collideCircle } from './map.js';
-import { WEAPON_BY_ID, CAL, ensureArms, equippedGun } from '../data/weapons.js';
+import { WEAPON_BY_ID, CAL, ensureArms, equippedGun, SWITCH, MAG_BY_ID, magCap, magMods } from '../data/weapons.js';
 import { LOCATIONS } from '../data/world.js';
 import { masked, ownsMask } from '../core/disguise.js';
 import { addLoot, rollLoot, grabLoot, lootNames } from '../core/loot.js';
@@ -122,7 +122,7 @@ export class Combat {
     if (def.melee) { this.swing(def); return; }
     if (this.jammed) { if (!this.jamSaid) { this.say(`JAMMED! Press ${pad.inUse ? 'RB' : 'R'} to clear it.`, 'bad'); this.jamSaid = true; audio.click(); } this.cd = 0.3; return; }
     // semi-auto guns fire once per pull; held trigger repeats slowly. FRT'd guns and the G18 run full-auto.
-    const full = def.auto || g.frt;
+    const full = def.auto || g.frt || g.sw;
     if (!full && !this.freshPull && this.heldT < 0.32) return;
     if (g.loaded <= 0) {
       if ((this.arms.ammo[def.cal] || 0) > 0) this.startReload(); else { audio.click(); this.say(`Out of ${def.cal} — order more ammo.`, 'bad'); this.cd = 0.4; }
@@ -131,14 +131,15 @@ export class Combat {
     this.freshPull = false; this.heldT = 0;
     g.loaded--;
     this.shots = (this.shots || 0) + 1;
-    this.cd = g.frt ? FRT.cd : def.cd;
+    this.cd = g.sw ? SWITCH.cd : g.frt ? FRT.cd : def.cd;
+    if (g.sw && Math.random() < (this.jamChance ?? SWITCH.jam)) { this.jammed = true; this.jamSaid = false; }
     if (g.frt) {
       // the forced-reset trigger: it doesn't always behave
       if (Math.random() < (this.jamChance ?? FRT.jam)) { this.jammed = true; this.jamSaid = false; }
       else if (!this.burstLeft && Math.random() < (this.burstChance ?? FRT.burst)) this.burstLeft = 2;
     }
     const ang0 = this.aimAngle();
-    const spread = def.spread * (g.frt ? FRT.spread : 1) * (f.moving ? 1.7 : 1) * healthMods(this.s).aim * Math.PI / 180;
+    const spread = def.spread * (g.sw ? SWITCH.spread : g.frt ? FRT.spread : 1) * magMods(g).spread * (f.moving ? 1.7 : 1) * healthMods(this.s).aim * Math.PI / 180;
     const ang = ang0 + (Math.random() - 0.5) * 2 * spread;
     f.h = ang0;
     const mx = f.x + Math.sin(ang0) * 0.55, mz = f.z - Math.cos(ang0) * 0.55;
@@ -150,7 +151,7 @@ export class Combat {
     if (this.w.cam) this.w.cam.shake = Math.max(this.w.cam.shake, 0.1);
     // everyone nearby hears it
     for (const p of this.w.traffic.peds) if (Math.hypot(p.x - f.x, p.z - f.z) < 45) p.scared = Math.max(p.scared || 0, 6);
-    this.w.police.gunshot(this.w, hit.kind === 'ped' || hit.kind === 'police' ? 'hit' : 'shot', false, !!(g.frt || def.auto));
+    this.w.police.gunshot(this.w, hit.kind === 'ped' || hit.kind === 'police' ? 'hit' : 'shot', false, !!(g.frt || g.sw || def.auto));
     if (g.loaded === 0 && (this.arms.ammo[def.cal] || 0) > 0) setTimeout(() => this.startReload(), 250);
   }
 
@@ -159,15 +160,15 @@ export class Combat {
     const { g, def } = gn;
     const have = this.arms.ammo[def.cal] || 0;
     if (this.jammed) { this.reload = 1.1; this.reloading = { g, def, clear: true }; audio.click(); return; }
-    if (g.loaded >= def.mag || have <= 0) return;
-    this.reload = def.reload;
+    if (g.loaded >= magCap(def, g) || have <= 0) return;
+    this.reload = def.reload * magMods(g).reload;
     audio.click();
     this.reloading = { g, def };
   }
   finishReload() {
     const r = this.reloading; if (!r) return;
     if (r.clear) { this.jammed = false; this.reloading = null; audio.click(); this.say('Jam cleared.', 'info'); return; }
-    const need = r.def.mag - r.g.loaded, put = Math.min(need, this.arms.ammo[r.def.cal] || 0);
+    const need = magCap(r.def, r.g) - r.g.loaded, put = Math.min(need, this.arms.ammo[r.def.cal] || 0);
     r.g.loaded += put; this.arms.ammo[r.def.cal] -= put;
     this.reloading = null;
     audio.click();
@@ -373,7 +374,7 @@ export class Combat {
   }
   // Busted with blood on your hands: you lose the gun and a lot of cash.
   onBusted(record) {
-    const heavy = record.some(r => r.kind === 'robbery' || r.kind === 'shots' || r.kind === 'assault' || r.kind === 'auto') || !!this.gun?.g.frt;
+    const heavy = record.some(r => r.kind === 'robbery' || r.kind === 'shots' || r.kind === 'assault' || r.kind === 'auto' || r.kind === 'switch') || !!this.gun?.g.frt || !!this.gun?.g.sw;
     if (!heavy) return 0;
     const a = this.arms;
     let extra = 3000;
@@ -466,10 +467,11 @@ export class Combat {
     const gn = this.gun;
     if (!gn) return '';
     const { g, def } = gn;
-    const name = `<div class="wp-name"><b>${def.name}</b>${g.frt ? ' <small style="color:#ff5a5a">FRT</small>' : ''}</div>`;
+    const tags = (g.frt ? ' <small style="color:#ff5a5a">FRT</small>' : '') + (g.sw ? ' <small style="color:#ff5a5a">SWITCH</small>' : '');
+    const name = `<div class="wp-name"><b>${def.name}</b>${tags}</div>`;
     const off = this.armed ? '' : ` <small class="wp-off">HOLSTERED${touch ? '' : pad.inUse ? ' — LT' : ' — G'}</small>`;
     if (def.melee) return off ? name + `<div class="wp-stat">${off.trim()}</div>` : name;
-    return name + `<div class="wp-stat">${this.jammed ? `<b style="color:#ff5a5a">JAMMED — ${pad.inUse ? 'RB' : 'R'}</b> ` : ''}<b>${this.reload > 0 ? 'RELOADING…' : `${g.loaded}/${def.mag}`}</b> <small>· ${this.arms.ammo[def.cal] || 0} ${def.cal}</small>${off}</div>`;
+    return name + `<div class="wp-stat">${this.jammed ? `<b style="color:#ff5a5a">JAMMED — ${pad.inUse ? 'RB' : 'R'}</b> ` : ''}<b>${this.reload > 0 ? 'RELOADING…' : `${g.loaded}/${magCap(def, g)}`}</b>${MAG_BY_ID[g.mag] ? ` <small style="color:#ffc04a">${MAG_BY_ID[g.mag].short}</small>` : ''} <small>· ${this.arms.ammo[def.cal] || 0} ${def.cal}</small>${off}</div>`;
   }
   progress() {
     if (this.rob) {
