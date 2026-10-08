@@ -2,7 +2,7 @@
 // Traffic, police routing, GPS and the minimap all read from this.
 
 import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS, DGRID_X, DGRID_Z, DSTREET_NS, DSTREET_EW, I30_ROW, I30_END, ARLINGTON_X, ARLINGTON_END,
-  DNGRID_X, DNGRID_Z, WGRID_X, WGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, I20_WEST_END, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X } from '../data/world.js';
+  DNGRID_X, DNGRID_Z, WGRID_X, WGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, I20_WEST_END, WEST, WEST_CITY, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X } from '../data/world.js';
 
 export function buildRoads() {
   const nodes = [];
@@ -56,6 +56,30 @@ export function buildRoads() {
   for (let i=0;i<WGRID_X.length;i++) for (let j=0;j<WGRID_Z.length;j++) node(WGRID_X[i],WGRID_Z[j]);
   for (let i=0;i<WGRID_X.length;i++) for (let j=0;j<WGRID_Z.length-1;j++) edge(node(WGRID_X[i],WGRID_Z[j]),node(WGRID_X[i],WGRID_Z[j+1]),{...CITY,name:['Main St','Ranger Hwy','Center St','Garner Rd','Walnut St','South Bowie Ave','Farm Rd','FM 920','FM 730','Old Brock Rd','Eureka St','Hudson Oaks'][i]||'Weatherford St'});
   for (let j=0;j<WGRID_Z.length;j++) for (let i=0;i<WGRID_X.length-1;i++) edge(node(WGRID_X[i],WGRID_Z[j]),node(WGRID_X[i+1],WGRID_Z[j]),{...CITY,name:['Lakeway Dr','Palo Pinto St','Fort Worth Hwy','I-20 Frontage','Parker County Loop','Spring St','Oak St','Bankhead Rd','College Park','White Settlement Rd','Weatherford Pkwy'][j]||'Weatherford St'});
+
+  // West Texas expansion: keep I-20 continuous from Weatherford toward Mineral Wells.
+  edge(node(I20_WEST_END, HWY_Z), node(WEST.x0, HWY_Z), I20);
+  const WUS = { ...PKWY, speed: 24 };
+  // US-180 runs through Mineral Wells and continues west/east across the expansion.
+  edge(node(WEST.x0, -1350), node(WEST_CITY.x0, -1350), { ...WUS, name: 'US-180' });
+  edge(node(WEST_CITY.x1, -1350), node(WEST.x1, -1350), { ...WUS, name: 'US-180' });
+  // US-281 north/south through Mineral Wells, plus the airport-side connector.
+  edge(node(-9000, WEST.z0), node(-9000, WEST.z1), { ...WUS, name: 'US-281' });
+  edge(node(-9750, -1050), node(-8250, -1050), { ...CITY, name: 'US-180 Frontage' });
+  // Mineral Wells city grid.
+  for (let x = WEST_CITY.x0; x <= WEST_CITY.x1; x += 150) node(x, WEST_CITY.z0);
+  for (let z = WEST_CITY.z0; z <= WEST_CITY.z1; z += 150) node(WEST_CITY.x0, z);
+  for (let x = WEST_CITY.x0; x <= WEST_CITY.x1; x += 150) {
+    for (let z = WEST_CITY.z0; z < WEST_CITY.z1; z += 150)
+      edge(node(x,z), node(x,z+150), { ...CITY, name: x === -9000 ? 'US-281' : ['Oak St','Elm St','Mesquite St','S Oak St','NE 1st Ave','SE 1st Ave','SE 6th Ave','NE 23rd St','FM 1195'][Math.round((x-WEST_CITY.x0)/150)] || 'Mineral Wells St' });
+  }
+  for (let z = WEST_CITY.z0; z <= WEST_CITY.z1; z += 150) {
+    for (let x = WEST_CITY.x0; x < WEST_CITY.x1; x += 150)
+      edge(node(x,z), node(x+150,z), z === -1350 ? { ...WUS, name: 'US-180' } : { ...CITY, name: ['W 2nd Ave','W 5th Ave','W Hubbard St','NW 6th Ave','NE 6th Ave','SE 6th Ave','SE 12th Ave','SE 16th Ave','Garrett Morris Pkwy'][Math.round((z-WEST_CITY.z0)/150)] || 'Mineral Wells Ave' });
+  }
+  // Rural connectors toward Palo Pinto, Santo and the west hills.
+  edge(node(-9000, WEST.z0), node(-9000, WEST.z0 + 420), { ...PKWY, name: 'FM 337' });
+  edge(node(-9000, WEST.z1), node(-9000, WEST.z1 + 650), { ...PKWY, name: 'FM 1195' });
 
   // I-30: on east from the end of Loop 820, past Arlington, over the Trinity
   // and right through Dallas, then a little way on out of town
