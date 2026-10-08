@@ -5,7 +5,7 @@
 import { openPanel, bind, esc, toast, confirm, prompt, closeAllPanels } from './dom.js';
 import { game, fmtMoney } from '../core/state.js';
 import { LOC_BY_ID } from '../data/world.js';
-import { LABEL_COST, MAX_ROSTER, STUDIOS, KINDS, KIND_IDS, PROMO, ARTIST_BY_ID } from '../data/label.js';
+import { LABEL_COST, MAX_ROSTER, STUDIOS, KINDS, KIND_IDS, PROMO, ARTIST_BY_ID, PRODUCERS } from '../data/label.js';
 import * as LB from '../core/label.js';
 import { audio } from '../core/audio.js';
 import { saveGame } from '../core/save.js';
@@ -62,8 +62,9 @@ export function openLabel(app, opts = {}) {
       demand: d => { say(LB.answerDemand(s, d.id, d.yes === '1')); h.refresh(); },
       book: async d => {
         const K = KINDS[d.kind], a = ARTIST_BY_ID[d.id];
+        const producerId = root.querySelector('[data-producer-for="' + d.id + '"]')?.value || null;
         if (!await confirm(`${K.name} with ${a.name}?`, `<p>${K.tracks} track${K.tracks > 1 ? 's' : ''}, ${K.days} day${K.days > 1 ? 's' : ''} in the booth at ${esc(S.name)} for <b>${fmtMoney(LB.sessionCost(studio, d.kind))}</b>.</p>`, 'Book it')) return;
-        if (say(LB.bookSession(s, studio, d.id, d.kind))) h.refresh();
+        if (say(LB.bookSession(s, studio, d.id, d.kind, producerId))) h.refresh();
       },
       drop_rel: async d => {
         const P = PROMO.find(p => p.id === d.promo);
@@ -159,8 +160,9 @@ function studioTab(s, studio) {
   const rows = L.roster.map(r => {
     const a = ARTIST_BY_ID[r.id], busy = L.sessions.some(x => x.artist === r.id);
     return `<div class="card"><div class="row" style="gap:10px;align-items:center">${avatar(a)}<div class="grow"><b>${esc(a.name)}</b> <small class="muted">${esc(a.genre)}</small><div class="small">${statusLine(s, r)}</div></div></div>
-      ${busy || r.jailed ? '' : `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${KIND_IDS.map(k => `<button class="btn btn-sm" data-action="book" data-id="${r.id}" data-kind="${k}">${KINDS[k].name} · ${fmtMoney(LB.sessionCost(studio, k))}<br><small>${KINDS[k].days} day${KINDS[k].days > 1 ? 's' : ''}</small></button>`).join('')}</div>`}</div>`;
+      ${busy || r.jailed ? '' : `<label class="field" style="margin-top:8px"><span>Producer</span><select class="input" data-producer-for="${esc(r.id)}"><option value="">House / artist-led</option>${PRODUCERS.map(p => `<option value="${p.id}">${esc(p.name)} · +${p.q} quality · ${Math.round((p.rate - 1) * 100)}% fee</option>`).join('')}</select></label><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${KIND_IDS.map(k => `<button class="btn btn-sm" data-action="book" data-id="${r.id}" data-kind="${k}">${KINDS[k].name} · ${fmtMoney(LB.sessionCost(studio, k))}<br><small>${KINDS[k].days} day${KINDS[k].days > 1 ? 's' : ''}</small></button>`).join('')}</div>`}</div>`;
   }).join('');
-  return `<p class="small muted">${esc(S.owner)} runs the board here.${S.q ? ' Better room, better records, and it costs more.' : ' Fair prices, honest mixes.'} Albums take longest and pay the most.</p>
+  const producerCards = `<div class="section-title">🎚 Producers</div><div class="grid">${PRODUCERS.map(p => `<div class="card"><h3>${esc(p.name)}</h3><div class="small muted">${esc(p.genre)} · +${p.q} quality · ${Math.round((p.rate - 1) * 100)}% session fee</div><p class="small">${esc(p.bio)}</p></div>`).join('')}</div>`;
+  return `<p class="small muted">${esc(S.owner)} runs the board here.${S.q ? ' Better room, better records, and it costs more.' : ' Fair prices, honest mixes.'} Albums take longest and pay the most.</p>${producerCards}
     ${rows || '<p class="muted">Sign an artist first, then bring them here.</p>'}`;
 }
