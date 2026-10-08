@@ -72,6 +72,7 @@ export function classify(o) {
     case 'gta': return { cls: 'SJF', text: 'Unauthorized use of a motor vehicle (stolen car).' };
     case 'carjack': return /armed/i.test(t) ? { cls: 'F1', text: 'Aggravated robbery (armed carjacking).', tg: true } : { cls: 'F2', text: 'Robbery (carjacking).' };
     case 'auto': return { cls: 'F3', text: 'Possession of a prohibited weapon (machine gun).' };
+    case 'switch': return { cls: 'F3', text: 'Possession of a prohibited weapon: machine-gun conversion device (Glock switch).' };
     case 'bailjump': return { cls: o.felony ? 'F3' : 'A', text: o.felony ? 'Bail jumping and failure to appear (felony).' : 'Bail jumping and failure to appear.' };
     default: {
       // the rest of the Penal Code (data/charges.js)
