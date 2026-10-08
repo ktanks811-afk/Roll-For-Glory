@@ -968,7 +968,8 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (onRoad(l.lot)) bad(`${l.id}: the lot is on a road`);
     for (const o of ESTATE_LOCATIONS) if (o !== l && l.lot.x0 < o.lot.x1 && l.lot.x1 > o.lot.x0 && l.lot.z0 < o.lot.z1 && l.lot.z1 > o.lot.z0) bad(`${l.id} overlaps ${o.id}`);
     const r = map.roads.routeBetween(0, 0, l.x, l.z);
-    if (!r?.path?.length || r.meters > 9000) bad(`${l.id}: no road route from downtown (${r?.meters})`);
+    // The world is intentionally growing westward; validate that GPS actually found a named road route, but allow longer Texas-map drives than the old 9 km city-only limit.
+    if (!r?.path?.length || !r.names?.some(Boolean) || r.meters > 15000) bad(`${l.id}: no road route from downtown (${r?.meters})`);
   }
   for (const id of ['land_six_bunche', 'land_six_stalcup', 'six_bungalow']) if (districtAt(LOC_BY_ID[id].x, LOC_BY_ID[id].z) !== 'Stop Six') bad(`${id} isn't in Stop Six`);
   for (const id of Object.keys(RIGS)) if (districtAt(LOC_BY_ID[id].x, LOC_BY_ID[id].z) !== 'Johnson County') bad(`${id} isn't in Johnson County`);
