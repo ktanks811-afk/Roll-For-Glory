@@ -274,7 +274,7 @@ class Online {
   sendHello() {
     const me = this.me;
     if (!me) return;
-    this.send({ k: 'h', n: this.name, m: me.modelId, v: me.visual, l: me.levels, t: me.tier, cr: me.crew ? { t: me.crew.tag, c: me.crew.color } : undefined });
+    this.send({ k: 'h', n: this.name, u: me.uid, m: me.modelId, v: me.visual, l: me.levels, t: me.tier, cr: me.crew ? { t: me.crew.tag, c: me.crew.color } : undefined });
   }
 
   say(text) {
@@ -312,6 +312,7 @@ class Online {
         p.model = model; p.visual = cleanVisual(model, m.v); p.levels = cleanLevels(m.l); p.tier = Math.round(num(m.t, 1, 9, 1));
         p.spriteKey = '';
       }
+      p.uid = typeof m.u === 'string' && /^[A-Za-z0-9]{6,16}$/.test(m.u) ? m.u : '';
       const cr = m.cr && typeof m.cr === 'object' ? m.cr : null;
       p.crew = cr && /^[A-Z0-9]{2,4}$/.test(String(cr.t)) && /^#[0-9a-fA-F]{6}$/.test(String(cr.c)) ? { tag: cr.t, color: cr.c } : null;
       this.emit('peers');
