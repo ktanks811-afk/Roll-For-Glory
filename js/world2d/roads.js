@@ -2,7 +2,7 @@
 // Traffic, police routing, GPS and the minimap all read from this.
 
 import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS, DGRID_X, DGRID_Z, DSTREET_NS, DSTREET_EW, I30_ROW, I30_END, ARLINGTON_X, ARLINGTON_END,
-  DNGRID_X, DNGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X } from '../data/world.js';
+  DNGRID_X, DNGRID_Z, WGRID_X, WGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, I20_WEST_END, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X } from '../data/world.js';
 
 export function buildRoads() {
   const nodes = [];
@@ -49,6 +49,13 @@ export function buildRoads() {
     for (const [a, b] of [[cx0, cx1], [cx1, cx2], [cx2, cx3]]) edge(node(a, z), node(b, z), { ...FARM, name });
   for (const [x, name] of [[cx0, 'County Road 802'], [cx1, 'County Road 1016'], [cx2, 'Old Cleburne Rd'], [cx3, 'Hwy 174']])
     for (const [a, b] of [[cz0, cz1], [cz1, cz2]]) edge(node(x, a), node(x, b), { ...FARM, name });
+
+  // I-20: west from Fort Worth into Weatherford
+  const I20 = { ...HWY, name: 'I-20' };
+  edge(node(HWY_X[0], HWY_Z), node(I20_WEST_END, HWY_Z), I20);
+  for (let i=0;i<WGRID_X.length;i++) for (let j=0;j<WGRID_Z.length;j++) node(WGRID_X[i],WGRID_Z[j]);
+  for (let i=0;i<WGRID_X.length;i++) for (let j=0;j<WGRID_Z.length-1;j++) edge(node(WGRID_X[i],WGRID_Z[j]),node(WGRID_X[i],WGRID_Z[j+1]),{...CITY,name:['Main St','Ranger Hwy','Center St','Garner Rd','Walnut St','South Bowie Ave','Farm Rd','FM 920','FM 730','Old Brock Rd','Eureka St','Hudson Oaks'][i]||'Weatherford St'});
+  for (let j=0;j<WGRID_Z.length;j++) for (let i=0;i<WGRID_X.length-1;i++) edge(node(WGRID_X[i],WGRID_Z[j]),node(WGRID_X[i+1],WGRID_Z[j]),{...CITY,name:['Lakeway Dr','Palo Pinto St','Fort Worth Hwy','I-20 Frontage','Parker County Loop','Spring St','Oak St','Bankhead Rd','College Park','White Settlement Rd','Weatherford Pkwy'][j]||'Weatherford St'});
 
   // I-30: on east from the end of Loop 820, past Arlington, over the Trinity
   // and right through Dallas, then a little way on out of town
