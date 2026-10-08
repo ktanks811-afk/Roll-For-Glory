@@ -110,7 +110,16 @@ export const profile = {
 
   // Called once at boot, before the title screen.
   async init() {
-    await auth.init();
+    // Auth is optional at boot. A blocked/slow CDN or Supabase auth request
+    // must never leave the loading screen hanging forever.
+    try {
+      await Promise.race([
+        auth.init(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('auth boot timeout')), 3000)),
+      ]);
+    } catch (e) {
+      console.warn('auth boot skipped:', e.message);
+    }
     this.p = readStored();
     if (!this.p) this.p = { id: rand(8), key: rand(12), owner: existingOwner() || undefined };
     store(this.p);
