@@ -95,6 +95,8 @@ export class PoliceSystem {
     this.backupT = 0;
     this.spikeT = 0;
     this.interceptorSent = false;
+    this.pitCooldown = 0;
+    this.pitAlertT = 0;
   }
   get level() { return Math.floor(clamp(this.s.heat, 0, 5.99)); }
   get active() { return this.phase !== 'none'; }
@@ -227,6 +229,9 @@ export class PoliceSystem {
     }
     if (this.phase === 'chase') {
       this.chaseT += dt;
+      this.pitCooldown = Math.max(0, this.pitCooldown - dt);
+      this.pitAlertT = Math.max(0, this.pitAlertT - dt);
+      this.checkPit(w);
       if (this.seen && p.speed > 8) this.addHeat(dt * 0.025, 'Suspect is fleeing.', w.hud);
       // A vehicle pursuit does not automatically turn into a search. Units keep
       // running the road network and requesting more resources until the player
@@ -521,6 +526,57 @@ export class PoliceSystem {
     u.interceptor = true;
     this.units.push(u);
     w.hud.radio('Dispatch: suspect is evading. Send the pursuit Hellcat. Interceptor is en route.');
+  }
+
+  // PIT attempts: a pursuit unit has to get alongside the player's rear quarter
+  // at a usable speed. The HUD flashes PIT before contact so the player knows a
+  // unit is setting up the maneuver. A successful hit rotates the car, scrubs speed,
+  // and damages tires/body/transmission so repeated contact can actually wreck it.
+  checkPit(w) {
+    const p = w.player, v = w.vehicle;
+    if (!v || !p.inCar || p.speed < 12 || this.pitCooldown > 0) return;
+    let best = null, bestD = Infinity;
+    const fx = Math.sin(p.h), fz = -Math.cos(p.h), rx = Math.cos(p.h), rz = Math.sin(p.h);
+    for (const u of this.units) {
+      if (u.foot || u.speed < 12) continue;
+      const dx = u.x - p.x, dz = u.z - p.z, d = Math.hypot(dx, dz);
+      if (d > 7 || d < 1.5) continue;
+      const along = dx * fx + dz * fz;
+      const lateral = dx * rx + dz * rz;
+      // Police must be beside the rear half of the car, moving roughly with it.
+      if (along > 1.2 || Math.abs(lateral) < 1.0) continue;
+      const uvx = Math.sin(u.h) * u.v, uvz = -Math.cos(u.h) * u.v;
+      const sameDir = (uvx * fx + uvz * fz) / Math.max(1, u.speed * p.speed) > 0.55;
+      if (!sameDir) continue;
+      if (d < bestD) { best = u; bestD = d; }
+    }
+    if (!best) return;
+    if (this.pitAlertT <= 0 && bestD < 6.5) {
+      this.pitAlertT = 1.0;
+      w.hud.pit?.(1.1);
+    }
+    if (bestD > 4.8) return;
+    const dx = best.x - p.x, dz = best.z - p.z;
+    const side = Math.sign(dx * rx + dz * rz) || 1;
+    const speed = v.speed;
+    const c = Math.cos(side * 0.9), sn = Math.sin(side * 0.9);
+    const nvx = v.vx * c - v.vz * sn, nvz = v.vx * sn + v.vz * c;
+    v.vx = nvx * 0.62; v.vz = nvz * 0.62;
+    v.h += side * 0.9;
+    v.yawRate += side * 1.6;
+    v.lastImpact = Math.max(v.lastImpact || 0, 0.9);
+    const car = v.car;
+    if (car?.cond) {
+      car.cond.body = Math.max(1, (car.cond.body ?? 100) - 16);
+      car.cond.tires = Math.max(1, (car.cond.tires ?? 100) - (speed > 28 ? 22 : 12));
+      car.cond.trans = Math.max(1, (car.cond.trans ?? 100) - (speed > 28 ? 10 : 5));
+      if (speed > 32) car.cond.engine = Math.max(1, (car.cond.engine ?? 100) - 8);
+    }
+    this.pitCooldown = speed > 30 ? 6 : 4;
+    w.hud.pit?.(0.9);
+    w.hud.radio(`Unit ${best.id}: PIT maneuver! Suspect vehicle is losing control.`);
+    w.audio.crash?.(0.75);
+    if (speed > 30) w.ui?.toast?.('PIT HIT — vehicle damaged', 'bad');
   }
 
   driveUnit(u, dt, w, lvl) {
@@ -855,13 +911,15 @@ export class PoliceSystem {
     this.crimeResponse = false;
     this.responseT = 0;
     this.chaseT = 0;
+    this.pitCooldown = 0;
+    this.pitAlertT = 0;
     this.decayHold = 20;
     w.audio.siren(false);
     w.audio.music(null);
   }
   reset(w) {
     this.phase = 'none';
-    this.crimeResponse = false; this.responseT = 0; this.chaseT = 0; this.backupT = 0; this.spikeT = 0; this.interceptorSent = false;
+    this.crimeResponse = false; this.responseT = 0; this.chaseT = 0; this.backupT = 0; this.spikeT = 0; this.interceptorSent = false; this.pitCooldown = 0; this.pitAlertT = 0;
     this.record = []; this.noiseAtt = 0; this.kills = 0;
     this.s.heat = 0;
     this.units = [];
