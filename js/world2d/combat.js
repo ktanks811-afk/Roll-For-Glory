@@ -25,6 +25,7 @@ import { masked, ownsMask } from '../core/disguise.js';
 import { addLoot, rollLoot, grabLoot, lootNames } from '../core/loot.js';
 import { LOOT_BY_ID } from '../data/loot.js';
 import { healthMods } from '../core/health.js';
+import { online } from '../net/online.js';
 
 // A forced-reset trigger turns a semi-auto pistol into a full-auto one: very fast, wild, and unreliable.
 export const FRT = { cd: 0.062, spread: 1.7, jam: 0.045, burst: 0.2 };
@@ -59,6 +60,8 @@ export class Combat {
     this.msg = '';
     this.heldT = 0; this.freshPull = false; this.trigWas = false; this.jammed = false; this.burstLeft = 0;
     this.msgT = 0;
+    this.pvpDeadT = 0;
+    this.pvpUnsub = online.on((ev, data) => { if (ev === 'pvp' && data?.type === 'hit') this.receivePvpHit(data); });
     ensureArms(world.s);
     window.addEventListener('mousemove', e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.t = performance.now(); });
     window.addEventListener('mousedown', e => { if (e.button === 0 && e.target && e.target.id === 'game') this.mouseFire = true; });
@@ -85,6 +88,7 @@ export class Combat {
     const w = this.w, out = [];
     for (const p of w.traffic.peds) if (!p.down && !p.friend) out.push({ x: p.x, z: p.z, ped: p });
     for (const c of w.police.allCars()) out.push({ x: c.x, z: c.z, car: c, police: true });
+    for (const p of online.list()) if (!p.dead && !p.fresh) out.push({ x: p.x, z: p.z, peer: p });
     return out;
   }
   aimAngle() {
@@ -115,6 +119,7 @@ export class Combat {
 
   // ---------------------------------------------------------------- firing
   fire() {
+    if (this.pvpDeadT > 0) return;
     const gn = this.gun; if (!gn) return;
     const { g, def } = gn;
     if (this.cd > 0 || this.reload > 0) return;
@@ -194,9 +199,11 @@ export class Combat {
     for (const p of this.w.traffic.peds) if (!p.down && !p.friend) test(p, 0.5, 'ped', p);
     for (const c of this.w.traffic.cars) test(c, 1.1, 'car', c);
     for (const c of this.w.police.allCars()) test(c, 1.1, 'police', c);
+    for (const p of online.list()) if (!p.dead && !p.inCar && !p.fresh) test(p, 0.5, 'peer', p);
     if (best) {
       this.sparks.push({ x: best.x, z: best.z, t: 0.18 });
       if (best.kind === 'ped') this.hurtPed(best.ref, dmg, true);
+      else if (best.kind === 'peer') this.hitPeer(best.ref, dmg, 'gun');
       else if (best.kind === 'police') { this.w.setOffence(1.5, 'Shooting at police!', 'shootcop', 'assault', 2500); if (best.ref.hit) best.ref.hit(3); }
       else if (best.ref.hit) best.ref.hit(2);
       return { x: best.x, z: best.z, kind: best.kind };
@@ -229,6 +236,14 @@ export class Combat {
       const da = Math.atan2(Math.sin(Math.atan2(dx, -dz) - a), Math.cos(Math.atan2(dx, -dz) - a));
       if (Math.abs(da) > 1.0) continue;
       this.hurtPed(p, def.dmg * 1.6, true); hitAny = true;
+    }
+    for (const p of online.list()) {
+      if (p.dead || p.fresh || p.inCar) continue;
+      const dx = p.x - f.x, dz = p.z - f.z, d = Math.hypot(dx, dz);
+      if (d > def.reach + 0.4) continue;
+      const da = Math.atan2(Math.sin(Math.atan2(dx, -dz) - a), Math.cos(Math.atan2(dx, -dz) - a));
+      if (Math.abs(da) > 1.0) continue;
+      this.hitPeer(p, def.dmg * 1.6, 'melee'); hitAny = true;
     }
     if (hitAny) { this.w.setOffence(0.7, 'Assault with a weapon.', 'swing', 'assault', 1800); this.w.police.gunshot(this.w, 'hit', true); }
   }
@@ -359,8 +374,34 @@ export class Combat {
     a.hp -= dmg - soak;
     this.say(`${why} (−${Math.round(dmg - soak)} health)`, 'bad');
     if (this.w.cam) this.w.cam.shake = 0.5;
-    if (a.hp <= 0) this.knockedOut(why);
+    if (a.hp <= 0) {
+      if (online.active && String(why || '').includes('hit you')) this.pvpKnockout();
+      else this.knockedOut(why);
+    }
   }
+  hitPeer(peer, dmg, weapon = 'gun') {
+    if (!peer || peer.dead || !online.active) return;
+    const maxRange = weapon === 'melee' ? 3.5 : 55;
+    if (Math.hypot(peer.x - this.w.foot.x, peer.z - this.w.foot.z) > maxRange) return;
+    online.pvpHit(peer.id, dmg, weapon, this.w.foot.x, this.w.foot.z, this.w.foot.h);
+  }
+
+  receivePvpHit(data) {
+    if (this.pvpDeadT > 0 || this.w.inCar || !online.active) return;
+    const dmg = Math.max(1, Math.min(100, Number(data.damage) || 1));
+    const name = data.peer?.name || 'Another player';
+    this.hurt(dmg, name + ' hit you');
+  }
+
+  pvpKnockout() {
+    if (this.pvpDeadT > 0) return;
+    this.pvpDeadT = 8;
+    this.drawn = false;
+    this.arms.hp = 0;
+    online.pvpState('dead');
+    this.say('YOU GOT KILLED — respawning in 8 seconds.', 'bad');
+  }
+
   // Shot down: MedStar takes you to JPS (ui/hospital.js).
   knockedOut(why = '') {
     const s = this.s, a = this.arms;
@@ -387,6 +428,10 @@ export class Combat {
   // ---------------------------------------------------------------- update
   update(dt) {
     const w = this.w;
+    if (this.pvpDeadT > 0) {
+      this.pvpDeadT -= dt;
+      if (this.pvpDeadT <= 0) { this.arms.hp = 100; online.pvpState('alive'); this.say('Back in the fight.', 'good'); }
+    }
     this.cd = Math.max(0, this.cd - dt);
     if (this.reload > 0) { this.reload -= dt; if (this.reload <= 0) this.finishReload(); }
     const a = this.arms;
