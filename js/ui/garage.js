@@ -26,7 +26,7 @@ const SHOP_ONLY = new Set(['paint', 'kit', 'interior']);
 // mode: 'home' | 'perf' | 'visual' | 'readOnly'
 export function openGarage(app, opts = {}) {
   const st = { tab: opts.tab || 'overview', mode: opts.mode || 'readOnly', carUid: game.s.activeCar };
-  return openPanel((root, h) => render(root, h, app, st));
+  return openPanel((root, h) => render(root, h, app, st), { onClose: opts.onClose || null });
 }
 
 export function advanceTime(s, minutes) {
