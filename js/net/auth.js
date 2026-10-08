@@ -29,6 +29,33 @@ export const auth = {
     });
     return current;
   },
+  async signInEmail(email, password) {
+    const c = await getClient();
+    const { data, error } = await c.auth.signInWithPassword({ email: String(email || '').trim(), password });
+    if (error) throw error;
+    current = data.user || null;
+    this.user = current;
+    return current;
+  },
+  async signUpEmail(email, password, name = '') {
+    const c = await getClient();
+    const { data, error } = await c.auth.signUp({
+      email: String(email || '').trim(),
+      password,
+      options: { data: name ? { full_name: String(name).trim() } : {} },
+    });
+    if (error) throw error;
+    current = data.session?.user || null;
+    this.user = current;
+    return data;
+  },
+  async resetPassword(email) {
+    const c = await getClient();
+    const { error } = await c.auth.resetPasswordForEmail(String(email || '').trim(), {
+      redirectTo: location.origin + location.pathname,
+    });
+    if (error) throw error;
+  },
   async signInGoogle() {
     const c = await getClient();
     const { error } = await c.auth.signInWithOAuth({
