@@ -333,7 +333,9 @@ export class World {
         this.drawShadow(ctx, p.x, p.z, p.h, dimsFor(p.model));
         drawCar(ctx, this.peerSprite(p), cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom);
       } else {
-        drawPerson(ctx, cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom, { top: '#3a6bff' }, p.sp ? p.walk : 0);
+        if (p.dead) {
+          ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h); ctx.fillStyle = 'rgba(210,30,45,.9)'; ctx.beginPath(); ctx.ellipse(0, 0, 0.65 * cam.zoom, 0.3 * cam.zoom, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        } else drawPerson(ctx, cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom, { top: '#3a6bff' }, p.sp ? p.walk : 0);
       }
     }
     return peers;
