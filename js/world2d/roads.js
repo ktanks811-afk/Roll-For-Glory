@@ -56,10 +56,12 @@ export function buildRoads() {
   for (let i=0;i<WGRID_X.length;i++) for (let j=0;j<WGRID_Z.length;j++) node(WGRID_X[i],WGRID_Z[j]);
   for (let i=0;i<WGRID_X.length;i++) for (let j=0;j<WGRID_Z.length-1;j++) edge(node(WGRID_X[i],WGRID_Z[j]),node(WGRID_X[i],WGRID_Z[j+1]),{...CITY,name:['Main St','Ranger Hwy','Center St','Garner Rd','Walnut St','South Bowie Ave','Farm Rd','FM 920','FM 730','Old Brock Rd','Eureka St','Hudson Oaks'][i]||'Weatherford St'});
   for (let j=0;j<WGRID_Z.length;j++) for (let i=0;i<WGRID_X.length-1;i++) edge(node(WGRID_X[i],WGRID_Z[j]),node(WGRID_X[i+1],WGRID_Z[j]),{...CITY,name:['Lakeway Dr','Palo Pinto St','Fort Worth Hwy','I-20 Frontage','Parker County Loop','Spring St','Oak St','Bankhead Rd','College Park','White Settlement Rd','Weatherford Pkwy'][j]||'Weatherford St'});
+  // Connect I-20 into the Weatherford street graph; the highway segment is continuous, but the graph needs an explicit junction node.
+  edge(node(I20_WEST_END, HWY_Z), node(WGRID_X[0], HWY_Z), I20);
   // County connectors keep the new Parker County acreage reachable without placing the lots on a street.
   edge(node(-5550, -600), node(-5550, -325), { ...CITY, name: 'Weatherford North Rd' });
   edge(node(-4200, -600), node(-4200, -375), { ...CITY, name: 'Parker Ridge Rd' });
-  edge(node(-3900, -600), node(-3900, -325), { ...CITY, name: 'Aledo Ranch Rd' });
+  edge(node(-5100, -600), node(-5100, -325), { ...CITY, name: 'Aledo Ranch Rd' });
 
   // West Texas expansion: keep I-20 continuous from Weatherford toward Mineral Wells.
   edge(node(I20_WEST_END, HWY_Z), node(WEST.x0, HWY_Z), I20);
