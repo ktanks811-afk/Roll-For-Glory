@@ -1,6 +1,7 @@
 import { online } from './online.js';
 import { deeds, me as deedMe } from './deeds.js';
 import { LOC_BY_ID, PROPERTIES } from '../data/world.js';
+import { LAND } from '../data/estate.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { levels, game } from '../core/state.js';
 import { openPanel, bind, esc, toast } from '../ui/dom.js';
@@ -9,7 +10,7 @@ const KNOCK_RANGE = 10;
 const GRANT_SECONDS = 90;
 const MAX_CARS = 100;
 const clean = s => String(s ?? '').replace(/[^\w .'\-]/g, '').trim().slice(0, 16) || 'Racer';
-const property = id => LOC_BY_ID[id] && PROPERTIES[id] && PROPERTIES[id].price > 0 ? LOC_BY_ID[id] : null;
+const property = id => LOC_BY_ID[id] && ((PROPERTIES[id] && PROPERTIES[id].price > 0) || LAND[id]) ? LOC_BY_ID[id] : null;
 
 function carView(c) {
   const m = CAR_BY_ID[c.modelId];
@@ -115,6 +116,17 @@ class Doors {
     for (const [uid, a] of this.access) if (a.until < performance.now()) this.access.delete(uid);
     if (this.incoming && !online.active) this.incoming = null;
     if (this.outgoing && this.outgoing.until < performance.now()) this.outgoing = null;
+    if (world.inCar || world.rides?.riding) return;
+    const p = world.playerState();
+    for (const [propId, owner] of deeds.owners) {
+      if (owner.uid === world.s.uid) continue;
+      const cars = this.carsFor(world.s, propId);
+      const loc = property(propId);
+      if (!cars || !loc || Math.hypot(p.x - loc.x, p.z - loc.z) > 10) continue;
+      if (!this._shown) { this._shown = true; this.openGarage(owner.name, cars); }
+      break;
+    }
+    if (!this.nearOwnedDoor(world.s)) this._shown = false;
   }
 }
 export const doors = new Doors();
