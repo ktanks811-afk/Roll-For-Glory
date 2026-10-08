@@ -61,7 +61,7 @@ export function signBlock(s, id, near) {
   if (!a) return 'Nobody by that name.';
   if (!L.name) return 'Start your label first.';
   if (signed(s, id)) return `${a.name} is already on ${L.name}.`;
-  if (!L.known.includes(id)) return 'You haven\'t heard of them yet.';
+  if (!L.known.includes(id) && !a.featured) return 'You haven\'t heard of them yet.';
   if (L.roster.length >= MAX_ROSTER) return `Your roster is full (${MAX_ROSTER}). Drop somebody first.`;
   if ((L.cooldown?.[id] || 0) > s.time.day) return `${a.name} isn't taking your calls right now.`;
   if (L.clout < cloutNeeded(a)) return `${a.name} wants to see a label with a hit first (clout ${Math.floor(L.clout)} of ${cloutNeeded(a)}).`;
