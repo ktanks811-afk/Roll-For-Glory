@@ -36,6 +36,10 @@ export const ESTATE_LOCATIONS = [
   P('land_nolan', 'land', 'Nolan River Acreage', 'W', -2780, 4700, -2500, 4980, { color: '#c8a46a', icon: 'key' }),
   P('land_homestead', 'land', 'Old Cleburne Rd Homestead', 'W', 20, 3980, 240, 4200, { color: '#c8a46a', icon: 'key' }),
   P('land_bluebonnet', 'land', 'Bluebonnet Hill Ranch', 'S', -700, 5100, -380, 5380, { color: '#c8a46a', icon: 'key' }),
+  // Parker County / Weatherford expansion
+  P('land_weatherford_north', 'land', 'Weatherford North Acreage', 'S', -5350, -900, -5050, -650, { color: '#c8a46a', icon: 'key' }),
+  P('land_parker_ridge', 'land', 'Parker County Ridge Land', 'E', -4550, -1350, -4250, -1050, { color: '#c8a46a', icon: 'key' }),
+  P('land_aledo_pasture', 'land', 'Aledo Pasture Estate', 'N', -5200, -300, -4750, -80, { color: '#c8a46a', icon: 'key' }),
   // the livestock auction on FM 4, where the stock trailer earns its keep (core/livestock.js)
   P('salebarn', 'salebarn', 'Joshua Livestock Auction', 'N', 500, 4520, 660, 4680, { color: '#d9822b', icon: 'tow' }),
   // hog dogs (core/dogs.js, core/hoghunt.js): the kennel that sells them on FM 4, and the hog lease down on the river
@@ -72,6 +76,9 @@ export const LAND = {
   land_crosscreek:  { name: 'Cross Creek Pasture', short: 'Cross Creek', price: 185000, ranch: 2, country: true, desc: 'Twenty-five acres of coastal Bermuda on County Road 1016. Ready for cattle.' },
   land_nolan:       { name: 'Nolan River Acreage', short: 'Nolan River', price: 260000, ranch: 2, country: true, desc: 'Thirty-five acres down by the Nolan River, live oaks and a creek crossing.' },
   land_buffalo:     { name: 'Buffalo Creek Ranch', short: 'Buffalo Creek', price: 340000, ranch: 2, country: true, desc: 'Forty acres on FM 4, cross-fenced once, good grass. Horse country.' },
+  land_weatherford_north: { name: 'Weatherford North Acreage', short: 'Weatherford North', price: 165000, ranch: 1, desc: 'Ten acres just outside the Weatherford city grid, with room for a shop and pasture.' },
+  land_parker_ridge: { name: 'Parker County Ridge Land', short: 'Parker Ridge', price: 310000, ranch: 2, country: true, tier: 2, desc: 'Twenty-eight acres of rolling Parker County ground with a long gravel approach.' },
+  land_aledo_pasture: { name: 'Aledo Pasture Estate', short: 'Aledo Pasture', price: 480000, ranch: 2, country: true, tier: 3, desc: 'Forty-five acres of pasture and tree line west of Weatherford.' },
   land_bluebonnet:  { name: 'Bluebonnet Hill Ranch', short: 'Bluebonnet Hill', price: 520000, ranch: 2, country: true, tier: 3, desc: 'Sixty acres on the high ground. You can see the Fort Worth skyline from the porch.' },
 };
 
