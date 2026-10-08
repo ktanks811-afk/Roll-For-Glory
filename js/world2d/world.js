@@ -77,6 +77,7 @@ export class World {
     this.engine = null;
     this.flame = 0;
     this.foot = { x: 0, z: 0, h: 0, walk: 0 };
+    this.taseT = 0;
     this.saveT = 0;
     this.gpsT = 0;
     this.gpsPath = null;
@@ -449,7 +450,8 @@ export class World {
     const side = input.steer();
     const run = input.held('run');
     const hm = healthMods(this.s);   // a bad leg: slower, and no running
-    const sp = (run ? (hm.noRun ? 2.4 : 5.2 * runMul(this.s)) : 1.8) * hm.speed;
+    const tased = this.taseT > 0;
+    const sp = (run ? (hm.noRun ? 2.4 : 5.2 * runMul(this.s)) : 1.8) * hm.speed * (tased ? 0.18 : 1);
     let mx = side, mz = -fwd;
     const len = Math.hypot(mx, mz);
     if (len > 0.05) {
@@ -1040,6 +1042,10 @@ export class World {
     }
     // a gooseneck trailer's neck rides over the truck bed
     this.trailers.drawOver(ctx, cam);
+    // officers who have bailed out of pursuit cars continue the chase on foot
+    for (const cop of this.police.footOfficers) {
+      drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
+    }
     // the officer walking up during a traffic stop
     const cop = this.police.officer;
     if (cop) drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
