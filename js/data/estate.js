@@ -18,7 +18,9 @@ const P = (id, type, name, side, x0, z0, x1, z1, extra = {}) => {
 export const ESTATE_LOCATIONS = [
   // Stop Six, on the lane north of Ramey Ave
   P('trap_stopsix', 'trap', 'Ramey Ave Trap House', 'N', 1560, -441, 1650, -340, { color: '#8a1a1a', icon: 'home' }),
-  P('plug', 'plug', "Lil Tre's Corner Store", 'N', 1880, -141, 1950, -95, { color: '#2cff7a', icon: 'tow' }),
+  P('plug', 'plug', "Lil Tre's Corner Store", 'N', 1880, -141, 1950, -95, { color: '#2cff7a', icon: 'tow', stock: ['loud', 'percs', 'lean', 'powder'] }),
+  P('plug_carson', 'plug', "Carsen's Lounge", 'N', 2050, -141, 2140, -55, { color: '#e85d3f', icon: 'music', stock: ['ice'] }),
+  P('plug_bankrol', 'plug', "Bankroll's Ladies Club", 'N', 2250, -141, 2340, -55, { color: '#d94cff', icon: 'meet', stock: ['lean', 'smoke', 'molly', 'exo'] }),
   P('land_stopsix', 'land', 'Empty Lot · Stop Six', 'N', 2200, -291, 2330, -172, { color: '#c8a46a', icon: 'key' }),
   // east of Stop Six, back off the lake road
   P('land_lakeworth', 'land', 'Lake Worth Acreage', 'W', 2628, -560, 2770, -430, { color: '#c8a46a', icon: 'key' }),
@@ -109,6 +111,14 @@ export const DRUGS = [
     law: [[1, 'A', 'Possession of a controlled substance (PG 4)'], [3, 'SJF', 'Possession of a controlled substance (PG 4, over 28 g)'], [10, 'F3', 'Possession of a controlled substance (PG 4, over 200 g)']] },
   { id: 'powder', name: 'Powder', what: 'cocaine',       unit: '8-ball',  buy: 190, street: 340, color: '#f2f2f2',
     law: [[1, 'F3', 'Possession of a controlled substance (PG 1, over 1 g)'], [2, 'F2', 'Possession of a controlled substance (PG 1, over 4 g)'], [58, 'F1', 'Possession of a controlled substance (PG 1, over 200 g)']] },
+  { id: 'ice',    name: 'Ice',    what: 'crystal',       unit: 'unit',    buy: 260, street: 460, color: '#bfefff',
+    law: [[1, 'F3', 'Possession of a controlled substance (PG 1)'], [2, 'F2', 'Possession of a controlled substance (PG 1, over 4 g)'], [20, 'F1', 'Possession of a controlled substance (PG 1, over 200 g)']] },
+  { id: 'smoke',  name: 'Smoke',  what: 'smoke',        unit: 'unit',    buy: 110, street: 210, color: '#3f9f42',
+    law: [[1, 'B', 'Possession of marijuana'], [4, 'A', 'Possession of marijuana (over 2 oz)'], [12, 'SJF', 'Possession of marijuana (over 4 oz)']] },
+  { id: 'molly',  name: 'Molly',  what: 'capsules',     unit: 'unit',    buy: 180, street: 330, color: '#ff65c3',
+    law: [[1, 'SJF', 'Possession of a controlled substance (PG 1)'], [4, 'F3', 'Possession of a controlled substance (PG 1, over 1 g)'], [20, 'F2', 'Possession of a controlled substance (PG 1, over 4 g)']] },
+  { id: 'exo',    name: 'Exo',    what: 'tablets',      unit: 'unit',    buy: 145, street: 275, color: '#ffd85c',
+    law: [[1, 'SJF', 'Possession of a controlled substance (PG 1)'], [4, 'F3', 'Possession of a controlled substance (PG 1, over 1 g)'], [20, 'F2', 'Possession of a controlled substance (PG 1, over 4 g)']] },
 ];
 export const DRUG_BY_ID = Object.fromEntries(DRUGS.map(d => [d.id, d]));
 
