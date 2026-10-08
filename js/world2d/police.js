@@ -280,9 +280,8 @@ export class PoliceSystem {
     if (this.phase === 'stop' && this.stop && !this.stop.unit && this.units.length) this.stop.unit = this.nearestUnit(this.stop.x, this.stop.z);
     for (const u of this.units) if (!u.foot && !(this.phase === 'stop' && u === this.stop?.unit)) this.driveUnit(u, dt, w, lvl);
 
-    // ---- roadblocks + spikes (level 4+) ----
-    this.blockT -= dt;
-    if (this.phase === 'chase' && this.blockT <= 0 && p.speed > 15 && this.chaseT > 18) { this.placeRoadblock(w); this.blockT = 24; }
+    // ---- roadblocks + spikes ----
+    // The pursuit timer above escalates spike deployments as the chase lasts.
     this.blocks = this.blocks.filter(b => Math.hypot(b.x - p.x, b.z - p.z) < 700 && (b.life -= dt) > 0);
 
     // ---- chatter ----
@@ -530,7 +529,7 @@ export class PoliceSystem {
     // choose target
     let tx, tz, chasing = false;
     const dToP = Math.hypot(p.x - u.x, p.z - u.z);
-    if (this.phase === 'chase' && this.lastSeen) {
+    if ((this.phase === 'chase' || (this.phase === 'notice' && this.crimeResponse)) && this.lastSeen) {
       if (dToP < 160 && lineOfSight(this.map, u.x, u.z, p.x, p.z)) {
         tx = p.x + p.vx * 0.6; tz = p.z + p.vz * 0.6; chasing = true;
       } else { const wp = this.waypoint(u, this.lastSeen.x, this.lastSeen.z); tx = wp.x; tz = wp.z; }
