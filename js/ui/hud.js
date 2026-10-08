@@ -86,6 +86,7 @@ export class Hud {
       <div class="hud-radio" data-radio></div>
       <div class="hud-prompt hidden" data-prompt></div>
       <div class="hud-help" data-help></div>
+      <div class="hud-hotbar" data-hotbar aria-label="Inventory hotbar"></div>
     `;
     this.q = s => this.root.querySelector(`[data-${s}]`);
     this.minimap = new MiniMap(this.q('mini'));
@@ -95,6 +96,33 @@ export class Hud {
     this.q('online').addEventListener('pointerdown', async e => { e.preventDefault(); const { openOnline } = await import('./online.js'); const { app } = await import('../main.js'); openOnline(app); });
     this.q('needs').addEventListener('pointerdown', async e => { e.preventDefault(); const { openBag } = await import('./needs.js'); const { app } = await import('../main.js'); openBag(app); });
     this.root.querySelectorAll('[data-tp]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); touch.press(b.dataset.tp); }));
+  }
+
+  renderHotbar() {
+    const s = game.s;
+    if (!s) return;
+    s.inventory ??= { energyDrinks: 0, tacos: 0 };
+    const slots = s.inventory.rfgSlots || [];
+    const labels = { water:['💧','Water'], energy:['⚡','Energy'], taco:['🌮','Taco'], phone:['📱','Phone'], lockpick:['🗝️','Lockpick'], medkit:['🩹','Med Kit'], loot:['📦','Stolen Goods'] };
+    const box = this.q('hotbar');
+    if (!box) return;
+    box.innerHTML = Array.from({length:5},(_,i) => {
+      const x = slots[i], d = x ? (labels[x.id] || [x.icon || '📦', x.label || x.id]) : null;
+      return '<button class="hud-hot-slot'+(x?'':' empty')+'" data-hot="'+i+'" title="'+(d ? esc(d[1]) : 'Empty')+'"><b>'+(i+1)+'</b>'+(d ? '<span>'+d[0]+'</span><small>'+esc(d[1])+'</small><i>'+(x.count > 1 ? x.count : '')+'</i>' : '<em>+</em>')+'</button>';
+    }).join('');
+    box.querySelectorAll('[data-hot]').forEach(btn => btn.onclick = () => {
+      const i = Number(btn.dataset.hot), x = slots[i];
+      if (!x) return;
+      if (x.id === 'energy') s.player.energy = Math.min(100,(s.player.energy||0)+30);
+      else if (x.id === 'taco') s.player.food = Math.min(100,(s.player.food||0)+30);
+      else if (x.id === 'water') s.player.energy = Math.min(100,(s.player.energy||0)+10);
+      else return;
+      x.count--;
+      if (x.count <= 0) slots.splice(i,1);
+      if (x.id === 'energy') s.inventory.energyDrinks = Math.max(0,(s.inventory.energyDrinks||0)-1);
+      if (x.id === 'taco') s.inventory.tacos = Math.max(0,(s.inventory.tacos||0)-1);
+      this.renderHotbar();
+    });
   }
 
   pit(seconds = 1) {
@@ -142,7 +170,8 @@ export class Hud {
 
   update(w) {
     const now = performance.now();
-    this.minimap.draw(w, w.playerState());   // every frame, so it turns smoothly
+    this.minimap.draw(w, w.playerState());
+    this.renderHotbar();   // every frame, so it turns smoothly
     if (now - this.last < 66) return;
     this.last = now;
     const s = game.s;
