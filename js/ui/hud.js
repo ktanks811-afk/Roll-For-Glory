@@ -82,6 +82,7 @@ export class Hud {
         <div class="hud-weapon hidden" data-weapon></div>
       </div>
       <div class="hud-nav hidden" data-nav><svg viewBox="0 0 24 24" data-navicon></svg><div><b data-navdist></b><small data-navstreet></small></div></div>
+      <div class="hud-pit hidden" data-pit><b>PIT</b><span>POLICE ARE SETTING UP A PIT</span></div>
       <div class="hud-radio" data-radio></div>
       <div class="hud-prompt hidden" data-prompt></div>
       <div class="hud-help" data-help></div>
@@ -94,6 +95,14 @@ export class Hud {
     this.q('online').addEventListener('pointerdown', async e => { e.preventDefault(); const { openOnline } = await import('./online.js'); const { app } = await import('../main.js'); openOnline(app); });
     this.q('needs').addEventListener('pointerdown', async e => { e.preventDefault(); const { openBag } = await import('./needs.js'); const { app } = await import('../main.js'); openBag(app); });
     this.root.querySelectorAll('[data-tp]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); touch.press(b.dataset.tp); }));
+  }
+
+  pit(seconds = 1) {
+    const box = this.q('pit');
+    if (!box) return;
+    box.classList.remove('hidden');
+    clearTimeout(this.pitTimer);
+    this.pitTimer = setTimeout(() => box.classList.add('hidden'), Math.max(650, seconds * 1000));
   }
 
   // Police radio: one dispatch call at a time, as a single line across the
