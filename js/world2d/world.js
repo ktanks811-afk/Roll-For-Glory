@@ -836,7 +836,8 @@ export class World {
     if (this.rides.riding) best = null;   // a passenger can't stop in anywhere
     this.nearLoc = best;
     if (input.pressed('interact')) {
-      if (this.rides.tryUse()) { /* got out, answered a ride request, or asked/offered one */ }
+      if (this.doors?.use?.()) { /* knock on a player's door or let a visitor in */ }
+      else if (this.rides.tryUse()) { /* got out, answered a ride request, or asked/offered one */ }
       else if (this.pullups.tryUse()) { /* said bet to the racer beside you */ }
       else if (this.trailers.tryUse()) { /* unloaded the car off the trailer, or loaded it back up */ }
       else if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
