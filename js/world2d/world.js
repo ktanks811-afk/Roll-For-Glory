@@ -34,6 +34,7 @@ import { MPH } from '../sim/powertrain.js';
 import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
+import { doors } from '../net/doors.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
 import { charge, fileCase, openCase, hasFelonyPrior, IMPOUND_LOT } from '../core/justice.js';
@@ -102,6 +103,7 @@ export class World {
     this.pullups = new Pullups(this);
     this.rides = new RideAlong(this);
     this.ranch = new Ranch(this);
+    this.doors = doors;
     this.spawnPlayer();
   }
 
@@ -212,6 +214,7 @@ export class World {
     this.pullups.update(dt);
     this.trailers.update(dt);
     this.updateOnline(dt);
+    this.doors.update(dt, this);
 
     // traffic + police
     const inCity = (Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000) || inCityGrid(p.x, p.z);
@@ -301,7 +304,7 @@ export class World {
     if (this.onlineMeT <= 0) {
       this.onlineMeT = 1;
       const car = activeCar(this.s);
-      if (car) online.me = { name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n, crew: this.s.onlineCrew ? { tag: this.s.onlineCrew.tag, color: this.s.onlineCrew.color } : null };
+      if (car) online.me = { uid: this.s.uid, name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n, crew: this.s.onlineCrew ? { tag: this.s.onlineCrew.tag, color: this.s.onlineCrew.color } : null };
     }
     const speed = this.inCar ? (this.vehicle.rev < 0 ? -p.speed : p.speed) : walking ? 3 : 0;
     // with passengers aboard, the gear and revs go out too so their dash shows yours
