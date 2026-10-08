@@ -280,7 +280,7 @@ export const LOCATIONS = [
   X('mineral_wells_meet', 'meet', 'US-180 Backroad Lot', 3, 6, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
   X('mineral_wells_home', 'property', 'Mineral Wells Ranch House', 1, 1, 'S', { color: '#ffffff', icon: 'home' }),
   X('palo_pinto_warehouse', 'property', 'Palo Pinto Warehouse Garage', 8, 5, 'W', { color: '#ffffff', icon: 'home' }),
-  X('west_i20_estate', 'property', 'West I-20 Estate', 10, 2, 'N', { color: '#ffffff', icon: 'home' }),
+  X('west_i20_estate', 'property', 'West I-20 Estate', 9, 2, 'N', { color: '#ffffff', icon: 'home' }),
   { id: 'west_180_run', type: 'roll', name: 'US-180 West Runs', x: -7200, z: -1350, face: Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'west_highway', tier: 2 },
   { id: 'mineral_wells_drag', type: 'roll', name: 'Mineral Wells Airport Run', x: -9000, z: -650, face: 0, color: '#ff1a2e', icon: 'flag', road: 'west_highway', tier: 3 },
   // ---------------- North Texas (world2d/north.js) ----------------
