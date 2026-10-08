@@ -147,7 +147,7 @@ export function serve(s, trapId, c, rng = Math.random) {
   const d = ensureDrugs(s);
   d.sold++; d.earned += c.price;
   t.served++;
-  const d = ensureDrugs(s), key = `${trapId}:${c.drug}`;
+  const key = `${trapId}:${c.drug}`;
   d.reputation[key] = Math.min(12, (d.reputation[key] || 0) + (c.trust > 0 ? 1 : 0.35));
   d.surveillance[trapId] = Math.min(1, (d.surveillance[trapId] || 0) + 0.018 + t.traffic * 0.0007);
   d.lastSaleDay = s.time.day;
