@@ -666,7 +666,8 @@ export class World {
       return;
     }
     const armed = !!equippedGun(s);   // before they take it off you
-    fine += this.combat.onBusted(record);
+    const sw = seizeSwitches(s);   // they search you before the gun goes in an evidence bag
+    fine += this.combat.onBusted([...record, ...sw]);
     const hotCar = !!this.vehicle?.car?.hot;
     // they chased you down: that's evading, on top of whatever they saw
     const ph = this.police.phase, items = record.slice();
