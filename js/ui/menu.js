@@ -127,7 +127,7 @@ export function showTitle(app) {
     collection: () => careerScreen(() => openGarage(app, { tab: 'collection', onClose: () => showTitle(app) })),
     customize: () => careerScreen(() => openGarage(app, { tab: 'visual', onClose: () => showTitle(app) })),
     map: () => careerScreen(() => openPhone('map', app, { onClose: () => showTitle(app) })),
-    race: () => resume(() => openRaceMenu(app)),
+    race: () => careerScreen(() => openRaceMenu(app, { onClose: () => showTitle(app) })),
     crew: () => careerScreen(() => openPhone('crew', app, { onClose: () => showTitle(app) })),
     account: () => showAccount(() => showTitle(app)),
     settings: () => openSettings(app),
