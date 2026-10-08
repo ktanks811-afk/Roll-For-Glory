@@ -50,7 +50,7 @@ export function addWest({ buildings, lots, trees, props }, { landmarkBlock, road
     const x = R(WEST.x0 + 250, WEST.x1 - 250), z = R(WEST.z0 + 100, WEST.z1 - 100);
     if (Math.abs(z + 1350) < 160) { k--; continue; }
     const roadHit = roads?.nearestOnRoad(x, z);
-    if (roadHit && roadHit.dist < roadHit.edge.width / 2 + 18) { k--; continue; }
+    if (roadHit && roadHit.dist < Math.max(90, roadHit.edge.width / 2 + 18)) { k--; continue; }
     buildings.push({ x, z, w: R(35, 100), d: R(35, 90), h: R(8, 24), color: ['#66513e','#705944','#574837'][k % 3], kind: 'rock' });
   }
 
