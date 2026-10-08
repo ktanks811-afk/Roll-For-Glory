@@ -42,14 +42,14 @@ function racerSpec(r) {
   return buildSpec(m, partLevels(r.car.parts), {});
 }
 
-export function openRaceMenu(app) {
+export function openRaceMenu(app, opts = {}) {
   const s = game.s;
   openPanel((root, h) => {
     root.innerHTML = `<div class="p-head"><h1>Race</h1><button class="btn x" data-action="close">×</button></div><div class="p-body">
       <p class="muted">Races happen at real spots in Fort Worth. Set your GPS and drive there — or race whoever texts you a challenge.</p>
       <div class="list">${LOCATIONS.filter(l => ['roll', 'drag', 'meet', 'sprint'].includes(l.type)).map(l => `<div class="li click" data-action="go" data-id="${l.id}"><div class="grow"><div class="t">${esc(l.name)} ${l.tier && tierOf(s.rep).n < l.tier ? `<span class="tag tag-red">Tier ${l.tier}</span>` : ''}</div><div class="s">${l.type === 'drag' ? 'Drag strip · ' : l.type === 'meet' ? (l.weekend ? 'Weekend night meet · Fri & Sat 9 PM–3 AM · ' : 'Street meet · after 8 PM · ') : l.type === 'sprint' ? 'Street race · ' : 'Roll racing · '}${esc(l.type === 'sprint' ? 'Cash or pink slips across Fort Worth.' : ROADS[l.road]?.desc || (l.type === 'drag' ? ROADS.strip.desc : 'Show cars, find racers, bet on races.'))}</div></div><span>📍</span></div>`).join('')}</div></div>`;
-    bind(root, { close: () => h.close(), go: d => { const l = LOC_BY_ID[d.id]; app.world?.setGps(l.x, l.z, l.name); closeAllPanels(); } });
-  });
+    bind(root, { close: () => h.close(), go: d => { const l = LOC_BY_ID[d.id]; if (!app.world) enterWorld(); app.world?.setGps(l.x, l.z, l.name); closeAllPanels(); } });
+  }, { onClose: opts.onClose || null });
 }
 
 export function openRaceSetup(app, { type, loc, npcId = null, wager = null }) {
