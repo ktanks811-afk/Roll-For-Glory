@@ -714,3 +714,10 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
 
 /* Persistent FiveM-style inventory hotbar */
 .hud-hotbar{position:absolute;left:50%;bottom:max(18px,calc(env(safe-area-inset-bottom,0px) + 12px));transform:translateX(-50%);display:flex;gap:6px;z-index:18;pointer-events:auto;filter:drop-shadow(0 5px 14px rgba(0,0,0,.45))}.hud-hot-slot{width:68px;height:64px;position:relative;border:1px solid #41464e;background:rgba(10,12,15,.92);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer}.hud-hot-slot:hover{border-color:var(--yellow);background:rgba(25,28,33,.96)}.hud-hot-slot b{position:absolute;left:5px;top:3px;font:800 10px var(--head);color:#8b929c}.hud-hot-slot span{font-size:23px;line-height:24px}.hud-hot-slot small{max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 8px var(--head);letter-spacing:.03em;color:#bfc3c8}.hud-hot-slot i{position:absolute;right:5px;bottom:3px;font:800 10px var(--head);font-style:normal;color:var(--yellow)}.hud-hot-slot.empty{opacity:.55}.hud-hot-slot.empty em{font:700 18px var(--head);font-style:normal;color:#59616b}@media(max-width:600px){.hud-hotbar{bottom:max(8px,calc(env(safe-area-inset-bottom,0px) + 5px));gap:3px}.hud-hot-slot{width:57px;height:54px}.hud-hot-slot span{font-size:19px}.hud-hot-slot small{font-size:7px;max-width:48px}}
+
+/* Desktop HUD shortcuts: keep inventory, phone and camera controls visible on PC. */
+@media (min-width: 801px) and (min-height: 501px) {
+  body:not(.touch) .hud-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; pointer-events: auto; }
+  body:not(.touch) .hud-btn { width: 42px; height: 42px; border-radius: 10px; border: 1px solid rgba(255,255,255,.28); background: rgba(10,12,16,.78); color: #fff; font-size: 18px; cursor: pointer; }
+  body:not(.touch) .hud-btn:hover { border-color: var(--yellow); background: rgba(35,38,44,.95); }
+}
