@@ -67,7 +67,7 @@ export class Hud {
         <div class="hud-court hud-injury hidden" data-injury></div>
         <div class="hud-disguise hidden" data-disguise></div>
         <div class="hud-pursuit hidden" data-pursuit><b data-ptitle></b><div class="bar thin"><div data-pbar></div></div></div>
-        <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom">⌕</button><button class="hud-btn" data-tp="view" aria-label="Camera view">🎥</button><button class="hud-btn hud-inventory-btn" data-inventory aria-label="Inventory" title="Inventory">🎒</button><button class="hud-btn" data-tp="phone" aria-label="Phone">☎</button></div>
+        <div class="hud-btns"><button class="hud-btn" data-tp="pause" aria-label="Menu">☰</button><button class="hud-btn" data-tp="camera" aria-label="Zoom" title="Zoom (C)">⌕</button><button class="hud-btn" data-tp="view" aria-label="Camera view" title="Third-person / top-down (V)">🎥</button><button class="hud-btn hud-inventory-btn" data-inventory aria-label="Inventory" title="Inventory (I)">🎒</button><button class="hud-btn" data-tp="phone" aria-label="Phone" title="Phone (P)">☎</button></div>
         <div class="hud-dash hidden" data-dash>
         <div class="dash-speed"><b data-speed>0</b><small data-unit>MPH</small></div>
         <div class="dash-gear" data-gear>N</div>
@@ -96,6 +96,11 @@ export class Hud {
     this.q('online').addEventListener('pointerdown', async e => { e.preventDefault(); const { openOnline } = await import('./online.js'); const { app } = await import('../main.js'); openOnline(app); });
     this.q('needs').addEventListener('pointerdown', async e => { e.preventDefault(); const { openBag } = await import('./needs.js'); const { app } = await import('../main.js'); openBag(app); });
     this.q('inventory').addEventListener('pointerdown', async e => { e.preventDefault(); const { openPhone } = await import('./phone.js'); const { app } = await import('../main.js'); openPhone('inventory', app, { onClose: () => {} }); });
+    window.addEventListener('keydown', async e => {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName || '')) return;
+      if (e.code === 'KeyI') { e.preventDefault(); const { openPhone } = await import('./phone.js'); const { app } = await import('../main.js'); openPhone('inventory', app, { onClose: () => {} }); }
+      if (/^Digit[1-5]$/.test(e.code) && !document.querySelector('.panel:not(.hidden), .phone:not(.hidden)')) this.q('hotbar')?.querySelector(`[data-hot="${Number(e.code.slice(-1))-1}"]`)?.click();
+    });
     this.root.querySelectorAll('[data-tp]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); touch.press(b.dataset.tp); }));
   }
 
