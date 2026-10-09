@@ -62,8 +62,6 @@ export const ARTISTS = [
   A('trinity_tre', 'Trinity Tre', 'Tremaine Ford', 'Gospel Rap', 'West Dallas', 'gas_oakcliff', 59, 4800, 'His grandmother\'s church choir is on every hook.'),
   A('dfw_ghost', 'Ghost', 'Unknown', 'Drill', 'Unknown', 'trap_stopsix', 91, 88000, 'Nobody has seen his face. Millions of plays. Word is he records in Stop Six.', { street: true }),
 ];
-export const ARTIST_BY_ID = Object.fromEntries(ARTISTS.map(a => [a.id, a]));
-
 // Five-star roster requested for the DFW music scene. These are fictional in-game characters.
 ARTISTS.push(
   A('ebe_lil_ta', 'Ebe Lil Ta', 'Ebe Lil Ta', 'Rap', 'DFW', 'luckys', 100, 150000, 'A five-star artist with a million-dollar conversation before the first handshake.', { featured: true, minAdvance: 1000000 }),
@@ -77,6 +75,7 @@ ARTISTS.push(
   A('ss_splurge', 'SS Splurge', 'SS Splurge', 'Rap', 'DFW', 'gas_oakcliff', 100, 155000, 'A five-star Dallas artist with a heavy street presence and premium demand.', { featured: true, minAdvance: 1000000, street: true }),
   A('murdagang_pb', 'MurdaGang PB', 'MurdaGang PB', 'Rap', 'DFW', 'kessler_lot', 100, 140000, 'A five-star crew-connected artist with a built-in audience.', { featured: true, minAdvance: 1000000, street: true }),
 );
+export const ARTIST_BY_ID = Object.fromEntries(ARTISTS.map(a => [a.id, a]));
 export const FEATURED_ARTIST_IDS = ARTISTS.filter(a => a.featured).map(a => a.id);
 
 export const PRODUCERS = [
