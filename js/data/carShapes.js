@@ -135,9 +135,10 @@ const T = {
   chevrolet_tahoe_lt_2007: ['Q', 5.13, 2.00, 1.96, 2.95, { lights: 'swept', tl: 'rect', rails: true, xA: .395, xC: .93 }],
   gmc_syclone_1991: ['P', 4.78, 1.77, 1.63, 2.78, { lights: 'rect', tl: 'rect', bed: 1.4, doors: 2, lowered: true }],
   gmc_sierra_1500_denali_6_2_2019: ['P', 5.89, 2.06, 1.93, 3.74, { lights: 'led', tl: 'led', bed: 1.7 }],
-  // Third-gen CTS-V: long, low super-sedan proportions, sharp vertical lighting,
-  // pronounced hood vent and a subtle deck lip to distinguish it from a generic sedan.
-  cadillac_cts_v_2016: ['S', 4.97, 1.84, 1.45, 2.91, { lights: 'led', tl: 'led', xA: .445, xC: .71, xD: .85, deck: .72, belt: .65, hoodF: .55, hoodB: .66, wing: 'lip', scoop: true }],
+  // 2016 CTS-V reference match: long low super-sedan stance, wider shoulders,
+  // sharply raked hood, defined rear deck, vented hood and restrained trunk lip.
+  // The shared procedural renderer uses these proportions for showroom and world views.
+  cadillac_cts_v_2016: ['S', 5.02, 1.88, 1.45, 2.91, { lights: 'led', tl: 'led', xCowl: .29, xA: .435, xC: .705, xD: .855, deck: .73, belt: .66, hoodF: .54, hoodB: .65, wing: 'lip', scoop: true, fo: .20, tr: .35, noseW: .84, tailW: .90 }],
   cadillac_ct5_v_blackwing_2022: ['S', 4.92, 1.88, 1.45, 2.95, { lights: 'led', tl: 'led', xC: .72, xD: .86, wing: 'lip' }],
   cadillac_escalade_premium_luxury_2021: ['Q', 5.38, 2.06, 1.94, 3.07, { lights: 'led', tl: 'led', rails: true }],
   buick_grand_national_1986: ['M', 5.10, 1.89, 1.38, 2.90, { lights: 'rect', tl: 'rect', hoodF: .58, scoop: true, xCowl: .33, xA: .49, xC: .68, xD: .80, deck: .74 }],
