@@ -93,12 +93,12 @@ export function districtAt(x, z) {
   if (z < HWY_Z - 60 && Math.abs(x) < 60) return 'I-35W';
   if (z < -1000) return 'Loop 820';
   if (z > COUNTRY.z0) return 'Johnson County';
-  if (z > DESERT_Z) return 'Chisholm Flats';
-  if (x < -1000) return z < -100 ? 'Cross Timbers' : 'Benbrook Hills';
-  if (x > SEA_X) return z > 190 ? 'Lake Worth' : z > -1000 ? 'Stop Six' : 'Lake Worth Shore';
+  if (z > DESERT_Z) return 'Burleson';
+  if (x < -1000) return z < -100 ? 'Lake Worth' : 'Benbrook Hills';
+  if (x > SEA_X) return z > 190 ? 'Everman' : z > -1000 ? 'Stop Six' : 'Everman Shore';
   if (Math.abs(x) <= 300 && Math.abs(z) <= 300) return 'Downtown';
-  if (x > 300) return z > 600 ? 'Lakeside' : 'Riverside Industrial';
-  if (x < -300) return 'Arlington Heights';
+  if (x > 300) return z > 600 ? 'Near Southside' : 'Riverside Industrial';
+  if (x < -300) return z > 300 ? 'Crowley' : 'Arlington Heights';
   return z < 0 ? 'Stockyards' : 'Near Southside';
 }
 
@@ -243,7 +243,7 @@ export const LOCATIONS = [
   { id: 'glory_onramp', type: 'roll', name: 'Loop 820 On-Ramp', x: 12, z: -1180, face: Math.PI, color: '#ff1a2e', icon: 'flag', road: 'highway' },
   { id: 'ironside_start', type: 'roll', name: 'East Lancaster Runs', x: 312, z: 650, face: 0, color: '#ff1a2e', icon: 'flag', road: 'industrial' },
   { id: 'dustline_start', type: 'roll', name: 'Chisholm Trail Pkwy', x: 12, z: 1120, face: 0, color: '#ff1a2e', icon: 'flag', road: 'desert', tier: 2 },
-  { id: 'northridge_start', type: 'roll', name: 'Cross Timbers Pass', x: -1120, z: -330, face: -Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'mountain', tier: 4 },
+  { id: 'northridge_start', type: 'roll', name: 'Lake Worth Pass', x: -1120, z: -330, face: -Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'mountain', tier: 4 },
   { id: 'gas_desert', type: 'gas', name: 'Last Chance Gas', x: -24, z: 1700, face: -Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
   // Joshua, out in Johnson County (world2d/country.js draws the town)
   { id: 'gas_joshua', type: 'gas', name: 'Joshua Country Store', x: 36, z: 3705, face: Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
