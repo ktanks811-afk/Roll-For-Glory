@@ -208,7 +208,7 @@ export function labelDay(s, rnd = Math.random) {
   const pay = Math.round(gross - artistsCut + shows);
   if (pay > 0) { earnBank(s, pay, `${L.name}: streams${shows ? ' + shows' : ''}`); L.earned += pay; out.paid = pay; out.notes.push(`🎤 ${L.name} made ${fmtMoney(pay)} today (${fmtStreams(streams)} streams${shows ? `, ${fmtMoney(Math.round(shows))} from shows` : ''}).`); }
   L.streams += streams;
-  L.clout = Math.min(100, L.clout + streams / 250000);
+  L.clout = Math.min(1000, L.clout + streams / 250000);
   // trouble: jail, and artists who blew up wanting more
   for (const r of [...L.roster]) {
     const a = ARTIST_BY_ID[r.id];
