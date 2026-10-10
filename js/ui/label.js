@@ -33,7 +33,7 @@ export function openLabel(app, opts = {}) {
     else if (st.tab === 'releases') body = releasesTab(s);
     else if (st.tab === 'studio' && S) body = studioTab(s, studio);
     else body = rosterTab(s, ready);
-    const tabs = [['roster', `Roster ${L.roster.length}/${MAX_ROSTER}${ready.length ? ' •' : ''}`], ['scene', 'Scene'], ['releases', 'Releases']];
+    const tabs = [['roster', `Roster ${L.roster.length}/${MAX_ROSTER}${ready.length ? ' •' : ''}`], ['scene', 'Scene'], ['releases', 'Drop Hits']];
     if (S) tabs.unshift(['studio', 'Studio']);
     root.innerHTML = head(S ? S.name : L.name || 'Label', S ? esc(S.tagline) : L.name ? `Clout ${Math.floor(L.clout)} · ${fmtMoney(L.earned)} earned · ${LB.fmtStreams(L.streams)} streams` : 'Start a record label') + `<div class="p-body" style="max-width:760px">
       ${L.name && !st.view ? `<div class="tabs" style="margin:0 -12px 10px">${tabs.map(([id, label]) => `<button class="${st.tab === id ? 'on' : ''}" data-action="tab" data-id="${id}">${label}</button>`).join('')}</div>` : ''}
@@ -153,7 +153,13 @@ function relRow(rel) {
 
 function releasesTab(s) {
   const L = s.label;
-  return L.releases.length ? `<div class="list">${L.releases.map(relRow).join('')}</div>` : '<p class="muted">Nothing out yet. Book a session at a studio, then drop it from the Roster tab.</p>';
+  const ready = LB.finished(s);
+  const readyHtml = ready.length ? `<h3>Ready to drop</h3><p class="small muted">Your finished records are here. Pick a promo plan and drop the hit.</p>${ready.map(ses => {
+    const a = ARTIST_BY_ID[ses.artist], r = LB.signed(s, ses.artist);
+    return `<div class="card"><div class="row" style="gap:10px;align-items:center">${avatar(a)}<div class="grow"><b>"${esc(ses.title)}"</b> · ${esc(a?.name || ses.artist)}<div class="small muted">${KINDS[ses.kind].name} · ${LB.gradeOf(ses.quality)} · about ${LB.fmtStreams(LB.dayOne(ses.quality, r?.buzz || a?.buzz || 0, ses.kind))} streams with no promo</div></div></div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${PROMO.map(p => `<button class="btn btn-sm ${p.id === 'none' ? '' : 'btn-primary'}" data-action="drop_rel" data-id="${ses.id}" data-promo="${p.id}">${esc(p.name)}${p.cost ? ` · ${fmtMoney(p.cost)}` : ''}</button>`).join('')}</div></div>`;
+  }).join('')}` : '<p class="muted">No finished tracks yet. Sign an artist, book a studio session, then come back here to drop the hit.</p>';
+  const catalog = L.releases.length ? `<h3>Released hits</h3><div class="list">${L.releases.map(relRow).join('')}</div>` : '';
+  return readyHtml + catalog;
 }
 
 function studioTab(s, studio) {
