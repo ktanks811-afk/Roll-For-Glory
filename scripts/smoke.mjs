@@ -2560,6 +2560,56 @@ await step('hog dogs: kennel, dog profiles, breeding, a hog hunt', async () => {
   await clear();
   await p.evaluate(async () => { const s = window.__rfg.game.s; delete s.estate.land.land_crosscreek; s.kennel.dogs = []; s.kennel.preg = []; (await import('./js/world2d/estate.js')).applyEstate(window.__rfg.app.world.map, s); });
 });
+await step('hogs & dogs: bay pen, shows, hog pin, horses, coon hunt', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await clear();
+  await p.evaluate(async () => {
+    const s = window.__rfg.game.s, EST = await import('./js/core/estate.js'), DG = await import('./js/core/dogs.js'), k = DG.ensureKennel(s);
+    s.cash += 800000; EST.buyLand(s, 'land_crosscreek');
+    for (const [i, b] of ['Black Mouth Cur', 'Plott Hound', 'Treeing Walker', 'American Bulldog', 'American Pit Bull Terrier', 'Catahoula Leopard Dog'].entries()) k.dogs.push(DG.makeDog(s, { breed: b, age: 30, sex: i % 2 ? 'F' : 'M', home: 'land_crosscreek' }));
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    openPlace(LOC_BY_ID.bay_pen, window.__rfg.app);
+  });
+  await p.waitForSelector('[data-action=bayGo]'); await snap('hd-1-bay-pen');
+  await p.click('[data-action=bayGo]');
+  await p.waitForSelector('.baypen-cv'); await p.waitForTimeout(1200); await snap('hd-2-bay-pen-run');
+  await p.click('[data-action=baySkip]');
+  await p.waitForSelector('[data-action=bayDone]'); await snap('hd-3-bay-pen-result');
+  await p.click('[data-action=bayDone]');
+  for (const tab of ['shows', 'fair', 'pin', 'horses', 'ranch', 'books', 'wall']) {
+    await p.click(`.tabs button[data-id=${tab}]`); await p.waitForTimeout(250);
+    if (tab === 'shows') { await p.click('[data-action=enterShow]'); await p.waitForTimeout(200); }
+    if (tab === 'horses') { await p.click('[data-action=horse] >> nth=0'); await p.waitForSelector('[data-action=hbuy]'); await p.click('[data-action=hbuy]'); await p.waitForTimeout(200); }
+    await p.waitForTimeout(600); await snap(`hd-4-${tab}`);
+  }
+  const st = await p.evaluate(() => { const h = window.__rfg.game.s.hd; return { horses: h.horses.length, ribbons: h.st.shows || 0, bay: h.st.bayTrials || 0 }; });
+  if (!st.horses || !st.ribbons || !st.bay) throw new Error('hogs & dogs panel: ' + JSON.stringify(st));
+  await clear();
+  // a coon hunt off the hog lease: the hounds tree them, you walk up
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.hog_lease, window.__rfg.app); });
+  await p.click('[data-action=mode][data-id=coon]');
+  await p.waitForSelector('[data-action=go]:not([disabled])'); await snap('hd-5-coon-setup');
+  await p.click('[data-action=go]');
+  await p.waitForSelector('.hunt-cv');
+  await p.evaluate(async () => { const HH = await import('./js/core/hoghunt.js'), h = (await import('./js/ui/hoghunt.js')).activeHunt(); for (let i = 0; i < 4000 && !HH.baying(h).length; i++) { HH.autoHunter(h); HH.step(h, 0.05); } const g = HH.baying(h)[0]; if (g) HH.walkTo(h, g.x - 4, g.y); });
+  await p.waitForTimeout(1500); await snap('hd-6-coon-treed');
+  await p.click('[data-action=leave]'); await p.click('.modal button:has-text("Load up")');
+  await p.waitForSelector('.p-head h1:has-text("Back at the truck")'); await snap('hd-7-coon-results');
+  await clear();
+  // a hog hunt, then keep one in the Hog Pin from the results screen
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.hog_lease, window.__rfg.app); });
+  await p.click('[data-action=mode][data-id=hog]');
+  await p.waitForSelector('[data-action=go]:not([disabled])'); await p.click('[data-action=go]');
+  await p.waitForSelector('.hunt-cv');
+  await p.evaluate(async () => { const HH = await import('./js/core/hoghunt.js'), h = (await import('./js/ui/hoghunt.js')).activeHunt(); for (let i = 0; i < 20000 && !h.over && h.bag.length < 1; i++) { HH.autoHunter(h); HH.step(h, 0.05); } });
+  await p.click('[data-action=leave]'); await p.click('.modal button:has-text("Load up")');
+  await p.waitForSelector('.p-head h1:has-text("Back at the truck")');
+  if (await p.$('[data-action=keep]')) { await p.click('[data-action=keep] >> nth=0'); await p.waitForTimeout(200); }
+  await snap('hd-8-hog-results');
+  console.log('     pin', await p.evaluate(() => window.__rfg.game.s.hd.hogs.length));
+  await clear();
+  await p.evaluate(async () => { const s = window.__rfg.game.s; delete s.estate.land.land_crosscreek; s.kennel.dogs = []; s.kennel.preg = []; s.hd.hogs = []; s.hd.horses = []; (await import('./js/world2d/estate.js')).applyEstate(window.__rfg.app.world.map, s); });
+});
 
 await step('record label: start it, sign an artist in person, cut a single, drop it, get paid', async () => {
   const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });

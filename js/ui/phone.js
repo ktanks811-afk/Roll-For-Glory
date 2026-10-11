@@ -59,6 +59,7 @@ const APPS = [
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
   { id: 'inventory', name: 'Inventory', icon: '🎒', bg: '#b08a3e' },
   { id: 'dogs', name: 'Kennel', icon: '🐕', bg: '#8a5a3a' },
+  { id: 'hd', name: 'Hogs & Dogs', icon: '🐗', bg: '#5a3a22' },
   { id: 'label', name: 'Label', icon: '🎤', bg: 'linear-gradient(135deg,#5a1aa0,#c04aff)' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
   { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
@@ -118,6 +119,7 @@ function renderHome(scr, ctx) {
       if (d.id === 'partshub') { ctx.h.close(); openPartsHub(ctx.app); return; }
       if (d.id === 'label') { ctx.h.close(); import('./label.js').then(m => m.openLabel(ctx.app)); return; }
       if (d.id === 'dogs') { ctx.h.close(); import('./kennel.js').then(m => m.openKennel(ctx.app)); return; }
+      if (d.id === 'hd') { ctx.h.close(); import('./hdranch.js').then(m => m.openRanch(ctx.app)); return; }
       if (d.id === 'settings') { openSettings(ctx.app); return; }
       ctx.go(d.id);
     },

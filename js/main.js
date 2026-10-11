@@ -13,6 +13,12 @@ import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { estateDay } from './core/estate.js';
 import { dogsDay, ensureKennel } from './core/dogs.js';
+// the rest of Hogs & Dogs hooks into the kennel's day: mixes, coyotes, the alpha, the Hog Pin, horses, cams, traps, jobs
+import './core/hdkennel.js';
+import './core/hogpin.js';
+import './core/horses.js';
+import './core/hdranch.js';
+import { settleHighPoint } from './core/hdtrials.js';
 import { labelDay } from './core/label.js';
 import { drugsDay } from './core/drugs.js';
 import { fedsDay } from './core/bank.js';
@@ -178,6 +184,7 @@ function newDay() {
   for (const n of estateDay(s).notes) toast(n, 'good');
   // the kennel: feed, pups, the dog market restocks (core/dogs.js)
   for (const n of dogsDay(s).notes) toast(n, 'good');
+  for (const n of settleHighPoint(s)) toast(n, 'good');
   // the record label: streams and shows pay out, the A&R texts (core/label.js)
   const lb = labelDay(s);
   for (const n of lb.notes) toast(n, 'good');

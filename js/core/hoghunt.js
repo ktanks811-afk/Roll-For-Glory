@@ -10,7 +10,7 @@
 // This is the simulation only (meters, seconds). ui/hoghunt.js draws it and
 // feeds it taps. DOM-free so check-data can run whole hunts.
 
-import { HOGS, GROUND_BY_ID, HOG_PER_LB, HUNT_SECONDS, MAX_BAY, MAX_CATCH, STATS } from '../data/dogs.js';
+import { HOGS, GROUND_BY_ID, HOG_PER_LB, HUNT_SECONDS, MAX_BAY, MAX_CATCH, STATS, MODE_BY_ID } from '../data/dogs.js';
 import { ensureKennel, bayScore, catchScore, isAdult } from './dogs.js';
 import { earn, fmtMoney } from './state.js';
 
@@ -34,9 +34,16 @@ export function autoPick(s) {
 }
 
 // ---------------------------------------------------------------- start
-export function startHunt(s, groundId, bayIds, catchIds, seed = (Math.random() * 2 ** 31) | 0) {
-  const g = GROUND_BY_ID[groundId], k = ensureKennel(s);
-  if (!g) return { ok: false, text: 'No such lease.' };
+// opts (all optional, from Hogs & Dogs): mode (data/dogs.js HUNT_MODES), rifle,
+// thermal, utv (you ride instead of walk), cb (turn the catch dogs loose from
+// further off), tagged (a hog you tagged and turned loose here, back heavier),
+// giant (the trail cam caught the giant boar on these grounds).
+export const AFTER = [];   // (s, h, summary) after a hunt is settled: jobs, trophies
+export function startHunt(s, groundId, bayIds, catchIds, seed = (Math.random() * 2 ** 31) | 0, opts = {}) {
+  const g0 = GROUND_BY_ID[groundId], k = ensureKennel(s), mode = MODE_BY_ID[opts.mode] || MODE_BY_ID.hog;
+  if (!g0) return { ok: false, text: 'No such lease.' };
+  const g = mode.game ? { ...g0, hogs: mode.game, count: mode.count, brush: mode.brush ?? g0.brush } : mode.night ? { ...g0, count: g0.count + 2 } : g0;
+  if (mode.game) catchIds = [];
   const pickDogs = ids => ids.map(id => k.dogs.find(d => d.id === id)).filter(d => d && readyToHunt(d));
   const bay = pickDogs(bayIds).slice(0, MAX_BAY), ctch = pickDogs(catchIds).filter(d => !bay.includes(d)).slice(0, MAX_CATCH);
   if (!bay.length) return { ok: false, text: 'Take at least one bay dog to find the hogs.' };
@@ -55,14 +62,19 @@ export function startHunt(s, groundId, bayIds, catchIds, seed = (Math.random() *
     let r = rnd() * tot, kind = g.hogs[0][0];
     for (const [kk, w] of g.hogs) { r -= w; if (r < 0) { kind = kk; break; } }
     const Hg = HOGS[kind];
-    hogs.push({ i, kind, w: Math.round(R(Hg.w[0], Hg.w[1])), x: R(70, W - 12), y: R(12, H - 12), h: R(0, 6.28), state: 'hidden', seen: false, runT: 0, held: 0, tx: 0, ty: 0 });
+    const hs = (Math.imul(seed ^ 0x5bd1e995, i + 1) >>> 0) || 1;   // the hog's own genes, read off the hunt seed so the sim's dice don't move
+    hogs.push({ i, kind, w: Math.round(R(Hg.w[0], Hg.w[1])), x: R(70, W - 12), y: R(12, H - 12), h: R(0, 6.28), state: 'hidden', seen: false, runT: 0, held: 0, tx: 0, ty: 0, seed: hs, sex: hs % 2 ? 'M' : 'F' });
   }
+  if (!mode.game && opts.tagged && hogs[0]) Object.assign(hogs[0], { kind: opts.tagged.kind, w: opts.tagged.grown, sex: opts.tagged.sex, tagN: opts.tagged.n });
+  if (!mode.game && opts.giant && hogs[1]) Object.assign(hogs[1], { kind: 'giant', w: Math.round(R(HOGS.giant.w[0], HOGS.giant.w[1])), sex: 'M' });
   const mk = (d, role) => ({ id: d.id, name: d.name, role, d, x: truck.x + R(-3, 3), y: truck.y + R(-3, 3), tx: truck.x, ty: truck.y, state: role === 'bay' ? 'cast' : 'heel', hog: null, wait: 0, bark: 0, hp: d.health, hurt: 0, bays: 0, catches: 0, step: 0, h: 0 });
   const h = {
     ground: g.id, seed, t: 0, over: false, W, H, truck, cover, creek, hogs,
     player: { x: truck.x + 4, y: truck.y, tx: truck.x + 4, ty: truck.y, h: 0, step: 0 },
     dogs: [...bay.map(d => mk(d, 'bay')), ...ctch.map(d => mk(d, 'catch'))],
     vests: { ...k.vests }, collar: !!k.collar, bag: [], events: [], rnd,
+    mode: mode.id, night: !!mode.night, game: !!mode.game, rifle: !!opts.rifle && !!mode.night && !mode.game, thermal: !!opts.thermal && !!mode.night,
+    pspeed: opts.utv ? 10 : 6, relR: opts.cb ? 70 : RELEASE_R,
   };
   return { ok: true, hunt: h };
 }
@@ -75,7 +87,7 @@ export function releaseTarget(h) {
   for (const g of h.hogs) {
     if (g.state !== 'bay' && g.state !== 'run') continue;
     const d = dist(g, h.player);
-    if (d < RELEASE_R && d < bd) { bd = d; best = g; }
+    if (d < (h.relR || RELEASE_R) && d < bd) { bd = d; best = g; }
   }
   return best;
 }
@@ -88,14 +100,28 @@ export function release(h) {
   if (n) note(h, `Turned the catch dogs loose on the ${HOGS[g.kind].name.toLowerCase()}.`, 'go');
   return n > 0;
 }
-export const tieTarget = h => h.hogs.find(g => g.state === 'caught' && dist(g, h.player) < TIE_R) || null;
+const bagOf = (g, extra) => ({ kind: g.kind, w: g.w, seed: g.seed, sex: g.sex, ...(g.tagN ? { tagN: g.tagN } : {}), ...extra });
+// a caught hog, or a treed or downed animal on the game hunts
+export const tieTarget = h => h.hogs.find(g => (g.state === 'caught' || (g.state === 'bay' && HOGS[g.kind].tree)) && dist(g, h.player) < TIE_R + (HOGS[g.kind].tree ? 3 : 0)) || null;
 export function tie(h) {
   const g = tieTarget(h);
   if (!g) return false;
   g.state = 'tied';
-  h.bag.push({ kind: g.kind, w: g.w });
+  h.bag.push(bagOf(g));
   for (const d of h.dogs) if (d.hog === g) { d.hog = null; d.state = d.role === 'bay' ? 'cast' : 'heel'; d.wait = 1; }
-  note(h, `Tied off a ${g.w} lb ${HOGS[g.kind].name.toLowerCase()}.`, 'tie');
+  const H = HOGS[g.kind];
+  note(h, H.game ? (g.kind === 'deer' ? `Found the buck. ${g.w} lb, a good one.` : `Took the ${H.name.toLowerCase()} out of the tree.`) : `Tied off a ${g.w} lb ${H.name.toLowerCase()}${g.tagN ? ` (it's your tag #${g.tagN}!)` : ''}.`, 'tie');
+  return true;
+}
+// the rifle on a night hunt: a bayed hog close enough for a clean shot
+export const shotTarget = h => h.rifle ? h.hogs.find(g => g.state === 'bay' && !HOGS[g.kind].game && dist(g, h.player) < 40) || null : null;
+export function shoot(h) {
+  const g = shotTarget(h);
+  if (!g) return false;
+  g.state = 'tied';
+  h.bag.push(bagOf(g, { shot: true }));
+  for (const d of h.dogs) if (d.hog === g) { d.hog = null; d.state = d.role === 'bay' ? 'cast' : 'heel'; d.wait = 1; }
+  note(h, `One shot. ${g.w} lb ${HOGS[g.kind].name.toLowerCase()} down.`, 'tie');
   return true;
 }
 function note(h, text, kind = 'info') { h.events.push({ t: h.t, text, kind }); if (h.events.length > 30) h.events.shift(); }
@@ -120,7 +146,7 @@ export function step(h, dt) {
   h.t += dt;
   // the hunter
   const P = h.player;
-  moveTo(P, P.tx, P.ty, 6, dt);
+  moveTo(P, P.tx, P.ty, h.pspeed || 6, dt);
   // hogs
   for (const g of h.hogs) {
     if (g.state === 'hidden') {
@@ -138,13 +164,23 @@ export function step(h, dt) {
       if (g.ty < 8 || g.ty > H - 8) g.ty = g.y; if (g.tx > W - 6) g.tx = g.x;
       moveTo(g, g.tx, g.ty, hogSpeed(g), dt);
       const chasing = activeOn(h, g, ['trail']).length;
-      if (!chasing && g.runT > 6 || g.runT > 40 || g.x > W - 7 && g.runT > 10) {
+      if (!chasing && g.runT > 6 || g.runT > (HOGS[g.kind].self ? 25 : 40) || g.x > W - 7 && g.runT > 10) {
         g.state = 'gone';
         for (const d of h.dogs) if (d.hog === g) { d.hog = null; d.state = d.role === 'bay' ? 'cast' : 'heel'; }
-        note(h, `The ${HOGS[g.kind].name.toLowerCase()} got away into the thicket.`, 'bad');
+        note(h, HOGS[g.kind].self ? `The ${HOGS[g.kind].name.toLowerCase()} went to ground.` : `The ${HOGS[g.kind].name.toLowerCase()} got away into the thicket.`, 'bad');
       }
     } else if (g.state === 'bay') {
-      const bayers = activeOn(h, g, ['bay']), holders = activeOn(h, g, ['hold']);
+      const bayers = activeOn(h, g, ['bay']), holders = activeOn(h, g, ['hold']), Hq = HOGS[g.kind];
+      if (Hq.tree) {
+        // treed (or the buck is down): it stays put. Cats come down fighting now and then.
+        g.held += dt;
+        if (Hq.fight) for (const d of bayers) if (r() < dt * 0.006 * Hq.fight * (h.vests[d.id] ? 0.4 : 1)) {
+          const dmg = Math.round(6 + r() * 14 * Hq.fight); d.hp -= dmg; d.hurt += dmg;
+          if (d.hp < 20) { d.state = 'hurt'; d.hog = null; note(h, `${d.name} got clawed bad and is heading back to the truck.`, 'bad'); }
+          else note(h, `The ${Hq.name.toLowerCase()} swatted ${d.name} (−${dmg}).`, 'bad');
+        }
+        continue;
+      }
       if (!bayers.length && !holders.length) { g.state = 'run'; g.runT = 0; continue; }
       g.held += dt;
       if (holders.length) {
@@ -226,7 +262,19 @@ export function step(h, dt) {
           d.state = 'hold';
           if (!h.dogs.some(o => o !== d && o.state === 'hold' && o.hog === g)) note(h, `${d.name} hit him!`, 'go');
         } else if (g.state === 'bay') { d.state = 'bay'; }
-        else {
+        else if (HOGS[g.kind].self) {
+          // rabbits: jump it, run it, and a quick dog catches it in the open
+          if (g.state === 'hidden') { g.state = 'run'; g.runT = 0; note(h, `${d.name} jumped a ${HOGS[g.kind].name.toLowerCase()}!`, 'info'); }
+          else if (r() < dt * (2 + d.d.stats.spd / 25)) {
+            g.state = 'tied'; h.bag.push(bagOf(g)); d.catches++; d.hog = null; d.state = 'cast'; d.wait = 1;
+            for (const o of h.dogs) if (o.hog === g) { o.hog = null; o.state = 'cast'; }
+            note(h, `${d.name} caught the ${HOGS[g.kind].name.toLowerCase()}!`, 'tie');
+          }
+        } else if (HOGS[g.kind].tree) {
+          // it runs for the nearest tree; the hound stays under it and bawls
+          if (g.state === 'hidden' && r() < 0.5) { g.state = 'run'; g.runT = 0; note(h, `${d.name} jumped a ${HOGS[g.kind].name.toLowerCase()} and it's running.`, 'info'); }
+          else if (g.state === 'hidden' || r() < dt * 1.5) { g.state = 'bay'; g.held = 0; d.state = 'bay'; d.bays++; note(h, g.kind === 'deer' ? `${d.name} found the buck! Walk in.` : `${d.name} treed a ${HOGS[g.kind].name.toLowerCase()}! Walk to the tree.`, 'good'); }
+        } else {
           // he stands and fights, or he runs
           const grit = h.dogs.filter(o => o.hog === g).reduce((t, o) => t + bayScore(o.d), 0);
           const pRun = clamp(0.3 + HOGS[g.kind].rar * 0.12 - grit / 900, 0.08, 0.8);
@@ -250,7 +298,7 @@ export function step(h, dt) {
 export function endHunt(h, why = 'done') {
   if (h.over) return;
   h.over = why;
-  for (const g of h.hogs) if (g.state === 'caught') { g.state = 'tied'; h.bag.push({ kind: g.kind, w: g.w }); }
+  for (const g of h.hogs) if (g.state === 'caught') { g.state = 'tied'; h.bag.push(bagOf(g)); }
 }
 export const timeLeft = h => Math.max(0, HUNT_SECONDS - h.t);
 export const hogValue = (b, groundId) => Math.round(b.w * HOG_PER_LB * HOGS[b.kind].mult * (groundId === 'chalk' ? 1.2 : 1));
@@ -263,9 +311,9 @@ export function settleHunt(s, h) {
   if (!h.over) endHunt(h);
   if (h.settled) return h.settled;
   const k = ensureKennel(s);
-  const hogs = h.bag.map(b => ({ ...b, name: HOGS[b.kind].name, value: hogValue(b, h.ground) }));
+  const hogs = h.bag.map(b => ({ ...b, name: HOGS[b.kind].name, value: HOGS[b.kind].pay || hogValue(b, h.ground), sold: HOGS[b.kind].game ? 'game' : 'proc' }));
   const pay = hogs.reduce((t, b) => t + b.value, 0);
-  if (pay) earn(s, pay, `Joshua Wild Game Processing: ${hogs.length} hog${hogs.length > 1 ? 's' : ''}`);
+  if (pay) earn(s, pay, h.game ? `${MODE_BY_ID[h.mode].name}: ${hogs.length} taken` : `Joshua Wild Game Processing: ${hogs.length} hog${hogs.length > 1 ? 's' : ''}`);
   const dogs = [];
   for (const hd of h.dogs) {
     const d = k.dogs.find(x => x.id === hd.id);
@@ -284,9 +332,11 @@ export function settleHunt(s, h) {
     dogs.push({ id: d.id, name: d.name, role: hd.role, bays: hd.bays, catches: hd.catches, hurt: hd.hurt, health: d.health, ups });
   }
   const st = k.st;
-  st.hunts++; st.hogs += hogs.length; st.earned += pay;
-  for (const b of hogs) if (b.w > st.best) { st.best = b.w; st.bestName = b.name; }
-  h.settled = { hogs, pay, dogs, ground: GROUND_BY_ID[h.ground], text: hogs.length ? `${hogs.length} hog${hogs.length > 1 ? 's' : ''} to the processor for ${fmtMoney(pay)}.` : 'No hogs today. The dogs had a good run.' };
+  st.hunts++; st.earned += pay;
+  if (!h.game) { st.hogs += hogs.length; for (const b of hogs) if (b.w > st.best) { st.best = b.w; st.bestName = b.name; } }
+  const what = h.game ? `${hogs.length} taken` : `${hogs.length} hog${hogs.length > 1 ? 's' : ''} to the processor`;
+  h.settled = { hogs, pay, dogs, mode: h.mode, ground: GROUND_BY_ID[h.ground], text: hogs.length ? `${what} for ${fmtMoney(pay)}.` : h.game ? 'Nothing today. The dogs had a good run.' : 'No hogs today. The dogs had a good run.' };
+  for (const f of AFTER) f(s, h, h.settled);
   return h.settled;
 }
 
@@ -295,10 +345,11 @@ export function settleHunt(s, h) {
 export function autoHunter(h) {
   const t = tieTarget(h);
   if (t) { tie(h); return; }
+  if (shotTarget(h)) { shoot(h); return; }
   const caught = h.hogs.find(g => g.state === 'caught');
   if (caught) { walkTo(h, caught.x, caught.y); return; }
   const g = baying(h)[0];
-  if (g) { walkTo(h, g.x - 6, g.y); if (canRelease(h) && dist(g, h.player) < 30) release(h); return; }
+  if (g) { walkTo(h, g.x - (HOGS[g.kind].tree ? 2 : 6), g.y); if (canRelease(h) && dist(g, h.player) < 30) release(h); return; }
   const lead = h.dogs.find(d => d.role === 'bay' && d.state !== 'hurt');
   if (lead) walkTo(h, lead.x - 15, lead.y);
 }

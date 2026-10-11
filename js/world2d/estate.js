@@ -37,6 +37,8 @@ export function addEstate(out) {
     } else if (loc.type === 'salebarn') saleBarn(out, loc);
     else if (loc.type === 'kennel') kennel(out, loc);
     else if (loc.type === 'hoghunt') hogLease(out, loc);
+    else if (loc.type === 'baypen') bayPen(out, loc);
+    else if (loc.type === 'expo') expo(out, loc);
     else if (loc.type === 'plug') {
       // corner store: the building at the back of the lot, a strip of parking in front
       lots.push({ x: r.x0 + 2, z: r.z0 + 1, w: w - 4, d: 14, kind: 'parking', loc: loc.id });
@@ -112,6 +114,34 @@ function hogLease(out, loc) {
     if (x > r.x0 + 100 && x < r.x0 + 200) continue;
     trees.push({ x, z, r: 2.5 + rnd() * 3, kind: 'tree' });
   }
+}
+
+// The Rio Vista Bay Pen: a round hog-proof pen (panels on posts), the judges'
+// stand and a covered bleacher, a row of dog boxes on the trucks' side.
+function bayPen(out, loc) {
+  const { buildings, lots } = out, r = loc.lot, w = r.x1 - r.x0, d = r.z1 - r.z0;
+  lots.push({ x: r.x0 + 2, z: r.z0 + 2, w: w - 4, d: d - 4, kind: 'caliche', loc: loc.id });
+  const cx = r.x0 + w * 0.6, cz = r.z0 + d * 0.55, R = 34, n = 16;
+  for (let k = 0; k < n; k++) {
+    const a = k / n * Math.PI * 2, x = cx + Math.cos(a) * R, z = cz + Math.sin(a) * R;
+    buildings.push({ x: x - 3, z: z - 3, w: 6, d: 6, h: 1.6, color: '#a8adb3', kind: 'fence', loc: loc.id });
+  }
+  buildings.push({ x: r.x0 + 14, z: r.z0 + 40, w: 36, d: 20, h: 5, color: '#6a4a2e', kind: 'landmark', label: 'Rio Vista Bay Pen', labelColor: loc.color, loc: loc.id, shop: 'baypen', side: 'N', accent: loc.color });
+  buildings.push({ x: r.x0 + 14, z: r.z0 + 72, w: 30, d: 12, h: 3, color: '#8a7a5a', kind: 'store', loc: loc.id });
+  for (let k = 0; k < 5; k++) buildings.push({ x: r.x0 + 12 + k * 10, z: r.z1 - 22, w: 7, d: 5, h: 2, color: ['#c8b28a', '#5d636b'][k % 2], kind: 'house', loc: loc.id });
+}
+
+// The Cleburne Expo Center: the show arena, a horse barn, the fair midway
+// (a Ferris wheel and a couple of tents) and a big parking lot up front.
+function expo(out, loc) {
+  const { buildings, lots } = out, r = loc.lot, w = r.x1 - r.x0, d = r.z1 - r.z0;
+  lots.push({ x: r.x0 + 2, z: r.z0 + 2, w: w - 4, d: 46, kind: 'parking', loc: loc.id });
+  lots.push({ x: r.x0 + 2, z: r.z0 + 50, w: w - 4, d: d - 52, kind: 'caliche', loc: loc.id });
+  buildings.push({ x: r.x0 + 20, z: r.z0 + 60, w: 100, d: 60, h: 10, color: '#5d636b', kind: 'landmark', label: 'Cleburne Expo Center', labelColor: loc.color, loc: loc.id, shop: 'expo', side: 'N', accent: loc.color });
+  buildings.push({ x: r.x0 + 140, z: r.z0 + 60, w: 60, d: 28, h: 6, color: '#8a3b2a', kind: 'store', loc: loc.id });
+  for (const [fx, fz, fw, fd] of [[r.x0 + 140, r.z0 + 100, 60, 0.3], [r.x0 + 140, r.z0 + 150, 60, 0.3], [r.x0 + 140, r.z0 + 100, 0.3, 50], [r.x0 + 200, r.z0 + 100, 0.3, 50]]) buildings.push({ x: fx, z: fz, w: fw, d: fd, h: 1.4, color: '#e8e2d4', kind: 'fence', loc: loc.id });
+  buildings.push({ x: r.x0 + 30, z: r.z0 + 150, w: 22, d: 22, h: 14, color: '#d9822b', kind: 'tank', round: true, loc: loc.id });
+  for (let k = 0; k < 3; k++) buildings.push({ x: r.x0 + 64 + k * 22, z: r.z0 + 158, w: 16, d: 14, h: 4, color: ['#c0392b', '#f1f1f1', '#2c6fbb'][k], kind: 'store', loc: loc.id });
 }
 
 // ---------------------------------------------------------------- run time

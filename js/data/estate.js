@@ -47,6 +47,10 @@ export const ESTATE_LOCATIONS = [
   // hog dogs (core/dogs.js, core/hoghunt.js): the kennel that sells them on FM 4, and the hog lease down on the river
   P('dog_kennel', 'kennel', 'Cross Timbers Hog Dogs', 'S', 300, 4340, 460, 4480, { color: '#d9a85a', icon: 'dog' }),
   P('hog_lease', 'hoghunt', 'Nolan River Hog Lease', 'N', -2300, 5420, -2000, 5700, { color: '#8a5a3a', icon: 'hog' }),
+  // the rest of Hogs & Dogs (ui/hdranch.js): the bay pen trials in Rio Vista, and the
+  // Expo Center in Cleburne for dog shows, the horse barn and the county fair
+  P('bay_pen', 'baypen', 'Rio Vista Bay Pen', 'N', -1460, 4560, -1260, 4720, { color: '#c8743a', icon: 'hog' }),
+  P('expo', 'expo', 'Cleburne Expo Center', 'N', 60, 4540, 280, 4740, { color: '#e8c21a', icon: 'dog' }),
   // oil leases: pumpjacks and a tank battery, $40k a day once they're yours
   P('rig_godley', 'rig', 'Godley Pumpjack Lease', 'N', -2400, 3620, -2240, 3760, { color: '#e8c21a', icon: 'oil' }),
   P('rig_cleburne', 'rig', 'Cleburne Well Pad', 'N', -900, 3620, -740, 3760, { color: '#e8c21a', icon: 'oil' }),

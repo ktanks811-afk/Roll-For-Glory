@@ -8,6 +8,9 @@ import { game, fmtMoney } from '../core/state.js';
 import { LOC_BY_ID } from '../data/world.js';
 import { STATS, TRAIN, TEMP_FX, LOCI, BREEDS, RARITY, VET_VISIT, VEST_PRICE, COLLAR_PRICE, FEED_PER_DOG, LITTER_DAYS } from '../data/dogs.js';
 import * as DG from '../core/dogs.js';
+import * as HT from '../core/hdtrials.js';
+import * as HK from '../core/hdkennel.js';
+import * as RN from '../core/hdranch.js';
 import { dogImg, hydrateDogs } from '../gfx2d/dogArt.js';
 import { audio } from '../core/audio.js';
 import { saveGame } from '../core/save.js';
@@ -49,6 +52,7 @@ export function openKennel(app, opts = {}) {
         ${k.preg.length ? `<p class="small">🍼 ${k.preg.map(p => `${esc(k.dogs.find(d => d.id === p.dam)?.name || '?')} × ${esc(p.sire.name)}: pups day ${p.due}`).join(' · ')}</p>` : ''}
         ${dogs.length ? `<div class="grid dgrid">${dogs.map(d => dogCard(d, DG.pregnancy(s, d.id) ? '<div class="small good">Expecting</div>' : '')).join('')}</div>`
           : `<div class="empty">No dogs yet. Cross Timbers Hog Dogs in Johnson County sells curs, hounds, bulldogs and catch dogs.</div><div class="row"><button class="btn btn-primary" data-action="tab" data-id="buy">Buy a dog</button></div>`}
+        <div class="row" style="margin-top:8px"><button class="btn" data-action="hd">🐗 Hogs & Dogs: shows, trials, Hog Pin, horses, books</button></div>
         <p class="small muted">Dogs live at your places: up to 30 on country acreage, 12 on a lot, 6 at a house, 2 at the apartment. They eat ${fmtMoney(FEED_PER_DOG)} a day each, heal overnight and age a month every game day. Take them hog hunting at the Nolan River lease.</p>`;
     } else if (st.tab === 'breed') {
       const sires = k.dogs.filter(DG.canSire), dams = k.dogs.filter(d => DG.canDam(s, d));
@@ -82,6 +86,7 @@ export function openKennel(app, opts = {}) {
       dog: d => openDog(app, d.id, { shop, onChange: () => h.refresh() }),
       breed: async () => { if (say(DG.breed(s, st.sire, st.dam))) { st.sire = st.dam = ''; h.refresh(); } },
       collar: () => { if (say(DG.buyCollar(s))) h.refresh(); },
+      hd: () => import('./hdranch.js').then(m => m.openRanch(app)),
     });
     root.querySelectorAll('select[data-pick]').forEach(sel => sel.addEventListener('change', () => { st[sel.dataset.pick] = sel.value; h.refresh(); }));
     hydrateDogs(root, [...k.dogs, ...k.market]);
@@ -109,6 +114,9 @@ export function openDog(app, id, { shop = false, onChange = null } = {}) {
             <span>Energy</span><span>${Math.round(d.energy)}</span>
             <span>Generation</span><span>${d.gen ? `${d.gen}${d.gen === 1 ? 'st' : d.gen === 2 ? 'nd' : d.gen === 3 ? 'rd' : 'th'} generation` : 'Foundation stock'}</span>
             <span>Hunting</span><span>${d.hunt.n} hunt${d.hunt.n === 1 ? '' : 's'} · ${d.hunt.bays} bays · ${d.hunt.catches} catches</span>
+            ${HT.titles(d) || HK.isAlpha(s, d) ? `<span>Titles</span><span>${esc([HT.titles(d), HT.dualTitle(d), HK.isAlpha(s, d) ? '👑 Alpha' : ''].filter(Boolean).join(' · '))}</span>` : ''}
+            ${d.mix ? `<span>Named breed</span><span style="color:${HK.MIX_RAR_COLOR[d.mix.rarity] || 'inherit'}">${esc(d.mix.name)} <span class="muted small">(${esc(d.mix.rarity)})</span></span>` : ''}
+            ${mine ? `<span>Papers</span><span>${d.papers ? esc(d.papers) : '—'}</span>` : ''}
             <span>${mine ? 'Worth' : 'Price'}</span><span><b>${fmtMoney(mine ? DG.dogValue(d) : d.price)}</b></span>
             ${mine ? `<span>Lives at</span><span>${esc(DG.homeName(s, d.home))}</span>` : ''}
             ${d.parents ? `<span>Parents</span><span>${d.parents.map(p => `${esc(p.name)} <span class="muted small">(${esc(p.breed)})</span>`).join(' × ')}</span>` : ''}
@@ -122,12 +130,14 @@ export function openDog(app, id, { shop = false, onChange = null } = {}) {
           ${mine ? `<button class="btn btn-sm" data-action="train" data-k="${key}" ${trained || !g || d.energy < 30 || d.age < 6 ? 'disabled' : ''}>${TRAIN[key]}${g ? ` +${g}` : ''}</button>` : ''}</div>`;
       }).join('')}</div>
       ${mine ? `<p class="small muted">${trained ? `${esc(d.name)} worked today. Training again tomorrow.` : 'One training session a day. Smarter dogs and Eager ones learn faster.'}</p>` : ''}
-      <div class="section-title">Genes</div>
+${(() => { const F = HK.factsOf(d.breed); return F ? `<div class="section-title">Breed book</div><p class="small">${esc(F.role || '')} · ${esc(F.mouth || '')} · nose ${esc(F.nose || '?')}. ${esc(F.note || '')}</p>` : ''; })()}
+            <div class="section-title">Genes</div>
       <div class="list">${Object.entries(LOCI).map(([L, o]) => `<div class="li"><div class="grow"><div class="t">${esc(o.name)}</div></div><b class="gt">${esc(DG.genoText(d, L, ' / '))}</b></div>`).join('')}</div>
       <p class="small muted">${esc(b?.short || 'Mix')} genetics, Hogs & Dogs rules: one allele from each parent at every locus, the first one listed is dominant. Merle on both sides makes a double merle with lower health.</p>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px">
         ${mine ? `<button class="btn btn-sm" data-action="rename">✏️ Rename</button>
           <button class="btn btn-sm" data-action="vet" ${d.health >= d.hcap ? 'disabled' : ''}>🩺 Vet ${fmtMoney(VET_VISIT)}</button>
+          ${d.papers ? '' : `<button class="btn btn-sm" data-action="papers">📜 Papers ${fmtMoney(RN.PAPERS_FEE)}</button>`}
           <button class="btn btn-sm" data-action="vest" ${k.vests[d.id] ? 'disabled' : ''}>🦺 ${k.vests[d.id] ? 'Has a vest' : `Cut vest ${fmtMoney(VEST_PRICE)}`}</button>
           ${homes.length > 1 ? `<select class="input" data-pick="move" style="width:auto">${homes.map(x => `<option value="${esc(x.id)}" ${x.id === d.home ? 'selected' : ''}>${esc(x.name)} (${DG.dogsAt(s, x.id).length}/${x.room})</option>`).join('')}</select>` : ''}
           <button class="btn btn-sm btn-danger" data-action="sell">Sell ${fmtMoney(Math.round(DG.dogValue(d) * DG.SELL_RATE))}</button>`
@@ -139,6 +149,7 @@ export function openDog(app, id, { shop = false, onChange = null } = {}) {
       train: x => done(DG.trainDog(s, d.id, x.k)),
       vet: () => done(DG.vet(s, d.id)),
       vest: () => done(DG.buyVest(s, d.id)),
+      papers: () => done(RN.registerDog(s, d.id)),
       rename: async () => { const n = await prompt('Rename', `<p>What do you call ${esc(d.name)} now?</p>`, 'Name', d.name); if (n != null) done(DG.renameDog(s, d.id, n)); },
       sell: async () => { if (await confirm(`Sell ${d.name}?`, `<p>A buyer in Joshua will give you <b>${fmtMoney(Math.round(DG.dogValue(d) * DG.SELL_RATE))}</b>.</p>`, 'Sell', true)) { if (say(DG.sellDog(s, d.id))) { h.close(); onChange?.(); } } },
       buy: async () => { if (await confirm(`Buy ${d.name}?`, `<p>${esc(DG.breedName(d))}, ${esc(DG.coatName(d))}. ${fmtMoney(d.price)}.</p>`, 'Buy')) { if (say(DG.buyDog(s, d.id))) { h.close(); onChange?.(); } } },

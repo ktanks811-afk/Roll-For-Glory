@@ -42,6 +42,9 @@ import { openSaleBarn } from './livestock.js';
 import { openKennel } from './kennel.js';
 import { openLabel } from './label.js';
 import { openHogLease } from './hoghunt.js';
+import { openRanch as openHD } from './hdranch.js';
+import { fairOpen } from '../core/horses.js';
+const fairOpenToday = () => fairOpen(game.s.time.day);
 import { ensureKennel } from '../core/dogs.js';
 import { describe as towLine } from '../core/tow.js';
 import { stockRig } from '../core/livestock.js';
@@ -77,6 +80,8 @@ const HANDLERS = {
   kennel: (loc, app) => openKennel(app, { shop: true, tab: 'buy' }),
   studio: (loc, app) => openLabel(app, { studio: loc.id }),
   hoghunt: (loc, app) => openHogLease(loc, app),
+  baypen: (loc, app) => openHD(app, 'trials'),
+  expo: (loc, app) => openHD(app, fairOpenToday() ? 'fair' : 'shows'),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
