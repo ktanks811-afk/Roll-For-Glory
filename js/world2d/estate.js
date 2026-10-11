@@ -5,13 +5,14 @@
 // garage, land for sale is a dirt lot, and the plug gets his corner store.
 //
 // Run time (applyEstate): houses you built on your land go up on the map
-// (and come down again if you load a different career).
+// (and come down again if you load a different career), and so do the ones
+// other players on your server built on theirs (setForeignLand).
 // Customers and SWAT raids are in world2d/trap.js.
 
 import { garageBlock } from './map.js';
 import { ESTATE_LOCATIONS, RIGS, FENCE_BY_ID } from '../data/estate.js';
 import { PROPERTIES } from '../data/world.js';
-import { registerBuilds, isBuilt, houseDesign, pasture } from '../core/estate.js';
+import { registerBuilds, isBuilt, houseDesign, pasture, builtProperty } from '../core/estate.js';
 
 const overlaps = (o, r, pad = 0) => o.x < r.x1 + pad && o.x + (o.w || 0) > r.x0 - pad && o.z < r.z1 + pad && o.z + (o.d || 0) > r.z0 - pad;
 const inLot = (x, z, r, pad = 0) => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad;
@@ -115,7 +116,13 @@ function hogLease(out, loc) {
 }
 
 // ---------------------------------------------------------------- run time
-// Removes what an earlier career put up, then builds this career's houses.
+// Land other players on your server own: { landId: { name, land } }, where
+// land is a cleaned build (net/builds.js): { owned, plan, design, fence }.
+let FOREIGN = {};
+export function setForeignLand(m) { FOREIGN = m || {}; }
+
+// Removes what an earlier career put up, then builds this career's houses
+// and everyone else's.
 export function applyEstate(map, s) {
   registerBuilds(s);
   const old = map.estateAdded;
@@ -136,11 +143,12 @@ export function applyEstate(map, s) {
   };
   for (const loc of ESTATE_LOCATIONS) {
     if (loc.type !== 'land') continue;
-    const built = isBuilt(s, loc.id);
+    const mine = !!s.estate?.land?.[loc.id]?.owned, other = mine ? null : FOREIGN[loc.id];
+    const built = mine ? isBuilt(s, loc.id) : !!(other?.land?.plan && other.land.design);
     // the dirt lot shows until a house stands on it
     for (const l of map.lots) if (l.landLot && l.loc === loc.id) { l.w = built ? 0 : l.w0; l.d = built ? 0 : l.d0; }
     // a fenced pasture out back, with a gate on the side nearest the house
-    const fl = s.estate?.land?.[loc.id];
+    const fl = mine ? s.estate.land[loc.id] : other?.land;
     if (fl?.owned && fl.fence && FENCE_BY_ID[fl.fence]) {
       const P = pasture(loc), F = FENCE_BY_ID[fl.fence], t = 0.25, gate = 7;
       const gx = (P.x0 + P.x1) / 2, gz = (P.z0 + P.z1) / 2;
@@ -157,7 +165,13 @@ export function applyEstate(map, s) {
     if (!built) continue;
     const r = loc.lot;
     const out = { buildings: [], lots: [], garages: [], trees: [], props: [], houses: [], R: (a, b) => (a + b) / 2 };
-    garageBlock(out, loc, r.x0, r.z0, r.x1, r.z1, PROPERTIES[loc.id], houseDesign(s, loc.id));
+    if (mine) garageBlock(out, loc, r.x0, r.z0, r.x1, r.z1, PROPERTIES[loc.id], houseDesign(s, loc.id));
+    else {
+      // somebody else's: their house and garage, with their name on the roof
+      garageBlock(out, loc, r.x0, r.z0, r.x1, r.z1, builtProperty(loc.id, other.land.plan, other.land.design), other.land.design);
+      for (const g of out.garages) { g.roof.label = `${other.name}'s`; g.owner = other.name; g.label = `${other.name}'s place`; }
+      for (const hs of out.houses) hs.owner = other.name;
+    }
     for (const p of out.props) {
       map.props.push(p); const e = { type: 'p', o: p };
       map.drawGrid.insert(e, p.x, p.z, p.x + (p.w || 0), p.z + (p.d || 0)); all.push(p, e);
