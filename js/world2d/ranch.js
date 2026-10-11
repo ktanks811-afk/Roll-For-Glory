@@ -10,14 +10,17 @@ import { phenotype } from '../core/dogs.js';
 const SIZE = { cow: [1.25, 0.6], longhorn: [1.3, 0.62], horse: [1.35, 0.45], dog: [0.55, 0.22] };
 
 export class Ranch {
-  constructor(w) { this.w = w; this.list = []; this.key = ''; this.t = 0; }
+  constructor(w) { this.w = w; this.list = []; this.key = ''; this.t = 0; this.foreign = {}; }
+
+  // Other players' land on your server ({ landId: { land } }, world2d/showcase.js).
+  setForeign(m) { this.foreign = m || {}; this.key = ''; this.t = 0; }
 
   rebuild() {
     const s = this.w.s, out = [];
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (const loc of ESTATE_LOCATIONS) {
-      const l = s.estate?.land?.[loc.id];
+      const l = s.estate?.land?.[loc.id]?.owned ? s.estate.land[loc.id] : this.foreign[loc.id]?.land;
       if (!l?.owned || !l.animals) continue;
       const pen = pasture(loc), lot = { x0: loc.lot.x0 + 3, z0: loc.lot.z0 + 3, x1: loc.lot.x1 - 3, z1: loc.lot.z1 - 3 };
       // the herd keeps together near the gate end of the pasture, where you can see it
@@ -35,14 +38,14 @@ export class Ranch {
     }
     // your hog dogs (core/dogs.js) run the yard wherever they live
     const at = Object.fromEntries(ESTATE_LOCATIONS.map(l => [l.id, l]));
-    for (const d of s.kennel?.dogs || []) {
-      const loc = at[d.home];
-      if (!loc) continue;
+    const dog = (loc, look, id) => {
       const area = { x0: loc.lot.x0 + 3, z0: loc.lot.z0 + 3, x1: loc.lot.x1 - 3, z1: loc.lot.z1 - 3 };
-      const x = area.x0 + rnd() * (area.x1 - area.x0), z = area.z0 + rnd() * (area.z1 - area.z0), ph = phenotype(d.genes);
-      const big = Math.max(0.6, Math.min(1.35, (d.kg || 25) / 28)) * (d.age < 12 ? 0.6 + d.age / 30 : 1);
-      out.push({ kind: 'dog', area, x, z, h: rnd() * 6.28, tx: x, tz: z, wait: rnd() * 4, color: ph.white === 'extreme' || ph.white === 'heavy' ? ph.white2 : ph.baseHex, dark: ph.euHex, big, step: 0, home: loc.id, dog: d.id });
-    }
+      const x = area.x0 + rnd() * (area.x1 - area.x0), z = area.z0 + rnd() * (area.z1 - area.z0);
+      out.push({ kind: 'dog', area, x, z, h: rnd() * 6.28, tx: x, tz: z, wait: rnd() * 4, color: look.c, dark: look.d, big: look.g, step: 0, home: loc.id, dog: id });
+    };
+    for (const d of s.kennel?.dogs || []) if (at[d.home]) dog(at[d.home], dogLook(d), d.id);
+    // … and other players' dogs run theirs
+    for (const [id, f] of Object.entries(this.foreign)) if (at[id] && !s.estate?.land?.[id]?.owned) for (const d of f.land?.dogs || []) dog(at[id], d, null);
     this.list = out;
   }
 
@@ -116,6 +119,13 @@ export class Ranch {
       ctx.restore();
     }
   }
+}
+
+// How a dog looks running the yard: coat colour, ear colour, size.
+export function dogLook(d) {
+  const ph = phenotype(d.genes);
+  const big = Math.max(0.6, Math.min(1.35, (d.kg || 25) / 28)) * (d.age < 12 ? 0.6 + d.age / 30 : 1);
+  return { c: ph.white === 'extreme' || ph.white === 'heavy' ? ph.white2 : ph.baseHex, d: ph.euHex, g: +big.toFixed(2) };
 }
 
 // A patch about 64 m wide and 56 m deep at the front of the pasture.
