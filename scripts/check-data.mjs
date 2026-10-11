@@ -1790,6 +1790,85 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (CR.payment(12000, 0.12, 12) !== 1067) bad('payment math: ' + CR.payment(12000, 0.12, 12));
   game.s = null;
 }
+// the rest of Hogs & Dogs (core/hd*.js, core/hogpin.js, core/horses.js)
+{
+  const DG = await import('../js/core/dogs.js'), HH = await import('../js/core/hoghunt.js'), DD = await import('../js/data/dogs.js');
+  const HK = await import('../js/core/hdkennel.js'), HT = await import('../js/core/hdtrials.js'), HP = await import('../js/core/hogpin.js');
+  const HO = await import('../js/core/horses.js'), RN = await import('../js/core/hdranch.js'), HDc = await import('../js/core/hd.js');
+  const { ESTATE_LOCATIONS } = await import('../js/data/estate.js');
+  const { LOC_BY_ID, COUNTRY } = await import('../js/data/world.js');
+  const fs = await import('fs');
+  const mk = () => { const s = createState({ name: 'HD', age: 25, look: {}, story: false }); s.cash = 2000000; s.time.day = 10; game.s = s; s.estate ??= {}; s.estate.land ??= {}; s.estate.land.land_crosscreek = { owned: true, animals: { cow: 4 } }; return s; };
+  const pack = (s, home = 'land_crosscreek') => { const k = DG.ensureKennel(s); for (const b of ['Black Mouth Cur', 'Plott Hound', 'Treeing Walker', 'American Bulldog', 'American Pit Bull Terrier']) k.dogs.push(DG.makeDog(s, { breed: b, age: 30, home })); return k; };
+  const run = (s, ground, mode, seed, extra = {}) => { const pk = HH.autoPick(s); const r = HH.startHunt(s, ground, pk.bay, pk.ctch, seed, { mode, ...extra }); if (!r.ok) { bad(`${mode} hunt would not start: ${r.text}`); return null; } let n = 0; while (!r.hunt.over && n++ < 100000) { HH.autoHunter(r.hunt); HH.step(r.hunt, 0.05); } return HH.settleHunt(s, r.hunt); };
+  // the Bay Pen and the Expo Center are in Johnson County, clear of every other lot
+  for (const id of ['bay_pen', 'expo']) {
+    const l = LOC_BY_ID[id];
+    if (!l || l.z < COUNTRY.z0 || l.x < COUNTRY.x0 || l.x > COUNTRY.x1) { bad(`${id} is not in Johnson County`); continue; }
+    for (const o of ESTATE_LOCATIONS) if (o.id !== id && o.lot.x0 < l.lot.x1 && o.lot.x1 > l.lot.x0 && o.lot.z0 < l.lot.z1 && o.lot.z1 > l.lot.z0) bad(`${id} overlaps ${o.id}`);
+  }
+  // pictures: the horse and hog masters ship with the game
+  const { HORSE_MASTERS, HG } = await import('../js/gfx2d/horseArt.js'), { HOG_MASTERS } = await import('../js/gfx2d/hogArt.js');
+  for (const M of [...Object.values(HORSE_MASTERS), ...Object.values(HOG_MASTERS)]) for (const f of Object.values(M.maps)) if (!fs.existsSync(f)) bad(`missing ${f}`);
+  // the 8 new breeds and the 100 named mixes
+  if (HK.MIXES.length !== 100 || HK.MIXES.some(m => !DD.BREEDS[m.A] || !DD.BREEDS[m.B])) bad('100 mixes, every parent a real breed');
+  const s = mk(), k = pack(s);
+  const m0 = HK.MIXES[0], a = DG.makeDog(s, { breed: m0.A, sex: 'M', age: 24 }), b = DG.makeDog(s, { breed: m0.B, sex: 'F', age: 24 });
+  if (!m0.need.length) { const p = DG.makePuppy(s, a, b); if (!HK.pairRecipes(a, b).some(r => r.id === p.mix?.id) || !HK.mixBook(s)[p.mix?.id]) bad(`${m0.A} × ${m0.B} should make a named breed`); }
+  // shows: a grown dog enters this week's local show and places
+  const sh = HT.enterShow(s, k.dogs[0].id, 'local', { gait: 'steady', stack: 'hand', bait: 'bait' });
+  if (!sh.ok || !(sh.res.place >= 1 && sh.res.place <= 6) || HT.enterShow(s, k.dogs[0].id, 'local', {}).ok) bad('dog show: enter once a week');
+  // the bay pen: a practice trial runs 60 seconds and scores out of 40
+  const bp = HT.startBayPractice(s, k.dogs[1].id);
+  if (!bp.ok) bad('bay pen practice'); else { while (bp.B.t < HT.BAYT.SECS) HT.bayTick(bp.B); HT.finishBayPractice(s, bp.B); if (!(bp.B.tot >= 0 && bp.B.tot <= 40 && bp.B.place >= 1)) bad('bay pen score'); }
+  const sc = HT.startSanctioned(s, 'one', [k.dogs[2].id]);
+  if (!sc.ok) bad('sanctioned trial: ' + sc.text); else { while (!HT.sanctionedOver(sc.B)) HT.sanctionedTick(sc.B); HT.finishSanctioned(s, sc.B); if (!(sc.B.tot >= 0 && sc.B.tot <= 10)) bad('sanctioned score'); }
+  const ct = HT.enterCatchTrial(s, k.dogs[3].id); if (!ct.ok || HT.enterCatchTrial(s, k.dogs[4].id).ok) bad('catch trial: once a week');
+  // every hunt mode brings something home over a few tries
+  for (const mode of ['night', 'coon', 'squirrel', 'rabbit', 'blood']) {
+    let got = 0;
+    for (let i = 0; i < 6; i++) { const s2 = mk(); pack(s2); const sum = run(s2, 'nolan', mode, 300 + i, RN.huntOpts(s2, mode)); got += sum?.hogs.length || 0; if (sum && !(sum.pay >= 0)) bad(`${mode} pay`); }
+    if (!got) bad(`six ${mode} hunts took nothing`);
+  }
+  // after a hunt: keep a hog in the pin, sell one live, tag one; the pin feeds and grows them
+  let sum = null;
+  for (let i = 0; i < 10 && !(sum?.hogs.length >= 3); i++) { const s3 = mk(); pack(s3); sum = run(s3, 'cedar', 'hog', 500 + i); if (sum?.hogs.length >= 3) { Object.assign(s, s3); game.s = s; } }
+  if (!(sum?.hogs.length >= 3)) bad('no 3-hog hunt to test the Hog Pin with');
+  else {
+    const kept = HP.keepHog(s, sum.hogs[0], 'cedar'), live = HP.sellLive(s, sum.hogs[1], 'cedar'), tag = HP.tagHog(s, sum.hogs[2], 'cedar');
+    if (!kept.ok || !live.ok || !tag.ok || HP.keepHog(s, sum.hogs[0], 'cedar').ok) bad(`after the hunt: ${kept.text} / ${live.text} / ${tag.text}`);
+    const hog = HP.pinHogs(s)[0], w0 = hog?.w;
+    for (let d = 0; d < 3; d++) { s.time.day++; DG.dogsDay(s); }
+    if (!hog || !(hog.w >= w0) || hog.age < 3) bad('pin hogs should eat and grow');
+    if (HP.pinCap(s) !== 20) bad('country land holds 20 pin hogs');
+  }
+  // horses: country land has stalls, the market sells, same-breed breeding foals
+  const hs = mk(); hs.time.day = 10;
+  if (HO.stalls(hs) !== 6) bad('6 stalls on country land');
+  for (const x of HO.horseMarket(hs, true)) HO.buyHorse(hs, x.id);
+  const herd = HO.horses(hs);
+  if (!herd.length || herd.some(x => !x.coat || !x.genes)) bad('bought horses should have coats and genes');
+  // a foal: a mare bred to a stallion of her breed foals on her due day
+  const st = HG.create('Quarter Horse', { sex: 'M', age: 48 }), mare = HG.create('Quarter Horse', { sex: 'F', age: 48 });
+  HDc.ensureHd(hs).horses.splice(0, 9, st, mare);
+  if (!HO.breedHorses(hs, st.id, mare.id).ok) bad('horse breeding');
+  for (let d = 0; d < 12; d++) { hs.time.day++; DG.dogsDay(hs); }
+  if (!HO.horses(hs).some(x => x.parents?.length === 2)) bad('no foal 12 days after breeding');
+  // the fair: four times a year, one entry per event
+  while (!HO.fairOpen(hs.time.day)) hs.time.day++;
+  const fe = HO.enterFair(hs, 'barrel', herd.find(HO.isGrown)?.id);
+  if (!fe.ok || HO.enterFair(hs, 'barrel', herd[0].id).ok) bad('fair: barrel racing once per fair ' + fe.text);
+  const au = HO.fairAuction(hs);
+  if (!au.ok || hs.estate.land.land_crosscreek.animals.cow) bad('fair cattle auction ' + au.text);
+  // gear, cams, traps, jobs
+  const gs = mk(); pack(gs);
+  if (!RN.buyGear(gs, 'rifle').ok || RN.buyGear(gs, 'rifle').ok || !RN.buyCam(gs, 'nolan').ok || !RN.buyTrap(gs, 'land_crosscreek').ok) bad('gear, trail cam, trap');
+  const jb = RN.jobBoard(gs); if (jb.length !== 3 || !RN.takeJob(gs, jb[0].id).ok) bad('job board');
+  for (let d = 0; d < 20; d++) { gs.time.day++; DG.dogsDay(gs); }
+  if (!(RN.traps(gs).land_crosscreek.caught > 0)) bad('the corral trap never caught a hog in 20 days');
+  if (!RN.registerDog(gs, DG.ensureKennel(gs).dogs[0].id).ok) bad('papers');
+  game.s = null;
+}
 // ---- the rest of the Penal Code, murder is life, TDCJ (data/charges.js, core/prison.js) ----
 {
   const J = await import('../js/core/justice.js');

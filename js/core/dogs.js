@@ -13,6 +13,13 @@ import { LAND } from '../data/estate.js';
 import { STATS, TEMPS, LOCI, DEFAULT_FREQ, BREEDS, BREED_NAMES, CALL_M, CALL_F, SECOND_M, SECOND_F, HANDLE_M, HANDLE_F,
   DOG_ROOM, FEED_PER_DOG, VET_VISIT, VEST_PRICE, COLLAR_PRICE, LITTER_DAYS, DAM_REST } from '../data/dogs.js';
 import { Coat } from '../gfx2d/dogCoat.js';
+import { NEW_BREEDS } from '../data/hdref.js';
+
+// The rest of Hogs & Dogs (shows, trials, mixes, alpha, kennel life: core/hd*.js)
+// hangs its rules on these instead of this file importing all of them.
+// pup(s, pup, sire, dam) after a pup is made · day(s, notes) every morning ·
+// value(d) -> multiplier on what a dog is worth.
+export const HOOKS = { pup: [], day: [], value: [] };
 
 const R = Math.random;
 const ri = (a, b) => Math.floor(R() * (b - a + 1)) + a;
@@ -149,7 +156,13 @@ export function phenotype(g) {
   return { eu, euHex: EU_HEX[eu], baseHex, pat, merle, white, red, white2: '#f2eee6' };
 }
 
-// the coat engine (gfx2d/dogCoat.js) names and rates the coat
+// the coat engine (gfx2d/dogCoat.js) names and rates the coat. The eight 2.29
+// breeds are painted on the nearest body H&D uses for them.
+for (const [b, N] of Object.entries(NEW_BREEDS)) if (!Coat.TEMPLATES[b]) {
+  Coat.TEMPLATES[b] = { ...N.tpl, freq: N.b.freq };
+  Coat.TEMPLATES[`Mix (${b} build)`] = { code: 'X' + N.tpl.code, body: N.tpl.body, mix: true };
+  Coat.LINEUPS[b] = N.lu;
+}
 for (const b of BREED_NAMES) if (!Coat.TEMPLATES[b]) Coat.TEMPLATES[b] = { code: b.split(/\s+/).map(w => w[0]).join('').toUpperCase() + 'G' };
 export const dogMods = d => ({ whiteMod: d.whiteMod || 0, patMod: d.patMod ?? 0.5, coatInt: d.coatInt ?? 0.5, eyes: d.eyes || 'Auto', eyes2: d.eyes2 || d.eyes || 'Auto', merleMod: d.merleMod ?? 0.5, tickMod: d.tickMod ?? 0.5, speckMod: d.speckMod || 0, featherMod: d.featherMod ?? 0.3, featherDen: d.featherDen ?? 0.5, texture: d.texture || 0, seed: d.seed || 1 });
 // a cross wears the build (silhouette) of one parent's breed
@@ -189,7 +202,7 @@ export function makeDog(s, o) {
     hunt: { n: 0, bays: 0, catches: 0, hogs: 0, xp: 0 }, parents: null, gen: 0, base: b.price, mut: !!o.mut, cool: 0, trainedDay: 0,
     whiteMod: q2(clamp((R() - 0.5) * 0.3 + (b.whiteBias || 0), -0.4, 0.4)), patMod: q2(R()), coatInt: q2(b.coatInt ? b.coatInt[0] + R() * (b.coatInt[1] - b.coatInt[0]) : 0.3 + R() * 0.4),
     eyes: 'Auto', eyes2: 'Auto', merleMod: q2(0.2 + R() * 0.6), tickMod: q2(0.3 + R() * 0.4), speckMod: R() < (b.speck ?? 0.2) ? q2(R() * 0.7) : 0,
-    ...featherOf(o.breed), seed: ri(1, 2 ** 30), home: o.home || null,
+    ...featherOf(o.breed), seed: ri(1, 2 ** 30), home: o.home || null, anc: { [o.breed]: 1 },
   };
   if (!d.name) d.name = makeName(s, sex);
   const gf = growFactor(age);
@@ -227,9 +240,14 @@ export function makePuppy(s, sire, dam) {
     featherMod: inh('featherMod', 0.3, 0.06), featherDen: inh('featherDen', 0.5, 0.05), texture: inh('texture', 0, 0.05), seed: ri(1, 2 ** 30), home: dam.home,
   };
   if (R() < 0.5) { const p = pick([sire, dam]); d.eyes = p.eyes || 'Auto'; d.eyes2 = p.eyes2 || d.eyes; }
+  // ancestry: how much of each breed runs through the pup (the Breeding Lab reads it)
+  const anc = {};
+  for (const p of [sire, dam]) for (const [b, f] of Object.entries(p.anc || { [p.breed === 'Cross' ? (p.build || 'Black Mountain Cur') : p.breed]: 1 })) anc[b] = q2((anc[b] || 0) + f / 2);
+  d.anc = anc;
   d.name = makeName(s, sex);
   STATS.forEach(([k]) => d.stats[k] = Math.round(pot[k] * 0.3));
   geneHealth(d);
+  for (const f of HOOKS.pup) f(s, d, sire, dam);
   return d;
 }
 
@@ -259,6 +277,7 @@ export function dogValue(d) {
   v *= 1 + Math.min(0.3, (d.gen || 0) * 0.05);
   v *= 0.5 + d.health / 200;
   v += d.hunt.catches * 60 + d.hunt.bays * 35 + d.hunt.hogs * 20;
+  for (const f of HOOKS.value) v *= f(d);
   return Math.max(120, Math.round(v / 5) * 5);
 }
 export const SELL_RATE = 0.8;
@@ -406,6 +425,7 @@ export function dogsDay(s) {
     notes.push(`🐶 ${dam.name} whelped ${n} pup${n > 1 ? 's' : ''} by ${p.sire.name}.${soldN ? ` No room for ${soldN}, so they went to neighbours for ${fmtMoney(sold)}.` : ''}`);
   }
   refreshMarket(s, true);
+  for (const f of HOOKS.day) f(s, notes);
   return { notes, feed };
 }
 
