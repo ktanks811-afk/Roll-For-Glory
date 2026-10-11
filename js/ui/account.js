@@ -1,4 +1,4 @@
-import { el, esc, bind, toast } from './dom.js';
+import { el, esc, bind, toast, modal, prompt } from './dom.js';
 import { profile } from '../net/profile.js';
 import { auth } from '../net/auth.js';
 
@@ -21,9 +21,26 @@ const AUTH_CSS = `
 
 export function profileChip(onSwitch) {
   const signed = auth.isSignedIn;
-  const chip = el(`<div class="acct-chip"><span>☁️ <b>${signed ? 'Account linked' : 'Guest cloud save'}</b><small>${signed ? esc(auth.email) : 'Sign in to sync across devices'}</small></span><button type="button" data-action="account">${signed ? 'Account' : 'Sign in'}</button></div>`);
-  bind(chip, { account: () => showAccount(onSwitch) });
+  const chip = el(`<div class="acct-chip"><span><b>☁️ ${signed ? 'Account linked' : 'Guest cloud save'}</b><small>${signed ? esc(auth.email) : 'Sign in to sync across devices'}</small></span>${signed || !profile.id ? '' : '<button type="button" data-action="code">Code</button>'}<button type="button" data-action="account">${signed ? 'Account' : 'Sign in'}</button></div>`);
+  bind(chip, { account: () => showAccount(onSwitch), code: () => showCode(onSwitch) });
   return chip;
+}
+
+// Guests keep their profile code: it is still how a career signed in nowhere
+// comes back on another phone, or after the browser forgets everything.
+async function showCode(onSwitch) {
+  const pick = await modal('Your profile code', `<p>Your careers save online under this code automatically. Write it down or screenshot it.</p>
+    <p class="profile-code">${esc(profile.code)}</p>
+    <p>New phone, or the game forgot you? Tap <b>Use a code</b> and type it in to get your careers back.</p>`,
+  [{ label: 'Use a code', value: 'use' }, { label: 'Done', primary: true, value: 'ok' }]);
+  if (pick !== 'use') return;
+  const text = await prompt('Use a profile code', '<p>Type the 20-character code from your other device. The careers on this device are swapped for that profile\'s.</p>', 'XXXX-XXXX-XXXX-XXXX-XXXX');
+  if (!text) return;
+  try {
+    await profile.useCode(text);
+    toast('Profile loaded', 'good');
+    onSwitch();
+  } catch (e) { toast(e.message || 'That code did not work', 'bad'); }
 }
 
 export function showAccount(onSwitch) {

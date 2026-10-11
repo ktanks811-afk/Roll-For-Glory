@@ -29,7 +29,7 @@ await step('online profile, no log-in', async () => {
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(800);
   if (!(await p.isVisible('.menu button:has-text("New Game")'))) throw new Error('no title menu straight away');
   if (await p.isVisible('.auth-card')) throw new Error('log-in screen still shown');
-  if (!(await p.isVisible('.acct-chip:has-text("Saved online")'))) throw new Error('no profile chip');
+  if (!(await p.isVisible('.acct-chip:has-text("Guest cloud save")'))) throw new Error('no profile chip');
   const keys = await p.evaluate(() => Object.keys(localStorage));
   if (keys.includes('rollforglory.save.slot3') || !keys.some(k => /^rollforglory\.acct\..+\.save\.slot3$/.test(k))) throw new Error('old save did not move into the profile: ' + keys.join(','));
   await p.evaluate(() => window.__rfg.profile.push());
@@ -48,7 +48,7 @@ await step('online profile, no log-in', async () => {
   await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.__rfg); await p.waitForTimeout(600);
   if ((await p.evaluate(() => window.__rfg.profile.code)) === code) throw new Error('profile survived a full wipe?');
   if (await p.isVisible('.menu button[data-action=continue]:not([disabled])')) throw new Error('careers visible on a fresh profile');
-  await p.click('.acct-chip button'); await p.click('.modal button:has-text("Use a code")');
+  await p.click('.acct-chip [data-action=code]'); await p.click('.modal button:has-text("Use a code")');
   await p.fill('.modal input', code.toLowerCase()); await p.click('.modal [data-ok]'); await p.waitForTimeout(400);
   if (!(await p.isVisible('.menu button:has-text("OldTimer")'))) throw new Error('careers not back after entering the code');
   await p.evaluate(async () => (await import('./js/core/save.js')).deleteSlot('slot3'));
@@ -849,9 +849,10 @@ await step('Amazin\' shop + guns + robbery', async () => {
   await p.waitForTimeout(1500);
   await snap('32-robbery');
   await p.waitForTimeout(2400);
-  const rob = await p.evaluate(() => { const w = window.__rfg.app.world, s = window.__rfg.game.s; return { cash: s.cash, rob: !!w.combat.rob, heat: s.heat, phase: w.police.phase, n: s.arms.robberies, rec: w.police.record.map(r => r.kind) }; });
+  const rob = await p.evaluate(() => { const w = window.__rfg.app.world, s = window.__rfg.game.s; return { cash: s.cash, rob: !!w.combat.rob, heat: s.heat, phase: w.police.phase, cr: w.police.crimeResponse, n: s.arms.robberies, rec: w.police.record.map(r => r.kind) }; });
   if (rob.rob || !(rob.cash > cash0 + 200) || rob.n < 1) throw new Error('robbery did not pay out ' + JSON.stringify(rob));
-  if (rob.phase !== 'chase' || rob.heat < 1) throw new Error('the silent alarm did not send the cops ' + JSON.stringify(rob));
+  // crimes get a ten-second response window (notice + crimeResponse) before the pursuit starts
+  if (!(rob.phase === 'chase' || (rob.phase === 'notice' && rob.cr)) || rob.heat < 1) throw new Error('the silent alarm did not send the cops ' + JSON.stringify(rob));
   if (!rob.rec.includes('robbery')) throw new Error('robbery not on the record');
   // same store is on alert for a day
   await calm();
@@ -1009,8 +1010,8 @@ await step('stealing cars', async () => {
   // the 911 call comes in: units respond, it's on your record
   await p.evaluate(() => { window.__rfg.app.world.vehicle.car.hot.callAt = 0; });
   await p.waitForTimeout(300);
-  const call = await p.evaluate(() => { const w = window.__rfg.app.world; return { phase: w.police.phase, rec: w.police.record.map(r => r.kind), heat: window.__rfg.game.s.heat, reported: w.vehicle.car.hot.reported }; });
-  if (call.phase !== 'chase' || !call.rec.includes('carjack') || !(call.heat >= 2) || !call.reported) throw new Error('carjacking was never called in ' + JSON.stringify(call));
+  const call = await p.evaluate(() => { const w = window.__rfg.app.world; return { phase: w.police.phase, cr: w.police.crimeResponse, rec: w.police.record.map(r => r.kind), heat: window.__rfg.game.s.heat, reported: w.vehicle.car.hot.reported }; });
+  if (!(call.phase === 'chase' || (call.phase === 'notice' && call.cr)) || !call.rec.includes('carjack') || !(call.heat >= 2) || !call.reported) throw new Error('carjacking was never called in ' + JSON.stringify(call));
   const cls = await p.evaluate(async () => (await import('./js/core/justice.js')).classify({ kind: 'carjack', text: 'Carjacking (robbery of a motor vehicle).' }).cls);
   if (cls !== 'F2') throw new Error('carjacking charge class ' + cls);
   await calm();
@@ -1051,8 +1052,8 @@ await step('stealing cars', async () => {
   await p.waitForTimeout(200);
   await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle; w.police.phase = 'none'; w.thefts.plate = 0.99; const c = w.traffic.spawnNear(v.x, v.z, 0, 2000, {}); if (c) { c.police = true; c.stun = 5; w.police.patrols = [c]; v.x = c.x - Math.sin(c.h) * 9; v.z = c.z + Math.cos(c.h) * 9; v.h = c.h; v.vx = v.vz = 0; v.sim.v = 0; } });
   await p.waitForTimeout(400);
-  const ran = await p.evaluate(() => { const w = window.__rfg.app.world; return { phase: w.police.phase, rec: w.police.record.map(r => r.kind), reported: w.vehicle.car.hot.reported }; });
-  if (!ran.reported || ran.phase !== 'chase' || !ran.rec.includes('gta')) throw new Error('reported plate never got run ' + JSON.stringify(ran));
+  const ran = await p.evaluate(() => { const w = window.__rfg.app.world; return { phase: w.police.phase, cr: w.police.crimeResponse, rec: w.police.record.map(r => r.kind), reported: w.vehicle.car.hot.reported }; });
+  if (!ran.reported || !(ran.phase === 'chase' || (ran.phase === 'notice' && ran.cr)) || !ran.rec.includes('gta')) throw new Error('reported plate never got run ' + JSON.stringify(ran));
   await calm();
   // Sal buys it at Rusty's, no questions asked
   const cash0 = await p.evaluate(async () => {
@@ -1267,7 +1268,7 @@ await step('online free roam', async () => {
     out.cConflict = !cj.ok && cj.conflicts?.[0]?.name;
     out.cElsewhere = (await deeds.join(C, 'downtown')).ok;
     await deeds.release(A, 'six_bungalow');
-    out.afterSale = (await deeds.claim(B, 'six_bungalow')).ok;
+    out.afterSale = (await deeds.claim(B, 'six_bungalow')).ok;   // deeds are permanent: selling never frees the house up
     for (let i = 0; i < 15; i++) await deeds.join({ uid: 'fill' + String(i).padStart(4, '0'), crewKey: 'fill-key-fill-key', player: { name: 'F' + i }, properties: [], estate: {} }, 'glory');
     out.full = (await deeds.join({ uid: 'late9999', crewKey: 'late-key-late-key', player: { name: 'Late' }, properties: [], estate: {} }, 'glory')).full;
     localStorage.removeItem('rfg-localdeeds');
@@ -1275,7 +1276,7 @@ await step('online free roam', async () => {
     return out;
   });
   console.log('     deeds', JSON.stringify(deedCheck));
-  if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
+  if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && !deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
   // riding along: tab 1 walks up and asks tab 2 for a ride, tab 2 lets them in, then the other way round
   const ridePump = pg => pg.evaluate(() => { clearInterval(window.__pump); window.__pump = setInterval(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); }, 120); });
   await ridePump(p); await ridePump(p2);
@@ -1675,13 +1676,14 @@ await step('warrants', async () => {
   const hit = await p.evaluate(() => {
     const s = window.__rfg.game.s, w = window.__rfg.app.world, pl = w.playerState();
     w.police.reset(w); s.heat = 0;
-    const fake = { x: pl.x + 4, z: pl.z, police: true };
+    // a plate read needs the patrol behind you, following the same way
+    const fake = { x: pl.x - Math.sin(pl.h) * 10, z: pl.z + Math.cos(pl.h) * 10, h: pl.h, police: true };
     w.police.patrols.push(fake);
     for (let i = 0; i < 4 && w.police.phase === 'none'; i++) w.police.recognition(1, w, true);
     w.police.patrols = w.police.patrols.filter(c => c !== fake);
     return { phase: w.police.phase, heat: s.heat, radio: document.querySelector('.hud-radio')?.textContent || '' };
   });
-  if (hit.phase !== 'chase' || hit.heat < 2) throw new Error('a patrol next to a wanted car did not recognise it ' + JSON.stringify(hit));
+  if (!/^(chase|notice)$/.test(hit.phase) || hit.heat < 2) throw new Error('a patrol behind a wanted car did not recognise it ' + JSON.stringify(hit));
   // 3. pulling over with a warrant is an arrest, and it serves the warrant
   await p.evaluate(() => { const w = window.__rfg.app.world; w.police.phase = 'notice'; w.police.busted(w); });
   await p.waitForSelector('.modal h2:has-text("BUSTED")');
@@ -1757,7 +1759,7 @@ await step('courts + jail', async () => {
   await p.evaluate(() => {
     const s = window.__rfg.game.s, w = window.__rfg.app.world;
     s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; s.citations = []; s.cash = 200000; s.time.min = 10 * 60;
-    w.police.reset(w); s.heat = 3; w.police.startChase(w, true); w.police.eyesOn = true;
+    w.police.reset(w); s.heat = 3; w.police.startChase(w, true); w.police.eyesOn = true; w.police.phase = 'chase'; w.police.crimeResponse = false;
     w.police.record = [{ kind: 'robbery', text: 'Armed robbery — Amazin\' Mart.', fine: 6000 }, { kind: 'speeding', text: 'Speeding — 88 in a 45.', fine: 700 }];
     w.police.busted(w);
   });
@@ -1850,11 +1852,11 @@ await step('murder: life in TDCJ', async () => {
     w.police.reset(w);
     const ped = { x: w.foot.x + 3, z: w.foot.z, hp: 10 };
     w.combat.hurtPed(ped, 40, true);
-    window.__murder = { dead: ped.dead, record: w.police.record.map(r => r.kind), phase: w.police.phase };
+    window.__murder = { dead: ped.dead, record: w.police.record.map(r => r.kind), phase: w.police.phase, cr: w.police.crimeResponse };
   });
   const m = await p.evaluate(() => window.__murder);
-  if (!m.dead || !m.record.includes('murder') || m.phase !== 'chase') throw new Error('killing someone should be a murder: ' + JSON.stringify(m));
-  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.eyesOn = true; w.police.busted(w); });
+  if (!m.dead || !m.record.includes('murder') || !(m.phase === 'chase' || (m.phase === 'notice' && m.cr))) throw new Error('killing someone should be a murder: ' + JSON.stringify(m));
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.eyesOn = true; w.police.phase = 'chase'; w.police.crimeResponse = false; w.police.busted(w); });
   await p.waitForSelector('.modal h2:has-text("BUSTED")');
   if (!/Murder/.test(await p.textContent('.modal'))) throw new Error('BUSTED should list murder');
   await p.click('.modal button:has-text("See the magistrate")');

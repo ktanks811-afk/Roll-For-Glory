@@ -10,7 +10,7 @@
 // are not in the road graph, so traffic, police routing and the GPS ignore them.
 
 import { BACKROAD } from './map.js';
-import { GRID, HWY_Z, HWY_W, DESERT_Z, SEA_X, RIVER_X, TUNNEL, LOCATIONS, districtAt } from '../data/world.js';
+import { GRID, HWY_Z, HWY_W, DESERT_Z, SEA_X, RIVER_X, TUNNEL, LOCATIONS, districtAt, cityStyleAt } from '../data/world.js';
 
 const HOUSE_ROOFS = ['#6b3a2e', '#3f4a5a', '#5a4632', '#2f3b2f', '#6e6e6e', '#7a4b3a', '#4a3a4a', '#585048', '#3a4f5f'];
 const SIX_ROOFS = ['#5a4632', '#6e6e6e', '#3f4a5a', '#7a4b3a', '#4a3a4a', '#585048', '#8a7a62', '#2f3b2f', '#6b3a2e'];
@@ -149,7 +149,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
   // street trees along the city sidewalks (not in front of businesses)
   for (const e of roads.edges) {
     if (e.kind !== 'city' || Math.abs(e.az) > 900 || Math.abs(e.bz) > 900) continue;
-    const dist = districtAt((e.ax + e.bx) / 2, (e.az + e.bz) / 2);
+    const dist = cityStyleAt((e.ax + e.bx) / 2, (e.az + e.bz) / 2);
     if (dist === 'Riverside Industrial' || dist === 'Lakeside') continue;
     const step = dist === 'Downtown' ? 18 : 24;
     for (let s = 20; s < e.len - 20; s += step) {
@@ -166,10 +166,10 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
   // ---------------- a ring of buildings along the outer streets ----------------
   for (let k = 0; k < GRID.length - 1; k++) {
     const from = GRID[k] + 14, to = GRID[k + 1] - 14, mid = (from + to) / 2;
-    ringStrip('x', -900, -1, from, to, districtAt(mid, -950));   // north edge
-    ringStrip('x', 900, 1, from, to, districtAt(mid, 950));      // south edge
+    ringStrip('x', -900, -1, from, to, cityStyleAt(mid, -950));   // north edge
+    ringStrip('x', 900, 1, from, to, cityStyleAt(mid, 950));      // south edge
     ringStrip('z', -900, -1, from, to, 'Arlington Heights'); // west edge
-    ringStrip('z', 900, 1, from, to, districtAt(950, mid) === 'Lake Worth' ? 'Lakeside' : districtAt(940, mid));   // east edge
+    ringStrip('z', 900, 1, from, to, cityStyleAt(940, mid));   // east edge
   }
 
   // ---------------- North Side suburbs between the city and Loop 820 ----------------

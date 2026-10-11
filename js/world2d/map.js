@@ -2,7 +2,7 @@
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
-import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, NORTH, WEST, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, NORTH, WEST, LOCATIONS, PROPERTIES, cityStyleAt } from '../data/world.js';
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
 import { addEstate } from './estate.js';
@@ -60,7 +60,7 @@ export function buildMap() {
       const cx = GRID[i] + half, cz = GRID[j] + half;
       const x0 = GRID[i] + inset, z0 = GRID[j] + inset, x1 = GRID[i + 1] - inset, z1 = GRID[j + 1] - inset;
       const W = x1 - x0, D = z1 - z0;
-      const dist = districtAt(cx, cz);
+      const dist = cityStyleAt(cx, cz);
       const loc = locBlocks.get(`${i},${j}`);
       if (loc) { landmarkBlock(loc, x0, z0, x1, z1); continue; }
       if (dist === 'Downtown') {

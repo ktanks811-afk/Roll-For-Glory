@@ -223,6 +223,11 @@ export class PoliceSystem {
         this.stillT = p.inCar && p.speed < 1.5 ? this.stillT + dt : 0;
         if (this.stillT >= STOP_STILL) this.beginStop(w);
         else if (this.pullT <= 0 || lvl >= 2) this.failedToYield(w);
+        else if (this.unseenT > 7) {
+          this.phase = 'search';
+          this.searchR = 160 + lvl * 70;
+          w.hud.radio(`Lost visual. Set up a search grid around ${w.streetAt(this.lastSeen.x, this.lastSeen.z) || 'last known'}.`);
+        }
       }
     } else if (this.phase === 'stop' && this.stop) {
       this.updateStop(dt, w);
@@ -317,7 +322,8 @@ export class PoliceSystem {
       if (d < 6 || d > 24 || !lineOfSight(this.map, c.x, c.z, p.x, p.z)) continue;
 
       // Rear-plate cone: the patrol has to be behind the player, not beside or ahead.
-      const rearX = -Math.cos(p.h), rearZ = -Math.sin(p.h);
+      // Headings point along (sin h, -cos h), so straight back is (-sin h, cos h).
+      const rearX = -Math.sin(p.h), rearZ = Math.cos(p.h);
       const along = dx * rearX + dz * rearZ;
       const lateral = Math.abs(dx * (-rearZ) + dz * rearX);
       if (along < 4 || lateral > 7) continue;
@@ -400,7 +406,11 @@ export class PoliceSystem {
       this.chaseDisguise = this.seen ? this.disguise : 1;
       this.footOnly = !w.player.inCar;
       this.phase = 'notice';
-      this.crimeResponse = true;
+      // Crimes (and anyone already wanted) get the ten-second response window.
+      // Traffic offences — speeding, loud exhaust, burnouts — are a plain
+      // traffic stop: the patrol that saw it lights you up and you get
+      // PULL_OVER_S seconds to pull over and take the ticket.
+      this.crimeResponse = force || this.level >= 2;
       this.responseT = CRIME_RESPONSE_S;
       this.pullT = PULL_OVER_S;
       this.stillT = 0;
@@ -409,11 +419,18 @@ export class PoliceSystem {
       this.spikeT = SPIKE_START_S;
       this.interceptorSent = false;
       this.lastSeen = { x: w.player.x, z: w.player.z, vx: w.player.vx, vz: w.player.vz };
-      this.units = [];
-      w.hud.radio(`Dispatch: units are responding. You have ${CRIME_RESPONSE_S} seconds before they arrive — choose your move.`);
-      w.audio.siren(false);
-      w.audio.music(null);
-      this.spawnResponseUnits(w);
+      if (this.crimeResponse) {
+        this.units = [];
+        w.hud.radio(`Dispatch: units are responding. You have ${CRIME_RESPONSE_S} seconds before they arrive — choose your move.`);
+        w.audio.siren(false);
+        w.audio.music(null);
+        this.spawnResponseUnits(w);
+      } else {
+        this.takePatrol(w.player);
+        w.hud.radio(`Pull over! You have ${PULL_OVER_S} seconds.`);
+        w.audio.siren(true, 0.6);
+        w.audio.music('pursuit');
+      }
     } else {
       this.phase = 'chase';
       w.hud.radio('Eyes back on the suspect!');

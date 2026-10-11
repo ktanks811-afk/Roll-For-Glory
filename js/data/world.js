@@ -115,6 +115,16 @@ function westDistrict(x, z) {
   return 'West I-20';
 }
 function weatherfordDistrict(x, z) { const i=Math.floor((x-WEATHERFORD.x0)/BLOCK), j=Math.floor((z-WEATHERFORD.z0)/BLOCK); if(j<=1) return 'Weatherford North'; if(i>=7) return 'Weatherford East'; if(j>=8) return 'Weatherford South'; return 'Weatherford'; }
+// How a Fort Worth city block is built (warehouses, houses, towers). District
+// names are labels and get renamed; the look of a block stays tied to where it
+// is, so renaming a district never rebuilds the city around it.
+export function cityStyleAt(x, z) {
+  const d = districtAt(x, z);
+  if (d === 'Near Southside' && x > 300) return 'Riverside Industrial';   // the old Lakeside warehouses
+  if (d === 'Crowley') return 'Arlington Heights';                         // same house rows as before
+  return d;
+}
+
 function dallasDistrict(x, z) {
   if (x < DTRINITY_X - 60) return Math.abs(x - ARLINGTON_X) < 350 ? 'Arlington' : 'I-30';
   if (x > DALLAS.x1 + 40 || z < DALLAS.z0 - 40 || z > DALLAS.z1 + 40) return x > DALLAS.x1 ? 'East Dallas' : 'Dallas';

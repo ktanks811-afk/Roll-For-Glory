@@ -176,6 +176,8 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 }
 .acct-chip { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 12px; border-radius: 999px; background: rgba(5,5,7,.75); border: 1px solid var(--line2); color: var(--silver); font-size: 14px; }
 .acct-chip b { color: var(--text); }
+.acct-chip span { display: flex; flex-direction: column; line-height: 1.15; }
+.acct-chip small { font-size: 11px; opacity: .75; }
 .profile-code { margin: 10px 0; padding: 10px; text-align: center; font: 700 20px/1.2 ui-monospace, Menlo, monospace; letter-spacing: .08em; background: var(--panel2); border: 1px solid var(--line2); border-radius: var(--r); user-select: text; -webkit-user-select: text; }
 .acct-chip button { appearance: none; border: 1px solid var(--line2); background: var(--panel2); color: var(--text); border-radius: 999px; padding: 4px 10px; font: 700 12px var(--ui); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
 
