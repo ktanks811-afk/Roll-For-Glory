@@ -1276,7 +1276,7 @@ await step('online free roam', async () => {
     const cj = await deeds.join(C, 'harbor');
     out.cConflict = !cj.ok && cj.conflicts?.[0]?.name;
     out.cElsewhere = (await deeds.join(C, 'downtown')).ok;
-    await deeds.release(A, 'six_bungalow');
+    await deeds.release(A, 'six_bungalow');   // deeds are permanent now: Ann keeps it
     out.afterSale = (await deeds.claim(B, 'six_bungalow')).ok;
     for (let i = 0; i < 15; i++) await deeds.join({ uid: 'fill' + String(i).padStart(4, '0'), crewKey: 'fill-key-fill-key', player: { name: 'F' + i }, properties: [], estate: {} }, 'glory');
     out.full = (await deeds.join({ uid: 'late9999', crewKey: 'late-key-late-key', player: { name: 'Late' }, properties: [], estate: {} }, 'glory')).full;
@@ -1285,7 +1285,7 @@ await step('online free roam', async () => {
     return out;
   });
   console.log('     deeds', JSON.stringify(deedCheck));
-  if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
+  if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && !deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
   // your place on their screen: tab 2 (another player) builds a house, garage and pasture on Lake Worth
   // and parks cars in it; tab 1 sees it go up and can walk into the garage and look at the cars
   const shown = await p2.evaluate(async () => {
