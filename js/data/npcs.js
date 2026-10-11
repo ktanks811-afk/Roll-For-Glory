@@ -194,6 +194,7 @@ export const PEOPLE = {
   priya:   { name: 'Priya Shah', role: 'Agent · Bayline Realty', color: '#1f8f3a', bio: 'Sells garages with houses attached.' },
   plug:    { name: 'Lil Tre', role: 'The plug · Stop Six', color: '#2cff7a', bio: 'Runs the corner store on the east side. The good stuff is behind the counter.' },
   builder: { name: 'Cowtown Custom Builders', role: 'Construction', color: '#c8a46a', bio: 'Pour the slab Monday, hand you the keys Thursday.' },
+  ar:      { name: 'Tasha "Ears" Greene', role: 'A&R · your record label', color: '#c04aff', bio: 'Hears a hit before the hook comes in. Knows every rapper from Stop Six to South Dallas.' },
   zed:     { name: 'Zed', role: 'Parts Vendor', color: '#6b2bd1', bio: 'Shows up at meets with a van. Don\'t ask where the parts come from — they\'re just discounted, okay?' },
 };
 

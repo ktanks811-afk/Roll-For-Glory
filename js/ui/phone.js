@@ -15,6 +15,7 @@ import { emit } from '../core/events.js';
 import { openMarketplace } from './marketplace.js';
 import { openPartsHub } from './partshub.js';
 import { openGarage } from './garage.js';
+import { renderInventoryPhone } from './inventory.js';
 import { openSettings, openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
 import { renderHustle } from './hustle.js';
@@ -56,14 +57,16 @@ const APPS = [
   { id: 'turf', name: 'Turf', icon: '🚩', bg: '#7a1414' },
   { id: 'gang', name: 'Gang', icon: '✊', bg: '#4a1a6b' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
+  { id: 'inventory', name: 'Inventory', icon: '🎒', bg: '#b08a3e' },
   { id: 'dogs', name: 'Kennel', icon: '🐕', bg: '#8a5a3a' },
+  { id: 'label', name: 'Label', icon: '🎤', bg: 'linear-gradient(135deg,#5a1aa0,#c04aff)' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
   { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
   { id: 'jps', name: 'JPS Health', icon: '🏥', bg: '#e0192e' },
   { id: 'settings', name: 'Settings', icon: '⚙', bg: '#2a2c33' },
 ];
 
-export function openPhone(appId, app) {
+export function openPhone(appId, app, opts = {}) {
   const st = { app: appId || null, sub: null };
   const ph = openPanel((root, h) => {
     const s = game.s;
@@ -78,7 +81,7 @@ export function openPhone(appId, app) {
     else if (st.app === 'marketplace') { openMarketplace(scr, ctx); }
     else (RENDER[st.app] || renderHome)(scr, ctx);
     root.querySelector('[data-phone-home]').onclick = () => { if (st.app) go(null); else h.close(); };
-  }, { cls: 'phone-panel' });
+  }, { cls: 'phone-panel', onClose: opts.onClose || null });
   ph.root.addEventListener('click', e => { if (e.target === ph.root) ph.close(); });
   return ph;
 }
@@ -113,6 +116,7 @@ function renderHome(scr, ctx) {
   bind(scr, {
     open: d => {
       if (d.id === 'partshub') { ctx.h.close(); openPartsHub(ctx.app); return; }
+      if (d.id === 'label') { ctx.h.close(); import('./label.js').then(m => m.openLabel(ctx.app)); return; }
       if (d.id === 'dogs') { ctx.h.close(); import('./kennel.js').then(m => m.openKennel(ctx.app)); return; }
       if (d.id === 'settings') { openSettings(ctx.app); return; }
       ctx.go(d.id);
@@ -288,6 +292,7 @@ function relWord(r) { return r > 60 ? 'Friend' : r > 25 ? 'Respect' : r > -10 ? 
 
 // ---------------- map ----------------
 RENDER.map = renderMap;
+RENDER.inventory = renderInventoryPhone;
 
 // ---------------- bank ----------------
 RENDER.bank = (scr, ctx) => {

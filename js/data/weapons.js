@@ -128,14 +128,30 @@ export const GEAR = [
   { id: 'holster', name: 'Concealed carry holster', price: 60, blurb: 'Keeps your pistol out of sight until you draw it: nobody reacts to a holstered gun.' },
 ];
 
+// Extended magazines and drums. Any one fits any firearm you own (My gear):
+// more rounds before a reload, but a fat drum is slower to swap and harder
+// to hold on target. Legal to own in Texas.
+export const MAGS = [
+  { id: 'mag30', name: '30-round extended mag', short: '30 MAG', cap: 30, price: 45, reload: 1.1, spread: 1, blurb: 'Stick mag that hangs out of the grip. 30 rounds, barely slows a reload.' },
+  { id: 'drum50', name: '50-round drum', short: '50 DRUM', cap: 50, price: 129, reload: 1.35, spread: 1.08, blurb: 'Round drum. 50 before you reload; heavier, so a little sway on target.' },
+  { id: 'mag100', name: '100-round drum', short: '100 DRUM', cap: 100, price: 279, reload: 1.75, spread: 1.15, blurb: 'Twin-drum monster. 100 rounds, slow to swap, and it pulls the gun around.' },
+];
+export const MAG_BY_ID = Object.fromEntries(MAGS.map(m => [m.id, m]));
+
+// The Glock switch (auto sear): turns a Glock full-auto. Faster and more
+// reliable than an FRT but wild to control, and a federal machine gun:
+// possessing one is a felony if you get searched.
+export const SWITCH = { id: 'switch', name: 'Glock switch', price: 450, cd: 0.05, spread: 2.1, jam: 0.008,
+  blurb: 'Snaps on the back of any Glock slide: full-auto while you hold the trigger. Hard to keep on target. Illegal to own: if cops search you with one, it\'s a felony. 21+.' };
+
 // Federal-style age gates: handguns (and AR pistols, which count as handguns) 21+.
 export const minAge = w => w.minAge ?? 21;
 
 // Player's arms locker.
 export function ensureArms(s) {
-  s.arms ??= { guns: [], ammo: {}, equipped: null, armor: 0, holster: false, cooldown: {}, robberies: 0, hp: 100, frtKits: 0 };
+  s.arms ??= { guns: [], ammo: {}, equipped: null, armor: 0, holster: false, cooldown: {}, robberies: 0, hp: 100, frtKits: 0, switchKits: 0, magKits: {} };
   const a = s.arms;
-  a.frtKits ??= 0; a.guns ??= []; a.ammo ??= {}; a.cooldown ??= {}; a.robberies ??= 0; a.hp ??= 100; a.armor ??= 0;
+  a.frtKits ??= 0; a.switchKits ??= 0; a.magKits ??= {}; a.guns ??= []; a.ammo ??= {}; a.cooldown ??= {}; a.robberies ??= 0; a.hp ??= 100; a.armor ??= 0;
   return a;
 }
 export const frtKits = s => ensureArms(s).frtKits || 0;
@@ -150,17 +166,81 @@ export function toggleFrt(s, uid) {
   if (!g) return { ok: false, text: 'That gun is gone.' };
   if (g.frt) { g.frt = false; a.frtKits = (a.frtKits || 0) + 1; return { ok: true, text: `FRT removed from the ${def.name}. Back to semi-auto.` }; }
   if (!canFrt(def)) return { ok: false, text: def.melee ? 'No trigger on that.' : 'Already full-auto.' };
+  if (g.sw) return { ok: false, text: 'Pull the switch first. One trigger mod at a time.' };
   if (!(a.frtKits > 0)) return { ok: false, text: 'No FRT kit. Buy one under Gear.' };
   g.frt = true; a.frtKits--;
   return { ok: true, text: `FRT dropped in the ${def.name}. Hold the trigger… and pray it doesn't jam.` };
 }
+// Glocks take a switch; the Glock 18 is already full-auto. One trigger mod per gun.
+export const canSwitch = def => !!def && def.make === 'Glock' && !def.auto;
+
+export function toggleSwitch(s, uid) {
+  const a = ensureArms(s), g = a.guns.find(x => x.uid === uid), def = g && WEAPON_BY_ID[g.id];
+  if (!g) return { ok: false, text: 'That gun is gone.' };
+  if (g.sw) { g.sw = false; a.switchKits = (a.switchKits || 0) + 1; return { ok: true, text: `Switch pulled off the ${def.name}. Back to semi-auto.` }; }
+  if (!canSwitch(def)) return { ok: false, text: def.melee ? 'No trigger on that.' : def.auto ? 'Already full-auto.' : 'Switches only fit Glocks. Use an FRT on that.' };
+  if (g.frt) return { ok: false, text: 'Pull the FRT first. One trigger mod at a time.' };
+  if (!(a.switchKits > 0)) return { ok: false, text: 'No switch. Buy one under Mags.' };
+  g.sw = true; a.switchKits--;
+  return { ok: true, text: `Switch on the ${def.name}. It's a machine gun now. Hold on tight.` };
+}
+
+// How many rounds this gun holds with whatever mag is in it.
+export const magCap = (def, g) => def.melee ? 0 : Math.max(def.mag, MAG_BY_ID[g?.mag]?.cap || 0);
+// Reload time and spread multipliers from the mag (stock mag: 1).
+export const magMods = g => { const m = MAG_BY_ID[g?.mag]; return { reload: m?.reload || 1, spread: m?.spread || 1 }; };
+
+// Put a mag from your locker in a gun (or swap back to the stock mag with
+// magId null). Rounds that don't fit go back to your reserve.
+export function setMag(s, uid, magId) {
+  const a = ensureArms(s), g = a.guns.find(x => x.uid === uid), def = g && WEAPON_BY_ID[g.id];
+  if (!g) return { ok: false, text: 'That gun is gone.' };
+  if (def.melee) return { ok: false, text: 'No mag well on that.' };
+  if ((g.mag || null) === (magId || null)) return { ok: false, text: 'That mag is already in.' };
+  const m = magId && MAG_BY_ID[magId];
+  if (magId && !m) return { ok: false, text: 'Unknown mag.' };
+  if (m && !(a.magKits[magId] > 0)) return { ok: false, text: `No ${m.name} in your locker. Buy one under Mags.` };
+  if (m && m.cap <= def.mag) return { ok: false, text: `The ${def.name} already holds ${def.mag}.` };
+  if (g.mag) a.magKits[g.mag] = (a.magKits[g.mag] || 0) + 1;
+  if (m) a.magKits[magId]--;
+  g.mag = m ? magId : null;
+  const cap = magCap(def, g);
+  if (g.loaded > cap) { a.ammo[def.cal] = (a.ammo[def.cal] || 0) + g.loaded - cap; g.loaded = cap; }
+  return { ok: true, text: m ? `${m.name} in the ${def.name}. ${cap} rounds per load.` : `Stock ${def.mag}-round mag back in the ${def.name}.` };
+}
+
+export function buyMag(s, magId, spend) {
+  const m = MAG_BY_ID[magId], a = ensureArms(s);
+  if (!m) return { ok: false, text: 'Unknown item.' };
+  if (!spend(s, m.price, m.name)) return { ok: false, text: `Not enough money — ${m.name} is $${m.price}.` };
+  a.magKits[magId] = (a.magKits[magId] || 0) + 1;
+  return { ok: true, text: `${m.name} delivered. Put it in a gun under My gear.` };
+}
+export function buySwitch(s, spend) {
+  const a = ensureArms(s);
+  if (s.player.age < 21) return { ok: false, text: 'Switches are 21+.' };
+  if (!spend(s, SWITCH.price, SWITCH.name)) return { ok: false, text: `Not enough money — a switch is $${SWITCH.price}.` };
+  a.switchKits = (a.switchKits || 0) + 1;
+  return { ok: true, text: 'Switch delivered in a plain envelope. Put it on a Glock under My gear.' };
+}
+
+// Searched at booking: every switch on you (on a gun or loose) is seized and
+// becomes a machine-gun charge. Returns record items for justice.classify.
+export function seizeSwitches(s) {
+  const a = ensureArms(s);
+  let n = a.switchKits || 0;
+  for (const g of a.guns) if (g.sw) { n++; g.sw = false; }
+  a.switchKits = 0;
+  return n ? [{ kind: 'switch', text: `Possession of ${n > 1 ? n + ' machine-gun conversion devices' : 'a machine-gun conversion device'} (Glock switch).`, n, fine: 5000 }] : [];
+}
+
 export const equippedGun = s => { const a = ensureArms(s); return a.guns.find(g => g.uid === a.equipped) || null; };
 
 let n = 0;
 export function giveWeapon(s, id, loaded = true) {
   const a = ensureArms(s), def = WEAPON_BY_ID[id];
   const g = { uid: `w${Date.now().toString(36)}${n++}`, id, loaded: 0 };
-  if (!def.melee && loaded) { const put = Math.min(def.mag, a.ammo[def.cal] || 0); g.loaded = put; a.ammo[def.cal] = (a.ammo[def.cal] || 0) - put; }
+  if (!def.melee && loaded) { const put = Math.min(magCap(def, g), a.ammo[def.cal] || 0); g.loaded = put; a.ammo[def.cal] = (a.ammo[def.cal] || 0) - put; }
   a.guns.push(g);
   if (!a.equipped) a.equipped = g.uid;
   return g;

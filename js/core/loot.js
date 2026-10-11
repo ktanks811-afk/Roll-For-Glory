@@ -161,12 +161,14 @@ export function pawnItem(s, itemUid, earn, rng = Math.random) {
 // Your own guns: the counter buys them legally (paperwork, no questions).
 export function ownGunOffer(g) {
   const def = WEAPON_BY_ID[g?.id];
-  return def && !g.frt ? Math.round(def.price * PAWN.ownGun) : 0;
+  return def && !g.frt && !g.sw ? Math.round(def.price * PAWN.ownGun) : 0;
 }
 export function sellOwnGun(s, gunUid, earn) {
   const a = ensureArms(s), g = a.guns.find(x => x.uid === gunUid), def = g && WEAPON_BY_ID[g.id];
   if (!g) return { ok: false, paid: 0, text: 'That gun is gone.' };
   if (g.frt) return { ok: false, paid: 0, text: '"That\'s got a forced-reset trigger in it. I can\'t take that, and you didn\'t show it to me."' };
+  if (g.sw) return { ok: false, paid: 0, text: '"Is that a switch on the back? Get that out of my store."' };
+  if (g.mag) a.magKits[g.mag] = (a.magKits[g.mag] || 0) + 1;
   const paid = ownGunOffer(g);
   if (g.loaded && def.cal) a.ammo[def.cal] = (a.ammo[def.cal] || 0) + g.loaded;
   a.guns = a.guns.filter(x => x.uid !== gunUid);

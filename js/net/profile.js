@@ -14,6 +14,7 @@
 // honoured on localhost), which is what the smoke test uses.
 
 import { SUPABASE_URL, SUPABASE_KEY } from './online.js';
+import { auth } from './auth.js';
 import { exportSlots, importSlots, onSaved } from '../core/save.js';
 
 const KEY = 'mwsr.profile';
@@ -102,12 +103,23 @@ export const profile = {
   kind: useLocal ? 'local' : 'supabase',
   p: null,
   synced: false,   // true once this launch has talked to the server
+  authUser: null,
   get id() { return this.p && this.p.id; },
   get owner() { return this.p && (this.p.owner || this.p.id); },
   get code() { return this.p ? formatCode(this.p) : ''; },
 
   // Called once at boot, before the title screen.
   async init() {
+    // Auth is optional at boot. A blocked/slow CDN or Supabase auth request
+    // must never leave the loading screen hanging forever.
+    try {
+      await Promise.race([
+        auth.init(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('auth boot timeout')), 3000)),
+      ]);
+    } catch (e) {
+      console.warn('auth boot skipped:', e.message);
+    }
     this.p = readStored();
     if (!this.p) this.p = { id: rand(8), key: rand(12), owner: existingOwner() || undefined };
     store(this.p);
@@ -115,6 +127,43 @@ export const profile = {
     addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && this.dirty) this.push(); });
     // Don't hold the title screen hostage to a slow signal.
     await Promise.race([this.pull(), new Promise(r => setTimeout(r, 4000))]);
+    if (auth.user) {
+      try {
+        await Promise.race([
+          this.switchToAuth(auth.user),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('account save boot timeout')), 3500)),
+        ]);
+      } catch (e) {
+        console.warn('auth save boot skipped:', e.message);
+        // Keep the local career usable even when the cloud account is slow.
+        this.authUser = null;
+        setSaveOwner(this.p?.id);
+      }
+    }
+  },
+
+  async switchToAuth(user) {
+    if (!user?.id || this.authUser?.id === user.id) return;
+    const guestSlots = exportSlots(this.owner);
+    this.authUser = user;
+    setSaveOwner(user.id);
+    try {
+      const remoteSave = await auth.loadSave(user.id);
+      importSlots(user.id, guestSlots);
+      if (remoteSave?.saves?.slots) importSlots(user.id, remoteSave.saves.slots);
+      await auth.saveSave(user.id, { v: 1, slots: exportSlots(user.id) });
+      this.synced = true;
+    } catch (e) {
+      console.warn('auth save load', e.message);
+      importSlots(user.id, guestSlots);
+    }
+  },
+
+  async switchFromAuth() {
+    if (!this.authUser) return;
+    this.authUser = null;
+    setSaveOwner(this.p?.id);
+    await this.pull();
   },
 
   // Brings down any save that is newer online than on this device.

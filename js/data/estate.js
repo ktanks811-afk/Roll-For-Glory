@@ -18,7 +18,9 @@ const P = (id, type, name, side, x0, z0, x1, z1, extra = {}) => {
 export const ESTATE_LOCATIONS = [
   // Stop Six, on the lane north of Ramey Ave
   P('trap_stopsix', 'trap', 'Ramey Ave Trap House', 'N', 1560, -441, 1650, -340, { color: '#8a1a1a', icon: 'home' }),
-  P('plug', 'plug', "Lil Tre's Corner Store", 'N', 1880, -141, 1950, -95, { color: '#2cff7a', icon: 'tow' }),
+  P('plug', 'plug', "Lil Tre's Corner Store", 'N', 1880, -141, 1950, -95, { color: '#2cff7a', icon: 'tow', stock: ['loud', 'percs', 'lean', 'powder'] }),
+  P('plug_carson', 'plug', "Carsen's Lounge", 'N', 2050, -141, 2140, -55, { color: '#e85d3f', icon: 'music', stock: ['ice'] }),
+  P('plug_bankrol', 'plug', "Bankroll's Ladies Club", 'N', 2250, -141, 2340, -55, { color: '#d94cff', icon: 'meet', stock: ['lean', 'smoke', 'molly', 'exo'] }),
   P('land_stopsix', 'land', 'Empty Lot · Stop Six', 'N', 2200, -291, 2330, -172, { color: '#c8a46a', icon: 'key' }),
   // east of Stop Six, back off the lake road
   P('land_lakeworth', 'land', 'Lake Worth Acreage', 'W', 2628, -560, 2770, -430, { color: '#c8a46a', icon: 'key' }),
@@ -36,6 +38,10 @@ export const ESTATE_LOCATIONS = [
   P('land_nolan', 'land', 'Nolan River Acreage', 'W', -2780, 4700, -2500, 4980, { color: '#c8a46a', icon: 'key' }),
   P('land_homestead', 'land', 'Old Cleburne Rd Homestead', 'W', 20, 3980, 240, 4200, { color: '#c8a46a', icon: 'key' }),
   P('land_bluebonnet', 'land', 'Bluebonnet Hill Ranch', 'S', -700, 5100, -380, 5380, { color: '#c8a46a', icon: 'key' }),
+  // Parker County / Weatherford expansion
+  P('land_weatherford_north', 'land', 'Weatherford North Acreage', 'S', -5450, -450, -5150, -200, { color: '#c8a46a', icon: 'key' }),
+  P('land_parker_ridge', 'land', 'Parker County Ridge Land', 'E', -4550, -500, -4250, -250, { color: '#c8a46a', icon: 'key' }),
+  P('land_aledo_pasture', 'land', 'Aledo Pasture Estate', 'N', -4900, -450, -4600, -200, { color: '#c8a46a', icon: 'key' }),
   // the livestock auction on FM 4, where the stock trailer earns its keep (core/livestock.js)
   P('salebarn', 'salebarn', 'Joshua Livestock Auction', 'N', 500, 4520, 660, 4680, { color: '#d9822b', icon: 'tow' }),
   // hog dogs (core/dogs.js, core/hoghunt.js): the kennel that sells them on FM 4, and the hog lease down on the river
@@ -72,6 +78,9 @@ export const LAND = {
   land_crosscreek:  { name: 'Cross Creek Pasture', short: 'Cross Creek', price: 185000, ranch: 2, country: true, desc: 'Twenty-five acres of coastal Bermuda on County Road 1016. Ready for cattle.' },
   land_nolan:       { name: 'Nolan River Acreage', short: 'Nolan River', price: 260000, ranch: 2, country: true, desc: 'Thirty-five acres down by the Nolan River, live oaks and a creek crossing.' },
   land_buffalo:     { name: 'Buffalo Creek Ranch', short: 'Buffalo Creek', price: 340000, ranch: 2, country: true, desc: 'Forty acres on FM 4, cross-fenced once, good grass. Horse country.' },
+  land_weatherford_north: { name: 'Weatherford North Acreage', short: 'Weatherford North', price: 165000, ranch: 1, desc: 'Ten acres just outside the Weatherford city grid, with room for a shop and pasture.' },
+  land_parker_ridge: { name: 'Parker County Ridge Land', short: 'Parker Ridge', price: 310000, ranch: 2, country: true, tier: 2, desc: 'Twenty-eight acres of rolling Parker County ground with a long gravel approach.' },
+  land_aledo_pasture: { name: 'Aledo Pasture Estate', short: 'Aledo Pasture', price: 480000, ranch: 2, country: true, tier: 3, desc: 'Forty-five acres of pasture and tree line west of Weatherford.' },
   land_bluebonnet:  { name: 'Bluebonnet Hill Ranch', short: 'Bluebonnet Hill', price: 520000, ranch: 2, country: true, tier: 3, desc: 'Sixty acres on the high ground. You can see the Fort Worth skyline from the porch.' },
 };
 
@@ -102,6 +111,14 @@ export const DRUGS = [
     law: [[1, 'A', 'Possession of a controlled substance (PG 4)'], [3, 'SJF', 'Possession of a controlled substance (PG 4, over 28 g)'], [10, 'F3', 'Possession of a controlled substance (PG 4, over 200 g)']] },
   { id: 'powder', name: 'Powder', what: 'cocaine',       unit: '8-ball',  buy: 190, street: 340, color: '#f2f2f2',
     law: [[1, 'F3', 'Possession of a controlled substance (PG 1, over 1 g)'], [2, 'F2', 'Possession of a controlled substance (PG 1, over 4 g)'], [58, 'F1', 'Possession of a controlled substance (PG 1, over 200 g)']] },
+  { id: 'ice',    name: 'Ice',    what: 'crystal',       unit: 'unit',    buy: 260, street: 460, color: '#bfefff',
+    law: [[1, 'F3', 'Possession of a controlled substance (PG 1)'], [2, 'F2', 'Possession of a controlled substance (PG 1, over 4 g)'], [20, 'F1', 'Possession of a controlled substance (PG 1, over 200 g)']] },
+  { id: 'smoke',  name: 'Smoke',  what: 'smoke',        unit: 'unit',    buy: 110, street: 210, color: '#3f9f42',
+    law: [[1, 'B', 'Possession of marijuana'], [4, 'A', 'Possession of marijuana (over 2 oz)'], [12, 'SJF', 'Possession of marijuana (over 4 oz)']] },
+  { id: 'molly',  name: 'Molly',  what: 'capsules',     unit: 'unit',    buy: 180, street: 330, color: '#ff65c3',
+    law: [[1, 'SJF', 'Possession of a controlled substance (PG 1)'], [4, 'F3', 'Possession of a controlled substance (PG 1, over 1 g)'], [20, 'F2', 'Possession of a controlled substance (PG 1, over 4 g)']] },
+  { id: 'exo',    name: 'Exo',    what: 'tablets',      unit: 'unit',    buy: 145, street: 275, color: '#ffd85c',
+    law: [[1, 'SJF', 'Possession of a controlled substance (PG 1)'], [4, 'F3', 'Possession of a controlled substance (PG 1, over 1 g)'], [20, 'F2', 'Possession of a controlled substance (PG 1, over 4 g)']] },
 ];
 export const DRUG_BY_ID = Object.fromEntries(DRUGS.map(d => [d.id, d]));
 

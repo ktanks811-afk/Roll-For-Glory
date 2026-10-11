@@ -25,6 +25,20 @@ export const COUNTRY_ROADS = { x: [-2800, -1500, 0, 700], z: [3600, 4500, 5400] 
 // Loop 820 past Arlington. Its own 10x10-block grid (150 m blocks); I-30 cuts
 // through the middle of it (row 5), downtown and Deep Ellum north of the
 // freeway, Oak Cliff and South Dallas south of it. world2d/dallas.js fills it in.
+export const WEATHERFORD = { x0: -5700, x1: -3900, z0: -2100, z1: -600 };
+export const WGRID_X = [], WGRID_Z = [];
+for (let v = WEATHERFORD.x0; v <= WEATHERFORD.x1; v += 150) WGRID_X.push(v);
+for (let v = WEATHERFORD.z0; v <= WEATHERFORD.z1; v += 150) WGRID_Z.push(v);
+export const I20_WEST_END = -6000;
+// West Texas growth zone: the map can keep expanding west without changing the
+// core Fort Worth coordinates. This first step reaches Mineral Wells / Palo Pinto.
+export const WEST = { x0: -10800, x1: -5700, z0: -2250, z1: 450 };
+export const XGRID_X = [], XGRID_Z = [];
+for (let v = WEST.x0 + 600; v <= WEST.x1 - 150; v += 150) XGRID_X.push(v);
+for (let v = WEST.z0 + 150; v <= WEST.z1 - 150; v += 150) XGRID_Z.push(v);
+export const WEST_CITY = { x0: -9750, x1: -8250, z0: -1950, z1: -750 };
+export const inWest = (x, z) => x > WEST.x0 && x < WEST.x1 && z > WEST.z0 && z < WEST.z1;
+export const inWestCity = (x, z) => x > WEST_CITY.x0 - 20 && x < WEST_CITY.x1 + 20 && z > WEST_CITY.z0 - 20 && z < WEST_CITY.z1 + 20;
 export const DALLAS = { x0: 4650, x1: 6150, z0: -2100, z1: -600 };
 export const DGRID_X = [], DGRID_Z = [];
 for (let v = DALLAS.x0; v <= DALLAS.x1; v += 150) DGRID_X.push(v);
@@ -35,6 +49,7 @@ export const DALLAS_ZONE = { x0: 3300, x1: 6800, z0: -2500, z1: -250 };   // the
 export const DTRINITY_X = 4440;              // the Trinity River, west of downtown Dallas (80 m wide)
 export const ARLINGTON_X = 3800;             // I-30 exit at the stadium
 export const ARLINGTON_END = -700;           // Collins St runs south from the exit to here
+export const inWeatherford = (x, z) => x > WEATHERFORD.x0 - 12 && x < WEATHERFORD.x1 + 12 && z > WEATHERFORD.z0 - 12 && z < WEATHERFORD.z1 + 12;
 export const inDallas = (x, z) => x > DALLAS.x0 - 12 && x < DALLAS.x1 + 12 && z > DALLAS.z0 - 12 && z < DALLAS.z1 + 12;
 // North Texas: up I-35W from Loop 820, past the Alliance warehouses and the
 // airport, Texas Motor Speedway at TX-114, Northlake and Argyle, Roanoke down
@@ -61,7 +76,7 @@ export const LEWISVILLE = { x0: 2450, x1: 3150, z0: -6900, z1: -4900 };   // Lak
 export const inDenton = (x, z) => x > DENTON.x0 - 12 && x < DENTON.x1 + 12 && z > DENTON.z0 - 12 && z < DENTON.z1 + 12;
 export const inNorth = (x, z) => z < NORTH.z1 && x > NORTH.x0 && x < NORTH.x1;
 // either city grid outside Fort Worth (sidewalks, red lights, pavement)
-export const inCityGrid = (x, z) => inDallas(x, z) || inDenton(x, z);
+export const inCityGrid = (x, z) => inDallas(x, z) || inDenton(x, z) || inWestCity(x, z);
 
 export const STREET_NS = ['Hulen St', 'Montgomery St', 'University Dr', 'Henderson St', 'Throckmorton St', 'Houston St', 'Main St', 'Commerce St', 'Jones St', 'Riverside Dr', 'Beach St', 'Oakland Blvd', 'Lake Worth Blvd'];
 export const DSTREET_NS = ['Sylvan Ave', 'Riverfront Blvd', 'Lamar St', 'Griffin St', 'Akard St', 'Ervay St', 'Harwood St', 'Pearl St', 'Good Latimer Expy', 'Exposition Ave', 'Haskell Ave'];
@@ -71,20 +86,35 @@ export const DNSTREET_EW = ['University Dr', 'Sherman Dr', 'Oak St', 'Hickory St
 export const STREET_EW = ['NE 28th St', 'Stockyards Blvd', 'Exchange Ave', 'Northside Dr', 'Belknap St', 'Weatherford St', 'W 7th St', 'Lancaster Ave', 'Vickery Blvd', 'Rosedale St', 'Magnolia Ave', 'Berry St', 'Seminary Dr'];
 
 export function districtAt(x, z) {
+  if (inWeatherford(x, z)) return weatherfordDistrict(x, z);
+  if (inWest(x, z)) return westDistrict(x, z);
   if (x > DALLAS_ZONE.x0 && z < DALLAS_ZONE.z1 + 400) return dallasDistrict(x, z);
   if (z < NORTH.z1 && x > NORTH.x0 - 200) return northDistrict(x, z);
   if (z < HWY_Z - 60 && Math.abs(x) < 60) return 'I-35W';
   if (z < -1000) return 'Loop 820';
   if (z > COUNTRY.z0) return 'Johnson County';
-  if (z > DESERT_Z) return 'Chisholm Flats';
-  if (x < -1000) return z < -100 ? 'Cross Timbers' : 'Benbrook Hills';
-  if (x > SEA_X) return z > 190 ? 'Lake Worth' : z > -1000 ? 'Stop Six' : 'Lake Worth Shore';
+  if (z > DESERT_Z) return 'Burleson';
+  if (x < -1000) return z < -100 ? 'Lake Worth' : 'Benbrook Hills';
+  if (x > SEA_X) return z > 190 ? 'Everman' : z > -1000 ? 'Stop Six' : 'Everman Shore';
   if (Math.abs(x) <= 300 && Math.abs(z) <= 300) return 'Downtown';
-  if (x > 300) return z > 600 ? 'Lakeside' : 'Riverside Industrial';
-  if (x < -300) return 'Arlington Heights';
+  if (x > 300) return z > 600 ? 'Near Southside' : 'Riverside Industrial';
+  if (x < -300) return z > 300 ? 'Crowley' : 'Arlington Heights';
   return z < 0 ? 'Stockyards' : 'Near Southside';
 }
 
+function westDistrict(x, z) {
+  if (inWestCity(x, z)) {
+    const i = Math.floor((x - WEST_CITY.x0) / BLOCK), j = Math.floor((z - WEST_CITY.z0) / BLOCK);
+    if (j <= 2) return 'Mineral Wells North';
+    if (i <= 2) return 'Mineral Wells West';
+    if (i >= 6) return 'Mineral Wells East';
+    return 'Mineral Wells';
+  }
+  if (z < -1650) return 'Palo Pinto County';
+  if (x < -9300) return 'Palo Pinto Mountains';
+  return 'West I-20';
+}
+function weatherfordDistrict(x, z) { const i=Math.floor((x-WEATHERFORD.x0)/BLOCK), j=Math.floor((z-WEATHERFORD.z0)/BLOCK); if(j<=1) return 'Weatherford North'; if(i>=7) return 'Weatherford East'; if(j>=8) return 'Weatherford South'; return 'Weatherford'; }
 function dallasDistrict(x, z) {
   if (x < DTRINITY_X - 60) return Math.abs(x - ARLINGTON_X) < 350 ? 'Arlington' : 'I-30';
   if (x > DALLAS.x1 + 40 || z < DALLAS.z0 - 40 || z > DALLAS.z1 + 40) return x > DALLAS.x1 ? 'East Dallas' : 'Dallas';
@@ -118,11 +148,15 @@ function northDistrict(x, z) {
 }
 export const DENTON_DISTRICTS = ['TWU', 'The Square', 'UNT', 'North Denton', 'East Denton', 'Southeast Denton'];
 export const NORTH_DISTRICTS = [...DENTON_DISTRICTS, 'Denton', 'Lake Lewisville', 'Texas Motor Speedway', 'Roanoke', 'Alliance', 'Alliance Airport', 'Northlake', 'Argyle', 'US-377', 'Justin Prairie'];
+export const WEATHERFORD_DISTRICTS = ['Weatherford','Weatherford North','Weatherford East','Weatherford South'];
+export const WEST_DISTRICTS = ['Mineral Wells','Mineral Wells North','Mineral Wells West','Mineral Wells East','Palo Pinto County','Palo Pinto Mountains','West I-20'];
 export const DALLAS_DISTRICTS = ['Uptown', 'Downtown Dallas', 'Deep Ellum', 'West Dallas', 'Oak Cliff', 'South Dallas'];
 
 export function blockCenter(i, j, city) {
   if (city === 'denton') return { x: DENTON.x0 + BLOCK / 2 + BLOCK * i, z: DENTON.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'dallas') return { x: DALLAS.x0 + BLOCK / 2 + BLOCK * i, z: DALLAS.z0 + BLOCK / 2 + BLOCK * j };
+  if (city === 'weatherford') return { x: WEATHERFORD.x0 + BLOCK / 2 + BLOCK * i, z: WEATHERFORD.z0 + BLOCK / 2 + BLOCK * j };
+  if (city === 'west') return { x: WEST_CITY.x0 + BLOCK / 2 + BLOCK * i, z: WEST_CITY.z0 + BLOCK / 2 + BLOCK * j };
   return { x: -825 + BLOCK * i, z: -825 + BLOCK * j };
 }
 
@@ -144,6 +178,8 @@ const L = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: 
 const D = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'dallas', side, ...front(i, j, side, 0, 'dallas'), ...extra });
 // and on a Denton block
 const N = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'denton', side, ...front(i, j, side, 0, 'denton'), ...extra });
+const W = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'weatherford', side, ...front(i, j, side, 0, 'weatherford'), ...extra });
+const X = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'west', side, ...front(i, j, side, 0, 'west'), ...extra });
 
 export const LOCATIONS = [
   L('eastgate_studio', 'home', 'Eastgate Studio (Home)', 8, 6, 'W', { color: '#ffffff', icon: 'home' }),
@@ -188,6 +224,9 @@ export const LOCATIONS = [
   L('rivercrest_mansion', 'property', 'Rivercrest Mansion', 1, 8, 'E', { color: '#ffffff', icon: 'home' }),
   L('trap_riverside', 'trap', 'Riverside Duplex', 10, 4, 'W', { color: '#8a1a1a', icon: 'home' }),
   L('marchetti_salvage', 'chop', 'Marchetti Salvage', 10, 7, 'N', { color: '#c9752a', icon: 'wrench', contact: 'junior' }),
+  // recording studios: cut records for your label (ui/label.js)
+  L('magnolia_sound', 'studio', 'Magnolia Sound', 4, 8, 'N', { color: '#c04aff', icon: 'mic' }),
+  L('trap_house_studios', 'studio', 'Trap House Studios', 3, 6, 'S', { color: '#c04aff', icon: 'mic' }),
   L('cashcow_pawn', 'pawn', 'Cash Cow Pawn & Gold', 9, 7, 'W', { color: '#d4a017', icon: 'tow' }),
   L('hook_haul', 'work', 'Hook & Haul Towing', 10, 6, 'S', { color: '#f0a020', icon: 'tow' }),
   // car haulers and enclosed trailers (ui/trailers.js); only trucks pull them
@@ -204,7 +243,7 @@ export const LOCATIONS = [
   { id: 'glory_onramp', type: 'roll', name: 'Loop 820 On-Ramp', x: 12, z: -1180, face: Math.PI, color: '#ff1a2e', icon: 'flag', road: 'highway' },
   { id: 'ironside_start', type: 'roll', name: 'East Lancaster Runs', x: 312, z: 650, face: 0, color: '#ff1a2e', icon: 'flag', road: 'industrial' },
   { id: 'dustline_start', type: 'roll', name: 'Chisholm Trail Pkwy', x: 12, z: 1120, face: 0, color: '#ff1a2e', icon: 'flag', road: 'desert', tier: 2 },
-  { id: 'northridge_start', type: 'roll', name: 'Cross Timbers Pass', x: -1120, z: -330, face: -Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'mountain', tier: 4 },
+  { id: 'northridge_start', type: 'roll', name: 'Lake Worth Pass', x: -1120, z: -330, face: -Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'mountain', tier: 4 },
   { id: 'gas_desert', type: 'gas', name: 'Last Chance Gas', x: -24, z: 1700, face: -Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
   // Joshua, out in Johnson County (world2d/country.js draws the town)
   { id: 'gas_joshua', type: 'gas', name: 'Joshua Country Store', x: 36, z: 3705, face: Math.PI / 2, color: '#1f8f3a', icon: 'gas' },
@@ -223,9 +262,30 @@ export const LOCATIONS = [
   D('corner_grand', 'corner', 'Grand Ave Food Mart', 7, 7, 'W', { color: '#ff8a1a', icon: 'food' }),
   D('corner_ellum', 'corner', 'Elm St Corner Store', 9, 3, 'W', { color: '#ff8a1a', icon: 'food' }),
   D('big_d_customs', 'perf', 'Big D Performance', 0, 3, 'E', { color: '#e8641a', icon: 'wrench', owner: 'Dre', tagline: 'Dre Vega, Rosa\'s cousin · dyno cell · Dallas' }),
+  D('ellum_lab', 'studio', 'Deep Ellum Sound Lab', 8, 2, 'S', { color: '#c04aff', icon: 'mic' }),
+  D('the_kitchen', 'studio', 'The Kitchen', 7, 4, 'N', { color: '#c04aff', icon: 'mic' }),
+  D('inner_circle', 'studio', 'Inner Circle', 5, 1, 'E', { color: '#c04aff', icon: 'mic' }),
   D('ellum_meet', 'meet', 'Deep Ellum Warehouse Lot', 9, 1, 'S', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
   D('uptown_condo', 'property', 'Uptown High-Rise Condo', 4, 0, 'S', { color: '#ffffff', icon: 'home' }),
   D('kessler_tudor', 'property', 'Kessler Park Tudor', 0, 8, 'E', { color: '#ffffff', icon: 'home' }),
+  // ---------------- Weatherford / Parker County ----------------
+  W('weatherford_perf', 'perf', 'Parker County Performance', 6, 3, 'S', { color: '#e8641a', icon: 'wrench', owner: 'Marcus' }),
+  W('weatherford_repair', 'repair', 'Weatherford Auto & Tire', 2, 6, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.9, tagline: 'Local shop · trucks, classics and street cars' }),
+  W('weatherford_gas', 'gas', 'Parker County Fuel', 8, 5, 'W', { color: '#1f8f3a', icon: 'gas' }),
+  W('weatherford_meet', 'meet', 'Weatherford Backroad Lot', 4, 8, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  W('weatherford_luxury', 'property', 'Aledo Ridge Estate', 2, 1, 'S', { color: '#ffffff', icon: 'home' }),
+  W('weatherford_ranch', 'property', 'Parker County Ranch House', 8, 8, 'N', { color: '#ffffff', icon: 'home' }),
+  W('weatherford_warehouse', 'property', 'I-20 Warehouse Garage', 10, 4, 'W', { color: '#ffffff', icon: 'home' }),
+  // ---------------- West Texas growth zone (world2d/west.js) ----------------
+  X('mineral_wells_perf', 'perf', 'Palo Pinto Performance', 5, 3, 'S', { color: '#e8641a', icon: 'wrench', owner: 'Ray' }),
+  X('mineral_wells_repair', 'repair', 'Mineral Wells Auto & Tire', 2, 5, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.85, tagline: 'West-side shop · trucks, classics and street cars' }),
+  X('mineral_wells_gas', 'gas', 'Mineral Wells Fuel', 7, 2, 'W', { color: '#1f8f3a', icon: 'gas' }),
+  X('mineral_wells_meet', 'meet', 'US-180 Backroad Lot', 3, 6, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  X('mineral_wells_home', 'property', 'Mineral Wells Ranch House', 1, 1, 'S', { color: '#ffffff', icon: 'home' }),
+  X('palo_pinto_warehouse', 'property', 'Palo Pinto Warehouse Garage', 8, 5, 'W', { color: '#ffffff', icon: 'home' }),
+  X('west_i20_estate', 'property', 'West I-20 Estate', 9, 2, 'N', { color: '#ffffff', icon: 'home' }),
+  { id: 'west_180_run', type: 'roll', name: 'US-180 West Runs', x: -7200, z: -1350, face: Math.PI / 2, color: '#ff1a2e', icon: 'flag', road: 'west_highway', tier: 2 },
+  { id: 'mineral_wells_drag', type: 'roll', name: 'Mineral Wells Airport Run', x: -9000, z: -650, face: 0, color: '#ff1a2e', icon: 'flag', road: 'west_highway', tier: 3 },
   // ---------------- North Texas (world2d/north.js) ----------------
   // Alliance: the Heritage Trace exit off I-35W, a travel center and a diesel shop on the south frontage
   { id: 'gas_alliance', type: 'gas', name: 'Speedway Travel Center', x: -130, z: HTRACE_Z + 14, face: 0, side: 'N', color: '#1f8f3a', icon: 'gas' },
@@ -267,6 +327,12 @@ export const PROPERTIES = {
   westside_house:    { name: 'Arlington Heights House', price: 135000, slots: 4, house: 'one', desc: 'Brick 1-story ranch on a quiet street, four-car garage with a lift.' },
   hillcrest_villa:   { name: 'Hillcrest Villa', price: 780000, slots: 8, house: 'two', desc: 'Hillside 2-story glass house with a heated showroom garage.', tier: 4 },
   foundry_warehouse: { name: 'Foundry Warehouse Garage', price: 260000, slots: 12, desc: 'A crew HQ: dyno cell, paint booth, twelve bays.', tier: 3 },
+  mineral_wells_home: { name: 'Mineral Wells Ranch House', price: 175000, slots: 6, house: 'one', desc: 'A west-side ranch house with six garage spots and room to grow.' },
+  palo_pinto_warehouse: { name: 'Palo Pinto Warehouse Garage', price: 385000, slots: 16, house: 'two', desc: 'A large west-side warehouse with a private showroom and sixteen bays.', tier: 3 },
+  west_i20_estate: { name: 'West I-20 Estate', price: 620000, slots: 10, house: 'two', desc: 'A gated acreage estate west of Mineral Wells with a ten-car gallery.', tier: 4 },
+  weatherford_luxury: { name: 'Aledo Ridge Estate', price: 540000, slots: 10, house: 'two', desc: 'A gated Parker County estate with a ten-car gallery garage.', tier: 3 },
+  weatherford_ranch: { name: 'Parker County Ranch House', price: 185000, slots: 6, house: 'one', desc: 'A country ranch house with six garage spots and room to grow.' },
+  weatherford_warehouse: { name: 'I-20 Warehouse Garage', price: 310000, slots: 12, house: 'two', desc: 'A large I-20 warehouse with a private showroom and twelve bays.', tier: 3 },
   fairmount_craftsman: { name: 'Fairmount Craftsman', price: 340000, slots: 6, house: 'two', desc: 'Restored 1920s 2-story craftsman on a Southside street, six-car garage out back.', tier: 3, wall: '#7f8a6a', roof: '#4a3a2e' },
   westover_estate:   { name: 'Westover Hills Estate', price: 1450000, slots: 10, house: 'two', desc: 'Gated 2-story, a pool, and a ten-car gallery garage with a turntable.', tier: 4, wall: '#d9d0bc', roof: '#3a4a3a' },
   // Stop Six houses off the grid (data/estate.js has where they are)

@@ -73,12 +73,11 @@ const local = {
     const conflicts = props.map(p => d.deeds[server + ':' + p]).filter(x => x && x.uid !== u.uid).map(x => ({ prop: x.prop, name: x.name }));
     if (conflicts.length && moving) return { ok: false, conflicts };
     d.members[u.uid] = { uid: u.uid, tok: u.tok, name: u.name, server };
-    for (const [k, x] of Object.entries(d.deeds)) if (x.uid === u.uid && (x.server !== server || !props.includes(x.prop))) delete d.deeds[k];
     for (const p of props) d.deeds[server + ':' + p] ??= { server, prop: p, uid: u.uid, name: u.name };
     this.save(d);
     return { ok: true, server, conflicts };
   },
-  async leave(u) { const d = this.load(); if (d.members[u.uid]?.tok !== u.tok) return; delete d.members[u.uid]; for (const [k, x] of Object.entries(d.deeds)) if (x.uid === u.uid) delete d.deeds[k]; this.save(d); },
+  async leave(u) { const d = this.load(); if (d.members[u.uid]?.tok !== u.tok) return; delete d.members[u.uid]; this.save(d); },
   async deeds(server) { return Object.values(this.load().deeds).filter(x => x.server === server).map(({ prop, uid, name }) => ({ prop, uid, name })); },
   async claim(u, prop) {
     const d = this.load(), m = d.members[u.uid];
@@ -88,7 +87,7 @@ const local = {
     this.save(d);
     return { ok: d.deeds[k].uid === u.uid, name: d.deeds[k].name };
   },
-  async release(u, prop) { const d = this.load(), m = d.members[u.uid]; if (!m || m.tok !== u.tok) return; const k = m.server + ':' + prop; if (d.deeds[k]?.uid === u.uid) delete d.deeds[k]; this.save(d); },
+  async release(u, prop) { /* Permanent deeds cannot be released. */ },
 };
 
 class Deeds {
@@ -161,14 +160,8 @@ class Deeds {
       return { ok: true, offline: true };
     }
   }
-  // Undo a claim whose purchase didn't go through, or after a sale.
-  async release(s, prop) {
-    if (!s.homeServer || !isDeedable(prop)) return;
-    if (this.owners.get(prop)?.uid === s.uid) this.owners.delete(prop);
-    online.send({ k: 'deed', p: prop, n: null, u: s.uid });
-    this.emit();
-    try { await this.db.release(me(s), prop); } catch { /* the 30-day sweep cleans up */ }
-  }
+  // Deeds are permanent. Kept as a compatibility no-op for older purchase code.
+  async release(s, prop) { return { ok: true, permanent: true }; }
 
   gotLive(d) {
     if (!d || typeof d.p !== 'string' || !isDeedable(d.p) || online.room !== this.server) return;

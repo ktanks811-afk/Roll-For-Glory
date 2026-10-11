@@ -41,8 +41,11 @@ export const DEFAULT_ROOM = SERVERS[2].id;
 // costs a couple of messages a second and a car carving through traffic gets
 // up to MAX_HZ. That keeps cars tight on screen while staying inside the
 // realtime message budget with a full server.
-const MAX_HZ = 15;           // fastest we ever send
-const KEEPALIVE = 0.5;       // send at least this often while moving (s)
+const MAX_HZ = 15;           // normal movement snapshot rate
+const BUSY_HZ = 10;           // lower rate when a server is crowded
+const KEEPALIVE = 0.45;       // keep moving cars alive even when prediction is good
+const INTERP_BASE = 0.085;   // render remote players ~85ms behind the newest packet
+const INTERP_MAX = 0.145;    // expand the buffer slightly when jitter rises
 const IDLE_EVERY = 2;        // … while parked
 const ERR_POS = 0.5;         // metres of prediction error before we send
 const ERR_HEAD = 0.05;       // radians
@@ -50,6 +53,7 @@ const ERR_SPD = 1.2;         // m/s
 const HELLO_EVERY = 6;       // seconds between car-appearance refreshes
 const PEER_TIMEOUT = 7;      // seconds of silence before a peer disappears
 const MAX_PEERS = 24;
+const MAX_SNAPSHOTS = 24;
 
 const num = (v, lo, hi, d = 0) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
 const cleanName = (s, d = 'Racer') => (String(s ?? '').replace(/[^\w .'\-]/g, '').trim().slice(0, 16) || d);
@@ -274,7 +278,7 @@ class Online {
   sendHello() {
     const me = this.me;
     if (!me) return;
-    this.send({ k: 'h', n: this.name, m: me.modelId, v: me.visual, l: me.levels, t: me.tier, cr: me.crew ? { t: me.crew.tag, c: me.crew.color } : undefined });
+    this.send({ k: 'h', n: this.name, u: me.uid, m: me.modelId, v: me.visual, l: me.levels, t: me.tier, cr: me.crew ? { t: me.crew.tag, c: me.crew.color } : undefined });
   }
 
   say(text) {
@@ -284,6 +288,14 @@ class Online {
     this.addChat(this.name, t, true);
   }
   honk() { this.send({ k: 'ho' }); }
+  pvpHit(to, damage, weapon, x, z, h) {
+    if (!this.active || !to) return;
+    this.send({ k: 'pvp', t: 'hit', to, d: num(damage, 1, 100, 1), w: weapon === 'melee' ? 'melee' : 'gun', x: +num(x, -9000, 9000).toFixed(2), z: +num(z, -9000, 9000).toFixed(2), h: +num(h, -20, 20).toFixed(3) });
+  }
+  pvpState(type) {
+    if (!this.active || (type !== 'dead' && type !== 'alive')) return;
+    this.send({ k: 'pvp', t: type, target: this.id, to: '*' });
+  }
 
   addChat(name, text, mine = false) {
     this.chat.push({ name, text, mine, t: Date.now() });
@@ -299,7 +311,7 @@ class Online {
     if (m.k === 'bye') { if (p) { this.peers.delete(m.id); this.emit('peers'); } return; }
     if (!p) {
       if (this.peers.size >= MAX_PEERS) return;
-      p = { id: m.id, name: 'Racer', model: null, visual: null, levels: cleanLevels(), tier: 1, x: 0, z: 0, h: 0, sp: 0, inCar: true, flame: 0, walk: 0, seen: now, t: now, fresh: true, sprite: null, spriteKey: '' };
+      p = { id: m.id, name: 'Racer', model: null, visual: null, levels: cleanLevels(), tier: 1, x: 0, z: 0, h: 0, sp: 0, inCar: true, flame: 0, walk: 0, seen: now, t: now, fresh: true, sprite: null, spriteKey: '', snaps: [], interp: INTERP_BASE, lastPacketAt: now, jitter: 0, hp: 100, dead: false };
       this.peers.set(m.id, p);
       // we don't know this car yet: introduce ourselves so they can draw us too
       if (now - this.helloReplyT > 1) { this.helloReplyT = now; this.sendHello(); }
@@ -313,6 +325,7 @@ class Online {
         p.model = model; p.visual = cleanVisual(model, m.v); p.levels = cleanLevels(m.l); p.tier = Math.round(num(m.t, 1, 9, 1));
         p.spriteKey = '';
       }
+      p.uid = typeof m.u === 'string' && /^[A-Za-z0-9]{6,16}$/.test(m.u) ? m.u : '';
       const cr = m.cr && typeof m.cr === 'object' ? m.cr : null;
       p.crew = cr && /^[A-Z0-9]{2,4}$/.test(String(cr.t)) && /^#[0-9a-fA-F]{6}$/.test(String(cr.c)) ? { tag: cr.t, color: cr.c } : null;
       this.emit('peers');
@@ -323,11 +336,32 @@ class Online {
       p.q = q;
       const x = num(m.x, -9000, 9000), z = num(m.z, -9000, 9000);
       p.st = { x, z, h: num(m.h, -20, 20), v: num(m.v, -80, 120), r: num(m.r, -4, 4), a: num(m.a, -30, 30) };
+      const gap = Math.max(0, now - (p.lastPacketAt || now));
+      p.jitter = p.jitter * 0.82 + Math.abs(gap - (p.packetGap || gap)) * 0.18;
+      p.packetGap = gap;
+      p.lastPacketAt = now;
+      p.interp = Math.min(INTERP_MAX, Math.max(INTERP_BASE, INTERP_BASE + p.jitter * 0.65));
       p.sp = p.st.v; p.inCar = !!m.c; p.sflame = num(m.f, 0, 2); p.t = now;
+      p.snaps ||= [];
+      p.snaps.push({ ...p.st, t: now });
+      if (p.snaps.length > MAX_SNAPSHOTS) p.snaps.splice(0, p.snaps.length - MAX_SNAPSHOTS);
       p.ride = typeof m.rd === 'string' && m.rd.length <= 16 ? m.rd : '';
       // gear and revs: only sent while they have passengers, for the passenger's dash
       p.gear = typeof m.g === 'string' && /^[RDN–1-9]$/.test(m.g) ? m.g : ''; p.rpm = num(m.rp, 0, 1.2, 0);
       if (p.fresh) { p.x = x; p.z = z; p.h = p.st.h; p.fresh = false; }
+    } else if (m.k === 'pvp') {
+      const type = m.t === 'hit' ? 'hit' : m.t === 'dead' ? 'dead' : m.t === 'alive' ? 'alive' : '';
+      if (!type) return;
+      if (type === 'hit') {
+        if (m.to !== this.id) return;
+        const dmg = num(m.d, 1, 100, 1), ax = num(m.x, -9000, 9000), az = num(m.z, -9000, 9000);
+        const p = this.peers.get(m.id);
+        if (!p || Math.hypot(p.x - ax, p.z - az) > 14) return;
+        this.emit('pvp', { type: 'hit', from: m.id, peer: p, damage: dmg, weapon: String(m.w || 'gun').slice(0, 12) });
+      } else if (m.to === '*' || m.to === this.id) {
+        const target = this.peers.get(String(m.target || ''));
+        if (target) { target.dead = type === 'dead'; target.hp = type === 'dead' ? 0 : 100; target.seen = now; this.emit('pvp', { type, target }); }
+      }
     } else if (m.k === 'c') {
       this.addChat(cleanName(m.n, p.name), cleanText(m.x));
     } else if (m.k === 'ho') {
@@ -379,7 +413,8 @@ class Online {
         }
       }
       if (need) {
-        this.sendT = 1 / MAX_HZ;
+        const hz = this.peers.size > 8 ? BUSY_HZ : MAX_HZ;
+        this.sendT = 1 / hz;
         const msg = { k: 's', q: ++this.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) };
         if (this.ride) { msg.rd = this.ride; msg.v = msg.r = msg.a = 0; }
         if (me.dash) { msg.g = me.dash.gear; msg.rp = +Math.min(1.2, me.dash.rpm).toFixed(2); }
@@ -392,14 +427,41 @@ class Online {
     for (const p of this.peers.values()) {
       if (now - p.seen > PEER_TIMEOUT) { this.peers.delete(p.id); gone = true; continue; }
       if (p.fresh || !p.st) continue;
-      // the same prediction they're sending against, then ease out any jump
-      const g = predict(p.st, now - p.t);
-      const k = Math.min(1, dt * 12);
-      const dx = g.x - p.x, dz = g.z - p.z;
-      if (Math.hypot(dx, dz) > 40) { p.x = g.x; p.z = g.z; }     // teleported / respawned
-      else { p.x += dx * k; p.z += dz * k; }
+      // GTA-style remote movement: render from a tiny buffered window and
+      // interpolate between real snapshots. Prediction is only the fallback when
+      // the network has not delivered the next snapshot yet.
+      const snaps = p.snaps || [];
+      const delay = p.interp || INTERP_BASE;
+      const target = now - delay;
+      let A = null, B = null;
+      for (let i = snaps.length - 1; i >= 0; i--) {
+        if (snaps[i].t <= target) { A = snaps[i]; B = snaps[i + 1] || null; break; }
+      }
+      let g;
+      if (A && B) {
+        const span = Math.max(0.001, B.t - A.t);
+        const u = Math.max(0, Math.min(1, (target - A.t) / span));
+        g = {
+          x: A.x + (B.x - A.x) * u,
+          z: A.z + (B.z - A.z) * u,
+          h: A.h + norm(B.h - A.h) * u,
+          v: A.v + (B.v - A.v) * u,
+          r: A.r + (B.r - A.r) * u,
+          a: A.a + (B.a - A.a) * u
+        };
+      } else if (A) {
+        g = predict(A, Math.min(0.32, Math.max(0, target - A.t)));
+      } else {
+        g = predict(p.st, Math.min(0.22, Math.max(0, now - p.t)));
+      }
+      const error = Math.hypot(g.x - p.x, g.z - p.z);
+      const k = Math.min(1, dt * (error > 8 ? 8 : 18));
+      // A large discontinuity is treated as a real teleport/respawn. Normal
+      // corrections are always eased so packet loss never causes a snap.
+      if (error > 30) { p.x = g.x; p.z = g.z; }
+      else { p.x += (g.x - p.x) * k; p.z += (g.z - p.z) * k; }
       p.h = p.h + norm(g.h - p.h) * k;
-      p.sp = g.v;
+      p.sp += (g.v - p.sp) * Math.min(1, dt * 14);
       p.flame += ((p.sflame || 0) - p.flame) * Math.min(1, dt * 14);
       if (!p.inCar && Math.abs(p.sp) > 0.1) p.walk += dt * 9;
     }

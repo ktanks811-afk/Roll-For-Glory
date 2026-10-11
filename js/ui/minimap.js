@@ -2,7 +2,7 @@
 // roads, buildings, lots and water (not a blurry shrunken picture), rotates
 // with your heading, zooms out as you speed up, and shows the GPS route, the
 // destination (pinned to the edge when it's off the map), cops, roadblocks,
-// the helicopter, other players and your parked car.
+// other players and your parked car.
 //
 // Tap it to switch view: heading-up (auto zoom) → close → far → north-up.
 
@@ -19,7 +19,7 @@ const MODES = [
   { name: 'HEADING UP · FAR', rot: true, zoom: 'far' },
   { name: 'NORTH UP', rot: false, zoom: 'auto' },
 ];
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', court: '⚖', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', court: '⚖', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤' };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
@@ -118,7 +118,6 @@ export class MiniMap {
       g.fillStyle = 'rgba(0,0,0,.7)'; g.beginPath(); g.arc(a, b, 6, 0, 7); g.fill();
       g.fillStyle = flash ? '#ff2a3a' : '#2a6bff'; g.beginPath(); g.arc(a, b, 4.4, 0, 7); g.fill();
     }
-    if (pol.heli) { const [a, b] = P(pol.heli.x, pol.heli.z); g.strokeStyle = '#e8eaee'; g.lineWidth = 2; g.beginPath(); g.moveTo(a - 7, b); g.lineTo(a + 7, b); g.moveTo(a, b - 7); g.lineTo(a, b + 7); g.stroke(); g.fillStyle = flash ? '#ff2a3a' : '#2a6bff'; g.beginPath(); g.arc(a, b, 3, 0, 7); g.fill(); }
     // a red pulse around you while you're being chased
     if (pol.phase === 'chase' || pol.phase === 'notice') {
       const t = (performance.now() % 1200) / 1200; g.strokeStyle = `rgba(255,42,58,${1 - t})`; g.lineWidth = 2; g.beginPath(); g.arc(S / 2, S / 2 + OFF, 8 + t * 34, 0, 7); g.stroke();

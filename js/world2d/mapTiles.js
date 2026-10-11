@@ -3,7 +3,7 @@
 // demand and kept in a small cache. Sharp at any zoom, no giant pre-rendered
 // picture needed.
 
-import { DESERT_Z, COUNTRY, DALLAS, DENTON } from '../data/world.js';
+import { DESERT_Z, COUNTRY, DALLAS, DENTON, WEST_CITY } from '../data/world.js';
 import { BACKROAD } from './map.js';
 
 export const TILE = 400;          // metres per tile
@@ -25,6 +25,7 @@ export function buildTile(map, i, j) {
   g.fillStyle = '#2a2c31'; g.fillRect(-985, -985, 1970, 1970);
   g.fillRect(DALLAS.x0 - 15, DALLAS.z0 - 15, DALLAS.x1 - DALLAS.x0 + 30, DALLAS.z1 - DALLAS.z0 + 30);
   g.fillRect(DENTON.x0 - 15, DENTON.z0 - 15, DENTON.x1 - DENTON.x0 + 30, DENTON.z1 - DENTON.z0 + 30);
+  g.fillRect(WEST_CITY.x0 - 15, WEST_CITY.z0 - 15, WEST_CITY.x1 - WEST_CITY.x0 + 30, WEST_CITY.z1 - WEST_CITY.z0 + 30);
   for (const w of map.water) if (inside(w.x, w.z, w.w, w.d)) { g.fillStyle = '#12304a'; g.fillRect(w.x, w.z, w.w, w.d); g.strokeStyle = '#1d4b70'; g.lineWidth = 3; g.strokeRect(w.x, w.z, w.w, w.d); }
   const items = map.drawGrid.query(x0, z0, x0 + W, z0 + W);
   for (const it of items) if (it.type === 'l') { const l = it.o; g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(l.x, l.z, l.w, l.d); }

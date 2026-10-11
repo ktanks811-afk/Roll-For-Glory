@@ -13,6 +13,7 @@ import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { estateDay } from './core/estate.js';
 import { dogsDay, ensureKennel } from './core/dogs.js';
+import { labelDay } from './core/label.js';
 import { drugsDay } from './core/drugs.js';
 import { fedsDay } from './core/bank.js';
 import { creditDay, insurancePremium } from './core/credit.js';
@@ -22,6 +23,7 @@ import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
 import { book } from './ui/court.js';
 import { wakeAtHospital } from './ui/hospital.js';
+import { servePrison } from './ui/prison.js';
 import { heal, healthDay, INJURIES, HOSPITAL } from './core/health.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
@@ -96,6 +98,8 @@ export function enterWorld() {
   touchUi.show(true);
   audio.intro(false);
   audio.music(null);
+  // still doing time in TDCJ: back on the compound (ui/prison.js)
+  if (game.s.prison) servePrison(app);
 }
 
 export function leaveWorld() {
@@ -174,6 +178,10 @@ function newDay() {
   for (const n of estateDay(s).notes) toast(n, 'good');
   // the kennel: feed, pups, the dog market restocks (core/dogs.js)
   for (const n of dogsDay(s).notes) toast(n, 'good');
+  // the record label: streams and shows pay out, the A&R texts (core/label.js)
+  const lb = labelDay(s);
+  for (const n of lb.notes) toast(n, 'good');
+  for (const t of lb.texts) sendMessage(s, 'ar', t);
   // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at
   const dr = drugsDay(s);
   for (const n of dr.notes) toast(n, 'info');

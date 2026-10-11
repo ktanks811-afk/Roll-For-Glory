@@ -281,6 +281,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const id of Object.keys(PROPERTIES)) if (!gar.find(g => g.id === id)) bad(`no garage building for ${id}`);
   for (const g of gar) {
     const P = PROPERTIES[g.id];
+    if (!P) { bad(`${g.id} has a garage building but no PROPERTIES definition`); continue; }
     if (g.bays.length < P.slots - 1) bad(`${g.id} has ${g.bays.length} bays for ${P.slots} slots`);
     if (!g.roof || g.roof.kind !== 'roof' || g.roof.a !== 1) bad(`${g.id} roof`);
     // the door is solid until you own the place, and open after
@@ -591,6 +592,28 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!toggleFrt(st, ar.uid).ok || ar.frt || st.arms.frtKits !== 1) bad('removing an FRT should return the kit');
   if (toggleFrt(st, bat.uid).ok || bat.frt) bad('FRT on a bat');
   if (!toggleFrt(st, gun.uid).ok || !gun.frt) bad('FRT should install on a Glock 19');
+  // mags, drums and switches
+  const W = await import('../js/data/weapons.js');
+  const ms = createState({ name: 'M', age: 25, look: {}, story: false }); ms.cash = 5000;
+  W.buyAmmo(ms, '9mm', 4, spend);
+  const gl = W.giveWeapon(ms, 'glock_19_g5'), arp = W.giveWeapon(ms, 'arp_ruger_ar556');
+  if (W.setMag(ms, gl.uid, 'drum50').ok) bad('drum without one in the locker');
+  for (const m of ['mag30', 'drum50', 'mag100']) if (!W.buyMag(ms, m, spend).ok) bad('buy ' + m);
+  if (!W.setMag(ms, gl.uid, 'mag100').ok || W.magCap(WEAPON_BY_ID[gl.id], gl) !== 100 || ms.arms.magKits.mag100 !== 0) bad('100-round drum should go in a Glock');
+  if (W.setMag(ms, arp.uid, 'mag30').ok) bad('a 30 mag adds nothing to a 30-round AR');
+  gl.loaded = 100; const res = ms.arms.ammo['9mm'];
+  if (!W.setMag(ms, gl.uid, 'drum50').ok || gl.loaded !== 50 || ms.arms.ammo['9mm'] !== res + 50 || ms.arms.magKits.mag100 !== 1) bad('swapping to a 50 drum returns extra rounds and the 100 drum');
+  if (!W.setMag(ms, gl.uid, null).ok || gl.loaded !== 15 || ms.arms.magKits.drum50 !== 1) bad('stock mag back');
+  if (!W.canSwitch(WEAPON_BY_ID.glock_17_g5) || W.canSwitch(WEAPON_BY_ID.glock_18) || W.canSwitch(WEAPON_BY_ID.arp_ruger_ar556) || W.canSwitch(WEAPON_BY_ID.bat)) bad('switch fits Glocks only');
+  const kid = createState({ name: 'K', age: 19, look: {}, story: false }); kid.cash = 5000;
+  if (W.buySwitch(kid, spend).ok) bad('switch is 21+');
+  W.buySwitch(ms, spend); W.buySwitch(ms, spend);
+  if (!W.toggleSwitch(ms, gl.uid).ok || !gl.sw || ms.arms.switchKits !== 1) bad('switch should install on a Glock');
+  if (W.toggleSwitch(ms, arp.uid).ok) bad('switch on an AR');
+  if (toggleFrt(ms, gl.uid).ok) bad('FRT on top of a switch');
+  const sz = W.seizeSwitches(ms);
+  if (sz.length !== 1 || sz[0].n !== 2 || gl.sw || ms.arms.switchKits || classify(sz[0]).cls !== 'F3') bad('switches get seized at booking as a felony ' + JSON.stringify(sz));
+  if (W.seizeSwitches(ms).length) bad('nothing left to seize');
 }
 
 // carjackings: rare, only when it makes sense, and resisting is a real risk
@@ -945,7 +968,8 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (onRoad(l.lot)) bad(`${l.id}: the lot is on a road`);
     for (const o of ESTATE_LOCATIONS) if (o !== l && l.lot.x0 < o.lot.x1 && l.lot.x1 > o.lot.x0 && l.lot.z0 < o.lot.z1 && l.lot.z1 > o.lot.z0) bad(`${l.id} overlaps ${o.id}`);
     const r = map.roads.routeBetween(0, 0, l.x, l.z);
-    if (!r?.path?.length || r.meters > 9000) bad(`${l.id}: no road route from downtown (${r?.meters})`);
+    // The world is intentionally growing westward; validate that GPS actually found a named road route, but allow longer Texas-map drives than the old 9 km city-only limit.
+    if (!r?.path?.length || !r.names?.some(Boolean) || r.meters > 15000) bad(`${l.id}: no road route from downtown (${r?.meters})`);
   }
   for (const id of ['land_six_bunche', 'land_six_stalcup', 'six_bungalow']) if (districtAt(LOC_BY_ID[id].x, LOC_BY_ID[id].z) !== 'Stop Six') bad(`${id} isn't in Stop Six`);
   for (const id of Object.keys(RIGS)) if (districtAt(LOC_BY_ID[id].x, LOC_BY_ID[id].z) !== 'Johnson County') bad(`${id} isn't in Johnson County`);
@@ -1650,6 +1674,58 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!(hogs >= 12 && pay > 0)) bad(`12 hunts on the river bottoms caught ${hogs} hogs for ${pay}`);
   if (HH.startHunt(st, 'nolan', [], [], 1).ok) bad('a hunt with no bay dogs');
 }
+// ---------------- record label (core/label.js)
+{
+  const LB = await import('../js/core/label.js'), LD = await import('../js/data/label.js');
+  const { LOC_BY_ID } = await import('../js/data/world.js');
+  for (const a of LD.ARTISTS) if (!LOC_BY_ID[a.hang]) bad(`artist ${a.id} hangs out at missing location ${a.hang}`);
+  for (const id of Object.keys(LD.STUDIOS)) if (LOC_BY_ID[id]?.type !== 'studio') bad(`studio ${id} is not on the map`);
+  {
+    const { FOOD_SPOTS } = await import('../js/data/food.js'), { ESTATE_LOCATIONS } = await import('../js/data/estate.js');
+    const m = buildMap();
+    for (const id of Object.keys(LD.STUDIOS)) {
+      const bl = m.buildings.find(x => x.loc === id);
+      if (!bl) { bad(`studio ${id} has no building`); continue; }
+      for (const o of [...FOOD_SPOTS, ...ESTATE_LOCATIONS]) if (bl.x < o.lot.x1 && bl.x + bl.w > o.lot.x0 && bl.z < o.lot.z1 && bl.z + bl.d > o.lot.z0) bad(`studio ${id} sits on ${o.id}`);
+    }
+  }
+  const s = createState({ name: 'Label' }); s.cash = 0; s.bank = 500000;
+  const L = LB.ensureLabel(s);
+  if (L.known.length !== 6) bad('six artists should be known at the start');
+  if (L.known.some(id => LB.cloutNeeded(LD.ARTIST_BY_ID[id]))) bad('every artist you know at the start should be signable');
+  const a = LD.ARTIST_BY_ID[L.known[0]];
+  if (LB.signArtist(s, a.id, 'standard', true).ok) bad('signing before starting a label');
+  if (!LB.startLabel(s, 'Cowtown Records').ok || s.bank !== 500000 - LD.LABEL_COST) bad('starting a label');
+  if (LB.signArtist(s, a.id, 'standard', false).ok) bad('signing someone you never met');
+  const ask = LB.askOf(s, a);
+  if (!LB.signArtist(s, a.id, 'cheap', true).ok || LB.signed(s, a.id).cut !== LB.CHEAP_CUT || !(s.bank < 500000 - LD.LABEL_COST - ask * 0.3)) bad('cheap deal');
+  if (LB.signArtist(s, 'dfw_ghost', 'standard', true).ok) bad('a star should not sign with a label that has no clout');
+  // the studio: a single takes a day, then it drops and pays every morning
+  const r = LB.bookSession(s, 'magnolia_sound', a.id, 'single');
+  if (!r.ok || LB.bookSession(s, 'magnolia_sound', a.id, 'album').ok) bad('booking, and not twice at once');
+  if (LB.release(s, r.ses.id).ok) bad('releasing before it is mixed');
+  s.time.day += 1;
+  if (!LB.labelDay(s, () => 0.9).texts.some(t => /mastered/.test(t))) bad('the A&R should text when a record is done');
+  const rel = LB.release(s, r.ses.id, 'street', () => 0.99);
+  if (!rel.ok || rel.rel.viral || L.sessions.length) bad('dropping a single');
+  const bank0 = s.bank; let paid = 0;
+  for (let i = 0; i < 40; i++) { s.time.day++; paid += LB.labelDay(s, () => 0.9).paid; }
+  if (!(paid > 0 && s.bank === bank0 + paid)) bad(`a single should pay the label: ${paid}`);
+  if (!(rel.rel.daily < rel.rel.peak / 5)) bad('streams should cool off');
+  if (Math.abs(rel.rel.earned - Math.round(rel.rel.total * LD.STREAM_PAY * (1 - LB.CHEAP_CUT))) > 50) bad('the artist cut');
+  // a fire album by a big artist is real money
+  const big = LB.dayOne(85, 50000, 'album') * LD.STREAM_PAY * 0.8, small = LB.dayOne(45, 1500, 'single') * LD.STREAM_PAY * 0.8;
+  if (!(big > 10000 && big < 200000 && small > 100 && small < 2000)) bad(`label pay: album ${big}/day, single ${small}/day`);
+  // jail: bail frees them; no studio while locked up
+  const rr = LB.signed(s, a.id); rr.jailed = { day: s.time.day, bail: LB.bailOf(rr) };
+  if (LB.bookSession(s, 'magnolia_sound', a.id, 'single').ok || !LB.postBail(s, a.id).ok || rr.jailed) bad('jail and bail');
+  // a demand you turn down can cost you the artist
+  rr.demand = { cut: 0.5 };
+  LB.answerDemand(s, a.id, false, () => 0.1);
+  if (LB.signed(s, a.id) || L.releases[0].earned <= 0) bad('an artist who walks leaves their records behind');
+  if (LB.signArtist(s, a.id, 'standard', true).ok) bad('they should not re-sign right away');
+  if (LB.chartPos(5e6) !== 1 && LB.chartPos(5e6) > 5) bad('chart');
+}
 // credit scores, loans, car financing, repos (core/credit.js)
 {
   const CR = await import('../js/core/credit.js');
@@ -1713,6 +1789,67 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   // loan payment math
   if (CR.payment(12000, 0.12, 12) !== 1067) bad('payment math: ' + CR.payment(12000, 0.12, 12));
   game.s = null;
+}
+// ---- the rest of the Penal Code, murder is life, TDCJ (data/charges.js, core/prison.js) ----
+{
+  const J = await import('../js/core/justice.js');
+  const C = await import('../js/data/charges.js');
+  const PR = await import('../js/core/prison.js');
+  const W = await import('../js/core/warrants.js');
+  if (C.CHARGES.length < 200) bad('the charge catalog should have 200+ charges: ' + C.CHARGES.length);
+  if (new Set(C.CHARGES.map(c => c.kind)).size !== C.CHARGES.length) bad('duplicate charge kinds');
+  for (const c of C.CHARGES) if (!J.CLASSES[c.cls] || !c.text || (c.cls === 'C' && !(c.fine > 0))) bad('bad charge row ' + c.kind);
+  // classify() knows every catalog kind
+  if (J.classify({ kind: 'resisting' }).cls !== 'A' || J.classify({ kind: 'felon_firearm' }).cls !== 'F3') bad('catalog kinds should classify');
+  // stacking: off by default (tests stay deterministic), on adds related charges
+  const base = [{ kind: 'robbery', text: 'Armed robbery — Amazin\' Mart.', fine: 6000 }];
+  if (J.charge(base).charges.length !== 1) bad('charge() without stack should not add charges');
+  const st = J.charge(base, 0.85, { stack: true, armed: true, rng: () => 0 });
+  if (st.charges.length < 3 || !st.charges.some(c => /Unlawful carrying/.test(c.text))) bad('stacking should add charges like UCW: ' + JSON.stringify(st.charges.map(c => c.text)));
+  if (J.charge(base, 0.85, { stack: true, rng: () => 0 }).charges.some(c => /felon/.test(c.text))) bad('felon-in-possession needs a prior felony');
+  if (C.extraTickets([{ kind: 'speeding' }], () => 0).some(t => t.cls && t.cls !== 'C')) bad('extra tickets are Class C');
+  // murder: held without bond, life, no deal; capital murder: no parole
+  const s = createState({ name: 'Lifer', age: 25, look: {}, story: false }); s.cash = 10; s.bank = 0; s.time.day = 5; s.time.min = 9 * 60;
+  const m = J.charge([{ kind: 'murder', text: 'Murder on Rosedale St.' }]).charges;
+  if (!m[0]?.life || m[0].cls !== 'F1') bad('murder should be a life charge');
+  const c = J.fileCase(s, m);
+  if (!J.bailFor(s, c).held) bad('murder should be held without bond');
+  const offer = J.pleaOffer(s, c);
+  if (!offer.life || offer.paroleYears !== 30 || !/Life/.test(J.describe(offer))) bad('murder plea is still life: ' + JSON.stringify(offer));
+  const cap = J.sentence(s, J.charge([{ kind: 'capital_murder' }]).charges);
+  if (!cap.life || !cap.lwop || cap.paroleYears) bad('capital murder is life without parole');
+  if (W.warrantForEscape(s, [{ kind: 'murder', text: 'Murder.', fine: 50000 }], 1, true, () => 1).filter(w => w.felony).length !== 2) bad('a murder warrant is a felony');
+  s.warrants = [];
+  const r = J.resolveCase(s, c, c.charges.map(ch => ({ charge: ch, guilty: true })));
+  if (!r.sentence.life || r.sentence.served !== 0 || !s.justice.convictions.length) bad('life sentence through resolveCase');
+  // TDCJ: each sleep is a year; a life sentence never runs out, appeals go on forever
+  const p = PR.enterPrison(s, r.sentence, { crime: 'Murder.', evidence: 0.85 });
+  if (!p.life || p.years !== null || PR.yearsLeft(p) !== Infinity) bad('a lifer has no out date');
+  for (let i = 0; i < 40; i++) {
+    if (!p.appeal.pending) PR.fileAppeal(s, false);
+    const ev = PR.sleepYear(s, () => 0.99);
+    if (ev.out) { bad('a lifer who loses every appeal should never walk: ' + JSON.stringify(ev)); break; }
+  }
+  if (p.served !== 40 || p.appeal.stage < 6 || PR.appealAt(p.appeal.stage).id !== 'successive') bad('appeals should climb to successive writs and keep going: ' + p.appeal.stage);
+  // a won appeal throws out the conviction
+  PR.fileAppeal(s, false);
+  let ev;
+  for (let i = 0; i < 3 && !ev?.out; i++) ev = PR.sleepYear(s, () => 0);
+  if (ev?.out !== 'appeal') bad('a granted appeal should release you: ' + JSON.stringify(ev));
+  PR.leavePrison(s, 'appeal');
+  if (s.prison || s.justice.convictions.some(x => /Murder/.test(x.text))) bad('a reversed murder conviction should come off the record');
+  // a 10-year bid with parole: years from served days, one per sleep
+  const s2 = createState({ name: 'Short', age: 25, look: {}, story: false });
+  const sent = { kind: 'jail', facility: 'prison', days: 3650, served: 1095 };
+  const p2 = PR.enterPrison(s2, sent, { crime: 'Aggravated robbery.' });
+  if (p2.years !== 3) bad('1,095 days should be 3 years: ' + p2.years);
+  const outs = [1, 2, 3].map(() => PR.sleepYear(s2, () => 0.99).out);
+  if (outs[0] || outs[1] || outs[2] !== 'served') bad('should walk after the third sleep: ' + outs);
+  // contraband caught: a new felony and more years
+  const s3 = createState({ name: 'Hustler', age: 25, look: {}, story: false });
+  const p3 = PR.enterPrison(s3, sent, {});
+  const h = PR.hustle(s3, () => 0);
+  if (!h.caught || p3.years !== 5 || !s3.justice.convictions.length) bad('caught hustling: new case and +2 years ' + JSON.stringify(h));
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

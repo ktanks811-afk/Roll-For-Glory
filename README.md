@@ -8,9 +8,21 @@ first car on Marketplace, bolt on real parts from real brands, run roll races
 on the highway and passes at the drag strip, keep ahead of the cops, and work
 your way up to the underground legends.
 
-Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
+## 🎮 Play the live game
 
-(The site is served from the `gh-pages` branch — push updates to both `main` and `gh-pages`.)
+**LIVE GAME:** https://ktanks811-afk.github.io/Roll-For-Glory/
+
+**GitHub repo:** https://github.com/ktanks811-afk/Roll-For-Glory
+
+### How updates go live
+- **Edit/merge changes into `main`.**
+- GitHub Actions automatically publishes `main` to the `gh-pages` branch.
+- GitHub Pages serves `gh-pages` at the LIVE GAME link above.
+- You no longer need to manually copy changes to `gh-pages`.
+
+> **Live-source rule:** `main` is the source of truth. If a change is on `main`, the publish workflow pushes that exact version to the live site.
+
+Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
 
 ## What's in it
 

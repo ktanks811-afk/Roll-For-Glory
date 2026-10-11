@@ -1,0 +1,33 @@
+name: Publish live game
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-live-game
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish main to GitHub Pages branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git push --force origin HEAD:gh-pages
+
+      - name: Report live commit
+        run: |
+          echo "Live site updated from commit $GITHUB_SHA"
+          echo "https://ktanks811-afk.github.io/Roll-For-Glory/"

@@ -9,10 +9,11 @@ import { advanceTime } from './garage.js';
 import { sendMessage } from '../core/story.js';
 import { saveGame } from '../core/save.js';
 import { ensure as ensureHustle } from '../core/hustle.js';
+import { servePrison } from './prison.js';
 import {
   CLASSES, BOND_FEE, DOCKET, STORAGE_PER_DAY, FACILITY, IMPOUND_LOT,
   ensureJustice, openCase, topClass, isFelonyCase, priorScore, courtName, fmtCourt, bailFor, postBond, courtStatus,
-  pleaOffer, convictChance, lawyerFee, dismissChance, resolveCase, describe, payFine, gameMinutes, realDaysFor, fmtDays,
+  pleaOffer, convictChance, lawyerFee, dismissChance, resolveCase, describe, payFine, gameMinutes, realDaysFor, fmtDays, isLifeCase, classify,
 } from '../core/justice.js';
 
 const COURT = () => LOC_BY_ID.courthouse;
@@ -133,6 +134,7 @@ export async function hearing(app, c, { custody = false } = {}) {
   const fee = lawyerFee(c);
   const pick = await modal('Plea', `<p>The prosecutor's offer if you plead guilty:</p>
     <div class="offer"><b>${esc(describe(offer))}</b>${offer.fine ? ` + ${fmtMoney(offer.fine)} fine and court costs` : ''}${offer.kind === 'jail' ? `<div class="small muted">You'd serve about ${fmtDays(Math.max(0, offer.served - credit))}${credit ? ` after ${fmtDays(credit)} credit for time served` : ''}.</div>` : ''}${offer.kind === 'deferred' ? `<div class="small muted">Finish ${offer.probationDays} days of probation and the case is dismissed. No conviction.</div>` : ''}</div>
+    ${isLifeCase(c) ? '<p class="bad"><b>The State won\'t deal on a murder.</b> It\'s life either way. Your only shot is a jury.</p>' : ''}
     <p class="small muted">Or plead not guilty and go to trial. The State's case looks <b>${(ev => ev >= 0.8 ? 'strong' : ev >= 0.65 ? 'decent' : 'thin')(Math.max(...c.charges.map(ch => ch.evidence)))}</b>. Your public defender has a big caseload; a private attorney (${fmtMoney(fee)}) has a much better shot. If the jury convicts, the judge won't be as generous as the deal.</p>`,
     [{ label: 'Take the deal', primary: true, value: 'plea' }, { label: 'Trial with a public defender', value: 'pd' }, ...(canAfford(s, fee) ? [{ label: `Hire a lawyer (${fmtMoney(fee)}) and go to trial`, value: 'lawyer' }] : [])]);
   let verdicts, plea = pick === 'plea';
@@ -140,9 +142,14 @@ export async function hearing(app, c, { custody = false } = {}) {
   else {
     if (pick === 'lawyer') spend(s, fee, 'Defense attorney');
     verdicts = c.charges.map(ch => ({ charge: ch, guilty: Math.random() < convictChance(s, ch, pick === 'lawyer') }));
+    // not guilty of murder can still be guilty of the lesser offense
+    for (const v of verdicts) if (v.charge.life && !v.guilty && Math.random() < 0.4) {
+      const m = classify({ kind: 'manslaughter' });
+      v.charge = { cls: m.cls, text: m.text, tg: false, evidence: v.charge.evidence }; v.guilty = true; v.lesser = true;
+    }
     advanceTime(s, 5 * 60);   // jury selection, testimony, deliberation
     await modal('Verdict', `<p class="small muted">The jury was out ${2 + Math.floor(Math.random() * 4)} hours.</p><p>"On the following counts, we the jury find the defendant..."</p>
-      <div class="charges">${verdicts.map(v => `<div class="charge"><span>${esc(v.charge.text)}</span><b class="${v.guilty ? 'bad' : 'good'}">${v.guilty ? 'GUILTY' : 'NOT GUILTY'}</b></div>`).join('')}</div>`, [{ label: verdicts.some(v => v.guilty) ? 'Sentencing' : 'Walk out', primary: true }]);
+      <div class="charges">${verdicts.map(v => `<div class="charge"><span>${esc(v.charge.text)}</span><b class="${v.guilty ? 'bad' : 'good'}">${v.guilty ? v.lesser ? 'GUILTY (lesser included)' : 'GUILTY' : 'NOT GUILTY'}</b></div>`).join('')}</div>`, [{ label: verdicts.some(v => v.guilty) ? 'Sentencing' : 'Walk out', primary: true }]);
   }
   const r = resolveCase(s, c, verdicts, { plea, served: credit });
   if (r.refund) earn(s, r.refund, 'Cash bail refunded');
@@ -158,10 +165,17 @@ export async function hearing(app, c, { custody = false } = {}) {
     ${r.revoked ? `<p class="bad">Probation revoked: you also serve the ${fmtDays(r.revoked.days)} that was suspended for ${esc(r.revoked.text)}</p>` : ''}
     ${sent.kind === 'deferred' ? `<p>Deferred adjudication: ${sent.probationDays} days of probation. Stay out of trouble and the case is dismissed. Get convicted of anything before then and you're sentenced on this one too.</p>` : ''}
     ${sent.kind === 'probation' ? `<p>${fmtDays(sent.days)} suspended: ${sent.probationDays} days of probation instead. Another conviction before it's done and you serve it.</p>` : ''}
-    ${sent.kind === 'jail' ? `<p>With ${sent.facility === 'prison' ? (sent.tg ? 'parole at half time (aggravated offense)' : 'parole') : sent.facility === 'county' ? 'good-time credit' : 'state jail credit'}${r.credit ? ` and ${fmtDays(r.credit)} for time served` : ''}, you'll do about <b>${fmtDays(sent.served)}</b>.</p>` : ''}
+    ${sent.life ? `<p class="bad">${sent.lwop ? 'You will die in the Texas Department of Criminal Justice. There is no parole.' : `Parole doesn't come up for ${sent.paroleYears} years.`} You can fight the case from the law library for the rest of your life.</p>` : sent.kind === 'jail' ? `<p>With ${sent.facility === 'prison' ? (sent.tg ? 'parole at half time (aggravated offense)' : 'parole') : sent.facility === 'county' ? 'good-time credit' : 'state jail credit'}${r.credit ? ` and ${fmtDays(r.credit)} for time served` : ''}, you'll do about <b>${fmtDays(sent.served)}</b>.</p>` : ''}
     ${f.layout ? `<p class="bad">You can't cover the ${fmtMoney(sent.fine)} fine. You'll sit out the rest in jail: ${f.layout} day${f.layout > 1 ? 's' : ''} at ${fmtMoney(150)} a day.</p>` : ''}
     ${r.refund ? `<p class="small muted">Your ${fmtMoney(r.refund)} cash bail is refunded${sent.fine ? ' (applied to the fine first)' : ''}.</p>` : ''}`,
-    [{ label: jailDays ? 'Go with the bailiff' : 'Leave the courtroom', primary: true }]);
+    [{ label: jailDays || sent.kind === 'jail' ? 'Go with the bailiff' : 'Leave the courtroom', primary: true }]);
+  // TDCJ: you do the time for real, on the compound (ui/prison.js)
+  if (sent.kind === 'jail' && sent.facility !== 'county') {
+    const top = r.guilty.reduce((a, g) => (CLASSES[g.cls].rank > CLASSES[a.cls].rank ? g : a), r.guilty[0]);
+    await modal('Chain bus', `<p>Two weeks in county, then the chain bus to ${sent.facility === 'prison' ? 'Huntsville' : 'Jacksboro'}. Shackled at the ankles, a sack lunch, five hours of Texas through a mesh window.</p><p class="small muted">Every night you sleep in your bunk is a year. Walk to the law library to fight your case.</p>`, [{ label: 'Step off the bus', primary: true }]);
+    await servePrison(app, sent, { crime: top.text, evidence: top.evidence ?? 0.85, cause: c.cause });
+    return;
+  }
   if (jailDays) {
     const facility = sent.kind === 'jail' ? sent.facility : 'county';
     const mins = gameMinutes(jailDays);

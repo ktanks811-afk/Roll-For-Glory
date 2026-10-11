@@ -1,8 +1,8 @@
 // Fort Worth PD. Patrol cars drive the streets like traffic. When they see
 // you break the law, heat rises; pursuit units drive in from the precincts
 // and the edge of the area (nobody teleports next to you), search where you
-// were last seen, set roadblocks and spike strips at level 4 and bring the
-// helicopter at level 5.
+// were last seen, and set roadblocks and spike strips at level 4. There is no
+// helicopter: you can always lose them.
 //
 // Traffic stops: when a cop lights you up you get PULL_OVER_S seconds to stop.
 // Stop in time and the unit parks behind you, the officer walks up to your
@@ -22,10 +22,16 @@ import { wx, extraPatrols, extraUnits } from '../core/weather.js';
 const PATROL_MODELS = ['ford_crown_victoria_police_interceptor_2003', 'dodge_charger_scat_pack_2015', 'ford_explorer_xlt_2002', 'chevrolet_tahoe_lt_2007'];
 const INTERCEPTORS = ['dodge_charger_srt_hellcat_redeye_2021', 'ford_mustang_gt_s650_2024', 'chevrolet_camaro_ss_2016'];
 const UNIT_COUNT = [0, 1, 2, 4, 6, 8];
+const INITIAL_RESPONSE_UNITS = 3;
+const CRIME_RESPONSE_S = 10;
+const BACKUP_START_S = 22;
+const BACKUP_INTERVAL_S = 22;
+const SPIKE_START_S = 42;
+const SPIKE_INTERVAL_S = 32;
+const INTERCEPTOR_START_S = 75;
+const PURSUIT_INTERCEPTOR = 'dodge_charger_srt_hellcat_redeye_2021';
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-// Air One's orbit radius and the ring it never comes inside, in metres.
-const HELI_ORBIT = 32, HELI_KEEPOUT = 24;
 // Traffic stop: seconds to pull over, how long you have to sit still to count
 // as stopped, where the unit parks behind you, how far you can roll before
 // it counts as driving off, and the officer's walking pace (m/s).
@@ -58,7 +64,6 @@ export class PoliceSystem {
     this.patrols = [];   // TrafficCar with police flag
     this.units = [];     // active pursuit units
     this.blocks = [];    // roadblocks: { cars:[Unit], spikes:{x,z,w,d,h} }
-    this.heli = null;
     this.phase = 'none'; // none | notice | stop | chase | search | cooldown
     this.pullT = 0;      // notice: seconds left to pull over
     this.stillT = 0;     // notice: how long you've been sitting still
@@ -83,6 +88,15 @@ export class PoliceSystem {
     this.footOnly = true;   // this pursuit never saw you in a car (no plate to run)
     this.maskSus = 0;    // 0..1: a patrol watching someone walk around in a ski mask
     this.maskStopAt = -99;
+    this.footOfficers = []; // officers who have bailed out of pursuit cars to chase the suspect on foot
+    this.responseT = 0;
+    this.crimeResponse = false;
+    this.chaseT = 0;
+    this.backupT = 0;
+    this.spikeT = 0;
+    this.interceptorSent = false;
+    this.pitCooldown = 0;
+    this.pitAlertT = 0;
   }
   get level() { return Math.floor(clamp(this.s.heat, 0, 5.99)); }
   get active() { return this.phase !== 'none'; }
@@ -105,16 +119,12 @@ export class PoliceSystem {
       const d = Math.hypot(c.x - px, c.z - pz);
       if (d < range && lineOfSight(this.map, c.x, c.z, px, pz)) { seen = true; break; }
     }
-    if (!seen && this.heli) {
-      const inTunnel = px > TUNNEL[0] && px < TUNNEL[1] && Math.abs(pz - HWY_Z) < HWY_W;
-      if (!inTunnel && Math.hypot(this.heli.x - px, this.heli.z - pz) < 70) seen = true;
-    }
     return seen;
   }
 
   // Where to bring a new unit in from: a precinct or a road point
   // 250-450 m away, off-screen.
-  entryPoint(px, pz) {
+  entryPoint(px, pz, minD = 250, maxD = 300) {
     const prec = ['pspd_central', 'pspd_harbor'].map(id => LOC_BY_ID[id]).filter(l => Math.hypot(l.x - px, l.z - pz) < 900 && Math.hypot(l.x - px, l.z - pz) > 200);
     if (prec.length && Math.random() < 0.4) { const l = pick(prec); return { x: l.x, z: l.z }; }
     for (let i = 0; i < 40; i++) {
@@ -122,7 +132,7 @@ export class PoliceSystem {
       const s = Math.random() * e.len;
       const x = e.ax + e.dx * s, z = e.az + e.dz * s;
       const d = Math.hypot(x - px, z - pz);
-      if (d > 250 && d < 480) return { x, z };
+      if (d > minD && d < maxD) return { x, z };
     }
     return { x: px + 400, z: pz };
   }
@@ -144,8 +154,7 @@ export class PoliceSystem {
     for (const c of this.patrols) c.update(dt, w.trafficCtx);
 
     // ---- detection ----
-    // With a warrant out, officers have your plate and your photo: they look
-    // harder (longer detection range) and recognise you even on foot.
+    // A warrant is not an automatic police detection signal. Officers only learn about it when recognition() gets a valid rear-plate read.
     const wanted = hasWarrant(s);
     const look = s.player?.look;
     this.disguise = p.inCar ? 0 : concealment(look, (w.darkness?.() || 0) > 0.4);
@@ -186,36 +195,64 @@ export class PoliceSystem {
     }
 
     this.gunHeat = Math.max(0, this.gunHeat - dt * 0.25);
+    if (w.taseT > 0) w.taseT = Math.max(0, w.taseT - dt);
     this.hear(dt, w);
 
     // ---- state machine ----
     const lvl = this.level;
+    this.syncFootPursuit(dt, w, lvl);
     if (this.phase === 'notice') {
-      // lit up: pull over within the countdown or it turns into a chase. The
-      // clock only runs once a cop is actually behind you (a unit sent to a
-      // noise complaint across town has to get there first).
-      if (this.allCars().some(c => Math.hypot(c.x - p.x, c.z - p.z) < 150)) this.pullT -= dt;
-      this.stillT = p.inCar && p.speed < 1.5 ? this.stillT + dt : 0;
-      if (this.stillT >= STOP_STILL) this.beginStop(w);
-      else if (this.pullT <= 0 || lvl >= 2) this.failedToYield(w);
-      else if (this.unseenT > 7) {
-        this.phase = 'search';
-        this.searchR = 160 + lvl * 70;
-        w.hud.radio(`Lost visual. Set up a search grid around ${w.streetAt(this.lastSeen.x, this.lastSeen.z) || 'last known'}.`);
+      // Crimes get a clean ten-second response window. Three units are spawned
+      // roughly ten seconds of road travel away; they do not start the actual
+      // pursuit until the timer expires, giving the player time to decide.
+      if (this.crimeResponse) {
+        this.responseT -= dt;
+        if (this.responseT <= 0) {
+          this.crimeResponse = false;
+          this.phase = 'chase';
+          this.chaseT = 0;
+          this.backupT = BACKUP_START_S;
+          this.spikeT = SPIKE_START_S;
+          w.hud.radio('Dispatch: units on scene. Pursuit authorized. Do not let the suspect get away.');
+          w.audio.siren(true, 0.7);
+          w.audio.music('pursuit');
+        }
+      } else {
+        // Traditional traffic-stop countdown.
+        if (this.allCars().some(c => Math.hypot(c.x - p.x, c.z - p.z) < 150)) this.pullT -= dt;
+        this.stillT = p.inCar && p.speed < 1.5 ? this.stillT + dt : 0;
+        if (this.stillT >= STOP_STILL) this.beginStop(w);
+        else if (this.pullT <= 0 || lvl >= 2) this.failedToYield(w);
       }
     } else if (this.phase === 'stop' && this.stop) {
       this.updateStop(dt, w);
     }
     if (this.phase === 'chase') {
+      this.chaseT += dt;
+      this.pitCooldown = Math.max(0, this.pitCooldown - dt);
+      this.pitAlertT = Math.max(0, this.pitAlertT - dt);
+      this.checkPit(w);
       if (this.seen && p.speed > 8) this.addHeat(dt * 0.025, 'Suspect is fleeing.', w.hud);
-      if (this.unseenT > 7) {
-        this.phase = 'search';
-        this.searchR = 160 + lvl * 70;
-        w.hud.radio(`Lost visual. Set up a search grid around ${w.streetAt(this.lastSeen.x, this.lastSeen.z) || 'last known'}.`);
+      // A vehicle pursuit does not automatically turn into a search. Units keep
+      // running the road network and requesting more resources until the player
+      // is busted or reaches a true end-state (safehouse/reset).
+      this.unseenT = 0;
+      if (this.chaseT > this.backupT) {
+        this.backupT += BACKUP_INTERVAL_S;
+        this.requestBackup(w);
+      }
+      if (this.chaseT > this.spikeT) {
+        this.spikeT += SPIKE_INTERVAL_S;
+        this.placeRoadblock(w);
+      }
+      if (!this.interceptorSent && this.chaseT >= INTERCEPTOR_START_S) {
+        this.interceptorSent = true;
+        this.spawnInterceptor(w);
       }
       // busted: stopped with a cop on top of you
       const near = this.units.some(u => Math.hypot(u.x - p.x, u.z - p.z) < 9) || this.patrols.some(u => Math.hypot(u.x - p.x, u.z - p.z) < 9);
-      if ((p.inCar || w.combat?.armed) && p.speed < 1.5 && near) this.bustT += dt; else this.bustT = Math.max(0, this.bustT - dt * 2);
+      const footNear = this.footOfficers.some(o => Math.hypot(o.x - p.x, o.z - p.z) < 3.2);
+      if ((p.inCar || w.combat?.armed || footNear) && p.speed < 1.5 && (near || footNear)) this.bustT += dt; else this.bustT = Math.max(0, this.bustT - dt * 2);
       if (this.bustT > 3.5) { this.busted(w); return; }
     } else if (this.phase === 'search') {
       const d = Math.hypot(p.x - this.lastSeen.x, p.z - this.lastSeen.z);
@@ -232,65 +269,25 @@ export class PoliceSystem {
     }
 
     // ---- dispatch ----
-    const want = this.phase === 'none' ? 0 : this.phase === 'notice' || this.phase === 'stop' ? 1 : UNIT_COUNT[Math.max(1, lvl)] + (lvl >= 2 ? extraUnits(s.time) : 0);
-    if (this.units.length < want && Math.random() < dt * 0.8) {
-      const ep = this.entryPoint(p.x, p.z);
-      const model = CAR_BY_ID[lvl >= 3 && Math.random() < 0.5 ? pick(INTERCEPTORS) : pick(PATROL_MODELS)];
+    const wantedUnits = this.phase === 'none' ? 0 : this.phase === 'notice' || this.phase === 'stop' ? (this.crimeResponse ? INITIAL_RESPONSE_UNITS : 1) : Math.min(10, Math.max(2, UNIT_COUNT[Math.max(1, lvl)]) + Math.floor(this.chaseT / BACKUP_INTERVAL_S));
+    if (this.units.length < wantedUnits && Math.random() < dt * 0.9) {
+      const ep = this.entryPoint(p.x, p.z, this.phase === 'notice' ? 250 : 320, this.phase === 'notice' ? 300 : 520);
+      const model = CAR_BY_ID[pick(PATROL_MODELS)];
       const u = new Unit(model, ep.x, ep.z, Math.atan2(p.x - ep.x, -(p.z - ep.z)));
       this.units.push(u);
-      if (Math.random() < 0.5) w.hud.radio(`Unit ${u.id} responding, ${Math.round(Math.hypot(ep.x - p.x, ep.z - p.z) / 1609 * 60 / 50 * 60)}s out.`);
+      if (this.crimeResponse) u.response = true;
+      if (Math.random() < 0.45) w.hud.radio(`Unit ${u.id} responding. ETA about ${this.crimeResponse ? 10 : 6} seconds.`);
     }
     if (this.phase === 'none') {
       // units drive off and disappear once out of sight
       this.units = this.units.filter(u => Math.hypot(u.x - p.x, u.z - p.z) < 300);
     }
     if (this.phase === 'stop' && this.stop && !this.stop.unit && this.units.length) this.stop.unit = this.nearestUnit(this.stop.x, this.stop.z);
-    for (const u of this.units) if (!(this.phase === 'stop' && u === this.stop?.unit)) this.driveUnit(u, dt, w, lvl);
+    for (const u of this.units) if (!u.foot && !(this.phase === 'stop' && u === this.stop?.unit)) this.driveUnit(u, dt, w, lvl);
 
-    // ---- roadblocks + spikes (level 4+) ----
-    this.blockT -= dt;
-    if (this.phase === 'chase' && lvl >= 4 && this.blockT <= 0 && p.speed > 15) { this.placeRoadblock(w); this.blockT = 28; }
+    // ---- roadblocks + spikes ----
+    // The pursuit timer above escalates spike deployments as the chase lasts.
     this.blocks = this.blocks.filter(b => Math.hypot(b.x - p.x, b.z - p.z) < 700 && (b.life -= dt) > 0);
-
-    // ---- helicopter (level 5) ----
-    // Air One circles the target like a real pursuit helicopter: it holds an
-    // orbit around the player (or the search area) and keeps its spotlight on
-    // the target, but never flies over the car and hides it from view.
-    if (lvl >= 5 && this.phase !== 'none' && !this.heli) {
-      const ep = this.entryPoint(p.x, p.z);
-      this.heli = { x: ep.x, z: ep.z, rot: 0, spot: { x: p.x, z: p.z } };
-      w.hud.radio('Air One overhead. Spotlight on.');
-    }
-    if (this.heli) {
-      const hl = this.heli, chase = this.phase === 'chase' && this.lastSeen;
-      const t = performance.now() / 3000;
-      // where the light should be: on the car in a chase, sweeping the search area otherwise
-      const sx = chase ? p.x : (this.lastSeen?.x ?? p.x) + Math.cos(t) * this.searchR * 0.6;
-      const sz = chase ? p.z : (this.lastSeen?.z ?? p.z) + Math.sin(t) * this.searchR * 0.6;
-      const sd = Math.hypot(sx - hl.spot.x, sz - hl.spot.z), ssp = Math.min(sd, 60 * dt);
-      if (sd > 0.1) { hl.spot.x += (sx - hl.spot.x) / sd * ssp; hl.spot.z += (sz - hl.spot.z) / sd * ssp; }
-      // the orbit is centred on the player in a chase, on the light while searching
-      const cx = chase ? p.x : hl.spot.x, cz = chase ? p.z : hl.spot.z;
-      // fly by heading: close in (or back off) to the orbit radius while
-      // circling, plus the car's own motion so it keeps pace without ever
-      // cutting across the middle of the circle
-      const ox0 = hl.x - cx, oz0 = hl.z - cz, pd = Math.hypot(ox0, oz0) || 0.01;
-      const rx = ox0 / pd, rz = oz0 / pd;                  // outward from the centre
-      const vr = clamp((HELI_ORBIT - pd) * 1.5, -200, 30);  // radial correction
-      const vt = HELI_ORBIT * 0.35;                         // slow circle
-      let vx = rx * vr - rz * vt + (chase ? p.vx || 0 : 0), vz = rz * vr + rx * vt + (chase ? p.vz || 0 : 0);
-      const v = Math.hypot(vx, vz), vmax = Math.max(42, (p.speed || 0) + 25);
-      if (v > vmax) { vx *= vmax / v; vz *= vmax / v; }
-      hl.x += vx * dt; hl.z += vz * dt;
-      // hard rule: never closer to the player than the keep-out ring
-      const ox = hl.x - p.x, oz = hl.z - p.z, od = Math.hypot(ox, oz);
-      if (od < HELI_KEEPOUT) {
-        const a = od > 0.01 ? Math.atan2(oz, ox) : 0;
-        hl.x = p.x + Math.cos(a) * HELI_KEEPOUT; hl.z = p.z + Math.sin(a) * HELI_KEEPOUT;
-      }
-      hl.rot += dt * 25;
-      if (this.phase === 'none' || lvl < 5) { hl.leave = (hl.leave || 0) + dt; if (hl.leave > 6) this.heli = null; }
-    }
 
     // ---- chatter ----
     this.chatterT -= dt;
@@ -304,23 +301,45 @@ export class PoliceSystem {
     }
   }
 
-  // A patrol near you runs your plate (in a car) or recognises your face (on
-  // foot, closer). Takes a few seconds of being watched; a felony warrant is
-  // a felony stop, everything else starts as a pull-over.
+  // Warrant checks happen through a realistic plate read: an officer must be
+  // behind the player's vehicle, close enough to see the rear plate, moving in
+  // roughly the same direction, and maintain that position long enough to run it.
+  // Police do NOT magically recognize a warrant just by seeing the player.
   recognition(dt, w, wanted) {
     if (!wanted) { this.recognise = 0; return; }
     const p = w.player;
-    // a covered face can't be matched to a mugshot; a plate always can
-    const range = p.inCar ? 70 : masked(this.s.player?.look) ? 0 : 28 * (1 - this.disguise);
-    if (range < 5) { this.recognise = Math.max(0, this.recognise - dt * 0.2); return; }
-    const near = this.patrols.some(c => Math.hypot(c.x - p.x, c.z - p.z) < range && lineOfSight(this.map, c.x, c.z, p.x, p.z));
-    this.recognise = near ? this.recognise + dt / (p.inCar ? 2.5 : 4) : Math.max(0, this.recognise - dt * 0.2);
+    if (!p.inCar) { this.recognise = 0; return; }
+
+    let reader = null;
+    for (const c of this.patrols) {
+      const dx = c.x - p.x, dz = c.z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 6 || d > 24 || !lineOfSight(this.map, c.x, c.z, p.x, p.z)) continue;
+
+      // Rear-plate cone: the patrol has to be behind the player, not beside or ahead.
+      const rearX = -Math.cos(p.h), rearZ = -Math.sin(p.h);
+      const along = dx * rearX + dz * rearZ;
+      const lateral = Math.abs(dx * (-rearZ) + dz * rearX);
+      if (along < 4 || lateral > 7) continue;
+
+      // They should be following rather than crossing perpendicular to the car.
+      const carSpeed = Math.max(1, p.speed);
+      const patrolHeading = Math.atan2(c.vz || Math.sin(c.h), c.vx || Math.cos(c.h));
+      const carHeading = p.h;
+      const hd = Math.abs(Math.atan2(Math.sin(patrolHeading - carHeading), Math.cos(patrolHeading - carHeading)));
+      if (hd > 0.85) continue;
+      reader = c;
+      break;
+    }
+
+    this.recognise = reader ? this.recognise + dt / 1.8 : Math.max(0, this.recognise - dt * 0.5);
     if (this.recognise < 1) return;
+
     this.recognise = 0;
     const felony = hasFelony(this.s);
     this.s.heat = Math.max(this.s.heat, felony ? 2 : 1);
     this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz };
-    w.hud.radio(p.inCar ? `Plate hit: ${felony ? 'felony' : 'active'} warrant on file.` : `Subject on foot matches a ${felony ? 'felony ' : ''}warrant.`);
+    w.hud.radio(`Plate reader: ${felony ? 'felony' : 'active'} warrant hit. Unit ${reader?.id || 14} checking the vehicle.`);
     this.startChase(w, felony);
     this.eyesOn = true;
   }
@@ -380,19 +399,184 @@ export class PoliceSystem {
       this.eyesOn = this.seen;
       this.chaseDisguise = this.seen ? this.disguise : 1;
       this.footOnly = !w.player.inCar;
-      this.phase = force || this.level >= 2 ? 'chase' : 'notice';
-      if (this.phase === 'notice') {
-        this.pullT = PULL_OVER_S; this.stillT = 0;
-        this.takePatrol(w.player);
-      }
-      w.hud.radio(this.phase === 'notice' ? `Pull over! You have ${PULL_OVER_S} seconds.` : 'Pursuit initiated.');
-      w.audio.siren(true, 0.6);
-      w.audio.music('pursuit');
+      this.phase = 'notice';
+      this.crimeResponse = true;
+      this.responseT = CRIME_RESPONSE_S;
+      this.pullT = PULL_OVER_S;
+      this.stillT = 0;
+      this.chaseT = 0;
+      this.backupT = BACKUP_START_S;
+      this.spikeT = SPIKE_START_S;
+      this.interceptorSent = false;
+      this.lastSeen = { x: w.player.x, z: w.player.z, vx: w.player.vx, vz: w.player.vz };
+      this.units = [];
+      w.hud.radio(`Dispatch: units are responding. You have ${CRIME_RESPONSE_S} seconds before they arrive — choose your move.`);
+      w.audio.siren(false);
+      w.audio.music(null);
+      this.spawnResponseUnits(w);
     } else {
       this.phase = 'chase';
       w.hud.radio('Eyes back on the suspect!');
     }
     this.unseenT = 0;
+  }
+
+  // When a pursuit suspect bails out, the nearest pursuit unit stops and the officer
+  // gets out. The officer then runs the suspect down instead of magically keeping
+  // the police car glued to them.
+  syncFootPursuit(dt, w, lvl) {
+    const p = w.player;
+    if (this.phase !== 'chase') {
+      if (this.footOfficers.length) {
+        for (const o of this.footOfficers) {
+          if (o.unit) { o.unit.foot = false; o.unit.x = o.x; o.unit.z = o.z; o.unit.h = o.h; o.unit.v = 0; }
+        }
+        this.footOfficers = [];
+      }
+      return;
+    }
+
+    // If the suspect gets back in the car, officers return to their units.
+    if (p.inCar) {
+      for (const o of this.footOfficers) {
+        if (o.unit) { o.unit.foot = false; o.unit.x = o.x; o.unit.z = o.z; o.unit.h = o.h; o.unit.v = 0; }
+      }
+      this.footOfficers = [];
+      return;
+    }
+
+    // Let the closest pursuit cars arrive before they dismount.
+    for (const u of this.units) {
+      if (u.foot || this.footOfficers.some(o => o.unit === u)) continue;
+      const d = Math.hypot(u.x - p.x, u.z - p.z);
+      if (d > 55 || !lineOfSight(this.map, u.x, u.z, p.x, p.z)) continue;
+      u.foot = true; u.v = 0;
+      const o = { unit: u, x: u.x, z: u.z, h: Math.atan2(p.x - u.x, -(p.z - u.z)), walk: 0, moving: 0, fireT: 0.7, taserT: 1.0 };
+      this.footOfficers.push(o);
+      w.hud.radio(`Unit ${u.id}: suspect bailed out. Officer pursuing on foot.`);
+    }
+
+    for (const o of this.footOfficers) this.updateFootOfficer(o, dt, w, lvl);
+  }
+
+  updateFootOfficer(o, dt, w, lvl) {
+    const p = w.player;
+    const dx = p.x - o.x, dz = p.z - o.z, d = Math.hypot(dx, dz);
+    const los = d < 42 && lineOfSight(this.map, o.x, o.z, p.x, p.z);
+    const want = Math.atan2(dx, -dz);
+    let dh = want - o.h; while (dh > Math.PI) dh -= Math.PI * 2; while (dh < -Math.PI) dh += Math.PI * 2;
+    o.h += clamp(dh, -3.8 * dt, 3.8 * dt);
+
+    // Armed suspect: keep distance and fire controlled shots when there is a clear line.
+    if (w.combat?.armed) {
+      o.fireT -= dt;
+      if (los && d < 27 && o.fireT <= 0) {
+        o.fireT = Math.max(0.55, 1.15 - lvl * 0.08);
+        w.combat.hurt(10 + lvl * 1.5, 'Officer fired during the foot pursuit.');
+        w.hud.radio(`Unit ${o.unit?.id || 14}: suspect has a firearm out. Shots fired.`);
+      }
+      // Don't stand directly on the armed player.
+      if (d > 11) this.moveOfficer(o, dt, 2.8 + lvl * 0.12);
+      else o.moving = 0;
+      return;
+    }
+
+    // Unarmed suspect: close in and use a taser instead of lethal force.
+    o.taserT -= dt;
+    if (los && d < 15 && o.taserT <= 0) {
+      o.taserT = 4.0;
+      w.taseT = Math.max(w.taseT || 0, 2.5);
+      w.hud.radio(`Unit ${o.unit?.id || 14}: Taser! Suspect is going down.`);
+    }
+    if (d > 2.5) this.moveOfficer(o, dt, 3.2 + lvl * 0.1);
+    else o.moving = 0;
+  }
+
+  moveOfficer(o, dt, speed) {
+    const f = { x: Math.sin(o.h), z: -Math.cos(o.h) };
+    const nx = o.x + f.x * speed * dt, nz = o.z + f.z * speed * dt;
+    const hit = collideCircle(this.map, nx, nz, 0.38);
+    if (hit) { o.x += hit.nx * hit.pen; o.z += hit.nz * hit.pen; o.h += 0.7; }
+    else { o.x = nx; o.z = nz; }
+    o.walk += dt * speed * 2.2; o.moving = speed;
+  }
+
+  spawnResponseUnits(w) {
+    const p = w.player;
+    for (let i = 0; i < INITIAL_RESPONSE_UNITS; i++) {
+      const ep = this.entryPoint(p.x, p.z, 250, 285);
+      const u = new Unit(CAR_BY_ID[pick(PATROL_MODELS)], ep.x, ep.z, Math.atan2(p.x - ep.x, -(p.z - ep.z)));
+      u.response = true;
+      this.units.push(u);
+    }
+  }
+
+  requestBackup(w) {
+    const p = w.player;
+    const ep = this.entryPoint(p.x, p.z, 360, 520);
+    const u = new Unit(CAR_BY_ID[pick(PATROL_MODELS)], ep.x, ep.z, Math.atan2(p.x - ep.x, -(p.z - ep.z)));
+    this.units.push(u);
+    w.hud.radio(`Dispatch: additional unit ${u.id} joining the pursuit.`);
+  }
+
+  spawnInterceptor(w) {
+    const p = w.player;
+    const ep = this.entryPoint(p.x, p.z, 500, 650);
+    const u = new Unit(CAR_BY_ID[PURSUIT_INTERCEPTOR], ep.x, ep.z, Math.atan2(p.x - ep.x, -(p.z - ep.z)));
+    u.interceptor = true;
+    this.units.push(u);
+    w.hud.radio('Dispatch: suspect is evading. Send the pursuit Hellcat. Interceptor is en route.');
+  }
+
+  // PIT attempts: a pursuit unit has to get alongside the player's rear quarter
+  // at a usable speed. The HUD flashes PIT before contact so the player knows a
+  // unit is setting up the maneuver. A successful hit rotates the car, scrubs speed,
+  // and damages tires/body/transmission so repeated contact can actually wreck it.
+  checkPit(w) {
+    const p = w.player, v = w.vehicle;
+    if (!v || !p.inCar || p.speed < 12 || this.pitCooldown > 0) return;
+    let best = null, bestD = Infinity;
+    const fx = Math.sin(p.h), fz = -Math.cos(p.h), rx = Math.cos(p.h), rz = Math.sin(p.h);
+    for (const u of this.units) {
+      if (u.foot || u.speed < 12) continue;
+      const dx = u.x - p.x, dz = u.z - p.z, d = Math.hypot(dx, dz);
+      if (d > 7 || d < 1.5) continue;
+      const along = dx * fx + dz * fz;
+      const lateral = dx * rx + dz * rz;
+      // Police must be beside the rear half of the car, moving roughly with it.
+      if (along > 1.2 || Math.abs(lateral) < 1.0) continue;
+      const uvx = Math.sin(u.h) * u.v, uvz = -Math.cos(u.h) * u.v;
+      const sameDir = (uvx * fx + uvz * fz) / Math.max(1, u.speed * p.speed) > 0.55;
+      if (!sameDir) continue;
+      if (d < bestD) { best = u; bestD = d; }
+    }
+    if (!best) return;
+    if (this.pitAlertT <= 0 && bestD < 6.5) {
+      this.pitAlertT = 1.0;
+      w.hud.pit?.(1.1);
+    }
+    if (bestD > 4.8) return;
+    const dx = best.x - p.x, dz = best.z - p.z;
+    const side = Math.sign(dx * rx + dz * rz) || 1;
+    const speed = v.speed;
+    const c = Math.cos(side * 0.9), sn = Math.sin(side * 0.9);
+    const nvx = v.vx * c - v.vz * sn, nvz = v.vx * sn + v.vz * c;
+    v.vx = nvx * 0.62; v.vz = nvz * 0.62;
+    v.h += side * 0.9;
+    v.yawRate += side * 1.6;
+    v.lastImpact = Math.max(v.lastImpact || 0, 0.9);
+    const car = v.car;
+    if (car?.cond) {
+      car.cond.body = Math.max(1, (car.cond.body ?? 100) - 16);
+      car.cond.tires = Math.max(1, (car.cond.tires ?? 100) - (speed > 28 ? 22 : 12));
+      car.cond.trans = Math.max(1, (car.cond.trans ?? 100) - (speed > 28 ? 10 : 5));
+      if (speed > 32) car.cond.engine = Math.max(1, (car.cond.engine ?? 100) - 8);
+    }
+    this.pitCooldown = speed > 30 ? 6 : 4;
+    w.hud.pit?.(0.9);
+    w.hud.radio(`Unit ${best.id}: PIT maneuver! Suspect vehicle is losing control.`);
+    w.audio.crash?.(0.75);
+    if (speed > 30) w.hud.radio('PIT HIT — vehicle damaged. Control the vehicle.');
   }
 
   driveUnit(u, dt, w, lvl) {
@@ -401,7 +585,7 @@ export class PoliceSystem {
     // choose target
     let tx, tz, chasing = false;
     const dToP = Math.hypot(p.x - u.x, p.z - u.z);
-    if ((this.phase === 'chase' || this.phase === 'notice') && this.lastSeen) {
+    if ((this.phase === 'chase' || (this.phase === 'notice' && this.crimeResponse)) && this.lastSeen) {
       if (dToP < 160 && lineOfSight(this.map, u.x, u.z, p.x, p.z)) {
         tx = p.x + p.vx * 0.6; tz = p.z + p.vz * 0.6; chasing = true;
       } else { const wp = this.waypoint(u, this.lastSeen.x, this.lastSeen.z); tx = wp.x; tz = wp.z; }
@@ -423,7 +607,7 @@ export class PoliceSystem {
     if (u.backup > 0) { u.backup -= dt; u.v = -6; u.h -= turn; }
     else {
       u.h += turn;
-      const top = (chasing ? 34 + lvl * 4 : 26) * (this.phase === 'cooldown' ? 0.7 : 1);
+      const top = (chasing ? (u.interceptor ? 46 : 34 + lvl * 4) : 26) * (this.phase === 'cooldown' ? 0.7 : 1);
       let target = top * (1 - Math.min(0.75, Math.abs(dh) / 1.4));
       if (chasing && dToP < 14) target = Math.max(p.speed - 1, 6);
       u.v += clamp(target - u.v, -14 * dt, 9 * dt);
@@ -494,6 +678,22 @@ export class PoliceSystem {
         w.onSpikes();
       }
     }
+  }
+
+  // Somebody died. Witnesses call it in whether or not a unit saw it. Two
+  // bodies (or a cop) makes it capital murder. Murder is life.
+  homicide(w, { officer = false } = {}) {
+    this.kills = (this.kills || 0) + 1;
+    const p = w.player, street = w.streetAt?.(p.x, p.z);
+    const capital = officer || this.kills >= 2;
+    this.note(capital
+      ? { kind: officer ? 'capital_murder_po' : 'capital_murder', text: officer ? 'Capital murder of a peace officer.' : 'Capital murder (more than one person killed).', fine: 100000 }
+      : { kind: 'murder', text: `Murder${street ? ' on ' + street : ''}.`, fine: 50000 });
+    this.addHeat(2.2 * this.vague(), capital ? 'Multiple homicide. All units.' : 'Homicide. Suspect is armed.', w.hud);
+    w.hud.radio(`Dispatch: shooting victim down${street ? ' on ' + street : ''}. It's a homicide now.`);
+    this.lastSeen = { x: p.x, z: p.z, vx: 0, vz: 0 };
+    if (this.phase === 'stop') this.fled(w);
+    else this.startChase(w, true);
   }
 
   // A shot was fired (kind 'hit' when it struck someone). Anyone within earshot
@@ -708,17 +908,22 @@ export class PoliceSystem {
     const anon = this.eyesOn && this.footOnly && Math.random() < this.chaseDisguise;
     w.onEscaped(record, this.eyesOn && !anon);
     this.phase = 'none';
+    this.crimeResponse = false;
+    this.responseT = 0;
+    this.chaseT = 0;
+    this.pitCooldown = 0;
+    this.pitAlertT = 0;
     this.decayHold = 20;
     w.audio.siren(false);
     w.audio.music(null);
   }
   reset(w) {
     this.phase = 'none';
-    this.record = []; this.noiseAtt = 0;
+    this.crimeResponse = false; this.responseT = 0; this.chaseT = 0; this.backupT = 0; this.spikeT = 0; this.interceptorSent = false; this.pitCooldown = 0; this.pitAlertT = 0;
+    this.record = []; this.noiseAtt = 0; this.kills = 0;
     this.s.heat = 0;
     this.units = [];
     this.blocks = [];
-    this.heli = null;
     this.bustT = 0;
     this.stop = null; this.pullT = 0; this.stillT = 0;
     w.audio.siren(false);

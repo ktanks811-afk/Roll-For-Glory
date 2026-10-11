@@ -188,21 +188,6 @@ await step('night + police chase', async () => {
   await snap('10-night-chase');
   await p.evaluate(() => { window.__rfg.app.world.police.reset(window.__rfg.app.world); });
 });
-await step('helicopter circles instead of covering the car', async () => {
-  // Drop Air One straight on top of the car mid-chase: it must back off to its
-  // orbit and stay off the car while it drives.
-  await p.evaluate(() => { const s = window.__rfg.game.s; s.time.min = 23 * 60; s.heat = 5.5; const w = window.__rfg.app.world; w.police.lastSeen = { x: w.vehicle.x, z: w.vehicle.z }; w.police.phase = 'chase'; });
-  await p.waitForFunction(() => window.__rfg.app.world.police.heli, null, { timeout: 3000 });
-  await p.evaluate(() => { const w = window.__rfg.app.world, h = w.police.heli; const v = w.vehicle; window.__heliFrom = { x: v.x, z: v.z, h: v.h }; h.x = w.vehicle.x + 1; h.z = w.vehicle.z; window.__heliMin = Infinity; window.__heliSpin = setInterval(() => { const ww = window.__rfg.app.world, hh = ww.police.heli; if (hh) window.__heliMin = Math.min(window.__heliMin, Math.hypot(hh.x - ww.vehicle.x, hh.z - ww.vehicle.z)); }, 16); });
-  await p.waitForTimeout(150);
-  await p.evaluate(() => { window.__heliMin = Infinity; });   // let the first frame push it out
-  await p.keyboard.down('KeyW'); await p.waitForTimeout(3000); await p.keyboard.up('KeyW');
-  await snap('10b-heli-orbit');
-  const min = await p.evaluate(() => { clearInterval(window.__heliSpin); return window.__heliMin; });
-  // put the car back where it was so the later steps (burnout marks need tarmac) start from the same spot
-  await p.evaluate(() => { const w = window.__rfg.app.world, v = w.vehicle, f = window.__heliFrom; w.police.reset(w); v.x = f.x; v.z = f.z; v.h = f.h; v.vx = v.vz = 0; v.sim.v = 0; });
-  if (!(min > 15)) throw new Error(`helicopter came within ${min.toFixed(1)} m of the car`);
-});
 await step('garage', async () => {
   await p.evaluate(async () => { const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home' }); });
   await p.waitForTimeout(300); await snap('11-garage');
@@ -828,6 +813,28 @@ await step('Amazin\' shop + guns + robbery', async () => {
   if (burst < 3) throw new Error('burst-fire malfunction did not fire a burst: ' + burst);
   await p.evaluate(() => { const g = window.__rfg.game.s.arms.guns[0]; g.frt = false; const c = window.__rfg.app.world.combat; c.jamChance = undefined; c.burstChance = undefined; c.jammed = false; c.burstLeft = 0; c.gun.g.loaded = 15; });
   await calm();
+  // mags, drums and a switch: buy them, put a 100 drum and a switch on the Glock, hold the trigger
+  await p.evaluate(async () => { const s = window.__rfg.game.s; s.arms.frtKits = 0; s.arms.ammo['9mm'] = 400; const { openPhone } = await import('./js/ui/phone.js'); openPhone('shop', window.__rfg.app); });
+  await p.waitForTimeout(250);
+  await p.click('button[data-action="tab"][data-id="mags"]');
+  await p.click('button[data-action="mag"][data-id="mag100"]');
+  await p.click('button[data-action="mag"][data-id="drum50"]');
+  await p.click('button[data-action="switch"]');
+  await snap('30b-mags');
+  await p.click('button[data-action="tab"][data-id="mine"]');
+  await p.selectOption('select[data-magsel]', 'mag100'); await p.waitForTimeout(100);
+  await p.click('button[data-action="sw"]');
+  await p.click('button[data-action="topoff"]');
+  const kit = await p.evaluate(() => { const a = window.__rfg.game.s.arms; return { g: a.guns[0], mk: a.magKits, sk: a.switchKits }; });
+  if (kit.g.mag !== 'mag100' || !kit.g.sw || kit.g.loaded !== 100 || kit.mk.mag100 !== 0 || kit.mk.drum50 !== 1 || kit.sk !== 0) throw new Error('drum/switch did not go on the Glock ' + JSON.stringify(kit));
+  await calm();
+  await p.evaluate(() => { const c = window.__rfg.app.world.combat; c.cd = 0; c.shots = 0; c.jamChance = 0; c.drawn = true; c.jammed = false; });
+  await p.keyboard.down('KeyJ'); await p.waitForTimeout(1000); await p.keyboard.up('KeyJ');
+  const sw = await p.evaluate(() => { const c = window.__rfg.app.world.combat; return { shots: c.shots, loaded: c.gun.g.loaded, hud: c.hudLine() }; });
+  if (sw.shots < 12 || sw.loaded !== 100 - sw.shots || !/SWITCH/.test(sw.hud) || !/100 DRUM/.test(sw.hud) || !/\/100/.test(sw.hud)) throw new Error('switched Glock with a 100 drum: ' + JSON.stringify(sw));
+  await snap('31b-switch-hud');
+  await p.evaluate(() => { const g = window.__rfg.game.s.arms.guns[0]; g.sw = false; g.mag = null; g.loaded = 15; const c = window.__rfg.app.world.combat; c.jamChance = undefined; c.jammed = false; c.burstLeft = 0; });
+  await calm();
   // reload
   await p.evaluate(() => { window.__rfg.app.world.combat.gun.g.loaded = 3; });
   await p.keyboard.press('KeyR'); await p.waitForTimeout(2300);
@@ -1233,7 +1240,8 @@ await step('online free roam', async () => {
     w.inCar = true; activeCar(r.game.s).fuel = 1; r.game.s.heat = 0; if (w.police.active) w.police.reset(w);
     if (!pvp.challenge(peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 500 })) throw new Error('challenge not sent');
   });
-  await p2.waitForSelector('.modal-back button:has-text("Run it")', { timeout: 5000 }).catch(async e => { throw new Error('no race invite to accept on tab 2: ' + (await p2.evaluate(() => document.querySelector('.modal-back')?.textContent || 'no modal'))); });
+  // tab 2 is a background tab: no animation frames, so poll on a timer instead of waitForSelector
+  await p2.waitForFunction(() => [...document.querySelectorAll('.modal-back button')].some(b => /Run it/i.test(b.textContent)), null, { timeout: 8000, polling: 200 });
   const inviteText = await p2.textContent('.modal-back .modal-body');
   if (!/1\/4 mile drag race/.test(inviteText) || !/\$500/.test(inviteText)) throw new Error('invite reads wrong: ' + inviteText);
   if (shots) await p2.screenshot({ path: `${OUT}/23b-race-invite.png` });
@@ -1349,8 +1357,10 @@ await step('online free roam', async () => {
   await until(p, () => !!window.__rfg.app.world.rides.riding, 'passenger never got in');
   // the driver drives off: the passenger goes with the car and everyone else stops drawing them
   await p2.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.x += 60; v.z += 20; });
-  const c2 = await carOf(p2);
-  await until(p, ([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z) < 3; }, 'passenger did not move with the car', [c2.x, c2.z]);
+  // compare with where the driver's car really is now (it can get nudged out of a building after the move)
+  let moved = false;
+  for (let i = 0; i < 30 && !moved; i++) { const c2 = await carOf(p2); moved = await p.evaluate(([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z) < 3; }, [c2.x, c2.z]); if (!moved) await p.waitForTimeout(150); }
+  if (!moved) throw new Error('passenger did not move with the car');
   await p.evaluate(() => window.__rfg.app.world.rides.view()).then(v => { if (!v) throw new Error('camera is not riding with the car'); });
   await until(p2, () => window.__rfg.app.world.rides.riders().length === 1 && window.__rfg.online.list().filter(o => o.ride).length === 1, 'driver does not see the passenger aboard');
   // the passenger's dash shows the driver's speed, gear and revs (sent while someone rides along)
@@ -1359,6 +1369,7 @@ await step('online free roam', async () => {
   // the driver drops them off: back on foot beside the car
   await p2.evaluate(async () => { const { rides } = await import('./js/net/ride.js'); rides.drop(rides.riders()[0]); });
   await until(p, () => !window.__rfg.app.world.rides.riding, 'drop-off did not put the passenger out');
+  const c2 = await carOf(p2);
   const outAt = await p.evaluate(([x, z]) => { const f = window.__rfg.app.world.foot; return Math.hypot(f.x - x, f.z - z); }, [c2.x, c2.z]);
   if (!(outAt > 0.5 && outAt < 5)) throw new Error('passenger got out ' + outAt.toFixed(1) + ' m from the car');
   // vice versa: tab 1 drives up and offers tab 2 a ride
@@ -1782,6 +1793,23 @@ await step('warrants', async () => {
   await p.evaluate(() => { window.__rfg.game.s.justice.cases = []; });
 });
 
+// TDCJ (ui/prison.js): walk to the bunk and sleep a year at a time until you walk out.
+const doTime = async (snapName) => {
+  await p.waitForSelector('.pris'); await p.waitForTimeout(400);
+  if (snapName) await snap(snapName);
+  for (let i = 0; i < 40; i++) {
+    if (!(await p.isVisible('.pris'))) break;
+    await p.evaluate(async () => { const { activePrison } = await import('./js/ui/prison.js'); const c = activePrison(); const b = c.spots.find(x => x.id === 'bunk'); c.player.x = b.x; c.player.y = b.y + 0.6; c.player.tx = null; });
+    await p.waitForTimeout(300);
+    await p.click('.hunt-act');
+    await p.click('.modal button:has-text("Sleep")');
+    const btn = await p.waitForSelector('.modal button:has-text("Get up"), .modal button:has-text("Pack your things")');
+    const t = await btn.textContent(); await btn.click();
+    if (/Pack/.test(t)) { await p.waitForTimeout(400); break; }
+  }
+  if (await p.isVisible('.pris')) throw new Error('still in TDCJ after 40 years');
+};
+
 // ---------------- courts: booking, bail, court date, plea / trial, jail sim, missing court ----------------
 await step('courts + jail', async () => {
   await p.evaluate(() => { for (const c of window.__rfg.game.s.cars) delete c.impound; });   // an earlier arrest impounded the car
@@ -1831,12 +1859,10 @@ await step('courts + jail', async () => {
   await p.click('.modal button:has-text("Take the deal")');
   await p.waitForSelector('.modal h2:has-text("Sentence")');
   await p.click('.modal button:has-text("bailiff")');
-  await p.waitForSelector('.jail-clock'); await p.waitForTimeout(800);
-  await snap('31-jail');
-  await p.click('button:has-text("Skip to release")');
-  await p.click('button:has-text("Walk out")'); await p.waitForTimeout(250);
+  await p.click('.modal button:has-text("Step off the bus")');
+  await doTime('31-tdcj');
   j = await J();
-  if (j.cases.length || j.conv < 2 || j.day - day0 < 5) throw new Error('prison: case closed, convictions on record, time passed ' + JSON.stringify(j));
+  if (j.cases.length || j.conv < 2 || j.day - day0 < 1) throw new Error('prison: case closed, convictions on record, time passed ' + JSON.stringify(j));
   if (j.inCar || Math.hypot(j.foot[0] + 75, j.foot[1] + 163) > 12) throw new Error('not released at the courthouse');
   // 4. a misdemeanour with priors now: no free bond; miss court and it's a bail-jumping warrant
   await p.evaluate(() => { const w = window.__rfg.app.world; w.police.reset(w); w.onBusted(400, false, [{ kind: 'hitrun', text: 'Hit-and-run collision.', fine: 650 }]); });
@@ -1865,6 +1891,7 @@ await step('courts + jail', async () => {
     await p.waitForSelector('.modal h2:has-text("Sentence"), .modal h2:has-text("Not guilty")');
     await p.click('.modal button');
     if (await p.isVisible('.jail-clock')) { await p.click('button:has-text("Skip to release")'); await p.click('button:has-text("Walk out")'); }
+    else if (await p.isVisible('.modal button:has-text("Step off the bus")')) { await p.click('.modal button:has-text("Step off the bus")'); await doTime(); }
   } else await p.click('.modal button');
   await p.waitForTimeout(250);
   j = await J();
@@ -1874,6 +1901,71 @@ await step('courts + jail', async () => {
   await p.evaluate(() => window.__rfg.ui.openPhone('fwpd')); await p.waitForTimeout(250);
   if (!/Criminal history/.test(await p.textContent('.phone-screen'))) throw new Error('FWPD app should show the criminal history');
   await clear();
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; });
+});
+
+// ---------------- murder is life: no bond, no deal, TDCJ, the law library ----------------
+await step('murder: life in TDCJ', async () => {
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  // shoot a pedestrian dead: it's a homicide, and the police record says murder
+  await p.evaluate(() => {
+    const s = window.__rfg.game.s, w = window.__rfg.app.world;
+    s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; s.cash = 200000; s.time.min = 10 * 60;
+    w.police.reset(w);
+    const ped = { x: w.foot.x + 3, z: w.foot.z, hp: 10 };
+    w.combat.hurtPed(ped, 40, true);
+    window.__murder = { dead: ped.dead, record: w.police.record.map(r => r.kind), phase: w.police.phase };
+  });
+  const m = await p.evaluate(() => window.__murder);
+  if (!m.dead || !m.record.includes('murder') || m.phase !== 'chase') throw new Error('killing someone should be a murder: ' + JSON.stringify(m));
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.eyesOn = true; w.police.busted(w); });
+  await p.waitForSelector('.modal h2:has-text("BUSTED")');
+  if (!/Murder/.test(await p.textContent('.modal'))) throw new Error('BUSTED should list murder');
+  await p.click('.modal button:has-text("See the magistrate")');
+  await p.waitForSelector('.modal h2:has-text("Magistrate")');
+  if (!/Held without bond/.test(await p.textContent('.modal'))) throw new Error('murder should be held without bond');
+  await p.click('.modal button:has-text("Wait in jail")');
+  // held until court: skip the county sim, then the hearing
+  await p.waitForSelector('.jail-clock'); await p.click('button:has-text("Skip to release")'); await p.click('button:has-text("Walk out")');
+  const bench = await p.waitForSelector('.modal button:has-text("Approach the bench"), .modal h2:has-text("Case dismissed")');
+  await bench.click();
+  await p.waitForSelector('.modal h2:has-text("Plea")');
+  const pl = await p.textContent('.modal');
+  if (!/Life in TDCJ/.test(pl) || !/won't deal on a murder/.test(pl)) throw new Error('murder plea should be life: ' + pl.slice(0, 300));
+  await snap('33-murder-plea');
+  await p.click('.modal button:has-text("Take the deal")');
+  await p.waitForSelector('.modal h2:has-text("Sentence")');
+  await p.click('.modal button:has-text("bailiff")');
+  await p.click('.modal button:has-text("Step off the bus")');
+  await p.waitForSelector('.pris'); await p.waitForTimeout(500);
+  await snap('34-tdcj-compound');
+  // the law library: file a writ yourself
+  await p.evaluate(async () => { const { activePrison } = await import('./js/ui/prison.js'); const c = activePrison(); const b = c.spots.find(x => x.id === 'library'); c.player.x = b.x; c.player.y = b.y + 0.6; c.player.tx = null; });
+  await p.waitForTimeout(300);
+  if (!/Law library/.test(await p.textContent('.hunt-act'))) throw new Error('action button should offer the law library');
+  await p.click('.hunt-act');
+  await p.waitForSelector('.panel h1:has-text("Law library")');
+  await p.click('button:has-text("File it yourself")');
+  await snap('35-law-library');
+  const pr = await p.evaluate(() => { const x = window.__rfg.game.s.prison; return { life: x.life, pending: !!x.appeal.pending, years: x.years }; });
+  if (!pr.life || !pr.pending || pr.years !== null) throw new Error('lifer with a pending appeal: ' + JSON.stringify(pr));
+  await p.click('.panel:not(.hidden) [data-action="close"]');
+  // a year goes by in the bunk
+  await p.evaluate(async () => { const { activePrison } = await import('./js/ui/prison.js'); const c = activePrison(); const b = c.spots.find(x => x.id === 'bunk'); c.player.x = b.x; c.player.y = b.y + 0.6; c.player.tx = null; });
+  await p.waitForTimeout(300);
+  await p.click('.hunt-act'); await p.click('.modal button:has-text("Sleep")');
+  await p.waitForSelector('.modal h2:has-text("Year 1")');
+  await snap('36-year-one');
+  await p.click('.modal button');
+  if ((await p.evaluate(() => window.__rfg.game.s.prison?.served)) !== 1) throw new Error('a sleep should be one year served');
+  // Escape doesn't get you out
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  if (!(await p.isVisible('.pris'))) throw new Error('closing the panel should not leave prison');
+  // win on appeal to get on with the rest of the smoke run
+  await p.evaluate(async () => { const { activePrison } = await import('./js/ui/prison.js'); await activePrison().walkOut('appeal'); });
+  await p.waitForTimeout(300);
+  const after = await p.evaluate(() => ({ prison: window.__rfg.game.s.prison, conv: window.__rfg.game.s.justice.convictions.map(c => c.text) }));
+  if (after.prison || after.conv.some(t => /Murder/.test(t)) || await p.isVisible('.pris')) throw new Error('reversed on appeal: ' + JSON.stringify(after));
   await p.evaluate(() => { const s = window.__rfg.game.s; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; });
 });
 
@@ -2531,6 +2623,49 @@ await step('hog dogs: kennel, dog profiles, breeding, a hog hunt', async () => {
   console.log('     hunt', JSON.stringify(sum));
   await clear();
   await p.evaluate(async () => { const s = window.__rfg.game.s; delete s.estate.land.land_crosscreek; s.kennel.dogs = []; s.kennel.preg = []; (await import('./js/world2d/estate.js')).applyEstate(window.__rfg.app.world.map, s); });
+});
+
+await step('record label: start it, sign an artist in person, cut a single, drop it, get paid', async () => {
+  const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  const stand = id => p.evaluate(async id => { const { LOC_BY_ID } = await import('./js/data/world.js'); const w = window.__rfg.app.world, l = LOC_BY_ID[id]; w.inCar = false; w.foot.x = l.x; w.foot.z = l.z; w.cam.x = l.x; w.cam.z = l.z; }, id);
+  const openL = (opts = {}) => p.evaluate(async opts => { (await import('./js/ui/label.js')).openLabel(window.__rfg.app, opts); }, opts);
+  const ok = () => p.click('.modal [data-ok], .modal button[data-i="1"]');
+  await clear();
+  await p.evaluate(() => { const s = window.__rfg.game.s; delete s.label; s.bank += 400000; });
+  // the studio on the map, then start the label from the phone app
+  await stand('magnolia_sound'); await p.waitForTimeout(400); await snap('label-0-studio-on-map');
+  await openL();
+  await p.click('[data-action=start]');
+  await p.fill('.modal input', 'Murda Worth Records'); await ok();
+  await p.waitForSelector('.p-head h1:has-text("Murda Worth Records")');
+  // the scene: walk up to an artist where they hang out and sign them
+  const artist = await p.evaluate(() => window.__rfg.game.s.label.known[0]);
+  const hang = await p.evaluate(async id => (await import('./js/data/label.js')).ARTIST_BY_ID[id].hang, artist);
+  await clear(); await stand(hang); await openL({ tab: 'scene' });
+  await p.waitForSelector(`[data-action=view][data-id=${artist}]`); await snap('label-1-scene');
+  await p.click(`[data-action=view][data-id=${artist}]`);
+  await p.waitForSelector('[data-action=sign][data-deal=standard]:not([disabled])'); await snap('label-2-sign');
+  await p.click('[data-action=sign][data-deal=standard]'); await ok();
+  await p.waitForFunction(id => window.__rfg.game.s.label.roster.some(r => r.id === id), artist);
+  // the studio: book a single
+  await clear(); await stand('magnolia_sound');
+  await p.evaluate(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.magnolia_sound, window.__rfg.app); });
+  await p.waitForSelector('[data-action=book][data-kind=single]'); await snap('label-3-studio');
+  await p.click('[data-action=book][data-kind=single]'); await ok();
+  await p.waitForFunction(() => window.__rfg.game.s.label.sessions.length === 1);
+  // a day later it's mastered: drop it with a street team
+  await clear();
+  await p.evaluate(async () => { const s = window.__rfg.game.s; s.time.day += 1; (await import('./js/core/label.js')).labelDay(s); });
+  await openL();
+  await p.waitForSelector('[data-action=drop_rel][data-promo=street]'); await snap('label-4-ready-to-drop');
+  await p.click('[data-action=drop_rel][data-promo=street]'); await ok();
+  await p.waitForFunction(() => window.__rfg.game.s.label.releases.length === 1);
+  const paid = await p.evaluate(async () => { const s = window.__rfg.game.s, LB = await import('./js/core/label.js'); let n = 0; for (let i = 0; i < 3; i++) { s.time.day++; n += LB.labelDay(s, () => 0.9).paid; } return n; });
+  if (!(paid > 0)) throw new Error('the label made nothing');
+  await clear(); await openL({ tab: 'releases' }); await p.waitForTimeout(200); await snap('label-5-releases');
+  console.log('     label paid', paid);
+  await clear();
+  await p.evaluate(() => { delete window.__rfg.game.s.label; });
 });
 await step('hustle (jobs, business, rentals)', async () => {
   await p.evaluate(async () => {

@@ -34,9 +34,12 @@ import { MPH } from '../sim/powertrain.js';
 import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
 import { drawFlameJets } from '../gfx2d/flames.js';
 import { online } from '../net/online.js';
+import { doors } from '../net/doors.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
-import { charge, fileCase, openCase, IMPOUND_LOT } from '../core/justice.js';
+import { charge, fileCase, openCase, hasFelonyPrior, IMPOUND_LOT } from '../core/justice.js';
+import { extraTickets } from '../data/charges.js';
+import { equippedGun } from '../data/weapons.js';
 import { toggleMask, masked } from '../core/disguise.js';
 import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
 import { tickNeeds, runMul } from '../core/needs.js';
@@ -46,6 +49,7 @@ import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
 import { seizeCash } from '../core/bank.js';
 import { seizeLoot } from '../core/loot.js';
+import { seizeSwitches } from '../data/weapons.js';
 import { healthMods } from '../core/health.js';
 import { FUEL_BURN, wearTick, wearMessage, BREAKDOWNS } from '../core/upkeep.js';
 import { awayFromGarage } from '../core/tow.js';
@@ -75,6 +79,7 @@ export class World {
     this.engine = null;
     this.flame = 0;
     this.foot = { x: 0, z: 0, h: 0, walk: 0 };
+    this.taseT = 0;
     this.saveT = 0;
     this.gpsT = 0;
     this.gpsPath = null;
@@ -101,6 +106,7 @@ export class World {
     this.ranch = new Ranch(this);
     this.showcase = new Showcase(this);   // other players' places on your server, and yours on theirs
     this.visiting = null;       // another player's garage or house you've walked into
+    this.doors = doors;
     this.spawnPlayer();
   }
 
@@ -211,12 +217,19 @@ export class World {
     this.pullups.update(dt);
     this.trailers.update(dt);
     this.updateOnline(dt);
+    this.doors.update(dt, this);
 
     // traffic + police
     const inCity = (Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000) || inCityGrid(p.x, p.z);
     this.inCity = inCity;
     const hour = hourOf(s.time);
-    const density = (hour > 1 && hour < 5 ? 0.35 : hour > 7 && hour < 9 || hour > 16 && hour < 19 ? 1.25 : 0.9) * (inCity ? 1 : 0.45) * (settings.quality === 'low' ? 0.6 : 1);
+    const baseDensity = (hour > 1 && hour < 5 ? 0.35 : hour > 7 && hour < 9 || hour > 16 && hour < 19 ? 1.25 : 0.9) * (inCity ? 1 : 0.45) * (settings.quality === 'low' ? 0.6 : 1);
+    // During an active vehicle pursuit, thin civilian traffic so the player
+    // can actually use speed, alternate routes, and evasive driving instead of
+    // getting boxed in by normal traffic. The ten-second police warning keeps
+    // normal traffic; the reduction begins when the chase is live.
+    const pursuitTraffic = this.police?.phase === 'chase' ? 0.32 : this.police?.phase === 'search' || this.police?.phase === 'cooldown' ? 0.45 : 1;
+    const density = baseDensity * pursuitTraffic;
     Object.assign(this.trafficCtx, {
       signalT: this.signalT, px: p.x, pz: p.z, density, inCity, night: isNight(s.time),
       weatherSlow: isWet(s) || s.weather === 'fog' ? 0.8 : 1,
@@ -295,7 +308,7 @@ export class World {
     if (this.onlineMeT <= 0) {
       this.onlineMeT = 1;
       const car = activeCar(this.s);
-      if (car) online.me = { name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n, crew: this.s.onlineCrew ? { tag: this.s.onlineCrew.tag, color: this.s.onlineCrew.color } : null };
+      if (car) online.me = { uid: this.s.uid, name: this.s.player.name, modelId: car.modelId, visual: car.visual, levels: levels(car), tier: tierOf(this.s.rep).n, crew: this.s.onlineCrew ? { tag: this.s.onlineCrew.tag, color: this.s.onlineCrew.color } : null };
     }
     const speed = this.inCar ? (this.vehicle.rev < 0 ? -p.speed : p.speed) : walking ? 3 : 0;
     // with passengers aboard, the gear and revs go out too so their dash shows yours
@@ -324,7 +337,9 @@ export class World {
         this.drawShadow(ctx, p.x, p.z, p.h, dimsFor(p.model));
         drawCar(ctx, this.peerSprite(p), cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom);
       } else {
-        drawPerson(ctx, cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom, { top: '#3a6bff' }, p.sp ? p.walk : 0);
+        if (p.dead) {
+          ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h); ctx.fillStyle = 'rgba(210,30,45,.9)'; ctx.beginPath(); ctx.ellipse(0, 0, 0.65 * cam.zoom, 0.3 * cam.zoom, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        } else drawPerson(ctx, cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom, { top: '#3a6bff' }, p.sp ? p.walk : 0);
       }
     }
     return peers;
@@ -450,7 +465,8 @@ export class World {
     const side = input.steer();
     const run = input.held('run');
     const hm = healthMods(this.s);   // a bad leg: slower, and no running
-    const sp = (run ? (hm.noRun ? 2.4 : 5.2 * runMul(this.s)) : 1.8) * hm.speed;
+    const tased = this.taseT > 0;
+    const sp = (run ? (hm.noRun ? 2.4 : 5.2 * runMul(this.s)) : 1.8) * hm.speed * (tased ? 0.18 : 1);
     let mx = side, mz = -fwd;
     const len = Math.hypot(mx, mz);
     if (len > 0.05) {
@@ -666,7 +682,9 @@ export class World {
       emit('busted', { fine, ticket: true });
       return;
     }
-    fine += this.combat.onBusted(record);
+    const armed = !!equippedGun(s);   // before they take it off you
+    const sw = seizeSwitches(s);   // they search you before the gun goes in an evidence bag
+    fine += this.combat.onBusted([...record, ...sw]);
     const hotCar = !!this.vehicle?.car?.hot;
     // they chased you down: that's evading, on top of whatever they saw
     const ph = this.police.phase, items = record.slice();
@@ -674,12 +692,14 @@ export class World {
     const cash = seizeCash(s);    // and a dirty stack gets seized (a laundering charge if it's big)
     items.push(...cash.items);
     items.push(...seizeLoot(s));  // and stolen goods are evidence
+    items.push(...sw);   // a switch on you (on a gun or loose) is a machine-gun charge
     if (ph !== 'none' && ph !== 'notice' && ph !== 'stop' && this.police.eyesOn !== false && !items.some(r => r.kind === 'evading')) {
       items.push(this.inCar && this.police.level >= 2 ? { kind: 'evading', text: 'Evading arrest (in a vehicle).' } : { kind: 'evading', text: 'Evading arrest.' });
     }
     // every open warrant and unpaid ticket comes off the board too
     const wr = takeWarrants(s);
-    const now = charge(items, 0.85), old = charge(wr.items, 0.6);
+    // the DA stacks everything else the Penal Code lets them (data/charges.js)
+    const now = charge(items, 0.85, { stack: true, armed, felon: hasFelonyPrior(s) }), old = charge(wr.items, 0.6);
     const tickets = [...now.tickets, ...old.tickets].reduce((t, r) => t + (r.fine || 0), 0) + wr.tickets;
     const insured = s.insurance;
     const total = Math.round(fine * (insured ? 0.75 : 1)) + tickets;
@@ -702,6 +722,7 @@ export class World {
   async onTrafficStop(record) {
     const s = this.s;
     const items = record.map(r => ({ ...r }));
+    items.push(...extraTickets(items));   // and whatever else they spot at the window
     let total = items.reduce((t, r) => t + r.fine, 0);
     const hasNoise = items.some(r => r.kind === 'noise');
     const priors = s.stats.noiseTickets || 0;
@@ -827,7 +848,8 @@ export class World {
     if (this.rides.riding) best = null;   // a passenger can't stop in anywhere
     this.nearLoc = best;
     if (input.pressed('interact')) {
-      if (this.rides.tryUse()) { /* got out, answered a ride request, or asked/offered one */ }
+      if (this.doors?.use?.()) { /* knock on a player's door or let a visitor in */ }
+      else if (this.rides.tryUse()) { /* got out, answered a ride request, or asked/offered one */ }
       else if (this.pullups.tryUse()) { /* said bet to the racer beside you */ }
       else if (this.trailers.tryUse()) { /* unloaded the car off the trailer, or loaded it back up */ }
       else if (this.combat.tryInteract(best)) { /* robbery or mugging started */ }
@@ -1053,6 +1075,10 @@ export class World {
     }
     // a gooseneck trailer's neck rides over the truck bed
     this.trailers.drawOver(ctx, cam);
+    // officers who have bailed out of pursuit cars continue the chase on foot
+    for (const cop of this.police.footOfficers) {
+      drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
+    }
     // the officer walking up during a traffic stop
     const cop = this.police.officer;
     if (cop) drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
@@ -1106,16 +1132,6 @@ export class World {
     this.combat.drawOverlay(ctx, cam);
     drawTunnel(ctx, cam);
 
-    // helicopter shadow + searchlight
-    if (this.police.heli) {
-      const hx = cam.sx(this.police.heli.x), hy = cam.sy(this.police.heli.z);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(hx + 30, hy + 30, 6 * cam.zoom, 2 * cam.zoom, 0.6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#1a1d24'; ctx.beginPath(); ctx.ellipse(hx, hy, 4.5 * cam.zoom, 1.6 * cam.zoom, 0.6, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(200,200,200,0.5)'; ctx.lineWidth = 1;
-      const r = this.police.heli.rot;
-      ctx.beginPath(); ctx.moveTo(hx - Math.cos(r) * 6 * cam.zoom, hy - Math.sin(r) * 6 * cam.zoom); ctx.lineTo(hx + Math.cos(r) * 6 * cam.zoom, hy + Math.sin(r) * 6 * cam.zoom); ctx.stroke();
-    }
-
     // lighting
     if (night > 0.03) {
       const glows = [], blobs = [];
@@ -1139,7 +1155,6 @@ export class World {
           glows.push({ x: bx, z: bz, r: 4, color: 'rgba(255,0,0,1)', a: 0.8 });
         }
       }
-      if (this.police.heli) blobs.push({ x: this.police.heli.spot.x, z: this.police.heli.spot.z, r: 22, a: 1 });
       for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       if (this.inHouse) { const b = this.inHouse.box; if (b) glows.push({ x: b.x + b.w / 2, z: b.z + b.d / 2, r: Math.max(b.w, b.d) * 0.7, color: 'rgba(255,236,200,1)', a: 0.8 }); }
@@ -1158,19 +1173,6 @@ export class World {
       ctx.restore();
     }
     this.pullups.drawFlash(ctx, cam);
-    if (this.police.heli) {
-      // spotlight: a faint beam from Air One down to the pool of light on the target
-      const hl = this.police.heli, hx = cam.sx(hl.x), hy = cam.sy(hl.z), lx = cam.sx(hl.spot.x), ly = cam.sy(hl.spot.z), lr = 20 * cam.zoom;
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      const ang = Math.atan2(ly - hy, lx - hx), nx = -Math.sin(ang), ny = Math.cos(ang);
-      const beam = ctx.createLinearGradient(hx, hy, lx, ly);
-      beam.addColorStop(0, 'rgba(255,255,230,0.12)'); beam.addColorStop(1, 'rgba(255,255,230,0.03)');
-      ctx.fillStyle = beam; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(lx + nx * lr * 0.6, ly + ny * lr * 0.6); ctx.lineTo(lx - nx * lr * 0.6, ly - ny * lr * 0.6); ctx.closePath(); ctx.fill();
-      const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
-      g.addColorStop(0, 'rgba(255,255,230,0.25)'); g.addColorStop(1, 'rgba(255,255,230,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, lr, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
     // search zone
     if ((this.police.phase === 'search' || this.police.phase === 'cooldown') && this.police.lastSeen) {
       ctx.strokeStyle = this.police.phase === 'cooldown' ? 'rgba(255,200,0,0.6)' : 'rgba(255,40,40,0.6)';

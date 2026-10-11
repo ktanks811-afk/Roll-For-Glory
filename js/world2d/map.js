@@ -2,7 +2,7 @@
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
-import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, NORTH, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, NORTH, WEST, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
 import { addEstate } from './estate.js';
@@ -10,6 +10,8 @@ import { addEats } from './eats.js';
 import { addCountry } from './country.js';
 import { addDallas } from './dallas.js';
 import { addNorth } from './north.js';
+import { addWeatherford } from './weatherford.js';
+import { addWest } from './west.js';
 import { houseBlock } from './house.js';
 import { fromPreset } from '../core/homes.js';
 
@@ -128,7 +130,7 @@ export function buildMap() {
     else if (side === 'E') bx = x1 - bw - SETBACK;
     else bx = x0 + SETBACK;
     const color = { dealer: '#d9dde2', usedlot: '#8a7a5a', chop: '#4a3f36', perf: '#3a3a3a', visual: '#3a2a3a', repair: '#3d4452',
-      gas: '#e8e8e8', food: '#7a2e24', corner: '#6a4a2a', clothing: '#2a2a3a', realty: '#2f4a3a', pawn: '#5a4a1a', trailers: '#4a4f57', police: '#24324a', meet: '#3a3a3a', carshow: '#4a3a1a', hospital: '#d8d6d0' }[t] || '#444';
+      gas: '#e8e8e8', food: '#7a2e24', corner: '#6a4a2a', clothing: '#2a2a3a', realty: '#2f4a3a', pawn: '#5a4a1a', trailers: '#4a4f57', police: '#24324a', meet: '#3a3a3a', carshow: '#4a3a1a', hospital: '#d8d6d0', studio: '#2a1a3a' }[t] || '#444';
     if (t === 'gas') {
       lots.push({ x: x0 + 2, z: z0 + 2, w: W - 4, d: D - 4, kind: 'gas' });
       // canopy over the pumps right at the kerb, shop behind it
@@ -223,6 +225,11 @@ export function buildMap() {
   // ---------------- North Texas up I-35W: Alliance, the speedway, Roanoke, Denton (world2d/north.js) ----------------
   const north = addNorth(gout, { landmarkBlock, roads });
   water.push(...north.water);
+  // ---------------- Weatherford west of Fort Worth (I-20) ----------------
+  addWeatherford(gout, { landmarkBlock });
+  // ---------------- West Texas: Mineral Wells / Palo Pinto (world2d/west.js) ----------------
+  const west = addWest(gout, { landmarkBlock, roads });
+  water.push(...west.water);
 
   // ---------------- filling in the empty ground ----------------
   const extra = addScenery({ roads, buildings, lots, trees, rocks, props, water, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
@@ -248,7 +255,8 @@ export function buildMap() {
   // tunnel hill walls (the tunnel itself is open)
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z - 300, x1: TUNNEL[1], z1: HWY_Z - HWY_W / 2 - 2, h: 30, hill: true });
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z + HWY_W / 2 + 2, x1: TUNNEL[1], z1: HWY_Z + 300, h: 30, hill: true });
-  // world edge (north: open only up I-35W, see NORTH)
+  // world edge: west expansion now reaches to WEST.x0 instead of stopping at -6500.
+  colliders.push({ x0: WEST.x0 - 400, z0: WEST.z0, x1: WEST.x0, z1: WEST.z1, h: 0 });
   const top = NORTH.z0 - 800;
   colliders.push({ x0: -4000, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: NORTH.z0, h: 0 });
   colliders.push({ x0: -4000, z0: NORTH.z0, x1: NORTH.x0, z1: -3300, h: 0 });

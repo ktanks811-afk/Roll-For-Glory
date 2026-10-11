@@ -11,7 +11,7 @@ import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { online } from '../net/online.js';
 import { fmtMoney } from '../core/state.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop', 'trailers'] },
@@ -119,8 +119,8 @@ export function renderMap(scr, ctx) {
     // districts, faint, when zoomed out
     if (k < 0.2) {
       g.font = '700 13px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.55)';
-      const inner = k > 0.11 ? [['STOCKYARDS', 0, -650], ['NEAR SOUTHSIDE', 0, 650], ['ARLINGTON HEIGHTS', -650, 0], ['RIVERSIDE', 650, -300], ['LAKESIDE', 650, 800], ['UPTOWN', 5550, -1950], ['DOWNTOWN DALLAS', 5100, -1580], ['DEEP ELLUM', 5950, -1580], ['OAK CLIFF', 4950, -1000], ['SOUTH DALLAS', 5850, -1000], ['WEST DALLAS', 4800, -1880], ['THE SQUARE', 675, -6440], ['UNT', 225, -6400], ['TWU', 675, -6900], ['SOUTHEAST DENTON', 820, -5900], ['ALLIANCE AIRPORT', 800, -4450], ['NORTHLAKE', -650, -4250], ['TEXAS MOTOR SPEEDWAY', 650, -5420], ['ROANOKE', 2200, -4180], ['ARGYLE', -700, -5200], ['LAKE LEWISVILLE', 2800, -5900]] : [];
-      for (const [t, x, z] of [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['LAKE WORTH', 1900, 700], ['LOOP 820', 0, -1330], ['CROSS TIMBERS', -2100, -500], ['CHISHOLM FLATS', -300, 1250], ['JOHNSON COUNTY', -1200, 4300], ['JOSHUA', 300, 3650], ['I-30', 3200, -1380], ['ARLINGTON', 3800, -1120], ['DALLAS', 5400, -2260], ['TRINITY RIVER', 4440, -620], ['I-35W', 60, -2600], ['ALLIANCE', -500, -3700], ['SPEEDWAY', 650, -5420], ['DENTON', 600, -7120]]) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
+      const inner = k > 0.11 ? [['STOCKYARDS', 0, -650], ['NEAR SOUTHSIDE', 0, 650], ['ARLINGTON HEIGHTS', -650, 0], ['RIVERSIDE', 650, -300], ['LAKESIDE', 650, 800], ['UPTOWN', 5550, -1950], ['DOWNTOWN DALLAS', 5100, -1580], ['DEEP ELLUM', 5950, -1580], ['OAK CLIFF', 4950, -1000], ['SOUTH DALLAS', 5850, -1000], ['WEST DALLAS', 4800, -1880], ['THE SQUARE', 675, -6440], ['UNT', 225, -6400], ['TWU', 675, -6900], ['SOUTHEAST DENTON', 820, -5900], ['ALLIANCE AIRPORT', 800, -4450], ['NORTHLAKE', -650, -4250], ['TEXAS MOTOR SPEEDWAY', 650, -5420], ['ROANOKE', 2200, -4180], ['ARGYLE', -700, -5200], ['LAKE LEWISVILLE', 2800, -5900], ['MINERAL WELLS', -9000, -1350], ['PALO PINTO COUNTY', -9600, -500], ['WEST I-20', -7600, -1350], ['LAKE MINERAL WELLS', -8790, -70]] : [];
+      for (const [t, x, z] of [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['LAKE WORTH', 1900, 700], ['LOOP 820', 0, -1330], ['CROSS TIMBERS', -2100, -500], ['CHISHOLM FLATS', -300, 1250], ['JOHNSON COUNTY', -1200, 4300], ['JOSHUA', 300, 3650], ['I-30', 3200, -1380], ['ARLINGTON', 3800, -1120], ['DALLAS', 5400, -2260], ['TRINITY RIVER', 4440, -620], ['I-35W', 60, -2600], ['ALLIANCE', -500, -3700], ['SPEEDWAY', 650, -5420], ['DENTON', 600, -7120], ['MINERAL WELLS', -9000, -1350], ['PALO PINTO', -10100, -700], ['WEST I-20', -7600, -1350]]) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
     }
 
     // route preview (dashed) and the active GPS route
@@ -280,7 +280,7 @@ export function renderMap(scr, ctx) {
     if (ptrs.size === 1) {
       const dx = cur[0] - prev[0], dy = cur[1] - prev[1];
       if (tap) tap.moved += Math.abs(dx) + Math.abs(dy);
-      st.cx = clamp(st.cx - dx / st.k, -3600, 7000); st.cz = clamp(st.cz - dy / st.k, -3600, 6000); dirty = true;
+      st.cx = clamp(st.cx - dx / st.k, -11200, 7000); st.cz = clamp(st.cz - dy / st.k, -3600, 6000); dirty = true;
     } else if (ptrs.size === 2 && pinch) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
       st.k = clamp(pinch.k * d / Math.max(20, pinch.d), 0.025, 1.6); dirty = true;
