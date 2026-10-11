@@ -1092,6 +1092,8 @@ await step('chop shop', async () => {
   await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; });
   if (await p.evaluate(() => window.__rfg.app.world.inCar)) { await key('KeyF'); await p.waitForTimeout(150); }
   const jack = async () => {
+    // traffic can be between spawns right after the last step; wait for a civilian car
+    await p.waitForFunction(() => window.__rfg.app.world.traffic.cars.some(c => !c.police), null, { polling: 100 });
     await p.evaluate(() => {
       const w = window.__rfg.app.world, c = w.traffic.cars.find(c => !c.police);
       c.stun = 6; c.v = 0; w.foot.x = c.x - Math.cos(c.h) * 2; w.foot.z = c.z - Math.sin(c.h) * 2; w.cam.x = c.x; w.cam.z = c.z;
