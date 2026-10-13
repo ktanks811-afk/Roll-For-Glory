@@ -2008,5 +2008,52 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const h = PR.hustle(s3, () => 0);
   if (!h.caught || p3.years !== 5 || !s3.justice.convictions.length) bad('caught hustling: new case and +2 years ' + JSON.stringify(h));
 }
+{
+  // regulars on a quiet server (net/bots.js): the same people in the same places on every phone
+  const BT = await import('../js/net/bots.js');
+  const { buildRoads } = await import('../js/world2d/roads.js');
+  const bm = BT.botMap(buildRoads());
+  if (bm.nodes.length < 100 || bm.spots.length < 10) bad(`regulars have too little of Fort Worth to drive: ${bm.nodes.length} corners, ${bm.spots.length} spots`);
+  const day = 1760000000 - 1760000000 % 86400;
+  let total = 0, empty = 0;
+  for (let m = 0; m < 24 * 60; m += 10) {
+    const t = day + m * 60, on = BT.botsOn('eastgate', t, 0);
+    total += on.length; if (on.length < 1) empty++;
+    if (JSON.stringify(on) !== JSON.stringify(BT.botsOn('eastgate', t, 0))) bad('who is on must not change between phones');
+    if (on.length > BT.MAX_SHOWN) bad('too many regulars on at once: ' + on.length);
+    if (BT.botsOn('eastgate', t, 14).length) bad('regulars must make room once real players fill a server');
+  }
+  if (empty > 4) bad(`Eastgate is empty ${empty} times out of 144`);
+  if (total / 144 < 3) bad('Eastgate is too quiet: ' + (total / 144).toFixed(1) + ' on average');
+  const names = new Set();
+  for (const sv of SERVERS) for (let k = 0; k < BT.SLOTS * 4; k++) {
+    const pp = BT.persona(sv.id, k);
+    if (!/^[\w .'\-]{2,16}$/.test(pp.name)) bad('regular has a name the network would mangle: ' + pp.name);
+    if (!pp.model || pp.model.rig) bad('regular drives no car / a big rig: ' + pp.name);
+    if (pp.crew && !/^[A-Z0-9]{2,4}$/.test(pp.crew.tag)) bad('bad crew tag ' + pp.crew.tag);
+    if (JSON.stringify(pp) !== JSON.stringify(BT.persona(sv.id, k))) bad('a regular must look the same on every phone');
+    names.add(pp.name);
+  }
+  if (names.size < SERVERS.length * BT.SLOTS * 2) bad('regulars repeat names too much: ' + names.size);
+  const pp = BT.persona('eastgate', 3);
+  const plan = BT.makePlan(bm, 4242, pp, 1800);
+  if (JSON.stringify(plan) !== JSON.stringify(BT.makePlan(bm, 4242, pp, 1800))) bad('a route must come out the same on every phone');
+  if (plan[plan.length - 1].t1 < 1800) bad('route runs out early');
+  let prev = null, jump = 0, fast = 0, foot = 0, out = 0;
+  for (let t = 0; t < 1800; t += 0.25) {
+    const a = BT.planAt(plan, t);
+    if (prev) jump = Math.max(jump, Math.hypot(a.x - prev.x, a.z - prev.z) - a.v * 0.25);
+    fast = Math.max(fast, a.v); if (!a.inCar) foot++;
+    if (a.x < -1400 || a.x > 2100 || a.z < -1500 || a.z > 1400) out++;
+    prev = a;
+  }
+  if (jump > 5) bad('regular jumps along the route: ' + jump.toFixed(1) + ' m');
+  if (fast > 45 || fast < 10) bad('regular drives at a silly top speed: ' + fast.toFixed(1));
+  if (!foot) bad('regular never gets out of the car');
+  if (out) bad('regular left Fort Worth');
+  const local = BT.makePlan(bm, 7, pp, 300, { x: 120, z: 40, h: 1.2, v: 12 });
+  const a0 = BT.planAt(local, 0);
+  if (Math.hypot(a0.x - 120, a0.z - 40) > 0.1 || Math.abs(a0.v - 12) > 0.1) bad('a regular driving off on their own must start where they are');
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

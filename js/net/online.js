@@ -258,7 +258,7 @@ class Online {
   pruneToPresence() {
     if (!this.presence) return;
     const here = new Set(this.presence);
-    for (const id of [...this.peers.keys()]) if (!here.has(id)) this.peers.delete(id);
+    for (const [id, p] of [...this.peers]) if (!p.bot && !here.has(id)) this.peers.delete(id);
   }
 
   leave() {
@@ -272,6 +272,8 @@ class Online {
 
   send(msg) {
     if (!this.active || !this.tr) return;
+    // to one of the regulars on a quiet server (net/bots.js): answered right here
+    if (this.botHook?.(msg)) return;
     try { this.tr.send({ ...msg, id: this.id }); } catch { /* dropped packet */ }
   }
 
@@ -304,13 +306,15 @@ class Online {
   }
 
   // ---------------------------------------------------------------- incoming
-  receive(m) {
+  // local = from net/bots.js; nobody on the network gets to speak for them
+  receive(m, local = false) {
     if (!m || typeof m !== 'object' || typeof m.id !== 'string' || m.id === this.id || m.id.length > 16) return;
+    if ((m.id[0] === '~') !== local) return;
     const now = performance.now() / 1000;
     let p = this.peers.get(m.id);
     if (m.k === 'bye') { if (p) { this.peers.delete(m.id); this.emit('peers'); } return; }
     if (!p) {
-      if (this.peers.size >= MAX_PEERS) return;
+      if (this.realCount() >= MAX_PEERS) return;
       p = { id: m.id, name: 'Racer', model: null, visual: null, levels: cleanLevels(), tier: 1, x: 0, z: 0, h: 0, sp: 0, inCar: true, flame: 0, walk: 0, seen: now, t: now, fresh: true, sprite: null, spriteKey: '', snaps: [], interp: INTERP_BASE, lastPacketAt: now, jitter: 0, hp: 100, dead: false };
       this.peers.set(m.id, p);
       // we don't know this car yet: introduce ourselves so they can draw us too
@@ -413,7 +417,7 @@ class Online {
         }
       }
       if (need) {
-        const hz = this.peers.size > 8 ? BUSY_HZ : MAX_HZ;
+        const hz = this.realCount() > 8 ? BUSY_HZ : MAX_HZ;
         this.sendT = 1 / hz;
         const msg = { k: 's', q: ++this.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) };
         if (this.ride) { msg.rd = this.ride; msg.v = msg.r = msg.a = 0; }
@@ -425,6 +429,7 @@ class Online {
     if (this.helloT <= 0) { this.helloT = HELLO_EVERY; this.sendHello(); }
     let gone = false;
     for (const p of this.peers.values()) {
+      if (p.bot) continue;   // net/bots.js moves them
       if (now - p.seen > PEER_TIMEOUT) { this.peers.delete(p.id); gone = true; continue; }
       if (p.fresh || !p.st) continue;
       // GTA-style remote movement: render from a tiny buffered window and
@@ -469,6 +474,7 @@ class Online {
   }
 
   list() { return [...this.peers.values()].filter(p => p.model); }
+  realCount() { let n = 0; for (const p of this.peers.values()) if (!p.bot) n++; return n; }
 }
 
 export const online = new Online();
