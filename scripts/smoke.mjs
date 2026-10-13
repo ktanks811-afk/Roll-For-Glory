@@ -1405,6 +1405,7 @@ await step('online free roam', async () => {
 // ---------------- regulars on a quiet server (net/bots.js) ----------------
 await step('online: regulars fill a quiet server', async () => {
   const until = async (fn, msg, ms = 12000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await p.evaluate(fn)) return; await p.waitForTimeout(250); } throw new Error(msg); };
+  try {
   await p.evaluate(async () => {
     const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
     const { meFromGame } = await import('./js/ui/online.js');
@@ -1441,17 +1442,18 @@ await step('online: regulars fill a quiet server', async () => {
     const { pvp } = await import('./js/net/pvp.js');
     const { bots } = await import('./js/net/bots.js');
     const b = [...bots.list.values()].find(b => b.peer.inCar) || [...bots.list.values()][0];
-    b.p.racer = 0; b.peer.inCar = true;            // this one says no, so no race starts here
+    b.p.racer = -1; b.peer.inCar = true;           // this one says no, so no race starts here
     pvp.challenge(b.peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 0 });
     return b.peer.name;
   });
   await until(() => import('./js/net/pvp.js').then(m => !m.pvp.out), `${ans} never answered the race call`);
+  if (await p.evaluate(() => window.__rfg.app.mode !== 'world')) throw new Error('a race started when they said no');
   // ask a driver for a ride: they stop, say yes, and you ride along
   await p.evaluate(async () => {
     const { bots } = await import('./js/net/bots.js');
     const r = window.__rfg, w = r.app.world;
     const b = [...bots.list.values()].find(b => b.peer.inCar && !b.peer.dead);
-    b.p.racer = 1; window.__rideBot = b.peer.id;
+    b.p.rides = 1; window.__rideBot = b.peer.id;
     r.game.s.heat = 0; try { w.police.reset(w); } catch {} w.combat.rob = w.combat.mug = null;
     w.inCar = false; w.foot.x = b.peer.x + 4; w.foot.z = b.peer.z;
     if (!w.rides.request(b.peer)) throw new Error('could not ask for a ride: ' + w.rides.cantRide());
@@ -1461,11 +1463,14 @@ await step('online: regulars fill a quiet server', async () => {
   });
   await p.evaluate(() => { const w = window.__rfg.app.world; w.rides.getOut(); });
   await until(() => { const w = window.__rfg.app.world; if (w.rides.riding) w.rides.getOut(); return !w.rides.riding; }, 'could not get out of their car', 15000);
+  } finally {
   await p.evaluate(async () => {
+    (await import('./js/net/ride.js')).rides.stop(false);
     window.__rfg.online.leave(); (await import('./js/net/bots.js')).bots.force = false;
     const w = window.__rfg.app.world, was = window.__before;
     w.foot.x = was.x; w.foot.z = was.z; w.inCar = was.inCar;
   });
+  }
   if (await p.evaluate(() => window.__rfg.online.peers.size)) throw new Error('regulars still shown after leaving');
 });
 

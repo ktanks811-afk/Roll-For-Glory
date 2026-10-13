@@ -118,6 +118,7 @@ export function persona(server, who) {
     racer: 0.4 + r() * 0.55,          // how often they say yes to a race
     bank: [1000, 5000, 10000, 25000][Math.floor(r() * 4)],
     foot: 0.3 + r() * 0.5,            // how often they get out at a stop
+    rides: 0.8,                       // how often they let you ride along
   };
 }
 
@@ -645,7 +646,7 @@ class Bots {
       // you want to ride in their car: they stop for you first
       if (!p.inCar || b.carrying) { reply({ k: 'rq', t: b.carrying ? 'full' : 'no', rid: m.rid }, 2); return; }
       this.holdHere(b, 30);
-      const yes = r() < 0.8;
+      const yes = r() < b.p.rides;
       reply({ k: 'rq', t: yes ? 'yes' : 'no', rid: m.rid }, 1.5 + r() * 2.5);
       if (yes) b.carrying = true;
       else this.later(5, () => { if (b.hold) b.hold.until = this.clock(); });
