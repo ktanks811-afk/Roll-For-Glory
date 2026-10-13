@@ -188,7 +188,7 @@ export function showControls() {
   }
   if (touchUi.active) {
     modal('Controls', `<div class="section-title" style="margin-top:0">Walking</div><div class="kv">
-      <span>Move</span><span>Joystick (left)</span><span>Run</span><span>Hold RUN</span>
+      <span>Move</span><span>Joystick (left)</span><span>Run</span><span>Tap RUN to keep running, tap again to walk (or hold it)</span>
       <span>Shops, homes, meets</span><span>USE</span><span>Get in your car</span><span>GET IN (stand next to it)</span></div>
       <div class="section-title">Driving</div><div class="kv">
       <span>Steer</span><span>◀ ▶ arrows (left)</span><span>Gas / brake &amp; reverse</span><span>GAS / BRAKE pedals (right)</span>
