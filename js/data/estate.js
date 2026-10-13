@@ -23,9 +23,9 @@ export const ESTATE_LOCATIONS = [
   P('plug_bankrol', 'plug', "Bankroll's Ladies Club", 'N', 2250, -141, 2340, -55, { color: '#d94cff', icon: 'meet', stock: ['lean', 'smoke', 'molly', 'exo'] }),
   P('land_stopsix', 'land', 'Empty Lot · Stop Six', 'N', 2200, -291, 2330, -172, { color: '#c8a46a', icon: 'key' }),
   // east of Stop Six, back off the lake road
-  P('land_lakeworth', 'land', 'Lake Worth Acreage', 'W', 2628, -560, 2770, -430, { color: '#c8a46a', icon: 'key' }),
-  // out on Chisholm Trail Pkwy, past the trailer park
-  P('land_chisholm', 'land', 'Chisholm Flats Ranch Land', 'W', 12, 2420, 140, 2540, { color: '#c8a46a', icon: 'key' }),
+  P('land_lakeworth', 'land', 'Everman Acreage', 'W', 2628, -560, 2770, -430, { color: '#c8a46a', icon: 'key' }),
+  // Burleson, out on Chisholm Trail Pkwy past the trailer park
+  P('land_chisholm', 'land', 'Burleson Ranch Land', 'W', 12, 2420, 140, 2540, { color: '#c8a46a', icon: 'key' }),
   // more of Stop Six: houses for sale and lots, each fronting a side street
   P('six_bungalow', 'property', 'Cass St Bungalow', 'N', 1200, -141, 1330, -21, { color: '#ffffff', icon: 'home' }),
   P('six_twostory', 'property', 'Amanda Ave Two-Story', 'N', 1700, -741, 1830, -621, { color: '#ffffff', icon: 'home' }),
@@ -76,8 +76,8 @@ export const LAND = {
   land_stopsix:     { name: 'Empty Lot · Stop Six', short: 'Stop Six', price: 16000, ranch: 0, desc: 'A cleared lot on a Stop Six side street. Close to everything that matters on the east side.' },
   land_six_bunche:  { name: 'Empty Lot · Bunche Dr', short: 'Bunche Dr', price: 14000, ranch: 0, desc: 'Corner of Bunche and the alley. The neighbours have been here since the sixties.' },
   land_six_stalcup: { name: 'Empty Lot · Stalcup Rd', short: 'Stalcup Rd', price: 21000, ranch: 0, desc: 'A wide lot by Stalcup Rd. Big enough for a real garage and a yard for the dogs.' },
-  land_lakeworth:   { name: 'Lake Worth Acreage', short: 'Lake Worth', price: 54000, tier: 2, ranch: 1, desc: 'Two acres of grass by the lake road. Room for a real shop.' },
-  land_chisholm:    { name: 'Chisholm Flats Ranch Land', short: 'Chisholm Flats', price: 38000, ranch: 1, desc: 'Flat desert ground off Chisholm Trail Pkwy. Nobody hears you rev it out here.' },
+  land_lakeworth:   { name: 'Everman Acreage', short: 'Everman', price: 54000, tier: 2, ranch: 1, desc: 'Two acres of grass by the lake road. Room for a real shop.' },
+  land_chisholm:    { name: 'Burleson Ranch Land', short: 'Burleson', price: 38000, ranch: 1, desc: 'Flat desert ground off Chisholm Trail Pkwy. Nobody hears you rev it out here.' },
   land_homestead:   { name: 'Old Cleburne Rd Homestead', short: 'Old Cleburne Rd', price: 120000, ranch: 1, country: true, desc: 'Fifteen acres on the edge of Joshua, a stock tank and an old windmill.' },
   land_crosscreek:  { name: 'Cross Creek Pasture', short: 'Cross Creek', price: 185000, ranch: 2, country: true, desc: 'Twenty-five acres of coastal Bermuda on County Road 1016. Ready for cattle.' },
   land_nolan:       { name: 'Nolan River Acreage', short: 'Nolan River', price: 260000, ranch: 2, country: true, desc: 'Thirty-five acres down by the Nolan River, live oaks and a creek crossing.' },

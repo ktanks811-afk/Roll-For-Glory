@@ -70,7 +70,7 @@ export function buildMap() {
           const shrink = R(0, 6);
           buildings.push({ x: x0 + a * (s + g) + shrink / 2, z: z0 + b * (s + g) + shrink / 2, w: s - shrink, d: s - shrink, h: R(45, 190), color: pick(ROOFS.downtown), kind: 'tower' });
         }
-      } else if (dist === 'Riverside Industrial' || dist === 'Lakeside') {
+      } else if (dist === 'Riverside Industrial') {
         if (rnd() < 0.5) {
           buildings.push({ x: x0 + 4, z: z0 + 4, w: W - 8, d: D * R(0.45, 0.6), h: R(10, 18), color: pick(ROOFS.industrial), kind: 'warehouse' });
           lots.push({ x: x0 + 4, z: z0 + D * 0.66, w: W - 8, d: D * 0.32, kind: 'parking' });
@@ -78,7 +78,7 @@ export function buildMap() {
           buildings.push({ x: x0 + 4, z: z0 + 4, w: W * 0.55, d: D - 8, h: R(12, 22), color: pick(ROOFS.industrial), kind: 'warehouse' });
           for (let k = 0; k < 4; k++) buildings.push({ x: x0 + W * 0.62 + (k % 2) * 22, z: z0 + 10 + Math.floor(k / 2) * 50, w: 16, d: 40, h: 5, color: pick(['#8a3b2a', '#2a5a8a', '#3a7a3a', '#8a7a2a']), kind: 'containers' });
         }
-      } else if (dist === 'Arlington Heights') {
+      } else if (dist === 'Arlington Heights' || dist === 'Crowley') {
         if (rnd() < 0.12) { park(x0, z0, W, D); continue; }
         const n = 4, s = W / n;
         for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
@@ -355,7 +355,7 @@ export function garageBlock(out, loc, x0, z0, x1, z1, P = PROPERTIES[loc.id] || 
 }
 export const MAX_FLOOR_BAYS = 24;
 
-// Cross Timbers Pass: a winding two-lane through the west hills.
+// Lake Worth Pass: a winding two-lane through the west hills.
 export const BACKROAD = [
   [-900, -300], [-1050, -310], [-1180, -380], [-1300, -360], [-1420, -460], [-1540, -430], [-1650, -540],
   [-1780, -500], [-1900, -620], [-2050, -580], [-2200, -700], [-2380, -650],

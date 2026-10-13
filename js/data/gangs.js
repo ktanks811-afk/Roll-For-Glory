@@ -25,7 +25,7 @@ export const GANGS = {
     style: 'Warehouses and rail yards by the Trinity. They move product and they move quiet.',
   },
   como: {
-    name: 'Como Gang', short: 'Como', color: '#1f8f3a', hood: 'Arlington Heights', at: [-650, 0],
+    name: 'Como Gang', short: 'Como', color: '#1f8f3a', hood: 'Arlington Heights', at: [-650, -450],
     boss: 'peanut', rivals: ['hemphill'],
     style: 'West side, out of Como. Small set, long memory.',
   },

@@ -24,12 +24,12 @@ const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 // holds SERVER_CAP careers, and houses are deeded per server (net/deeds.js).
 export const SERVER_CAP = 15;
 export const SERVERS = [
-  { id: 'harbor',    name: 'Lake Worth',    blurb: 'Lakefront docks and warehouses, never sleeps' },
+  { id: 'harbor',    name: 'Everman',    blurb: 'Lakefront docks and warehouses, never sleeps' },
   { id: 'downtown',  name: 'Downtown',  blurb: 'Lights, traffic, and a lot of cops' },
   { id: 'eastgate',  name: 'Eastgate',  blurb: 'Where everyone starts out' },
   { id: 'ironside',  name: 'Riverside',  blurb: 'Industrial roads, long straights' },
   { id: 'dustline',  name: 'Dustline',  blurb: 'Desert highway and open sand' },
-  { id: 'northridge',name: 'Cross Timbers', blurb: 'Mountain roads' },
+  { id: 'northridge',name: 'Lake Worth', blurb: 'Hill roads out west' },
   { id: 'pier9',     name: 'Pier 9',    blurb: 'Meet-night crowd' },
   { id: 'glory',     name: 'Glory Row', blurb: 'The big leagues' },
 ];

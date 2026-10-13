@@ -16,11 +16,12 @@ function map(s, here, me) {
     const hot = t.war?.hood === h.id || t.attack?.hood === h.id;
     const label = (h.short || h.id).toUpperCase(), tall = z1 - z0 > 2 * (x1 - x0);
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, size = Math.round(Math.min(150, ((tall ? z1 - z0 : x1 - x0) - 60) / (label.length * 0.72)));
-    return `<rect x="${x0}" y="${z0}" width="${x1 - x0}" height="${z1 - z0}" fill="${o.color}" fill-opacity="${st.owner ? 0.25 + st.hold / 250 : 0.12}" stroke="${hot ? '#ff2a3a' : here === h.id ? '#fff' : '#0b0c0f'}" stroke-width="${hot || here === h.id ? 36 : 18}"${hot ? ' stroke-dasharray="80 50"' : ''}/>
+    const ext = h.ext ? `<rect x="${h.ext[0]}" y="${h.ext[2]}" width="${h.ext[1] - h.ext[0]}" height="${h.ext[3] - h.ext[2]}" fill="${o.color}" fill-opacity="${st.owner ? 0.25 + st.hold / 250 : 0.12}" stroke="#0b0c0f" stroke-width="18"/>` : '';
+    return `${ext}<rect x="${x0}" y="${z0}" width="${x1 - x0}" height="${z1 - z0}" fill="${o.color}" fill-opacity="${st.owner ? 0.25 + st.hold / 250 : 0.12}" stroke="${hot ? '#ff2a3a' : here === h.id ? '#fff' : '#0b0c0f'}" stroke-width="${hot || here === h.id ? 36 : 18}"${hot ? ' stroke-dasharray="80 50"' : ''}/>
       <text x="${cx}" y="${cz}" fill="#fff" font-size="${size}" font-weight="700" text-anchor="middle" dominant-baseline="middle"${tall ? ` transform="rotate(-90 ${cx} ${cz})"` : ''}>${esc(label)}</text>`;
   }).join('');
   return `<svg viewBox="-2700 -1000 5400 3000" style="width:100%;height:auto;background:#101114;border:1px solid #2a2c33;border-radius:6px;display:block" role="img" aria-label="Turf map">
-    <rect x="1000" y="190" width="1700" height="860" fill="#123a5c"/><text x="1850" y="620" fill="#7fa8c9" font-size="110" text-anchor="middle">LAKE WORTH</text>
+    <rect x="1000" y="190" width="1700" height="860" fill="#123a5c"/><text x="1850" y="620" fill="#7fa8c9" font-size="110" text-anchor="middle">EVERMAN</text>
     ${cells}${me ? `<circle cx="${me.x}" cy="${me.z}" r="60" fill="#ff2a3a" stroke="#fff" stroke-width="18"/>` : ''}</svg>`;
 }
 

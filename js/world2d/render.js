@@ -333,7 +333,7 @@ export function drawRoads(ctx, cam, map, signalT) {
       }
     }
   }
-  // Cross Timbers Pass
+  // Lake Worth Pass
   ctx.strokeStyle = COLORS.asphalt; ctx.lineWidth = 9 * z; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.beginPath(); BACKROAD.forEach(([x, zz], i) => i ? ctx.lineTo(cam.sx(x), cam.sy(zz)) : ctx.moveTo(cam.sx(x), cam.sy(zz))); ctx.stroke();
   ctx.strokeStyle = COLORS.yellow; ctx.lineWidth = Math.max(1, 0.15 * z); ctx.setLineDash([3 * z, 6 * z]); ctx.stroke(); ctx.setLineDash([]);
