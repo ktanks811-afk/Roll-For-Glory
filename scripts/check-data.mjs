@@ -1046,6 +1046,84 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const id of Object.keys(LAND)) delete PROPERTIES[id];
   game.s = null;
 }
+// rentals: neighborhoods and apartments on your land, rent every morning
+{
+  const { DEVS, DEV_BY_ID } = await import('../js/data/estate.js');
+  const { LOC_BY_ID } = await import('../js/data/world.js');
+  const { cleanBuild } = await import('../js/net/builds.js');
+  const { setForeignLand } = await import('../js/world2d/estate.js');
+  const st = createState({ name: 'Landlord', age: 30, look: {}, story: false });
+  game.s = st; st.cash = 5e7; st.rep = 40000;
+  const map = buildMap();
+  for (const D of DEVS) if (!Object.keys(LAND).some(id => EST.devFits(id, D.id))) bad(`${D.id} fits on no land`);
+  for (const id of Object.keys(LAND)) if (!EST.devFits(id, 'duplex')) bad(`${id}: no room for even a duplex row`);
+  // the biggest thing that fits, behind a 10-car shop and a house, on every piece of land
+  for (const id of Object.keys(LAND)) {
+    EST.buyLand(st, id); EST.build(st, id, 'compound');
+    const big = DEVS.filter(D => EST.devFits(id, D.id)).at(-1);
+    const r = EST.buildDev(st, id, big.id);
+    if (!r.ok) bad(`building ${big.id} on ${id}: ${r.text}`);
+    if (EST.buildDev(st, id, 'duplex').ok) bad('building over a crew that is still working');
+  }
+  if (EST.buildFence(st, 'land_buffalo', 'wire').ok) bad('a pasture fence over the apartments');
+  st.time.day += 6;
+  EST.finishBuilds(st);
+  if (EST.finishDevs(st).length !== Object.keys(LAND).length) bad('rentals did not finish');
+  applyEstate(map, st);
+  for (const id of Object.keys(LAND)) {
+    const D = DEV_BY_ID[EST.devOf(st, id).id], lot = LOC_BY_ID[id].lot;
+    const mine = map.buildings.filter(b => b.loc === id && (b.devUnit || b.kind === 'store'));
+    if (mine.length !== D.bldgs + (D.pool ? 1 : 0)) bad(`${id}: ${mine.length} rental buildings for ${D.bldgs}`);
+    const rest = map.buildings.filter(b => b.loc === id && !mine.includes(b));
+    for (const b of mine) {
+      if (b.x < lot.x0 || b.z < lot.z0 || b.x + b.w > lot.x1 || b.z + b.d > lot.z1) bad(`${id}: a ${D.id} building sticks out of the lot`);
+      const hit = rest.find(o => o.x < b.x + b.w && o.x + o.w > b.x && o.z < b.z + b.d && o.z + o.d > b.z);
+      if (hit) { bad(`${id}: a ${D.id} building runs into the ${hit.kind}`); break; }
+      if (mine.some(o => o !== b && o.x < b.x + b.w && o.x + o.w > b.x && o.z < b.z + b.d && o.z + o.d > b.z)) { bad(`${id}: two ${D.id} buildings overlap`); break; }
+    }
+    const g = map.garages.find(q => q.id === id);
+    if (g) { g.panel.off = true; for (let i = 0; i <= 40; i++) { const k = i / 40; if (collideCircle(map, g.park.x + (g.center.x - g.park.x) * k, g.park.z + (g.center.z - g.park.z) * k, 1.1)) { bad(`${id}: rentals block the garage`); break; } } }
+  }
+  // the first morning: tenants sign, rent less upkeep goes in the bank
+  const id = 'land_buffalo', d = EST.devOf(st, id), D = DEV_BY_ID[d.id];
+  const bank0 = st.bank, day = EST.estateDay(st);
+  if (!(d.leased > 0 && d.leased <= EST.devUnits(D))) bad(`${d.leased} leased after the first morning`);
+  if (!(day.rent > 0) || st.bank - bank0 !== day.rent) bad(`rent paid ${day.rent}`);
+  for (let k = 0; k < 10; k++) EST.rentDay(st, () => 0.99);
+  if (d.leased !== Math.round(EST.devUnits(D) * 0.94)) bad(`market rent should settle at 94% leased, got ${d.leased}/${EST.devUnits(D)}`);
+  EST.setRent(st, id, 'low'); for (let k = 0; k < 5; k++) EST.rentDay(st, () => 0.99);
+  if (d.leased !== EST.devUnits(D)) bad('below-market rent should fill every unit');
+  const low = EST.rentRoll(st, id).gross; EST.setRent(st, id, 'high');
+  if (!(EST.rentRoll(st, id).gross > low)) bad('top dollar should bring in more per day on the same tenants');
+  for (let k = 0; k < 3; k++) EST.rentDay(st, () => 0);
+  if (!(d.leased < EST.devUnits(D))) bad('tenants should move out');
+  // a land with rentals is worth more, and building something else knocks it down
+  const v0 = EST.landValue(st, 'land_stopsix');
+  if (!(v0 > EST.landValue(st, 'land_six_bunche') - 1e9) || !(v0 > LAND.land_stopsix.price)) bad('land value should count the rentals');
+  const swap = DEVS.find(x => x.id !== EST.devOf(st, 'land_stopsix').id && EST.devFits('land_stopsix', x.id));
+  if (!(EST.devCost(st, 'land_stopsix', swap.id) < swap.price) || !EST.buildDev(st, 'land_stopsix', swap.id).ok) bad('replacing rentals should credit the old build');
+  if (EST.devOf(st, 'land_stopsix').leased !== 0) bad('new rentals start empty');
+  if (!EST.tearDownDev(st, 'land_stopsix').ok || EST.devOf(st, 'land_stopsix')) bad('tearing down rentals');
+  // livestock out back blocks it
+  EST.tearDownDev(st, 'land_nolan'); EST.buildFence(st, 'land_nolan', 'wire'); EST.buyAnimal(st, 'land_nolan', 'cow', 2);
+  if (EST.buildDev(st, 'land_nolan', 'duplex').ok) bad('rentals over a herd of cows');
+  // tier gates the big ones
+  const rookie = createState({ name: 'R', age: 22, look: {}, story: false }); rookie.cash = 1e8; EST.buyLand(rookie, 'land_bluebonnet');
+  if (EST.buildDev(rookie, 'land_bluebonnet', 'complex').ok) bad('a tier-1 player built a 120-unit complex');
+  // other players see it: the build carries the dev, cleaned
+  const cb = cleanBuild('land_crosscreek', { land: { dev: 'garden', fence: 'wire' } });
+  if (cb?.land?.dev !== 'garden' || cb.land.fence) bad('a shared build should carry the rentals');
+  if (cleanBuild('land_crosscreek', { land: { dev: 'casino' } })?.land?.dev) bad('a made-up development got through');
+  const other = createState({ name: 'O', age: 25, look: {}, story: false });
+  setForeignLand({ land_crosscreek: { name: 'Dre', land: cb.land } });
+  applyEstate(map, other);
+  const theirs = map.buildings.filter(b => b.loc === 'land_crosscreek' && b.devUnit);
+  if (theirs.length !== DEV_BY_ID.garden.bldgs || !theirs.some(b => b.label === "Dre's Apartments")) bad(`another player's apartments: ${theirs.length} buildings`);
+  setForeignLand({}); applyEstate(map, other);
+  if (map.buildings.some(b => b.devUnit)) bad('rentals stayed up after loading another career');
+  for (const id of Object.keys(LAND)) delete PROPERTIES[id];
+  game.s = null;
+}
 // dirty money, the bank, washing it through a business, and the feds
 {
   const BK = await import('../js/core/bank.js');

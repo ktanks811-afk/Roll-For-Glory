@@ -28,7 +28,7 @@ import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
 import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
-import { openRealty, openTrap, openLand, openPlug, openRig, openRanch, openRemodel, openBuild } from './estate.js';
+import { openRealty, openTrap, openLand, openPlug, openRig, openRanch, openRemodel, openBuild, openRentals } from './estate.js';
 import { ensureLoot } from '../core/loot.js';
 import { offer as creditOffer, financeCar, payoffOnSale, lienOn, payment as loanPayment, totalCost, AUTO_TERMS, LOAN_CYCLE } from '../core/credit.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
@@ -112,7 +112,8 @@ export function homeScreen(loc, app, s) {
     root.innerHTML = head(prop.name, `Home · ${kind ? `${kind} · ` : ''}${prop.slots} car garage · ${esc(prop.desc)}`) + `<div class="p-body"><div class="grid">
       ${prop.land ? `<div class="card click" data-action="remodel"><h3>🏗 Redesign the house</h3><p class="muted small">Rooms, floors, furniture, colors. Sims style.</p></div>
       <div class="card click" data-action="biggarage"><h3>🚗 Bigger garage</h3><p class="muted small">${prop.slots} cars now. Up to a 100-car vault.</p></div>
-      <div class="card click" data-action="ranch"><h3>🐄 Ranch</h3><p class="muted small">Fence the back, buy cows, horses and dogs.${stockRig(s) ? ' <b class="good">Your stock trailer is here: load or turn out cattle.</b>' : ''}</p></div>` : ''}
+      <div class="card click" data-action="ranch"><h3>🐄 Ranch</h3><p class="muted small">Fence the back, buy cows, horses and dogs.${stockRig(s) ? ' <b class="good">Your stock trailer is here: load or turn out cattle.</b>' : ''}</p></div>
+      <div class="card click" data-action="rentals"><h3>🏘 Rentals</h3><p class="muted small">Rent houses, duplexes and apartments out back. Rent every morning.</p></div>` : ''}
       <div class="card click" data-action="kennel"><h3>🐕 Kennel</h3><p class="muted small">${(() => { const n = ensureKennel(s).dogs.filter(d => d.home === loc.id).length; return n ? `${n} dog${n > 1 ? 's' : ''} here.` : 'Your hog dogs: profiles, breeding, training.'; })()}</p></div>
       <div class="card click" data-action="garage"><h3>🔧 Garage</h3><p class="muted small">Install parts (DIY), switch cars, dyno, tune.</p></div>
       <div class="card click" data-action="sleep" data-to="8"><h3>🛏 Sleep until morning</h3><p class="muted small">Skip to 8:00 AM, fully rested. Saves your game.</p></div>
@@ -131,6 +132,7 @@ export function homeScreen(loc, app, s) {
       remodel: () => openRemodel(app, loc.id),
       biggarage: () => openBuild(app, loc.id),
       ranch: () => openRanch(app, loc.id),
+      rentals: () => openRentals(app, loc.id),
       trailer: () => openTrailerHome(app),
       keephot: () => {
         if (!w.thefts.canKeep()) { toast('No room. Sell a car or buy a bigger place first.', 'bad'); return; }

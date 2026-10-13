@@ -158,3 +158,36 @@ export const ANIMALS = [
   { id: 'horse',    name: 'Quarter horse',  price: 8500, feed: 35, pays: 240, pen: true, color: '#7a4a2a', icon: '🐎', desc: 'A sorrel quarter horse. Stud and boarding fees.' },
 ];
 export const ANIMAL_BY_ID = Object.fromEntries(ANIMALS.map(a => [a.id, a]));
+
+// ---------------------------------------------------------------- rentals
+// Build a neighborhood or an apartment complex on the back of your land and
+// rent it out (core/estate.js). It goes where the pasture would, so it's one
+// or the other. kind: 'homes' = rent houses down a little street, 'apts' =
+// apartment buildings round a parking lot. bldgs × per = units. rent: what a
+// leased unit brings in a game day. upkeep: repairs, the lawn crew and
+// insurance, a day, for every unit whether it's leased or not.
+// fw × fd: one building's footprint (m), h: how tall. Whether it fits on a
+// piece of land is worked out from the land itself (devLayout).
+export const DEVS = [
+  { id: 'duplex',   name: 'Duplex row',         short: 'Duplexes',   kind: 'homes', bldgs: 4,  per: 2,  rent: 450,  upkeep: 50,  price: 130000,  days: 1,
+    fw: 15, fd: 10, h: 4.2, desc: 'Four brick duplexes down a gravel drive. Two units each, easy to keep full.' },
+  { id: 'renthouses', name: 'Rent houses',      short: 'Rent Houses', kind: 'homes', bldgs: 10, per: 1,  rent: 800,  upkeep: 90,  price: 290000,  days: 2, tier: 2,
+    fw: 12, fd: 10, h: 4.5, desc: 'Ten three-bedroom houses on their own little street. Families sign for a year.' },
+  { id: 'fourplex', name: 'Fourplexes',         short: 'Fourplexes', kind: 'apts',  bldgs: 6,  per: 4,  rent: 600,  upkeep: 70,  price: 520000,  days: 2, tier: 2,
+    fw: 16, fd: 12, h: 7,   desc: 'Six two-story fourplexes round a parking lot. Twenty-four doors.' },
+  { id: 'garden',   name: 'Garden apartments',  short: 'Apartments', kind: 'apts',  bldgs: 4,  per: 12, rent: 700,  upkeep: 80,  price: 1200000, days: 3, tier: 3,
+    fw: 30, fd: 14, h: 10,  desc: 'Four three-story buildings, breezeways and covered parking. Forty-eight units.' },
+  { id: 'subdivision', name: 'Subdivision',     short: 'Estates',    kind: 'homes', bldgs: 28, per: 1,  rent: 1000, upkeep: 110, price: 1000000, days: 3, tier: 3,
+    fw: 14, fd: 12, h: 5,   desc: 'A whole neighborhood: streets, sidewalks and twenty-eight brick houses with two-car garages.' },
+  { id: 'complex',  name: 'Apartment complex',  short: 'Apartments', kind: 'apts',  bldgs: 6,  per: 20, rent: 800,  upkeep: 90,  price: 3400000, days: 4, tier: 4, pool: true,
+    fw: 40, fd: 16, h: 10,  desc: 'Six three-story buildings, a leasing office and a pool. A hundred and twenty units and a waiting list.' },
+];
+export const DEV_BY_ID = Object.fromEntries(DEVS.map(d => [d.id, d]));
+// How you price the units: cheaper fills every door, higher leaves some empty.
+export const RENT_LEVELS = [
+  { id: 'low',  name: 'Below market', mult: 0.85, full: 1.0 },
+  { id: 'fair', name: 'Market rent',  mult: 1.0,  full: 0.94 },
+  { id: 'high', name: 'Top dollar',   mult: 1.3,  full: 0.75 },
+];
+export const RENT_BY_ID = Object.fromEntries(RENT_LEVELS.map(r => [r.id, r]));
+export const DEV_SELL = 0.7;        // what a development sells for with the land
