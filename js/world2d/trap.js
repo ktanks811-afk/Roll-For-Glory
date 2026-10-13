@@ -3,7 +3,7 @@
 // them was the wrong one. Map pieces are in world2d/estate.js.
 
 import { applyEstate } from './estate.js';
-import { TRAPS, DRUG_BY_ID } from '../data/estate.js';
+import { TRAPS, DRUG_BY_ID, LAND as LANDS, DEV_BY_ID } from '../data/estate.js';
 import { PROPERTIES, LOC_BY_ID } from '../data/world.js';
 import { fmtMoney, addRep } from '../core/state.js';
 import { audio } from '../core/audio.js';
@@ -11,7 +11,7 @@ import { esc } from '../ui/dom.js';
 import { sendMessage } from '../core/story.js';
 import { saveGame } from '../core/save.js';
 import { addWarrant } from '../core/warrants.js';
-import { finishBuilds } from '../core/estate.js';
+import { finishBuilds, finishDevs, devOf, devUnits } from '../core/estate.js';
 import { ensureDrugs, trapState, customer, serve, units, myTraps, isClosed, raidHouse, drugOffences, raidChance } from '../core/drugs.js';
 
 // ---------------------------------------------------------------- every frame
@@ -38,6 +38,12 @@ export function estateTick(w, dt) {
     if (done.length) {
       applyEstate(w.map, s);
       for (const id of done) sendMessage(s, 'builder', `Your ${PROPERTIES[id].name} is finished. Keys are under the mat. ${PROPERTIES[id].slots}-car garage, ready to move in.`, { action: { type: 'gps', loc: id } });
+      saveGame('auto', true);
+    }
+    const devs = finishDevs(s);
+    if (devs.length) {
+      applyEstate(w.map, s);
+      for (const id of devs) { const D = DEV_BY_ID[devOf(s, id).id]; sendMessage(s, 'builder', `The ${D.name.toLowerCase()} at ${LANDS[id].name} is finished. ${devUnits(D)} units. The leasing office opens in the morning and the rent hits your bank every day after.`, { action: { type: 'gps', loc: id } }); }
       saveGame('auto', true);
     }
   }

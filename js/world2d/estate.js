@@ -10,9 +10,9 @@
 // Customers and SWAT raids are in world2d/trap.js.
 
 import { garageBlock } from './map.js';
-import { ESTATE_LOCATIONS, RIGS, FENCE_BY_ID } from '../data/estate.js';
+import { ESTATE_LOCATIONS, RIGS, FENCE_BY_ID, LAND, DEV_BY_ID } from '../data/estate.js';
 import { PROPERTIES } from '../data/world.js';
-import { registerBuilds, isBuilt, houseDesign, pasture, builtProperty } from '../core/estate.js';
+import { registerBuilds, isBuilt, houseDesign, pasture, builtProperty, devOf, devLayout, rentRoll, now } from '../core/estate.js';
 
 const overlaps = (o, r, pad = 0) => o.x < r.x1 + pad && o.x + (o.w || 0) > r.x0 - pad && o.z < r.z1 + pad && o.z + (o.d || 0) > r.z0 - pad;
 const inLot = (x, z, r, pad = 0) => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad;
@@ -192,7 +192,12 @@ export function applyEstate(map, s) {
       };
       side('n', P.x0, P.x1, P.z0); side('s', P.x0, P.x1, P.z1); side('w', P.z0, P.z1, P.x0); side('e', P.z0, P.z1, P.x1);
     }
-    if (!built) continue;
+    // rentals out back: yours (framing while the crew works) or another player's
+    // (they go up after the house so the house's yard doesn't paint over their streets)
+    const dv = mine ? devOf(s, loc.id) : other?.land?.dev ? { id: other.land.dev, ready: 0 } : null;
+    const devRect = dv ? pasture(loc) : null;
+    const dev = () => dv && put(map, devBlock(loc, dv.id, mine && dv.ready > now(s), other?.name, mine ? rentRoll(s, loc.id) : null), all);
+    if (!built) { dev(); continue; }
     const r = loc.lot;
     const out = { buildings: [], lots: [], garages: [], trees: [], props: [], houses: [], R: (a, b) => (a + b) / 2 };
     if (mine) garageBlock(out, loc, r.x0, r.z0, r.x1, r.z1, PROPERTIES[loc.id], houseDesign(s, loc.id));
@@ -202,28 +207,71 @@ export function applyEstate(map, s) {
       for (const g of out.garages) { g.roof.label = `${other.name}'s`; g.owner = other.name; g.label = `${other.name}'s place`; }
       for (const hs of out.houses) hs.owner = other.name;
     }
-    for (const p of out.props) {
-      map.props.push(p); const e = { type: 'p', o: p };
-      map.drawGrid.insert(e, p.x, p.z, p.x + (p.w || 0), p.z + (p.d || 0)); all.push(p, e);
-    }
-    for (const hs of out.houses) {
-      map.houses.push(hs); all.push(hs);
-      if (hs.panel) { map.colliders.push(hs.panel); map.grid.insert(hs.panel, hs.panel.x0, hs.panel.z0, hs.panel.x1, hs.panel.z1); all.push(hs.panel); }
-    }
-    for (const b of out.buildings) {
-      const e = { type: 'b', o: b };
-      map.buildings.push(b); map.drawGrid.insert(e, b.x, b.z, b.x + b.w, b.z + b.d); all.push(b, e);
-      if (b.noCollide) continue;
-      const c = { x0: b.x, z0: b.z, x1: b.x + b.w, z1: b.z + b.d, h: b.h, b };
-      map.colliders.push(c); map.grid.insert(c, c.x0, c.z0, c.x1, c.z1); all.push(c);
-    }
-    for (const l of out.lots) { map.lots.push(l); const e = { type: 'l', o: l }; map.drawGrid.insert(e, l.x, l.z, l.x + l.w, l.z + l.d); all.push(l, e); }
-    for (const t of out.trees) { map.trees.push(t); const e = { type: 't', o: t }; map.drawGrid.insert(e, t.x - t.r, t.z - t.r, t.x + t.r, t.z + t.r); all.push(t, e); }
-    for (const g of out.garages) {
-      g.panel = { x0: g.door.x, z0: g.door.z, x1: g.door.x + g.door.w, z1: g.door.z + g.door.d, h: 4, off: false, door: g.id };
-      map.colliders.push(g.panel); map.grid.insert(g.panel, g.panel.x0, g.panel.z0, g.panel.x1, g.panel.z1);
-      map.garages.push(g); all.push(g, g.panel);
-    }
+    if (devRect) keep(out.trees, t => !inLot(t.x, t.z, devRect, t.r));
+    put(map, out, all);
+    dev();
   }
   map.estateAdded = { all };
+}
+
+// Puts what a builder made (out) on the map at run time, with colliders, and
+// remembers every piece in `all` so applyEstate can take it down again.
+function put(map, out, all) {
+  for (const p of out.props) {
+    map.props.push(p); const e = { type: 'p', o: p };
+    map.drawGrid.insert(e, p.x, p.z, p.x + (p.w || 0), p.z + (p.d || 0)); all.push(p, e);
+  }
+  for (const hs of out.houses) {
+    map.houses.push(hs); all.push(hs);
+    if (hs.panel) { map.colliders.push(hs.panel); map.grid.insert(hs.panel, hs.panel.x0, hs.panel.z0, hs.panel.x1, hs.panel.z1); all.push(hs.panel); }
+  }
+  for (const b of out.buildings) {
+    const e = { type: 'b', o: b };
+    map.buildings.push(b); map.drawGrid.insert(e, b.x, b.z, b.x + b.w, b.z + b.d); all.push(b, e);
+    if (b.noCollide) continue;
+    const c = { x0: b.x, z0: b.z, x1: b.x + b.w, z1: b.z + b.d, h: b.h, b };
+    map.colliders.push(c); map.grid.insert(c, c.x0, c.z0, c.x1, c.z1); all.push(c);
+  }
+  for (const l of out.lots) { map.lots.push(l); const e = { type: 'l', o: l }; map.drawGrid.insert(e, l.x, l.z, l.x + l.w, l.z + l.d); all.push(l, e); }
+  for (const t of out.trees) { map.trees.push(t); const e = { type: 't', o: t }; map.drawGrid.insert(e, t.x - t.r, t.z - t.r, t.x + t.r, t.z + t.r); all.push(t, e); }
+  for (const g of out.garages) {
+    g.panel = { x0: g.door.x, z0: g.door.z, x1: g.door.x + g.door.w, z1: g.door.z + g.door.d, h: 4, off: false, door: g.id };
+    map.colliders.push(g.panel); map.grid.insert(g.panel, g.panel.x0, g.panel.z0, g.panel.x1, g.panel.z1);
+    map.garages.push(g); all.push(g, g.panel);
+  }
+}
+
+// A neighborhood or apartment complex on the back of a piece of land
+// (core/estate.js lays it out). framing: the crew is still on it, so it's
+// slabs and lumber. owner: another player's, and their name goes on the sign.
+const HOME_ROOFS = ['#5a4632', '#6b3a2e', '#3f4a5a', '#7a4b3a', '#4a4a4a', '#2f343d', '#6a5a4c'];
+const APT_ROOFS = ['#8a5a4a', '#9a7a62', '#7a7e83', '#a0805e'];
+const CAR_COLORS = ['#c0392b', '#f1f1f1', '#2c3e50', '#7f8c8d', '#1f4e8a', '#111111', '#b8b8b8', '#8a6a3a'];
+// roll: yours (rentRoll), so the tenants' cars match how full it is
+export function devBlock(loc, devId, framing = false, owner = null, roll = null) {
+  const D = DEV_BY_ID[devId], lay = devLayout(loc, devId);
+  const out = { buildings: [], lots: lay.lots.map(l => ({ ...l, loc: loc.id })), garages: [], trees: [], props: [], houses: [] };
+  const sign = owner ? `${owner}'s ${D.short}` : `${LAND[loc.id]?.short || ''} ${D.short}`.trim();
+  lay.slots.forEach((r, k) => {
+    if (D.pool && k === 0) {
+      // the leasing office and the pool by the gate
+      const wide = r.w >= r.d, ow = wide ? 14 : r.w, od = wide ? r.d : 14;
+      out.buildings.push({ x: r.x, z: r.z, w: ow, d: od, h: framing ? 1 : 4, color: framing ? '#c8b08a' : '#d7d2c4', kind: framing ? 'frame' : 'store', loc: loc.id, label: framing ? null : sign, labelColor: '#ffd84a' });
+      if (!framing) out.props.push(wide ? { k: 'pool', x: r.x + ow + 3, z: r.z + 2, w: r.w - ow - 5, d: r.d - 4 } : { k: 'pool', x: r.x + 2, z: r.z + od + 3, w: r.w - 4, d: r.d - od - 5 });
+      return;
+    }
+    const pal = D.kind === 'apts' ? APT_ROOFS : HOME_ROOFS;
+    out.buildings.push({ ...r, h: framing ? 1 : D.h, color: framing ? '#c8b08a' : pal[(k * 5 + loc.id.length) % pal.length], kind: framing ? 'frame' : D.kind === 'apts' ? 'midrise' : 'house', loc: loc.id, devUnit: true,
+      label: !framing && !D.pool && k === 0 ? sign : null, labelColor: '#ffd84a' });
+  });
+  // tenants' cars
+  if (!framing) {
+    const full = roll ? (roll.units ? roll.leased / roll.units : 0) : 0.8;
+    const n = Math.round(lay.spots.length * full * (D.kind === 'apts' ? 0.7 : 1));
+    lay.spots.slice(0, n).forEach((p, k) => {
+      const len = 4.4, wid = 1.9, c = CAR_COLORS[(k * 3 + loc.id.length) % CAR_COLORS.length];
+      out.buildings.push(p.along === 'x' ? { x: p.x - len / 2, z: p.z - wid / 2, w: len, d: wid, h: 1.5, color: c, kind: 'parked', loc: loc.id } : { x: p.x - wid / 2, z: p.z - len / 2, w: wid, d: len, h: 1.5, color: c, kind: 'parked', loc: loc.id });
+    });
+  }
+  return out;
 }
