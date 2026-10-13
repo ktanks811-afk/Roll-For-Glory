@@ -376,7 +376,7 @@ in the car.
 | Walking | |
 | --- | --- |
 | Move | Joystick (bottom left) |
-| Run | Hold RUN |
+| Run | Tap RUN to keep running (tap again to walk), or hold it |
 | Shops, homes, meets | USE |
 | Get in your car | GET IN (stand next to it) |
 | Draw / holster, fire, reload a gun | ARM, FIRE, RE-LOAD (appear once you own a gun) |

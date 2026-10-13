@@ -35,6 +35,27 @@ function holdButton(el, action) {
   el.addEventListener('lostpointercapture', up);
 }
 
+// RUN: hold it to run, or tap it once to keep running (it lights up) and tap
+// again to walk. Getting in a car or opening a menu drops back to walking.
+function runButton(el) {
+  let t0 = 0, wasLocked = false;
+  const down = e => {
+    e.preventDefault(); capture(el, e); buzz(8);
+    wasLocked = el.classList.contains('locked');
+    t0 = performance.now();
+    el.classList.add('on'); touch.hold('run', true);
+  };
+  const up = e => {
+    if (!el.classList.contains('on')) return;
+    const tap = e.type === 'pointerup' && performance.now() - t0 < 300;
+    if (tap && !wasLocked) { el.classList.add('locked'); return; }   // tapped: keep running
+    el.classList.remove('on', 'locked'); touch.hold('run', false);
+  };
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+}
+
 function tapButton(el, action) {
   el.addEventListener('pointerdown', e => { e.preventDefault(); capture(el, e); el.classList.add('on'); touch.press(action); buzz(10); });
   const up = () => el.classList.remove('on');
@@ -281,7 +302,7 @@ export const touchUi = {
           <button class="tc-btn tc-round tc-sm tc-gun" data-tap="draw" data-ed="draw">ARM</button>
           <button class="tc-btn tc-round tc-sm tc-mask" data-tap="mask" data-ed="mask">MASK</button>
           <button class="tc-btn tc-round tc-fire" data-hold="fire" data-ed="fire">FIRE</button>
-          <button class="tc-btn tc-round" data-hold="run" data-ed="run">RUN</button>
+          <button class="tc-btn tc-round tc-run" data-run data-ed="run">RUN</button>
           <button class="tc-btn tc-round" data-tap="enterExit" data-ed="getin">GET<br>IN</button>
           <button class="tc-btn tc-round tc-use" data-tap="interact" data-ed="use">USE</button>
           <button class="tc-btn tc-round tc-steal" data-tap="steal" data-ed="steal">STEAL</button>
@@ -320,6 +341,7 @@ export const touchUi = {
       </div>`;
     root.addEventListener('contextmenu', e => e.preventDefault());
     root.querySelectorAll('[data-hold]').forEach(b => holdButton(b, b.dataset.hold));
+    runButton(root.querySelector('[data-run]'));
     root.querySelectorAll('[data-tap]').forEach(b => tapButton(b, b.dataset.tap));
     els.gear = root.querySelector('[data-gear]');
     els.mode = root.querySelector('[data-mode]');
@@ -333,10 +355,10 @@ export const touchUi = {
       if (editing) return;
       root.dataset.ctx = ctx;
       stopStick(); resetWheel();
-      root.querySelectorAll('.on').forEach(n => n.classList.remove('on'));
+      root.querySelectorAll('.on, .locked').forEach(n => n.classList.remove('on', 'locked'));
       root.classList.remove('shift-now');
     });
-    this.releaseAll = () => { stopStick(); resetWheel(); touch.reset(); root.querySelectorAll('.on').forEach(n => n.classList.remove('on')); };
+    this.releaseAll = () => { stopStick(); resetWheel(); touch.reset(); root.querySelectorAll('.on, .locked').forEach(n => n.classList.remove('on', 'locked')); };
     refreshMode();
     pad.onUse(() => { this.releaseAll(); this.refresh(); });
   },
