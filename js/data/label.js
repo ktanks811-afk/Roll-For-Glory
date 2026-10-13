@@ -48,7 +48,7 @@ export const ARTISTS = [
   A('kayla_cash', 'Kayla Cash', 'Kayla Jefferson', 'Pop Rap', 'Downtown', 'luckys', 74, 15000, 'Already has a viral clip. Every label in DFW has her number.'),
   A('heights_hollis', 'Hollis', 'Hollis Grant', 'Indie', 'Arlington Heights', 'heights_bbq', 41, 900, 'Sad guitar songs. Very good at them. Very sad.'),
   A('foundry_fiend', 'Foundry Fiend', 'Andre Lucas', 'Drill', 'Riverside', 'old_foundry', 64, 8300, 'Records voice notes in the warehouse between races. Scary pen.', { street: true }),
-  A('pier9_pharaoh', 'Pharaoh 9', 'Isaiah Moss', 'Rap', 'Lake Worth', 'pier9', 79, 26000, 'The car scene\'s favorite rapper. Shows up to the Pier 9 lot in a different whip every week.', { street: true }),
+  A('pier9_pharaoh', 'Pharaoh 9', 'Isaiah Moss', 'Rap', 'Near Southside', 'pier9', 79, 26000, 'The car scene\'s favorite rapper. Shows up to the Pier 9 lot in a different whip every week.', { street: true }),
   A('lanc_lexi', 'Lexi Lancaster', 'Alexis Ramos', 'Reggaeton', 'East Lancaster', 'taco_lancaster', 57, 4400, 'Works the taco truck window and sings to the line.'),
   A('gran_plaza_g', 'G de la Plaza', 'Gerardo Salinas', 'Corridos Tumbados', 'Southside', 'gran_plaza', 69, 12000, 'Plays the weekend meet with a twelve-string and a crowd around him.'),
   // Dallas and Arlington

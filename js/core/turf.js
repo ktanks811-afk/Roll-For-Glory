@@ -19,14 +19,16 @@ export const HOODS = [
   { id: 'Downtown', owner: 'apex_syndicate', take: 1200, box: [-300, 300, -300, 300], c: [0, 0] },
   { id: 'Stockyards', aka: 'North Side', owner: 'iron_saints', take: 600, box: [-300, 300, -1000, -300], c: [0, -650] },
   { id: 'Riverside Industrial', short: 'Riverside', owner: 'iron_saints', take: 500, box: [300, 1000, -1000, 600], c: [650, -200] },
-  { id: 'Near Southside', short: 'Southside', owner: 'midnight_static', take: 450, box: [-300, 300, 300, 1050], c: [0, 650] },
-  { id: 'Lakeside', owner: 'midnight_static', take: 450, box: [300, 1000, 600, 1050], c: [650, 825] },
-  { id: 'Arlington Heights', owner: 'velvet_ghosts', take: 700, box: [-1000, -300, -1000, 1050], c: [-650, 0] },
+  // the Southside runs east through the old Lakeside blocks too (ext: a second rectangle on the turf map)
+  { id: 'Near Southside', short: 'Southside', owner: 'midnight_static', take: 750, box: [-300, 300, 300, 1050], ext: [300, 1000, 600, 1050], c: [0, 650] },
+  { id: 'Arlington Heights', short: 'Heights', owner: 'velvet_ghosts', take: 500, box: [-1000, -300, -1000, 0], c: [-650, -450] },
+  { id: 'Crowley', owner: null, take: 400, box: [-1000, -300, 0, 1050], c: [-650, 500] },
   { id: 'Stop Six', owner: null, take: 400, box: [1000, 2700, -1000, 190], c: [1700, -400] },
   { id: 'Benbrook Hills', owner: null, take: 300, box: [-2700, -1000, -100, 1050], c: [-1500, 450] },
-  { id: 'Cross Timbers', owner: 'dust_devils', take: 350, box: [-2700, -1000, -1000, -100], c: [-1500, -550] },
-  { id: 'Chisholm Flats', owner: 'dust_devils', take: 300, box: [-2700, 2700, 1050, 2000], c: [0, 1500] },
+  { id: 'Lake Worth', owner: 'dust_devils', take: 350, box: [-2700, -1000, -1000, -100], c: [-1500, -550] },
+  { id: 'Burleson', owner: 'dust_devils', take: 300, box: [-2700, 2700, 1050, 2000], c: [0, 1500] },
 ];
+const RENAMED = { 'Cross Timbers': 'Lake Worth', 'Chisholm Flats': 'Burleson', Lakeside: null };
 export const HOOD_BY_ID = Object.fromEntries(HOODS.map(h => [h.id, h]));
 
 export const CLAIM_SECS = 45;     // seconds of driving in an open hood to claim it
@@ -38,6 +40,12 @@ export function ensureTurf(s) {
   if (!s.turf) s.turf = { day: s.time.day, hoods: {}, war: null, attack: null, cooldown: {} };
   const t = s.turf;
   t.cooldown ??= {};
+  // renamed hoods carry over to their new names; Lakeside became part of the Southside
+  for (const [from, to] of Object.entries(RENAMED)) {
+    if (t.hoods[from]) { if (to && !t.hoods[to]) t.hoods[to] = t.hoods[from]; delete t.hoods[from]; }
+    if (t.cooldown[from] != null) { if (to) t.cooldown[to] = t.cooldown[from]; delete t.cooldown[from]; }
+    for (const k of ['war', 'attack']) if (t[k]?.hood === from) { if (to) t[k].hood = to; else t[k] = null; }
+  }
   for (const h of HOODS) t.hoods[h.id] ??= { owner: h.owner, hold: h.owner ? 100 : 0, claim: 0 };
   // a crew you founded owns its turf as 'me'; leaving it (or switching crews) gives that turf up
   const crewId = s.crew ? (s.crew.npcCrew || 'me:' + s.crew.name) : null;

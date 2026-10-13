@@ -3,7 +3,7 @@
 // and the Trinity River with its trail. Plus shrubs, hedges, pools and parked
 // cars inside the city blocks, street trees, a ring of buildings along the
 // outer streets, suburbs between the city and Loop 820, farms north of the
-// loop, a Lake Worth beach neighbourhood and a little town on Chisholm Trail Pkwy. It has its own seed, so the original city stays exactly
+// loop, an Everman beach neighbourhood and a little town on Chisholm Trail Pkwy. It has its own seed, so the original city stays exactly
 // as it was. Nothing new is placed on a road, a race start or a business.
 //
 // Side streets ("lanes") are drawn as lots: you can drive on them, but they
@@ -90,7 +90,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
       }
     return false;
   };
-  const BR = { x: -2400, z: -720, w: 1520, d: 440 };   // Cross Timbers Pass bounding box
+  const BR = { x: -2400, z: -720, w: 1520, d: 440 };   // Lake Worth Pass bounding box
   const blocked = (r, pad = 0, solids = true) => {
     if (hits(roadGrid, r, pad) || hits(keepGrid, r, 0)) return true;
     if (overlap(r, BR, 30) && onBackroad(r.x + r.w / 2, r.z + r.d / 2, Math.hypot(r.w, r.d) / 2 + 7 + pad)) return true;
@@ -150,7 +150,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
   for (const e of roads.edges) {
     if (e.kind !== 'city' || Math.abs(e.az) > 900 || Math.abs(e.bz) > 900) continue;
     const dist = districtAt((e.ax + e.bx) / 2, (e.az + e.bz) / 2);
-    if (dist === 'Riverside Industrial' || dist === 'Lakeside') continue;
+    if (dist === 'Riverside Industrial') continue;
     const step = dist === 'Downtown' ? 18 : 24;
     for (let s = 20; s < e.len - 20; s += step) {
       for (const side of [-1, 1]) {
@@ -168,8 +168,8 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
     const from = GRID[k] + 14, to = GRID[k + 1] - 14, mid = (from + to) / 2;
     ringStrip('x', -900, -1, from, to, districtAt(mid, -950));   // north edge
     ringStrip('x', 900, 1, from, to, districtAt(mid, 950));      // south edge
-    ringStrip('z', -900, -1, from, to, 'Arlington Heights'); // west edge
-    ringStrip('z', 900, 1, from, to, districtAt(950, mid) === 'Lake Worth' ? 'Lakeside' : districtAt(940, mid));   // east edge
+    ringStrip('z', -900, -1, from, to, districtAt(-950, mid)); // west edge: Arlington Heights, Crowley to the south
+    ringStrip('z', 900, 1, from, to, districtAt(940, mid));   // east edge
   }
 
   // ---------------- North Side suburbs between the city and Loop 820 ----------------
@@ -205,7 +205,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
   // the far west, past the farms, is all forest
   for (let k = 0; k < 500; k++) { const x = R(-3250, -2700), z = R(-3250, HWY_Z - 40); if (!blocked({ x, z, w: 1, d: 1 }, 2, false)) tree(x, z, R(3, 6), 'pine'); }
 
-  // ---------------- West Hills: ranches, and cabins along Cross Timbers Pass ----------------
+  // ---------------- West Hills: ranches, and cabins along Lake Worth Pass ----------------
   for (let x = -3200; x < -1000; x += 200) for (let z = -950; z < 1000; z += 200) {
     const cell = { x: x + 10, z: z + 10, w: 180, d: 180 };
     if (overlap(cell, BR, 40) || blocked(cell, 0)) continue;
@@ -266,7 +266,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
   }
   houseRow('z', SIX_X1, 4.5, 1, -745, 180, { ...SIX, depth: 34 });
 
-  // ---------------- Lake Worth: a beach and a lighthouse ----------------
+  // ---------------- Everman: a beach and a lighthouse ----------------
   lot({ x: SEA_X + 10, z: 196, w: 3200 - SEA_X - 10, d: 54, kind: 'sand' });
   for (let x = SEA_X + 30; x < 3180; x += 34) tree(x + R(-4, 4), 212 + R(-4, 4), 3, 'palm');
   for (let x = SEA_X + 40; x < 3120; x += R(14, 30)) {   // umbrellas and towels
@@ -288,7 +288,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
     }
   }
 
-  // ---------------- Chisholm Flats: a little town on Chisholm Trail Pkwy ----------------
+  // ---------------- Burleson: a little town on Chisholm Trail Pkwy ----------------
   const town = [{ x: -260, z: 1780, w: 245, d: 620 }, { x: 14, z: 1985, w: 240, d: 420 }];
   for (const t of town) { keep(rocks, r => !overlap(r, t, 4)); keep(trees, tr => !inside(tr.x, tr.z, t)); }
   rebuildSolid();
@@ -503,10 +503,10 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
       const a = c + dir * v0, b = c + dir * v1, lo = Math.min(a, b), hi = Math.max(a, b);
       return axis === 'x' ? { x: u0, z: lo, w: u1 - u0, d: hi - lo } : { x: lo, z: u0, w: hi - lo, d: u1 - u0 };
     };
-    if (district === 'Arlington Heights') {
+    if (district === 'Arlington Heights' || district === 'Crowley') {
       houseRow(axis, c, 14, dir, from, to, { roofs: HOUSE_ROOFS, depth: 66, pitch: 30 });
       for (let k = 0; k < 4; k++) { const u = R(from + 4, to - 4), v = R(58, 78); tree(axis === 'x' ? u : c + dir * v, axis === 'x' ? c + dir * v : u, R(3, 5)); }
-    } else if (district === 'Riverside Industrial' || district === 'Lakeside') {
+    } else if (district === 'Riverside Industrial') {
       const yard = lot({ ...rect(from + 2, to - 2, 16, 34), kind: 'parking' });
       const wh = { ...rect(from + 4, to - 4, 36, 36 + R(26, 40)), h: R(9, 16), color: pick(IND_ROOFS), kind: 'warehouse' };
       if (addB(wh)) { for (let k = 0; k < 6; k++) crate(wh); }

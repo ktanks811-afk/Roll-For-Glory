@@ -1509,7 +1509,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (collideCircle(map, 600, -4000, 1) && collideCircle(map, 600, -3990, 1)) bad('Alliance should be open');
   if (!collideCircle(map, 0, W.NORTH.z0 - 50, 1) || !collideCircle(map, W.NORTH.x0 - 100, -5000, 1) || !collideCircle(map, W.NORTH.x1 + 50, -5000, 1)) bad('the world should end past North Texas');
   if (!collideCircle(map, (W.LEWISVILLE.x0 + W.LEWISVILLE.x1) / 2, -6000, 1)) bad('Lake Lewisville should be water');
-  if (W.districtAt(-2000, -2000) !== 'Loop 820' && W.districtAt(-2000, -2000) !== 'Cross Timbers') bad(`north of 820 out west moved: ${W.districtAt(-2000, -2000)}`);
+  if (W.districtAt(-2000, -2000) !== 'Loop 820' && W.districtAt(-2000, -2000) !== 'Lake Worth') bad(`north of 820 out west moved: ${W.districtAt(-2000, -2000)}`);
   for (const [x, z, d] of [[675, -6475, 'The Square'], [225, -6300, 'UNT'], [675, -6900, 'TWU'], [900, -5900, 'Southeast Denton'], [600, -5075, 'Texas Motor Speedway'], [2200, -4400, 'Roanoke'], [-500, -3700, 'Alliance'], [1250, -4300, 'Alliance Airport'], [-600, -4250, 'Northlake'], [-700, -5200, 'Argyle'], [2800, -6000, 'Lake Lewisville']])
     if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
   // every North Texas business is reachable, with a building and a way in

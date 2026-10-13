@@ -70,7 +70,7 @@ const THEMES = {
 };
 export const THEME_NAMES = { slab: 'Slab', jdm: 'JDM', muscle: 'Muscle', euro: 'Euro', stance: 'Stance' };
 const FIRST = ['Big Lo', 'Kiki', 'Trey', 'Mari', 'Junior', 'Nae', 'Dez', 'Lil Tone', 'Rosie', 'Chuy', 'Bree', 'Pooh', 'Kendrick', 'Yesi', 'Marcus', 'Tasha', 'Dub', 'Gabe'];
-const CLUB = ['from Stop Six', 'from the North Side', 'from Polytechnic', 'from Arlington Heights', 'from the Southside', 'from Como', 'from Haltom City', 'from Everman'];
+const CLUB = ['from Stop Six', 'from the North Side', 'from Polytechnic', 'from Arlington Heights', 'from the Southside', 'from Como', 'from Haltom City', 'from Everman', 'from Crowley', 'from Burleson'];
 
 const pickR = (rnd, a) => a[Math.floor(rnd() * a.length)];
 

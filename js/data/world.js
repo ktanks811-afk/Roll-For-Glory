@@ -78,7 +78,7 @@ export const inNorth = (x, z) => z < NORTH.z1 && x > NORTH.x0 && x < NORTH.x1;
 // either city grid outside Fort Worth (sidewalks, red lights, pavement)
 export const inCityGrid = (x, z) => inDallas(x, z) || inDenton(x, z) || inWestCity(x, z);
 
-export const STREET_NS = ['Hulen St', 'Montgomery St', 'University Dr', 'Henderson St', 'Throckmorton St', 'Houston St', 'Main St', 'Commerce St', 'Jones St', 'Riverside Dr', 'Beach St', 'Oakland Blvd', 'Lake Worth Blvd'];
+export const STREET_NS = ['Hulen St', 'Montgomery St', 'University Dr', 'Henderson St', 'Throckmorton St', 'Houston St', 'Main St', 'Commerce St', 'Jones St', 'Riverside Dr', 'Beach St', 'Oakland Blvd', 'Everman Pkwy'];
 export const DSTREET_NS = ['Sylvan Ave', 'Riverfront Blvd', 'Lamar St', 'Griffin St', 'Akard St', 'Ervay St', 'Harwood St', 'Pearl St', 'Good Latimer Expy', 'Exposition Ave', 'Haskell Ave'];
 export const DSTREET_EW = ['Lemmon Ave', 'McKinney Ave', 'Ross Ave', 'Elm St', 'Commerce St', 'I-30', 'Jefferson Blvd', 'Davis St', 'MLK Jr Blvd', 'Illinois Ave', 'Kiest Blvd'];
 export const DNSTREET_NS = ['I-35', 'Bonnie Brae St', 'Avenue C', 'Carroll Blvd', 'Elm St', 'Locust St', 'Bell Ave', 'Wood St', 'Loop 288'];
@@ -98,7 +98,7 @@ export function districtAt(x, z) {
   if (x > SEA_X) return z > 190 ? 'Everman' : z > -1000 ? 'Stop Six' : 'Everman Shore';
   if (Math.abs(x) <= 300 && Math.abs(z) <= 300) return 'Downtown';
   if (x > 300) return z > 600 ? 'Near Southside' : 'Riverside Industrial';
-  if (x < -300) return z > 300 ? 'Crowley' : 'Arlington Heights';
+  if (x < -300) return z > 0 ? 'Crowley' : 'Arlington Heights';   // Arlington Heights split in half: Crowley is the south half
   return z < 0 ? 'Stockyards' : 'Near Southside';
 }
 
@@ -214,9 +214,9 @@ export const LOCATIONS = [
   L('bayline', 'realty', 'Bayline Realty', 5, 5, 'S', { color: '#1f8f3a', icon: 'key', contact: 'priya' }),
   L('pspd_central', 'police', 'FWPD Central Precinct', 5, 6, 'N', { color: '#1b4fc4', icon: 'shield' }),
   L('jps', 'hospital', 'JPS Hospital', 6, 8, 'W', { color: '#e0192e', icon: 'cross' }),   // John Peter Smith, the county trauma center on S Main St
-  L('pspd_harbor', 'police', 'FWPD Lake Worth Precinct', 10, 10, 'N', { color: '#1b4fc4', icon: 'shield' }),
-  L('harbor_loft', 'property', 'Lakeside Loft', 9, 10, 'N', { color: '#ffffff', icon: 'home' }),
-  L('westside_house', 'property', 'Arlington Heights House', 1, 6, 'E', { color: '#ffffff', icon: 'home' }),
+  L('pspd_harbor', 'police', 'FWPD Southside Precinct', 10, 10, 'N', { color: '#1b4fc4', icon: 'shield' }),
+  L('harbor_loft', 'property', 'Southside Loft', 9, 10, 'N', { color: '#ffffff', icon: 'home' }),
+  L('westside_house', 'property', 'Crowley House', 1, 6, 'E', { color: '#ffffff', icon: 'home' }),
   L('hillcrest_villa', 'property', 'Hillcrest Villa', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
   L('foundry_warehouse', 'property', 'Foundry Warehouse Garage', 11, 3, 'W', { color: '#ffffff', icon: 'home' }),
   L('fairmount_craftsman', 'property', 'Fairmount Craftsman', 4, 9, 'N', { color: '#ffffff', icon: 'home' }),
@@ -323,8 +323,8 @@ export const LOC_BY_ID = Object.fromEntries(LOCATIONS.map(l => [l.id, l]));
 // Homes. `slots` is garage capacity. Safehouses clear a pursuit in cooldown.
 export const PROPERTIES = {
   eastgate_studio:   { name: 'Eastgate Studio', price: 0, slots: 2, desc: 'One room, one window, a two-car shared carport. Home.' },
-  harbor_loft:       { name: 'Lakeside Loft', price: 42000, slots: 3, desc: 'Converted cannery loft with a view of the cranes.' },
-  westside_house:    { name: 'Arlington Heights House', price: 135000, slots: 4, house: 'one', desc: 'Brick 1-story ranch on a quiet street, four-car garage with a lift.' },
+  harbor_loft:       { name: 'Southside Loft', price: 42000, slots: 3, desc: 'Converted cannery loft with a view of the cranes.' },
+  westside_house:    { name: 'Crowley House', price: 135000, slots: 4, house: 'one', desc: 'Brick 1-story ranch on a quiet street, four-car garage with a lift.' },
   hillcrest_villa:   { name: 'Hillcrest Villa', price: 780000, slots: 8, house: 'two', desc: 'Hillside 2-story glass house with a heated showroom garage.', tier: 4 },
   foundry_warehouse: { name: 'Foundry Warehouse Garage', price: 260000, slots: 12, desc: 'A crew HQ: dyno cell, paint booth, twelve bays.', tier: 3 },
   mineral_wells_home: { name: 'Mineral Wells Ranch House', price: 175000, slots: 6, house: 'one', desc: 'A west-side ranch house with six garage spots and room to grow.' },
@@ -354,7 +354,7 @@ export const ROADS = {
   industrial: { name: 'East Lancaster', theme: 'industrial', lanes: 4, traffic: 0.35, tier: 1, heat: 0.6, desc: 'Four lanes between the warehouses. Trucks at night.' },
   highway:    { name: 'Loop 820', theme: 'highway', lanes: 6, traffic: 0.55, tier: 1, heat: 1.0, desc: 'Six lanes, long and straight, and the troopers know it.' },
   desert:     { name: 'Chisholm Trail Pkwy', theme: 'desert', lanes: 2, traffic: 0.12, tier: 2, heat: 0.3, desc: 'Two-lane desert straight. Nothing out here but heat haze.' },
-  mountain:   { name: 'Cross Timbers Pass Straight', theme: 'mountain', lanes: 2, traffic: 0.2, tier: 4, heat: 0.4, desc: 'The one straight piece of the pass. Pine trees and a long drop.' },
+  mountain:   { name: 'Lake Worth Pass Straight', theme: 'mountain', lanes: 2, traffic: 0.2, tier: 4, heat: 0.4, desc: 'The one straight piece of the pass. Pine trees and a long drop.' },
   strip:      { name: 'Ironline Dragway', theme: 'strip', lanes: 2, traffic: 0, tier: 1, heat: 0, desc: 'Sanctioned strip. Prepped surface, real timing.' },
 };
 
