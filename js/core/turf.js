@@ -21,7 +21,7 @@ export const HOODS = [
   { id: 'Riverside Industrial', short: 'Riverside', owner: 'iron_saints', take: 500, box: [300, 1000, -1000, 600], c: [650, -200] },
   // the Southside runs east through the old Lakeside blocks too (ext: a second rectangle on the turf map)
   { id: 'Near Southside', short: 'Southside', owner: 'midnight_static', take: 750, box: [-300, 300, 300, 1050], ext: [300, 1000, 600, 1050], c: [0, 650] },
-  { id: 'Arlington Heights', short: 'Heights', owner: 'velvet_ghosts', take: 500, box: [-1000, -300, -1000, 0], c: [-650, -450] },
+  { id: 'Arlington Heights', short: 'Heights', owner: 'velvet_ghosts', take: 700, box: [-1000, -300, -1000, 0], c: [-650, -450] },
   { id: 'Crowley', owner: null, take: 400, box: [-1000, -300, 0, 1050], c: [-650, 500] },
   { id: 'Stop Six', owner: null, take: 400, box: [1000, 2700, -1000, 190], c: [1700, -400] },
   { id: 'Benbrook Hills', owner: null, take: 300, box: [-2700, -1000, -100, 1050], c: [-1500, 450] },
