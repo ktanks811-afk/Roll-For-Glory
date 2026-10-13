@@ -1452,10 +1452,13 @@ await step('online: regulars fill a quiet server', async () => {
     const r = window.__rfg, w = r.app.world;
     const b = [...bots.list.values()].find(b => b.peer.inCar && !b.peer.dead);
     b.p.racer = 1; window.__rideBot = b.peer.id;
+    r.game.s.heat = 0; try { w.police.reset(w); } catch {} w.combat.rob = w.combat.mug = null;
     w.inCar = false; w.foot.x = b.peer.x + 4; w.foot.z = b.peer.z;
-    if (!w.rides.request(b.peer)) throw new Error('could not ask for a ride');
+    if (!w.rides.request(b.peer)) throw new Error('could not ask for a ride: ' + w.rides.cantRide());
   });
-  await until(() => window.__rfg.app.world.rides.riding?.id === window.__rideBot, 'the driver never let us in');
+  await until(() => window.__rfg.app.world.rides.riding?.id === window.__rideBot, 'the driver never let us in').catch(async e => {
+    throw new Error(e.message + ' ' + await p.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.innerText).join(' | ')));
+  });
   await p.evaluate(() => { const w = window.__rfg.app.world; w.rides.getOut(); });
   await until(() => { const w = window.__rfg.app.world; if (w.rides.riding) w.rides.getOut(); return !w.rides.riding; }, 'could not get out of their car', 15000);
   await p.evaluate(async () => {
