@@ -12,6 +12,7 @@ import { audio } from '../core/audio.js';
 import { initPvp, openChallenge } from './pvp.js';
 import { pvp } from '../net/pvp.js';
 import { rides } from '../net/ride.js';
+import { bots, regulars } from '../net/bots.js';
 
 const QUICK = ['🏁 Race me!', '🔥 Nice build', '👍', '😂', 'Meet at Pier 9?'];
 
@@ -94,7 +95,9 @@ export function openOnline(app) {
         ${ui.note ? `<p class="small warn">${ui.note}</p>` : ''}
         <div class="row" style="gap:8px;margin:8px 0"><button class="btn btn-primary" data-action="quick" ${busy ? 'disabled' : ''}>${home ? `Join ${esc(SERVER_BY_ID[home].name)}` : 'Quick join'}</button><button class="btn" data-action="refresh" ${busy || ui.loading ? 'disabled' : ''}>${ui.loading ? 'Checking…' : '↻ Refresh'}</button></div>
         <div class="list">${SERVERS.map(sv => {
-          const n = counts ? counts[sv.id] : null, m = members ? (members[sv.id] || 0) : null;
+          // who's on includes the regulars on a quiet server (net/bots.js); "full" only counts real players
+          const real = counts ? counts[sv.id] : null, n = real == null ? null : real + bots.shownOn(sv.id, real);
+          const m = members ? (members[sv.id] || 0) + (bots.enabled ? Math.max(0, Math.min(regulars(sv.id), SERVER_CAP - 2 - (members[sv.id] || 0))) : 0) : null;
           const pct = m == null ? 0 : Math.min(100, m / SERVER_CAP * 100);
           const mine = sv.id === home;
           const label = mine ? 'Join' : home ? 'Move here' : 'Make it mine';

@@ -1402,6 +1402,70 @@ await step('online free roam', async () => {
   await p2.close();
 });
 
+// ---------------- regulars on a quiet server (net/bots.js) ----------------
+await step('online: regulars fill a quiet server', async () => {
+  const until = async (fn, msg, ms = 12000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await p.evaluate(fn)) return; await p.waitForTimeout(250); } throw new Error(msg); };
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { meFromGame } = await import('./js/ui/online.js');
+    const { bots, botsOn } = await import('./js/net/bots.js');
+    // a busy evening on Eastgate, so there's always somebody
+    let t = Math.floor(Date.now() / 1000 / 86400) * 86400 + 26 * 3600;
+    while (botsOn('eastgate', t, 0).length < 4) t += 300;
+    bots.clock = () => t + performance.now() / 1000;
+    bots.force = true;
+    const r = window.__rfg, w = r.app.world; w.paused = false;
+    window.__before = { inCar: w.inCar, x: w.foot.x, z: w.foot.z };
+    w.inCar = true;
+    if (!(await r.online.join('eastgate', meFromGame(), 'local'))) throw new Error('could not join');
+  });
+  await until(() => window.__rfg.online.list().length >= 3, 'nobody showed up on the quiet server');
+  const who = await p.evaluate(() => window.__rfg.online.list().map(o => ({ id: o.id, bot: !!o.bot, name: o.name, car: o.model?.id, inCar: o.inCar, x: o.x, z: o.z })));
+  console.log('     regulars on', JSON.stringify(who.map(o => `${o.name} (${o.car})`)));
+  if (who.some(o => !o.bot || !/^[\w .'\-]{2,16}$/.test(o.name) || !o.car || !isFinite(o.x))) throw new Error('bad regular: ' + JSON.stringify(who));
+  if (!(await p.evaluate(() => document.querySelector('#hud')?.innerText.includes(`${window.__rfg.online.list().length + 1} online`) ?? true))) throw new Error('HUD count does not include them');
+  // they drive around
+  await p.waitForTimeout(1500);
+  const moved = await p.evaluate(was => window.__rfg.online.list().some(o => { const b = was.find(x => x.id === o.id); return b && Math.hypot(o.x - b.x, o.z - b.z) > 3; }), who);
+  if (!moved) throw new Error('nobody is driving around');
+  // nobody on the network can speak for one of them
+  await p.evaluate(id => { const ch = new BroadcastChannel('rfg:eastgate'); ch.postMessage({ k: 'h', id, n: 'Impostor', m: window.__rfg.game.s.cars[0].modelId }); ch.close(); }, who[0].id);
+  await p.waitForTimeout(300);
+  if (await p.evaluate(() => window.__rfg.online.list().some(o => o.name === 'Impostor'))) throw new Error('a network packet took over a regular');
+  // they answer in chat
+  await p.evaluate(() => window.__rfg.online.say('yo whats good'));
+  await until(() => window.__rfg.online.chat.some(c => !c.mine), 'nobody answered in chat');
+  await snap('25b-regulars');
+  // call one out: they answer like a player would (race scene itself is covered above)
+  const ans = await p.evaluate(async () => {
+    const { pvp } = await import('./js/net/pvp.js');
+    const { bots } = await import('./js/net/bots.js');
+    const b = [...bots.list.values()].find(b => b.peer.inCar) || [...bots.list.values()][0];
+    b.p.racer = 0; b.peer.inCar = true;            // this one says no, so no race starts here
+    pvp.challenge(b.peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 0 });
+    return b.peer.name;
+  });
+  await until(() => import('./js/net/pvp.js').then(m => !m.pvp.out), `${ans} never answered the race call`);
+  // ask a driver for a ride: they stop, say yes, and you ride along
+  await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const r = window.__rfg, w = r.app.world;
+    const b = [...bots.list.values()].find(b => b.peer.inCar && !b.peer.dead);
+    b.p.racer = 1; window.__rideBot = b.peer.id;
+    w.inCar = false; w.foot.x = b.peer.x + 4; w.foot.z = b.peer.z;
+    if (!w.rides.request(b.peer)) throw new Error('could not ask for a ride');
+  });
+  await until(() => window.__rfg.app.world.rides.riding?.id === window.__rideBot, 'the driver never let us in');
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.rides.getOut(); });
+  await until(() => { const w = window.__rfg.app.world; if (w.rides.riding) w.rides.getOut(); return !w.rides.riding; }, 'could not get out of their car', 15000);
+  await p.evaluate(async () => {
+    window.__rfg.online.leave(); (await import('./js/net/bots.js')).bots.force = false;
+    const w = window.__rfg.app.world, was = window.__before;
+    w.foot.x = was.x; w.foot.z = was.z; w.inCar = was.inCar;
+  });
+  if (await p.evaluate(() => window.__rfg.online.peers.size)) throw new Error('regulars still shown after leaving');
+});
+
 // ---------------- online crews (permanent, database-backed; two tabs, local database) ----------------
 await step('online crews', async () => {
   const setup = async (pg, uid) => pg.evaluate(async uid => {

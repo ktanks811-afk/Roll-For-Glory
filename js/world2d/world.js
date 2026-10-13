@@ -15,6 +15,7 @@ import { GangWorld } from './gangs.js';
 import { StreetRaces } from './streetRace.js';
 import { Trailers } from './trailer.js';
 import { Pullups } from './pullups.js';
+import { bots } from '../net/bots.js';
 import { RideAlong } from './rides.js';
 import { Ranch } from './ranch.js';
 import { inHouse } from './house.js';
@@ -103,6 +104,7 @@ export class World {
     this.trailers = new Trailers(this);
     this.pullups = new Pullups(this);
     this.rides = new RideAlong(this);
+    bots.attach(this);   // the regulars on a quiet server drive on these roads
     this.ranch = new Ranch(this);
     this.showcase = new Showcase(this);   // other players' places on your server, and yours on theirs
     this.visiting = null;       // another player's garage or house you've walked into
@@ -314,6 +316,7 @@ export class World {
     // with passengers aboard, the gear and revs go out too so their dash shows yours
     const dash = this.inCar && this.vehicle && this.rides.riders().length ? this.dashOf(this.vehicle) : null;
     online.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0, dash });
+    bots.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar && !!this.vehicle });
   }
 
   // Gear and how far up the tach you are (the HUD's dash reads the same thing).
