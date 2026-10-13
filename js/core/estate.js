@@ -6,7 +6,7 @@
 
 import { spend, earn, earnBank, fmtMoney, tierOf } from './state.js';
 import { PROPERTIES, LOC_BY_ID } from '../data/world.js';
-import { LAND, PLANS, PLAN_BY_ID, TRAPS, RIGS, RIG_PAY, RIG_SELL, FENCES, FENCE_BY_ID, ANIMAL_BY_ID } from '../data/estate.js';
+import { LAND, PLANS, PLAN_BY_ID, TRAPS, RIGS, RIG_PAY, RIG_SELL, FENCES, FENCE_BY_ID, ANIMAL_BY_ID, DEVS, DEV_BY_ID, RENT_LEVELS, RENT_BY_ID, DEV_SELL } from '../data/estate.js';
 import { ensureDrugs, trapState, units } from './drugs.js';
 import { fromPreset, sanitize, cost as designCost, stories, comfort, check as checkDesign, cloneDesign } from './homes.js';
 
@@ -173,7 +173,8 @@ export const landValue = (s, id) => {
   if (!l?.owned) return 0;
   const fence = l.fence ? FENCE_BY_ID[l.fence]?.price || 0 : 0;
   const stock = Object.entries(l.animals || {}).reduce((t, [a, n]) => t + (ANIMAL_BY_ID[a]?.price || 0) * n * 0.6 / LAND_SELL, 0);
-  return Math.round((L.price + (l.plan ? PLAN_BY_ID[l.plan].price + designCost(houseDesign(s, id)) : 0) + fence + stock) * LAND_SELL);
+  const dev = l.dev && DEV_BY_ID[l.dev.id] ? DEV_BY_ID[l.dev.id].price * DEV_SELL / LAND_SELL : 0;
+  return Math.round((L.price + (l.plan ? PLAN_BY_ID[l.plan].price + designCost(houseDesign(s, id)) : 0) + fence + stock + dev) * LAND_SELL);
 };
 export function sellLand(s, id) {
   const L = LAND[id], l = s.estate?.land?.[id];
@@ -236,6 +237,7 @@ export function buildFence(s, id, fenceId) {
   const F = FENCE_BY_ID[fenceId];
   if (!F || !ownsLand(s, id)) return err('You don\'t own that land.');
   if (!fenceOptions(id).includes(F)) return err('There isn\'t room for that much fence here.');
+  if (s.estate.land[id]?.dev) return err('Your rentals are out back. There\'s no pasture left to fence.');
   const l = landState(s, id), cur = FENCE_BY_ID[l.fence];
   if (cur && FENCES.indexOf(cur) >= FENCES.indexOf(F)) return err('You already have that or better.');
   const price = F.price - (cur ? Math.round(cur.price * 0.5) : 0);
@@ -279,8 +281,152 @@ export function estateDay(s) {
     if (!l.owned || !l.animals) continue;
     for (const [a, n] of Object.entries(l.animals)) { const A = ANIMAL_BY_ID[a]; if (A) stock += (A.pays - A.feed) * n; }
   }
+  const rent = rentDay(s);
+  notes.push(...rent.notes);
   if (oil) { earnBank(s, oil, 'Oil royalties'); notes.push(`🛢 Your oil leases paid ${fmtMoney(oil)}.`); }
   if (stock > 0) { earnBank(s, stock, 'Ranch: calves, stud fees, less feed'); notes.push(`🐄 The ranch cleared ${fmtMoney(stock)} after feed.`); }
   else if (stock < 0) spend(s, -stock, 'Ranch: feed') || earnBank(s, stock, 'Ranch: feed (overdrawn)');
-  return { oil, stock, notes };
+  return { oil, stock, rent: rent.net, notes };
+}
+
+// ---------------------------------------------------------------- rentals
+// A neighborhood or an apartment complex on the back of your land (where the
+// pasture would be). The crew builds it, tenants move in over the next few
+// days, and the rent settles up in your bank every morning, less upkeep.
+// The land keeps it in l.dev = { id, ready, done, leased, rent, earned }.
+export const devOf = (s, id) => (ownsLand(s, id) && DEV_BY_ID[s.estate.land[id].dev?.id] ? s.estate.land[id].dev : null);
+export const devReady = (s, id) => { const d = devOf(s, id); return !!(d && d.ready <= now(s)); };
+export const devUnits = D => D.bldgs * D.per;
+
+// Where the buildings go, in the pasture rectangle. Rent houses sit in two
+// rows either side of a little street, apartments either side of a parking
+// lot; big land gets more than one street. A drive across one end ties the
+// streets together. spots: where tenants park (a car in front of each house,
+// stalls along the lot), in the order they fill up.
+// { fits, slots: [{x,z,w,d}], lots: [{x,z,w,d,kind}], spots: [{x,z,along}] }
+const LAYOUTS = new Map();
+export function devLayout(loc, devId) {
+  const key = loc.id + ':' + devId;
+  if (LAYOUTS.has(key)) return LAYOUTS.get(key);
+  const D = DEV_BY_ID[devId], P = pasture(loc);
+  const W = P.x1 - P.x0, H = P.z1 - P.z0, alongX = W >= H;
+  const L = alongX ? W : H, S = alongX ? H : W;
+  const at = (a, b, la, lb) => (alongX ? { x: P.x0 + a, z: P.z0 + b, w: la, d: lb } : { x: P.x0 + b, z: P.z0 + a, w: lb, d: la });
+  const spot = (a, b, crossways) => ({ ...(alongX ? { x: P.x0 + a, z: P.z0 + b } : { x: P.x0 + b, z: P.z0 + a }), along: crossways === alongX ? 'z' : 'x' });
+  const apts = D.kind === 'apts';
+  const street = apts ? 18 : 7, set = apts ? 3 : 4, gap = apts ? 5 : 4, cross = 8;
+  const band = 2 * (D.fd + set + 1.5) + street;
+  const n = Math.floor(S / band), perRow = Math.max(0, Math.floor((L - cross - 4 + gap) / (D.fw + gap)));
+  // every place a building could go, street by street, out from the cross
+  // drive, both sides of the street at a time
+  const all = [];
+  for (let k = 0; k < n; k++) {
+    const b0 = k * band + 1.5, lane = b0 + D.fd + set;
+    for (let i = 0; i < perRow; i++) {
+      const a = cross + 3 + i * (D.fw + gap);
+      all.push({ k, a, lane, r: at(a, b0, D.fw, D.fd), front: b0 + D.fd + set / 2 });
+      all.push({ k, a, lane, r: at(a, lane + street + set, D.fw, D.fd), front: lane + street + set / 2 });
+    }
+  }
+  const need = D.bldgs + (D.pool ? 1 : 0), used = all.slice(0, need);
+  const lots = [{ ...at(0, 0, L, S), kind: 'yard' }], spots = [];
+  // streets (or parking lots) only as far as the buildings go
+  const ends = new Map();
+  for (const u of used) ends.set(u.k, Math.max(ends.get(u.k) || 0, u.a + D.fw + 3));
+  if (used.length) lots.push({ ...at(0, 0, cross, (Math.max(...ends.keys()) + 1) * band), kind: 'lot' });
+  for (const [k, end] of ends) {
+    const lane = k * band + 1.5 + D.fd + set;
+    // stalls only paint right on a lot that runs along x
+    lots.push({ ...at(cross, lane, end - cross, street), kind: apts && alongX ? 'parking' : 'lot' });
+    // apartment stalls: nose-in along both sides of the lot, every 3 m
+    if (apts) for (let a = cross + 3; a < end - 3; a += 3) for (const b of [lane + 3.5, lane + street - 3.5]) spots.push(spot(a + 1.5, b, true));
+  }
+  // a car in front of each rent house
+  if (!apts) for (const u of used) spots.push(spot(u.a + D.fw / 2, u.front, false));
+  // spread the stalls out so a half-full lot isn't all at one end
+  const spread = apts ? spots.map((p, i) => [(i * 7) % 11, i, p]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(x => x[2]) : spots;
+  const out = { fits: all.length >= need, slots: used.map(u => u.r), lots, spots: spread };
+  LAYOUTS.set(key, out);
+  return out;
+}
+export const devFits = (id, devId) => !!LOC_BY_ID[id] && devLayout(LOC_BY_ID[id], devId).fits;
+
+// Tearing down what's there for something else gets you 30% of it back,
+// so going smaller can come out ahead (a negative cost is money back).
+export const devCost = (s, id, devId) => {
+  const old = devOf(s, id), D = DEV_BY_ID[devId];
+  return D.price - (old && old.ready <= now(s) ? Math.round(DEV_BY_ID[old.id].price * 0.3) : 0);
+};
+export function buildDev(s, id, devId) {
+  const D = DEV_BY_ID[devId];
+  if (!D || !ownsLand(s, id)) return err('You don\'t own that land.');
+  const l = landState(s, id), old = devOf(s, id);
+  if (old && old.ready > now(s)) return err('The crew is already building.');
+  if (old?.id === devId) return err('That\'s what\'s out there now.');
+  if (D.tier && tierOf(s.rep).n < D.tier) return err(`The bank wants a bigger name before it lends on that (tier ${D.tier}).`);
+  if (!devFits(id, devId)) return err('There isn\'t room for that on this land. Buy bigger acreage.');
+  if (penCount(s, id)) return err('Your livestock is out back. Sell them or haul them off first.');
+  const cost = devCost(s, id, devId);
+  if (cost > 0 && !spend(s, cost, `Cowtown Custom Builders: ${D.name}`)) return err('Not enough money.');
+  if (cost < 0) earnBank(s, -cost, `Cowtown Custom Builders: salvage on the old rentals`);
+  l.fence = null;    // the pasture fence comes down for the streets
+  l.dev = { id: devId, ready: now(s) + D.days * 1440, done: false, leased: 0, rent: old?.rent || 'fair', earned: old?.earned || 0 };
+  return { ok: true, text: `The crew breaks ground on the ${D.name.toLowerCase()}. Ready in ${D.days} game day${D.days > 1 ? 's' : ''}.` };
+}
+export function setRent(s, id, level) {
+  const d = devOf(s, id);
+  if (!d || !RENT_BY_ID[level]) return err('Nothing to rent out.');
+  d.rent = level;
+  return { ok: true, text: `Rent is ${RENT_BY_ID[level].name.toLowerCase()} now.` };
+}
+export function tearDownDev(s, id) {
+  const d = devOf(s, id);
+  if (!d) return err('Nothing out there.');
+  const back = d.ready <= now(s) ? Math.round(DEV_BY_ID[d.id].price * 0.3) : 0;
+  delete s.estate.land[id].dev;
+  if (back) earnBank(s, back, 'Cowtown Custom Builders: salvage');
+  return { ok: true, text: back ? `Torn down. ${fmtMoney(back)} back for the salvage.` : 'The crew packed up.' };
+}
+
+// What a development makes on a full day at its rent: { gross, upkeep, net }.
+export function rentRoll(s, id) {
+  const d = devOf(s, id);
+  if (!d || d.ready > now(s)) return { gross: 0, upkeep: 0, net: 0, units: 0, leased: 0 };
+  const D = DEV_BY_ID[d.id], R = RENT_BY_ID[d.rent] || RENT_BY_ID.fair, units = devUnits(D);
+  const gross = Math.round(Math.min(d.leased, units) * D.rent * R.mult), upkeep = units * D.upkeep;
+  return { gross, upkeep, net: gross - upkeep, units, leased: Math.min(d.leased, units) };
+}
+
+// Builds that just finished: [landId].
+export function finishDevs(s) {
+  const done = [];
+  for (const id of Object.keys(LAND)) {
+    const d = devOf(s, id);
+    if (d && !d.done && d.ready <= now(s)) { d.done = true; done.push(id); }
+  }
+  return done;
+}
+
+// One morning: a few tenants move out, new ones sign toward what the rent
+// level keeps full, and the rent comes in less upkeep. { net, notes }
+export function rentDay(s, rnd = Math.random) {
+  let net = 0, moved = 0;
+  const notes = [];
+  for (const id of Object.keys(LAND)) {
+    const d = devOf(s, id);
+    if (!d || d.ready > now(s)) continue;
+    const D = DEV_BY_ID[d.id], R = RENT_BY_ID[d.rent] || RENT_BY_ID.fair, units = devUnits(D);
+    const want = Math.round(units * R.full);
+    let out = 0;
+    for (let k = 0; k < d.leased; k++) if (rnd() < (d.rent === 'high' ? 0.04 : d.rent === 'low' ? 0.01 : 0.02)) out++;
+    d.leased = Math.max(0, d.leased - out);
+    moved += out;
+    if (d.leased < want) d.leased = Math.min(want, d.leased + Math.max(1, Math.ceil((want - d.leased) * (d.rent === 'low' ? 0.8 : d.rent === 'high' ? 0.3 : 0.5))));
+    const r = rentRoll(s, id);
+    net += r.net; d.earned = (d.earned || 0) + r.net;
+  }
+  if (net > 0) { earnBank(s, net, 'Rentals: rent, less upkeep'); notes.push(`🏘 Your tenants paid ${fmtMoney(net)} after upkeep.`); }
+  else if (net < 0) spend(s, -net, 'Rentals: upkeep') || earnBank(s, net, 'Rentals: upkeep (overdrawn)');
+  if (moved) notes.push(`🏘 ${moved} tenant${moved > 1 ? 's' : ''} moved out. The leasing office is showing the units.`);
+  return { net, notes };
 }

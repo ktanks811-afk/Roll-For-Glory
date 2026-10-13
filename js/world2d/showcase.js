@@ -9,7 +9,7 @@ import { builds, MAX_CARS } from '../net/builds.js';
 import { deedable } from '../net/deeds.js';
 import { LAND } from '../data/estate.js';
 import { levels, activeCar } from '../core/state.js';
-import { isBuilt, houseDesign } from '../core/estate.js';
+import { isBuilt, houseDesign, devOf, devReady } from '../core/estate.js';
 import { applyEstate, setForeignLand } from './estate.js';
 import { dogLook } from './ranch.js';
 
@@ -27,7 +27,7 @@ export function packMine(w) {
     if (LAND[p]) {
       const l = s.estate.land[p], built = isBuilt(s, p);
       b.land = { plan: built ? l.plan : null, design: built ? houseDesign(s, p) : null, fence: l.fence || null, animals: l.animals || {},
-        dogs: (s.kennel?.dogs || []).filter(d => d.home === p).slice(0, 16).map(dogLook) };
+        dogs: (s.kennel?.dogs || []).filter(d => d.home === p).slice(0, 16).map(dogLook), dev: devReady(s, p) ? devOf(s, p).id : null };
     }
     // the car you left parked at this place (in the garage or out front)
     const g = w.map.garages.find(q => q.id === p), v = w.vehicle, car = v && !w.inCar && activeCar(s);

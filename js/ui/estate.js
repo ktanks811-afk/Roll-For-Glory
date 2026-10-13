@@ -5,9 +5,10 @@
 import { openPanel, closeAllPanels, bind, esc, toast, confirm, modal } from './dom.js';
 import { game, fmtMoney, tierOf, earn } from '../core/state.js';
 import { PROPERTIES, LOC_BY_ID } from '../data/world.js';
-import { LAND, PLANS, PLAN_BY_ID, TRAPS, DRUGS, DRUG_BY_ID, WORKER_PAY, WORKER_CUT, RIGS, RIG_PAY, RIG_SELL, FENCES, FENCE_BY_ID, ANIMALS, ANIMAL_BY_ID } from '../data/estate.js';
+import { LAND, PLANS, PLAN_BY_ID, TRAPS, DRUGS, DRUG_BY_ID, WORKER_PAY, WORKER_CUT, RIGS, RIG_PAY, RIG_SELL, FENCES, FENCE_BY_ID, ANIMALS, ANIMAL_BY_ID, DEVS, DEV_BY_ID, RENT_LEVELS, RENT_BY_ID } from '../data/estate.js';
 import { buyProperty, sellProperty, buyLand, sellLand, build, buildCost, landState, ownsLand, isBuilt, building, now, portfolio, SELL_RATE, landValue,
-  houseDesign, remodel, remodelCost, buyRig, sellRig, ownsRig, fenceOptions, buildFence, buyAnimal, sellAnimal, herd, penCount, penCap } from '../core/estate.js';
+  houseDesign, remodel, remodelCost, buyRig, sellRig, ownsRig, fenceOptions, buildFence, buyAnimal, sellAnimal, herd, penCount, penCap,
+  devOf, devUnits, devFits, devCost, buildDev, setRent, tearDownDev, rentRoll } from '../core/estate.js';
 import { fromPreset, summary as houseLine, cost as designCost } from '../core/homes.js';
 import { PRESETS, PRESET_IDS } from '../data/homes.js';
 import { openBuilder } from './builder.js';
@@ -63,11 +64,11 @@ export function openRealty(app, focusId = null) {
       body = Object.entries(LAND).sort((a, b) => a[1].price - b[1].price).map(([id, L]) => {
         const own = ownsLand(s, id), l = s.estate?.land?.[id], locked = L.tier && tier < L.tier;
         const status = !own ? '' : building(s, id) ? `Building: ${esc(PLAN_BY_ID[l.plan].name)} · ${Math.max(1, Math.ceil((l.ready - now(s)) / 60))} game hours left` : isBuilt(s, id) ? `Built: ${esc(houseLine(houseDesign(s, id)))} · ${esc(PLAN_BY_ID[l.plan].name)}` : 'Empty. Go pick a build.';
-        const loc = LOC_BY_ID[id], fence = fenceOptions(id).at(-1);
-        return card(id, L.name, L.desc, `<span>Where</span><span>${esc(districtAt(loc.x, loc.z))}</span><span>Livestock</span><span>Up to ${fence.cap} head</span><span>Price</span><span>${fmtMoney(L.price)}</span>${own ? `<span>Status</span><span>${status}</span>` : ''}`,
-          own ? `<span class="tag tag-green">Owned</span><button class="btn btn-sm btn-primary" data-action="landgo" data-id="${id}">Go build</button><button class="btn btn-sm" data-action="sellland" data-id="${id}">Sell ${fmtMoney(landValue(s, id))}</button>`
+        const loc = LOC_BY_ID[id], fence = fenceOptions(id).at(-1), most = DEVS.filter(D => devFits(id, D.id)).at(-1);
+        return card(id, L.name, L.desc, `<span>Where</span><span>${esc(districtAt(loc.x, loc.z))}</span><span>Livestock</span><span>Up to ${fence.cap} head</span><span>Rentals</span><span>${most ? `Up to ${esc(most.name.toLowerCase())} (${devUnits(most)} units)` : 'No room'}</span><span>Price</span><span>${fmtMoney(L.price)}</span>${own ? `<span>Status</span><span>${status}</span>` : ''}${own && devOf(s, id) ? `<span>Tenants</span><span>${esc(devLine(s, id))}</span>` : ''}`,
+          own ? `<span class="tag tag-green">Owned</span><button class="btn btn-sm btn-primary" data-action="landgo" data-id="${id}">Go build</button><button class="btn btn-sm" data-action="rentals" data-id="${id}">🏘 Rentals</button><button class="btn btn-sm" data-action="sellland" data-id="${id}">Sell ${fmtMoney(landValue(s, id))}</button>`
             : takenTag(s, id) || `<button class="btn btn-sm btn-primary" data-action="buyland" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${L.tier}` : `Buy ${fmtMoney(L.price)}`}</button>`);
-      }).join('') + `<p class="small muted" style="grid-column:1/-1">Buy a lot in Stop Six or ranch land out in Johnson County, then drive out to it. Pick a house (1, 2 or 3 stories, or design your own room by room) and a garage from 2 cars up to a 100-car vault. Fence the back and run cattle and horses, and keep a kennel of hog dogs.</p>`;
+      }).join('') + `<p class="small muted" style="grid-column:1/-1">Buy a lot in Stop Six or ranch land out in Johnson County, then drive out to it. Pick a house (1, 2 or 3 stories, or design your own room by room) and a garage from 2 cars up to a 100-car vault. Fence the back and run cattle and horses, or build rent houses and apartments back there and collect rent every day.</p>`;
     } else if (tab === 'oil') {
       body = Object.entries(RIGS).map(([id, R]) => {
         const own = ownsRig(s, id), r = s.estate?.rigs?.[id];
@@ -99,6 +100,7 @@ export function openRealty(app, focusId = null) {
       buyland: async d => { const L = LAND[d.id]; if (await confirm(`Buy ${L.name}?`, `<p>${fmtMoney(L.price)}. It's an empty lot until you build on it.</p>`, 'Buy')) done(await buyDeeded(s, d.id, () => buyLand(s, d.id))); },
       sellland: async d => { if (await confirm(`Sell ${LAND[d.id].name}?`, '<p>The land and anything you built on it.</p>', 'Sell', true)) { const r = sellLand(s, d.id); if (r.ok) deeds.release(s, d.id); done(r); } },
       landgo: d => gps(app, d.id, LAND[d.id].name),
+      rentals: d => openRentals(app, d.id),
       buyrig: async d => { const R = RIGS[d.id]; if (await confirm(`Buy ${R.name}?`, `<p>${fmtMoney(R.price)}. It pays <b>${fmtMoney(RIG_PAY)}</b> into your bank every game day.</p>`, 'Buy')) done(buyRig(s, d.id)); },
       sellrig: async d => { const R = RIGS[d.id]; if (await confirm(`Sell ${R.name}?`, `<p>The operator will buy the lease back for <b>${fmtMoney(Math.round(R.price * RIG_SELL))}</b>.</p>`, 'Sell', true)) done(sellRig(s, d.id)); },
     });
@@ -139,7 +141,7 @@ export function openBuild(app, id) {
         return `<div class="li"><div class="grow"><div class="t">${esc(P.name)} ${tierTag(P.tier, tier)}</div><div class="s">${esc(P.desc)}</div><div class="s">${P.slots} cars · ${P.days} game day${P.days > 1 ? 's' : ''} to build${first ? ` · with the house: <b>${fmtMoney(buildCost(s, id, P.id, design))}</b>` : ''}</div></div>
           <button class="btn btn-sm btn-primary" data-action="build" data-id="${P.id}" ${locked || smaller ? 'disabled' : ''}>${smaller ? (cur.id === P.id ? 'Built' : '—') : `Build ${fmtMoney(buildCost(s, id, P.id, design))}`}</button></div>`;
       }).join('')}</div>`}
-      <div class="row" style="margin-top:12px"><button class="btn btn-sm" data-action="ranch">🐄 Fences and livestock</button></div>
+      <div class="row" style="margin-top:12px;gap:6px"><button class="btn btn-sm" data-action="ranch">🐄 Fences and livestock</button><button class="btn btn-sm" data-action="rentals">🏘 Rentals and apartments</button></div>
       <p class="small muted">A finished house is a home and a safehouse with its own garage. Walk in through the front door to sleep and save. You can redesign it any time.</p></div>`;
     bind(root, {
       close: () => h.close(),
@@ -147,6 +149,7 @@ export function openBuild(app, id) {
       design: () => openBuilder({ design: st.custom || fromPreset(st.house), title: `Design your house · ${L.name}`, action: 'Use this design',
         price: d => ({ text: `House ${fmtMoney(designCost(d))}` }), done: d => { st.custom = d; h.refresh(); } }),
       ranch: () => openRanch(app, id),
+      rentals: () => openRentals(app, id),
       build: async d => {
         const P = PLAN_BY_ID[d.id], house = first ? design : null;
         if (!(await confirm(`Build ${house ? `a ${houseLine(house).split(' · ')[0]} house and ` : ''}a ${P.name}?`, `<p>${fmtMoney(buildCost(s, id, P.id, house))}. Ready in ${P.days} game day${P.days > 1 ? 's' : ''}.</p>`, 'Break ground'))) return;
@@ -174,8 +177,8 @@ export function openRanch(app, id) {
       <div class="stats-row"><div><div class="stat-lbl">Fence</div><b>${F ? esc(F.name) : 'None'}</b></div><div><div class="stat-lbl">Pasture</div><b>${n} / ${cap} head</b></div><div><div class="stat-lbl">After feed</div><b class="${net >= 0 ? 'good' : 'bad'}">${net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(net))} a day</b></div></div>
       <div class="section-title">Fence the pasture</div>
       <div class="list">${FENCES.map(f => {
-        const allowed = fenceOptions(id).includes(f), have = F && FENCES.indexOf(F) >= FENCES.indexOf(f);
-        return `<div class="li"><span class="swatch" style="background:${f.color};width:16px;height:16px"></span><div class="grow"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.desc)} Holds ${f.cap} head.${allowed ? '' : ' Needs more land (country acreage).'}</div></div>
+        const allowed = fenceOptions(id).includes(f) && !l.dev, have = F && FENCES.indexOf(F) >= FENCES.indexOf(f);
+        return `<div class="li"><span class="swatch" style="background:${f.color};width:16px;height:16px"></span><div class="grow"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.desc)} Holds ${f.cap} head.${allowed ? '' : l.dev ? ' Your rentals are out back.' : ' Needs more land (country acreage).'}</div></div>
           <button class="btn btn-sm ${have ? '' : 'btn-primary'}" data-action="fence" data-id="${f.id}" ${allowed && !have ? '' : 'disabled'}>${have ? 'Built' : `Build ${fmtMoney(f.price - (F ? Math.round(F.price * 0.5) : 0))}`}</button></div>`;
       }).join('')}</div>
       <div class="section-title">Livestock</div>
@@ -195,6 +198,51 @@ export function openRanch(app, id) {
       sell: d => done(sellAnimal(s, id, d.id)),
       kennel: () => openKennel(app, { home: id }),
       ...ranchTrailerActions(s, id, { refresh: () => { app.world && applyEstate(app.world.map, s); h.refresh(); } }),
+    });
+  });
+}
+
+// ---------------------------------------------------------------- rentals
+const devLine = (s, id) => {
+  const d = devOf(s, id), D = DEV_BY_ID[d.id];
+  if (d.ready > now(s)) return `${D.name} going up`;
+  const r = rentRoll(s, id);
+  return `${D.name} · ${r.leased}/${r.units} leased · ${r.net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(r.net))} a day`;
+};
+const buildLabel = c => (c >= 0 ? `Build ${fmtMoney(c)}` : `Build, ${fmtMoney(-c)} back`);
+// Rent houses, duplexes and apartments on the back of your land. Pick what
+// to build, set the rent, watch the units fill.
+export function openRentals(app, id) {
+  const s = game.s, L = LAND[id];
+  openPanel((root, h) => {
+    const d = devOf(s, id), cur = d && DEV_BY_ID[d.id], tier = tierOf(s.rep).n, l = landState(s, id);
+    const going = d && d.ready > now(s), left = going ? d.ready - now(s) : 0, r = rentRoll(s, id);
+    const net = D => Math.round(devUnits(D) * D.rent * RENT_BY_ID.fair.full - devUnits(D) * D.upkeep);
+    root.innerHTML = head(L.name, 'Rentals · Cowtown Custom Builders') + `<div class="p-body" style="max-width:820px">
+      ${!d ? '<p class="muted">Put a neighborhood or an apartment complex on the back of this land and rent it out. Tenants move in, and the rent lands in your bank every morning.</p>'
+        : going ? `<div class="li"><span>🏗</span><div class="grow"><div class="t">${esc(cur.name)} going up</div><div class="s">The crew is pouring slabs and framing. Ready in about ${left >= 1440 ? `${Math.ceil(left / 1440)} game day${left >= 2880 ? 's' : ''}` : `${Math.max(1, Math.ceil(left / 60))} game hours`}. Sleep to skip ahead.</div></div></div>`
+        : `<div class="stats-row"><div><div class="stat-lbl">${esc(cur.name)}</div><b>${r.leased} / ${r.units} leased</b></div><div><div class="stat-lbl">Rent less upkeep</div><b class="${r.net >= 0 ? 'good' : 'bad'}">${r.net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(r.net))} a day</b></div><div><div class="stat-lbl">Paid you so far</div><b>${fmtMoney(d.earned || 0)}</b></div></div>
+        <div class="section-title">Rent</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap">${RENT_LEVELS.map(R => `<button class="btn btn-sm ${d.rent === R.id ? 'btn-primary' : ''}" data-action="rent" data-id="${R.id}">${esc(R.name)} ${fmtMoney(Math.round(cur.rent * R.mult))}</button>`).join('')}</div>
+        <p class="small muted">A unit, a day. Below market keeps every door full and tenants stay. Top dollar pays more per unit, but more of them sit empty and people move out.</p>`}
+      <div class="section-title">${d ? 'Build something else' : 'What to build'}</div>
+      <div class="list">${DEVS.map(D => {
+        const fits = devFits(id, D.id), locked = D.tier && tier < D.tier, here = cur?.id === D.id;
+        return `<div class="li"><span style="font-size:22px">${D.kind === 'apts' ? '🏢' : '🏘'}</span><div class="grow"><div class="t">${esc(D.name)} ${tierTag(D.tier, tier)}</div><div class="s">${esc(D.desc)}</div>
+          <div class="s">${devUnits(D)} units · ${fmtMoney(D.rent)} a unit a day · about <b class="good">${fmtMoney(net(D))} a day</b> after upkeep · ${D.days} game day${D.days > 1 ? 's' : ''} to build${fits ? '' : ' · <b class="warn">needs bigger land</b>'}</div></div>
+          <button class="btn btn-sm btn-primary" data-action="build" data-id="${D.id}" ${!fits || locked || here || going ? 'disabled' : ''}>${here ? 'Built' : !fits ? 'No room' : locked ? `Tier ${D.tier}` : buildLabel(devCost(s, id, D.id))}</button></div>`;
+      }).join('')}</div>
+      ${d ? `<div class="row" style="margin-top:12px"><button class="btn btn-sm" data-action="teardown">Tear it down</button></div>` : ''}
+      <p class="small muted">Rentals go on the back of the land where the pasture would be, so it's cattle or tenants.${l.fence && !d ? ' Building here takes your fence down.' : ''} ${d ? 'Building something else knocks this down and you get 30% of it back.' : ''} Other players on your server see your neighborhood when they drive by.</p></div>`;
+    const done = r => { if (say(r)) { app.world && applyEstate(app.world.map, s); h.refresh(); } };
+    bind(root, {
+      close: () => h.close(),
+      rent: x => { setRent(s, id, x.id); h.refresh(); },
+      build: async x => {
+        const D = DEV_BY_ID[x.id];
+        if (await confirm(`Build ${D.name.toLowerCase()}?`, `<p>${buildLabel(devCost(s, id, D.id))}. ${devUnits(D)} units, ready in ${D.days} game day${D.days > 1 ? 's' : ''}.${cur ? ` The ${esc(cur.name.toLowerCase())} comes down.` : ''}</p>`, 'Break ground')) done(buildDev(s, id, D.id));
+      },
+      teardown: async () => { if (await confirm(`Tear down the ${cur.name.toLowerCase()}?`, '<p>The tenants move out and you get 30% of what it cost back.</p>', 'Tear it down', true)) done(tearDownDev(s, id)); },
     });
   });
 }
