@@ -2863,6 +2863,23 @@ await step('record label: start it, sign an artist in person, cut a single, drop
   if (!(paid > 0)) throw new Error('the label made nothing');
   await clear(); await openL({ tab: 'releases' }); await p.waitForTimeout(200); await snap('label-5-releases');
   console.log('     label paid', paid);
+  // shows: the label fronts a club show, it goes on the artist's tab
+  await p.evaluate(id => { const r = window.__rfg.game.s.label.roster.find(r => r.id === id); r.wallet = 0; r.debt = 0; }, artist);
+  await clear(); await openL({ tab: 'shows' });
+  await p.waitForSelector(`[data-action=gig][data-id=${artist}][data-gig=club]:not([disabled])`); await snap('label-6-shows');
+  await p.click(`[data-action=gig][data-id=${artist}][data-gig=club]`); await ok();
+  await p.waitForFunction(id => { const r = window.__rfg.game.s.label.roster.find(r => r.id === id); return r.gig && r.debt === 2500; }, artist);
+  // a week of numbers, the showcase lineup comes out, then SoundScan ranks everybody
+  const sc = await p.evaluate(async () => { const s = window.__rfg.game.s, LB = await import('./js/core/label.js'), { MONTH } = await import('./js/data/label.js'); s.label.showcase = null; while (s.time.day % MONTH !== 0) { s.time.day++; LB.labelDay(s); } return s.label.showcase; });
+  if (!sc?.lineup?.length) throw new Error('no showcase lineup');
+  await clear(); await stand(sc.loc); await openL({ tab: 'showcase' });
+  await p.waitForSelector(`[data-action=sc_sign][data-id=${sc.lineup[0]}]:not([disabled])`); await snap('label-7-showcase');
+  await p.click(`[data-action=sc_sign][data-id=${sc.lineup[0]}]`); await ok();
+  await p.waitForFunction(id => window.__rfg.game.s.label.roster.some(r => r.id === id), sc.lineup[0]);
+  await p.evaluate(async () => { const s = window.__rfg.game.s, LB = await import('./js/core/label.js'); for (let i = 0; i < 8; i++) { s.time.day++; LB.labelDay(s); } });
+  await clear(); await openL({ tab: 'soundscan' });
+  await p.waitForSelector('.p-body table'); await snap('label-8-soundscan');
+  await clear(); await openL({ artist }); await p.waitForTimeout(200); await snap('label-9-artist');
   await clear();
   await p.evaluate(() => { delete window.__rfg.game.s.label; });
 });
