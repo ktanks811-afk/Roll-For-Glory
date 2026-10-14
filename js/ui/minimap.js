@@ -68,7 +68,7 @@ export class MiniMap {
     // base map: blurry overview first, then the sharp tiles on top
     g.save(); g.translate(S / 2, S / 2 + OFF); g.rotate(-h); g.scale(s, s); g.translate(-p.x, -p.z);
     g.imageSmoothingEnabled = true;
-    const ov = map.overview; if (ov) g.drawImage(ov.canvas, ov.x0, ov.z0, ov.canvas.width / ov.scale, ov.canvas.height / ov.scale);
+    const ov = map.overview; if (ov) for (const o of [ov, ...(ov.more || [])]) g.drawImage(o.canvas, o.x0, o.z0, o.canvas.width / o.scale, o.canvas.height / o.scale);
     const R = ((S / 2) * 1.45 + OFF) / s;
     const i0 = Math.floor((p.x - R) / TILE), i1 = Math.floor((p.x + R) / TILE), j0 = Math.floor((p.z - R) / TILE), j1 = Math.floor((p.z + R) / TILE);
     if ((i1 - i0 + 1) * (j1 - j0 + 1) <= 36) {

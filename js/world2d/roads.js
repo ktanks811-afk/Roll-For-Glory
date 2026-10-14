@@ -2,7 +2,9 @@
 // Traffic, police routing, GPS and the minimap all read from this.
 
 import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS, DGRID_X, DGRID_Z, DSTREET_NS, DSTREET_EW, I30_ROW, I30_END, ARLINGTON_X, ARLINGTON_END,
-  DNGRID_X, DNGRID_Z, WGRID_X, WGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, I20_WEST_END, WEST, WEST_CITY, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X } from '../data/world.js';
+  DNGRID_X, DNGRID_Z, WGRID_X, WGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, I20_WEST_END, WEST, WEST_CITY, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X,
+  FM916_Z, FM916_X, FM2331_END } from '../data/world.js';
+import { STATES, STATE_N, STATE_BLOCK, AIRPORT_ROW, cityRect } from '../data/states.js';
 
 export function buildRoads() {
   const nodes = [];
@@ -49,6 +51,13 @@ export function buildRoads() {
     for (const [a, b] of [[cx0, cx1], [cx1, cx2], [cx2, cx3]]) edge(node(a, z), node(b, z), { ...FARM, name });
   for (const [x, name] of [[cx0, 'County Road 802'], [cx1, 'County Road 1016'], [cx2, 'Old Cleburne Rd'], [cx3, 'Hwy 174']])
     for (const [a, b] of [[cz0, cz1], [cz1, cz2]]) edge(node(x, a), node(x, b), { ...FARM, name });
+
+  // Brazos country: Old Cleburne Rd runs on south from County Road 1200 as
+  // FM 2331, past the big ranches to the river; FM 916 crosses it at the top
+  edge(node(cx2, cz2), node(cx2, FM916_Z), { ...FARM, name: 'Old Cleburne Rd' });
+  edge(node(cx2, FM916_Z), node(cx2, FM2331_END), { ...FARM, name: 'FM 2331' });
+  edge(node(FM916_X[0], FM916_Z), node(cx2, FM916_Z), { ...FARM, name: 'FM 916' });
+  edge(node(cx2, FM916_Z), node(FM916_X[1], FM916_Z), { ...FARM, name: 'FM 916' });
 
   // I-20: west from Fort Worth into Weatherford. Add the Loop 820/I-20 junction node so the graph is connected at the interchange.
   const I20 = { ...HWY, name: 'I-20' };
@@ -134,6 +143,16 @@ export function buildRoads() {
   for (let j = 0; j < DNGRID_Z.length; j++) for (let i = 0; i < DNGRID_X.length - 1; i++)
     edge(node(DNGRID_X[i], DNGRID_Z[j]), node(DNGRID_X[i + 1], DNGRID_Z[j]), { ...CITY, name: DNSTREET_EW[j] });
   edge(node(0, DNGRID_Z[0]), node(0, I35_END), { ...I35, name: 'I-35' });
+
+  // Out of state (data/states.js): each city is its own grid with an airport
+  // road in from the west. Nothing connects them to Texas; you fly.
+  for (const st of Object.values(STATES)) {
+    const c = cityRect(st), xs = [], zs = [];
+    for (let k = 0; k <= STATE_N; k++) { xs.push(c.x0 + k * STATE_BLOCK); zs.push(c.z0 + k * STATE_BLOCK); }
+    for (let i = 0; i < xs.length; i++) for (let j = 0; j < zs.length - 1; j++) edge(node(xs[i], zs[j]), node(xs[i], zs[j + 1]), { ...CITY, name: st.streetsNS[i] });
+    for (let j = 0; j < zs.length; j++) for (let i = 0; i < xs.length - 1; i++) edge(node(xs[i], zs[j]), node(xs[i + 1], zs[j]), { ...CITY, name: st.streetsEW[j] });
+    edge(node(c.x0 - 560, zs[AIRPORT_ROW]), node(c.x0, zs[AIRPORT_ROW]), { ...CITY, speed: 20, name: 'Airport Blvd' });
+  }
 
   const graph = { nodes, edges, byKey };
 

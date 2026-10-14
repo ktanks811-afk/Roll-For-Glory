@@ -1,6 +1,7 @@
 import { STREET_RACES, raceStart } from './streetRaces.js';
 import { ESTATE_LOCATIONS, TRAPS } from './estate.js';
 import { FOOD_SPOTS } from './food.js';
+import { STATES, STATE_BLOCK, AIRPORT_ROW, stateAt, stateDistrict } from './states.js';
 
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
 // with a highway to the north, desert to the south, mountains to the west
@@ -21,6 +22,16 @@ export const SEA_X = 1000;         // harbor water east of here (south half)
 // Johnson County: farm country past the end of the desert, south of the city
 export const COUNTRY = { x0: -3300, x1: 1000, z0: 3300, z1: 5800 };
 export const COUNTRY_ROADS = { x: [-2800, -1500, 0, 700], z: [3600, 4500, 5400] };
+// Brazos country: big-ranch land south of Johnson County, past County Road
+// 1200. Tracts of 400 to 1,000 acres (data/estate.js) along FM 916 across
+// the top and FM 2331 down the middle; world2d/brazos.js fills it in.
+export const BRAZOS = { x0: -3300, x1: 1900, z0: 5800, z1: 10100 };
+export const FM916_Z = 6100;                 // across the top, x -3200..1850
+export const FM916_X = [-3200, 1850];
+export const FM2331_END = 9985;              // Old Cleburne Rd carries on south as FM 2331 (x = 0)
+export const inBrazos = (x, z) => x > BRAZOS.x0 && x < BRAZOS.x1 && z > BRAZOS.z0 && z < BRAZOS.z1;
+// how far out anything can be (online positions are clamped to this)
+export const WORLD_R = 30000;
 // Dallas: east of Fort Worth down I-30, which carries on from the east end of
 // Loop 820 past Arlington. Its own 10x10-block grid (150 m blocks); I-30 cuts
 // through the middle of it (row 5), downtown and Deep Ellum north of the
@@ -86,12 +97,14 @@ export const DNSTREET_EW = ['University Dr', 'Sherman Dr', 'Oak St', 'Hickory St
 export const STREET_EW = ['NE 28th St', 'Stockyards Blvd', 'Exchange Ave', 'Northside Dr', 'Belknap St', 'Weatherford St', 'W 7th St', 'Lancaster Ave', 'Vickery Blvd', 'Rosedale St', 'Magnolia Ave', 'Berry St', 'Seminary Dr'];
 
 export function districtAt(x, z) {
+  if (x > 9000) { const st = stateAt(x, z); if (st !== 'tx') return stateDistrict(st, x, z); }
   if (inWeatherford(x, z)) return weatherfordDistrict(x, z);
   if (inWest(x, z)) return westDistrict(x, z);
   if (x > DALLAS_ZONE.x0 && z < DALLAS_ZONE.z1 + 400) return dallasDistrict(x, z);
   if (z < NORTH.z1 && x > NORTH.x0 - 200) return northDistrict(x, z);
   if (z < HWY_Z - 60 && Math.abs(x) < 60) return 'I-35W';
   if (z < -1000) return 'Loop 820';
+  if (z > BRAZOS.z0 && inBrazos(x, z)) return x > 0 ? 'Hill County' : z > 8800 ? 'Brazos River' : 'Bosque County';
   if (z > COUNTRY.z0) return 'Johnson County';
   if (z > DESERT_Z) return 'Burleson';
   if (x < -1000) return z < -100 ? 'Lake Worth' : 'Benbrook Hills';
@@ -157,6 +170,7 @@ export function blockCenter(i, j, city) {
   if (city === 'dallas') return { x: DALLAS.x0 + BLOCK / 2 + BLOCK * i, z: DALLAS.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'weatherford') return { x: WEATHERFORD.x0 + BLOCK / 2 + BLOCK * i, z: WEATHERFORD.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'west') return { x: WEST_CITY.x0 + BLOCK / 2 + BLOCK * i, z: WEST_CITY.z0 + BLOCK / 2 + BLOCK * j };
+  if (STATES[city]) return { x: STATES[city].cx + STATE_BLOCK / 2 + STATE_BLOCK * i, z: STATES[city].cz + STATE_BLOCK / 2 + STATE_BLOCK * j };
   return { x: -825 + BLOCK * i, z: -825 + BLOCK * j };
 }
 
@@ -180,6 +194,11 @@ const D = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: 
 const N = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'denton', side, ...front(i, j, side, 0, 'denton'), ...extra });
 const W = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'weatherford', side, ...front(i, j, side, 0, 'weatherford'), ...extra });
 const X = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'west', side, ...front(i, j, side, 0, 'west'), ...extra });
+// on a block of an out-of-state city (data/states.js): S('ga')(…)
+const S = st => (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: st, state: st, side, ...front(i, j, side, 0, st), ...extra });
+const GA = S('ga'), CA = S('ca'), FL = S('fl');
+// an out-of-state airport: the terminal on the south side of the airport road, west of town
+const airport = (st, id, name) => ({ id, type: 'airport', name, x: STATES[st].cx - 330, z: STATES[st].cz + AIRPORT_ROW * STATE_BLOCK + 14, face: 0, side: 'N', state: st, color: '#5fd3ff', icon: 'plane' });
 
 export const LOCATIONS = [
   L('eastgate_studio', 'home', 'Eastgate Studio (Home)', 8, 6, 'W', { color: '#ffffff', icon: 'home' }),
@@ -310,6 +329,52 @@ export const LOCATIONS = [
   N('oak_victorian', 'property', 'Oak St Victorian', 7, 0, 'S', { color: '#ffffff', icon: 'home' }),
   N('bonnie_brae_ranch', 'property', 'Bonnie Brae Ranch House', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
   N('se_denton_starter', 'property', 'Southeast Denton Starter', 4, 7, 'N', { color: '#ffffff', icon: 'home' }),
+  // Alliance Airport: the terminal at the top of Alliance Blvd. Flights to
+  // Atlanta, LA and Miami (ui/flights.js); your car rides cargo.
+  { id: 'air_alliance', type: 'airport', name: 'Alliance Airport Terminal', x: AIRPORT_X + 10, z: HTRACE_Z - 216, face: -Math.PI / 2, side: 'W', state: 'tx', color: '#5fd3ff', icon: 'plane' },
+  // Brazos country, out FM 916 past the big ranches: a feed store with pumps
+  { id: 'gas_brazos', type: 'gas', name: 'Brazos Feed & Fuel', x: 300, z: FM916_Z - 14, face: 0, side: 'S', color: '#1f8f3a', icon: 'gas' },
+  // ---------------- out of state: Atlanta, Los Angeles, Miami (data/states.js, world2d/states.js) ----------------
+  airport('ga', 'air_atl', 'Hartsfield-Jackson Atlanta'),
+  GA('atl_studio', 'studio', 'Zone 6 Sound', 6, 5, 'N', { color: '#c04aff', icon: 'mic' }),
+  GA('atl_peachtree', 'studio', 'Peachtree Platinum Studios', 3, 3, 'S', { color: '#c04aff', icon: 'mic' }),
+  GA('atl_plug', 'plug', 'Bankhead Connect', 1, 5, 'E', { color: '#2cff7a', icon: 'tow', stock: ['lean', 'percs', 'loud'], rate: 0.6, tagline: 'Bankhead · lean and percs for less than Texas' }),
+  GA('atl_trucks', 'dealer', 'Peach State Motors (Chevy · GMC · Cadillac · Dodge · Ram)', 4, 6, 'N', { color: '#f2f2f2', icon: 'car', makes: ['chevrolet', 'gmc', 'cadillac', 'dodge', 'ram', 'chrysler', 'buick'] }),
+  GA('atl_perf', 'perf', 'Old National Speed', 2, 7, 'N', { color: '#e8641a', icon: 'wrench', owner: 'Kel', tagline: 'Kel Brooks · donks, Hellcats and turbo LS swaps · Atlanta' }),
+  GA('atl_repair', 'repair', 'Moreland Ave Auto', 5, 4, 'W', { color: '#1b4fc4', icon: 'repair', rate: 0.95, tagline: 'East Atlanta · fair prices, fast turnaround' }),
+  GA('atl_gas', 'gas', 'QuikTrip', 1, 4, 'S', { color: '#1f8f3a', icon: 'gas' }),
+  GA('atl_corner', 'corner', 'Candler Rd Food Mart', 6, 6, 'W', { color: '#ff8a1a', icon: 'food' }),
+  GA('atl_wings', 'food', 'Lemon Pepper Wing Spot', 3, 5, 'N', { color: '#e8c21a', icon: 'food' }),
+  GA('atl_drip', 'clothing', 'Little Five Points Drip', 5, 2, 'S', { color: '#a01aff', icon: 'shirt' }),
+  GA('atl_meet', 'meet', 'Old National Hwy Lot', 4, 7, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  GA('atl_buckhead', 'property', 'Buckhead Gated Estate', 2, 1, 'S', { color: '#ffffff', icon: 'home' }),
+  GA('atl_eastatl', 'property', 'East Atlanta Bungalow', 6, 3, 'W', { color: '#ffffff', icon: 'home' }),
+  airport('ca', 'air_lax', 'LAX'),
+  CA('la_sunset', 'studio', 'Sunset Blvd Recorders', 4, 1, 'S', { color: '#c04aff', icon: 'mic' }),
+  CA('la_plug', 'plug', 'Venice Beach Collective', 1, 4, 'E', { color: '#2cff7a', icon: 'tow', stock: ['loud', 'smoke', 'exo'], rate: 0.55, tagline: 'Venice · loud by the pound, California prices' }),
+  CA('la_exotics', 'dealer', 'Beverly Hills Exotics (Ferrari · Lamborghini · McLaren · Rolls-Royce)', 2, 2, 'S', { color: '#e8c21a', icon: 'car', makes: ['ferrari', 'lamborghini', 'mclaren', 'astonmartin', 'bentley', 'rollsroyce', 'maserati', 'lotus', 'bugatti', 'koenigsegg', 'pagani', 'porsche'] }),
+  CA('la_jdm', 'dealer', 'Gardena JDM Imports (Toyota · Nissan · Honda · Mazda · Subaru)', 5, 6, 'N', { color: '#f2f2f2', icon: 'car', makes: ['toyota', 'lexus', 'honda', 'acura', 'nissan', 'infiniti', 'mazda', 'subaru', 'mitsubishi', 'scion'] }),
+  CA('la_ev', 'dealer', 'Silicon Beach EV (Tesla · Rivian · Lucid)', 1, 3, 'E', { color: '#13b3c4', icon: 'car', makes: ['tesla', 'rivian', 'lucid'] }),
+  CA('la_perf', 'perf', 'Hawthorne Speed Shop', 5, 7, 'N', { color: '#e8641a', icon: 'wrench', owner: 'Nori', tagline: 'Nori Sato · 2JZ, RB and K-swap builds · LA' }),
+  CA('la_lowrider', 'visual', 'East LA Lowriders', 7, 5, 'W', { color: '#d12a8a', icon: 'spray', tagline: 'Candy paint, chrome and hydraulics' }),
+  CA('la_repair', 'repair', 'Crenshaw Auto Care', 3, 4, 'N', { color: '#1b4fc4', icon: 'repair', rate: 1.2, tagline: 'California labor rates · smog check while you wait' }),
+  CA('la_gas', 'gas', 'Arco', 4, 4, 'S', { color: '#1f8f3a', icon: 'gas' }),
+  CA('la_tacos', 'food', "Leo's Taco Truck", 6, 3, 'S', { color: '#e8c21a', icon: 'food', menu: 'taco' }),
+  CA('la_meet', 'meet', 'Angeles Crest Turnout', 3, 0, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
+  CA('la_hills', 'property', 'Hollywood Hills Glass House', 5, 0, 'S', { color: '#ffffff', icon: 'home' }),
+  CA('la_compton', 'property', 'Compton Starter', 3, 6, 'N', { color: '#ffffff', icon: 'home' }),
+  airport('fl', 'air_mia', 'Miami International'),
+  FL('mia_studio', 'studio', 'Biscayne Bay Studios', 5, 2, 'E', { color: '#c04aff', icon: 'mic' }),
+  FL('mia_plug', 'plug', 'Little Havana Connect', 2, 6, 'N', { color: '#2cff7a', icon: 'tow', stock: ['powder', 'molly', 'ice'], rate: 0.5, tagline: 'Little Havana · straight off the boat, half what Texas pays' }),
+  FL('mia_exotics', 'dealer', 'Ocean Drive Exotics (Lamborghini · Ferrari · Bentley)', 6, 4, 'E', { color: '#e8c21a', icon: 'car', makes: ['ferrari', 'lamborghini', 'mclaren', 'bentley', 'rollsroyce', 'maserati', 'astonmartin', 'porsche', 'mercedes'] }),
+  FL('mia_perf', 'perf', 'Hialeah Speed', 1, 2, 'S', { color: '#e8641a', icon: 'wrench', owner: 'Rafa', tagline: 'Rafa Ortiz · Coyote swaps and nitrous · Miami' }),
+  FL('mia_repair', 'repair', 'Flagler Street Garage', 3, 4, 'S', { color: '#1b4fc4', icon: 'repair', rate: 1.05, tagline: 'Body, mechanical and salt-air rust' }),
+  FL('mia_gas', 'gas', 'Wawa', 4, 1, 'S', { color: '#1f8f3a', icon: 'gas' }),
+  FL('mia_corner', 'corner', 'Calle Ocho Mini Mart', 3, 6, 'N', { color: '#ff8a1a', icon: 'food' }),
+  FL('mia_cafe', 'food', 'Cafecito Ventanita', 4, 6, 'N', { color: '#e8c21a', icon: 'food', menu: 'diner' }),
+  FL('mia_meet', 'meet', 'Ocean Drive Lot', 6, 6, 'E', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
+  FL('mia_brickell', 'property', 'Brickell Penthouse', 4, 3, 'S', { color: '#ffffff', icon: 'home' }),
+  FL('mia_hialeah', 'property', 'Hialeah House', 1, 6, 'N', { color: '#ffffff', icon: 'home' }),
   // street race start lines (routes in data/streetRaces.js)
   // trap houses, land for sale and the plug, off the city grid (data/estate.js)
   ...ESTATE_LOCATIONS,
@@ -344,6 +409,13 @@ export const PROPERTIES = {
   oak_victorian:     { name: 'Oak St Victorian', price: 365000, slots: 6, house: 'three', desc: 'Denton. A restored 1890s Victorian on Oak St, three stories and a six-car carriage house.', tier: 3, wall: '#c9b48a', roof: '#4a2f3a' },
   bonnie_brae_ranch: { name: 'Bonnie Brae Ranch House', price: 118000, slots: 4, house: 'one', desc: 'Denton. A 1-story brick ranch by UNT, four-car garage. The freeway is right out back.' },
   se_denton_starter: { name: 'Southeast Denton Starter', price: 58000, slots: 2, house: 'starter', desc: 'Denton. Two bedrooms, a porch and a carport on Teasley Ln.' },
+  // out of state (data/states.js)
+  atl_buckhead:      { name: 'Buckhead Gated Estate', price: 2400000, slots: 12, house: 'three', desc: 'Atlanta. Three stories behind a gate on West Paces Ferry, a twelve-car garage.', tier: 4, wall: '#e8e2d8', roof: '#2f343d' },
+  atl_eastatl:       { name: 'East Atlanta Bungalow', price: 215000, slots: 3, house: 'starter', desc: 'Atlanta. A craftsman bungalow by the Village, three-car garage out back.' },
+  la_hills:          { name: 'Hollywood Hills Glass House', price: 6200000, slots: 16, house: 'three', desc: 'Los Angeles. Glass on three floors over the city lights, a sixteen-car gallery.', tier: 5, wall: '#f2f2f2', roof: '#1a1c22', style: 'flat' },
+  la_compton:        { name: 'Compton Starter', price: 265000, slots: 3, house: 'starter', desc: 'Los Angeles. Two bedrooms, a lowrider in every driveway on the block.' },
+  mia_brickell:      { name: 'Brickell Penthouse', price: 3300000, slots: 10, desc: 'Miami. The top floor over Biscayne Bay and ten spots in the private garage.', tier: 4 },
+  mia_hialeah:       { name: 'Hialeah House', price: 240000, slots: 3, house: 'one', desc: 'Miami. A one-story stucco house with a palm out front and a three-car garage.', wall: '#f2e2c8', roof: '#b06a32' },
   rivercrest_mansion: { name: 'Rivercrest Mansion', price: 3600000, slots: 14, house: 'three', desc: 'Country club money. Three stories, fourteen climate-controlled bays and a car elevator.', tier: 5, wall: '#e8e2d8', roof: '#2f3b4a', wallH: 5.2 },
   // trap houses (data/estate.js): customers knock, SWAT might too
   ...Object.fromEntries(Object.entries(TRAPS).map(([id, t]) => [id, { ...t, trap: true }])),

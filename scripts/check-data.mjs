@@ -5,6 +5,7 @@ import { CARS, CAR_BY_ID } from '../js/data/cars.js';
 import { CATALOG, ITEM_BY_ID, fits } from '../js/data/catalog.js';
 import { RACERS } from '../js/data/npcs.js';
 import { LOCATIONS } from '../js/data/world.js';
+import { STATES, STATE_IDS, stateAt, flightQuote, regionRect, cityRect } from '../js/data/states.js';
 import { generateListings } from '../js/data/market.js';
 import { buildSpec, metrics, launchCheck } from '../js/sim/powertrain.js';
 import { partLevels } from '../js/data/parts.js';
@@ -932,9 +933,13 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     HM.paint(d, 0, 0, 0, 5, 4, 'L');
     if (HM.paint(d, 1, 7, 0, 9, 2, 'B')) bad('an upper floor painted over nothing');
     if (HM.paint(d, 0, 0, 0, 2, 0, 'P') !== 3) bad('painting the porch');
+    if (HM.paint(d, 1, 0, 0, 2, 2, 'B') || HM.floorOpen(d, 1)) bad('no 2nd floor until there are stairs up to it');
+    const up = HM.place(d, 0, 'stairs', 4, 1);
+    if (!up.ok || up.opened !== 1 || !(up.landing > 0) || !HM.floorOpen(d, 1) || HM.floorOpen(d, 2)) bad('stairs should open the floor above (and only that one)');
     if (HM.paint(d, 1, 0, 0, 2, 2, 'B') !== 6) bad('the 2nd floor should only go over the rooms, not the porch');
-    if (HM.check(d).ok) bad('a 2nd floor without stairs should not pass');
-    if (!HM.place(d, 0, 'stairs', 4, 1).ok || !HM.check(d).ok) bad('stairs should fix it');
+    if (!HM.check(d).ok) bad('a 2nd floor with stairs should pass');
+    const well = [...HM.stairwell(d, 1)][0];
+    if (well === undefined || HM.place(d, 1, 'bed', well % HD.GW, Math.floor(well / HD.GW)).ok) bad('a bed on the stairwell upstairs');
     if (HM.place(d, 0, 'toilet', 1, 2).ok) bad('a toilet outside the bathroom');
     if (HM.place(d, 0, 'couch', 4, 2).ok) bad('a couch on top of the stairs');
     if (!HM.place(d, 0, 'rug', 2, 2).ok || !HM.place(d, 0, 'couch', 2, 2).ok) bad('a couch on a rug should be fine');
@@ -969,6 +974,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     for (const o of ESTATE_LOCATIONS) if (o !== l && l.lot.x0 < o.lot.x1 && l.lot.x1 > o.lot.x0 && l.lot.z0 < o.lot.z1 && l.lot.z1 > o.lot.z0) bad(`${l.id} overlaps ${o.id}`);
     const r = map.roads.routeBetween(0, 0, l.x, l.z);
     // The world is intentionally growing westward; validate that GPS actually found a named road route, but allow longer Texas-map drives than the old 9 km city-only limit.
+    if (LAND[l.id]?.state) { if (stateAt(l.x, l.z) !== LAND[l.id].state) bad(`${l.id} isn't in ${LAND[l.id].state}`); continue; }   // a flight away, no road from Fort Worth
     if (!r?.path?.length || !r.names?.some(Boolean) || r.meters > 15000) bad(`${l.id}: no road route from downtown (${r?.meters})`);
   }
   for (const id of ['land_six_bunche', 'land_six_stalcup', 'six_bungalow']) if (districtAt(LOC_BY_ID[id].x, LOC_BY_ID[id].z) !== 'Stop Six') bad(`${id} isn't in Stop Six`);
@@ -1036,7 +1042,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const fences = map.buildings.filter(b => b.kind === 'fence' && b.loc === land);
   if (fences.length < 5) bad(`pasture fence has ${fences.length} pieces`);
   if (vh && vh.box.z + vh.box.d > P.z0) bad('the pasture fence cuts through the house');
-  if (FENCES.length !== 3 || !(FENCES[2].cap >= 40)) bad('fence sizes');
+  if (FENCES.length < 3 || !(FENCES[2].cap >= 40) || !FENCES.some(f => f.cap >= 400)) bad('fence sizes');
   if (!(EST.landValue(st, land) > 1e6)) bad('ranch land value should count the vault, house and herd');
   if (!EST.sellAnimal(st, land, 'horse').ok) bad('selling a horse');
   // loading another career clears it all off the map
@@ -1053,7 +1059,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const { cleanBuild } = await import('../js/net/builds.js');
   const { setForeignLand } = await import('../js/world2d/estate.js');
   const st = createState({ name: 'Landlord', age: 30, look: {}, story: false });
-  game.s = st; st.cash = 5e7; st.rep = 40000;
+  game.s = st; st.cash = 5e8; st.rep = 40000;
   const map = buildMap();
   for (const D of DEVS) if (!Object.keys(LAND).some(id => EST.devFits(id, D.id))) bad(`${D.id} fits on no land`);
   for (const id of Object.keys(LAND)) if (!EST.devFits(id, 'duplex')) bad(`${id}: no room for even a duplex row`);
@@ -2168,6 +2174,85 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const plan = BT.chasePlan(bm, pp, { x: 200, z: 100, h: 0, v: 10 }, 900, -400, 11);
   const end = BT.planAt(plan, plan[plan.length - 1].t1);
   if (!plan.length || Math.hypot(end.x - 900, end.z + 400) > 80) bad('chase plan should end near you: ' + JSON.stringify(end));
+}
+// walls in the builder, stairs that open the next floor, big ranches, and flights out of state
+{
+  const HM = await import('../js/core/homes.js');
+  const HD = await import('../js/data/homes.js');
+  const d = HM.blankDesign();
+  HM.paint(d, 0, 0, 0, 5, 4, 'L');
+  const base = HM.cost(d);
+  if (HM.drawWall(d, 0, 3, 0, 3, 5, 'door') !== 5 || HM.wallAt(d, 0, 'v', 3, 2) !== 'door' || HM.edgeType(d, 0, 'v', 3, 2) !== 'inner') bad('drawing a wall of doors down the middle of a room');
+  if (HM.drawWall(d, 0, 0, 0, 6, 0, 'window') !== 6 || HM.edgeType(d, 0, 'h', 2, 0) !== 'outer') bad('a row of windows along the front');
+  if (HM.drawWall(d, 0, 10, 8, 14, 8, 'wall')) bad('a wall out in the yard with no floor next to it');
+  if (!(HM.cost(d) > base)) bad('walls should cost money');
+  const kept = HM.sanitize(JSON.parse(JSON.stringify(d)));
+  if (HM.allWalls(kept).length !== 11) bad(`walls should survive a save (${HM.allWalls(kept).length})`);
+  if (HM.drawWall(d, 0, 3, 0, 3, 5, '.') !== 5 || HM.allWalls(d).length !== 6) bad('erasing a line of wall');
+  if (HM.drawWall(d, 1, 0, 0, 3, 0, 'wall')) bad('walls upstairs before there are stairs');
+  for (const id of ['stairs', 'spiral', 'elevator']) {
+    const e = HM.blankDesign(); HM.paint(e, 0, 0, 0, 5, 4, 'L');
+    const r = HM.place(e, 0, id, 2, 2);
+    if (!r.ok || r.opened !== 1 || !HM.floorOpen(e, 1)) bad(`${id} should open the 2nd floor`);
+  }
+  if (HD.MAX_FLOORS < 5) bad('five floors');
+  if (HM.sanitize({ floors: ['L'.repeat(HD.GW * HD.GD)], furn: [[]], walls: [[{ o: 'q', x: 99, y: -1, k: 'nope' }, { o: 'h', x: 1, y: 0, k: 'glass' }]] }).walls[0].length !== 1) bad('sanitize should drop bad walls');
+}
+{
+  const { homesite, acresOf } = await import('../js/core/estate.js');
+  const { ESTATE_LOCATIONS } = await import('../js/data/estate.js');
+  const { BRAZOS, inBrazos, districtAt: dAt } = await import('../js/data/world.js');
+  const huge = ESTATE_LOCATIONS.filter(l => LAND[l.id]?.huge);
+  if (huge.length < 4 || Math.min(...huge.map(l => acresOf(l.id))) < 400 || Math.max(...huge.map(l => acresOf(l.id))) < 1000) bad('ranches from 400 to 1,000 acres');
+  for (const l of huge) {
+    const r = l.lot, acres = (r.x1 - r.x0) * (r.z1 - r.z0) / 4047, h = homesite(l);
+    if (Math.abs(acres - acresOf(l.id)) / acresOf(l.id) > 0.15) bad(`${l.id}: sold as ${acresOf(l.id)} acres, the lot is ${acres.toFixed(0)}`);
+    if (!inBrazos(l.x, l.z) || !['Bosque County', 'Hill County', 'Brazos River'].includes(dAt(l.x, l.z))) bad(`${l.id} isn't out in Brazos country`);
+    if (h.x0 < r.x0 - 1 || h.x1 > r.x1 + 1 || h.z0 < r.z0 - 1 || h.z1 > r.z1 + 1 || (h.x1 - h.x0) * (h.z1 - h.z0) > 60000) bad(`${l.id}: the homesite should be a corner by the gate`);
+    if (LAND[l.id].price < 1e6) bad(`${l.id} is too cheap for ${acresOf(l.id)} acres`);
+  }
+  if (!(BRAZOS.z1 > 9000)) bad('Brazos country should run south past 9 km');
+}
+{
+  const { LOC_BY_ID } = await import('../js/data/world.js');
+  const { FREIGHT, TEXAS, route } = await import('../js/data/states.js');
+  const D = await import('../js/core/drugs.js');
+  const map = buildMap();
+  const ids = ['tx', ...STATE_IDS];
+  for (const a of ids) for (const b of ids) if (a !== b) {
+    const q = flightQuote(a, b, true);
+    if (!q || q.total !== q.ticket + FREIGHT || !(q.minutes > 60)) bad(`flight ${a} to ${b}`);
+    if (flightQuote(a, b, false).total !== route(a, b).ticket) bad(`flight ${a} to ${b} without a car`);
+  }
+  if (stateAt(0, 0) !== 'tx' || stateAt(LOC_BY_ID[TEXAS.airport].x, LOC_BY_ID[TEXAS.airport].z) !== 'tx') bad('Fort Worth is in Texas');
+  for (const st of Object.values(STATES)) {
+    const air = LOC_BY_ID[st.airport];
+    if (!air || air.type !== 'airport' || stateAt(air.x, air.z) !== st.id) bad(`${st.city} has no airport`);
+    const here = LOCATIONS.filter(l => l.city === st.id);
+    if (here.length < 10) bad(`${st.city}: only ${here.length} places`);
+    if (!here.some(l => l.type === 'plug' && l.rate < 1)) bad(`${st.city}: no cheap plug`);
+    for (const l of here) {
+      if (stateAt(l.x, l.z) !== st.id) bad(`${l.id} isn't in ${st.city}`);
+      const r = map.roads.routeBetween(air.x, air.z, l.x, l.z);
+      if (!r?.path?.length || r.meters > 6000) bad(`${l.id}: no road from the ${st.city} airport (${r?.meters})`);
+    }
+    // walled in: you can't drive out of town toward Texas
+    const reg = regionRect(st), mid = (reg.z0 + reg.z1) / 2;
+    let leaked = true;
+    for (let x = reg.x0 + 30; x > reg.x0 - 80; x -= 2) if (collideCircle(map, x, mid, 1.2)) { leaked = false; break; }
+    if (leaked) bad(`${st.city}: no wall on the west edge`);
+  }
+  // a cheap plug buys back cheap: no flipping it right back to him for a profit
+  const s = createState({ name: 'Flyer', age: 25, look: {}, story: false });
+  game.s = s; s.cash = 1e6;
+  for (const id of ['lean', 'powder', 'loud']) {
+    const rate = 0.55;
+    if (!(D.plugPrice(s, id, rate) < D.plugPrice(s, id))) bad(`${id} should be cheaper out of state`);
+    const before = s.cash + s.bank;
+    D.buy(s, id, 4, rate); D.dump(s, id, 4, rate);
+    if (s.cash + s.bank > before) bad(`${id}: buying and dumping at the same plug made money`);
+  }
+  game.s = null;
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

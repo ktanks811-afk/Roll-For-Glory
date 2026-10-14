@@ -721,3 +721,7 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 118) !important; height: calc
   body:not(.touch) .hud-btn { width: 42px; height: 42px; border-radius: 10px; border: 1px solid rgba(255,255,255,.28); background: rgba(10,12,16,.78); color: #fff; font-size: 18px; cursor: pointer; }
   body:not(.touch) .hud-btn:hover { border-color: var(--yellow); background: rgba(35,38,44,.95); }
 }
+/* builder: the floor a new staircase just opened, and the locked one above */
+.bld-floors .bld-new { border-color: var(--green); box-shadow: 0 0 0 2px var(--green); animation: bld-pulse 1.1s ease-in-out infinite; }
+.bld-floors .bld-lock { opacity: .6; }
+@keyframes bld-pulse { 50% { box-shadow: 0 0 0 4px rgba(44,255,122,.35); } }

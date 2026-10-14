@@ -17,9 +17,12 @@
 import { online, cleanVisual, cleanLevels } from './online.js';
 import { deeds, rpc, me, isDeedable } from './deeds.js';
 import { CAR_BY_ID } from '../data/cars.js';
-import { LAND, PLAN_BY_ID, FENCE_BY_ID, ANIMAL_BY_ID, DEV_BY_ID } from '../data/estate.js';
+import { LAND, PLAN_BY_ID, FENCES, FENCE_BY_ID, ANIMAL_BY_ID, DEV_BY_ID } from '../data/estate.js';
 import { sanitize, check } from '../core/homes.js';
+import { MAX_FLOORS } from '../data/homes.js';
+import { WORLD_R } from '../data/world.js';
 
+const MAX_HERD = Math.max(...FENCES.map(f => f.cap));   // the biggest pasture fence there is
 export const MAX_CARS = 25;          // cars shown in one garage (data: MAX_FLOOR_BAYS + the one out front)
 const SEND_EVERY = 3;                // seconds between live updates of your place
 const SAVE_EVERY = 20;               // … and between saves to your deed
@@ -39,17 +42,17 @@ export function cleanBuild(prop, b) {
   while (out.cars.length && !out.cars[out.cars.length - 1]) out.cars.pop();
   // the car parked at the place (checked against the garage when it's drawn)
   const pk = b.park && typeof b.park === 'object' ? car(b.park) : null;
-  if (pk) out.park = { ...pk, x: num(b.park.x, -9000, 9000), z: num(b.park.z, -9000, 9000), h: num(b.park.h, -20, 20) };
+  if (pk) out.park = { ...pk, x: num(b.park.x, -WORLD_R, WORLD_R), z: num(b.park.z, -WORLD_R, WORLD_R), h: num(b.park.h, -20, 20) };
   if (LAND[prop] && b.land && typeof b.land === 'object') {
     const l = b.land, L = { owned: true, plan: null, design: null, fence: null, dev: null, animals: {}, dogs: [] };
     if (typeof l.plan === 'string' && Object.hasOwn(PLAN_BY_ID, l.plan) && l.design && typeof l.design === 'object' && Array.isArray(l.design.floors)) {
-      const raw = { ...l.design, floors: l.design.floors.slice(0, 3), furn: Array.isArray(l.design.furn) ? l.design.furn.slice(0, 3).map(f => (Array.isArray(f) ? f.slice(0, 200) : [])) : [] };
+      const raw = { ...l.design, floors: l.design.floors.slice(0, MAX_FLOORS), furn: Array.isArray(l.design.furn) ? l.design.furn.slice(0, MAX_FLOORS).map(f => (Array.isArray(f) ? f.slice(0, 200) : [])) : [], walls: Array.isArray(l.design.walls) ? l.design.walls.slice(0, MAX_FLOORS) : [] };
       const d = sanitize(raw);
       if (d && check(d).ok) { d.wall = hex(d.wall, '#d9c9a8'); d.roof = hex(d.roof, '#3a3330'); d.roofStyle = /^[a-z]{1,12}$/.test(d.roofStyle) ? d.roofStyle : 'shingle'; L.plan = l.plan; L.design = d; }
     }
     if (typeof l.fence === 'string' && Object.hasOwn(FENCE_BY_ID, l.fence)) L.fence = l.fence;
     if (typeof l.dev === 'string' && Object.hasOwn(DEV_BY_ID, l.dev)) { L.dev = l.dev; L.fence = null; }
-    if (l.animals && typeof l.animals === 'object') for (const k of Object.keys(ANIMAL_BY_ID)) { const n = Math.round(num(l.animals[k], 0, 80)); if (n) L.animals[k] = n; }
+    if (l.animals && typeof l.animals === 'object') for (const k of Object.keys(ANIMAL_BY_ID)) { const n = Math.round(num(l.animals[k], 0, MAX_HERD)); if (n) L.animals[k] = n; }
     for (const d of Array.isArray(l.dogs) ? l.dogs.slice(0, 16) : []) if (d && hex(d.c)) L.dogs.push({ c: hex(d.c), d: hex(d.d), g: num(d.g, 0.3, 1.4, 1) });
     out.land = L;
   }

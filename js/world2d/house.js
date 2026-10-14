@@ -9,7 +9,9 @@
 // row nearest the street.
 
 import { TILE, GW, GD, FLOOR_H, ROOM_BY_ID, FURN_BY_ID } from '../data/homes.js';
-import { idx, tileAt, isRoom, heights, footprint } from '../core/homes.js';
+import { idx, tileAt, isRoom, isFloor, heights, footprint, wallAt } from '../core/homes.js';
+
+const GLASS = '#7fc8e0';
 
 const WALL_T = 0.3;
 // What the inside looks like: [x, z] of a local (u, v) point.
@@ -90,9 +92,25 @@ export function houseBlock(out, loc, design, F, u0, v0, opts = {}) {
       }
     }
   };
-  const pairAt = (a, b) => (isRoom(a) && isRoom(b) && a !== b ? [a, b].sort() : null);
-  runs((y, x) => pairAt(tileAt(design, 0, x, y - 1), tileAt(design, 0, x, y)), GW, GD, (y, a, b) => iwall(a, y, b, y));
-  runs((x, y) => pairAt(tileAt(design, 0, x - 1, y), tileAt(design, 0, x, y)), GD, GW, (x, a, b) => iwall(x, a, x, b));
+  // (an edge with a wall you drew on it is yours: the crew leaves it alone)
+  const pairAt = (a, b, mine) => (!mine && isRoom(a) && isRoom(b) && a !== b ? [a, b].sort() : null);
+  runs((y, x) => pairAt(tileAt(design, 0, x, y - 1), tileAt(design, 0, x, y), wallAt(design, 0, 'h', x, y)), GW, GD, (y, a, b) => iwall(a, y, b, y));
+  runs((x, y) => pairAt(tileAt(design, 0, x - 1, y), tileAt(design, 0, x, y), wallAt(design, 0, 'v', x, y)), GD, GW, (x, a, b) => iwall(x, a, x, b));
+  // the walls you drew: inside ones are painted on the floor plan like the
+  // crew's (a doorway is just a gap), and a railing round the porch is a low fence
+  for (const w of design.walls?.[0] || []) {
+    const [[ax, ay], [bx, by]] = w.o === 'h' ? [[w.x, w.y - 1], [w.x, w.y]] : [[w.x - 1, w.y], [w.x, w.y]];
+    const a = tileAt(design, 0, ax, ay), b = tileAt(design, 0, bx, by);
+    const x0 = w.x, y0 = w.y, x1 = w.o === 'h' ? w.x + 1 : w.x, y1 = w.o === 'h' ? w.y : w.y + 1;
+    if (isRoom(a) && isRoom(b)) {
+      if (w.k === 'door') continue;
+      const r = F.rect(u0 + x0 * T - 0.09, u0 + x1 * T + 0.09, v0 + y0 * T - 0.09, v0 + y1 * T + 0.09);
+      addL({ ...r, kind: 'iwall', loc: loc.id, c: w.k === 'glass' ? GLASS : w.k === 'half' ? '#8a6a4a' : w.k === 'window' ? '#5a6a72' : undefined });
+    } else if (!isRoom(a) && !isRoom(b) && (isFloor(a) || isFloor(b)) && w.k !== 'door') {
+      const r = F.rect(u0 + x0 * T - 0.08, u0 + x1 * T + 0.08, v0 + y0 * T - 0.08, v0 + y1 * T + 0.08);
+      addB({ ...r, h: w.k === 'half' ? 1.1 : FLOOR_H, color: w.k === 'glass' ? GLASS : w.k === 'half' ? '#8a6038' : wall, kind: w.k === 'half' ? 'fence' : 'hwall', loc: loc.id });
+    }
+  }
 
   // furniture on the ground floor
   for (const f of design.furn[0] || []) {
@@ -108,31 +126,43 @@ export function houseBlock(out, loc, design, F, u0, v0, opts = {}) {
   // outside walls: every ground-floor room edge with no room on the other side
   const door = frontDoor(design);
   const wallH = (x, y) => Math.max(1, h[idx(x, y)]) * FLOOR_H;
-  const edgeWall = (x0, y0, x1, y1, hh) => {
+  const edgeWall = (x0, y0, x1, y1, hh, color = wall) => {
     const r = x0 === x1
       ? F.rect(u0 + x0 * T - WALL_T / 2, u0 + x0 * T + WALL_T / 2, v0 + y0 * T - WALL_T / 2, v0 + y1 * T + WALL_T / 2)
       : F.rect(u0 + x0 * T - WALL_T / 2, u0 + x1 * T + WALL_T / 2, v0 + y0 * T - WALL_T / 2, v0 + y0 * T + WALL_T / 2);
-    addB({ ...r, h: hh, color: wall, kind: 'hwall', loc: loc.id });
+    addB({ ...r, h: hh, color, kind: 'hwall', loc: loc.id });
   };
+  // A doorway you drew on an outside wall is a side or back door: a gap with
+  // a door in it (shut on houses you don't own, like the front one). Glass
+  // walls are glass all the way up.
+  const sideDoors = [];
+  const kindOf = (o, x, y) => wallAt(design, 0, o, x, y);
+  const colorOf = k => (k === 'glass' ? GLASS : wall);
   // horizontal edges (between rows y-1 and y)
   for (let y = 0; y <= GD; y++) {
-    let start = -1, hh = 0;
+    let start = -1, hh = 0, kk = null;
     for (let x = 0; x <= GW; x++) {
       const a = isRoom(tileAt(design, 0, x, y - 1)), b = isRoom(tileAt(design, 0, x, y));
-      const on = x < GW && a !== b && !(door && door[2] === 'n' && door[0] === x && door[1] === y);
+      const k = x < GW ? kindOf('h', x, y) : null;
+      const edge = x < GW && a !== b && !(door && door[2] === 'n' && door[0] === x && door[1] === y);
+      if (edge && k === 'door') sideDoors.push(['h', x, y]);
+      const on = edge && k !== 'door', ck = k === 'glass' ? 'glass' : null;
       const hx = on ? wallH(x, a ? y - 1 : y) : 0;
-      if (start >= 0 && (!on || hx !== hh)) { edgeWall(start, y, x, y, hh); start = -1; }
-      if (on && start < 0) { start = x; hh = hx; }
+      if (start >= 0 && (!on || hx !== hh || ck !== kk)) { edgeWall(start, y, x, y, hh, colorOf(kk)); start = -1; }
+      if (on && start < 0) { start = x; hh = hx; kk = ck; }
     }
   }
   for (let x = 0; x <= GW; x++) {
-    let start = -1, hh = 0;
+    let start = -1, hh = 0, kk = null;
     for (let y = 0; y <= GD; y++) {
       const a = isRoom(tileAt(design, 0, x - 1, y)), b = isRoom(tileAt(design, 0, x, y));
-      const on = y < GD && a !== b;
+      const k = y < GD ? kindOf('v', x, y) : null;
+      const edge = y < GD && a !== b;
+      if (edge && k === 'door') sideDoors.push(['v', x, y]);
+      const on = edge && k !== 'door', ck = k === 'glass' ? 'glass' : null;
       const hy = on ? wallH(a ? x - 1 : x, y) : 0;
-      if (start >= 0 && (!on || hy !== hh)) { edgeWall(x, start, x, y, hh); start = -1; }
-      if (on && start < 0) { start = y; hh = hy; }
+      if (start >= 0 && (!on || hy !== hh || ck !== kk)) { edgeWall(x, start, x, y, hh, colorOf(kk)); start = -1; }
+      if (on && start < 0) { start = y; hh = hy; kk = ck; }
     }
   }
 
@@ -153,12 +183,17 @@ export function houseBlock(out, loc, design, F, u0, v0, opts = {}) {
     panel = { x0: r.x, z0: r.z, x1: r.x + r.w, z1: r.z + r.d, h: 3, off: false, door: loc.id, house: true };
     doorAt = toWorld(F, u0 + (door[0] + 0.5) * T, v0 + door[1] * T - 2);
   }
+  const panels = panel ? [panel] : [];
+  for (const [o, x, y] of sideDoors) {
+    const r = o === 'h' ? F.rect(u0 + x * T, u0 + (x + 1) * T, v0 + y * T - WALL_T / 2, v0 + y * T + WALL_T / 2) : F.rect(u0 + x * T - WALL_T / 2, u0 + x * T + WALL_T / 2, v0 + y * T, v0 + (y + 1) * T);
+    panels.push({ x0: r.x, z0: r.z, x1: r.x + r.w, z1: r.z + r.d, h: 3, off: false, door: loc.id, house: true });
+  }
   // porch / deck counts toward the footprint for the box, so trees stay off it
   for (let y = 0; y < GD; y++) for (let x = 0; x < GW; x++) if (tileAt(design, 0, x, y) === 'P') {
     const r = tileRect(x, y);
     box = box ? { x: Math.min(box.x, r.x), z: Math.min(box.z, r.z), w: Math.max(box.x + box.w, r.x + r.w) - Math.min(box.x, r.x), d: Math.max(box.z + box.d, r.z + r.d) - Math.min(box.z, r.z) } : { ...r };
   }
-  const home = { id: loc.id, loc, F, u0, v0, floor0: design.floors[0], stories: Math.max(0, ...h), panel, door: doorAt, mass: all.find(b => b.kind === 'home') || null, box, all };
+  const home = { id: loc.id, loc, F, u0, v0, floor0: design.floors[0], stories: Math.max(0, ...h), panel, panels, door: doorAt, mass: all.find(b => b.kind === 'home') || null, box, all };
   if (houses) houses.push(home);
   return home;
 }

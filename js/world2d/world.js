@@ -22,6 +22,7 @@ import { inHouse } from './house.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W, inCityGrid } from '../data/world.js';
+import { stateAt, stateById, flightQuote } from '../data/states.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
@@ -848,8 +849,8 @@ export class World {
     let home = null;
     for (const h of this.map.houses) {
       const owned = st.properties.includes(h.id), theirs = !owned && this.showcase.ownerOf(h.id);
-      if (Math.abs(h.door?.x - p.x) > 80 || Math.abs(h.door?.z - p.z) > 80) { if (h.panel) h.panel.off = owned || !!theirs; continue; }
-      if (h.panel) h.panel.off = owned || !!theirs;
+      for (const pn of h.panels || (h.panel ? [h.panel] : [])) pn.off = owned || !!theirs;
+      if (Math.abs(h.door?.x - p.x) > 80 || Math.abs(h.door?.z - p.z) > 80) continue;
       if (owned && !this.inCar && !this.rides.riding && inHouse(h, p.x, p.z)) home = h;
       if (theirs && !this.inCar && !this.rides.riding && inHouse(h, p.x, p.z)) visit = h;
     }
@@ -965,6 +966,15 @@ export class World {
     return { ...(turn || { turn: 'arrive', dist: total, street: s.gps.label }), total, label: s.gps.label };
   }
   setGps(x, z, label) {
+    // somewhere in another state: the GPS takes you to the airport (ui/flights.js)
+    const p = this.playerState(), there = stateAt(x, z), here = stateAt(p.x, p.z);
+    if (there !== here) {
+      const air = LOC_BY_ID[stateById(here).airport];
+      this.s.gps = { x: air.x, z: air.z, label: air.name };
+      this.gpsT = 0;
+      this.ui.toast(`${label} is in ${stateById(there).city}, ${stateById(there).abbr}. GPS set to ${air.name}: catch a flight there.`, 'info');
+      return;
+    }
     this.s.gps = { x, z, label };
     this.gpsT = 0;
     this.ui.toast(`GPS set: ${label}`, 'info');
@@ -982,7 +992,9 @@ export class World {
     const r = this.routeTo(x, z), p = this.playerState();
     const meters = r.meters > 0 ? r.meters : Math.hypot(x - p.x, z - p.z) * 1.3;
     const car = withCar ? v.car : null;
-    const block = travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car, meters });
+    const there = stateAt(x, z);
+    const block = there !== stateAt(p.x, p.z) ? `That's in ${stateById(there).city}. Fly there from the airport.`
+      : travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car, meters });
     return { meters, withCar, block, quote: travelQuote(meters, car) };
   }
 
@@ -1022,6 +1034,54 @@ export class World {
     const hrs = q.minutes >= 60 ? `${Math.floor(q.minutes / 60)} h ${q.minutes % 60} min` : `${q.minutes} min`;
     this.ui.toast(`⚡ Teleported to ${label}${plan.withCar ? ' with your car' : ''}. ${fmtMoney(q.fee)}, ${hrs} passed.`, 'good');
     emit('teleport', { to: label, fee: q.fee });
+    saveGame('auto', true);
+    return true;
+  }
+
+  // ---------------------------------------------------------------- flights
+  // From an airport to another state's (ui/flights.js is the counter). Your
+  // car rides cargo when you're in it or standing by it at the terminal; on
+  // foot away from it, you fly alone and it waits in the airport lot.
+  flightPlan(toId) {
+    const s = this.s, v = this.vehicle, p = this.playerState();
+    const to = LOC_BY_ID[toId], from = stateAt(p.x, p.z), dest = to ? stateAt(to.x, to.z) : null;
+    const near = !this.inCar && v && !v.car.impound && Math.hypot(v.x - this.foot.x, v.z - this.foot.z) < CAR_REACH;
+    const hot = this.inCar && !!v?.car?.hot;
+    const withCar = !!v && (this.inCar || near) && !v.car.hot;
+    const quote = dest ? flightQuote(from, dest, withCar) : null;
+    let block = !to || !quote ? 'No flights there.' : dest === from ? 'You\'re already here.'
+      : travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car: withCar ? v.car : null });
+    if (!block && this.rides.riding) block = `You're riding with ${this.rides.riding.name}. Get out first.`;
+    return { to, from, dest, withCar, quote, block };
+  }
+  fly(toId) {
+    const s = this.s, plan = this.flightPlan(toId);
+    if (plan.block) { this.ui.toast(plan.block, 'bad'); return false; }
+    const q = plan.quote, to = plan.to, st = stateById(plan.dest);
+    if (!spend(s, q.total, `Flight to ${st.city}${plan.withCar ? ' + car freight' : ''}`)) { this.ui.toast(`The flight is ${fmtMoney(q.total)}. You're short.`, 'bad'); return false; }
+    const road = this.map.roads.nearestOnRoad(to.x, to.z);
+    const spot = road ? curbSpot(road, to.x, to.z) : { x: to.x, z: to.z, h: 0 };
+    if (plan.withCar) {
+      const v = this.vehicle;
+      v.x = spot.x; v.z = spot.z; v.h = spot.h;
+      v.vx = v.vz = 0; v.rev = 0; v.steer = v.steerIn = 0; v.yawRate = 0; v.sim.v = 0; v.skid = 0;
+      s.carPos = { x: v.x, z: v.z, h: v.h };
+      if (!this.inCar) { this.inCar = true; input.setContext('car'); this.restartEngineSound(); }
+    } else {
+      this.foot.x = to.x; this.foot.z = to.z; this.foot.h = to.face ?? 0;
+    }
+    const p = this.playerState();
+    this.cam.x = p.x; this.cam.z = p.z;
+    this.skids.length = 0; this.smoke.length = 0;
+    this.traffic.cars = [];
+    this.pullups.remove();
+    for (let left = q.minutes; left > 0; left -= 30) this.advanceClock(Math.min(30, left));
+    if (s.gps) { s.gps = null; this.gpsPath = null; }
+    this.warpT = 0.9;
+    s.stats.flights = (s.stats.flights || 0) + 1;
+    const hrs = `${Math.floor(q.minutes / 60)} h ${q.minutes % 60} min`;
+    this.ui.toast(`✈ Landed in ${st.city}, ${st.abbr}${plan.withCar ? '. Your car came off the cargo plane' : ''}. ${fmtMoney(q.total)}, ${hrs} door to door.`, 'good');
+    emit('flight', { to: plan.dest, from: plan.from, fee: q.total });
     saveGame('auto', true);
     return true;
   }

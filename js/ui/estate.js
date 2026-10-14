@@ -5,6 +5,7 @@
 import { openPanel, closeAllPanels, bind, esc, toast, confirm, modal } from './dom.js';
 import { game, fmtMoney, tierOf, earn } from '../core/state.js';
 import { PROPERTIES, LOC_BY_ID } from '../data/world.js';
+import { stateById } from '../data/states.js';
 import { LAND, PLANS, PLAN_BY_ID, TRAPS, DRUGS, DRUG_BY_ID, WORKER_PAY, WORKER_CUT, RIGS, RIG_PAY, RIG_SELL, FENCES, FENCE_BY_ID, ANIMALS, ANIMAL_BY_ID, DEVS, DEV_BY_ID, RENT_LEVELS, RENT_BY_ID } from '../data/estate.js';
 import { buyProperty, sellProperty, buyLand, sellLand, build, buildCost, landState, ownsLand, isBuilt, building, now, portfolio, SELL_RATE, landValue,
   houseDesign, remodel, remodelCost, buyRig, sellRig, ownsRig, fenceOptions, buildFence, buyAnimal, sellAnimal, herd, penCount, penCap,
@@ -13,7 +14,7 @@ import { fromPreset, summary as houseLine, cost as designCost } from '../core/ho
 import { PRESETS, PRESET_IDS } from '../data/homes.js';
 import { openBuilder } from './builder.js';
 import { districtAt } from '../data/world.js';
-import { ensureDrugs, trapState, prices, buy, dump, moveStash, units, raidChance, heatLabel, isClosed } from '../core/drugs.js';
+import { ensureDrugs, trapState, prices, plugPrice, buy, dump, moveStash, units, raidChance, heatLabel, isClosed } from '../core/drugs.js';
 import { applyEstate } from '../world2d/estate.js';
 import { homeScreen } from './places.js';
 import { openGarage } from './garage.js';
@@ -37,7 +38,7 @@ async function buyDeeded(s, id, buy) {
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 const say = r => { toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) audio.buy(); else audio.error(); return r.ok; };
-const gps = (app, id, label) => { const l = LOC_BY_ID[id]; app.world?.setGps(l.x, l.z, label || l.name); closeAllPanels(); };
+const gps = (app, id, label) => { const l = LOC_BY_ID[id]; app.world?.setGps(l.x, l.z, label || l.name); closeAllPanels(); };   // (out of state, World.setGps sends you to the airport)
 const bagLine = bag => DRUGS.filter(g => bag[g.id]).map(g => `${bag[g.id]} ${g.unit === 'oz' ? 'oz' : '×'} ${g.name}`).join(' · ') || 'nothing';
 const tierTag = (t, tier) => t && tier < t ? `<span class="tag">Tier ${t}</span>` : '';
 
@@ -56,7 +57,7 @@ export function openRealty(app, focusId = null) {
       body = Object.entries(PROPERTIES).filter(([, p]) => !p.trap && !p.land).sort((a, b) => a[1].price - b[1].price).map(([id, p]) => {
         const owned = s.properties.includes(id), locked = p.tier && tier < p.tier;
         const kind = p.house ? houseLine(fromPreset(p.house)) : 'Apartment';
-        return card(id, p.name, p.desc, `<span>House</span><span>${kind}</span><span>Garage</span><span>${p.slots} cars</span><span>Where</span><span>${esc(districtAt(LOC_BY_ID[id]?.x ?? 0, LOC_BY_ID[id]?.z ?? 0))}</span><span>Price</span><span>${p.price ? fmtMoney(p.price) : 'Rented'}</span>`,
+        return card(id, p.name, p.desc, `<span>House</span><span>${kind}</span><span>Garage</span><span>${p.slots} cars</span><span>Where</span><span>${esc(districtAt(LOC_BY_ID[id]?.x ?? 0, LOC_BY_ID[id]?.z ?? 0))}${LOC_BY_ID[id]?.state ? `, ${esc(stateById(LOC_BY_ID[id].state).abbr)}` : ''}</span><span>Price</span><span>${p.price ? fmtMoney(p.price) : 'Rented'}</span>`,
           owned ? `<span class="tag tag-green">${s.home === id ? 'Home' : 'Owned'}</span>${s.home !== id ? `<button class="btn btn-sm" data-action="home" data-id="${id}">Make home</button>` : ''}${p.price ? `<button class="btn btn-sm" data-action="sell" data-id="${id}">Sell ${fmtMoney(Math.round(p.price * SELL_RATE))}</button>` : ''}`
             : takenTag(s, id) || `<button class="btn btn-sm btn-primary" data-action="buy" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${p.tier}` : `Buy ${fmtMoney(p.price)}`}</button>`);
       }).join('');
@@ -65,10 +66,10 @@ export function openRealty(app, focusId = null) {
         const own = ownsLand(s, id), l = s.estate?.land?.[id], locked = L.tier && tier < L.tier;
         const status = !own ? '' : building(s, id) ? `Building: ${esc(PLAN_BY_ID[l.plan].name)} · ${Math.max(1, Math.ceil((l.ready - now(s)) / 60))} game hours left` : isBuilt(s, id) ? `Built: ${esc(houseLine(houseDesign(s, id)))} · ${esc(PLAN_BY_ID[l.plan].name)}` : 'Empty. Go pick a build.';
         const loc = LOC_BY_ID[id], fence = fenceOptions(id).at(-1), most = DEVS.filter(D => devFits(id, D.id)).at(-1);
-        return card(id, L.name, L.desc, `<span>Where</span><span>${esc(districtAt(loc.x, loc.z))}</span><span>Livestock</span><span>Up to ${fence.cap} head</span><span>Rentals</span><span>${most ? `Up to ${esc(most.name.toLowerCase())} (${devUnits(most)} units)` : 'No room'}</span><span>Price</span><span>${fmtMoney(L.price)}</span>${own ? `<span>Status</span><span>${status}</span>` : ''}${own && devOf(s, id) ? `<span>Tenants</span><span>${esc(devLine(s, id))}</span>` : ''}`,
+        return card(id, L.name, L.desc, `${L.acres ? `<span>Size</span><span>${L.acres.toLocaleString()} acres</span>` : ''}<span>Where</span><span>${esc(districtAt(loc.x, loc.z))}${L.state ? `, ${esc(stateById(L.state).abbr)}` : ''}</span><span>Livestock</span><span>Up to ${fence.cap} head</span><span>Rentals</span><span>${most ? `Up to ${esc(most.name.toLowerCase())} (${devUnits(most)} units)` : 'No room'}</span><span>Price</span><span>${fmtMoney(L.price)}</span>${own ? `<span>Status</span><span>${status}</span>` : ''}${own && devOf(s, id) ? `<span>Tenants</span><span>${esc(devLine(s, id))}</span>` : ''}`,
           own ? `<span class="tag tag-green">Owned</span><button class="btn btn-sm btn-primary" data-action="landgo" data-id="${id}">Go build</button><button class="btn btn-sm" data-action="rentals" data-id="${id}">🏘 Rentals</button><button class="btn btn-sm" data-action="sellland" data-id="${id}">Sell ${fmtMoney(landValue(s, id))}</button>`
             : takenTag(s, id) || `<button class="btn btn-sm btn-primary" data-action="buyland" data-id="${id}" ${locked ? 'disabled' : ''}>${locked ? `Tier ${L.tier}` : `Buy ${fmtMoney(L.price)}`}</button>`);
-      }).join('') + `<p class="small muted" style="grid-column:1/-1">Buy a lot in Stop Six or ranch land out in Johnson County, then drive out to it. Pick a house (1, 2 or 3 stories, or design your own room by room) and a garage from 2 cars up to a 100-car vault. Fence the back and run cattle and horses, or build rent houses and apartments back there and collect rent every day.</p>`;
+      }).join('') + `<p class="small muted" style="grid-column:1/-1">Buy a lot in Stop Six, ranch land out in Johnson County, a 400 to 1,000 acre spread down in Brazos country, or land out of state (fly there from Alliance Airport), then go out to it. Pick a house (1, 2 or 3 stories, or design your own room by room) and a garage from 2 cars up to a 100-car vault. Fence the back and run cattle and horses, or build rent houses and apartments back there and collect rent every day.</p>`;
     } else if (tab === 'oil') {
       body = Object.entries(RIGS).map(([id, R]) => {
         const own = ownsRig(s, id), r = s.estate?.rigs?.[id];
@@ -304,18 +305,20 @@ export function openPlug(loc, app) {
     const pr = prices(s), bag = ensureDrugs(s).bag, hr = (s.time.min / 60) % 24;
     const stock = loc.stock?.length ? DRUGS.filter(g => loc.stock.includes(g.id)) : DRUGS;
     const title = loc.name || "Lil Tre's Corner Store";
-    const subtitle = loc.id === 'plug_carson' ? 'Nightlife lounge · private back room' : loc.id === 'plug_bankrol' ? 'Ladies club · VIP supply room' : 'Stop Six · chips, Swishers, and the back room';
+    const rate = loc.rate || 1;
+    const subtitle = loc.tagline || (loc.id === 'plug_carson' ? 'Nightlife lounge · private back room' : loc.id === 'plug_bankrol' ? 'Ladies club · VIP supply room' : 'Stop Six · chips, Swishers, and the back room');
     root.innerHTML = head(title, subtitle) + `<div class="p-body" style="max-width:720px">
       <p class="muted">"${hr >= 20 || hr < 5 ? 'Late night, huh. Come to the back.' : 'You know what I got. Prices move every day, so don\'t ask me yesterday\'s.'}"</p>
       <div class="list">${stock.map(g => `<div class="li"><span class="swatch" style="background:${g.color};width:16px;height:16px;border-radius:50%"></span><div class="grow"><div class="t">${esc(g.name)} <span class="muted small">${esc(g.what)} · per ${esc(g.unit)}</span></div>
-        <div class="s">Costs <b>${fmtMoney(pr[g.id].buy)}</b> · street pays about <b class="good">${fmtMoney(pr[g.id].street)}</b>${bag[g.id] ? ` · you have ${bag[g.id]}` : ''}</div></div>
+        <div class="s">Costs <b>${fmtMoney(plugPrice(s, g.id, rate))}</b>${rate < 1 ? ` <span class="good small">(${fmtMoney(pr[g.id].buy)} in Texas)</span>` : ''} · Texas street pays about <b class="good">${fmtMoney(pr[g.id].street)}</b>${bag[g.id] ? ` · you have ${bag[g.id]}` : ''}</div></div>
         <div style="text-align:right;white-space:nowrap"><button class="btn btn-sm btn-primary" data-action="buy" data-id="${g.id}" data-n="1">Buy 1</button> <button class="btn btn-sm" data-action="buy" data-id="${g.id}" data-n="5">5</button>${bag[g.id] ? ` <button class="btn btn-sm" data-action="dump" data-id="${g.id}">Sell back</button>` : ''}</div></div>`).join('')}</div>
       <div class="section-title">In your bag</div><p>${esc(bagLine(bag))}</p>
+      ${rate < 1 ? '<p class="small good">Out-of-state prices. Fly it home to Texas and sell it out of your trap. Your car rides cargo, so it goes in the trunk.</p>' : ''}
       <p class="small muted">Sell it out of a trap house (Bayline Realty sells them). Get stopped with product on you and it's a charge: a little is possession, ${4} units or more reads as dealing. He buys back at half the street price.</p></div>`;
     bind(root, {
       close: () => h.close(),
-      buy: d => { say(buy(s, d.id, +d.n)); h.refresh(); },
-      dump: d => { say(dump(s, d.id, 1)); h.refresh(); },
+      buy: d => { say(buy(s, d.id, +d.n, rate)); h.refresh(); },
+      dump: d => { say(dump(s, d.id, 1, rate)); h.refresh(); },
     });
   });
 }
