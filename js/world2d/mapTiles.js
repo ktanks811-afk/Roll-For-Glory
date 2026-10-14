@@ -3,7 +3,8 @@
 // demand and kept in a small cache. Sharp at any zoom, no giant pre-rendered
 // picture needed.
 
-import { DESERT_Z, COUNTRY, DALLAS, DENTON, WEST_CITY } from '../data/world.js';
+import { DESERT_Z, COUNTRY, BRAZOS, DALLAS, DENTON, WEST_CITY } from '../data/world.js';
+import { STATES, cityRect, regionRect } from '../data/states.js';
 import { BACKROAD } from './map.js';
 
 export const TILE = 400;          // metres per tile
@@ -20,7 +21,8 @@ export function buildTile(map, i, j) {
   // ground: grass, then desert, hills and the city grid
   g.fillStyle = '#1b2417'; g.fillRect(x0, z0, W, W);
   g.fillStyle = '#6a5b43'; if (z0 + W > DESERT_Z && z0 < COUNTRY.z0) g.fillRect(x0, Math.max(z0, DESERT_Z), W, Math.min(z0 + W, COUNTRY.z0) - Math.max(z0, DESERT_Z));
-  g.fillStyle = '#26321e'; if (z0 + W > COUNTRY.z0) g.fillRect(COUNTRY.x0, COUNTRY.z0, COUNTRY.x1 - COUNTRY.x0, COUNTRY.z1 - COUNTRY.z0);
+  g.fillStyle = '#26321e'; if (z0 + W > COUNTRY.z0) { g.fillRect(COUNTRY.x0, COUNTRY.z0, COUNTRY.x1 - COUNTRY.x0, COUNTRY.z1 - COUNTRY.z0); g.fillRect(BRAZOS.x0, BRAZOS.z0, BRAZOS.x1 - BRAZOS.x0, BRAZOS.z1 - BRAZOS.z0); }
+  for (const st of Object.values(STATES)) { const r = regionRect(st), c = cityRect(st); if (x0 + W < r.x0 || x0 > r.x1 || z0 + W < r.z0 || z0 > r.z1) continue; g.fillStyle = st.ground; g.fillRect(r.x0, r.z0, r.x1 - r.x0, r.z1 - r.z0); g.fillStyle = '#2a2c31'; g.fillRect(c.x0 - 15, c.z0 - 15, c.x1 - c.x0 + 30, c.z1 - c.z0 + 30); }
   g.fillStyle = '#222b1d'; g.fillRect(-3300, -1000, 2300, DESERT_Z + 1000);
   g.fillStyle = '#2a2c31'; g.fillRect(-985, -985, 1970, 1970);
   g.fillRect(DALLAS.x0 - 15, DALLAS.z0 - 15, DALLAS.x1 - DALLAS.x0 + 30, DALLAS.z1 - DALLAS.z0 + 30);

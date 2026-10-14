@@ -39,6 +39,7 @@ import { openPawn } from './pawn.js';
 import { openHospital } from './hospital.js';
 import { openTrailerLot, openTrailerHome } from './trailers.js';
 import { openSaleBarn } from './livestock.js';
+import { openAirport } from './flights.js';
 import { openKennel } from './kennel.js';
 import { openLabel } from './label.js';
 import { openHogLease } from './hoghunt.js';
@@ -77,6 +78,7 @@ const HANDLERS = {
   pawn: (loc, app) => openPawn(loc, app),
   trailers: (loc, app) => openTrailerLot(loc, app),
   salebarn: (loc, app) => openSaleBarn(loc, app),
+  airport: (loc, app) => openAirport(loc, app),
   kennel: (loc, app) => openKennel(app, { shop: true, tab: 'buy' }),
   studio: (loc, app) => openLabel(app, { studio: loc.id }),
   hoghunt: (loc, app) => openHogLease(loc, app),

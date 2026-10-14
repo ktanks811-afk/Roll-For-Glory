@@ -6,6 +6,7 @@
 import { openPanel, closePanel, bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
 import { game, fmtMoney, gameTimeStr, dayName, tierOf, nextTier, racingLevel, activeCar, carValue, carMetrics, deposit, withdraw, dirtyOf, cleanOf, spend, earn, addRep, addFollowers, modelOf, hourOf, isNight } from '../core/state.js';
 import { LOCATIONS, LOC_BY_ID, PROPERTIES, ROADS, districtAt } from '../data/world.js';
+import { stateAt } from '../data/states.js';
 import { STREET_RACE_BY_ID, fmtRaceTime } from '../data/streetRaces.js';
 import { RACER_BY_ID, CREWS, RACERS, PEOPLE, contactInfo } from '../data/npcs.js';
 import { CHAPTERS, currentStep } from '../data/story.js';
@@ -586,13 +587,14 @@ RENDER.ryde = (scr, ctx) => {
   const w = ctx.app.world;
   const p = w?.playerState();
   const night = isNight(s.time);
+  const here = stateAt(p.x, p.z), local = (x, z) => stateAt(x, z) === here;    // a Ryde doesn't cross state lines
   const fare = l => Math.round((3.5 + Math.hypot(l.x - p.x, l.z - p.z) * 1.3 / 1609 * 1.95) * (night ? 1.4 : 1) * 100) / 100;
   scr.innerHTML = head('Ryde') + `<div class="app-body">
     ${w?.inCar ? '<p class="warn">You\'re driving. Get out of your car first.</p>' : ''}
     <p class="small muted">${night ? '🌙 Late-night pricing (1.4×).' : 'Standard pricing.'} Your car stays where you parked it.</p>
-    <div class="list">${LOCATIONS.map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.name)}</div><div class="s">${esc(districtAt(l.x, l.z))} · ${(Math.hypot(l.x - p.x, l.z - p.z) * 1.3 / 1609).toFixed(1)} mi</div></div>
+    <div class="list">${LOCATIONS.filter(l => local(l.x, l.z)).map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.name)}</div><div class="s">${esc(districtAt(l.x, l.z))} · ${(Math.hypot(l.x - p.x, l.z - p.z) * 1.3 / 1609).toFixed(1)} mi</div></div>
       <button class="btn btn-sm" data-action="ride" data-loc="${l.id}" ${w?.inCar ? 'disabled' : ''}>${fmtMoney(fare(l), true)}</button></div>`).join('')}
-    ${w?.vehicle ? `<div class="li"><div class="grow"><div class="t">Back to your car</div><div class="s">${esc(districtAt(w.vehicle.x, w.vehicle.z))}</div></div><button class="btn btn-sm" data-action="ride" data-loc="__car" ${w.inCar ? 'disabled' : ''}>${fmtMoney(fare({ x: w.vehicle.x, z: w.vehicle.z }), true)}</button></div>` : ''}
+    ${w?.vehicle && local(w.vehicle.x, w.vehicle.z) ? `<div class="li"><div class="grow"><div class="t">Back to your car</div><div class="s">${esc(districtAt(w.vehicle.x, w.vehicle.z))}</div></div><button class="btn btn-sm" data-action="ride" data-loc="__car" ${w.inCar ? 'disabled' : ''}>${fmtMoney(fare({ x: w.vehicle.x, z: w.vehicle.z }), true)}</button></div>` : ''}
     </div></div>`;
   wire(scr, ctx, {
     ride: d => {

@@ -12,6 +12,11 @@ export const STUDIOS = {
   trap_house_studios: { name: 'Trap House Studios', q: 5, rate: 1.25, owner: 'Trap House Staff', tagline: 'Southside · hard drums, loud rooms and late-night sessions' },
   the_kitchen: { name: 'The Kitchen', q: 9, rate: 1.75, owner: 'The Kitchen Staff', tagline: 'Dallas · premium writing room · polished mixes' },
   inner_circle: { name: 'Inner Circle', q: 12, rate: 2.1, owner: 'Inner Circle Staff', tagline: 'DFW · elite room · the place for five-star records' },
+  // out of state (fly there from Alliance Airport): the best rooms in the country
+  atl_studio: { name: 'Zone 6 Sound', q: 14, rate: 2.2, owner: 'Pook', tagline: 'Atlanta · East side · the room half the charts came out of' },
+  atl_peachtree: { name: 'Peachtree Platinum Studios', q: 17, rate: 2.8, owner: 'Dr. Keys', tagline: 'Atlanta · Midtown · platinum plaques floor to ceiling' },
+  la_sunset: { name: 'Sunset Blvd Recorders', q: 16, rate: 2.6, owner: 'Marisol Vega', tagline: 'Los Angeles · Hollywood · Neve console, A-list engineers' },
+  mia_studio: { name: 'Biscayne Bay Studios', q: 13, rate: 2.0, owner: 'DJ Fuego', tagline: 'Miami · on the water · club records that travel' },
 };
 
 export const KINDS = {

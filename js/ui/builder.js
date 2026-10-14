@@ -1,31 +1,34 @@
 // Cowtown Custom Builders: design your own house, the way the Sims does it.
-// Drag across the grid to paint rooms, drop furniture in them, add a 2nd and
-// 3rd floor (a staircase gets you up there), pick the siding and the roof.
-// Rules are in core/homes.js; this is the screen.
+// Drag across the grid to paint rooms, draw your own walls, doors and windows
+// along the tile edges, drop furniture in, and build up to five floors: put a
+// staircase down and the floor above it opens up. Pick the siding and the
+// roof. Rules are in core/homes.js; this is the screen.
 //
-//   Touch / mouse   drag to paint a room, tap to place furniture, drag a
-//                   piece to move it, tap it to turn or remove it
+//   Touch / mouse   drag to paint a room, drag along the grid lines to draw a
+//                   wall, tap to place furniture, drag a piece to move it,
+//                   tap it to turn or remove it
 //   Controller      the D-pad moves the cursor on the plan, A paints or
 //                   places, move off the edge of the plan to get to the tools
 
 import { openPanel, bind, esc, toast } from './dom.js';
 import { fmtMoney } from '../core/state.js';
 import { audio } from '../core/audio.js';
-import { GW, GD, MAX_FLOORS, ROOMS, ROOM_BY_ID, FURNITURE, FURN_BY_ID, FURN_CATS, WALL_COLORS, ROOF_COLORS, ROOF_STYLES, PRESETS, PRESET_IDS } from '../data/homes.js';
+import { GW, GD, MAX_FLOORS, FLOOR_NAMES, ROOMS, ROOM_BY_ID, FURNITURE, FURN_BY_ID, FURN_CATS, WALLS, WALL_BY_ID, WALL_COLORS, ROOF_COLORS, ROOF_STYLES, PRESETS, PRESET_IDS } from '../data/homes.js';
 import * as H from '../core/homes.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
 
-const FLOOR_NAMES = ['Ground floor', '2nd floor', '3rd floor'];
+const SHORT_FLOORS = ['Ground', '2nd', '3rd', '4th', '5th'];
 
 // opts: { design, title, sub, action ('Build it'), price(design) → { text, ok },
 //         done(design) → true to close }
 export function openBuilder(opts) {
   const st = {
     d: H.cloneDesign(opts.design || H.fromPreset('starter')),
-    floor: 0, mode: 'rooms', room: 'L', furn: 'bed', cat: 'Bedroom', rot: 0, sel: null,
+    floor: 0, mode: 'rooms', room: 'L', furn: 'bed', cat: 'Bedroom', rot: 0, sel: null, wall: 'wall', line: null, fresh: -1,
     cur: { x: 0, y: 0 }, drag: null, move: null, hover: null, ts: 24,
   };
   while (st.d.furn.length < st.d.floors.length) st.d.furn.push([]);
+  st.d.walls ??= []; while (st.d.walls.length < st.d.floors.length) st.d.walls.push([]);
   let cv = null, g = null, tools = null, foot = null;
 
   openPanel((root, h) => {
@@ -77,24 +80,59 @@ export function openBuilder(opts) {
         g.fillStyle = ROOM_BY_ID[c].c; g.fillRect(x * ts, y * ts, ts, ts);
         if (c === 'P') { g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1; for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(x * ts, y * ts + k * ts / 4); g.lineTo(x * ts + ts, y * ts + k * ts / 4); g.stroke(); } }
       }
+      // where the stairs from the floor below come up
+      if (fl > 0) for (const i of H.stairwell(d, fl)) {
+        const x = i % GW, y = Math.floor(i / GW);
+        g.fillStyle = 'rgba(20,16,12,.55)'; g.fillRect(x * ts + 2, y * ts + 2, ts - 4, ts - 4);
+        g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1;
+        for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(x * ts + 3, y * ts + k * ts / 4); g.lineTo(x * ts + ts - 3, y * ts + k * ts / 4); g.stroke(); }
+        g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `700 ${Math.max(9, ts * 0.42)}px Rajdhani, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText('↑', x * ts + ts / 2, y * ts + ts / 2);
+      }
       // grid
       g.strokeStyle = 'rgba(255,255,255,0.07)'; g.lineWidth = 1; g.beginPath();
       for (let x = 1; x < GW; x++) { g.moveTo(x * ts + 0.5, 0); g.lineTo(x * ts + 0.5, GD * ts); }
       for (let y = 1; y < GD; y++) { g.moveTo(0, y * ts + 0.5); g.lineTo(GW * ts, y * ts + 0.5); }
       g.stroke();
-      // walls: thick round the outside, thin between rooms
+      // walls: thick round the outside, thin between rooms, then the ones you drew
+      const seg = (x, y, hz, t, col, a0 = 0, a1 = 1) => { g.fillStyle = col; if (hz) g.fillRect(x * ts + a0 * ts - (a0 ? 0 : t / 2), y * ts - t / 2, (a1 - a0) * ts + (a0 ? 0 : t / 2) + (a1 < 1 ? 0 : t / 2), t); else g.fillRect(x * ts - t / 2, y * ts + a0 * ts - (a0 ? 0 : t / 2), t, (a1 - a0) * ts + (a0 ? 0 : t / 2) + (a1 < 1 ? 0 : t / 2)); };
+      const outerT = Math.max(3, ts * 0.16), innerT = Math.max(1.5, ts * 0.07);
       for (let y = 0; y <= GD; y++) for (let x = 0; x <= GW; x++) {
         const c = H.tileAt(d, fl, x, y), up = H.tileAt(d, fl, x, y - 1), left = H.tileAt(d, fl, x - 1, y);
         const edge = (a, b, hz) => {
+          if (H.wallAt(d, fl, hz ? 'h' : 'v', x, y)) return;
           const ra = H.isRoom(a), rb = H.isRoom(b);
           if (ra === rb && (!ra || a === b)) return;
           const outer = ra !== rb;
-          g.fillStyle = outer ? d.wall : 'rgba(30,26,22,.9)';
-          const t = outer ? Math.max(3, ts * 0.16) : Math.max(1.5, ts * 0.07);
-          if (hz) g.fillRect(x * ts - t / 2, y * ts - t / 2, ts + t, t); else g.fillRect(x * ts - t / 2, y * ts - t / 2, t, ts + t);
+          seg(x, y, hz, outer ? outerT : innerT, outer ? d.wall : 'rgba(30,26,22,.9)');
         };
         if (x < GW) edge(up, c, true);
         if (y < GD) edge(left, c, false);
+      }
+      const drawPiece = (w, alpha = 1) => {
+        const hz = w.o === 'h', type = H.edgeType(d, fl, w.o, w.x, w.y), outer = type === 'outer';
+        g.globalAlpha = alpha;
+        if (w.k === 'wall') seg(w.x, w.y, hz, outer ? outerT : Math.max(2.5, ts * 0.11), outer ? d.wall : '#1e1a16');
+        else if (w.k === 'door') {
+          if (outer) { seg(w.x, w.y, hz, outerT, d.wall, 0, 0.12); seg(w.x, w.y, hz, outerT, d.wall, 0.88, 1); }
+          seg(w.x, w.y, hz, Math.max(2, ts * 0.08), '#c8a46a', 0.14, 0.86);
+          g.strokeStyle = 'rgba(232,210,170,.8)'; g.lineWidth = 1; g.beginPath();
+          if (hz) g.arc(w.x * ts + ts * 0.14, w.y * ts, ts * 0.7, 0, Math.PI / 2); else g.arc(w.x * ts, w.y * ts + ts * 0.14, ts * 0.7, 0, Math.PI / 2);
+          g.stroke();
+        } else if (w.k === 'window') { seg(w.x, w.y, hz, outer ? outerT : innerT * 1.6, outer ? d.wall : '#1e1a16'); seg(w.x, w.y, hz, Math.max(2, (outer ? outerT : innerT) * 0.6), '#9fd3e6', 0.2, 0.8); }
+        else if (w.k === 'glass') seg(w.x, w.y, hz, Math.max(2.5, ts * 0.1), '#5fd3ff');
+        else if (w.k === 'half') { g.setLineDash([Math.max(2, ts * 0.15), Math.max(2, ts * 0.1)]); g.strokeStyle = '#d9b48a'; g.lineWidth = Math.max(2, ts * 0.09); g.beginPath(); g.moveTo(w.x * ts, w.y * ts); g.lineTo(w.x * ts + (hz ? ts : 0), w.y * ts + (hz ? 0 : ts)); g.stroke(); g.setLineDash([]); }
+        g.globalAlpha = 1;
+      };
+      for (const w of d.walls?.[fl] || []) drawPiece(w);
+      // drawing a wall: where it'll go
+      if (st.line) {
+        const { x0, y0, x1, y1 } = st.line, hz = Math.abs(x1 - x0) >= Math.abs(y1 - y0);
+        const a = hz ? [Math.min(x0, x1), Math.max(x0, x1)] : [Math.min(y0, y1), Math.max(y0, y1)];
+        for (let k = a[0]; k < a[1]; k++) { const e = hz ? { o: 'h', x: k, y: y0 } : { o: 'v', x: x0, y: k }; if (H.edgeOk(e.o, e.x, e.y) && (st.wall === '.' || H.edgeType(d, fl, e.o, e.x, e.y))) drawPiece({ ...e, k: st.wall === '.' ? 'wall' : st.wall }, 0.75); }
+        g.strokeStyle = st.wall === '.' ? '#ff3346' : '#2cff7a'; g.lineWidth = 1.5; g.setLineDash([4, 3]);
+        g.beginPath(); g.moveTo(x0 * ts, y0 * ts); g.lineTo(hz ? x1 * ts : x0 * ts, hz ? y0 * ts : y1 * ts); g.stroke(); g.setLineDash([]);
+        g.fillStyle = '#fff'; for (const [px, py] of [[x0, y0], [hz ? x1 : x0, hz ? y0 : y1]]) { g.beginPath(); g.arc(px * ts, py * ts, 3, 0, Math.PI * 2); g.fill(); }
       }
       // furniture
       const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -131,18 +169,28 @@ export function openBuilder(opts) {
 
     // ------------------------------------------------------------ the tools
     const renderFloors = () => {
+      // a floor opens once there's a staircase up to it; the next locked one shows what it needs
+      let shownLock = false;
       floors.innerHTML = Array.from({ length: MAX_FLOORS }, (_, k) => {
         const has = k < st.d.floors.length && H.roomTiles(st.d, k);
-        const can = k === 0 || H.roomTiles(st.d, k - 1);
-        return `<button class="btn btn-sm ${st.floor === k ? 'btn-primary' : ''}" data-action="floor" data-f="${k}" ${can ? '' : 'disabled'}>${FLOOR_NAMES[k]}${has ? '' : k ? ' +' : ''}</button>`;
+        const can = has || H.floorOpen(st.d, k);
+        if (!can) { if (shownLock || !H.roomTiles(st.d, k - 1)) return ''; shownLock = true; return `<button class="btn btn-sm bld-lock" data-action="locked" data-f="${k}" title="Put a staircase on the ${FLOOR_NAMES[k - 1].toLowerCase()}">🔒 ${SHORT_FLOORS[k]}</button>`; }
+        return `<button class="btn btn-sm ${st.floor === k ? 'btn-primary' : ''} ${st.fresh === k ? 'bld-new' : ''}" data-action="floor" data-f="${k}">${SHORT_FLOORS[k]}${k ? ' floor' : ''}${has ? '' : k ? ' +' : ''}</button>`;
       }).join('');
-      bind(floors, { floor: dd => { st.floor = +dd.f; st.sel = null; if (st.floor > 0 && st.room === 'P') st.room = 'B'; refresh(); } });
+      bind(floors, {
+        floor: dd => { st.floor = +dd.f; st.sel = null; if (st.fresh === st.floor) st.fresh = -1; if (st.floor > 0 && st.room === 'P') st.room = 'B'; refresh(); },
+        locked: dd => { toast(`Put a staircase on the ${FLOOR_NAMES[dd.f - 1].toLowerCase()} first (Furniture → Stairs). That opens the ${FLOOR_NAMES[dd.f].toLowerCase()}.`, 'info'); st.mode = 'furn'; st.cat = 'Stairs'; st.furn = 'stairs'; st.floor = +dd.f - 1; refresh(); },
+      });
     };
     const renderTools = () => {
       const m = st.mode;
-      const tabs = [['rooms', 'Rooms'], ['furn', 'Furniture'], ['look', 'Colors'], ['plans', 'Starter plans']];
+      const tabs = [['rooms', 'Rooms'], ['walls', 'Walls'], ['furn', 'Furniture'], ['look', 'Colors'], ['plans', 'Starter plans']];
       let body = '';
-      if (m === 'rooms') {
+      if (m === 'walls') {
+        body = `<p class="small muted">Drag along the grid lines to draw. Inside, a wall splits a room (add a doorway so you can get through). On the outside, a doorway is a side or back door.</p><div class="bld-grid">${WALLS.map(w => `<button class="btn btn-sm bld-room ${st.wall === w.id ? 'on' : ''}" data-action="wallk" data-id="${w.id}"><span class="bld-sw" style="background:${w.c}"></span><span>${w.icon} ${esc(w.name)}<small>${fmtMoney(w.price)} a tile · ${esc(w.desc)}</small></span></button>`).join('')}
+          <button class="btn btn-sm bld-room ${st.wall === '.' ? 'on' : ''}" data-action="wallk" data-id="."><span class="bld-sw" style="background:repeating-linear-gradient(45deg,#e0192e 0 3px,#222 3px 6px)"></span><span>🧹 Take walls out<small>drag over the ones you drew</small></span></button></div>
+          <p class="small muted" style="margin-top:6px">${H.allWalls(st.d).length} pieces drawn on this house.</p>`;
+      } else if (m === 'rooms') {
         body = `<p class="small muted">Drag across the plan to paint a room. ${st.floor ? 'Upper floors only go over rooms on the floor below.' : 'The porch is open air: no walls, no roof.'}</p><div class="bld-grid">${ROOMS.filter(r => !(st.floor && r.open)).map(r => `<button class="btn btn-sm bld-room ${st.room === r.id ? 'on' : ''}" data-action="room" data-id="${r.id}"><span class="bld-sw" style="background:${r.c}"></span><span>${r.icon} ${esc(r.name)}<small>${fmtMoney(r.price)} a tile</small></span></button>`).join('')}
           <button class="btn btn-sm bld-room ${st.room === '.' ? 'on' : ''}" data-action="room" data-id="."><span class="bld-sw" style="background:repeating-linear-gradient(45deg,#e0192e 0 3px,#222 3px 6px)"></span><span>🧹 Knock it down<small>half back</small></span></button></div>`;
       } else if (m === 'furn') {
@@ -164,6 +212,7 @@ export function openBuilder(opts) {
       bind(tools, {
         mode: dd => { st.mode = dd.id; st.sel = null; refresh(); },
         room: dd => { st.room = dd.id; refresh(); },
+        wallk: dd => { st.wall = dd.id; refresh(); },
         cat: dd => { st.cat = dd.id; st.furn = FURNITURE.find(f => f.cat === dd.id).id; refresh(); },
         furn: dd => { st.furn = dd.id; st.sel = null; refresh(); },
         rot: () => { st.rot = (st.rot + 1) % 4; draw(); },
@@ -195,20 +244,41 @@ export function openBuilder(opts) {
       const x = Math.floor((e.clientX - r.left) / st.ts), y = Math.floor((e.clientY - r.top - 22) / st.ts);
       return H.inGrid(x, y) ? { x, y } : null;
     };
+    const cornerOf = e => {
+      const r = cv.getBoundingClientRect();
+      const x = Math.round((e.clientX - r.left) / st.ts), y = Math.round((e.clientY - r.top - 22) / st.ts);
+      return { x: Math.max(0, Math.min(GW, x)), y: Math.max(0, Math.min(GD, y)) };
+    };
+    // the edge nearest a point, for a tap in wall mode
+    const edgeOf = e => {
+      const r = cv.getBoundingClientRect(), fx = (e.clientX - r.left) / st.ts, fy = (e.clientY - r.top - 22) / st.ts;
+      const dh = Math.abs(fy - Math.round(fy)), dv = Math.abs(fx - Math.round(fx));
+      return dh <= dv ? { x0: Math.floor(fx), y0: Math.round(fy), x1: Math.floor(fx) + 1, y1: Math.round(fy) } : { x0: Math.round(fx), y0: Math.floor(fy), x1: Math.round(fx), y1: Math.floor(fy) + 1 };
+    };
+    const putWall = (ln) => {
+      const n = H.drawWall(st.d, st.floor, ln.x0, ln.y0, ln.x1, ln.y1, st.wall);
+      if (!n && st.wall !== '.') toast(H.floorOpen(st.d, st.floor) ? 'Walls go along the edge of a room or the porch. Paint a room there first.' : 'Put a staircase on the floor below first.', 'info');
+      else audio.click();
+      refresh();
+    };
     const act = t => {
       // one tap or press: paint a tile, select a piece, or drop a new one
-      if (st.mode === 'rooms') { H.paint(st.d, st.floor, t.x, t.y, t.x, t.y, st.room); audio.click(); refresh(); return; }
+      if (st.mode === 'rooms') { if (!H.paint(st.d, st.floor, t.x, t.y, t.x, t.y, st.room) && !H.floorOpen(st.d, st.floor)) toast('Put a staircase on the floor below first.', 'info'); audio.click(); refresh(); return; }
+      if (st.mode === 'walls') { putWall({ x0: t.x, y0: t.y, x1: t.x + 1, y1: t.y }); return; }   // controller: the top edge of the tile
       if (st.mode !== 'furn') return;
       const f = H.furnAt(st.d, st.floor, t.x, t.y);
       if (f) { st.sel = f; refresh(); return; }
       const r = H.place(st.d, st.floor, st.furn, t.x, t.y, st.rot);
       if (!r.ok) { toast(r.text, 'bad'); audio.error(); return; }
-      audio.click(); st.sel = null; refresh();
+      audio.click(); st.sel = null;
+      if (r.opened != null && r.opened < MAX_FLOORS && H.roomTiles(st.d, r.opened) - r.landing === 0) { st.fresh = r.opened; toast(`Stairs are in. The ${FLOOR_NAMES[r.opened].toLowerCase()} is open: tap "${SHORT_FLOORS[r.opened]} floor" up top to start building up there.`, 'good'); }
+      refresh();
     };
     cv.addEventListener('pointerdown', e => {
-      const t = tileOf(e); if (!t) return;
+      const t = tileOf(e) || (st.mode === 'walls' ? { x: 0, y: 0 } : null); if (!t) return;
       cv.setPointerCapture?.(e.pointerId);
       st.cur = t;
+      if (st.mode === 'walls') { const c = cornerOf(e); st.line = { x0: c.x, y0: c.y, x1: c.x, y1: c.y, tap: edgeOf(e) }; draw(); return; }
       if (st.mode === 'rooms') st.drag = { x0: t.x, y0: t.y, x1: t.x, y1: t.y };
       else if (st.mode === 'furn') {
         const f = H.furnAt(st.d, st.floor, t.x, t.y);
@@ -218,6 +288,7 @@ export function openBuilder(opts) {
       draw();
     });
     cv.addEventListener('pointermove', e => {
+      if (st.line) { const c = cornerOf(e); st.line.x1 = c.x; st.line.y1 = c.y; draw(); return; }
       const t = tileOf(e);
       st.hover = e.pointerType === 'mouse' ? t : null;
       if (t && st.drag) { st.drag.x1 = t.x; st.drag.y1 = t.y; }
@@ -225,6 +296,12 @@ export function openBuilder(opts) {
       draw();
     });
     const up = e => {
+      if (st.line) {
+        const ln = st.line; st.line = null;
+        if (e.type === 'pointercancel') { draw(); return; }
+        putWall(ln.x0 === ln.x1 && ln.y0 === ln.y1 ? ln.tap : ln);
+        return;
+      }
       if (st.drag) {
         const { x0, y0, x1, y1 } = st.drag; st.drag = null;
         const n = H.paint(st.d, st.floor, x0, y0, x1, y1, st.room);

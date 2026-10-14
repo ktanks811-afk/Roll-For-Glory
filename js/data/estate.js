@@ -42,6 +42,18 @@ export const ESTATE_LOCATIONS = [
   P('land_weatherford_north', 'land', 'Weatherford North Acreage', 'S', -5450, -450, -5150, -200, { color: '#c8a46a', icon: 'key' }),
   P('land_parker_ridge', 'land', 'Parker County Ridge Land', 'E', -4550, -500, -4250, -250, { color: '#c8a46a', icon: 'key' }),
   P('land_aledo_pasture', 'land', 'Aledo Pasture Estate', 'N', -4900, -450, -4600, -200, { color: '#c8a46a', icon: 'key' }),
+  // Brazos country, south of Johnson County (world2d/brazos.js): the big
+  // ranches, 400 to 1,000 acres a tract, on FM 916 and FM 2331 (x = 0)
+  P('ranch_bosque', 'land', 'Bosque Valley Ranch', 'N', -1360, 6130, -60, 7380, { color: '#c8a46a', icon: 'key' }),
+  P('ranch_glenrose', 'land', 'Glen Rose Hills Ranch', 'N', -3060, 6130, -1460, 7650, { color: '#c8a46a', icon: 'key' }),
+  P('ranch_hillsboro', 'land', 'Hill County Cattle Co.', 'N', 60, 6130, 1810, 7865, { color: '#c8a46a', icon: 'key' }),
+  P('ranch_meridian', 'land', 'Meridian Creek Ranch', 'W', 60, 7960, 1510, 9355, { color: '#c8a46a', icon: 'key' }),
+  P('ranch_brazos', 'land', 'Brazos River Spread', 'E', -2060, 7960, -50, 9973, { color: '#c8a46a', icon: 'key' }),
+  // out of state (data/states.js): a lot on the east edge of each city, off its
+  // east street (city x0 + 1200). Atlanta's grid starts at z -3000, LA's at 0, Miami's at 3000.
+  P('land_atl', 'land', 'South Fulton Acreage', 'W', 15240, -2850, 15460, -2630, { color: '#c8a46a', icon: 'key', state: 'ga' }),
+  P('land_la', 'land', 'Topanga Canyon Lot', 'W', 15240, 150, 15460, 370, { color: '#c8a46a', icon: 'key', state: 'ca' }),
+  P('land_mia', 'land', 'Redland Acreage', 'W', 15240, 3150, 15460, 3370, { color: '#c8a46a', icon: 'key', state: 'fl' }),
   // the livestock auction on FM 4, where the stock trailer earns its keep (core/livestock.js)
   P('salebarn', 'salebarn', 'Joshua Livestock Auction', 'N', 500, 4520, 660, 4680, { color: '#d9822b', icon: 'tow' }),
   // hog dogs (core/dogs.js, core/hoghunt.js): the kennel that sells them on FM 4, and the hog lease down on the river
@@ -86,6 +98,17 @@ export const LAND = {
   land_parker_ridge: { name: 'Parker County Ridge Land', short: 'Parker Ridge', price: 310000, ranch: 2, country: true, tier: 2, desc: 'Twenty-eight acres of rolling Parker County ground with a long gravel approach.' },
   land_aledo_pasture: { name: 'Aledo Pasture Estate', short: 'Aledo Pasture', price: 480000, ranch: 2, country: true, tier: 3, desc: 'Forty-five acres of pasture and tree line west of Weatherford.' },
   land_bluebonnet:  { name: 'Bluebonnet Hill Ranch', short: 'Bluebonnet Hill', price: 520000, ranch: 2, country: true, tier: 3, desc: 'Sixty acres on the high ground. You can see the Fort Worth skyline from the porch.' },
+  // the big ranches in Brazos country: 400 to 1,000 acres. acres is real (the
+  // tract on the map is that big), and they take the biggest fences and herds.
+  ranch_bosque:     { name: 'Bosque Valley Ranch', short: 'Bosque Valley', price: 1800000, acres: 400, ranch: 3, country: true, huge: true, tier: 3, desc: '400 acres of improved grass on FM 916, two stock tanks and a creek bottom full of pecans.' },
+  ranch_meridian:   { name: 'Meridian Creek Ranch', short: 'Meridian Creek', price: 2300000, acres: 500, ranch: 3, country: true, huge: true, tier: 3, desc: '500 acres off FM 2331 with a spring-fed creek, cross-fenced into three pastures.' },
+  ranch_glenrose:   { name: 'Glen Rose Hills Ranch', short: 'Glen Rose Hills', price: 2900000, acres: 600, ranch: 3, country: true, huge: true, tier: 4, desc: '600 acres of cedar hills and live oak flats. Deer, turkey and hogs on every ridge.' },
+  ranch_hillsboro:  { name: 'Hill County Cattle Co.', short: 'Hill County', price: 3600000, acres: 750, ranch: 4, country: true, huge: true, tier: 4, desc: '750 acres of blackland prairie, a working cattle operation with pens, a scale and a hay barn.' },
+  ranch_brazos:     { name: 'Brazos River Spread', short: 'Brazos River', price: 5200000, acres: 1000, ranch: 4, country: true, huge: true, tier: 4, desc: 'A thousand acres down to the Brazos. Your own county road, your own river, your own everything.' },
+  // out of state (fly there from Alliance Airport)
+  land_atl:         { name: 'South Fulton Acreage', short: 'South Fulton', price: 340000, acres: 12, ranch: 1, tier: 3, state: 'ga', desc: 'Atlanta. Twelve wooded acres on the edge of town. Room for a shop and a gate.' },
+  land_la:          { name: 'Topanga Canyon Lot', short: 'Topanga', price: 950000, acres: 12, ranch: 0, tier: 4, state: 'ca', desc: 'Los Angeles. A canyon lot with an ocean view. Build big; everybody out here does.' },
+  land_mia:         { name: 'Redland Acreage', short: 'Redland', price: 410000, acres: 12, ranch: 1, tier: 3, state: 'fl', desc: 'Miami. Mango groves and a gravel drive, twenty minutes from the beach.' },
 };
 
 // The garage you build on your land. The house goes up with it (`house`
@@ -147,6 +170,9 @@ export const FENCES = [
   { id: 'rail',  name: 'Split-rail paddock',  price: 9000,  cap: 6,  color: '#8a6038', desc: 'Cedar posts and two rails. Room for a few head.' },
   { id: 'wire',  name: 'Barbed-wire pasture', price: 28000, cap: 20, color: '#8a8f96', desc: 'Five strands of barbed wire round the back acreage.' },
   { id: 'ranch', name: 'White ranch fence',   price: 65000, cap: 40, color: '#f2f2f2', desc: 'Four-board white fence and a pipe gate. The kind people slow down to look at.' },
+  // the big ranches only
+  { id: 'section', name: 'Cross-fenced section', price: 240000, cap: 150, color: '#b8bcc2', desc: 'Miles of five-strand wire, cross-fenced into pastures you rotate the herd through.' },
+  { id: 'spread', name: 'Perimeter pipe fence', price: 650000, cap: 400, color: '#e8e2d4', desc: 'Welded pipe all the way round, a cattle guard at the gate. A herd in the hundreds.' },
 ];
 export const FENCE_BY_ID = Object.fromEntries(FENCES.map(f => [f.id, f]));
 // feed: what it costs to keep one a day. pays: what it brings in a day

@@ -1,14 +1,18 @@
 // Houses you design yourself (core/homes.js has the rules, ui/builder.js
 // the screen, world2d/house.js puts them on the map).
 //
-// A design is a grid of 2 m tiles, up to three floors. Each tile is a room
+// A design is a grid of 2 m tiles, up to five floors. Each tile is a room
 // type (or empty), furniture sits on the tiles, and the walls, roof and
-// stairs follow from that, the way the Sims builds a house.
+// stairs follow from that, the way the Sims builds a house. On top of that
+// you can draw your own walls along the tile edges: split a big room, put a
+// door or a window where you want one, glass in the living room. A staircase
+// is what opens up the floor above it.
 
 export const TILE = 2;            // metres per tile
 export const GW = 16, GD = 12;    // the grid: 32 m along the street, 24 m deep
 export const FLOOR_H = 3.2;       // one storey, metres
-export const MAX_FLOORS = 3;
+export const MAX_FLOORS = 5;
+export const FLOOR_NAMES = ['Ground floor', '2nd floor', '3rd floor', '4th floor', '5th floor'];
 
 // Room types. Each painted tile costs `price` per floor. `c` is the floor
 // colour you see once you walk in and the roof fades away.
@@ -62,11 +66,36 @@ export const FURNITURE = [
   { id: 'grill',     name: 'Smoker grill',     cat: 'Outdoor', w: 1, d: 1, price: 1100, comfort: 4, c: '#1a1a1a', room: 'P' },
   { id: 'jacuzzi',   name: 'Hot tub',          cat: 'Outdoor', w: 2, d: 2, price: 9800, comfort: 12, c: '#d8d4c8', accent: '#3fa9d6', room: 'P' },
   { id: 'chairs',    name: 'Patio chairs',     cat: 'Outdoor', w: 1, d: 1, price: 300,  comfort: 2, c: '#6a4a2e', room: 'P' },
-  // getting upstairs
+  { id: 'bunkbed',   name: 'Bunk beds',        cat: 'Bedroom', w: 1, d: 1, price: 900,  comfort: 5,  c: '#3a5a8a', accent: '#c41b1b', bed: true },
+  { id: 'washer',    name: 'Washer & dryer',   cat: 'Bath', w: 1, d: 1, price: 1600, comfort: 3, c: '#e8ecf0', accent: '#3fa9d6' },
+  { id: 'fireplace', name: 'Stone fireplace',  cat: 'Living', w: 2, d: 1, price: 4800, comfort: 9, c: '#7a6a5a', accent: '#ff7a1a' },
+  { id: 'bookshelf', name: 'Bookshelf',        cat: 'Living', w: 1, d: 1, price: 700,  comfort: 2, c: '#5a3a22', accent: '#c8a46a' },
+  { id: 'aquarium',  name: 'Shark aquarium',   cat: 'Living', w: 2, d: 1, price: 12000, comfort: 10, c: '#1b4f8a', accent: '#5fd3ff' },
+  { id: 'piano',     name: 'Grand piano',      cat: 'Fun', w: 2, d: 2, price: 18000, comfort: 10, c: '#111215', accent: '#f2f2f2' },
+  { id: 'gym',       name: 'Home gym',         cat: 'Fun', w: 2, d: 1, price: 6500, comfort: 7, c: '#2a2a2e', accent: '#c41b1b' },
+  { id: 'wine',      name: 'Wine wall',        cat: 'Fun', w: 1, d: 1, price: 3800, comfort: 4, c: '#3a2418', accent: '#8a1a2a' },
+  { id: 'firepit',   name: 'Fire pit',         cat: 'Outdoor', w: 1, d: 1, price: 1300, comfort: 4, c: '#5a5a5e', accent: '#ff7a1a', room: 'P' },
+  // getting upstairs: a staircase opens up the floor above it
   { id: 'stairs',    name: 'Staircase',        cat: 'Stairs', w: 1, d: 2, price: 3200, comfort: 0, c: '#6a4a2e', stairs: true },
+  { id: 'spiral',    name: 'Spiral staircase', cat: 'Stairs', w: 1, d: 1, price: 6800, comfort: 2, c: '#3a3d42', stairs: true },
+  { id: 'elevator',  name: 'Home elevator',    cat: 'Stairs', w: 1, d: 1, price: 38000, comfort: 4, c: '#9aa0a8', stairs: true },
 ];
 export const FURN_BY_ID = Object.fromEntries(FURNITURE.map(f => [f.id, f]));
 export const FURN_CATS = ['Bedroom', 'Bath', 'Kitchen', 'Living', 'Fun', 'Outdoor', 'Stairs'];
+
+// Walls you draw yourself, along the edges between tiles. Inside the house a
+// wall splits a room (the crew leaves no doorway, so put one in), a doorway
+// opens up a wall that's there; on the outside a doorway is a side or back
+// door, a window or glass lets the light in. A half wall or a railing goes
+// round a porch or a balcony. price: per tile of wall.
+export const WALLS = [
+  { id: 'wall',   name: 'Wall',          price: 350,  icon: '▮', c: '#2a2622', desc: 'Split a room, close a gap.' },
+  { id: 'door',   name: 'Doorway',       price: 450,  icon: '🚪', c: '#c8a46a', desc: 'A way through. Outside, a side or back door.', door: true },
+  { id: 'window', name: 'Window',        price: 700,  icon: '🪟', c: '#9fd3e6', desc: 'A wall with a window in it.', light: 1 },
+  { id: 'glass',  name: 'Glass wall',    price: 1500, icon: '◫', c: '#5fd3ff', desc: 'Floor-to-ceiling glass.', light: 2 },
+  { id: 'half',   name: 'Half wall / railing', price: 200, icon: '┄', c: '#a0805e', desc: 'Waist high. Porches, balconies, a kitchen bar.' },
+];
+export const WALL_BY_ID = Object.fromEntries(WALLS.map(w => [w.id, w]));
 
 export const WALL_COLORS = ['#e8e2d8', '#d9c9a8', '#b8a58a', '#a0805e', '#8a3b2a', '#7f8a6a', '#5d6b7a', '#3a3f4a', '#f2f2f2', '#2a2a2e'];
 export const ROOF_COLORS = ['#3a3330', '#5a4632', '#6b3a2e', '#2f3b4a', '#3a4a3a', '#45484d', '#7a7e83', '#1a1c22'];

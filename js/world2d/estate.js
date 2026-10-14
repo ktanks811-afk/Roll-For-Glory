@@ -12,7 +12,7 @@
 import { garageBlock } from './map.js';
 import { ESTATE_LOCATIONS, RIGS, FENCE_BY_ID, LAND, DEV_BY_ID } from '../data/estate.js';
 import { PROPERTIES } from '../data/world.js';
-import { registerBuilds, isBuilt, houseDesign, pasture, builtProperty, devOf, devLayout, rentRoll, now } from '../core/estate.js';
+import { registerBuilds, isBuilt, houseDesign, pasture, homesite, builtProperty, devOf, devLayout, rentRoll, now } from '../core/estate.js';
 
 const overlaps = (o, r, pad = 0) => o.x < r.x1 + pad && o.x + (o.w || 0) > r.x0 - pad && o.z < r.z1 + pad && o.z + (o.d || 0) > r.z0 - pad;
 const inLot = (x, z, r, pad = 0) => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad;
@@ -32,8 +32,11 @@ export function addEstate(out) {
     if (loc.type === 'trap' || loc.type === 'property') garageBlock(out, loc, r.x0, r.z0, r.x1, r.z1, PROPERTIES[loc.id]);
     else if (loc.type === 'rig') oilPad(out, loc);
     else if (loc.type === 'land') {
-      const dirt = { x: r.x0, z: r.z0, w, d, kind: 'dirt', loc: loc.id, landLot: true };
-      dirt.w0 = w; dirt.d0 = d;
+      // a big ranch: grass all over and a cleared homesite by the gate (world2d/brazos.js puts the trees back)
+      const hs = homesite(loc);
+      if (LAND[loc.id]?.huge) lots.push({ x: r.x0, z: r.z0, w, d, kind: 'field', c: '#4f6a2e', dir: 'none', loc: loc.id });
+      const dirt = { x: hs.x0, z: hs.z0, w: hs.x1 - hs.x0, d: hs.z1 - hs.z0, kind: 'dirt', loc: loc.id, landLot: true };
+      dirt.w0 = dirt.w; dirt.d0 = dirt.d;
       lots.push(dirt);
     } else if (loc.type === 'salebarn') saleBarn(out, loc);
     else if (loc.type === 'kennel') kennel(out, loc);
@@ -198,7 +201,7 @@ export function applyEstate(map, s) {
     const devRect = dv ? pasture(loc) : null;
     const dev = () => dv && put(map, devBlock(loc, dv.id, mine && dv.ready > now(s), other?.name, mine ? rentRoll(s, loc.id) : null), all);
     if (!built) { dev(); continue; }
-    const r = loc.lot;
+    const r = homesite(loc);
     const out = { buildings: [], lots: [], garages: [], trees: [], props: [], houses: [], R: (a, b) => (a + b) / 2 };
     if (mine) garageBlock(out, loc, r.x0, r.z0, r.x1, r.z1, PROPERTIES[loc.id], houseDesign(s, loc.id));
     else {
@@ -223,7 +226,7 @@ function put(map, out, all) {
   }
   for (const hs of out.houses) {
     map.houses.push(hs); all.push(hs);
-    if (hs.panel) { map.colliders.push(hs.panel); map.grid.insert(hs.panel, hs.panel.x0, hs.panel.z0, hs.panel.x1, hs.panel.z1); all.push(hs.panel); }
+    for (const pn of hs.panels || (hs.panel ? [hs.panel] : [])) { map.colliders.push(pn); map.grid.insert(pn, pn.x0, pn.z0, pn.x1, pn.z1); all.push(pn); }
   }
   for (const b of out.buildings) {
     const e = { type: 'b', o: b };

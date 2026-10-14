@@ -9,9 +9,17 @@ import { tierOf } from '../core/state.js';
 import { LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
 import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { online } from '../net/online.js';
+import { STATES, STATE_BLOCK, AIRPORT_ROW, regionRect, stateAt, stateById } from '../data/states.js';
+
+// neighborhood names over each out-of-state city, by block [i, j]
+const STATE_LABELS = Object.fromEntries(Object.entries({
+  ga: [['BUCKHEAD', 3, 1], ['DOWNTOWN ATLANTA', 2, 4], ['EAST ATLANTA', 6, 3], ['ZONE 6', 6, 6], ['COLLEGE PARK', 2, 6.5]],
+  ca: [['HOLLYWOOD', 4, 1], ['VENICE', 1, 4], ['DOWNTOWN LA', 5, 4], ['COMPTON', 5, 6.5], ['THE HILLS', 6, -1]],
+  fl: [['WYNWOOD', 3, 1], ['BRICKELL', 3, 4], ['LITTLE HAVANA', 3, 6.5], ['SOUTH BEACH', 7, 4], ['ATLANTIC OCEAN', 9.5, 4]],
+}).map(([id, list]) => [id, list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK])]));
 import { fmtMoney } from '../core/state.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', plane: '✈' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop', 'trailers'] },
@@ -23,11 +31,13 @@ const CATS = [
   { id: 'dogs', label: 'Dogs & hogs', types: ['kennel', 'hoghunt', 'baypen', 'expo'] },
   { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
   { id: 'health', label: 'Hospital', types: ['hospital'] },
+  { id: 'fly', label: 'Airports', types: ['airport'] },
 ];
 const WHAT = {
   home: 'Your place: sleep, save, garage, change clothes.',
   property: 'A house: 1, 2 or 3 stories, a garage and a safehouse.',
   land: 'Land for sale. Build a house and a garage up to 100 cars, fence it, run cattle.',
+  airport: 'The airport. Fly to Atlanta, LA, Miami or home to Texas, and bring your car on the cargo plane.',
   rig: 'An oil lease. Pays $40,000 a day once it\'s yours.',
   kennel: 'Cross Timbers Hog Dogs: curs, hounds, bulldogs, Dogos and Corsos for sale, plus collars and cut vests.',
   hoghunt: 'The hog lease. Take your bay and catch dogs after feral hogs; the processor pays by the pound.',
@@ -87,14 +97,19 @@ export function renderMap(scr, ctx) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   let W = 0, H = 0;
   const size = () => { const r = cv.getBoundingClientRect(); W = Math.round(r.width) || 360; H = Math.round(r.height) || 360; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); };
-  const places = () => LOCATIONS.filter(l => { const c = CATS.find(x => x.id === st.cat); return (!c.types || c.types.includes(l.type)) && (!st.q || (l.name + ' ' + l.type + ' ' + districtAt(l.x, l.z)).toLowerCase().includes(st.q.toLowerCase())); });
+  // only what's in the state you're in (the rest is a flight away)
+  const here = () => { const p = me(); return stateAt(p.x, p.z); };
+  const local = () => { const h = here(); return LOCATIONS.filter(l => stateAt(l.x, l.z) === h); };
+  const places = () => local().filter(l => { const c = CATS.find(x => x.id === st.cat); return (!c.types || c.types.includes(l.type)) && (!st.q || (l.name + ' ' + l.type + ' ' + districtAt(l.x, l.z)).toLowerCase().includes(st.q.toLowerCase())); });
   const fitAll = (pts) => {
-    const list = pts && pts.length ? pts : [...LOCATIONS.map(l => [l.x, l.z]), [me().x, me().z]];
+    const list = pts && pts.length ? pts : [...local().map(l => [l.x, l.z]), [me().x, me().z]];
     const xs = list.map(p => p[0]), zs = list.map(p => p[1]);
     const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
     st.cx = (x0 + x1) / 2; st.cz = (z0 + z1) / 2;
     st.k = clamp(Math.min(W / Math.max(300, (x1 - x0) * 1.2), H / Math.max(300, (z1 - z0) * 1.2)), 0.025, 1.2);
   };
+  // how far you can pan: Texas, or the state you've flown to
+  const bounds = () => { const h = here(); if (h === 'tx') return [-11200, 7000, -7700, 10100]; const r = regionRect(STATES[h]); return [r.x0, r.x1, r.z0, r.z1]; };
   const toScreen = (x, z) => [(x - st.cx) * st.k + W / 2, (z - st.cz) * st.k + H / 2];
   const toWorld = (sx, sy) => [(sx - W / 2) / st.k + st.cx, (sy - H / 2) / st.k + st.cz];
   let dirty = true, selRoute = null;
@@ -107,7 +122,7 @@ export function renderMap(scr, ctx) {
     const k = st.k;
     g.save(); g.translate(W / 2, H / 2); g.scale(k, k); g.translate(-st.cx, -st.cz);
     g.imageSmoothingEnabled = true;
-    const ov = map.overview; if (ov) g.drawImage(ov.canvas, ov.x0, ov.z0, ov.canvas.width / ov.scale, ov.canvas.height / ov.scale);
+    const ov = map.overview; if (ov) for (const o of [ov, ...(ov.more || [])]) g.drawImage(o.canvas, o.x0, o.z0, o.canvas.width / o.scale, o.canvas.height / o.scale);
     let missing = 0;
     const vw = W / k, vh = H / k;
     if (vw <= 3400) {
@@ -118,11 +133,14 @@ export function renderMap(scr, ctx) {
     g.restore();
     if (missing) dirty = true;
 
-    // districts, faint, when zoomed out
-    if (k < 0.2) {
+    // districts, faint, when zoomed out (the out-of-state cities are small, so sooner there)
+    if (k < (here() === 'tx' ? 0.2 : 0.3)) {
       g.font = '700 13px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.55)';
       const inner = k > 0.11 ? [['STOCKYARDS', 0, -650], ['NEAR SOUTHSIDE', 300, 800], ['ARLINGTON HEIGHTS', -650, -450], ['CROWLEY', -650, 500], ['RIVERSIDE', 650, -300], ['UPTOWN', 5550, -1950], ['DOWNTOWN DALLAS', 5100, -1580], ['DEEP ELLUM', 5950, -1580], ['OAK CLIFF', 4950, -1000], ['SOUTH DALLAS', 5850, -1000], ['WEST DALLAS', 4800, -1880], ['THE SQUARE', 675, -6440], ['UNT', 225, -6400], ['TWU', 675, -6900], ['SOUTHEAST DENTON', 820, -5900], ['ALLIANCE AIRPORT', 800, -4450], ['NORTHLAKE', -650, -4250], ['TEXAS MOTOR SPEEDWAY', 650, -5420], ['ROANOKE', 2200, -4180], ['ARGYLE', -700, -5200], ['LAKE LEWISVILLE', 2800, -5900], ['MINERAL WELLS', -9000, -1350], ['PALO PINTO COUNTY', -9600, -500], ['WEST I-20', -7600, -1350], ['LAKE MINERAL WELLS', -8790, -70]] : [];
-      for (const [t, x, z] of [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['EVERMAN', 1900, 700], ['LOOP 820', 0, -1330], ['LAKE WORTH', -2100, -500], ['BURLESON', -450, 1900], ['CHISHOLM TRAIL PKWY', 0, 2950], ['JOHNSON COUNTY', -1200, 4300], ['JOSHUA', 300, 3650], ['I-30', 3200, -1380], ['ARLINGTON', 3800, -1120], ['DALLAS', 5400, -2260], ['TRINITY RIVER', 4440, -620], ['I-35W', 60, -2600], ['ALLIANCE', -500, -3700], ['SPEEDWAY', 650, -5420], ['DENTON', 600, -7120], ['MINERAL WELLS', -9000, -1350], ['PALO PINTO', -10100, -700], ['WEST I-20', -7600, -1350]]) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
+      const away = here() !== 'tx' ? STATES[here()] : null;
+      const names = away ? [[away.city.toUpperCase(), away.cx + 600, away.cz - 120], [`${away.city.toUpperCase()} AIRPORT`, away.cx - 330, away.cz + AIRPORT_ROW * STATE_BLOCK + 140], ...STATE_LABELS[away.id]]
+        : [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['EVERMAN', 1900, 700], ['LOOP 820', 0, -1330], ['LAKE WORTH', -2100, -500], ['BURLESON', -450, 1900], ['CHISHOLM TRAIL PKWY', 0, 2950], ['JOHNSON COUNTY', -1200, 4300], ['JOSHUA', 300, 3650], ['I-30', 3200, -1380], ['ARLINGTON', 3800, -1120], ['DALLAS', 5400, -2260], ['TRINITY RIVER', 4440, -620], ['I-35W', 60, -2600], ['ALLIANCE', -500, -3700], ['SPEEDWAY', 650, -5420], ['DENTON', 600, -7120], ['MINERAL WELLS', -9000, -1350], ['PALO PINTO', -10100, -700], ['WEST I-20', -7600, -1350], ['BOSQUE COUNTY', -700, 6800], ['HILL COUNTY', 900, 7000], ['FM 916', -1600, 6060], ['BRAZOS RIVER', -700, 10080]];
+      for (const [t, x, z] of names) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
     }
 
     // route preview (dashed) and the active GPS route
@@ -282,7 +300,7 @@ export function renderMap(scr, ctx) {
     if (ptrs.size === 1) {
       const dx = cur[0] - prev[0], dy = cur[1] - prev[1];
       if (tap) tap.moved += Math.abs(dx) + Math.abs(dy);
-      st.cx = clamp(st.cx - dx / st.k, -11200, 7000); st.cz = clamp(st.cz - dy / st.k, -3600, 6000); dirty = true;
+      const b = bounds(); st.cx = clamp(st.cx - dx / st.k, b[0], b[1]); st.cz = clamp(st.cz - dy / st.k, b[2], b[3]); dirty = true;
     } else if (ptrs.size === 2 && pinch) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
       st.k = clamp(pinch.k * d / Math.max(20, pinch.d), 0.025, 1.6); dirty = true;
@@ -333,6 +351,7 @@ export function renderMap(scr, ctx) {
   // ------------------------------------------------------------ go
   layout();
   size();
+  if (st.state !== here()) { st.state = here(); st.k = 0; st.sel = null; st.pin = null; }   // just landed: start over on the new city
   if (!st.k) { const p = me(); if (s.gps) fitAll([[p.x, p.z], [s.gps.x, s.gps.z]]); else fitAll(); }
   if (st.sel && st.sel.id !== '_pin') st.sel = LOC_BY_ID[st.sel.id] || null;
   selRoute = st.sel ? drive(st.sel.x, st.sel.z) : null;

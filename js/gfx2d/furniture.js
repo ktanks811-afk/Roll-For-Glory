@@ -21,7 +21,7 @@ export function drawFurniture(ctx, id, x, y, w, h, fx, fy, s = 10) {
   const pad = 0.08;
   const shade = 'rgba(0,0,0,0.28)';
   // a soft shadow under everything that isn't flat on the floor
-  if (!F.flat && id !== 'stairs') { ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(L + W * pad + 1, T + D * pad + 1.5, W * (1 - 2 * pad), D * (1 - 2 * pad)); }
+  if (!F.flat && !F.stairs) { ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(L + W * pad + 1, T + D * pad + 1.5, W * (1 - 2 * pad), D * (1 - 2 * pad)); }
   switch (id) {
     case 'bed': case 'kingbed':
       box(pad, pad, 1 - 2 * pad, 1 - 2 * pad, F.c);
@@ -73,6 +73,23 @@ export function drawFurniture(ctx, id, x, y, w, h, fx, fy, s = 10) {
       line(0.5, 0.92, 0.5, 0.12, 'rgba(255,255,255,0.6)', Math.max(1, s * 0.08));
       line(0.5, 0.12, 0.38, 0.26, 'rgba(255,255,255,0.6)', Math.max(1, s * 0.08)); line(0.5, 0.12, 0.62, 0.26, 'rgba(255,255,255,0.6)', Math.max(1, s * 0.08));
       break;
+    case 'spiral':
+      dot(0.5, 0.5, 0.46, F.c); ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1;
+      for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * W * 0.44, Math.sin(a) * D * 0.44); ctx.stroke(); }
+      dot(0.5, 0.5, 0.08, '#c8ccd2'); break;
+    case 'elevator': box(0.06, 0.06, 0.88, 0.88, F.c); line(0.5, 0.1, 0.5, 0.9, 'rgba(0,0,0,0.4)', Math.max(1, s * 0.06)); box(0.06, 0.02, 0.88, 0.06, '#e8c21a'); break;
+    case 'bunkbed': box(pad, pad, 1 - 2 * pad, 1 - 2 * pad, F.c); box(pad, pad, 1 - 2 * pad, 0.55, F.accent); box(pad + 0.1, 0.7, 0.64, 0.16, '#ffffff'); line(pad, 0.5, 1 - pad, 0.5, '#1a1a1a'); break;
+    case 'washer': box(0.04, 0.3, 0.44, 0.64, F.c); box(0.52, 0.3, 0.44, 0.64, F.c); dot(0.26, 0.6, 0.14, F.accent); dot(0.74, 0.6, 0.14, '#5a5f66'); break;
+    case 'fireplace': box(0.02, 0.62, 0.96, 0.34, F.c); box(0.25, 0.62, 0.5, 0.18, '#1a1a1a'); dot(0.5, 0.7, 0.08, F.accent); dot(0.44, 0.74, 0.05, '#ffd84a'); break;
+    case 'bookshelf': box(0.04, 0.68, 0.92, 0.28, F.c); for (let k = 0; k < 8; k++) box(0.08 + k * 0.105, 0.72, 0.08, 0.2, ['#c41b1b', '#1b4fc4', '#e8c21a', '#2f6b3a', '#c8a46a'][k % 5]); break;
+    case 'aquarium': box(0.03, 0.55, 0.94, 0.4, '#2a2a2e'); box(0.06, 0.58, 0.88, 0.34, F.accent); dot(0.3, 0.72, 0.05, '#ff7a1a'); dot(0.62, 0.8, 0.06, '#c8ccd2'); break;
+    case 'piano':
+      ctx.fillStyle = F.c; ctx.beginPath(); ctx.moveTo(L + 0.1 * W, T + 0.9 * D); ctx.lineTo(L + 0.9 * W, T + 0.9 * D); ctx.lineTo(L + 0.9 * W, T + 0.35 * D);
+      ctx.quadraticCurveTo(L + 0.85 * W, T + 0.06 * D, L + 0.5 * W, T + 0.08 * D); ctx.quadraticCurveTo(L + 0.1 * W, T + 0.12 * D, L + 0.1 * W, T + 0.5 * D); ctx.closePath(); ctx.fill();
+      box(0.12, 0.86, 0.76, 0.08, F.accent); for (let k = 1; k < 10; k++) line(0.12 + k * 0.076, 0.86, 0.12 + k * 0.076, 0.94, '#111'); break;
+    case 'gym': box(0.06, 0.3, 0.38, 0.6, F.c); box(0.12, 0.38, 0.26, 0.44, '#4a4f57'); box(0.54, 0.25, 0.4, 0.5, F.c); line(0.5, 0.5, 0.98, 0.5, '#8a8f96', Math.max(1, s * 0.05)); dot(0.52, 0.5, 0.07, F.accent); dot(0.96, 0.5, 0.07, F.accent); break;
+    case 'wine': box(0.06, 0.4, 0.88, 0.54, F.c); for (let a = 0; a < 4; a++) for (let b = 0; b < 3; b++) dot(0.18 + a * 0.21, 0.52 + b * 0.15, 0.05, F.accent); break;
+    case 'firepit': dot(0.5, 0.5, 0.42, F.c); dot(0.5, 0.5, 0.28, '#2a2a2a'); dot(0.5, 0.5, 0.16, F.accent); dot(0.46, 0.46, 0.07, '#ffd84a'); break;
     default: box(0.1, 0.1, 0.8, 0.8, F.c);
   }
   ctx.restore();

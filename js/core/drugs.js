@@ -71,10 +71,12 @@ export function marketMood(s, id) {
 
 // ---------------------------------------------------------------- the plug
 const err = text => ({ ok: false, text });
-export function buy(s, id, n = 1) {
+// rate: an out-of-state plug's prices against Texas (data/world.js), e.g. 0.5
+export const plugPrice = (s, id, rate = 1) => Math.max(5, Math.round(prices(s)[id].buy * rate / 5) * 5);
+export function buy(s, id, n = 1, rate = 1) {
   const g = DRUG_BY_ID[id];
   if (!g || n < 1) return err('He doesn\'t have that.');
-  const cost = prices(s)[id].buy * n;
+  const cost = plugPrice(s, id, rate) * n;
   if (!spend(s, cost, `Lil Tre: ${n} × ${g.name}`, { street: true })) return err(`That's ${fmtMoney(cost)}. Come back with the money.`);
   const bag = ensureDrugs(s).bag;
   bag[id] = (bag[id] || 0) + n;
@@ -82,11 +84,12 @@ export function buy(s, id, n = 1) {
 }
 
 // Sell back to the plug at half the street price: quick and safe, not much money.
-export function dump(s, id, n = 1) {
+export function dump(s, id, n = 1, rate = 1) {
   const bag = ensureDrugs(s).bag;
   n = Math.min(n, bag[id] || 0);
   if (n < 1) return err('You don\'t have any.');
-  const pay = Math.round(prices(s)[id].street * 0.5) * n;
+  // a cheap plug buys back cheap too, and never for more than he sells it
+  const pay = Math.min(Math.round(prices(s)[id].street * 0.5 * rate), Math.round(plugPrice(s, id, rate) * 0.9)) * n;
   bag[id] -= n; if (!bag[id]) delete bag[id];
   earn(s, pay, `Sold ${n} × ${DRUG_BY_ID[id].name} back to the plug`, { dirty: true });
   return { ok: true, text: `He gives you ${fmtMoney(pay)}.`, pay };

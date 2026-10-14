@@ -215,8 +215,9 @@ export function addNorth(out, { landmarkBlock, roads }) {
       buildings.push({ x: hx, z: apz0 - 80, w: 170, d: 72, h: 15, color: '#9aa3ad', kind: 'warehouse', label: k === 1 ? 'ALLIANCE AIRPORT' : k === 3 ? 'AIR CARGO' : undefined, labelColor: '#1b4fc4' });
     }
     claim(ax0, apz0 - 84, ax1, apz0);
-    buildings.push({ x: AIRPORT_X + 40, z: apz1 - 40, w: 16, d: 16, h: 38, color: '#d0d4da', kind: 'tower' });   // control tower
-    buildings.push({ x: AIRPORT_X + 60, z: apz1 - 34, w: 60, d: 26, h: 8, color: '#c8ccd2', kind: 'store', label: 'TERMINAL', labelColor: '#1b4fc4' });
+    buildings.push({ x: AIRPORT_X + 110, z: apz1 - 40, w: 16, d: 16, h: 38, color: '#d0d4da', kind: 'tower' });   // control tower
+    // the terminal, door on Alliance Blvd: flights out of state (ui/flights.js)
+    buildings.push({ x: AIRPORT_X + 14, z: HTRACE_Z - 230, w: 70, d: 28, h: 8, color: '#c8ccd2', kind: 'landmark', label: 'TERMINAL', labelColor: '#5fd3ff', loc: 'air_alliance', shop: 'airport', side: 'W', accent: '#5fd3ff' });
     // cargo jets parked on the apron, noses to the hangars
     for (const jx of [470, 690, 1030]) {
       buildings.push({ x: jx - 3.5, z: apz0 + 12, w: 7, d: 46, h: 5, color: '#f2f2f2', kind: 'parked' });

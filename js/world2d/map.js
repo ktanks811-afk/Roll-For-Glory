@@ -2,7 +2,8 @@
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
-import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, DALLAS_ZONE, NORTH, WEST, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, COUNTRY, BRAZOS, DALLAS_ZONE, NORTH, WEST, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { STATES, regionRect } from '../data/states.js';
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
 import { addEstate } from './estate.js';
@@ -12,6 +13,8 @@ import { addDallas } from './dallas.js';
 import { addNorth } from './north.js';
 import { addWeatherford } from './weatherford.js';
 import { addWest } from './west.js';
+import { addBrazos } from './brazos.js';
+import { addStates } from './states.js';
 import { houseBlock } from './house.js';
 import { fromPreset } from '../core/homes.js';
 
@@ -230,6 +233,9 @@ export function buildMap() {
   // ---------------- West Texas: Mineral Wells / Palo Pinto (world2d/west.js) ----------------
   const west = addWest(gout, { landmarkBlock, roads });
   water.push(...west.water);
+  // ---------------- out of state: Atlanta, LA, Miami, reached by plane (world2d/states.js) ----------------
+  const states = addStates(gout, { landmarkBlock });
+  water.push(...states.water);
 
   // ---------------- filling in the empty ground ----------------
   const extra = addScenery({ roads, buildings, lots, trees, rocks, props, water, rng: mulberry32(2026), Grid: SpatialGrid, onBackroad });
@@ -239,19 +245,22 @@ export function buildMap() {
   addEats({ ...gout, props });
   // Johnson County: farm roads, pastures, ranch land and oil leases south of the desert (world2d/country.js)
   addCountry({ ...gout, props, rocks, water, roads });
+  // Brazos country: the big ranches south of Johnson County (world2d/brazos.js)
+  const brazos = addBrazos(gout);
+  water.push(...brazos.water);
 
   // ---------------- colliders ----------------
   const colliders = [];
   for (const b of buildings) if (!b.noCollide) colliders.push({ x0: b.x, z0: b.z, x1: b.x + b.w, z1: b.z + b.d, h: b.h, b });
   // the garage door: solid until you own the place (World flips `off`)
   for (const g of garages) { g.panel = { x0: g.door.x, z0: g.door.z, x1: g.door.x + g.door.w, z1: g.door.z + g.door.d, h: 4, off: false, door: g.id }; colliders.push(g.panel); }
-  for (const h of houses) colliders.push(h.panel);
+  for (const h of houses) for (const pn of h.panels || [h.panel]) if (pn) colliders.push(pn);
   for (const r of rocks) colliders.push({ x0: r.x, z0: r.z, x1: r.x + r.w, z1: r.z + r.d, h: r.h });
   // water is solid
   colliders.push({ x0: RIVER_X - 45, z0: -3200, x1: RIVER_X + 45, z1: HWY_Z - HWY_W / 2 - 4, h: 0, water: true });
   colliders.push({ x0: RIVER_X - 45, z0: HWY_Z + HWY_W / 2 + 4, x1: RIVER_X + 45, z1: -1000, h: 0, water: true });
   colliders.push({ x0: SEA_X + 10, z0: 250, x1: SEA_X + 3000, z1: 4100, h: 0, water: true });
-  for (const w of [...extra.water, ...dallas.water, ...north.water]) colliders.push({ x0: w.x, z0: w.z, x1: w.x + w.w, z1: w.z + w.d, h: 0, water: true });
+  for (const w of [...extra.water, ...dallas.water, ...north.water, ...brazos.water, ...states.water]) colliders.push({ x0: w.x, z0: w.z, x1: w.x + w.w, z1: w.z + w.d, h: 0, water: true });
   // tunnel hill walls (the tunnel itself is open)
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z - 300, x1: TUNNEL[1], z1: HWY_Z - HWY_W / 2 - 2, h: 30, hill: true });
   colliders.push({ x0: TUNNEL[0], z0: HWY_Z + HWY_W / 2 + 2, x1: TUNNEL[1], z1: HWY_Z + 300, h: 30, hill: true });
@@ -261,13 +270,23 @@ export function buildMap() {
   colliders.push({ x0: -4000, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: NORTH.z0, h: 0 });
   colliders.push({ x0: -4000, z0: NORTH.z0, x1: NORTH.x0, z1: -3300, h: 0 });
   colliders.push({ x0: NORTH.x1, z0: NORTH.z0, x1: 3300, z1: -3300, h: 0 });
-  colliders.push({ x0: -4000, z0: COUNTRY.z1, x1: 4000, z1: COUNTRY.z1 + 700, h: 0 });
-  colliders.push({ x0: -4000, z0: top, x1: -3300, z1: COUNTRY.z1 + 700, h: 0 });
+  // south: Johnson County opens onto Brazos country, which runs down to the river
+  const bottom = BRAZOS.z1 + 700;
+  colliders.push({ x0: -4000, z0: COUNTRY.z1, x1: BRAZOS.x0, z1: bottom, h: 0 });
+  colliders.push({ x0: BRAZOS.x1, z0: COUNTRY.z1, x1: 4000, z1: bottom, h: 0 });
+  colliders.push({ x0: -4000, z0: BRAZOS.z1, x1: 4000, z1: bottom, h: 0 });
+  colliders.push({ x0: -4000, z0: top, x1: -3300, z1: bottom, h: 0 });
   // east: open only along the I-30 corridor out to Dallas
   colliders.push({ x0: 3300, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: DALLAS_ZONE.z0, h: 0 });
-  colliders.push({ x0: 3300, z0: DALLAS_ZONE.z1, x1: DALLAS_ZONE.x1 + 700, z1: COUNTRY.z1 + 700, h: 0 });
-  colliders.push({ x0: DALLAS_ZONE.x1, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: COUNTRY.z1 + 700, h: 0 });
+  colliders.push({ x0: 3300, z0: DALLAS_ZONE.z1, x1: DALLAS_ZONE.x1 + 700, z1: bottom, h: 0 });
+  colliders.push({ x0: DALLAS_ZONE.x1, z0: top, x1: DALLAS_ZONE.x1 + 700, z1: bottom, h: 0 });
   colliders.push({ x0: COUNTRY.x1, z0: 4050, x1: 3300, z1: COUNTRY.z1, h: 0 });   // past the lake's south shore, the county line
+  // out of state: each city is walled in all round; the only way in or out is a plane
+  for (const st of Object.values(STATES)) {
+    const r = regionRect(st), t = 400;
+    colliders.push({ x0: r.x0 - t, z0: r.z0 - t, x1: r.x1 + t, z1: r.z0, h: 0 }, { x0: r.x0 - t, z0: r.z1, x1: r.x1 + t, z1: r.z1 + t, h: 0 },
+      { x0: r.x0 - t, z0: r.z0, x1: r.x0, z1: r.z1, h: 0 }, { x0: r.x1, z0: r.z0, x1: r.x1 + t, z1: r.z1, h: 0 });
+  }
 
   const grid = new SpatialGrid(100);
   colliders.forEach(c => grid.insert(c, c.x0, c.z0, c.x1, c.z1));

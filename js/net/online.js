@@ -11,6 +11,7 @@
 
 import { CAR_BY_ID } from '../data/cars.js';
 import { defaultVisual, PERF } from '../data/parts.js';
+import { WORLD_R } from '../data/world.js';
 
 export const SUPABASE_URL = 'https://fikdilgfjponqygiwofa.supabase.co';
 // Publishable (public-by-design) key. Only used for realtime broadcast.
@@ -292,7 +293,7 @@ class Online {
   honk() { this.send({ k: 'ho' }); }
   pvpHit(to, damage, weapon, x, z, h) {
     if (!this.active || !to) return;
-    this.send({ k: 'pvp', t: 'hit', to, d: num(damage, 1, 100, 1), w: weapon === 'melee' ? 'melee' : 'gun', x: +num(x, -9000, 9000).toFixed(2), z: +num(z, -9000, 9000).toFixed(2), h: +num(h, -20, 20).toFixed(3) });
+    this.send({ k: 'pvp', t: 'hit', to, d: num(damage, 1, 100, 1), w: weapon === 'melee' ? 'melee' : 'gun', x: +num(x, -WORLD_R, WORLD_R).toFixed(2), z: +num(z, -WORLD_R, WORLD_R).toFixed(2), h: +num(h, -20, 20).toFixed(3) });
   }
   pvpState(type) {
     if (!this.active || (type !== 'dead' && type !== 'alive')) return;
@@ -338,7 +339,7 @@ class Online {
       const q = num(m.q, 0, 1e9, 0);
       if (q && p.q && q <= p.q && p.q - q < 1e6) return;
       p.q = q;
-      const x = num(m.x, -9000, 9000), z = num(m.z, -9000, 9000);
+      const x = num(m.x, -WORLD_R, WORLD_R), z = num(m.z, -WORLD_R, WORLD_R);
       p.st = { x, z, h: num(m.h, -20, 20), v: num(m.v, -80, 120), r: num(m.r, -4, 4), a: num(m.a, -30, 30) };
       const gap = Math.max(0, now - (p.lastPacketAt || now));
       p.jitter = p.jitter * 0.82 + Math.abs(gap - (p.packetGap || gap)) * 0.18;
@@ -358,7 +359,7 @@ class Online {
       if (!type) return;
       if (type === 'hit') {
         if (m.to !== this.id) return;
-        const dmg = num(m.d, 1, 100, 1), ax = num(m.x, -9000, 9000), az = num(m.z, -9000, 9000);
+        const dmg = num(m.d, 1, 100, 1), ax = num(m.x, -WORLD_R, WORLD_R), az = num(m.z, -WORLD_R, WORLD_R);
         const p = this.peers.get(m.id);
         if (!p || Math.hypot(p.x - ax, p.z - az) > 14) return;
         this.emit('pvp', { type: 'hit', from: m.id, peer: p, damage: dmg, weapon: String(m.w || 'gun').slice(0, 12) });

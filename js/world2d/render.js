@@ -1,7 +1,8 @@
 // Draws Fort Worth top-down: ground, roads, lots, buildings (with a
 // parallax lean so they read as 3D), trees, night lighting and weather.
 
-import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, DALLAS, DALLAS_ZONE, DENTON, NORTH, WEST, WEST_CITY, LOCATIONS } from '../data/world.js';
+import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, BRAZOS, DALLAS, DALLAS_ZONE, DENTON, NORTH, WEST, WEST_CITY, LOCATIONS } from '../data/world.js';
+import { STATES, cityRect, regionRect } from '../data/states.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
 import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
@@ -58,6 +59,8 @@ export function drawGround(ctx, cam) {
   };
   rect(-4000, DESERT_Z, 4000, COUNTRY.z0, COLORS.sand);
   rect(COUNTRY.x0, COUNTRY.z0, COUNTRY.x1, COUNTRY.z1, COLORS.country);
+  rect(BRAZOS.x0, BRAZOS.z0, BRAZOS.x1, BRAZOS.z1, COLORS.country);
+  for (const st of Object.values(STATES)) { const r = regionRect(st), c = cityRect(st); rect(r.x0, r.z0, r.x1, r.z1, st.ground); rect(c.x0 - 15, c.z0 - 15, c.x1 + 15, c.z1 + 15, COLORS.city); }
   rect(-3300, -1000, -1000, DESERT_Z, '#34402a');
   rect(-985, -985, 985, 985, COLORS.city);
   rect(DALLAS.x0 - 15, DALLAS.z0 - 15, DALLAS.x1 + 15, DALLAS.z1 + 15, COLORS.city);
@@ -168,8 +171,7 @@ export function drawLots(ctx, cam, items) {
       ctx.beginPath(); ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2); ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h); ctx.stroke();
     }
   }
-  ctx.fillStyle = COLORS.iwall;
-  for (const l of walls) ctx.fillRect(cam.sx(l.x), cam.sy(l.z), Math.max(1, l.w * z), Math.max(1, l.d * z));
+  for (const l of walls) { ctx.fillStyle = l.c || COLORS.iwall; ctx.fillRect(cam.sx(l.x), cam.sy(l.z), Math.max(1, l.w * z), Math.max(1, l.d * z)); }
   drawProps(ctx, cam, items);
 }
 
@@ -821,30 +823,41 @@ export function shadeHex(hex, amt) {
 
 // Static overview of the whole map for the minimap and phone map.
 export function renderOverview(map, scale = 0.12) {
-  // Overview covers every currently playable region, including the new westward expansion.
-  const x0 = WEST.x0 - 400, z0 = NORTH.z0 - 400, W = DALLAS_ZONE.x1 + 4400 - x0, H = COUNTRY.z1 + 600 - z0;
+  // Overview covers every currently playable region of Texas; each out-of-state
+  // city gets its own small one in `more` (no point painting the empty miles between).
+  const main = paintOverview(map, scale, WEST.x0 - 400, NORTH.z0 - 400, DALLAS_ZONE.x1 + 4400, BRAZOS.z1 + 300);
+  main.more = Object.values(STATES).map(st => { const r = regionRect(st); return paintOverview(map, scale, r.x0, r.z0, r.x1, r.z1, st.ground); });
+  return main;
+}
+function paintOverview(map, scale, x0, z0, x1, z1, ground) {
+  const W = x1 - x0, H = z1 - z0, inside = (x, z, w, d) => x + w > x0 && x < x1 && z + d > z0 && z < z1;
   const c = document.createElement('canvas');
   c.width = W * scale; c.height = H * scale;
   const g = c.getContext('2d');
   const sx = x => (x - x0) * scale, sy = z => (z - z0) * scale;
-  g.fillStyle = '#1e2619'; g.fillRect(0, 0, c.width, c.height);
-  g.fillStyle = '#7d6a4c'; g.fillRect(0, sy(DESERT_Z), c.width, (COUNTRY.z0 - DESERT_Z) * scale);
-  g.fillStyle = '#2c3a22'; g.fillRect(sx(COUNTRY.x0), sy(COUNTRY.z0), (COUNTRY.x1 - COUNTRY.x0) * scale, (COUNTRY.z1 - COUNTRY.z0) * scale);
-  g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
-  g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
-  g.fillRect(sx(DALLAS.x0 - 15), sy(DALLAS.z0 - 15), (DALLAS.x1 - DALLAS.x0 + 30) * scale, (DALLAS.z1 - DALLAS.z0 + 30) * scale);
-  g.fillRect(sx(DENTON.x0 - 15), sy(DENTON.z0 - 15), (DENTON.x1 - DENTON.x0 + 30) * scale, (DENTON.z1 - DENTON.z0 + 30) * scale);
-  g.fillRect(sx(WEST_CITY.x0 - 15), sy(WEST_CITY.z0 - 15), (WEST_CITY.x1 - WEST_CITY.x0 + 30) * scale, (WEST_CITY.z1 - WEST_CITY.z0 + 30) * scale);
-  for (const l of map.lots) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
-  for (const w of map.water) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
+  g.fillStyle = ground || '#1e2619'; g.fillRect(0, 0, c.width, c.height);
+  if (!ground) {
+    g.fillStyle = '#7d6a4c'; g.fillRect(0, sy(DESERT_Z), c.width, (COUNTRY.z0 - DESERT_Z) * scale);
+    g.fillStyle = '#2c3a22'; g.fillRect(sx(COUNTRY.x0), sy(COUNTRY.z0), (COUNTRY.x1 - COUNTRY.x0) * scale, (COUNTRY.z1 - COUNTRY.z0) * scale);
+    g.fillRect(sx(BRAZOS.x0), sy(BRAZOS.z0), (BRAZOS.x1 - BRAZOS.x0) * scale, (BRAZOS.z1 - BRAZOS.z0) * scale);
+    g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
+    g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
+    g.fillRect(sx(DALLAS.x0 - 15), sy(DALLAS.z0 - 15), (DALLAS.x1 - DALLAS.x0 + 30) * scale, (DALLAS.z1 - DALLAS.z0 + 30) * scale);
+    g.fillRect(sx(DENTON.x0 - 15), sy(DENTON.z0 - 15), (DENTON.x1 - DENTON.x0 + 30) * scale, (DENTON.z1 - DENTON.z0 + 30) * scale);
+    g.fillRect(sx(WEST_CITY.x0 - 15), sy(WEST_CITY.z0 - 15), (WEST_CITY.x1 - WEST_CITY.x0 + 30) * scale, (WEST_CITY.z1 - WEST_CITY.z0 + 30) * scale);
+  }
+  for (const l of map.lots) if (inside(l.x, l.z, l.w, l.d)) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
+  for (const w of map.water) if (inside(w.x, w.z, w.w, w.d)) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
   g.fillStyle = 'rgba(80,90,100,0.9)';
-  for (const b of map.buildings) if (b.kind !== 'parked') g.fillRect(sx(b.x), sy(b.z), Math.max(1, b.w * scale), Math.max(1, b.d * scale));
+  for (const b of map.buildings) if (b.kind !== 'parked' && inside(b.x, b.z, b.w, b.d)) g.fillRect(sx(b.x), sy(b.z), Math.max(1, b.w * scale), Math.max(1, b.d * scale));
   for (const e of map.roads.edges) {
     g.strokeStyle = e.kind === 'highway' ? '#e8c21a' : e.kind === 'desert' ? '#c9b48a' : '#c8cad0';
     g.lineWidth = Math.max(1.5, e.width * scale * (e.kind === 'highway' ? 1 : 1.4));
     g.beginPath(); g.moveTo(sx(e.ax), sy(e.az)); g.lineTo(sx(e.bx), sy(e.bz)); g.stroke();
   }
-  g.strokeStyle = '#a8aab0'; g.lineWidth = 1.5;
-  g.beginPath(); BACKROAD.forEach(([x, z], i) => i ? g.lineTo(sx(x), sy(z)) : g.moveTo(sx(x), sy(z))); g.stroke();
+  if (!ground) {
+    g.strokeStyle = '#a8aab0'; g.lineWidth = 1.5;
+    g.beginPath(); BACKROAD.forEach(([x, z], i) => i ? g.lineTo(sx(x), sy(z)) : g.moveTo(sx(x), sy(z))); g.stroke();
+  }
   return { canvas: c, scale, x0, z0 };
 }

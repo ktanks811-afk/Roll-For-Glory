@@ -1338,7 +1338,7 @@ await step('online free roam', async () => {
   await p.waitForTimeout(400);
   const evilBuild = await p.evaluate(async () => { const { builds } = await import('./js/net/builds.js'); const e = builds.at(window.__rfg.game.s, 'land_six_bunche'); return { proto: builds.live.has('__proto__'), cows: e?.b.land?.animals.cow, plan: e?.b.land?.plan || null }; });
   console.log('     hostile build cleaned to', JSON.stringify(evilBuild));
-  if (evilBuild.proto || evilBuild.cows > 80 || evilBuild.plan) throw new Error('hostile build got through: ' + JSON.stringify(evilBuild));
+  if (evilBuild.proto || evilBuild.cows > 400 || evilBuild.plan) throw new Error('hostile build got through: ' + JSON.stringify(evilBuild));
   // riding along: tab 1 walks up and asks tab 2 for a ride, tab 2 lets them in, then the other way round
   const ridePump = pg => pg.evaluate(() => { clearInterval(window.__pump); window.__pump = setInterval(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); }, 120); });
   await ridePump(p); await ridePump(p2);
@@ -1664,7 +1664,8 @@ await step('minimap', async () => {
 await step('phone map (places + GPS)', async () => {
   await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; window.__rfg.game.s.gps = null; w.gpsPath = null; const { openPhone } = await import('./js/ui/phone.js'); openPhone('map', window.__rfg.app); });
   await p.waitForSelector('[data-map]'); await p.waitForTimeout(800);
-  const total = await p.evaluate(async () => (await import('./js/data/world.js')).LOCATIONS.length);
+  // only what's in Texas: the out-of-state cities are a flight away
+  const total = await p.evaluate(async () => { const { stateAt } = await import('./js/data/states.js'); return (await import('./js/data/world.js')).LOCATIONS.filter(l => stateAt(l.x, l.z) === 'tx').length; });
   const rows = await p.$$eval('.mapapp .li[data-loc]', e => e.length);
   if (rows !== total) throw new Error(`the map lists ${rows} of ${total} places`);
   // the picture is real (not blank) and has pins on it

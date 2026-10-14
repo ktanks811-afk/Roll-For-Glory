@@ -218,11 +218,27 @@ export function sellRig(s, id) {
 }
 export const oilIncome = s => Object.keys(s.estate?.rigs || {}).filter(id => RIGS[id]).length * RIG_PAY;
 
+// ---------------------------------------------------------------- the big ranches
+// On a big ranch the house and the garage go on a homesite by the gate, not
+// spread over a thousand acres: this is the piece of the lot they're built on
+// (the whole lot for everything else).
+export const HOMESITE = { w: 240, d: 170 };
+export function homesite(loc) {
+  const r = loc.lot;
+  if (!LAND[loc.id]?.huge) return r;
+  const { w, d } = HOMESITE;
+  if (loc.side === 'N') return { x0: loc.x - w / 2, x1: loc.x + w / 2, z0: r.z0, z1: r.z0 + d };
+  if (loc.side === 'S') return { x0: loc.x - w / 2, x1: loc.x + w / 2, z0: r.z1 - d, z1: r.z1 };
+  if (loc.side === 'W') return { x0: r.x0, x1: r.x0 + d, z0: loc.z - w / 2, z1: loc.z + w / 2 };
+  return { x0: r.x1 - d, x1: r.x1, z0: loc.z - w / 2, z1: loc.z + w / 2 };
+}
+export const acresOf = id => LAND[id]?.acres || null;
+
 // ---------------------------------------------------------------- ranching
 // The pasture: the back of the lot, behind the house and the garage.
 export function pasture(loc) {
   const r = loc.lot, depth = loc.side === 'N' || loc.side === 'S' ? r.z1 - r.z0 : r.x1 - r.x0;
-  const front = Math.min(62, depth * 0.5), back = 4, sideIn = 4;
+  const front = LAND[loc.id]?.huge ? HOMESITE.d + 10 : Math.min(62, depth * 0.5), back = 4, sideIn = 4;
   if (loc.side === 'N') return { x0: r.x0 + sideIn, x1: r.x1 - sideIn, z0: r.z0 + front, z1: r.z1 - back };
   if (loc.side === 'S') return { x0: r.x0 + sideIn, x1: r.x1 - sideIn, z0: r.z0 + back, z1: r.z1 - front };
   if (loc.side === 'W') return { x0: r.x0 + front, x1: r.x1 - back, z0: r.z0 + sideIn, z1: r.z1 - sideIn };
