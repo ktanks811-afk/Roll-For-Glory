@@ -89,3 +89,50 @@ export const PRODUCER_BY_ID = Object.fromEntries(PRODUCERS.map(p => [p.id, p]));
 // Song titles: a first word or two and an end.
 export const TITLE_A = ['Stop Six', 'Berry St', 'Cowtown', 'Trinity', 'Southside', 'Late Night', 'Murda Worth', 'Lancaster', 'Big D', 'Magnolia', 'Ramey Ave', 'Pier 9', 'Grand Ave', 'I-30', 'Loop 820', 'Northside', 'Oak Cliff', 'Elm St', 'Candy Paint', 'Paper', 'Twelve', 'Ghost'];
 export const TITLE_B = ['Summer', 'Nights', 'Blues', 'Dreams', 'Anthem', 'Money', 'Prayer', 'Ride', 'Story', 'Shine', 'Pressure', 'Freestyle', 'Forever', 'Lullaby', 'Heat', 'Season', 'Gospel', 'Runs', 'Love', 'Diaries'];
+
+// ---------------------------------------------------------------- the competition
+// Rival labels around DFW. `reach` is the best talent they can afford to chase,
+// `bid` scales their offers, `q` lifts their records, `aggro` is how often they poach.
+export const RIVALS = [
+  { id: 'cowtown_cartel', name: 'Cowtown Cartel Records', boss: 'Big Hank', home: 'Fort Worth', color: '#e0503c', reach: 72, bid: 1.0, q: 2, aggro: 1.2 },
+  { id: 'big_d_ent', name: 'Big D Entertainment', boss: 'Dee Marshall', home: 'Dallas', color: '#3c8ee0', reach: 80, bid: 1.15, q: 5, aggro: 1 },
+  { id: 'southside_sound', name: 'Southside Sound Co.', boss: 'Rosa Vega', home: 'Fort Worth', color: '#e0a83c', reach: 66, bid: 0.85, q: 0, aggro: 1.4 },
+  { id: 'trinity_music', name: 'Trinity Music Group', boss: 'Marcus Lane', home: 'Dallas', color: '#9a5ce0', reach: 86, bid: 1.3, q: 7, aggro: 0.8 },
+  { id: 'lone_star_global', name: 'Lone Star Global', boss: 'Catherine Wu', home: 'Uptown Dallas', color: '#3cc09a', reach: 99, bid: 1.6, q: 10, aggro: 0.5 },
+];
+export const RIVAL_BY_ID = Object.fromEntries(RIVALS.map(r => [r.id, r]));
+export const RIVAL_ROSTER = 8;
+
+// Upcoming artists the A&R finds for the monthly showcase and the rivals sign.
+// Names are made from these parts.
+export const NEW_FIRST = ['Lil', 'Yung', 'Big', 'Baby', 'Lady', 'Kid', 'Tha', 'Saint', '', '', '', ''];
+export const NEW_CORE = ['Tay', 'Dro', 'Kash', 'Nova', 'Juju', 'Zay', 'Remy', 'Bando', 'Sosa', 'Keem', 'Mya', 'Rio', 'Trey', 'Deja', 'Smoke', 'Glo', 'Skeet', 'Lowkey', 'Nuk', 'Jas', 'Peso', 'Kenzo', 'Breezy', 'Dolla', 'Vee', 'Cali', 'Tez', 'Rell'];
+export const NEW_LAST = ['', '', '', ' 2x', ' Woo', ' Tha Kid', ' Baby', ' G', ' Banks', ' Era', ' Vibez', ' 817', ' 214', ' Hunnid'];
+export const NEW_GENRES = ['Drill', 'Trap', 'R&B', 'Rap', 'Melodic Rap', 'Tejano Trap', 'Neo-Soul', 'Pop Rap', 'Chopped & Screwed', 'Corridos Tumbados'];
+export const NEW_HOODS = ['Stop Six', 'Polytechnic', 'Como', 'Northside', 'Southside', 'Riverside', 'Oak Cliff', 'South Dallas', 'Arlington', 'Everman', 'Lake Worth', 'Burleson'];
+export const NEW_BIOS = [
+  'Went viral off one freestyle in a car. Now the comments want a whole tape.',
+  'Writes in the school parking lot between classes. The hooks stick.',
+  'Opened for nobody yet, but the open mics go quiet when they step up.',
+  'Recorded the first song on a phone in a closet. Still slaps.',
+  'Their cousin runs a car club and plays their songs at every meet.',
+  'Sings at church on Sunday and over 808s the rest of the week.',
+];
+
+// Where the monthly showcase happens, one after another.
+export const SHOWCASE_SPOTS = ['magnolia_sound', 'gran_plaza', 'ellum_lab', 'pier9'];
+export const MONTH = 28;                   // a showcase every 28 days
+
+// Shows the label can front: `front` is the deposit, sound, travel and promo the
+// label pays before the show, `nights` is how many dates, `draw` the share of
+// fans that buy a ticket, `minFans` who the promoter will book.
+export const GIGS = [
+  { id: 'club', name: 'Club show', venue: 'The Basement on Magnolia', front: 2500, nights: 1, days: 1, cap: 300, ticket: 20, draw: 0.06, minFans: 0 },
+  { id: 'concert', name: 'Concert', venue: 'Southside Ballroom', front: 25000, nights: 1, days: 1, cap: 2500, ticket: 40, draw: 0.06, minFans: 12000 },
+  { id: 'tx_tour', name: 'Texas tour', venue: 'Houston, Austin, San Antonio, Lubbock, El Paso', front: 90000, nights: 5, days: 5, cap: 2000, ticket: 35, draw: 0.06, minFans: 25000 },
+  { id: 'arena', name: 'Arena headline', venue: 'Cowtown Coliseum', front: 150000, nights: 1, days: 1, cap: 12000, ticket: 65, draw: 0.06, minFans: 80000 },
+  { id: 'us_tour', name: 'National tour', venue: '12 cities coast to coast', front: 450000, nights: 12, days: 12, cap: 4500, ticket: 55, draw: 0.035, minFans: 150000 },
+];
+export const GIG_BY_ID = Object.fromEntries(GIGS.map(g => [g.id, g]));
+export const LABEL_SHOW_SHARE = 0.3;       // the label's cut of a show it fronted; the artist's share pays back their debt first
+export const MERCH = 0.18;                 // merch table, as a share of ticket money

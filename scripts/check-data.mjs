@@ -1803,6 +1803,67 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (LB.signed(s, a.id) || L.releases[0].earned <= 0) bad('an artist who walks leaves their records behind');
   if (LB.signArtist(s, a.id, 'standard', true).ok) bad('they should not re-sign right away');
   if (LB.chartPos(5e6) !== 1 && LB.chartPos(5e6) > 5) bad('chart');
+
+  // rival labels start with artists of their own, and every rival is real
+  for (const rv of LD.RIVALS) if (LB.rivalRoster(s, rv.id).length < 3) bad(`${rv.id} should start with artists`);
+  // bail goes on the artist's tab and comes back out of their royalties
+  const b = LD.ARTIST_BY_ID[L.known.find(id => !LB.signed(s, id) && !LB.rivalOf(s, id) && !LB.cloutNeeded(LD.ARTIST_BY_ID[id]))];
+  L.cooldown = {};
+  if (!LB.signArtist(s, b.id, 'standard', true).ok) bad('second signing');
+  const br = LB.signed(s, b.id); br.jailed = { day: s.time.day, bail: 8000 };
+  LB.postBail(s, b.id);
+  if (br.debt !== 8000) bad(`bail should be artist debt: ${br.debt}`);
+  L.releases.unshift({ id: 'relX', artist: b.id, title: 'Test', kind: 'album', quality: 80, day: s.time.day, promo: 'none', viral: false, daily: 4e6, peak: 4e6, total: 0, earned: 0, last: 0, sales: 0 });
+  let bank1 = s.bank, p1 = 0;
+  for (let i = 0; i < 2; i++) { s.time.day++; p1 += LB.labelDay(s, () => 0.9).paid; }
+  if (br.debt > 0 || br.wallet <= 0 || s.bank !== bank1 + p1 || L.recouped < 8000) bad(`debt should recoup from royalties: debt ${br.debt}, wallet ${br.wallet}`);
+  // the label fronts a show; it goes on the tab and the door pays it back
+  br.buzz = 30000; br.wallet = 0;
+  if (LB.bookGig(s, b.id, 'arena').ok) bad('arena needs more fans');
+  bank1 = s.bank;
+  const g = LB.bookGig(s, b.id, 'concert');
+  if (!g.ok || s.bank !== bank1 - LD.GIG_BY_ID.concert.front || br.debt !== LD.GIG_BY_ID.concert.front) bad('fronting a concert');
+  if (LB.bookSession(s, 'magnolia_sound', b.id, 'single').ok || LB.bookGig(s, b.id, 'club').ok) bad('busy while on a gig');
+  s.time.day++; const gd = LB.labelDay(s, () => 0.9);
+  if (br.gig || !br.gigs.length || !gd.texts.some(t => /concert is done/.test(t)) || br.gigs[0].total <= 0) bad('settling a concert');
+  // an artist with their own money and no debt pays their own way
+  br.debt = 0; br.wallet = 5000; bank1 = s.bank;
+  if (!LB.bookGig(s, b.id, 'club').ok || s.bank !== bank1 || br.wallet !== 2500 || br.debt !== 0) bad('artist paying for a club show');
+  br.gig = null;
+  // they ask for more money over time; a rival offer you ignore costs you the artist
+  br.nextAsk = s.time.day; br.demand = null;
+  s.time.day++; LB.labelDay(s, () => 0.9);
+  if (!br.demand) bad('artists should ask for more money over time');
+  br.demand = null; br.offer = { rival: 'big_d_ent', amount: 5000, day: s.time.day, until: s.time.day };
+  br.debt = 3000; bank1 = s.bank;
+  s.time.day++; const od = LB.labelDay(s, () => 0.9);
+  if (LB.signed(s, b.id) || LB.rivalOf(s, b.id)?.id !== 'big_d_ent' || !(s.bank >= bank1 + 3000)) bad('ignored offer: artist goes to the rival, rival pays the debt');
+  if (LB.signArtist(s, b.id, 'standard', true).ok) bad('rival-signed artists need a buyout');
+  delete L.cooldown[b.id];
+  if (!LB.signArtist(s, b.id, 'buyout', true).ok || LB.rivalOf(s, b.id)) bad('buying out a rival deal');
+  // the monthly showcase: lineup a week out, beat the rival offer in person, the rest go elsewhere
+  L.roster = L.roster.slice(0, 2); L.showcase = null;
+  s.time.day = LD.MONTH * 3 - 5; LB.labelDay(s, () => 0.5);
+  const sc = L.showcase;
+  if (!sc || sc.day !== LD.MONTH * 3 || sc.lineup.length !== 4) bad('showcase announced a week out');
+  const act = sc.lineup[0];
+  if (LB.signAtShowcase(s, act, true).ok) bad('signing before the showcase night');
+  s.time.day = sc.day; LB.labelDay(s, () => 0.5);
+  if (LB.signAtShowcase(s, act, false).ok) bad('showcase signing needs you there');
+  if (sc.bids[act] && LB.showcasePrice(s, act) <= sc.bids[act].amount) bad('you have to beat the rival offer');
+  if (!LB.signAtShowcase(s, act, true).ok || !LB.signed(s, act)) bad('signing off the showcase');
+  s.time.day++; LB.labelDay(s, () => 0.5);
+  if (!sc.done || sc.lineup.slice(1).some(id => !sc.signed[id] && !L.known.includes(id))) bad('after the showcase');
+  // SoundScan: weeks roll over, everybody gets ranked, units = sales + streams/1500
+  for (let i = 0; i < 8; i++) { s.time.day++; LB.labelDay(s, () => 0.5); }
+  const wk = L.ss.hist[0], rows = wk && LB.ssRows(wk.by);
+  if (!rows?.length || rows.some((x, i) => i && x.u > rows[i - 1].u)) bad('SoundScan week');
+  if (!rows?.some(x => wk.owner[x.id] !== 'you')) bad('SoundScan should rank rival artists too');
+  if (LB.unitsOf([3000, 10]) !== 12) bad('units');
+  // old saves: roster entries from before get the new fields
+  const old = createState({ name: 'Old' }); old.label = { name: 'Old Label', founded: 1, clout: 0, known: ['lil_six'], roster: [{ id: 'lil_six', signedDay: 1, cut: 0.2, advance: 0, buzz: 4000, buzz0: 4000, jailed: null, demand: null, shows: 0 }], sessions: [], releases: [], earned: 0, streams: 0, log: [] };
+  old.time.day += 1; LB.labelDay(old, () => 0.9);
+  if (old.label.roster[0].debt !== 0 || !old.label.ss || !old.label.newcomers.length) bad('an old label save should upgrade');
 }
 // credit scores, loans, car financing, repos (core/credit.js)
 {
