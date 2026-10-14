@@ -1,7 +1,7 @@
 // Online free roam screen: join a room, see who's around, chat, leave.
 // The police stay active online: your own city cops chase you as usual.
 
-import { openPanel, bind, esc, toast, confirm } from './dom.js';
+import { openPanel, bind, esc, toast, confirm, modal } from './dom.js';
 import { game, activeCar, modelOf, levels, tierOf } from '../core/state.js';
 import { carName } from '../data/cars.js';
 import { online, SERVERS, SERVER_CAP, SERVER_BY_ID } from '../net/online.js';
@@ -13,6 +13,9 @@ import { initPvp, openChallenge } from './pvp.js';
 import { pvp } from '../net/pvp.js';
 import { rides } from '../net/ride.js';
 import { bots, regulars } from '../net/bots.js';
+import * as O from '../core/opps.js';
+import { TALK_DOWN, DISS } from '../data/beefTalk.js';
+import { addPost, fill } from '../core/feed.js';
 
 const QUICK = ['🏁 Race me!', '🔥 Nice build', '👍', '😂', 'Meet at Pier 9?'];
 
@@ -69,6 +72,9 @@ export function openOnline(app) {
           drawPeers(root, app);
           return;
         }
+        const bb = e.target.closest('[data-beef]');
+        const bp = bb && online.peers.get(bb.dataset.beef);
+        if (bp) { audio.click?.(); beefWith(bp).then(() => drawPeers(root, app)); return; }
         const b = e.target.closest('[data-race]');
         const p = b && online.peers.get(b.dataset.race);
         if (p) { audio.click?.(); openChallenge(app, p); }
@@ -176,7 +182,9 @@ function drawPeers(root, app) {
     const riding = p.ride && !withMe ? online.peers.get(p.ride)?.name || 'someone' : '';
     const ride = mine ? 'Get out' : withMe ? 'Drop off' : rides.out?.to === p.id ? 'Asked…' : p.inCar ? '🚗 Ride' : '🚗 Offer ride';
     const where = mine ? 'you\'re riding with them' : withMe ? 'riding with you' : riding ? `riding with ${esc(riding)}` : `${d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m'} away`;
-    return `<div class="li"><span class="avatar" style="background:#2a6bff">${esc(p.name[0] || '?')}</span><div class="grow"><div class="t">${esc(p.name)}</div><div class="s">${esc(carName(p.model))} · ${where}</div></div><button class="btn btn-sm" data-ride="${esc(p.id)}" ${rides.out?.to === p.id || (riding && !mine) ? 'disabled' : ''}>${ride}</button> <button class="btn btn-sm ${asked ? '' : 'btn-primary'}" data-race="${esc(p.id)}" ${asked ? 'disabled' : ''}>${asked ? 'Asked…' : '🏁 Race'}</button></div>`;
+    const beef = p.bot ? O.beefWith(game.s, bots.list.get(p.id)?.okey || '') : null;
+    const tag = beef ? ` <span class="tag ${beef.opp ? 'tag-red' : 'tag-yellow'}">${O.beefWord(beef)}</span>` : '';
+    return `<div class="li"><span class="avatar" style="background:${beef?.opp ? '#c41b1b' : '#2a6bff'}">${esc(p.name[0] || '?')}</span><div class="grow"><div class="t">${esc(p.name)}${tag}</div><div class="s">${esc(carName(p.model))} · ${where}</div></div><button class="btn btn-sm" data-ride="${esc(p.id)}" ${rides.out?.to === p.id || (riding && !mine) ? 'disabled' : ''}>${ride}</button> <button class="btn btn-sm ${asked ? '' : 'btn-primary'}" data-race="${esc(p.id)}" ${asked ? 'disabled' : ''}>${asked ? 'Asked…' : '🏁 Race'}</button> <button class="btn btn-sm ${beef?.opp ? 'btn-danger' : ''}" data-beef="${esc(p.id)}" title="Beef">😤</button></div>`;
   }).join('') : '<p class="small muted">Nobody else is here yet. Tell a friend to join this server, or switch to a busier one.</p>';
 }
 
@@ -185,4 +193,29 @@ function drawChat(root) {
   if (!box) return;
   box.innerHTML = online.chat.length ? online.chat.slice(-30).map(m => `<div><b style="color:${m.mine ? '#ff2a3a' : '#c0c4cc'}">${esc(m.name)}</b> ${esc(m.text)}</div>`).join('') : '<span class="muted small">No messages yet.</span>';
   box.scrollTop = box.scrollHeight;
+}
+
+// Start beef with somebody on the server (or squash it with your opp).
+async function beefWith(p) {
+  const s = game.s, b = p.bot ? bots.list.get(p.id) : null;
+  const r = b ? O.beefWith(s, b.okey) : null;
+  if (r?.opp) {
+    const pick = await modal(`${p.name} is your opp`, `<p>It's on sight. They'll slide on you or walk you down whenever you're online. Keep a gun on you and shoot back.</p><p class="small muted">You can reach out once a day to try to end it. Hotheads and people you dropped don't let it go easy.</p>`,
+      [{ label: 'Leave it', value: '' }, { label: 'Post on \'em', value: 'post' }, { label: 'Try to squash it', primary: true, value: 'squash' }]);
+    if (pick === 'post') { bots.beef.startIt(b, 'post'); toast(`You posted on ${p.name}.`, 'info'); }
+    if (pick === 'squash') { const why = bots.beef.squash(b); toast(why || `You and ${p.name} squashed it.`, why ? 'bad' : 'good'); }
+    return;
+  }
+  const how = await modal(`Beef with ${p.name}?`, `<p>Talk down on them, post on them on Throttle, or make them your opp. ${r ? `Right now it's <b>${O.beefWord(r).toLowerCase()}</b> between y'all.` : ''}</p><p class="small muted">Opps don't forget. They pull up on you, do drive-bys and walk you down until it's squashed.</p>`,
+    [{ label: 'Nah', value: '' }, { label: '🗣 Talk down', value: 'talk' }, { label: '📱 Post on \'em', value: 'post' }, { label: '☠ Make \'em your opp', danger: true, value: 'opp' }]);
+  if (!how) return;
+  if (b) {
+    bots.beef.startIt(b, how);
+    if (how === 'post') toast(`You posted on ${p.name}.`, 'info');
+    return;
+  }
+  // a real player: it's just words
+  if (how === 'talk') online.say(`${p.name} ${TALK_DOWN[Math.floor(Math.random() * TALK_DOWN.length)]}`);
+  else if (how === 'post') { addPost(s, { mine: true, text: fill(DISS[Math.floor(Math.random() * DISS.length)], { them: O.handleOf(p.name) }), about: true }); toast(`You posted on ${p.name}.`, 'info'); }
+  else online.say(`${p.name} you a opp now. on sight`);
 }

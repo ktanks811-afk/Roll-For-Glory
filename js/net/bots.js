@@ -23,6 +23,7 @@ import { defaultVisual, PAINT_SWATCHES, PERF } from '../data/parts.js';
 import { RIMS } from '../data/rims.js';
 import { LOCATIONS } from '../data/world.js';
 import * as T from '../data/botTalk.js';
+import { Beef } from './beef.js';
 
 // ------------------------------------------------------------ seeded random
 export function hash(...parts) {
@@ -246,24 +247,46 @@ function pickSpot(bm, r, night) {
   return list.length ? pick(r, list) : bm.spots.length ? pick(r, bm.spots) : null;
 }
 
+// Pull back onto the nearest road from `from`, heading the way they face.
+// Returns the corner they're driving toward.
+function ontoRoad(bm, P, p, from) {
+  const { roads } = bm;
+  let best = null;
+  for (const n of bm.nodes) for (const e of bm.adj[n.id]) {
+    if (e.a !== n.id) continue;
+    const s = Math.max(0, Math.min(e.len, (from.x - e.ax) * e.dx + (from.z - e.az) * e.dz));
+    const d = Math.hypot(e.ax + e.dx * s - from.x, e.az + e.dz * s - from.z);
+    if (!best || d < best.d) best = { e, s, d };
+  }
+  const e = best.e, fwd = Math.sin(from.h) * e.dx - Math.cos(from.h) * e.dz >= 0;
+  const node = fwd ? e.b : e.a;
+  const N = roads.nodes[node], dx = fwd ? e.dx : -e.dx, dz = fwd ? e.dz : -e.dz, off = laneOff(e);
+  P.move(from.x, from.z, N.x - dz * off, N.z + dx * off, from.v || 0, e.speed * p.drv, 6.5);
+  return node;
+}
+export function nearestNode(bm, x, z) {
+  let best = null, bd = Infinity;
+  for (const n of bm.nodes) { const d = Math.hypot(n.x - x, n.z - z); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+// Head for (tx, tz) by road, arriving at `endV` (an opp coming to find you: net/beef.js).
+export function chasePlan(bm, p, from, tx, tz, endV = 9) {
+  const P = new Planner(bm, Math.random, p);
+  const node = ontoRoad(bm, P, p, from);
+  const to = nearestNode(bm, tx, tz);
+  const path = to && bm.route(node, to.id);
+  if (path && path.length > 1) P.drive(path, 6.5, endV);
+  else if (to) P.move(bm.roads.nodes[node].x, bm.roads.nodes[node].z, to.x, to.z, 6.5, 14, endV);
+  return P.out;
+}
+
 // Plan `dur` seconds of someone's time on the server. `from` = where they are
 // now ({ x, z, h }), or nothing to start at a random corner.
 export function makePlan(bm, seed, p, dur, from = null, night = false) {
   const r = rng(seed), P = new Planner(bm, r, p), { roads } = bm;
   let node, v = 0;
   if (from) {
-    // pull back onto the nearest road, heading the way they face
-    let best = null;
-    for (const n of bm.nodes) for (const e of bm.adj[n.id]) {
-      if (e.a !== n.id) continue;
-      const s = Math.max(0, Math.min(e.len, (from.x - e.ax) * e.dx + (from.z - e.az) * e.dz));
-      const d = Math.hypot(e.ax + e.dx * s - from.x, e.az + e.dz * s - from.z);
-      if (!best || d < best.d) best = { e, s, d };
-    }
-    const e = best.e, fwd = Math.sin(from.h) * e.dx - Math.cos(from.h) * e.dz >= 0;
-    node = fwd ? e.b : e.a;
-    const N = roads.nodes[node], dx = fwd ? e.dx : -e.dx, dz = fwd ? e.dz : -e.dz, off = laneOff(e);
-    P.move(from.x, from.z, N.x - dz * off, N.z + dx * off, from.v || 0, e.speed * p.drv, 6.5);
+    node = ontoRoad(bm, P, p, from);
     v = 6.5;
   } else node = pick(r, bm.nodes).id;
   let guard = 0;
@@ -358,6 +381,7 @@ class Bots {
     this.pending = [];          // delayed things they do: [{ at, fn }]
     this.checkT = 0; this.bucket = 0; this.inviteT = 200; this.honkT = 0;
     this.joinedAt = 0;
+    this.beef = new Beef(this);   // street beef and opps (net/beef.js)
     online.botHook = m => this.hook(m);
     online.on((ev, d) => this.onOnline(ev, d));
   }
@@ -392,7 +416,9 @@ class Bots {
     let changed = false;
     for (const [id, b] of this.list) {
       if (keep.has(b.s.key)) continue;
-      if (b.carrying || b.riding) continue;          // they don't log off with you in the car
+      if (b.carrying || b.riding || b.attack) continue;          // they don't log off with you in the car (or mid-slide)
+      // an opp who came looking for you leaves once they're out of sight
+      if (b.forced && (t < b.s.end || Math.hypot(b.peer.x - me.x, b.peer.z - me.z) < SNAP_AWAY)) continue;
       if (t - this.joinedAt > 20 && b.s.said < 0.5 * b.p.chatty && t >= b.s.end - 5) this.say(b, pick(Math.random, T.LEAVE));
       this.list.delete(id); online.peers.delete(id); changed = true;
     }
@@ -401,8 +427,8 @@ class Bots {
     if (changed) online.emit('peers');
   }
 
-  add(s, t, me) {
-    const p = persona(online.room, s.who);
+  add(s, t, me, home = online.room) {
+    const p = persona(home, s.who);
     const id = '~' + (hash('id', s.key) % 2176782336).toString(36);
     const bm = botMap(this.roads);
     const night = this.isNight(s.start);
@@ -410,7 +436,7 @@ class Bots {
     const peer = { id, bot: true, name: p.name, uid: '', model: p.model, visual: p.visual, levels: p.levels, tier: p.tier, crew: p.crew, skill: p.skill,
       x: 0, z: 0, h: 0, sp: 0, inCar: true, flame: 0, sflame: 0, walk: 0, seen: performance.now() / 1000, t: 0, fresh: false, sprite: null, spriteKey: '',
       snaps: [], hp: 100, dead: false, ride: '' };
-    const b = { id, s, p, peer, plan, i: 0, local: null, place: true };
+    const b = { id, s, p, peer, plan, i: 0, local: null, place: true, home, okey: `${home}:${s.who}`, forced: !!s.forced };
     const at = planAt(plan, t - s.start);
     Object.assign(peer, { x: at.x, z: at.z, h: at.h, sp: at.v, inCar: at.inCar });
     this.list.set(id, b); online.peers.set(id, peer);
@@ -426,6 +452,7 @@ class Bots {
     if (!online.active) return;
     this.checkT -= dt;
     if (this.checkT <= 0) { this.checkT = 1; this.refresh(me); }
+    if (this.enabled && this.roads) this.beef.tick(dt, me, this.clock());
     if (!this.list.size) { this.runPending(); return; }
     const t = this.clock(), pnow = performance.now() / 1000;
     for (const b of this.list.values()) this.move(b, dt, t, me, pnow);
@@ -444,6 +471,8 @@ class Bots {
   move(b, dt, t, me, pnow) {
     const p = b.peer;
     p.seen = pnow;
+    // your opp sliding on you (net/beef.js)
+    if (b.attack && this.beef.move(b, dt, t, me)) return;
     // riding in your car: they go where you go (hidden, your tag says +1)
     if (b.riding) {
       Object.assign(p, { x: me.x, z: me.z, h: me.h, sp: me.speed || 0, inCar: false, ride: online.id });
@@ -508,6 +537,8 @@ class Bots {
     const r = Math.random;
     const text = fill(line, { me: online.name, mycar: this.myCar(), ...ctx }, r);
     online.addChat(b.peer.name, text);
+    b.peer.bubble = { text, until: performance.now() / 1000 + 4.5 };   // over their head, if you're close
+    return text;
   }
   myCar() { return shortCar(online.me?.modelId && this.world?.vehicle?.model) || 'car'; }
 
@@ -545,6 +576,7 @@ class Bots {
   // You said something in chat.
   heard(text) {
     if (!this.list.size) return;
+    if (this.beef.heard(text)) return;     // you talked down on somebody
     const bots = [...this.list.values()].filter(b => !b.peer.dead);
     if (!bots.length) return;
     const lower = text.toLowerCase();
@@ -581,7 +613,7 @@ class Bots {
     // greet you a little after you join
     if (!this.greeted && this.clock() - this.joinedAt > 6) {
       this.greeted = true;
-      const bots = [...this.list.values()];
+      const bots = [...this.list.values()].filter(b => !this.beef.isOpp(b));   // your opps don't say hi
       if (bots.length && Math.random() < 0.7) { const b = pick(Math.random, bots); this.later(Math.random() * 6, () => this.say(b, pick(Math.random, Math.random() < 0.5 ? T.GREET_ME : T.JOIN))); }
     }
     // a race call now and then while you're driving
@@ -606,7 +638,7 @@ class Bots {
   }
 
   invite(b) {
-    if (!b || !this.list.has(b.id) || !online.active) return;
+    if (!b || !this.list.has(b.id) || !online.active || this.beef.isOpp(b)) return;
     const r = Math.random;
     const type = r() < 0.55 ? 'roll' : 'drag';
     const wagers = [0, 0, 0, 500, 500, 1000, 1000, 5000, 10000].filter(v => v <= b.p.bank);
@@ -614,6 +646,7 @@ class Bots {
       ty: type, di: type === 'drag' ? pick(r, ['eighth', 'quarter']) : pick(r, ['quarter', 'half']), ro: pick(r, [30, 40, 60]), wa: pick(r, wagers) }, true);
   }
   askRide(b) {
+    if (this.beef.isOpp(b)) return;
     b.wantsRide = true;
     online.receive({ k: 'rq', t: 'ask', to: online.id, rid: 'b' + Math.random().toString(36).slice(2, 9), id: b.id }, true);
   }
@@ -630,7 +663,7 @@ class Bots {
     const reply = (msg, secs) => this.later(secs, () => { if (this.list.has(b.id) && online.active) online.receive({ ...msg, to: online.id, id: b.id }, true); });
     if (m.k === 'pv' && m.t === 'ask') {
       const cfg = { wa: m.wa || 0 };
-      const yes = !b.peer.dead && b.peer.inCar && cfg.wa <= b.p.bank && r() < b.p.racer + (cfg.wa ? 0 : 0.15);
+      const yes = !b.peer.dead && b.peer.inCar && !this.beef.isOpp(b) && cfg.wa <= b.p.bank && r() < b.p.racer + (cfg.wa ? 0 : 0.15);
       reply({ k: 'pv', t: !b.peer.inCar && r() < 0.5 ? 'busy' : yes ? 'yes' : 'no', rid: m.rid }, 2 + r() * 6);
       if (!yes && r() < 0.4) this.later(4 + r() * 4, () => this.say(b, pick(r, ['nah not rn', 'later', 'cant rn', 'my car in the shop fr', 'next time'])));
     } else if (m.k === 'pv' && (m.t === 'yes' || m.t === 'no')) {
@@ -644,7 +677,7 @@ class Bots {
     const r = Math.random, p = b.peer;
     if (m.t === 'ask') {
       // you want to ride in their car: they stop for you first
-      if (!p.inCar || b.carrying) { reply({ k: 'rq', t: b.carrying ? 'full' : 'no', rid: m.rid }, 2); return; }
+      if (!p.inCar || b.carrying || this.beef.isOpp(b)) { reply({ k: 'rq', t: b.carrying ? 'full' : 'no', rid: m.rid }, 2); return; }
       this.holdHere(b, 30);
       const yes = r() < b.p.rides;
       reply({ k: 'rq', t: yes ? 'yes' : 'no', rid: m.rid }, 1.5 + r() * 2.5);
@@ -689,9 +722,11 @@ class Bots {
 
   hit(b, m) {
     const p = b.peer;
-    if (p.dead || p.inCar) return;
+    if (p.dead) return;
+    if (p.inCar) { if (b.attack) this.beef.carHit(b); return; }   // shooting back at a car sliding on you
     p.hp -= Math.max(1, Math.min(100, Number(m.d) || 1));
     const r = Math.random;
+    this.beef.shot(b, p.hp <= 0);
     if (p.hp <= 0) {
       p.hp = 0; p.dead = true; this.holdHere(b, 9); b.hold.inCar = false;
       online.receive({ k: 'pvp', t: 'dead', target: b.id, to: '*', id: b.id }, true);
@@ -699,6 +734,7 @@ class Bots {
       this.later(8, () => { if (!this.list.has(b.id)) return; p.dead = false; p.hp = 100; online.receive({ k: 'pvp', t: 'alive', target: b.id, to: '*', id: b.id }, true); });
       return;
     }
+    if (b.attack) return;              // mid walk-down: they're already shooting
     if (!b.mad) {
       b.mad = true;
       this.later(1 + r() * 2, () => this.say(b, pick(r, T.SHOT)));
