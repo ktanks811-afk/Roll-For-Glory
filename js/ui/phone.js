@@ -35,6 +35,8 @@ import { wx } from '../core/weather.js';
 import { GANGS } from '../data/gangs.js';
 import { ensureSocial, myHandle, markSeen, likePost, rivalsList, heatWord, rivalOptions, answerRival, HEATED_AT } from '../core/feed.js';
 import { renderJps } from './hospital.js';
+import * as OPP from '../core/opps.js';
+import { persona } from '../net/bots.js';
 import { pastDue } from '../core/health.js';
 import { BREAKDOWNS, MECHANIC_COST, roadsideFix } from '../core/upkeep.js';
 import { ensure as ensureMissions, now as missionNow, offerById, acceptMission, declineMission, abandonMission, pointGps, currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
@@ -159,6 +161,10 @@ function msgAction(s, m) {
     if (a.done) return `<span class="tag">${{ race: 'You ran it back', back: 'You talked back', calm: 'You let it go' }[a.done] || 'Handled'}</span>`;
     return rivalOptions(s, a.id).map((o, i) => `<button class="btn btn-sm ${i === 0 ? 'btn-primary' : ''}" data-action="rival" data-id="${m.id}" data-pick="${o.id}">${esc(o.label)}</button>`).join(' ');
   }
+  if (a.type === 'opp') {
+    if (a.done) return `<span class="tag">${{ opp: 'It\'s on sight', post: 'You posted on them', squash: 'You reached out', gone: 'Over' }[a.done] || 'Handled'}</span>`;
+    return OPP.oppOptions(s, a.key).map((o, i) => `<button class="btn btn-sm ${i === 0 ? 'btn-primary' : ''}" data-action="opp" data-id="${m.id}" data-pick="${o.id}">${esc(o.label)}</button>`).join(' ');
+  }
   if (a.type === 'offer') return '<button class="btn btn-sm" data-action="offers">View offers</button>';
   if (a.type === 'sponsor' && !a.done) return `<button class="btn btn-sm btn-primary" data-action="sponsor" data-id="${m.id}">Sign deal</button>`;
   return '';
@@ -186,6 +192,14 @@ RENDER.messages = (scr, ctx) => {
       const why = answerRival(s, m, d.pick);
       if (why) toast(why, 'bad');
       else toast({ race: 'Run it back. Check your texts for the spot.', back: 'You talked back. They won\'t forget it.', calm: 'You let it go.' }[d.pick], d.pick === 'back' ? 'info' : 'good');
+      ctx.h.refresh();
+    },
+    opp: d => {
+      const m = s.messages.find(x => x.id === d.id), r = OPP.beefWith(s, m?.action?.key);
+      const temper = r ? persona(r.server, r.who).temper : 0.5;
+      const why = OPP.answerOpp(s, m, d.pick, temper);
+      if (why) toast(why, 'bad');
+      else toast({ opp: `It's on sight with ${r?.name}. Keep your strap on you.`, post: `You posted on ${r?.name}.`, squash: r?.opp ? `You and ${r?.name} squashed it.` : 'You let it go.' }[d.pick], d.pick === 'squash' ? 'good' : 'bad');
       ctx.h.refresh();
     },
     sponsor: d => {
@@ -494,7 +508,8 @@ RENDER.social = (scr, ctx) => {
   markSeen(s);
   const me = myHandle(s);
   const posts = s.feed.filter(p => tab === 'you' ? p.mine || !p.who || p.about : true).slice(0, 50);
-  const rivals = rivalsList(s);
+  // regulars on the server you've got beef with (core/opps.js) come first
+  const rivals = [...OPP.beefList(s).map(r => ({ id: r.key, name: r.name, heat: r.heat, kind: 'opp', opp: r.opp, contact: r.name, why: r.why })), ...rivalsList(s)];
   const avatar = (p) => p.who ? `<span class="avatar" style="background:${p.color || '#555'}">${esc((p.who.replace(/[^\w]/g, '')[0] || '?').toUpperCase())}</span>` : `<span class="avatar" style="background:linear-gradient(135deg,#a01aff,#ff1a6a)">${esc(s.player.name[0])}</span>`;
   const postHtml = p => `<div class="tpost ${p.about ? 'about' : ''}">${avatar(p)}<div class="grow">
       <div class="tp-head"><b>${esc(p.who || s.player.name)}</b>${p.v ? '<i class="tp-v">✔</i>' : ''}<small>${esc(p.who ? '@' + p.handle : me)} · Day ${p.day}${p.t ? ' ' + p.t : ''}</small></div>
@@ -502,7 +517,7 @@ RENDER.social = (scr, ctx) => {
       ${(p.comments || []).slice(0, 2).map(c => `<div class="tp-cmt"><b>@${esc(c.who)}</b> ${esc(c.text)}</div>`).join('')}
       <div class="tp-acts">${p.id ? `<button class="tp-like ${p.liked ? 'on' : ''}" data-action="like" data-id="${p.id}">${p.liked ? '♥' : '♡'} ${p.likes.toLocaleString()}</button>` : `<span>♥ ${p.likes.toLocaleString()}</span>`}<span>💬 ${(p.comments || []).length}</span></div>
     </div></div>`;
-  const rivalHtml = r => `<div class="li"><span class="avatar" style="background:${r.kind === 'gang' ? GANGS[r.id]?.color || '#7a1414' : RACER_BY_ID[r.id]?.color || '#888'}">${esc(r.name[0])}</span><div class="grow"><div class="t">${esc(r.name)} <span class="tag ${r.heat >= HEATED_AT ? 'tag-red' : 'tag-yellow'}">${heatWord(r.heat)}</span></div><div class="s">${r.kind === 'gang' ? 'Set you have beef with' : 'Racer with a grudge'}</div>${bar(r.heat, r.heat >= HEATED_AT ? 'bad' : '')}</div>${r.contact ? `<button class="btn btn-sm" data-action="dm" data-id="${esc(r.contact)}">Texts</button>` : ''}</div>`;
+  const rivalHtml = r => `<div class="li"><span class="avatar" style="background:${r.kind === 'gang' ? GANGS[r.id]?.color || '#7a1414' : r.kind === 'opp' ? (r.opp ? '#c41b1b' : '#7a4a14') : RACER_BY_ID[r.id]?.color || '#888'}">${esc(r.name[0])}</span><div class="grow"><div class="t">${esc(r.name)} <span class="tag ${r.opp || r.heat >= HEATED_AT ? 'tag-red' : 'tag-yellow'}">${r.kind === 'opp' ? OPP.beefWord(r) : heatWord(r.heat)}</span></div><div class="s">${r.kind === 'gang' ? 'Set you have beef with' : r.kind === 'opp' ? (r.opp ? 'Your opp. On sight' : 'Beef on the server') + (r.why ? ` · ${esc(r.why)}` : '') : 'Racer with a grudge'}</div>${bar(r.heat, r.heat >= HEATED_AT ? 'bad' : '')}</div>${r.contact ? `<button class="btn btn-sm" data-action="dm" data-id="${esc(r.contact)}">Texts</button>` : ''}</div>`;
   scr.innerHTML = head('Throttle') + `<div class="app-body">
     <div class="row"><span class="avatar" style="background:linear-gradient(135deg,#a01aff,#ff1a6a)">${esc(s.player.name[0])}</span><div class="grow"><b>${esc(me)}</b><div class="muted small">${s.followers.toLocaleString()} followers · ${s.stats.wins} wins</div></div></div>
     ${s.sponsor ? `<div class="li"><div class="grow"><div class="t">Sponsored by ${esc(s.sponsor.name)}</div><div class="s">${fmtMoney(s.sponsor.perWin)} per win · until day ${s.sponsor.until}</div></div></div>` : ''}

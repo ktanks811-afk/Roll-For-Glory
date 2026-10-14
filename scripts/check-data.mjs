@@ -2055,5 +2055,58 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const a0 = BT.planAt(local, 0);
   if (Math.hypot(a0.x - 120, a0.z - 40) > 0.1 || Math.abs(a0.v - 12) > 0.1) bad('a regular driving off on their own must start where they are');
 }
+{
+  // street beef and opps with the regulars (core/opps.js, net/beef.js)
+  const O = await import('../js/core/opps.js');
+  const BT = await import('../js/net/bots.js');
+  const BF = await import('../js/data/beefTalk.js');
+  const s = createState({ name: 'Beefy', age: 25, look: {}, story: false });
+  let k = 0; const rng = () => ((k = (k * 9301 + 49297) % 233280) / 233280);
+  const key = O.oppKey('eastgate', 5), name = BT.persona('eastgate', 5).name;
+  const msgs0 = s.messages.length, feed0 = (s.feed || []).length;
+  let out = O.addBeef(s, key, name, 12, { rng });
+  if (out.r.opp || out.posted) bad('one bit of trash talk must not make an opp or a post');
+  out = O.addBeef(s, key, name, 15, { rng });
+  if (!out.posted || s.feed.length !== feed0 + 1 || s.feed[0].handle !== O.handleOf(name)) bad('salty regular must post about you on Throttle');
+  out = O.addBeef(s, key, name, 25, { rng });
+  if (!out.texted || s.messages.length !== msgs0 + 1 || s.messages[0].action?.type !== 'opp') bad('heated regular must text you with answers');
+  if (O.oppOptions(s, key).map(o => o.id).join() !== 'opp,post,squash') bad('opp text options');
+  const why = O.answerOpp(s, s.messages[0], 'opp', 0.5, rng);
+  if (why || !O.isOpp(s, key) || O.opps(s).length !== 1) bad('pull up then must make them your opp: ' + why);
+  if (s.messages[0].action?.type !== 'opp' || s.messages[0].from !== name) bad('your new opp texts you');
+  // beef that never became opps cools off; opps don't
+  const k2 = O.oppKey('eastgate', 7);
+  O.addBeef(s, k2, 'Somebody', 15, { rng });
+  s.time.day += 3; O.coolOff(s);
+  if (O.beefWith(s, k2)) bad('small beef should cool off after a few days');
+  if (!O.isOpp(s, key)) bad('an opp stays an opp until squashed');
+  // you start it
+  const k3 = O.oppKey('eastgate', 9);
+  const st = O.startBeef(s, k3, 'Other', 'post', rng);
+  if (!s.feed.some(p => p.mine && p.text.includes('other'))) bad('posting on someone puts it on your Throttle');
+  if (st.r.heat !== 45) bad('posting on them is +45 heat');
+  O.startBeef(s, k3, 'Other', 'opp', rng);
+  if (!O.isOpp(s, k3)) bad('make them your opp works straight away');
+  // slides go on the record; squashing a hothead the same day fails, a calm one can work
+  O.afterSlide(s, key, { hitYou: true, rng });
+  if (O.beefWith(s, key).slid !== 1 || O.beefWith(s, key).hits !== 1 || s.opps.stats.slid !== 1) bad('slide record');
+  const no = O.squash(s, key, 1, () => 0.99);
+  if (!no || !O.isOpp(s, key)) bad('a hothead should not squash it');
+  if (!O.squash(s, key, 0, () => 0)) bad('only one try a day');
+  s.time.day += 1;
+  if (O.squash(s, key, 0, () => 0) || O.beefWith(s, key)) bad('a calm opp can squash it the next day');
+  // shooting first: dropping somebody makes them your opp
+  O.smokedThem(s, O.oppKey('glory', 2), 'Shot', rng);
+  if (!O.isOpp(s, O.oppKey('glory', 2))) bad('dropping a regular makes them your opp');
+  for (const [n, list] of Object.entries(BF)) if (Array.isArray(list) && (!list.length || list.some(l => typeof l !== 'string' || !l.trim()))) bad('empty beef line in ' + n);
+  if (!BF.INSULT.test('you lame bro') || BF.INSULT.test('yo whats good')) bad('insult check');
+  // an opp coming to find you drives the roads
+  const { buildRoads } = await import('../js/world2d/roads.js');
+  const bm = BT.botMap(buildRoads());
+  const pp = BT.persona('eastgate', 5);
+  const plan = BT.chasePlan(bm, pp, { x: 200, z: 100, h: 0, v: 10 }, 900, -400, 11);
+  const end = BT.planAt(plan, plan[plan.length - 1].t1);
+  if (!plan.length || Math.hypot(end.x - 900, end.z + 400) > 80) bad('chase plan should end near you: ' + JSON.stringify(end));
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

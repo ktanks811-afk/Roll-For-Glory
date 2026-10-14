@@ -344,6 +344,13 @@ export class World {
           ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h); ctx.fillStyle = 'rgba(210,30,45,.9)'; ctx.beginPath(); ctx.ellipse(0, 0, 0.65 * cam.zoom, 0.3 * cam.zoom, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
         } else drawPerson(ctx, cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom, { top: '#3a6bff' }, p.sp ? p.walk : 0);
       }
+      // a regular flashing a gun at you, or an opp with it out (net/beef.js)
+      if (!p.dead && p.gun > performance.now() / 1000) {
+        const z = cam.zoom, side = p.inCar ? 0.95 : 0.3;
+        ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h + (p.inCar ? 0.5 : 0));
+        ctx.fillStyle = '#0b0c0e'; ctx.fillRect(side * z - 0.05 * z, -0.55 * z, 0.1 * z, 0.42 * z); ctx.fillRect(side * z - 0.06 * z, -0.2 * z, 0.12 * z, 0.14 * z);
+        ctx.restore();
+      }
     }
     return peers;
   }
@@ -364,14 +371,22 @@ export class World {
     ctx.font = '600 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const p of peers) {
       const aboard = p.inCar ? online.list().filter(o => o.ride === p.id).length + (this.rides.riding?.id === p.id ? 1 : 0) : 0;
-      const label = (p.crew ? `[${p.crew.tag}] ${p.name}` : p.name) + (aboard ? ` +${aboard}` : '');
+      const label = (p.opp ? '☠ OPP · ' : '') + (p.crew ? `[${p.crew.tag}] ${p.name}` : p.name) + (aboard ? ` +${aboard}` : '');
       const w = ctx.measureText(label).width + 14;
       ctx.save();
       ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(-cam.rot);   // keep tags upright in the chase camera
       const x = 0, y = -(p.inCar ? 3.2 : 1.8) * cam.zoom;
       ctx.fillStyle = 'rgba(8,9,12,0.78)'; ctx.fillRect(x - w / 2, y - 9, w, 18);
       ctx.fillStyle = p.crew ? p.crew.color : '#ff2a3a'; ctx.fillRect(x - w / 2, y - 9, 3, 18);
-      ctx.fillStyle = '#f2f4f8'; ctx.fillText(label, x, y + 1);
+      ctx.fillStyle = p.opp ? '#ff5a64' : '#f2f4f8'; ctx.fillText(label, x, y + 1);
+      // what they just said, over their head
+      if (p.bubble && p.bubble.until > performance.now() / 1000) {
+        const t = p.bubble.text.length > 40 ? p.bubble.text.slice(0, 39) + '…' : p.bubble.text;
+        const bw = ctx.measureText(t).width + 16, by = y - 26;
+        ctx.fillStyle = 'rgba(245,246,250,0.95)'; ctx.fillRect(x - bw / 2, by - 10, bw, 20);
+        ctx.beginPath(); ctx.moveTo(x - 5, by + 10); ctx.lineTo(x + 5, by + 10); ctx.lineTo(x, by + 16); ctx.fill();
+        ctx.fillStyle = '#111'; ctx.fillText(t, x, by + 1);
+      }
       ctx.restore();
     }
     ctx.restore();

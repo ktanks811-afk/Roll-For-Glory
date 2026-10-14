@@ -1474,6 +1474,78 @@ await step('online: regulars fill a quiet server', async () => {
   if (await p.evaluate(() => window.__rfg.online.peers.size)) throw new Error('regulars still shown after leaving');
 });
 
+// ---------------- street beef: regulars talk down, opps slide on you (net/beef.js) ----------------
+await step('online: beef with a regular, opp slides and walks you down', async () => {
+  const until = async (fn, msg, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await p.evaluate(fn)) return; await p.waitForTimeout(200); } throw new Error(msg + ' ' + await p.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.innerText).slice(-4).join(' | '))); };
+  try {
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { meFromGame } = await import('./js/ui/online.js');
+    const { bots, botsOn } = await import('./js/net/bots.js');
+    let t = Math.floor(Date.now() / 1000 / 86400) * 86400 + 26 * 3600;
+    while (botsOn('eastgate', t, 0).length < 4) t += 300;
+    bots.clock = () => t + performance.now() / 1000;
+    bots.force = true;
+    const r = window.__rfg, w = r.app.world; w.paused = false;
+    window.__before = { inCar: w.inCar, x: w.foot.x, z: w.foot.z };
+    r.game.s.heat = 0; try { w.police.reset(w); } catch {}
+    // their bullets graze you here, so nobody ends up at JPS mid-test
+    const was = w.gangs.shootAtYou.bind(w.gangs);
+    window.__shots = 0; w.gangs.shootAtYou = (from, me, acc, dmg, who) => { window.__shots++; was(from, me, 1, 1, who); };
+    if (!(await r.online.join('eastgate', meFromGame(), 'local'))) throw new Error('could not join');
+  });
+  await until(() => window.__rfg.online.list().length >= 2, 'nobody showed up');
+  // a hothead you walk up on talks down on you
+  await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const w = window.__rfg.app.world, b = [...bots.list.values()].find(b => !b.peer.dead);
+    b.p.temper = 0.95; bots.holdHere(b, 60); b.peer.sp = 0;
+    window.__beefBot = b.id;
+    w.inCar = false; w.foot.x = b.peer.x + 6; w.foot.z = b.peer.z;
+    bots.beef.lastPick = -999; bots.beef.lookT = 0; b.picked = 0;
+    window.__chat0 = window.__rfg.online.chat.length;
+  });
+  await until(async () => { const { bots } = await import('./js/net/bots.js'); const b = bots.list.get(window.__beefBot); return b && bots.beef.heat(b) > 0 && window.__rfg.online.chat.slice(window.__chat0).some(c => c.name === b.p.name); }, 'the hothead never said anything');
+  // you make them your opp: they post, text, and come for you
+  const info = await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const O = await import('./js/core/opps.js');
+    const s = window.__rfg.game.s, b = bots.list.get(window.__beefBot);
+    bots.beef.startIt(b, 'opp');
+    return { opp: O.isOpp(s, b.okey), text: s.messages[0]?.action?.type, post: s.feed.some(p => p.handle === 'murdaworthtea' && p.mood === 'hot') };
+  });
+  if (!info.opp || info.text !== 'opp' || !info.post) throw new Error('making an opp: ' + JSON.stringify(info));
+  await snap('25c-beef');
+  // drive-by: they roll up and shoot as they pass, then peel off
+  await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const w = window.__rfg.app.world, b = bots.list.get(window.__beefBot), me = w.playerState();
+    b.hold = null; bots.beef.slide(b, { ...me, inCar: false }, bots.clock()); b.attack.mode = 'slide';
+  });
+  await until(() => window.__shots > 0, 'the drive-by never opened fire', 40000);
+  await snap('25d-driveby');
+  await until(async () => { const { bots } = await import('./js/net/bots.js'); return !bots.list.get(window.__beefBot)?.attack; }, 'they never peeled off', 20000);
+  if (!(await p.evaluate(() => window.__rfg.game.s.opps.stats.slid >= 1))) throw new Error('the slide was not recorded');
+  // walk-down: they park, hop out with it out, and you drop them
+  await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const w = window.__rfg.app.world, b = bots.list.get(window.__beefBot), me = w.playerState();
+    window.__shots = 0; bots.beef.slide(b, { ...me, inCar: false }, bots.clock()); b.attack.mode = 'walk';
+  });
+  await until(async () => { const { bots } = await import('./js/net/bots.js'); const b = bots.list.get(window.__beefBot); return b?.attack?.phase === 'walk' && !b.peer.inCar; }, 'they never got out to walk you down', 40000);
+  await snap('25e-walkdown');
+  await p.evaluate(async () => { const { bots } = await import('./js/net/bots.js'); const w = window.__rfg.app.world, b = bots.list.get(window.__beefBot); w.combat.hitPeer(b.peer, 100); });
+  await until(() => window.__rfg.game.s.opps.stats.smoked >= 1, 'dropping your opp did not count');
+  } finally {
+  await p.evaluate(async () => {
+    window.__rfg.online.leave(); (await import('./js/net/bots.js')).bots.force = false;
+    const w = window.__rfg.app.world, was = window.__before;
+    w.foot.x = was.x; w.foot.z = was.z; w.inCar = was.inCar;
+    delete w.gangs.shootAtYou; delete window.__rfg.game.s.opps;
+  });
+  }
+});
+
 // ---------------- online crews (permanent, database-backed; two tabs, local database) ----------------
 await step('online crews', async () => {
   const setup = async (pg, uid) => pg.evaluate(async uid => {
