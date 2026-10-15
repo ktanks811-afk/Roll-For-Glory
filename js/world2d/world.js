@@ -208,6 +208,8 @@ export class World {
       this.ui.toast(settings.camMode === 'chase' ? 'Third-person camera' : 'Top-down camera', 'info');
     }
     if (input.pressed('mask')) this.toggleMask();
+    if (input.pressed('radioNext')) audio.radioNext();
+    if (input.pressed('radioPower')) audio.radioPower();
 
     const p = this.playerState();
     this.offence = null;
@@ -1439,6 +1441,8 @@ export class World {
       rain: wx(s).rain, wind: windOf(s), urban: this.urban, night: isNight(s.time), hour: h,
       inside, duck: this.paused ? 0.45 : 1, cars, rot: this.cam.rot, police: this.police.active,
     }, dt);
+    audio.carRadio(inside === 'car' || !!boat);   // the car radio plays your songs while you ride
+
   }
 
   darkness() {

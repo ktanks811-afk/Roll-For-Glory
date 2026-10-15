@@ -300,6 +300,12 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 .dash-row { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--dim); margin-top: 4px; }
 .dash-row .bar > div { background: var(--silver); } .dash-row .bar > div.low { background: var(--red); }
 .dash-row .bar.nos > div { background: #6b5cff; }
+.dash-stereo { display: flex; align-items: center; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line2); pointer-events: auto; }
+.dash-stereo span { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; color: var(--silver); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.dash-stereo button { flex: none; width: 30px; height: 26px; padding: 0; border: 1px solid rgba(255,255,255,.22); border-radius: 6px; background: rgba(255,255,255,.06); color: #fff; font-size: 13px; line-height: 1; cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none; }
+.dash-stereo button:active { background: rgba(255,255,255,.25); }
+.dash-stereo.off span { color: var(--dim); } .dash-stereo.off button[data-rpow] { opacity: .45; }
+.dash-stereo.off button[data-rprev], .dash-stereo.off button[data-rnext] { display: none; }
 .dash-car { font-size: 12px; color: var(--dim); margin-top: 6px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hud-help { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--dim); background: rgba(0,0,0,.55); padding: 4px 10px; border-radius: 4px; white-space: nowrap; transition: opacity 2s; }
 .hud-help.fade { opacity: 0; }

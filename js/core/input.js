@@ -61,6 +61,8 @@ export const CONTEXTS = {
     horn: ['KeyH'],
     view: ['KeyV'],   // third-person / top-down camera (on foot V is the ski mask)
     interact: ['Enter'],
+    radioNext: ['KeyR'],   // car radio: next song (on foot R reloads)
+    radioPower: ['KeyO'],
   },
   race: {
     ...MOVE_X,
