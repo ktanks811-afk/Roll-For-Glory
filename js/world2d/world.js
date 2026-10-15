@@ -51,6 +51,7 @@ import { tickNeeds, runMul } from '../core/needs.js';
 import { applyEstate } from './estate.js';
 import { Showcase } from './showcase.js';
 import { estateTick } from './trap.js';
+import { deaTick } from './dea.js';
 import { seizeBag } from '../core/drugs.js';
 import { seizeCash } from '../core/bank.js';
 import { seizeLoot } from '../core/loot.js';
@@ -296,6 +297,7 @@ export class World {
     // texted missions: stops, clock (before the GPS clears itself on arrival)
     missionTick(this, p, (m, k) => this.ui.toast(m, k));
     estateTick(this, dt);   // construction, customers at your trap house
+    deaTick(this, dt);      // the feds: a raid while you're home, SWAT on the road
 
     // gps
     this.gpsT -= dt;

@@ -8,6 +8,7 @@ import { LOC_BY_ID } from '../data/world.js';
 import { STRAINS, STRAIN_BY_ID, FARMS, SHOPS, FARM_IDS, SHOP_IDS, PRICE_LEVELS, BUDTENDER, TAX, LEGAL_OZ, SELL_BACK } from '../data/weed.js';
 import * as W from '../core/weed.js';
 import { audio } from '../core/audio.js';
+import { openShipping, caseCard } from './traffick.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 const say = r => { toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) audio.buy(); else audio.error(); return r.ok; };
@@ -49,7 +50,8 @@ export function openDispensary(loc, app, { remote = false } = {}) {
         <div class="card"><h3>The shelf</h3>
           <p>${shelf ? `<b>${W.ozText(shelf)}</b>, about ${Math.max(0, Math.round(shelf / daily * 10) / 10)} days of sales` : '<span class="bad">Empty. Nobody buys from an empty shelf.</span>'}</p>
           <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" data-action="farms">Restock from my farms</button>
-          <button class="btn btn-sm" data-action="supply">${shop.supply ? '✓ Farms restock it every morning' : 'Farms restock it every morning: off'}</button></div></div>
+          <button class="btn btn-sm" data-action="supply">${shop.supply ? '✓ Farms restock it every morning' : 'Farms restock it every morning: off'}</button>
+          ${shelf ? '<button class="btn btn-sm btn-danger" data-action="texas">🚚 Ship to Texas</button>' : ''}</div></div>
         <div class="card"><h3>Prices</h3><div class="row" style="gap:6px;flex-wrap:wrap">${PRICE_LEVELS.map(l => `<button class="btn btn-sm ${shop.level === l.id ? 'btn-primary' : ''}" data-action="level" data-id="${l.id}">${esc(l.name)}</button>`).join('')}</div>
           <p class="small muted">${esc(PRICE_LEVELS.find(l => l.id === shop.level).blurb)} About ${W.traffic(id, shop.level)} customers a day.</p></div>
         <div class="card"><h3>Budtenders</h3><div class="row" style="gap:8px;align-items:center"><button class="btn btn-sm" data-action="staff" data-n="-1">−</button><b>${shop.staff}</b><button class="btn btn-sm" data-action="staff" data-n="1">+</button>
@@ -64,6 +66,7 @@ export function openDispensary(loc, app, { remote = false } = {}) {
       stock: dd => { say(W.buyStock(s, id, dd.id, +dd.n)); h.refresh(); },
       farms: () => { say(W.restockFromFarms(s, id)); h.refresh(); },
       supply: () => { say(W.setSupply(s, id, !shop.supply)); h.refresh(); },
+      texas: () => openShipping(app, `shop:${id}`),
       level: dd => { say(W.setLevel(s, id, dd.id)); h.refresh(); },
       staff: dd => { W.setStaff(s, id, shop.staff + +dd.n); h.refresh(); },
       sell: async () => { if (await confirm('Sell the shop?', `<p>${esc(d.name)} sells for ${fmtMoney(Math.round(d.price * SELL_BACK))}. What's on the shelf goes with it.</p>`, 'Sell', true)) { say(W.sellShop(s, id)); h.refresh(); } },
@@ -104,6 +107,7 @@ export function openGrowFarm(loc, app, { remote = false } = {}) {
         <div class="card"><h3>The vault</h3><p>${vault ? esc(jarLine(farm.vault)) : 'Empty.'}</p>
           ${vault ? `<div class="row" style="gap:6px;flex-wrap:wrap">
             ${shops.length ? '<button class="btn btn-sm btn-primary" data-action="ship">Ship to my dispensaries</button>' : ''}
+            <button class="btn btn-sm btn-danger" data-action="texas">🚚 Ship to Texas</button>
             <button class="btn btn-sm" data-action="wholesale">Sell it all wholesale · ${fmtMoney(Math.round(Object.entries(farm.vault).reduce((t, [k, q]) => t + q * STRAIN_BY_ID[k].wholesale, 0)))}</button>
             ${remote ? '' : `<button class="btn btn-sm" data-action="bag" data-n="1">Bag 1 oz</button><button class="btn btn-sm" data-action="bag" data-n="${LEGAL_OZ}">Bag ${LEGAL_OZ} oz</button><button class="btn btn-sm" data-action="bag" data-n="10">Bag 10 oz</button>`}</div>
             <p class="small muted">Up to ${LEGAL_OZ} oz on you is legal in Colorado. More than that, or any at all back in Texas, and it's a charge if you get searched. Texas street pays well for it out of a trap.</p>` : ''}</div>
@@ -121,6 +125,7 @@ export function openGrowFarm(loc, app, { remote = false } = {}) {
       harvest: () => { say(W.harvest(s, id)); h.refresh(); },
       ship: () => { const rs = W.myShops(s).map(sid => W.restockFromFarms(s, sid, Math.ceil(W.total(farm.vault) / Math.max(1, W.myShops(s).length)))); const oz = rs.reduce((t, r) => t + (r.oz || 0), 0); say(oz ? { ok: true, text: `${W.ozText(oz)} shipped to your dispensaries.` } : rs[0]); h.refresh(); },
       wholesale: () => { say(W.sellWholesale(s, id)); h.refresh(); },
+      texas: () => openShipping(app, `farm:${id}`),
       bag: dd => { say(W.takeToBag(s, id, +dd.n)); h.refresh(); },
       grower: () => { say(W.setGrower(s, id, !farm.grower)); h.refresh(); },
       sell: async () => { if (await confirm('Sell the farm?', `<p>${esc(f.name)} sells for ${fmtMoney(Math.round(f.price * SELL_BACK))}. Whatever's growing or in the vault goes with it.</p>`, 'Sell', true)) { say(W.sellFarm(s, id)); h.refresh(); } },
@@ -144,6 +149,7 @@ export function openWeedApp(app) {
       ...SHOP_IDS.filter(x => !shops.includes(x)).map(x => [x, SHOPS[x].name, SHOPS[x].price, `Dispensary, about ${W.traffic(x)} customers a day`])];
     root.innerHTML = head('Mile High', 'Your cannabis business in Denver, Colorado') + `<div class="p-body" style="max-width:760px">
       <div class="kv"><span>Sold over the counter</span><span>${W.ozText(w.sold)}</span><span>Dispensary profit</span><span class="good">${fmtMoney(w.earned)}</span><span>Harvested</span><span>${W.ozText(w.harvested)}</span></div>
+      ${farms.length || shops.length ? `<div class="row" style="margin:10px 0"><button class="btn btn-danger" data-action="texas">🚚 Ship to Texas</button></div>${caseCard(s)}` : ''}
       ${farms.length ? `<div class="section-title">Your farms</div><div class="list">${farms.map(farmRow).join('')}</div>` : ''}
       ${shops.length ? `<div class="section-title">Your dispensaries</div><div class="list">${shops.map(shopRow).join('')}</div>` : ''}
       ${!farms.length && !shops.length ? '<p class="muted">Weed is legal in Colorado. Fly to Denver from Alliance Airport, buy a grow farm and a dispensary, and run it.</p>' : ''}
@@ -154,6 +160,7 @@ export function openWeedApp(app) {
       gps: dd => gps(app, dd.id),
       farm: dd => openGrowFarm(LOC_BY_ID[dd.id], app, { remote: true }),
       shop: dd => openDispensary(LOC_BY_ID[dd.id], app, { remote: true }),
+      texas: () => openShipping(app),
     });
   });
 }
