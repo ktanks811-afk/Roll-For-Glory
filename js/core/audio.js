@@ -1,11 +1,12 @@
 // Sound is synthesized with WebAudio. Engines are oscillators tuned to firing
-// frequency, music is a small step sequencer with a few moods. The one audio
-// file is the intro song on the loading and title screens.
+// frequency, music is a small step sequencer with a few moods. The audio
+// files are the intro song on the loading and title screens and the songs on
+// the car radio (audio/radio/).
 
-import { settings } from './save.js';
+import { settings, saveSettings } from './save.js';
 import { harmonics } from '../sim/sound.js';
 
-let ctx = null, master = null, sfxBus = null, musicBus = null, ambBus = null, noiseBuf = null;
+let ctx = null, master = null, sfxBus = null, musicBus = null, moodBus = null, ambBus = null, noiseBuf = null;
 
 function init() {
   if (ctx) return ctx;
@@ -15,6 +16,7 @@ function init() {
   master = ctx.createGain(); master.connect(ctx.destination);
   sfxBus = ctx.createGain(); sfxBus.connect(master);
   musicBus = ctx.createGain(); musicBus.connect(master);
+  moodBus = ctx.createGain(); moodBus.connect(musicBus);   // the synth moods; the car radio ducks them
   ambBus = ctx.createGain(); ambBus.connect(master);
   applyVolume();
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -35,6 +37,7 @@ function applyVolume() {
 // the app was in the background, so try on every kind of tap until it runs.
 ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'keydown'].forEach(ev => window.addEventListener(ev, () => {
   init(); if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
+  if (radio.el && radio.playing && radio.el.paused && !document.hidden) radio.el.play().catch(() => {});
 }, { passive: true, capture: true }));
 
 function noiseSource() {
@@ -288,7 +291,7 @@ function setMusic(name) {
     const g = ctx.createGain(); g.gain.value = 0;
     const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
     const os = [0, 7, 15].map(iv => { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(m.root + 24 + iv); o.detune.value = Math.random() * 14 - 7; o.connect(f); o.start(); return o; });
-    f.connect(g).connect(musicBus);
+    f.connect(g).connect(moodBus);
     g.gain.setTargetAtTime(0.03, ctx.currentTime, 1.5);
     padNodes = { g, os };
   }
@@ -316,11 +319,11 @@ function drum(t, kind) {
   if (kind === 'kick') {
     const o = ctx.createOscillator(); const g = ctx.createGain();
     o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.15);
-    o.connect(g).connect(musicBus); env(g, t, 0.002, 0.6, 0.22); o.start(t); o.stop(t + 0.3);
+    o.connect(g).connect(moodBus); env(g, t, 0.002, 0.6, 0.22); o.start(t); o.stop(t + 0.3);
   } else {
     const n = noiseSource(); const f = ctx.createBiquadFilter(); const g = ctx.createGain();
     f.type = kind === 'hat' ? 'highpass' : 'bandpass'; f.frequency.value = kind === 'hat' ? 7000 : 1800;
-    n.connect(f).connect(g).connect(musicBus);
+    n.connect(f).connect(g).connect(moodBus);
     env(g, t, 0.002, kind === 'hat' ? 0.08 : 0.25, kind === 'hat' ? 0.04 : 0.14);
     n.start(t); n.stop(t + 0.2);
   }
@@ -330,7 +333,7 @@ function bassNote(t, freq, dur) {
   const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = freq;
   const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(160, t + dur);
   const g = ctx.createGain();
-  o.connect(f).connect(g).connect(musicBus);
+  o.connect(f).connect(g).connect(moodBus);
   env(g, t, 0.01, 0.22, dur);
   o.start(t); o.stop(t + dur + 0.05);
 }
@@ -365,10 +368,90 @@ function setIntro(on) {
 }
 // Leaving the app shouldn't keep the song going in the background.
 document.addEventListener('visibilitychange', () => {
-  if (!introEl) return;
-  if (document.hidden) introEl.pause();
-  else if (introOn) introEl.play().catch(() => {});
+  for (const [el, on] of [[introEl, introOn], [radio.el, radio.playing]]) {
+    if (!el) continue;
+    if (document.hidden) el.pause();
+    else if (on) el.play().catch(() => {});
+  }
 });
+
+// ---------------- car radio ----------------
+// The studio's own songs, played in order and looping, whenever you're in a
+// car (driving, riding along, or out on a boat) with the radio on. The world
+// calls carRadio(true) every frame you're in one; when the calls stop (you got
+// out, a race, the title screen) a watchdog fades the song out and pauses it.
+// One <audio> element streams the current song into the music bus, so the
+// Music slider sets its volume, and the synth moods duck while it plays.
+export const STATIONS = [
+  { id: 'smooth-criminals', title: 'Smooth Criminals' },
+  { id: 'hustlin',          title: 'Hustlin' },
+  { id: 'srt-punisher',     title: 'SRT Punisher' },
+  { id: 'murda-dance',      title: 'Murda Dance' },
+  { id: 'ass-appeal',       title: 'Ass Appeal' },
+];
+const RADIO_GAIN = 1.5;
+const radio = { el: null, gain: null, track: -1, playing: false, seen: 0, stop: 0, onChange: null };
+
+function radioTrack() {
+  const n = STATIONS.length;
+  return ((settings.radioTrack ?? 0) % n + n) % n;
+}
+function radioLoad() {
+  const i = radioTrack();
+  if (!radio.el) {
+    radio.el = new Audio();
+    radio.el.preload = 'auto'; radio.el.setAttribute('playsinline', '');
+    radio.el.addEventListener('ended', () => radioSkip(1));
+    radio.gain = ctx.createGain(); radio.gain.gain.value = 0;
+    ctx.createMediaElementSource(radio.el).connect(radio.gain).connect(musicBus);
+  }
+  if (radio.track !== i) { radio.track = i; radio.el.src = `audio/radio/${STATIONS[i].id}.m4a`; }
+}
+function radioFade(on) {
+  const t = ctx.currentTime;
+  radio.gain.gain.cancelScheduledValues(t);
+  radio.gain.gain.setTargetAtTime(on ? RADIO_GAIN : 0, t, on ? 0.15 : 0.3);
+  moodBus.gain.cancelScheduledValues(t);
+  moodBus.gain.setTargetAtTime(on ? 0 : 1, t, 0.4);
+}
+function radioStart() {
+  radioLoad();
+  clearTimeout(radio.stop);
+  radio.playing = true;
+  radioFade(true);
+  if (!document.hidden) radio.el.play().catch(() => {});
+}
+function radioHalt() {
+  if (!radio.playing) return;
+  radio.playing = false;
+  radioFade(false);
+  radio.stop = setTimeout(() => { if (!radio.playing) radio.el.pause(); }, 1200);
+}
+function setCarRadio(inCar) {
+  if (!init()) return;
+  radio.seen = performance.now();
+  const want = inCar && settings.radio !== false;
+  if (want && !radio.playing) radioStart();
+  else if (!want && radio.playing) radioHalt();
+}
+setInterval(() => { if (radio.playing && performance.now() - radio.seen > 600) radioHalt(); }, 300);
+
+function radioSkip(dir) {
+  settings.radioTrack = radioTrack() + dir;
+  saveSettings();
+  if (!ctx || !radio.el) { radio.onChange?.(); return; }
+  const was = radio.playing;
+  radioLoad();
+  radio.el.currentTime = 0;
+  if (was && !document.hidden) radio.el.play().catch(() => {});
+  radio.onChange?.();
+}
+function radioPower(on = settings.radio === false) {
+  settings.radio = !!on;
+  saveSettings();
+  if (!on) radioHalt();
+  radio.onChange?.();
+}
 
 // ---------------- world ambience ----------------
 // Rain, wind, the city's hum, and the cars rolling past you, all built from
@@ -594,6 +677,13 @@ export const audio = {
   siren: setSiren,
   music: setMusic,
   intro: setIntro,
+  // car radio: the world calls carRadio(inCar) every frame
+  carRadio: setCarRadio,
+  radioNext() { radioSkip(1); },
+  radioPrev() { radioSkip(-1); },
+  radioPower,
+  radioState() { return { on: settings.radio !== false, playing: radio.playing, track: radioTrack(), title: STATIONS[radioTrack()].title, src: radio.el?.getAttribute('src') || '', gain: radio.gain?.gain.value ?? 0, mood: moodBus?.gain.value ?? 1 }; },
+  set onRadio(fn) { radio.onChange = fn; },
   horn() { tone(392, 0.45, 'square', 0.08); tone(494, 0.45, 'square', 0.06); },
   beep(f = 880, d = 0.12) { tone(f, d, 'square', 0.1); },
   treeAmber() { tone(660, 0.12, 'sine', 0.12); },

@@ -32,7 +32,7 @@ const setWidth = (el, w) => { w = Math.round(parseFloat(w) * 10) / 10 + '%'; if 
 
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · T steal a car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
-  car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · Enter interact · F get out · P phone',
+  car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · R next song · O radio on/off · Enter interact · F get out · P phone',
 };
 const PAD_HELP = {
   foot: 'ON FOOT — Left stick walk · B run · A use · Y get in · X steal · LT draw/holster · RT fire · RB reload · LB mask · Right stick aim · View phone · ↑ map',
@@ -83,6 +83,7 @@ export class Hud {
         <div class="dash-row hidden" data-noiserow><span>NOISE</span><b data-noise>—</b></div>
         <div class="dash-row" data-nosrow><span>NOS</span><div class="bar thin nos"><div data-nos></div></div></div>
         <div class="dash-car" data-carname></div>
+        <div class="dash-stereo" data-stereo><button data-rpow aria-label="Radio on or off" title="Radio on/off (O)">📻</button><span data-rname></span><button data-rprev aria-label="Previous song">⏮</button><button data-rnext aria-label="Next song" title="Next song (R)">⏭</button></div>
       </div>
         <div class="hud-weapon hidden" data-weapon></div>
       </div>
@@ -125,6 +126,10 @@ export class Hud {
       if (e.code === 'KeyI') { e.preventDefault(); const { openPhone } = await import('./phone.js'); const { app } = await import('../main.js'); openPhone('inventory', app, { onClose: () => {} }); }
       if (/^Digit[1-5]$/.test(e.code) && !document.querySelector('.panel:not(.hidden), .phone:not(.hidden)')) this.q('hotbar')?.querySelector(`[data-hot="${Number(e.code.slice(-1))-1}"]`)?.click();
     });
+    // car radio: tap the stereo on the dash; a new song pops up its name
+    const tap = (k, fn) => this.q(k).addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); fn(); });
+    tap('rpow', () => audio.radioPower()); tap('rprev', () => audio.radioPrev()); tap('rnext', () => audio.radioNext());
+    audio.onRadio = () => { const r = audio.radioState(); if (r.on && !this.q('dash').classList.contains('hidden')) this.pop(r.title, { title: 'Now playing', icon: '📻', kind: 'info' }); };
     this.root.querySelectorAll('[data-tp]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); touch.press(b.dataset.tp); }));
   }
 
@@ -425,6 +430,9 @@ export class Hud {
       const hot = v.car.hot;
       setText(this.q('carname'), `${v.car.year} ${v.model.model}${hot ? (hot.reported ? ' · 🚨 STOLEN' : ' · STOLEN') : ''}${v.car.broken ? ` · 🛠 ${BREAKDOWNS[v.car.broken]?.short || 'BROKEN DOWN'}` : ''}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : v.car.cond.tires < 20 ? ' · BALD TIRES' : ''}`);
     }
+    const r = audio.radioState();
+    this.q('stereo').classList.toggle('off', !r.on);
+    setText(this.q('rname'), r.on ? `♪ ${r.title}` : 'Radio off');
     this.renderRadio();
     this.renderPop();
   }

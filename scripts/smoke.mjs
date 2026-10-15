@@ -173,6 +173,25 @@ await step('teleport to car + drive', async () => {
   console.log('     driving state', JSON.stringify(st));
   if (!st.inCar) throw new Error('not in car');
 });
+await step('car radio', async () => {
+  // in the car the radio streams your songs and ducks the synth music; R skips, O turns it off, getting out stops it
+  const st = () => p.evaluate(async () => (await import('./js/core/audio.js')).audio.radioState());
+  await p.evaluate(() => { document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await p.waitForTimeout(1200); const on = await st();
+  await key('KeyR'); await p.waitForTimeout(150); const next = await st();
+  await p.evaluate(() => document.querySelector('[data-rprev]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+  const back = await st(), dash = await p.evaluate(() => { const w = window.__rfg.app.world; w.ui?.hud?.update?.(w); return document.querySelector('[data-rname]').textContent; });
+  await key('KeyO'); await p.waitForTimeout(1200); const off = await st();
+  await key('KeyO'); await p.waitForTimeout(800); const again = await st();
+  const inCar = await p.evaluate(() => window.__rfg.app.world.inCar);
+  const r = { inCar, on, next, back, dash, off, again };
+  console.log('     radio', JSON.stringify(r));
+  const ok = inCar && on.playing && /audio\/radio\/.+\.m4a$/.test(on.src) && on.gain > 1 && on.mood < 0.2
+    && next.track === (on.track + 1) % 5 && next.src !== on.src && back.track === on.track
+    && !off.on && !off.playing && off.gain < 0.1 && again.playing;
+  if (!ok) throw new Error('car radio off: ' + JSON.stringify(r));
+  await snap('09b-radio');
+});
 await step('walking vs driving controls', async () => {
   const ctxNow = () => p.evaluate(async () => (await import('./js/core/input.js')).input.context);
   const snapState = () => p.evaluate(() => { const w = window.__rfg.app.world; return { cx: w.vehicle.x, cz: w.vehicle.z, fx: w.foot.x, fz: w.foot.z, inCar: w.inCar }; });
