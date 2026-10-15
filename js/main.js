@@ -33,7 +33,7 @@ import { book } from './ui/court.js';
 import { wakeAtHospital } from './ui/hospital.js';
 import { servePrison } from './ui/prison.js';
 import { heal, healthDay, INJURIES, HOSPITAL } from './core/health.js';
-import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen } from './ui/dom.js';
+import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen, setToastRouter } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
 import { initOnline } from './ui/online.js';
 import { initCrews } from './ui/ocrew.js';
@@ -83,6 +83,7 @@ export const app = {
 export const ui = {
   get hud() { return app.hud; },
   toast, modal,
+  pop: (text, opts) => hudPop(text, opts),
   openPhone: appId => openPhone(appId, app),
   openPause: () => openPause(app),
   openPlace: (loc, world) => openPlace(loc, app),
@@ -100,6 +101,7 @@ export function enterWorld() {
   app.mode = 'world';
   if (!app.hud) app.hud = new Hud();
   app.hud.show(true);
+  for (const [t, o] of earlyPops.splice(0)) app.hud.pop(t, o);
   if (!app.world) app.world = new World(ui);
   else app.world.refreshCar();
   app.world.paused = false;
@@ -238,6 +240,30 @@ function newDay() {
 }
 
 // ---------------- notifications ----------------
+// Out in the world, texts and GPS / job / story updates pop in the HUD's
+// top-middle banner. Anywhere else (a panel, a race, the title) they're toasts.
+// The HUD only ticks while you're out in the world (not under a panel), so a
+// banner queued from the phone or the new-game screen shows once you're back.
+const hudLive = () => app.mode === 'world' && app.hud && !app.hud.root.classList.contains('hidden') && !panelOpen();
+const TOAST_KIND = { gps: 'info', job: 'info', text: 'info', good: 'good', bad: 'bad', info: 'info' };
+const earlyPops = [];   // texts from before the HUD exists (the new-game intro text)
+function hudPop(text, opts = {}) {
+  if (app.mode === 'world' && app.hud) { app.hud.pop(text, opts); return; }
+  if (app.mode === 'title' && !app.hud) { earlyPops.push([text, opts]); if (earlyPops.length > 4) earlyPops.shift(); return; }
+  toast(opts.title && opts.kind === 'text' ? `${opts.icon || ''} ${opts.title}: ${text}` : text, TOAST_KIND[opts.kind] || 'info');
+}
+const POP_RULES = [
+  [/GPS set|GPS is set|^Arrived: /, { kind: 'gps', icon: '📍', title: 'GPS' }],
+  [/^(⏱|✔)|^Bring your car/, { kind: 'job', icon: '📦', title: 'Job' }],
+  [/^Objective complete/, { kind: 'good', icon: '★', title: 'Story' }],
+];
+setToastRouter((text, kind) => {
+  if (!hudLive()) return false;
+  const r = POP_RULES.find(([re]) => re.test(text));
+  if (!r) return false;
+  app.hud.pop(text, { ...r[1], kind: kind === 'bad' ? 'bad' : r[1].kind });
+  return true;
+});
 on('toast', t => toast(t.text, t.kind));
 on('money', m => { if (Math.abs(m.amount) >= 1) toast(`${m.amount > 0 ? '+' : ''}${fmtMoney(m.amount)}${m.dirty ? ' 💵' : ''} · ${m.label}`, m.amount > 0 ? 'money' : 'info'); if (m.amount > 0) audio.buy(); });
 on('rep', r => { if (Math.abs(r.amount) >= 5) toast(`${r.amount > 0 ? '+' : ''}${r.amount} REP · ${r.reason}`, r.amount > 0 ? 'good' : 'bad'); });
@@ -247,7 +273,7 @@ on('message', m => {
   if (app.world?.downed) return;   // laid up at JPS: the texts wait in your phone (ui/hospital.js)
   audio.phone();
   const who = m.from === 'marketplace' ? 'Marketplace' : m.from === 'partshub' ? 'PartsHub' : m.from === 'insurance' ? 'Insurance' : contactInfo(m.from).name;
-  toast(`📱 ${who}: ${m.text.slice(0, 70)}${m.text.length > 70 ? '…' : ''}`, 'info');
+  hudPop(m.text, { kind: 'text', icon: '📱', title: who });
 });
 
 setPanelListener(n => {
