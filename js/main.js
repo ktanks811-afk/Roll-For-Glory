@@ -6,6 +6,7 @@ import { on, emit } from './core/events.js';
 import { input } from './core/input.js';
 import { touchUi } from './ui/touch.js';
 import { padNav } from './ui/padnav.js';
+import { tutorialPad, stopTutorial } from './ui/tutorial.js';
 import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
@@ -128,6 +129,7 @@ export function startRace(RaceClass, opts) {
 }
 
 export function toTitle() {
+  stopTutorial();
   leaveWorld();
   if (app.race) { app.race.destroy(); app.race = null; }
   game.s = null;
@@ -272,6 +274,7 @@ function frame(now) {
   last = now;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   input.pollPad(padNav);   // controller: menus first, then the game
+  tutorialPad();           // D-pad right steps the first-play tour
   // which control scheme is live: walking, driving, racing, or none
   input.setContext(app.mode === 'race' ? 'race' : app.mode === 'world' && app.world ? ((app.world.inCar && app.world.vehicle) || app.world.boats?.boating ? 'car' : 'foot') : 'menu');
   try {

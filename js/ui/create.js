@@ -6,7 +6,8 @@ import { SKIN_TONES, HAIR_COLORS, HAIR_STYLES, defaultLook, CLOTHES } from '../d
 import { game, createState } from '../core/state.js';
 import { beginStory } from '../core/story.js';
 import { generateListings } from '../data/market.js';
-import { saveGame } from '../core/save.js';
+import { saveGame, SLOTS, slotInfo } from '../core/save.js';
+import { maybeStartTutorial } from './tutorial.js';
 import { enterWorld } from '../main.js';
 
 const STARTER_TOPS = ['hoodie_black', 'tee_white', 'tee_red', 'hoodie_grey'];
@@ -51,6 +52,7 @@ export function openCreate(app) {
         const name = data.name.trim();
         if (!name) { toast('Pick a name first', 'bad'); root.querySelector('[data-name]').focus(); return; }
         if (!(data.age >= 18 && data.age <= 70)) { toast('Age must be 18-70', 'bad'); return; }
+        const veteran = SLOTS.some(sl => slotInfo(sl));   // already had careers on this profile: no tour unasked
         const s = createState({ name, age: data.age, look: { ...look, build: +look.build }, story: data.story });
         s.player.outfits = [...new Set(['hoodie_black', 'jeans_blue', 'no_hat', 'kicks_white', look.top, look.bottom, look.hat])];
         s.listings = generateListings(30);
@@ -60,6 +62,7 @@ export function openCreate(app) {
         beginStory(s);
         saveGame('auto', true);
         enterWorld();
+        maybeStartTutorial(app, { veteran });
       },
     });
   });

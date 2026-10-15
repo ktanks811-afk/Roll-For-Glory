@@ -24,6 +24,7 @@ import { online } from '../net/online.js';
 import { profile } from '../net/profile.js';
 import { profileChip, showAccount } from './account.js';
 import { auth } from '../net/auth.js';
+import { startTutorial } from './tutorial.js';
 
 // ---------------- animated backdrop ----------------
 const HERO = [
@@ -146,6 +147,7 @@ export function openPause(app) {
         <button data-action="load">Load Game</button>
         <button data-action="settings">Settings</button>
         <button data-action="controls">Controls</button>
+        <button data-action="tutorial">Tutorial<small>Replay the quick tour of the basics</small></button>
         <button data-action="quit">Quit to Title<small>Your progress autosaves</small></button>
       </nav></div>`;
     bind(root, {
@@ -155,6 +157,7 @@ export function openPause(app) {
       load: () => openSlots('load', app),
       settings: () => openSettings(app),
       controls: () => showControls(),
+      tutorial: () => { h.close(); startTutorial(app); },
       quit: async () => { saveGame('auto', true); h.close(); toTitle(); },
     });
   });
