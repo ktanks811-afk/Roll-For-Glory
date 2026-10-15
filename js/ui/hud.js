@@ -3,7 +3,7 @@
 //
 // The top-middle column is the "what's happening" strip: GPS turn-by-turn,
 // the story step / job / gig you're on, then texts and GPS / job updates
-// that pop in one at a time (pop()), then the police radio.
+// that pop in one at a time (pop()). A police radio call rides above it all.
 
 import { BREAKDOWNS } from '../core/upkeep.js';
 import { $, el, esc } from './dom.js';
@@ -87,11 +87,11 @@ export class Hud {
         <div class="hud-weapon hidden" data-weapon></div>
       </div>
       <div class="hud-top" data-top>
+        <div class="hud-radio" data-radio></div>
         <div class="hud-nav hidden" data-nav><svg viewBox="0 0 24 24" data-navicon></svg><div><b data-navdist></b><small data-navstreet></small></div></div>
         <div class="hud-objective hidden" data-obj></div>
         <div class="hud-gig hidden" data-gig></div>
         <div class="hud-pop hidden" data-pop></div>
-        <div class="hud-radio" data-radio></div>
       </div>
       <div class="hud-pit hidden" data-pit><b>PIT</b><span>POLICE ARE SETTING UP A PIT</span></div>
       <div class="hud-prompt hidden" data-prompt></div>
