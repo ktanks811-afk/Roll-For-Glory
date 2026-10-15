@@ -88,6 +88,7 @@ const HANDLERS = {
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
+  landmark: loc => modal(loc.name, `<p>${esc(loc.blurb || '')}</p>`),
   hospital: (loc, app) => openHospital(loc, app),
   meet: (loc, app, s) => {
     if (loc.weekend) { openNightMeet(loc, app); return; }

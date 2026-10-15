@@ -116,8 +116,9 @@ export function districtAt(x, z) {
   if (x < -1000) return z < -100 ? 'Lake Worth' : 'Benbrook Hills';
   if (x > SEA_X) return z > 190 ? 'Everman' : z > -1000 ? 'Stop Six' : 'Everman Shore';
   if (Math.abs(x) <= 300 && Math.abs(z) <= 300) return 'Downtown';
-  if (x > 300) return z > 600 ? 'Near Southside' : 'Riverside Industrial';
-  if (x < -300) return z > 0 ? 'Crowley' : 'Arlington Heights';   // Arlington Heights split in half: Crowley is the south half
+  if (x > 300) return z > 600 ? 'Near Southside' : z >= 300 ? 'Poly' : 'Riverside Industrial';
+  // the west side, north to south: Arlington Heights, Como, TCU, North Crowley, then Crowley
+  if (x < -300) return z < 0 ? 'Arlington Heights' : z < 300 ? 'Como' : z < 600 ? 'TCU' : z < 750 ? 'North Crowley' : 'Crowley';
   return z < 0 ? 'Stockyards' : 'Near Southside';
 }
 
@@ -169,6 +170,8 @@ export const DENTON_DISTRICTS = ['TWU', 'The Square', 'UNT', 'North Denton', 'Ea
 export const NORTH_DISTRICTS = [...DENTON_DISTRICTS, 'Denton', 'Lake Lewisville', 'Texas Motor Speedway', 'Roanoke', 'Alliance', 'Alliance Airport', 'Northlake', 'Argyle', 'US-377', 'Justin Prairie'];
 export const WEATHERFORD_DISTRICTS = ['Weatherford','Weatherford North','Weatherford East','Weatherford South'];
 export const WEST_DISTRICTS = ['Mineral Wells','Mineral Wells North','Mineral Wells West','Mineral Wells East','Palo Pinto County','Palo Pinto Mountains','West I-20'];
+// Fort Worth's house-and-yard neighbourhoods (map.js and scenery.js build them alike)
+export const LEAFY = new Set(['Arlington Heights', 'Como', 'TCU', 'North Crowley', 'Crowley', 'Poly']);
 export const DALLAS_DISTRICTS = ['Uptown', 'Downtown Dallas', 'Deep Ellum', 'West Dallas', 'Oak Cliff', 'South Dallas'];
 
 export function blockCenter(i, j, city) {
@@ -365,6 +368,7 @@ export const LOCATIONS = [
   L('corner_rosedale', 'corner', 'Rosedale Food Mart', 6, 9, 'N', { color: '#ff8a1a', icon: 'food' }),
   L('corner_northside', 'corner', 'Northside Quick Stop', 6, 2, 'S', { color: '#ff8a1a', icon: 'food' }),
   L('corner_riverside', 'corner', 'Riverside Mini Mart', 9, 4, 'W', { color: '#ff8a1a', icon: 'food' }),
+  L('corner_como', 'corner', 'Horne St Food Mart', 2, 7, 'N', { color: '#ff8a1a', icon: 'food' }),
   L('corner_camp_bowie', 'corner', 'Camp Bowie Corner Store', 2, 5, 'E', { color: '#ff8a1a', icon: 'food' }),
   L('threadline', 'clothing', 'Threadline Streetwear', 4, 6, 'E', { color: '#a01aff', icon: 'shirt' }),
   L('surplus', 'clothing', 'Riverside Army Surplus', 8, 9, 'W', { color: '#a01aff', icon: 'shirt', shop: 'surplus' }),
@@ -373,7 +377,7 @@ export const LOCATIONS = [
   L('jps', 'hospital', 'JPS Hospital', 6, 8, 'W', { color: '#e0192e', icon: 'cross' }),   // John Peter Smith, the county trauma center on S Main St
   L('pspd_harbor', 'police', 'FWPD Southside Precinct', 10, 10, 'N', { color: '#1b4fc4', icon: 'shield' }),
   L('harbor_loft', 'property', 'Southside Loft', 9, 10, 'N', { color: '#ffffff', icon: 'home' }),
-  L('westside_house', 'property', 'Crowley House', 1, 6, 'E', { color: '#ffffff', icon: 'home' }),
+  L('westside_house', 'property', 'Como House', 1, 6, 'E', { color: '#ffffff', icon: 'home' }),
   L('hillcrest_villa', 'property', 'Hillcrest Villa', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
   L('foundry_warehouse', 'property', 'Foundry Warehouse Garage', 11, 3, 'W', { color: '#ffffff', icon: 'home' }),
   L('fairmount_craftsman', 'property', 'Fairmount Craftsman', 4, 9, 'N', { color: '#ffffff', icon: 'home' }),
@@ -382,6 +386,8 @@ export const LOCATIONS = [
   L('trap_riverside', 'trap', 'Riverside Duplex', 10, 4, 'W', { color: '#8a1a1a', icon: 'home' }),
   L('marchetti_salvage', 'chop', 'Marchetti Salvage', 10, 7, 'N', { color: '#c9752a', icon: 'wrench', contact: 'junior' }),
   // recording studios: cut records for your label (ui/label.js)
+  // VirL Studios: the best room in the game, a block off Downtown
+  L('virl_studios', 'studio', 'VirL Studios', 7, 6, 'S', { color: '#ffc21a', icon: 'mic', h: 30, top: true }),
   L('magnolia_sound', 'studio', 'Magnolia Sound', 4, 8, 'N', { color: '#c04aff', icon: 'mic' }),
   L('trap_house_studios', 'studio', 'Trap House Studios', 3, 6, 'S', { color: '#c04aff', icon: 'mic' }),
   L('cashcow_pawn', 'pawn', 'Cash Cow Pawn & Gold', 9, 7, 'W', { color: '#d4a017', icon: 'tow' }),
@@ -394,6 +400,11 @@ export const LOCATIONS = [
   // weekend night meet (Fri + Sat, 9 PM to 3 AM): ui/nightmeet.js
   L('gran_plaza', 'meet', 'La Gran Plaza Lot', 7, 10, 'N', { color: '#ff1a2e', icon: 'meet', weekend: true }),
   L('old_foundry', 'meet', 'The Old Foundry', 10, 2, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
+  // the Cultural District just west of Downtown, and TCU on the west side (scenery.js draws them)
+  { id: 'dickies_arena', type: 'landmark', name: 'Dickies Arena', x: -375, z: -13, face: 0, color: '#e8c21a', icon: 'arena',
+    blurb: 'The 14,000-seat arena in the Cultural District, just west of Downtown. Rodeo in the winter, the biggest concerts in Fort Worth the rest of the year. Book an arena headline for one of your artists in the Label app and this is where they play.' },
+  { id: 'tcu', type: 'landmark', name: 'TCU', x: -525, z: 313, face: Math.PI, color: '#a46be0', icon: 'school',
+    blurb: 'Texas Christian University, between Como and North Crowley. Horned Frogs purple everywhere, Frog Fountain out front and Amon G. Carter Stadium next door. On game days the whole west side turns purple.' },
   // on the lawn in front of the pink granite courthouse (block 5,4; scenery draws the building)
   { id: 'courthouse', type: 'court', name: 'Tarrant County Courthouse', x: -75, z: -163, face: 0, color: '#c9a68a', icon: 'court' },
   { id: 'ironline', type: 'drag', name: 'Ironline Dragway', x: 34, z: 1260, face: Math.PI / 2, color: '#ff1a2e', icon: 'flag' },
@@ -530,7 +541,7 @@ export const LOC_BY_ID = Object.fromEntries(LOCATIONS.map(l => [l.id, l]));
 export const PROPERTIES = {
   eastgate_studio:   { name: 'Eastgate Studio', price: 0, slots: 2, desc: 'One room, one window, a two-car shared carport. Home.' },
   harbor_loft:       { name: 'Southside Loft', price: 42000, slots: 3, desc: 'Converted cannery loft with a view of the cranes.' },
-  westside_house:    { name: 'Crowley House', price: 135000, slots: 4, house: 'one', desc: 'Brick 1-story ranch on a quiet street, four-car garage with a lift.' },
+  westside_house:    { name: 'Como House', price: 135000, slots: 4, house: 'one', desc: 'Brick 1-story ranch on a quiet street, four-car garage with a lift.' },
   hillcrest_villa:   { name: 'Hillcrest Villa', price: 780000, slots: 8, house: 'two', desc: 'Hillside 2-story glass house with a heated showroom garage.', tier: 4 },
   foundry_warehouse: { name: 'Foundry Warehouse Garage', price: 260000, slots: 12, desc: 'A crew HQ: dyno cell, paint booth, twelve bays.', tier: 3 },
   mineral_wells_home: { name: 'Mineral Wells Ranch House', price: 175000, slots: 6, house: 'one', desc: 'A west-side ranch house with six garage spots and room to grow.' },

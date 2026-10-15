@@ -2,7 +2,7 @@
 // landmarks and colliders. Generated from a fixed seed so the city is the
 // same every time you play.
 
-import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, LOCATIONS, PROPERTIES, districtAt } from '../data/world.js';
+import { GRID, BLOCK, ROAD_W, HWY_Z, HWY_X, HWY_W, DESERT_Z, DESERT_ROAD_END, RIVER_X, TUNNEL, SEA_X, LOCATIONS, PROPERTIES, LEAFY, districtAt } from '../data/world.js';
 import { STATES, regionRect } from '../data/states.js';
 import { buildRoads } from './roads.js';
 import { addScenery } from './scenery.js';
@@ -84,7 +84,7 @@ export function buildMap() {
           buildings.push({ x: x0 + 4, z: z0 + 4, w: W * 0.55, d: D - 8, h: R(12, 22), color: pick(ROOFS.industrial), kind: 'warehouse' });
           for (let k = 0; k < 4; k++) buildings.push({ x: x0 + W * 0.62 + (k % 2) * 22, z: z0 + 10 + Math.floor(k / 2) * 50, w: 16, d: 40, h: 5, color: pick(['#8a3b2a', '#2a5a8a', '#3a7a3a', '#8a7a2a']), kind: 'containers' });
         }
-      } else if (dist === 'Arlington Heights' || dist === 'Crowley') {
+      } else if (LEAFY.has(dist)) {
         if (rnd() < 0.12) { park(x0, z0, W, D); continue; }
         const n = 4, s = W / n;
         for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
@@ -153,7 +153,7 @@ export function buildMap() {
     if (t === 'meet' || t === 'carshow' || t === 'dealer' || t === 'usedlot' || t === 'chop' || t === 'perf' || t === 'repair' || t === 'police' || t === 'hospital') {
       lots.push({ x: x0 + 2, z: z0 + 2, w: W - 4, d: D - 4, kind: 'parking' });
     }
-    buildings.push({ x: bx, z: bz, w: bw, d: bd, h: t === 'police' ? 22 : t === 'hospital' ? 28 : big ? 12 : 9, color, kind: 'landmark', label: loc.name.split(' (')[0], labelColor: loc.color, loc: loc.id, shop: t, side, accent: loc.color });
+    buildings.push({ x: bx, z: bz, w: bw, d: bd, h: loc.h || (t === 'police' ? 22 : t === 'hospital' ? 28 : big ? 12 : 9), color, kind: 'landmark', label: loc.name.split(' (')[0], labelColor: loc.color, loc: loc.id, shop: t, side, accent: loc.color });
   }
 
   // ---------------- outside the grid ----------------

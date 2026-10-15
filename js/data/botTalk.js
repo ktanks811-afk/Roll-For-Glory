@@ -18,7 +18,7 @@ export const CREWS = [
 ];
 
 export const STREETS = ['Berry', 'Magnolia', 'Rosedale', 'Lancaster', 'Vickery', 'Camp Bowie', 'Hulen', 'Seminary', 'Belknap', 'University', 'Main', 'Northside', '820', 'I-30', 'Riverside'];
-export const PLACES = ['the stockyards', 'Stop Six', 'Magnolia', 'the QT', 'Sundance', 'the courthouse', 'La Gran Plaza', 'Riverside', 'the strip', 'Northside', 'the Whataburger on Berry', 'Hulen mall', 'Cobb Park', 'Seminary'];
+export const PLACES = ['the stockyards', 'Stop Six', 'Magnolia', 'the QT', 'Sundance', 'the courthouse', 'La Gran Plaza', 'Riverside', 'the strip', 'Northside', 'the Whataburger on Berry', 'Hulen mall', 'Cobb Park', 'Seminary', 'Poly', 'Como', 'TCU', 'Dickies Arena', 'North Crowley', 'VirL Studios'];
 export const MEETS = ['La Gran Plaza', 'the stockyards', 'Pier 9', 'the Kessler lot', 'the old foundry', 'the Whataburger on Berry', 'Hulen mall lot'];
 
 // Somebody says something on their own. Each entry is one line, or a short

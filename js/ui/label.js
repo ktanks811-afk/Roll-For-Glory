@@ -126,7 +126,7 @@ function rosterTab(s, ready) {
       <div class="s">${r.buzz.toLocaleString()} fans · keeps ${pct(r.cut)}${r.debt >= 1 ? ` · owes ${fmtMoney(Math.round(r.debt))}` : ''} · ${statusLine(s, r)}</div></div><span class="muted">›</span></div>`; }).join('')}</div>`
     : `<p class="muted">Nobody signed yet. Check the Scene tab, then go meet an artist where they hang out.</p>`;
   html += `<p class="small muted" style="margin-top:10px">The label pays into your bank every morning. Record at a studio:</p>
-    <div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(STUDIOS).map(([id, S]) => `<button class="btn btn-sm" data-action="gps" data-id="${id}">📍 ${esc(S.name)}</button>`).join('')}</div>`;
+    <div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(STUDIOS).map(([id, S]) => `<button class="btn btn-sm${S.top ? ' btn-primary' : ''}" data-action="gps" data-id="${id}">${S.top ? '⭐' : '📍'} ${esc(S.name)}${S.top ? ' · #1' : ''}</button>`).join('')}</div>`;
   return html;
 }
 
@@ -203,7 +203,7 @@ function studioTab(s, studio) {
       ${busy || r.jailed ? '' : `<label class="field" style="margin-top:8px"><span>Producer</span><select class="input" data-producer-for="${esc(r.id)}"><option value="">House / artist-led</option>${PRODUCERS.map(p => `<option value="${p.id}">${esc(p.name)} · +${p.q} quality · ${Math.round((p.rate - 1) * 100)}% fee</option>`).join('')}</select></label><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${KIND_IDS.map(k => `<button class="btn btn-sm" data-action="book" data-id="${r.id}" data-kind="${k}">${KINDS[k].name} · ${fmtMoney(LB.sessionCost(studio, k))}<br><small>${KINDS[k].days} day${KINDS[k].days > 1 ? 's' : ''}</small></button>`).join('')}</div>`}</div>`;
   }).join('');
   const producerCards = `<div class="section-title">🎚 Producers</div><div class="grid">${PRODUCERS.map(p => `<div class="card"><h3>${esc(p.name)}</h3><div class="small muted">${esc(p.genre)} · +${p.q} quality · ${Math.round((p.rate - 1) * 100)}% session fee</div><p class="small">${esc(p.bio)}</p></div>`).join('')}</div>`;
-  return `<p class="small muted">${esc(S.owner)} runs the board here.${S.q ? ' Better room, better records, and it costs more.' : ' Fair prices, honest mixes.'} Albums take longest and pay the most.</p>${producerCards}
+  return `<p class="small muted">${esc(S.owner)} runs the board here.${S.top ? ' ⭐ The #1 studio in the game: the best records anywhere come out of this room.' : S.q ? ' Better room, better records, and it costs more.' : ' Fair prices, honest mixes.'} Albums take longest and pay the most.</p>${producerCards}
     ${rows || '<p class="muted">Sign an artist first, then bring them here.</p>'}`;
 }
 

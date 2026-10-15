@@ -1560,6 +1560,13 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const [x, z, d] of [[5100, -1580, 'Downtown Dallas'], [5950, -1580, 'Deep Ellum'], [5550, -1950, 'Uptown'], [4950, -1000, 'Oak Cliff'], [5850, -1000, 'South Dallas'], [4800, -1880, 'West Dallas'], [3800, -1300, 'Arlington']])
     if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
   if (W.districtAt(1800, -420) !== 'Stop Six' || W.districtAt(0, 0) !== 'Downtown') bad('Fort Worth districts moved');
+  // the west side runs Arlington Heights, Como, TCU, North Crowley, Crowley; Poly is east of the Southside
+  for (const [x, z, d] of [[-650, -450, 'Arlington Heights'], [-650, 150, 'Como'], [-650, 450, 'TCU'], [-650, 680, 'North Crowley'], [-650, 900, 'Crowley'], [650, 450, 'Poly'], [650, -200, 'Riverside Industrial']])
+    if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
+  for (const [id, d] of [['dickies_arena', 'Arlington Heights'], ['tcu', 'TCU'], ['virl_studios', 'Downtown'], ['corner_como', 'Como']])
+    if (W.districtAt(W.LOC_BY_ID[id].x, W.LOC_BY_ID[id].z) !== d) bad(`${id} should be in ${d}`);
+  { const { STUDIOS } = await import('../js/data/label.js'); const v = STUDIOS.virl_studios, ids = Object.keys(STUDIOS);
+    if (ids[0] !== 'virl_studios' || Object.values(STUDIOS).some(st => st !== v && st.q >= v.q)) bad('VirL Studios should be the top studio'); }
   // mechanic shops: Fort Worth, Johnson County, Arlington and Dallas, every one with a building and a way in
   const shops = LOCATIONS.filter(l => l.type === 'repair');
   if (shops.length < 9) bad(`only ${shops.length} mechanic shops`);

@@ -3148,7 +3148,7 @@ await step('crew turf', async () => {
   await p.waitForTimeout(250);
   await snap('27-turf');
   if (!(await p.$('.phone svg[aria-label="Turf map"]'))) throw new Error('no turf map');
-  if ((await p.$$('[data-hood]')).length !== 10) throw new Error('expected 10 neighborhoods');
+  if ((await p.$$('[data-hood]')).length !== 14) throw new Error('expected 14 neighborhoods');
   if (!(await p.$('[data-hood="Stop Six"] button[data-action="claim"]'))) throw new Error('Stop Six is not open to claim');
   if (!(await p.isVisible('[data-hood="Stockyards"]:has-text("Iron Saints")'))) throw new Error('Stockyards should start as Iron Saints turf');
   // Claim: set the GPS, then rep the hood by driving in it
