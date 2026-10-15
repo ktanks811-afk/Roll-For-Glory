@@ -97,6 +97,19 @@ await step('weather + night shift', async () => {
   });
   if (!(/Thunderstorm.*Night shift/.test(r.hud) && r.grip < 0.7 && r.patrols === 2 && r.night === 2 && r.noon === 0 && r.dark > 0.7 && r.chain)) throw new Error('weather/night rules off: ' + JSON.stringify(r));
 });
+await step('weather sounds', async () => {
+  // rain, wind and the city come up in a storm and are muffled once you're in a room
+  const r = await p.evaluate(async () => {
+    const { audio } = await import('./js/core/audio.js');
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, saved = s.weather;
+    s.weather = 'storm'; document.querySelectorAll('.modal-back').forEach(m => m.remove()); w.paused = false;
+    await new Promise(r => setTimeout(r, 1500)); const storm = audio.ambienceLevels();
+    s.weather = 'clear'; await new Promise(r => setTimeout(r, 2500)); const clear = audio.ambienceLevels();
+    s.weather = saved;
+    return { storm, clear };
+  });
+  if (!r.storm || !(r.storm.rain > 0.08 && r.storm.wind > 0.01 && r.storm.live > 0.5 && r.clear.rain < r.storm.rain / 2)) throw new Error('ambience off: ' + JSON.stringify(r));
+});
 await step('phone home', async () => { await key('KeyP'); await p.waitForTimeout(300); await snap('04-phone'); });
 for (const app of ['Messages', 'Contacts', 'Map', 'Bank', 'Throttle', 'Races', 'Ryde', 'Crew', 'My Cars', 'Journal']) {
   await step('app ' + app, async () => {

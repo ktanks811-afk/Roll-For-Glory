@@ -4,7 +4,7 @@
 import { buildMap, collideCircle, onBackroad } from './map.js';
 import { luxPerks } from '../core/luxury.js';
 import { Boats } from './boats.js';
-import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, renderOverview, signalState } from './render.js';
+import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState } from './render.js';
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
 import { missionTick } from '../core/missions.js';
@@ -45,7 +45,7 @@ import { charge, fileCase, openCase, hasFelonyPrior, IMPOUND_LOT } from '../core
 import { extraTickets } from '../data/charges.js';
 import { equippedGun } from '../data/weapons.js';
 import { toggleMask, masked } from '../core/disguise.js';
-import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
+import { wx, isWet, nextWeather, weatherToast, nightShift, windOf } from '../core/weather.js';
 import { tickNeeds, runMul } from '../core/needs.js';
 import { applyEstate } from './estate.js';
 import { Showcase } from './showcase.js';
@@ -651,7 +651,7 @@ export class World {
     this.liveDb = liveNoiseDb(this.staticDb ?? noiseDb(v.model, v.car.parts), thr, v.sim.rpm / v.spec.redline);
     // engine audio
     if (this.engine) {
-      this.engine.update({ rpm: v.sim.rpm, throttle: thr, boost: v.sim.boost, slip: Math.max(v.sim.slip, v.skid * 0.7), turbo: v.spec.asp === 'turbo', speed: v.speed });
+      this.engine.update({ rpm: v.sim.rpm, throttle: thr, boost: v.sim.boost, slip: Math.max(v.sim.slip, v.skid * 0.7), turbo: v.spec.asp === 'turbo', speed: v.speed, wet: Math.min(1, wx(this.s).rain) });
     }
     if (v.sim.nosOn && !this.nosSound) { audio.nos(); this.nosSound = true; }
     if (!v.sim.nosOn) this.nosSound = false;
@@ -1290,8 +1290,10 @@ export class World {
       ctx.restore();
     }
     if (livePeers.length) { this.drawPeerFlames(ctx, livePeers); this.drawPeerTags(ctx, livePeers); }
+    this.drawTireSpray(ctx, cam, dt);
     if (rotated) { ctx.restore(); cam.w = W; cam.h = H; }   // rain and fog are screen effects: not rotated
-    drawRain(ctx, cam, wx(s).rain, dt);
+    drawRain(ctx, cam, wx(s).rain, dt, { wind: windOf(s), low: settings.quality === 'low' });
+    this.soundscape(dt);
     if (s.weather === 'storm') this.lightning(ctx, W, H, dt);
     if (this.warpT > 0) {   // teleport flash: white that fades out
       this.warpT = Math.max(0, this.warpT - dt);
@@ -1378,16 +1380,63 @@ export class World {
   }
 
   // A storm throws a white flash across the whole screen now and then, with
-  // thunder rolling in a beat later.
+  // thunder rolling in a beat later: a close strike is a bright flash and an
+  // almost instant crack, a far one a dim flicker and a slow rumble.
   lightning(ctx, W, H, dt) {
     this.boltT = (this.boltT ?? 4 + Math.random() * 8) - dt;
-    if (this.boltT <= 0) { this.bolt = 1; this.boltT = 5 + Math.random() * 12; this.thunderT = 0.4 + Math.random() * 1.2; }
-    if (this.thunderT != null && (this.thunderT -= dt) <= 0) { this.thunderT = null; audio.thunder?.(); }
+    if (this.boltT <= 0) {
+      const near = Math.random();
+      this.boltNear = near; this.bolt = 0.45 + near * 0.55;
+      this.boltT = 5 + Math.random() * 12; this.thunderT = 0.15 + (1 - near) * 2.8;
+    }
+    if (this.thunderT != null && (this.thunderT -= dt) <= 0) {
+      this.thunderT = null; audio.thunder?.(this.boltNear);
+      if (settings.shake && this.boltNear > 0.75) this.cam.shake = Math.max(this.cam.shake, 0.08);
+    }
     if (this.bolt > 0) {
       ctx.fillStyle = `rgba(225,230,255,${0.55 * this.bolt * (Math.random() < 0.3 ? 0.4 : 1)})`;
       ctx.fillRect(0, 0, W, H);
       this.bolt = Math.max(0, this.bolt - dt * 4);
     }
+  }
+
+  // Wet roads: the tires kick up a mist of spray behind your car.
+  drawTireSpray(ctx, cam, dt) {
+    const sp = this.spray || (this.spray = []), rain = wx(this.s).rain, v = this.inCar && this.vehicle;
+    if (v && rain > 0 && v.speed > 7 && sp.length < (settings.quality === 'low' ? 24 : 60)) {
+      const n = Math.min(4, Math.ceil(v.speed / 12 * Math.min(1.5, rain)));
+      const back = (v.dims?.L || 4.6) * 0.5, fx = Math.sin(v.h), fz = -Math.cos(v.h);
+      for (let i = 0; i < n; i++) {
+        const side = (Math.random() - 0.5) * (v.dims?.W || 1.9);
+        sp.push({ x: v.x - fx * back + fz * -side, z: v.z - fz * back + fx * side, vx: -fx * v.speed * 0.25 + (Math.random() - 0.5) * 2, vz: -fz * v.speed * 0.25 + (Math.random() - 0.5) * 2, t: 0, life: 0.5 + Math.random() * 0.4 });
+      }
+    }
+    if (sp.length) drawSpray(ctx, cam, sp, dt);
+  }
+
+  // Everything you hear around you: rain on the roof, wind, the city humming,
+  // dogs and crickets at night, birds in the morning, cars rolling by
+  // (core/audio.js ambience). Runs from draw so it keeps going, quieter,
+  // while the phone or a shop is open.
+  soundscape(dt) {
+    const s = this.s, p = this.playerState();
+    const boat = this.boats.active;
+    const urbanTarget = boat ? 0.15 : this.inCity ? 1 : 0.25;
+    this.urban = (this.urban ?? urbanTarget) + (urbanTarget - (this.urban ?? urbanTarget)) * Math.min(1, dt * 0.5);
+    const inside = this.inHouse || this.inGarage ? 'room' : (this.inCar && this.vehicle) || this.rides.riding ? 'car' : '';
+    let cars = [];
+    if (!this.paused) {
+      for (const c of [...this.traffic.cars, ...this.police.patrols]) {
+        const dx = c.x - p.x, dz = c.z - p.z;
+        if (Math.abs(dx) < 55 && Math.abs(dz) < 55) cars.push({ ref: c, dx, dz, v: c.v, d: dx * dx + dz * dz });
+      }
+      cars.sort((a, b) => a.d - b.d); cars = cars.slice(0, 3);
+    }
+    const h = hourOf(s.time);
+    audio.ambience({
+      rain: wx(s).rain, wind: windOf(s), urban: this.urban, night: isNight(s.time), hour: h,
+      inside, duck: this.paused ? 0.45 : 1, cars, rot: this.cam.rot, police: this.police.active,
+    }, dt);
   }
 
   darkness() {

@@ -5,7 +5,7 @@
 import { settings } from './save.js';
 import { harmonics } from '../sim/sound.js';
 
-let ctx = null, master = null, sfxBus = null, musicBus = null, noiseBuf = null;
+let ctx = null, master = null, sfxBus = null, musicBus = null, ambBus = null, noiseBuf = null;
 
 function init() {
   if (ctx) return ctx;
@@ -15,6 +15,7 @@ function init() {
   master = ctx.createGain(); master.connect(ctx.destination);
   sfxBus = ctx.createGain(); sfxBus.connect(master);
   musicBus = ctx.createGain(); musicBus.connect(master);
+  ambBus = ctx.createGain(); ambBus.connect(master);
   applyVolume();
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
@@ -26,6 +27,7 @@ function applyVolume() {
   if (!ctx) return;
   master.gain.value = settings.volume;
   musicBus.gain.value = settings.music * 0.55;
+  ambBus.gain.value = (settings.ambience ?? 0.8) * 1.2;
 }
 
 // Browsers only allow audio after a gesture. iOS only counts the end of a
@@ -38,6 +40,9 @@ function applyVolume() {
 function noiseSource() {
   const n = ctx.createBufferSource(); n.buffer = noiseBuf; n.loop = true; return n;
 }
+// Several loops of the same noise started together would comb-filter each
+// other, so each long-running layer starts somewhere random in the buffer.
+const startNoise = n => n.start(0, Math.random() * 1.9);
 
 function env(g, t, a, peak, d) {
   g.gain.cancelScheduledValues(t);
@@ -125,7 +130,7 @@ class EngineVoice {
     this.sources = [this.osc, this.whistle, this.noise, this.air, this.bl, this.m1, this.m2, this.m3].filter(Boolean);
   }
 
-  update({ rpm, throttle = 0, boost = 0, slip = 0, volume = 1, pan = 0, turbo = false, speed = 0 }) {
+  update({ rpm, throttle = 0, boost = 0, slip = 0, volume = 1, pan = 0, turbo = false, speed = 0, wet = 0 }) {
     const t = ctx.currentTime, p = this.p;
     if (this.ev) {
       const f = 170 + speed * 24;
@@ -174,8 +179,10 @@ class EngineVoice {
       this.lastThr = throttle;
     }
     this.lastBoost = boost;
-    this.ng.gain.setTargetAtTime(Math.min(1, slip) * 0.5 + Math.min(1, speed / 70) * 0.05, t, 0.05);
-    this.nf.frequency.setTargetAtTime(slip > 0.05 ? 1900 : 700, t, 0.1);
+    // wet road: the tires throw a hiss of spray that grows with speed
+    const spray = wet * Math.min(1, speed / 30);
+    this.ng.gain.setTargetAtTime(Math.min(1, slip) * 0.5 + Math.min(1, speed / 70) * 0.05 + spray * 0.22, t, 0.05);
+    this.nf.frequency.setTargetAtTime(slip > 0.05 ? 1900 : spray > 0.1 ? 2600 : 700, t, 0.1);
     if (this.panner) this.panner.pan.setTargetAtTime(pan, t, 0.05);
   }
 
@@ -363,6 +370,220 @@ document.addEventListener('visibilitychange', () => {
   else if (introOn) introEl.play().catch(() => {});
 });
 
+// ---------------- world ambience ----------------
+// Rain, wind, the city's hum, and the cars rolling past you, all built from
+// the one noise buffer and a handful of oscillators so it stays cheap on a
+// phone. The world calls ambience() every frame with where you are; if the
+// calls stop (a race, the title screen) a watchdog fades it all out.
+// Sitting in a car or indoors muffles the outside through one lowpass.
+let amb = null, ambSeen = 0;
+const PASSBY_VOICES = 3;
+
+function buildAmbience() {
+  const live = ctx.createGain(); live.gain.value = 0; live.connect(ambBus);
+  const muffle = ctx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 16000; muffle.Q.value = 0.4;
+  muffle.connect(live);
+  const layer = (type, freq, q) => {
+    const n = noiseSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = type; f.frequency.value = freq; f.Q.value = q; g.gain.value = 0;
+    n.connect(f).connect(g).connect(muffle); startNoise(n);
+    return { f, g };
+  };
+  amb = {
+    live, muffle,
+    rainHi: layer('highpass', 3200, 0.5),   // the hiss of rain everywhere
+    rainLo: layer('bandpass', 750, 0.45),   // the wash of it hitting the street
+    wind: layer('bandpass', 380, 1.1),
+    hum: layer('lowpass', 130, 0.7),        // the city: far-off engines and highways
+    road: layer('bandpass', 1100, 0.6),     // tires on far-off streets (louder when wet)
+    voices: [],
+    windPhase: Math.random() * 10,
+    next: { drop: 0, horn: 6, siren: 40, dog: 10, cricket: 0, bird: 3, bass: 25 },
+    st: {},
+  };
+  for (let i = 0; i < PASSBY_VOICES; i++) {
+    const out = ctx.createGain(); out.gain.value = 0;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) out.connect(pan).connect(muffle); else out.connect(muffle);
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 40;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380; lp.Q.value = 1.5;
+    const og = ctx.createGain(); og.gain.value = 1;
+    o.connect(lp).connect(og).connect(out); o.start();
+    const n = noiseSource(), nf = ctx.createBiquadFilter(), ng = ctx.createGain();
+    nf.type = 'bandpass'; nf.frequency.value = 900; nf.Q.value = 0.7; ng.gain.value = 0.5;
+    n.connect(nf).connect(ng).connect(out); startNoise(n);
+    amb.voices.push({ out, pan, o, lp, nf, ng, car: null, d: 0 });
+  }
+  // fade out when nobody has called for a moment
+  setInterval(() => {
+    if (amb && performance.now() - ambSeen > 450) amb.live.gain.setTargetAtTime(0, ctx.currentTime, 0.4);
+  }, 300);
+}
+
+// short one-shots that live outside the muffle (drops on your own roof) or inside it (the city)
+function ambShot(muffled = true) {
+  const t = ctx.currentTime, g = ctx.createGain(), p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+  const dest = muffled ? amb.muffle : amb.live;
+  if (p) g.connect(p).connect(dest); else g.connect(dest);
+  return { t, g, pan: v => { if (p) p.pan.value = Math.max(-1, Math.min(1, v)); } };
+}
+const rp = () => Math.random() * 1.6 - 0.8;
+
+const AMB_EVENTS = {
+  // a raindrop smacking the roof or windshield
+  drop(vol) {
+    const { t, g, pan } = ambShot(false); pan(rp());
+    const n = noiseSource(), f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800 + Math.random() * 2600; f.Q.value = 2.5;
+    n.connect(f).connect(g); env(g, t, 0.002, vol * (0.3 + Math.random() * 0.7), 0.03);
+    n.start(t, Math.random() * 1.9); n.stop(t + 0.06);
+  },
+  // somebody leaning on a horn a few blocks over
+  horn(vol) {
+    const { t, g, pan } = ambShot(); pan(rp());
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1100; f.connect(g);
+    const base = 330 + Math.random() * 120, dur = 0.18 + Math.random() * 0.5, n = Math.random() < 0.4 ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      const st = t + k * (dur + 0.12);
+      [1, 1.26].forEach(m => { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = base * m; o.connect(f); o.start(st); o.stop(st + dur); });
+    }
+    g.gain.setValueAtTime(vol, t); g.gain.setValueAtTime(vol, t + n * (dur + 0.12)); g.gain.linearRampToValueAtTime(0.0001, t + n * (dur + 0.12) + 0.05);
+  },
+  // a siren somewhere across town, coming and going
+  siren(vol) {
+    const { t, g, pan } = ambShot();
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = 900;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = Math.random() < 0.5 ? 0.45 : 2.2;
+    const lg = ctx.createGain(); lg.gain.value = 320; lfo.connect(lg).connect(o.frequency);
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1300;
+    o.connect(f).connect(g);
+    const len = 7 + Math.random() * 5;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + len * 0.45); g.gain.linearRampToValueAtTime(0.0001, t + len);
+    o.frequency.setValueAtTime(930, t); o.frequency.linearRampToValueAtTime(860, t + len);   // it's driving away by the end
+    const p0 = rp(); pan(p0);
+    o.start(t); lfo.start(t); o.stop(t + len); lfo.stop(t + len);
+  },
+  // a yard dog going off down the block
+  dog(vol) {
+    const { t, g, pan } = ambShot(); pan(rp());
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; f.connect(g); g.gain.value = vol;
+    const pitch = 0.8 + Math.random() * 0.5, n = 2 + Math.floor(Math.random() * 4);
+    for (let k = 0; k < n; k++) {
+      const st = t + k * (0.28 + Math.random() * 0.2), o = ctx.createOscillator(), og = ctx.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(380 * pitch, st); o.frequency.exponentialRampToValueAtTime(230 * pitch, st + 0.1);
+      o.connect(og).connect(f); env(og, st, 0.006, 1, 0.1); o.start(st); o.stop(st + 0.14);
+    }
+  },
+  // a cricket chirping three times
+  cricket(vol) {
+    const { t, g, pan } = ambShot(); pan(rp());
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 4200 + Math.random() * 600;
+    o.connect(g); g.gain.value = 0;
+    const n = 2 + Math.floor(Math.random() * 3);
+    for (let k = 0; k < n; k++) { const st = t + k * 0.09; g.gain.setValueAtTime(vol, st); g.gain.setValueAtTime(0, st + 0.045); }
+    o.start(t); o.stop(t + n * 0.09 + 0.05);
+  },
+  // a bird in the trees
+  bird(vol) {
+    const { t, g, pan } = ambShot(); pan(rp());
+    const o = ctx.createOscillator(); o.type = 'sine'; o.connect(g);
+    const n = 1 + Math.floor(Math.random() * 3), f0 = 2400 + Math.random() * 1600;
+    for (let k = 0; k < n; k++) {
+      const st = t + k * 0.16;
+      o.frequency.setValueAtTime(f0, st); o.frequency.exponentialRampToValueAtTime(f0 * (1.3 + Math.random() * 0.4), st + 0.08);
+      g.gain.setValueAtTime(0.0001, st); g.gain.exponentialRampToValueAtTime(vol, st + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, st + 0.12);
+    }
+    o.start(t); o.stop(t + n * 0.16 + 0.05);
+  },
+  // somebody bumping it with the windows down a couple streets away
+  bass(vol) {
+    const { t, g, pan } = ambShot(); pan(rp());
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 160; f.connect(g);
+    const bpm = 70 + Math.random() * 20, beat = 60 / bpm / 2, bars = 6 + Math.floor(Math.random() * 6);
+    const pat = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0];
+    for (let k = 0; k < bars * 4; k++) {
+      if (!pat[k % 16]) continue;
+      const st = t + k * beat, o = ctx.createOscillator(), og = ctx.createGain();
+      o.frequency.setValueAtTime(95, st); o.frequency.exponentialRampToValueAtTime(42, st + 0.25);
+      o.connect(og).connect(f); env(og, st, 0.004, 1, 0.45); o.start(st); o.stop(st + 0.5);
+    }
+    const len = bars * 4 * beat;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + len * 0.4); g.gain.linearRampToValueAtTime(0.0001, t + len);
+  },
+};
+
+// w: { rain 0-2, wind 0-1, urban 0-1, night bool, hour, inside: '' | 'car' | 'room',
+//      duck 0-1, cars: [{ ref, dx, dz, v }] nearest first, rot (camera turn), police bool }
+function setAmbience(w, dt) {
+  if (!init()) return;
+  if (!amb) buildAmbience();
+  ambSeen = performance.now();
+  const t = ctx.currentTime, a = amb, st = a.st;
+  // only retune the filters ten times a second; the events and voices ride along
+  st.acc = (st.acc || 0) + dt;
+  const tick = st.acc >= 0.1;
+  const duck = w.duck ?? 1;
+  a.live.gain.setTargetAtTime(duck, t, 0.3);
+  if (tick) {
+    const step = st.acc; st.acc = 0;
+    const rain = w.rain || 0, urban = w.urban ?? 0.5, wet = Math.min(1, rain);
+    const inside = w.inside || '';
+    a.muffle.frequency.setTargetAtTime(inside === 'room' ? 650 : inside === 'car' ? 1500 : 16000, t, 0.25);
+    a.rainHi.g.gain.setTargetAtTime(0.11 * Math.min(1.6, rain), t, 0.8);
+    a.rainLo.g.gain.setTargetAtTime((inside === 'car' ? 0.3 : 0.18) * Math.min(1.6, rain), t, 0.8);
+    // wind gusts: a slow wander so it breathes
+    a.windPhase += step * (0.25 + w.wind * 0.5);
+    const gust = 0.55 + 0.45 * Math.sin(a.windPhase) * Math.sin(a.windPhase * 0.37 + 1.3);
+    a.wind.g.gain.setTargetAtTime((0.015 + w.wind * 0.16) * gust * (inside === 'car' ? 0.5 : 1), t, 0.5);
+    a.wind.f.frequency.setTargetAtTime(260 + gust * 320 + w.wind * 200, t, 0.5);
+    // the city's hum is lowest in the dead of night
+    const busy = w.hour > 1 && w.hour < 5 ? 0.35 : w.night ? 0.65 : 1;
+    a.hum.g.gain.setTargetAtTime(0.16 * urban * busy + 0.02, t, 1);
+    a.road.g.gain.setTargetAtTime((0.012 + 0.03 * wet) * urban * busy, t, 1);
+    a.road.f.frequency.setTargetAtTime(wet ? 1900 : 1100, t, 1);
+
+    // cars rolling past you (pitch climbs on approach, drops away: doppler)
+    const cars = w.cars || [], c = Math.cos(w.rot || 0), s = Math.sin(w.rot || 0);
+    for (let i = 0; i < a.voices.length; i++) {
+      const vo = a.voices[i], car = cars[i];
+      if (!car) { vo.out.gain.setTargetAtTime(0, t, 0.3); vo.car = null; continue; }
+      const d = Math.hypot(car.dx, car.dz);
+      const closing = vo.car === car.ref ? (vo.d - d) / step : 0;
+      vo.car = car.ref; vo.d = d;
+      const dop = 343 / (343 - Math.max(-40, Math.min(40, closing)));
+      const near = Math.max(0, 1 - d / 55) ** 2;
+      const v = Math.abs(car.v || 0);
+      vo.o.frequency.setTargetAtTime((26 + v * 1.9) * dop, t, 0.12);
+      vo.lp.frequency.setTargetAtTime(260 + v * 18, t, 0.2);
+      vo.nf.frequency.setTargetAtTime((wet ? 2200 : 800 + v * 20) * dop, t, 0.2);
+      vo.ng.gain.setTargetAtTime(0.25 + wet * 0.9, t, 0.3);
+      vo.out.gain.setTargetAtTime(near * (0.02 + Math.min(1, v / 22) * 0.07), t, 0.12);
+      if (vo.pan) vo.pan.pan.setTargetAtTime(Math.max(-0.9, Math.min(0.9, (car.dx * c - car.dz * s) / 25)), t, 0.12);
+    }
+  }
+
+  // things that happen now and then
+  const nx = a.next, h = w.hour ?? 12, rain = w.rain || 0, urban = w.urban ?? 0.5, roll = (k, gap) => { nx[k] = gap * (0.6 + Math.random() * 0.8); };
+  for (const k in nx) nx[k] -= dt;
+  if (w.inside === 'car' && rain > 0 && nx.drop <= 0) { AMB_EVENTS.drop(0.05 * Math.min(1.5, rain)); nx.drop = 1 / (9 * Math.min(1.8, rain)) * (0.4 + Math.random() * 1.2); }
+  if (nx.horn <= 0) { if (urban > 0.5 && rain < 1.5 && !(h > 1 && h < 5)) AMB_EVENTS.horn(0.012 + Math.random() * 0.015); roll('horn', 14); }
+  if (nx.siren <= 0) { if (urban > 0.5 && !w.police) AMB_EVENTS.siren(0.01 + Math.random() * 0.008); roll('siren', 75); }
+  if (nx.dog <= 0) { if (urban < 0.9 && (w.night || Math.random() < 0.3) && rain < 1) AMB_EVENTS.dog(0.012 + Math.random() * 0.012); roll('dog', w.night ? 22 : 45); }
+  if (nx.cricket <= 0) { const on = w.night && rain === 0 && w.inside !== 'room'; if (on) AMB_EVENTS.cricket(0.006 + (1 - urban) * 0.01); nx.cricket = on ? 0.5 + Math.random() * (0.9 + urban * 2) : 2; }
+  if (nx.bird <= 0) { const on = !w.night && rain === 0 && h >= 6 && h < 19; if (on) AMB_EVENTS.bird((0.006 + (1 - urban) * 0.008) * (h < 10 ? 1.4 : 1)); roll('bird', on ? (h < 10 ? 3 : 7) * (0.6 + urban) : 5); }
+  if (nx.bass <= 0) { if (urban > 0.5 && (w.night || h >= 17) && rain < 1.5) AMB_EVENTS.bass(0.05 + Math.random() * 0.04); roll('bass', 70); }
+}
+
+// Thunder: a close strike cracks before it rumbles, a far one just rolls.
+function thunder(near = 0.5) {
+  if (!init()) return;
+  const v = 0.4 + near * 0.6;
+  if (near > 0.6) noiseHit(0.25, 0.3 * near, 3500, 'highpass');
+  noiseHit(1.4 + (1 - near) * 1.2, 0.35 * v, 140 + near * 160);
+  tone(42 + near * 10, 1.6, 'sine', 0.28 * v, -18);
+  setTimeout(() => noiseHit(1.6, 0.2 * v, 120), 300 + (1 - near) * 500);
+  if (Math.random() < 0.6) setTimeout(() => noiseHit(1.1, 0.12 * v, 100), 1100 + Math.random() * 700);
+}
+
 export const audio = {
   init,
   get ready() { return !!ctx; },
@@ -394,5 +615,9 @@ export const audio = {
   squeal() { tone(1400, 0.35, 'sawtooth', 0.04, 600); },
   phone() { tone(1046, 0.08, 'sine', 0.1); setTimeout(() => tone(1318, 0.1, 'sine', 0.1), 110); },
   radio() { noiseHit(0.12, 0.06, 2200, 'bandpass'); },
-  thunder() { noiseHit(1.8, 0.35, 220); tone(48, 1.4, 'sine', 0.25, -20); setTimeout(() => noiseHit(1.2, 0.18, 160), 350); },
+  thunder,
+  // the living world: rain, wind, the city, passing cars (world2d/world.js soundscape())
+  ambience: setAmbience,
+  // test hook: how loud each ambience layer is set right now
+  ambienceLevels() { return amb && { live: amb.live.gain.value, rain: amb.rainHi.g.gain.value, wind: amb.wind.g.gain.value, hum: amb.hum.g.gain.value, muffle: amb.muffle.frequency.value }; },
 };
