@@ -55,12 +55,30 @@ await step('online profile, no log-in', async () => {
 });
 await snap('01-title');
 await step('new game', async () => {
+  // a clean profile (an earlier step failing can leave its old career behind), so the first-play tour shows
+  await p.evaluate(async () => { const S = await import('./js/core/save.js'); for (const sl of S.SLOTS) S.deleteSlot(sl); S.settings.tutorialSeen = false; S.saveSettings(); });
   await p.click('text=New Game');
   await p.fill('[data-name]', 'Tester');
   await snap('02-create');
   await p.click('text=Hit the streets');
   await p.waitForTimeout(1200);
   await snap('03-world');
+});
+await step('first-play tour', async () => {
+  // a fresh profile's first career gets the tour; walking ticks off the "get moving" step
+  if (!(await p.isVisible('.coach h3:has-text("Welcome")'))) throw new Error('no tour on a new profile');
+  await p.click('.coach [data-coach=next]');
+  await p.evaluate(() => { window.__rfg.app.world.foot.x += 8; }); await p.waitForTimeout(500);
+  if (!(await p.isVisible('.coach h3:has-text("Cash and REP")'))) throw new Error('walking did not move the tour on: ' + await p.textContent('.coach h3'));
+  if (!(await p.isVisible('.coach-ring'))) throw new Error('tour step has no spotlight');
+  await p.click('.coach [data-coach=skip]');
+  if (await p.$('.coach')) throw new Error('Skip did not end the tour');
+  if (!(await p.evaluate(async () => (await import('./js/core/save.js')).settings.tutorialSeen))) throw new Error('tour not marked seen');
+  // replay from the pause menu, then quit it
+  await p.evaluate(async () => (await import('./js/ui/menu.js')).openPause(window.__rfg.app));
+  await p.click('.menu button[data-action=tutorial]');
+  if (!(await p.isVisible('.coach h3:has-text("Welcome")'))) throw new Error('replay from the menu did not start the tour');
+  await p.click('.coach [data-coach=skip]');
 });
 await step('walk', async () => { await key('KeyW', 600); await key('KeyD', 300); });
 await step('weather + night shift', async () => {
