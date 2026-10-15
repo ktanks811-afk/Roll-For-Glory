@@ -4,6 +4,7 @@ import { FOOD_SPOTS } from './food.js';
 import { STATES, STATE_BLOCK, AIRPORT_ROW, stateAt, stateDistrict } from './states.js';
 import { TOWN_BY_ID, metroDistrict, townAt, townBlockCenter } from './metro.js';
 import { MARINA_LOCATIONS } from './boats.js';
+import { WEED_LOCATIONS } from './weed.js';
 
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
 // with a highway to the north, desert to the south, mountains to the west
@@ -206,7 +207,7 @@ const W = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: 
 const X = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'west', side, ...front(i, j, side, 0, 'west'), ...extra });
 // on a block of an out-of-state city (data/states.js): S('ga')(…)
 const S = st => (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: st, state: st, side, ...front(i, j, side, 0, st), ...extra });
-const GA = S('ga'), CA = S('ca'), FL = S('fl');
+const GA = S('ga'), CA = S('ca'), FL = S('fl'), CO = S('co');
 // on a block of one of the new towns (data/metro.js): TW('plano')(…)
 const TW = id => (pid, type, name, i, j, side, extra = {}) => ({ id: pid, type, name, block: [i, j], city: id, ...(TOWN_BY_ID[id].state ? { state: TOWN_BY_ID[id].state } : {}), side, ...front(i, j, side, 0, id), ...extra });
 const REP = '#1b4fc4', GASC = '#1f8f3a', FOOD = '#e8c21a', CORNER = '#ff8a1a', HOME = '#ffffff', MEET = '#ff1a2e', MIC = '#c04aff';
@@ -524,6 +525,25 @@ export const LOCATIONS = [
   FL('mia_meet', 'meet', 'Ocean Drive Lot', 6, 6, 'E', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
   FL('mia_brickell', 'property', 'Brickell Penthouse', 4, 3, 'S', { color: '#ffffff', icon: 'home' }),
   FL('mia_hialeah', 'property', 'Hialeah House', 1, 6, 'N', { color: '#ffffff', icon: 'home' }),
+  // Denver: the legal weed state. Dispensaries and grow farms you can buy
+  // (data/weed.js, ui/weed.js), and a rec store that sells loud legally.
+  airport('co', 'air_den', 'Denver International'),
+  CO('co_rec', 'plug', 'Mile High Rec', 1, 5, 'E', { color: '#2cff7a', icon: 'leaf', stock: ['loud'], rate: 0.4, legal: true, tagline: 'Legal recreational cannabis · 21+ with ID' }),
+  CO('disp_colfax', 'dispensary', 'Colfax Cannabis Co.', 3, 4, 'S', { color: '#2cff7a', icon: 'leaf' }),
+  CO('disp_rino', 'dispensary', 'RiNo Green', 5, 1, 'S', { color: '#2cff7a', icon: 'leaf' }),
+  CO('disp_lodo', 'dispensary', 'LoDo Dispensary', 2, 3, 'E', { color: '#2cff7a', icon: 'leaf' }),
+  CO('disp_cherry', 'dispensary', 'Cherry Creek Apothecary', 6, 6, 'N', { color: '#2cff7a', icon: 'leaf' }),
+  CO('grow_fivepoints', 'growfarm', 'Five Points Grow Room', 5, 3, 'W', { color: '#2cff7a', icon: 'leaf' }),
+  CO('co_trucks', 'dealer', 'Mountain States Motors (Subaru · Toyota · Jeep · Ford · Ram)', 6, 2, 'S', { color: '#f2f2f2', icon: 'car', makes: ['subaru', 'toyota', 'jeep', 'ford', 'ram', 'volkswagen'] }),
+  CO('co_perf', 'perf', 'Mile High Motorsport', 1, 2, 'S', { color: '#e8641a', icon: 'wrench', owner: 'Dez', tagline: 'Dez Archuleta · turbo Subarus and lifted Tacomas · Denver' }),
+  CO('co_repair', 'repair', 'Federal Blvd Auto', 0, 3, 'E', { color: '#1b4fc4', icon: 'repair', rate: 1.05, tagline: 'Northside Denver · winter tires and windshields' }),
+  CO('co_gas', 'gas', 'Conoco', 3, 6, 'N', { color: '#1f8f3a', icon: 'gas' }),
+  CO('co_corner', 'corner', 'Colfax 7-Eleven', 4, 4, 'N', { color: '#ff8a1a', icon: 'food' }),
+  CO('co_burritos', 'food', "Santiago's Breakfast Burritos", 2, 5, 'N', { color: '#e8c21a', icon: 'food', menu: 'taco' }),
+  CO('co_meet', 'meet', 'Red Rocks Overlook Lot', 7, 7, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  CO('co_highlands', 'property', 'Highlands Bungalow', 1, 0, 'S', { color: '#ffffff', icon: 'home' }),
+  CO('co_cherry', 'property', 'Cherry Creek Townhome', 7, 5, 'W', { color: '#ffffff', icon: 'home' }),
+  ...WEED_LOCATIONS,
   // the new towns on the big map (data/metro.js)
   ...TOWN_PLACES,
   // street race start lines (routes in data/streetRaces.js)
@@ -566,6 +586,8 @@ export const PROPERTIES = {
   atl_eastatl:       { name: 'East Atlanta Bungalow', price: 215000, slots: 3, house: 'starter', desc: 'Atlanta. A craftsman bungalow by the Village, three-car garage out back.' },
   la_hills:          { name: 'Hollywood Hills Glass House', price: 6200000, slots: 16, house: 'three', desc: 'Los Angeles. Glass on three floors over the city lights, a sixteen-car gallery.', tier: 5, wall: '#f2f2f2', roof: '#1a1c22', style: 'flat' },
   la_compton:        { name: 'Compton Starter', price: 265000, slots: 3, house: 'starter', desc: 'Los Angeles. Two bedrooms, a lowrider in every driveway on the block.' },
+  co_highlands:      { name: 'Highlands Bungalow', price: 340000, slots: 3, house: 'one', desc: 'Denver. A brick bungalow in the Highlands with the mountains out the back window.' },
+  co_cherry:         { name: 'Cherry Creek Townhome', price: 1350000, slots: 6, house: 'three', desc: 'Denver. Three floors of glass by the Cherry Creek shops, a six-car garage under it.', tier: 3, wall: '#e8e2d8', roof: '#2f343d', style: 'flat' },
   mia_brickell:      { name: 'Brickell Penthouse', price: 3300000, slots: 10, desc: 'Miami. The top floor over Biscayne Bay and ten spots in the private garage.', tier: 4 },
   mia_hialeah:       { name: 'Hialeah House', price: 240000, slots: 3, house: 'one', desc: 'Miami. A one-story stucco house with a palm out front and a three-car garage.', wall: '#f2e2c8', roof: '#b06a32' },
   rivercrest_mansion: { name: 'Rivercrest Mansion', price: 3600000, slots: 14, house: 'three', desc: 'Country club money. Three stories, fourteen climate-controlled bays and a car elevator.', tier: 5, wall: '#e8e2d8', roof: '#2f3b4a', wallH: 5.2 },

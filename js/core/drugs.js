@@ -182,11 +182,16 @@ export function drugOffences(bag, { intent = false } = {}) {
 }
 
 // Arrested: they search you. Returns the offences and empties your bag.
-export function seizeBag(s, opts) {
+// legalOz: in a legal state (Colorado, data/weed.js LEGAL_OZ) you can carry
+// that much weed: it isn't a charge and you keep it. Over that, it all counts.
+export function seizeBag(s, { legalOz = 0, ...opts } = {}) {
   const d = ensureDrugs(s);
   if (!units(d.bag)) return [];
-  const items = drugOffences(d.bag, opts);
-  d.bag = {};
+  const keep = legalOz && (d.bag.loud || 0) <= legalOz ? d.bag.loud || 0 : 0;
+  const bag = { ...d.bag };
+  if (keep) delete bag.loud;
+  const items = units(bag) ? drugOffences(bag, opts) : [];
+  d.bag = keep ? { loud: keep } : {};
   return items;
 }
 

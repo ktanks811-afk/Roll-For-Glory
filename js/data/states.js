@@ -6,7 +6,9 @@
 //
 // What's there that Texas doesn't have: cheaper product from the plug (buy
 // low, fly it home, sell it out of your trap), the best studios for your
-// label, dealers Texas doesn't have, and big-city houses and land.
+// label, dealers Texas doesn't have, and big-city houses and land. Denver
+// (legal: true) is the legal weed state: grow farms and dispensaries
+// (data/weed.js, core/weed.js), and carrying a little isn't a charge there.
 //
 // No imports: data/world.js and data/estate.js both read this.
 
@@ -42,6 +44,15 @@ export const STATES = {
     district(i, j) { return i >= 6 ? 'South Beach' : j <= 2 ? 'Wynwood' : j >= 6 ? 'Little Havana' : 'Brickell'; },
     outside: 'Miami-Dade',
   },
+  co: {
+    id: 'co', city: 'Denver', state: 'Colorado', abbr: 'CO', cx: 14000, cz: 6000,
+    airport: 'air_den', ground: '#3a4430', legal: true,
+    pitch: 'Weed is legal here. Buy a grow farm and a dispensary, run it like a real business, and the rec store sells loud for less than anybody.',
+    streetsNS: ['Federal Blvd', 'Speer Blvd', 'Wynkoop St', 'Larimer St', 'Broadway', 'Downing St', 'York St', 'Colorado Blvd', 'Quebec St'],
+    streetsEW: ['48th Ave', 'I-70 Frontage Rd', 'Brighton Blvd', '20th St', 'Colfax Ave', '13th Ave', '6th Ave', 'Alameda Ave', 'Evans Ave'],
+    district(i, j) { return j <= 1 ? (i >= 4 ? 'RiNo' : 'Highlands') : i <= 3 && j <= 4 ? 'LoDo' : i >= 5 && j >= 5 ? 'Cherry Creek' : j >= 4 ? 'Capitol Hill' : 'Five Points'; },
+    outside: 'Adams County',
+  },
 };
 export const STATE_IDS = Object.keys(STATES);
 // Home: Texas, with the airport at Alliance.
@@ -67,10 +78,14 @@ export function stateDistrict(id, x, z) {
 }
 
 // ---------------------------------------------------------------- flights
+// Is weed legal where (x, z) is? Only Colorado.
+export const legalWeedAt = (x, z) => !!STATES[stateAt(x, z)]?.legal;
+
 // Hours in the air and the ticket, for each pair of airports.
 const ROUTES = {
   'tx-ga': [2, 380], 'tx-ca': [3, 460], 'tx-fl': [2.5, 420],
   'ga-ca': [4.5, 520], 'ga-fl': [2, 300], 'ca-fl': [5, 560],
+  'tx-co': [2, 360], 'ga-co': [3, 420], 'ca-co': [2.5, 380], 'fl-co': [4, 480],
 };
 export function route(a, b) {
   const r = ROUTES[`${a}-${b}`] || ROUTES[`${b}-${a}`];

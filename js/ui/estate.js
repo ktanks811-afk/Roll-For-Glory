@@ -308,11 +308,12 @@ export function openPlug(loc, app) {
     const rate = loc.rate || 1;
     const subtitle = loc.tagline || (loc.id === 'plug_carson' ? 'Nightlife lounge · private back room' : loc.id === 'plug_bankrol' ? 'Ladies club · VIP supply room' : 'Stop Six · chips, Swishers, and the back room');
     root.innerHTML = head(title, subtitle) + `<div class="p-body" style="max-width:720px">
-      <p class="muted">"${hr >= 20 || hr < 5 ? 'Late night, huh. Come to the back.' : 'You know what I got. Prices move every day, so don\'t ask me yesterday\'s.'}"</p>
+      <p class="muted">"${loc.legal ? 'Welcome in. ID, please. Everything\'s legal and lab tested.' : hr >= 20 || hr < 5 ? 'Late night, huh. Come to the back.' : 'You know what I got. Prices move every day, so don\'t ask me yesterday\'s.'}"</p>
       <div class="list">${stock.map(g => `<div class="li"><span class="swatch" style="background:${g.color};width:16px;height:16px;border-radius:50%"></span><div class="grow"><div class="t">${esc(g.name)} <span class="muted small">${esc(g.what)} · per ${esc(g.unit)}</span></div>
         <div class="s">Costs <b>${fmtMoney(plugPrice(s, g.id, rate))}</b>${rate < 1 ? ` <span class="good small">(${fmtMoney(pr[g.id].buy)} in Texas)</span>` : ''} · Texas street pays about <b class="good">${fmtMoney(pr[g.id].street)}</b>${bag[g.id] ? ` · you have ${bag[g.id]}` : ''}</div></div>
         <div style="text-align:right;white-space:nowrap"><button class="btn btn-sm btn-primary" data-action="buy" data-id="${g.id}" data-n="1">Buy 1</button> <button class="btn btn-sm" data-action="buy" data-id="${g.id}" data-n="5">5</button>${bag[g.id] ? ` <button class="btn btn-sm" data-action="dump" data-id="${g.id}">Sell back</button>` : ''}</div></div>`).join('')}</div>
       <div class="section-title">In your bag</div><p>${esc(bagLine(bag))}</p>
+      ${loc.legal ? '<p class="small good">Legal in Colorado: you can carry up to 2 oz here without a charge. Take it home to Texas and it\'s loud in your bag like anything else.</p>' : ''}
       ${rate < 1 ? '<p class="small good">Out-of-state prices. Fly it home to Texas and sell it out of your trap. Your car rides cargo, so it goes in the trunk.</p>' : ''}
       <p class="small muted">Sell it out of a trap house (Bayline Realty sells them). Get stopped with product on you and it's a charge: a little is possession, ${4} units or more reads as dealing. He buys back at half the street price.</p></div>`;
     bind(root, {

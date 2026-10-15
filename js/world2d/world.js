@@ -24,7 +24,8 @@ import { inHouse } from './house.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W, inCityGrid } from '../data/world.js';
-import { stateAt, stateById, flightQuote } from '../data/states.js';
+import { stateAt, stateById, flightQuote, legalWeedAt } from '../data/states.js';
+import { LEGAL_OZ } from '../data/weed.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
@@ -718,7 +719,8 @@ export class World {
     const hotCar = !!this.vehicle?.car?.hot;
     // they chased you down: that's evading, on top of whatever they saw
     const ph = this.police.phase, items = record.slice();
-    items.push(...seizeBag(s));   // they search you: any product on you is a charge
+    // they search you: any product on you is a charge (a little weed is legal in Colorado)
+    items.push(...seizeBag(s, { legalOz: legalWeedAt(this.playerState().x, this.playerState().z) ? LEGAL_OZ : 0 }));
     const cash = seizeCash(s);    // and a dirty stack gets seized (a laundering charge if it's big)
     items.push(...cash.items);
     items.push(...seizeLoot(s));  // and stolen goods are evidence

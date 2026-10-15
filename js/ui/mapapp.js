@@ -17,10 +17,11 @@ const STATE_LABELS = Object.fromEntries(Object.entries({
   ga: [['BUCKHEAD', 3, 1], ['DOWNTOWN ATLANTA', 2, 4], ['EAST ATLANTA', 6, 3], ['ZONE 6', 6, 6], ['COLLEGE PARK', 2, 6.5]],
   ca: [['HOLLYWOOD', 4, 1], ['VENICE', 1, 4], ['DOWNTOWN LA', 5, 4], ['COMPTON', 5, 6.5], ['THE HILLS', 6, -1]],
   fl: [['WYNWOOD', 3, 1], ['BRICKELL', 3, 4], ['LITTLE HAVANA', 3, 6.5], ['SOUTH BEACH', 7, 4], ['BISCAYNE BAY', 11.6, 2.5], ['ATLANTIC OCEAN', 21.5, 4]],
+  co: [['HIGHLANDS', 2, 0.5], ['RINO', 6, 0.5], ['LODO', 2, 3], ['FIVE POINTS', 6, 3], ['CAPITOL HILL', 2.5, 6], ['CHERRY CREEK', 6.5, 6.5], ['FRONT RANGE', 4, -1.5], ['GROW FARMS', 15, 3], ['THE PLAINS', 19, 9]],
 }).map(([id, list]) => [id, [...list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK]), ...(STATE_MAP_LABELS[id] || [])]]));
 import { fmtMoney } from '../core/state.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓', plane: '✈', boat: '⚓', gem: '💎' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓', plane: '✈', boat: '⚓', gem: '💎', leaf: '🌿' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop', 'trailers'] },
@@ -34,13 +35,16 @@ const CATS = [
   { id: 'health', label: 'Hospital', types: ['hospital'] },
   { id: 'fly', label: 'Airports', types: ['airport'] },
   { id: 'boats', label: 'Marinas', types: ['marina'] },
+  { id: 'weed', label: 'Cannabis', types: ['dispensary', 'growfarm'] },
 ];
 const WHAT = {
   home: 'Your place: sleep, save, garage, change clothes.',
   property: 'A house: 1, 2 or 3 stories, a garage and a safehouse.',
   land: 'Land for sale. Build a house and a garage up to 100 cars, fence it, run cattle.',
   marina: 'A marina. Buy boats from jet skis to superyachts, launch yours, dock up and customize.',
-  airport: 'The airport. Fly to Atlanta, LA, Miami or home to Texas, and bring your car on the cargo plane.',
+  airport: 'The airport. Fly to Atlanta, LA, Miami, Denver or home to Texas, and bring your car on the cargo plane.',
+  dispensary: 'A licensed dispensary. Buy it, stock the shelf from your farms and run it: the sales land in your bank every morning.',
+  growfarm: 'A licensed grow farm. Buy it, put clones in, harvest by the ounce and stock your dispensaries.',
   rig: 'An oil lease. Pays $40,000 a day once it\'s yours.',
   kennel: 'Cross Timbers Hog Dogs: curs, hounds, bulldogs, Dogos and Corsos for sale, plus collars and cut vests.',
   hoghunt: 'The hog lease. Take your bay and catch dogs after feral hogs; the processor pays by the pound.',

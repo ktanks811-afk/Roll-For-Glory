@@ -66,6 +66,7 @@ const APPS = [
   { id: 'dogs', name: 'Kennel', icon: '🐕', bg: '#8a5a3a' },
   { id: 'hd', name: 'Hogs & Dogs', icon: '🐗', bg: '#5a3a22' },
   { id: 'label', name: 'Label', icon: '🎤', bg: 'linear-gradient(135deg,#5a1aa0,#c04aff)' },
+  { id: 'weed', name: 'Mile High', icon: '🌿', bg: 'linear-gradient(135deg,#0f4a24,#2cff7a)' },
   { id: 'journal', name: 'Journal', icon: '📓', bg: '#7a4b3a' },
   { id: 'fwpd', name: 'FWPD', icon: '🚔', bg: '#1b4fc4' },
   { id: 'jps', name: 'JPS Health', icon: '🏥', bg: '#e0192e' },
@@ -123,6 +124,7 @@ function renderHome(scr, ctx) {
     open: d => {
       if (d.id === 'partshub') { ctx.h.close(); openPartsHub(ctx.app); return; }
       if (d.id === 'label') { ctx.h.close(); import('./label.js').then(m => m.openLabel(ctx.app)); return; }
+      if (d.id === 'weed') { ctx.h.close(); import('./weed.js').then(m => m.openWeedApp(ctx.app)); return; }
       if (d.id === 'boats') { ctx.h.close(); import('./marina.js').then(m => m.openBoatsApp(ctx.app)); return; }
       if (d.id === 'luxe') { ctx.h.close(); import('./luxe.js').then(m => m.openLuxe(ctx.app)); return; }
       if (d.id === 'dogs') { ctx.h.close(); import('./kennel.js').then(m => m.openKennel(ctx.app)); return; }
