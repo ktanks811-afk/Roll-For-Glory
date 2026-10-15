@@ -58,8 +58,12 @@ import { loadCowArt } from './gfx2d/cowArt.js';
 const canvas = $('#game');
 const ctx = canvas.getContext('2d');
 let W = 0, H = 0, DPR = 1;
+// Medium quality starts at 1.5x sharpness and steps down (1.25x, then 1x)
+// when the phone can't hold its frame rate in the world. Fewer pixels to fill
+// is the biggest single win on an iPhone's big, sharp screen.
+let autoCap = 1.5;
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, settings.quality === 'low' ? 1 : settings.quality === 'high' ? 2 : 1.5);
+  DPR = Math.min(window.devicePixelRatio || 1, settings.quality === 'low' ? 1 : settings.quality === 'high' ? 2 : autoCap);
   W = window.innerWidth; H = window.innerHeight;
   canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
 }
@@ -290,10 +294,23 @@ function frame(now) {
     if (!frame.errShown) { frame.errShown = true; toast('Something broke: ' + err.message, 'bad'); }
   }
   frames++; fpsT += dt;
-  if (fpsT > 1) { fps = frames; frames = 0; fpsT = 0; }
+  if (fpsT > 1) { fps = frames; frames = 0; fpsT = 0; autoQuality(); }
   if (settings.showFps) { ctx.fillStyle = '#0f0'; ctx.font = '12px monospace'; ctx.fillText(`${fps} fps`, W - 60, H - 8); }
   input.endFrame();
   requestAnimationFrame(frame);
+}
+
+// Once a second: three slow seconds in a row out in the world (menus and
+// loading hitches don't count) and medium quality drops a step for the rest
+// of the session.
+let slowSecs = 0;
+function autoQuality() {
+  if (settings.quality !== 'medium' || app.mode !== 'world' || panelOpen() || modalOpen() || document.hidden) { slowSecs = 0; return; }
+  slowSecs = fps < 45 ? slowSecs + 1 : 0;
+  if (slowSecs < 3 || autoCap <= 1 || DPR <= 1) return;
+  slowSecs = 0;
+  autoCap = autoCap > 1.25 ? 1.25 : 1;
+  resize();
 }
 
 // ---------------- boot ----------------

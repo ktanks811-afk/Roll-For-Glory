@@ -23,6 +23,9 @@ import { wx, nightShift } from '../core/weather.js';
 import { currentStop, stopLabel, timeLeft, fmtLeft } from '../core/missions.js';
 import { INJURIES, fmtLeft as fmtHeal } from '../core/health.js';
 
+const setText = (el, t) => { t = String(t); if (el.textContent !== t) el.textContent = t; };
+const setWidth = (el, w) => { w = Math.round(parseFloat(w) * 10) / 10 + '%'; if (el.dataset.w !== w) { el.dataset.w = w; el.style.width = w; } };
+
 const HELP = {
   foot: 'ON FOOT — WASD walk · Shift run · E interact · F get in your car · T steal a car · G draw/holster gun · V mask on/off · J/Space/click fire · R reload · P phone · M map · C zoom',
   car: 'DRIVING — W gas · S brake/reverse · A/D steer · Space e-brake · N/Shift nitrous · Q/E shift (manual) · H horn · Enter interact · F get out · P phone',
@@ -88,7 +91,11 @@ export class Hud {
       <div class="hud-help" data-help></div>
       <div class="hud-hotbar" data-hotbar aria-label="Inventory hotbar"></div>
     `;
-    this.q = s => this.root.querySelector(`[data-${s}]`);
+    // the HUD's elements never change, so each is looked up once
+    const els = new Map();
+    this.q = s => { let e = els.get(s); if (!e) { e = this.root.querySelector(`[data-${s}]`); if (e) els.set(s, e); } return e; };
+    // only touch the page when a value actually changed: on iPhone every
+    // write makes Safari restyle and lay the HUD out again
     this.minimap = new MiniMap(this.q('mini'));
     this.last = 0;
     this.radioLines = [];
@@ -112,6 +119,9 @@ export class Hud {
     const labels = { water:['💧','Water'], energy:['⚡','Energy'], taco:['🌮','Taco'], phone:['📱','Phone'], lockpick:['🗝️','Lockpick'], medkit:['🩹','Med Kit'], loot:['📦','Stolen Goods'] };
     const box = this.q('hotbar');
     if (!box) return;
+    const sig = slots.slice(0, 5).map(x => x ? `${x.id}:${x.count}:${x.icon || ''}:${x.label || ''}` : '').join('|');
+    if (sig === this.hotSig && s.inventory.rfgSlots === this.hotSlots && box.firstChild) return;
+    this.hotSig = sig; this.hotSlots = s.inventory.rfgSlots;
     box.innerHTML = Array.from({length:5},(_,i) => {
       const x = slots[i], d = x ? (labels[x.id] || [x.icon || '📦', x.label || x.id]) : null;
       return '<button class="hud-hot-slot'+(x?'':' empty')+'" data-hot="'+i+'" title="'+(d ? esc(d[1]) : 'Empty')+'"><b>'+(i+1)+'</b>'+(d ? '<span>'+d[0]+'</span><small>'+esc(d[1])+'</small><i>'+(x.count > 1 ? x.count : '')+'</i>' : '<em>+</em>')+'</button>';
@@ -177,16 +187,16 @@ export class Hud {
   update(w) {
     const now = performance.now();
     this.minimap.draw(w, w.playerState());
-    this.renderHotbar();   // every frame, so it turns smoothly
+    this.renderHotbar();   // every frame, so it turns smoothly (it only redraws when something changed)
     if (now - this.last < 66) return;
     this.last = now;
     const s = game.s;
-    this.q('time').textContent = gameTimeStr(s.time);
-    this.q('day').textContent = `${dayName(s.time)} · Day ${s.time.day} · ${wx(s).icon} ${wx(s).name}${nightShift(s.time) ? ' · 🚓 Night shift' : ''}`;
+    setText(this.q('time'), gameTimeStr(s.time));
+    setText(this.q('day'), `${dayName(s.time)} · Day ${s.time.day} · ${wx(s).icon} ${wx(s).name}${nightShift(s.time) ? ' · 🚓 Night shift' : ''}`);
     const p = w.playerState();
     const street = w.streetAt(p.x, p.z);
     const turf = turfLabel(s, p.x, p.z);
-    this.q('place').textContent = `${street ? street + ' · ' : ''}${districtAt(p.x, p.z)}${turf ? ' · ' + turf : ''}`;
+    setText(this.q('place'), `${street ? street + ' · ' : ''}${districtAt(p.x, p.z)}${turf ? ' · ' + turf : ''}`);
     // hunger + energy (core/needs.js)
     for (const [k, v] of [['nfood', s.player.food ?? 100], ['nenergy', s.player.energy ?? 100]]) {
       const n = this.q(k), pct = Math.round(v);
@@ -198,12 +208,12 @@ export class Hud {
     const ob = this.q('online');
     ob.classList.toggle('hidden', !online.active);
     if (online.active) ob.textContent = `🌐 ${online.serverName} · ${online.list().length + 1} online`;
-    this.q('cash').textContent = fmtMoney(s.cash);
+    setText(this.q('cash'), fmtMoney(s.cash));
     const dirty = dirtyOf(s);
-    this.q('bank').textContent = [s.bank ? `Bank ${fmtMoney(s.bank)}` : '', dirty ? `💵 ${fmtMoney(dirty)} dirty` : ''].filter(Boolean).join(' · ');
+    setText(this.q('bank'), [s.bank ? `Bank ${fmtMoney(s.bank)}` : '', dirty ? `💵 ${fmtMoney(dirty)} dirty` : ''].filter(Boolean).join(' · '));
     const t = tierOf(s.rep), nt = nextTier(s.rep);
-    this.q('tier').textContent = `${s.rep.toLocaleString()} REP · ${t.name}`;
-    this.q('repbar').style.width = nt ? `${(s.rep - t.rep) / (nt.rep - t.rep) * 100}%` : '100%';
+    setText(this.q('tier'), `${s.rep.toLocaleString()} REP · ${t.name}`);
+    setWidth(this.q('repbar'), nt ? `${(s.rep - t.rep) / (nt.rep - t.rep) * 100}%` : '100%');
     const lvl = Math.floor(s.heat);
     this.q('heat').querySelectorAll('i').forEach((n, i) => {
       n.className = i < lvl ? 'on' : i < s.heat ? 'part' : '';
@@ -234,7 +244,7 @@ export class Hud {
         : ph === 'chase' ? 'PURSUIT' : ph === 'search' ? 'SEARCHING — LEAVE THE CIRCLE' : 'COOLDOWN — STAY HIDDEN';
       const pct = ph === 'notice' ? Math.max(0, w.police.pullT) / PULL_OVER_S * 100
         : ph === 'cooldown' ? (1 - w.police.cooldown / (14 + w.police.level * 5)) * 100 : ph === 'search' ? 100 - Math.min(100, w.police.unseenT * 5) : 100;
-      this.q('pbar').style.width = `${pct}%`;
+      setWidth(this.q('pbar'), `${pct}%`);
       pp.className = `hud-pursuit ${ph}`;
     }
     // GPS turn-by-turn
@@ -244,9 +254,9 @@ export class Hud {
     if (nav) {
       const kmh = settings.units === 'kmh';
       if (nb.dataset.turn !== nav.turn) { nb.dataset.turn = nav.turn; this.q('navicon').innerHTML = NAV_SVG[nav.turn]; }
-      this.q('navdist').textContent = navDist(nav.dist, kmh);
+      setText(this.q('navdist'), navDist(nav.dist, kmh));
       const what = nav.turn === 'arrive' ? nav.label : nav.street ? `${nav.turn === 'uturn' ? 'U-turn' : 'Turn ' + nav.turn} onto ${nav.street}` : nav.turn === 'uturn' ? 'Make a U-turn' : `Turn ${nav.turn}`;
-      this.q('navstreet').textContent = nav.turn === 'arrive' ? what : `${what} · ${navDist(nav.total, kmh)} to go`;
+      setText(this.q('navstreet'), nav.turn === 'arrive' ? what : `${what} · ${navDist(nav.total, kmh)} to go`);
     }
     // objective
     // a texted mission you're on takes the objective slot, with its clock
@@ -311,7 +321,7 @@ export class Hud {
     const troot = document.getElementById('touch');
     if (troot) { troot.classList.toggle('armed', !!(cb && cb.armed)); troot.classList.toggle('has-gun', !!(cb && cb.gun && !w.inCar)); troot.classList.toggle('has-mask', !w.inCar && ownsMask(w.s)); troot.classList.toggle('masked', !w.inCar && masked(w.s.player.look)); troot.classList.toggle('can-steal', !!w.thefts?.target); }
     const prompt = parts.join(' &nbsp;·&nbsp; ');
-    pr.innerHTML = prompt; pr.classList.toggle('hidden', !prompt);
+    if (pr.dataset.h !== prompt) { pr.dataset.h = prompt; pr.innerHTML = prompt; } pr.classList.toggle('hidden', !prompt);
     // dash
     const dash = this.q('dash');
     // riding in another player's car: their speedo and tach
@@ -320,47 +330,47 @@ export class Hud {
     dash.classList.toggle('hidden', !w.inCar && !ride && !boat);
     this.q('fuelrow').classList.toggle('hidden', !!ride || !!boat);
     if (boat) {
-      this.q('speed').textContent = Math.round(boat.speed);
-      this.q('unit').textContent = 'KNOTS';
-      this.q('gear').textContent = boat.gear;
-      this.q('rpm').style.width = `${Math.min(100, boat.speed / 0.9)}%`;
+      setText(this.q('speed'), Math.round(boat.speed));
+      setText(this.q('unit'), 'KNOTS');
+      setText(this.q('gear'), boat.gear);
+      setWidth(this.q('rpm'), `${Math.min(100, boat.speed / 0.9)}%`);
       this.q('rpm').classList.remove('hot');
       for (const r of ['oilrow', 'noiserow', 'nosrow']) this.q(r).classList.add('hidden');
       this.q('engrow').classList.toggle('hidden', boat.cond > 70);
-      this.q('eng').style.width = `${boat.cond}%`;
-      this.q('carname').textContent = `⚓ ${boat.name}`;
+      setWidth(this.q('eng'), `${boat.cond}%`);
+      setText(this.q('carname'), `⚓ ${boat.name}`);
     } else if (ride) {
       const kmh = settings.units === 'kmh';
-      this.q('speed').textContent = Math.round(Math.abs(ride.sp) * (kmh ? 3.6 : MPH));
-      this.q('unit').textContent = kmh ? 'KM/H' : 'MPH';
-      this.q('gear').textContent = ride.gear || (Math.abs(ride.sp) < 0.3 ? 'N' : 'D');
-      this.q('rpm').style.width = `${Math.min(100, (ride.rpm || 0) * 100)}%`;
+      setText(this.q('speed'), Math.round(Math.abs(ride.sp) * (kmh ? 3.6 : MPH)));
+      setText(this.q('unit'), kmh ? 'KM/H' : 'MPH');
+      setText(this.q('gear'), ride.gear || (Math.abs(ride.sp) < 0.3 ? 'N' : 'D'));
+      setWidth(this.q('rpm'), `${Math.min(100, (ride.rpm || 0) * 100)}%`);
       this.q('rpm').classList.toggle('hot', ride.rpm > 0.9);
       for (const r of ['oilrow', 'engrow', 'noiserow', 'nosrow']) this.q(r).classList.add('hidden');
-      this.q('carname').textContent = `${ride.name}'s ${ride.model ? carName(ride.model) : 'car'} · passenger`;
+      setText(this.q('carname'), `${ride.name}'s ${ride.model ? carName(ride.model) : 'car'} · passenger`);
     } else if (w.inCar && w.vehicle) {
       const v = w.vehicle;
       const kmh = settings.units === 'kmh';
-      this.q('speed').textContent = Math.round(v.speed * (kmh ? 3.6 : MPH));
-      this.q('unit').textContent = kmh ? 'KM/H' : 'MPH';
+      setText(this.q('speed'), Math.round(v.speed * (kmh ? 3.6 : MPH)));
+      setText(this.q('unit'), kmh ? 'KM/H' : 'MPH');
       const gearTxt = v.rev < 0 ? 'R' : v.sim.shiftT > 0 ? '–' : v.model.asp === 'ev' ? 'D' : String(v.sim.gear + 1);
-      this.q('gear').textContent = gearTxt;
+      setText(this.q('gear'), gearTxt);
       touchUi.setGear(gearTxt);
       const rpmPct = v.model.asp === 'ev' ? v.speed / 70 : v.sim.rpm / v.spec.redline;
-      this.q('rpm').style.width = `${Math.min(100, rpmPct * 100)}%`;
+      setWidth(this.q('rpm'), `${Math.min(100, rpmPct * 100)}%`);
       this.q('rpm').classList.toggle('hot', rpmPct > 0.9);
       touchUi.setShiftCue(v.rev >= 0 && v.model.asp !== 'ev' && v.sim.shiftT <= 0 && v.sim.gear < v.spec.gears.length - 1 && rpmPct > 0.92);
-      this.q('fuel').style.width = `${v.car.fuel * 100}%`;
+      setWidth(this.q('fuel'), `${v.car.fuel * 100}%`);
       this.q('fuel').classList.toggle('low', v.car.fuel < 0.15);
       // engine health: shows once the build is hurting it (or it's worn / blown)
       const eh = v.car.engineBlown ? 0 : v.car.cond.engine;
       this.q('engrow').classList.toggle('hidden', !(v.spec.engineRisk > 0 || v.spec.engineNosRisk > 0 || eh < 70) || v.model.asp === 'ev');
-      this.q('eng').style.width = `${eh}%`;
+      setWidth(this.q('eng'), `${eh}%`);
       this.q('eng').classList.toggle('low', eh < 35);
       // oil life: shows once it's due
       const oil = v.car.oil ?? 100;
       this.q('oilrow').classList.toggle('hidden', !(oil < 30) || v.model.asp === 'ev');
-      this.q('oil').style.width = `${oil}%`;
+      setWidth(this.q('oil'), `${oil}%`);
       this.q('oil').classList.toggle('low', oil < 12);
       // exhaust noise: only worth showing once the car is loud enough to matter
       const nr = this.q('noiserow'), loud = (w.staticDb || 0) > LEGAL_DB - 8;
@@ -371,9 +381,9 @@ export class Hud {
         nz.style.color = over ? (w.police.noiseAtt > 0.6 ? '#ff2a3a' : '#ffb020') : '';
       }
       this.q('nosrow').classList.toggle('hidden', !v.spec.nosSecs);
-      if (v.spec.nosSecs) this.q('nos').style.width = `${v.sim.nos / v.spec.nosSecs * 100}%`;
+      if (v.spec.nosSecs) setWidth(this.q('nos'), `${v.sim.nos / v.spec.nosSecs * 100}%`);
       const hot = v.car.hot;
-      this.q('carname').textContent = `${v.car.year} ${v.model.model}${hot ? (hot.reported ? ' · 🚨 STOLEN' : ' · STOLEN') : ''}${v.car.broken ? ` · 🛠 ${BREAKDOWNS[v.car.broken]?.short || 'BROKEN DOWN'}` : ''}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : v.car.cond.tires < 20 ? ' · BALD TIRES' : ''}`;
+      setText(this.q('carname'), `${v.car.year} ${v.model.model}${hot ? (hot.reported ? ' · 🚨 STOLEN' : ' · STOLEN') : ''}${v.car.broken ? ` · 🛠 ${BREAKDOWNS[v.car.broken]?.short || 'BROKEN DOWN'}` : ''}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : v.car.cond.tires < 20 ? ' · BALD TIRES' : ''}`);
     }
     this.renderRadio();
   }

@@ -746,6 +746,8 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
   lctx.fillRect(0, 0, w, h);
   lctx.globalCompositeOperation = 'destination-out';
   const v = cam.view(40);
+  // anything whose glow can't reach the screen is skipped: each one is a gradient fill
+  const off = (x, y, r) => x + r < 0 || y + r < 0 || x - r > cam.w || y - r > cam.h;
   const blob = (x, y, r, a = 1) => {
     const g = lctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -757,7 +759,7 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
   }
   // headlight cones
   for (const c of extras.cars) {
-    if (!c.lightsOn) continue;
+    if (!c.lightsOn || off(cam.sx(c.x), cam.sy(c.z), (c.beam || 28) * cam.zoom)) continue;
     const x = cam.sx(c.x) * scale, y = cam.sy(c.z) * scale;
     const fx = Math.sin(c.h), fz = -Math.cos(c.h);
     const len = (c.beam || 28) * cam.zoom * scale;
@@ -772,7 +774,7 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
     lctx.closePath(); lctx.fill();
     blob(x, y, 4 * cam.zoom * scale, 0.6);
   }
-  for (const b of extras.blobs) blob(cam.sx(b.x) * scale, cam.sy(b.z) * scale, b.r * cam.zoom * scale, b.a ?? 0.9);
+  for (const b of extras.blobs) { const r = b.r * cam.zoom; if (!off(cam.sx(b.x), cam.sy(b.z), r)) blob(cam.sx(b.x) * scale, cam.sy(b.z) * scale, r * scale, b.a ?? 0.9); }
   ctx.drawImage(lightCanvas, 0, 0, cam.w, cam.h);
 
   // coloured glows on top
@@ -780,6 +782,7 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
   ctx.globalCompositeOperation = 'lighter';
   for (const gl of extras.glows) {
     const x = cam.sx(gl.x), y = cam.sy(gl.z), r = gl.r * cam.zoom;
+    if (off(x, y, r)) continue;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, gl.color); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.globalAlpha = (gl.a ?? 0.6) * Math.min(1, darkness * 1.6 + 0.25);

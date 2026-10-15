@@ -11,6 +11,7 @@
 import { LOCATIONS } from '../data/world.js';
 import { ALL_TOWNS, ROUTES, STATE_ROUTES, LAKES, DFW, COUNTRYSIDE, MIAMI_BAY, MIAMI_OCEAN, CAUSEWAYS, townStyle, townMark } from '../data/metro.js';
 import { STATES, cityRect, regionRect } from '../data/states.js';
+import { RectGrid } from './rectGrid.js';
 
 function mulberry32(a) {
   return () => {
@@ -51,7 +52,9 @@ export function addMetro(out, { landmarkBlock, roads }) {
       clearRects.push({ x0: Math.min(ax, bx) - h, z0: Math.min(az, bz) - h, x1: Math.max(ax, bx) + h, z1: Math.max(az, bz) + h });
     }
   }
-  const hits = (x0, z0, x1, z1) => clearRects.some(r => x1 > r.x0 && x0 < r.x1 && z1 > r.z0 && z0 < r.z1);
+  const clearGrid = new RectGrid(200);
+  for (const r of clearRects) clearGrid.add(r, r.x0, r.z0, r.x1, r.z1);
+  const hits = (x0, z0, x1, z1) => clearGrid.some(x0, z0, x1, z1, r => x1 > r.x0 && x0 < r.x1 && z1 > r.z0 && z0 < r.z1);
   keep(buildings, b => b.loc || !hits(b.x, b.z, b.x + b.w, b.z + b.d));
   keep(lots, l => l.loc || l.landLot || !hits(l.x, l.z, l.x + l.w, l.z + l.d));
   keep(trees, t => !hits(t.x - t.r, t.z - t.r, t.x + t.r, t.z + t.r));
@@ -339,7 +342,9 @@ export function addMetro(out, { landmarkBlock, roads }) {
     ...out.waterAll.map(w => ({ x0: w.x - 20, z0: w.z - 20, x1: w.x + w.w + 20, z1: w.z + w.d + 20 })),
     ...LOCATIONS.map(l => l.lot ? { x0: l.lot.x0 - 20, z0: l.lot.z0 - 20, x1: l.lot.x1 + 20, z1: l.lot.z1 + 20 } : { x0: l.x - 40, z0: l.z - 40, x1: l.x + 40, z1: l.z + 40 }),
   ];
-  const free = (x0, z0, x1, z1) => !taken.some(r => x1 > r.x0 && x0 < r.x1 && z1 > r.z0 && z0 < r.z1) && !onRoad(x0, z0, x1, z1);
+  const takenGrid = new RectGrid(200);
+  for (const r of taken) takenGrid.add(r, r.x0, r.z0, r.x1, r.z1);
+  const free = (x0, z0, x1, z1) => !takenGrid.some(x0, z0, x1, z1, r => x1 > r.x0 && x0 < r.x1 && z1 > r.z0 && z0 < r.z1) && !onRoad(x0, z0, x1, z1);
   const seen = new Set();
   for (const c of COUNTRYSIDE) {
     const rnd = mulberry32(seedOf(c.name + c.x0 + ',' + c.z0)), R = (a, b) => a + rnd() * (b - a), pick = a => a[Math.floor(rnd() * a.length)];

@@ -266,7 +266,7 @@ export class World {
     const focus = car || this.foot;
     const vx = car ? car.vx : 0, vz = car ? car.vz : 0;
     const spd = Math.hypot(vx, vz);
-    const base = (window.innerWidth < 700 ? 7.5 : 11) * [1, 0.55, 1.5][this.zoomLevel ?? 0];
+    const base = ((this.cam.vw || window.innerWidth) < 700 ? 7.5 : 11) * [1, 0.55, 1.5][this.zoomLevel ?? 0];
     // a traffic stop pulls the camera in so you can watch the officer walk up
     const stop = this.police.phase === 'stop' ? this.police.stop : null;
     // a big boat pulls the camera back so you can see all of it
@@ -1256,7 +1256,7 @@ export class World {
           glows.push({ x: bx, z: bz, r: 4, color: 'rgba(255,0,0,1)', a: 0.8 });
         }
       }
-      for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
+      for (const l of LOCATIONS) if (l.x > v.x0 && l.x < v.x1 && l.z > v.z0 && l.z < v.z1) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       if (this.inHouse) { const b = this.inHouse.box; if (b) glows.push({ x: b.x + b.w / 2, z: b.z + b.d / 2, r: Math.max(b.w, b.d) * 0.7, color: 'rgba(255,236,200,1)', a: 0.8 }); }
       this.boats.glows({ glows, blobs });   // dock lamps, underwater lights, deck LEDs
