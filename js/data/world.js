@@ -3,6 +3,7 @@ import { ESTATE_LOCATIONS, TRAPS } from './estate.js';
 import { FOOD_SPOTS } from './food.js';
 import { STATES, STATE_BLOCK, AIRPORT_ROW, stateAt, stateDistrict } from './states.js';
 import { TOWN_BY_ID, metroDistrict, townAt, townBlockCenter } from './metro.js';
+import { MARINA_LOCATIONS } from './boats.js';
 
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
 // with a highway to the north, desert to the south, mountains to the west
@@ -519,6 +520,7 @@ export const LOCATIONS = [
   ...ESTATE_LOCATIONS,
   // taco trucks and diners, each on its own lot (data/food.js)
   ...FOOD_SPOTS,
+  ...MARINA_LOCATIONS,   // marinas on the lakes and Miami's bay (data/boats.js)
   ...STREET_RACES.map(ev => { const st = raceStart(ev); return { id: ev.id, type: 'sprint', name: ev.name, x: st.x, z: st.z, face: st.h, color: '#ffbe1e', icon: 'flag', tier: ev.tier > 1 ? ev.tier : undefined, race: ev.id }; }),
 ];
 

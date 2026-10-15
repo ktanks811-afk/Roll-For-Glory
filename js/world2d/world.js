@@ -2,6 +2,8 @@
 // time of day, weather, fuel, damage and every "press E" interaction.
 
 import { buildMap, collideCircle, onBackroad } from './map.js';
+import { luxPerks } from '../core/luxury.js';
+import { Boats } from './boats.js';
 import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, renderOverview, signalState } from './render.js';
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
@@ -108,6 +110,7 @@ export class World {
     bots.attach(this);   // the regulars on a quiet server drive on these roads
     this.ranch = new Ranch(this);
     this.showcase = new Showcase(this);   // other players' places on your server, and yours on theirs
+    this.boats = new Boats(this);         // marinas, boats on the lakes, and yours when you take it out
     this.visiting = null;       // another player's garage or house you've walked into
     this.doors = doors;
     this.spawnPlayer();
@@ -194,7 +197,7 @@ export class World {
     s.playTime += dt;
     this.advanceClock(dt);
 
-    if (input.pressed('enterExit')) { if (this.rides.riding) this.rides.getOut(); else this.toggleCar(); }
+    if (input.pressed('enterExit')) { if (this.boats.boating) this.boats.tryUse(); else if (this.rides.riding) this.rides.getOut(); else this.toggleCar(); }
     if (input.pressed('phone')) { this.ui.openPhone(); return; }
     if (input.pressed('map')) { this.ui.openPhone('map'); return; }
     if (input.pressed('pause')) { this.ui.openPause(); return; }
@@ -208,16 +211,21 @@ export class World {
     const p = this.playerState();
     this.offence = null;
     if (this.inCar && !this.vehicle) this.inCar = false;
-    if (this.inCar && this.vehicle) this.updateDriving(dt);
+    const boat = this.boats.active;
+    this.boats.update(dt);   // out on the water: the boat is you (world2d/boats.js)
+    if (boat) { this.foot.x = boat.x; this.foot.z = boat.z; this.foot.h = boat.h; this.foot.moving = 0; }
+    else if (this.inCar && this.vehicle) this.updateDriving(dt);
     else if (!this.rides.riding) this.updateFoot(dt);
     this.rides.update(dt);   // riding in another player's car: you go where it goes
-    this.combat.update(dt);
-    this.carjacks.update(dt);
-    this.thefts.update(dt);
+    if (!boat) {   // nobody robs, races or carjacks you in the middle of a lake
+      this.combat.update(dt);
+      this.carjacks.update(dt);
+      this.thefts.update(dt);
+      this.gangs.update(dt);
+      this.races.update(dt);
+      this.pullups.update(dt);
+    }
     this.gigs.update(dt);
-    this.gangs.update(dt);
-    this.races.update(dt);
-    this.pullups.update(dt);
     this.trailers.update(dt);
     this.updateOnline(dt);
     this.doors.update(dt, this);
@@ -240,7 +248,7 @@ export class World {
       extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars(), ...this.pullups.cars(), ...this.thefts.obstacles(), ...this.trailers.obstacles()],
     });
     this.traffic.update(dt, this.trafficCtx);
-    this.police.update(dt, this);
+    if (!boat) this.police.update(dt, this);
     if (this.inCar && this.vehicle) this.police.checkBlocks(this, this.vehicle);
     this.updatePoliceAudio();
 
@@ -254,14 +262,15 @@ export class World {
 
     // camera
     // riding along in another player's car, the camera rides with that car
-    const car = this.inCar && this.vehicle ? this.vehicle : this.rides.view();
+    const car = boat || (this.inCar && this.vehicle ? this.vehicle : this.rides.view());
     const focus = car || this.foot;
     const vx = car ? car.vx : 0, vz = car ? car.vz : 0;
     const spd = Math.hypot(vx, vz);
     const base = (window.innerWidth < 700 ? 7.5 : 11) * [1, 0.55, 1.5][this.zoomLevel ?? 0];
     // a traffic stop pulls the camera in so you can watch the officer walk up
     const stop = this.police.phase === 'stop' ? this.police.stop : null;
-    const targetZoom = stop ? base * 1.35 : car ? base / (1 + spd / 48) : base * 1.2;
+    // a big boat pulls the camera back so you can see all of it
+    const targetZoom = stop ? base * 1.35 : boat ? base / (1 + spd / 40) / Math.max(1, (boat.def.L / 12) ** 0.7) : car ? base / (1 + spd / 48) : base * 1.2;
     this.cam.zoom += (targetZoom - this.cam.zoom) * Math.min(1, dt * 2);
     // Keep the car near the middle of the screen at any speed: only a whisker
     // of look-ahead, and a follow fast enough that the lag cancels it out.
@@ -293,7 +302,7 @@ export class World {
     // persist position
     // (a stolen car isn't saved: load the game and you're on foot, your own car where you left it)
     const hot = this.vehicle?.car?.hot, own = hot ? this.thefts.own?.vehicle : this.vehicle;
-    s.pos = { x: p.x, z: p.z, h: this.inCar ? this.vehicle.h : this.foot.h, inCar: this.inCar && !hot };
+    s.pos = boat ? this.boats.shoreSpot() : { x: p.x, z: p.z, h: this.inCar ? this.vehicle.h : this.foot.h, inCar: this.inCar && !hot };
     if (own) s.carPos = { x: own.x, z: own.z, h: own.h };
 
     this.saveT += dt;
@@ -399,6 +408,8 @@ export class World {
   }
 
   playerState() {
+    const b = this.boats?.active;
+    if (b) return { x: b.x, z: b.z, vx: b.vx, vz: b.vz, speed: b.speed, h: b.h, inCar: false, boat: true, carName: '' };
     if (this.inCar && this.vehicle) {
       const v = this.vehicle;
       return { x: v.x, z: v.z, vx: v.vx, vz: v.vz, speed: v.speed, h: v.h, inCar: true, carName: carName(v.model) };
@@ -821,6 +832,11 @@ export class World {
   districtAt(x, z) { return districtAt(x, z); }
 
   updateInteractions() {
+    if (this.boats.boating) {   // on the water the only thing to do is tie up (world2d/boats.js)
+      this.nearLoc = null; this.garageHint = '';
+      if (input.pressed('interact')) this.boats.tryUse();
+      return;
+    }
     const p = this.playerState();
     const st = this.s;
     let best = null, bd = 10;
@@ -995,7 +1011,10 @@ export class World {
     const there = stateAt(x, z);
     const block = there !== stateAt(p.x, p.z) ? `That's in ${stateById(there).city}. Fly there from the airport.`
       : travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car, meters });
-    return { meters, withCar, block, quote: travelQuote(meters, car) };
+    let quote = travelQuote(meters, car);
+    // your own helicopter (Luxe): no fee, a third of the time
+    if (luxPerks(s).heli) quote = { ...quote, fee: 0, minutes: Math.max(5, Math.round(quote.minutes / 3)), heli: true };
+    return { meters, withCar, block, quote };
   }
 
   teleport(x, z, label, locId) {
@@ -1048,7 +1067,10 @@ export class World {
     const near = !this.inCar && v && !v.car.impound && Math.hypot(v.x - this.foot.x, v.z - this.foot.z) < CAR_REACH;
     const hot = this.inCar && !!v?.car?.hot;
     const withCar = !!v && (this.inCar || near) && !v.car.hot;
-    const quote = dest ? flightQuote(from, dest, withCar) : null;
+    let quote = dest ? flightQuote(from, dest, withCar) : null;
+    // your own jet (Luxe): no ticket, half the time; the big one carries the car free
+    const pk = luxPerks(s);
+    if (quote && pk.jet) { const freight = pk.carFree ? 0 : quote.freight; quote = { ...quote, ticket: 0, freight, total: freight, minutes: Math.round(quote.minutes / 2), jet: true }; }
     let block = !to || !quote ? 'No flights there.' : dest === from ? 'You\'re already here.'
       : travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car: withCar ? v.car : null });
     if (!block && this.rides.riding) block = `You're riding with ${this.rides.riding.name}. Get out first.`;
@@ -1101,7 +1123,8 @@ export class World {
     ctx.translate(shakeX, shakeY);
     if (rotated) { ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.translate(-D / 2, -D / 2); }
     drawGround(ctx, cam);
-    drawWater(ctx, cam, this.map, this.t);
+    drawWater(ctx, cam, this.map, this.t, { night: this.darkness(), low: settings.quality === 'low' });
+    this.boats.drawUnder(ctx, cam);   // docks, wakes and the boats on the water
     const v = cam.view(60);
     const items = this.map.drawGrid.query(v.x0, v.z0, v.x1, v.z1);
     drawLots(ctx, cam, items);
@@ -1160,7 +1183,7 @@ export class World {
     // the officer walking up during a traffic stop
     const cop = this.police.officer;
     if (cop) drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
-    if (!this.inCar && !this.rides.riding) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
+    if (!this.inCar && !this.rides.riding && !this.boats.boating) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
     this.combat.draw(ctx, cam);
     this.carjacks.draw(ctx, cam);
     this.thefts.draw(ctx, cam);
@@ -1236,6 +1259,7 @@ export class World {
       for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       if (this.inHouse) { const b = this.inHouse.box; if (b) glows.push({ x: b.x + b.w / 2, z: b.z + b.d / 2, r: Math.max(b.w, b.d) * 0.7, color: 'rgba(255,236,200,1)', a: 0.8 }); }
+      this.boats.glows({ glows, blobs });   // dock lamps, underwater lights, deck LEDs
       drawLighting(ctx, cam, night, this.map.lights, { cars: carsLit, glows, blobs });
       this.drawGpsRoute(ctx, cam, night * 0.85, true);   // the route glows through the dark
       this.races.drawRoute(ctx, cam, night * 0.7, true);
@@ -1383,6 +1407,7 @@ export class World {
     this.pullups.destroy();
     this.rides.destroy();
     if (this.engine) this.engine.stop();
+    this.boats?.engine?.stop();
     audio.siren(false);
     audio.music(null);
   }

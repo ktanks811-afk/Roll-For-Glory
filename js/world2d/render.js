@@ -8,6 +8,7 @@ import { drawFurniture } from '../gfx2d/furniture.js';
 import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
 import { LOT_COLOR } from './mapTiles.js';
+import { drawWaterBodies } from './water.js';
 
 export class Camera {
   constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; this.rot = 0; this.vw = 1; this.vh = 1; }
@@ -78,24 +79,8 @@ export function drawGround(ctx, cam) {
   for (const t of ALL_TOWNS) rect(t.x0 - 15, t.z0 - 15, t.x1 + 15, t.z1 + 15, COLORS.city);
 }
 
-export function drawWater(ctx, cam, map, t) {
-  for (const w of map.water) {
-    const v = cam.view(0);
-    const ax = Math.max(w.x, v.x0), az = Math.max(w.z, v.z0), bx = Math.min(w.x + w.w, v.x1), bz = Math.min(w.z + w.d, v.z1);
-    if (ax >= bx || az >= bz) continue;
-    ctx.fillStyle = w.kind === 'river' ? COLORS.river : COLORS.water;
-    ctx.fillRect(cam.sx(ax), cam.sy(az), (bx - ax) * cam.zoom + 1, (bz - az) * cam.zoom + 1);
-    // ripples
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-    const step = 22;
-    for (let z = Math.floor(az / step) * step; z < bz; z += step) {
-      ctx.beginPath();
-      const off = Math.sin(t * 0.6 + z) * 6;
-      ctx.moveTo(cam.sx(ax), cam.sy(z + off * 0.2));
-      ctx.lineTo(cam.sx(bx), cam.sy(z + off * 0.2));
-      ctx.stroke();
-    }
-  }
+export function drawWater(ctx, cam, map, t, opts = {}) {
+  drawWaterBodies(ctx, cam, map, t, opts);   // waves, shallows, foam and glints (world2d/water.js)
   // hills: soft darker mounds
   for (const h of map.hills) {
     if (h.x + h.r < cam.view().x0 || h.x - h.r > cam.view().x1 || h.z + h.r < cam.view().z0 || h.z - h.r > cam.view().z1) continue;

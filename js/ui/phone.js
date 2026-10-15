@@ -60,6 +60,8 @@ const APPS = [
   { id: 'turf', name: 'Turf', icon: '🚩', bg: '#7a1414' },
   { id: 'gang', name: 'Gang', icon: '✊', bg: '#4a1a6b' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
+  { id: 'boats', name: 'My Boats', icon: '🛥', bg: 'linear-gradient(135deg,#1bb8e8,#0b4c78)' },
+  { id: 'luxe', name: 'Luxe', icon: '💎', bg: 'linear-gradient(135deg,#1a1a1d,#c9a45a)' },
   { id: 'inventory', name: 'Inventory', icon: '🎒', bg: '#b08a3e' },
   { id: 'dogs', name: 'Kennel', icon: '🐕', bg: '#8a5a3a' },
   { id: 'hd', name: 'Hogs & Dogs', icon: '🐗', bg: '#5a3a22' },
@@ -121,6 +123,8 @@ function renderHome(scr, ctx) {
     open: d => {
       if (d.id === 'partshub') { ctx.h.close(); openPartsHub(ctx.app); return; }
       if (d.id === 'label') { ctx.h.close(); import('./label.js').then(m => m.openLabel(ctx.app)); return; }
+      if (d.id === 'boats') { ctx.h.close(); import('./marina.js').then(m => m.openBoatsApp(ctx.app)); return; }
+      if (d.id === 'luxe') { ctx.h.close(); import('./luxe.js').then(m => m.openLuxe(ctx.app)); return; }
       if (d.id === 'dogs') { ctx.h.close(); import('./kennel.js').then(m => m.openKennel(ctx.app)); return; }
       if (d.id === 'hd') { ctx.h.close(); import('./hdranch.js').then(m => m.openRanch(ctx.app)); return; }
       if (d.id === 'settings') { openSettings(ctx.app); return; }

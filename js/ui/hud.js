@@ -262,7 +262,7 @@ export class Hud {
     gb.classList.toggle('hidden', !gl);
     if (gl) { const html = `<small>${esc(gl.title)}</small>${esc(gl.text)}`; if (gb.dataset.h !== html) { gb.dataset.h = html; gb.innerHTML = html; } gb.classList.toggle('late', gl.late); }
     // control hints follow what you're doing: walking or driving
-    const ctx = w.inCar ? 'car' : 'foot';
+    const ctx = w.inCar || w.boats?.boating ? 'car' : 'foot';
     const dev = pad.inUse ? 'pad' : touchUi.active ? 'touch' : 'keys';
     if (ctx + dev !== this.helpCtx) {
       this.helpCtx = ctx + dev;
@@ -281,6 +281,8 @@ export class Hud {
     if (pu) parts.push(pu);
     const rd = w.rides?.promptHtml(tch);
     if (rd) parts.push(rd);
+    const bp = w.boats?.promptHtml(tch);
+    if (bp) parts.push(bp);
     const tp = w.trailers?.promptHtml(tch);
     if (tp) parts.push(tp);
     const doorPrompt = w.doors?.promptHtml?.();
@@ -314,9 +316,20 @@ export class Hud {
     const dash = this.q('dash');
     // riding in another player's car: their speedo and tach
     const ride = !w.inCar && w.rides?.riding ? w.rides.peer : null;
-    dash.classList.toggle('hidden', !w.inCar && !ride);
-    this.q('fuelrow').classList.toggle('hidden', !!ride);
-    if (ride) {
+    const boat = w.boats?.dash();   // out on the water: knots, and the boat's name
+    dash.classList.toggle('hidden', !w.inCar && !ride && !boat);
+    this.q('fuelrow').classList.toggle('hidden', !!ride || !!boat);
+    if (boat) {
+      this.q('speed').textContent = Math.round(boat.speed);
+      this.q('unit').textContent = 'KNOTS';
+      this.q('gear').textContent = boat.gear;
+      this.q('rpm').style.width = `${Math.min(100, boat.speed / 0.9)}%`;
+      this.q('rpm').classList.remove('hot');
+      for (const r of ['oilrow', 'noiserow', 'nosrow']) this.q(r).classList.add('hidden');
+      this.q('engrow').classList.toggle('hidden', boat.cond > 70);
+      this.q('eng').style.width = `${boat.cond}%`;
+      this.q('carname').textContent = `⚓ ${boat.name}`;
+    } else if (ride) {
       const kmh = settings.units === 'kmh';
       this.q('speed').textContent = Math.round(Math.abs(ride.sp) * (kmh ? 3.6 : MPH));
       this.q('unit').textContent = kmh ? 'KM/H' : 'MPH';
