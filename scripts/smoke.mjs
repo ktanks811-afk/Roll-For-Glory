@@ -55,6 +55,8 @@ await step('online profile, no log-in', async () => {
 });
 await snap('01-title');
 await step('new game', async () => {
+  // a clean profile (an earlier step failing can leave its old career behind), so the first-play tour shows
+  await p.evaluate(async () => { const S = await import('./js/core/save.js'); for (const sl of S.SLOTS) S.deleteSlot(sl); S.settings.tutorialSeen = false; S.saveSettings(); });
   await p.click('text=New Game');
   await p.fill('[data-name]', 'Tester');
   await snap('02-create');
