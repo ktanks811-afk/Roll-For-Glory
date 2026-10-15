@@ -3,6 +3,7 @@
 
 import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, BRAZOS, DALLAS, DALLAS_ZONE, DENTON, NORTH, WEST, WEST_CITY, LOCATIONS } from '../data/world.js';
 import { STATES, cityRect, regionRect } from '../data/states.js';
+import { ALL_TOWNS, TEXAS } from '../data/metro.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
 import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
@@ -44,7 +45,16 @@ export function buildStreetLights(map) {
     }
   }
   for (const l of LOCATIONS) out.push({ x: l.x, z: l.z, r: 16, color: l.color });
+  // bucketed so the night pass only looks at the lights near the screen
+  out.cells = new Map();
+  for (const l of out) { const k = Math.floor(l.x / LIGHT_CELL) * 100003 + Math.floor(l.z / LIGHT_CELL); if (!out.cells.has(k)) out.cells.set(k, []); out.cells.get(k).push(l); }
   return out;
+}
+const LIGHT_CELL = 300;
+function* lightsIn(lights, v) {
+  if (!lights.cells) { yield* lights; return; }
+  for (let i = Math.floor(v.x0 / LIGHT_CELL); i <= Math.floor(v.x1 / LIGHT_CELL); i++)
+    for (let j = Math.floor(v.z0 / LIGHT_CELL); j <= Math.floor(v.z1 / LIGHT_CELL); j++) yield* lights.cells.get(i * 100003 + j) || [];
 }
 
 export function drawGround(ctx, cam) {
@@ -65,6 +75,7 @@ export function drawGround(ctx, cam) {
   rect(-985, -985, 985, 985, COLORS.city);
   rect(DALLAS.x0 - 15, DALLAS.z0 - 15, DALLAS.x1 + 15, DALLAS.z1 + 15, COLORS.city);
   rect(DENTON.x0 - 15, DENTON.z0 - 15, DENTON.x1 + 15, DENTON.z1 + 15, COLORS.city);
+  for (const t of ALL_TOWNS) rect(t.x0 - 15, t.z0 - 15, t.x1 + 15, t.z1 + 15, COLORS.city);
 }
 
 export function drawWater(ctx, cam, map, t) {
@@ -271,8 +282,9 @@ function drawProps(ctx, cam, items) {
 export function drawRoads(ctx, cam, map, signalT) {
   const v = cam.view(20);
   const z = cam.zoom;
-  // asphalt
-  for (const e of map.roads.edges) {
+  // asphalt (only the roads near the screen: the grid in roads.js finds them)
+  const near = map.roads.edgesIn ? map.roads.edgesIn(v.x0 - 20, v.z0 - 20, v.x1 + 20, v.z1 + 20) : map.roads.edges;
+  for (const e of near) {
     const minx = Math.min(e.ax, e.bx) - e.width / 2, maxx = Math.max(e.ax, e.bx) + e.width / 2;
     const minz = Math.min(e.az, e.bz) - e.width / 2, maxz = Math.max(e.az, e.bz) + e.width / 2;
     if (maxx < v.x0 || minx > v.x1 || maxz < v.z0 || minz > v.z1) continue;
@@ -309,7 +321,7 @@ export function drawRoads(ctx, cam, map, signalT) {
     ctx.setLineDash([]);
   }
   // intersections (cover markings) + crosswalks + signals
-  for (const n of map.roads.nodes) {
+  for (const n of map.roads.nodesIn ? map.roads.nodesIn(v.x0, v.z0, v.x1, v.z1) : map.roads.nodes) {
     if (n.x < v.x0 || n.x > v.x1 || n.z < v.z0 || n.z > v.z1) continue;
     // a bend-free join of two pieces of the same road (I-30 at Loop 820) needs no intersection
     if (n.edges.length === 2) { const [a, b] = n.edges.map(id => map.roads.edges[id]); if (a.kind === b.kind && Math.abs(a.dx * b.dx + a.dz * b.dz) > 0.99) continue; }
@@ -754,7 +766,7 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
     g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(1, 'rgba(0,0,0,0)');
     lctx.fillStyle = g; lctx.beginPath(); lctx.arc(x, y, r, 0, Math.PI * 2); lctx.fill();
   };
-  for (const l of lights) {
+  for (const l of lightsIn(lights, v)) {
     if (l.x < v.x0 || l.x > v.x1 || l.z < v.z0 || l.z > v.z1) continue;
     blob(cam.sx(l.x) * scale, cam.sy(l.z) * scale, l.r * cam.zoom * scale, 0.85);
   }
@@ -825,7 +837,7 @@ export function shadeHex(hex, amt) {
 export function renderOverview(map, scale = 0.12) {
   // Overview covers every currently playable region of Texas; each out-of-state
   // city gets its own small one in `more` (no point painting the empty miles between).
-  const main = paintOverview(map, scale, WEST.x0 - 400, NORTH.z0 - 400, DALLAS_ZONE.x1 + 4400, BRAZOS.z1 + 300);
+  const main = paintOverview(map, scale, TEXAS.x0 - 400, TEXAS.z0 - 400, TEXAS.x1 + 400, TEXAS.z1 + 400);
   main.more = Object.values(STATES).map(st => { const r = regionRect(st); return paintOverview(map, scale, r.x0, r.z0, r.x1, r.z1, st.ground); });
   return main;
 }
@@ -846,6 +858,8 @@ function paintOverview(map, scale, x0, z0, x1, z1, ground) {
     g.fillRect(sx(DENTON.x0 - 15), sy(DENTON.z0 - 15), (DENTON.x1 - DENTON.x0 + 30) * scale, (DENTON.z1 - DENTON.z0 + 30) * scale);
     g.fillRect(sx(WEST_CITY.x0 - 15), sy(WEST_CITY.z0 - 15), (WEST_CITY.x1 - WEST_CITY.x0 + 30) * scale, (WEST_CITY.z1 - WEST_CITY.z0 + 30) * scale);
   }
+  g.fillStyle = '#34363b';
+  for (const t of ALL_TOWNS) if (inside(t.x0, t.z0, t.x1 - t.x0, t.z1 - t.z0)) g.fillRect(sx(t.x0 - 15), sy(t.z0 - 15), (t.x1 - t.x0 + 30) * scale, (t.z1 - t.z0 + 30) * scale);
   for (const l of map.lots) if (inside(l.x, l.z, l.w, l.d)) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
   for (const w of map.water) if (inside(w.x, w.z, w.w, w.d)) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
   g.fillStyle = 'rgba(80,90,100,0.9)';

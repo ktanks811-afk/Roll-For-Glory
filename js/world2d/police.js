@@ -127,6 +127,8 @@ export class PoliceSystem {
   entryPoint(px, pz, minD = 250, maxD = 300) {
     const prec = ['pspd_central', 'pspd_harbor'].map(id => LOC_BY_ID[id]).filter(l => Math.hypot(l.x - px, l.z - pz) < 900 && Math.hypot(l.x - px, l.z - pz) > 200);
     if (prec.length && Math.random() < 0.4) { const l = pick(prec); return { x: l.x, z: l.z }; }
+    const hit = this.map.roads.randomNear?.(px, pz, minD, maxD, 40);
+    if (hit) return { x: hit.x, z: hit.z };
     for (let i = 0; i < 40; i++) {
       const e = this.map.roads.edges[Math.floor(Math.random() * this.map.roads.edges.length)];
       const s = Math.random() * e.len;

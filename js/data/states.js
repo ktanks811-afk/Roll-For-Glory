@@ -49,8 +49,9 @@ export const TEXAS = { id: 'tx', city: 'Fort Worth', state: 'Texas', abbr: 'TX',
 export const stateById = id => STATES[id] || (id === 'tx' ? TEXAS : null);
 
 export const cityRect = st => ({ x0: st.cx, z0: st.cz, x1: st.cx + STATE_N * STATE_BLOCK, z1: st.cz + STATE_N * STATE_BLOCK });
-// the city plus the airport to the west and a margin round the rest
-export const regionRect = st => ({ x0: st.cx - 650, z0: st.cz - 300, x1: st.cx + STATE_N * STATE_BLOCK + 300, z1: st.cz + STATE_N * STATE_BLOCK + 300 });
+// the city plus the airport to the west, its new towns to the east and
+// south (data/metro.js STATE_TOWNS) and a margin round the rest
+export const regionRect = st => ({ x0: st.cx - 650, z0: st.cz - 300, x1: st.cx + 3700, z1: st.cz + 2300 });
 export const AIRPORT_ROW = 4;            // the airport road comes in on this street line from the west
 
 // Which state (x, z) is in: a state id, or 'tx'.

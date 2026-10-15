@@ -10,13 +10,14 @@ import { LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
 import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { online } from '../net/online.js';
 import { STATES, STATE_BLOCK, AIRPORT_ROW, regionRect, stateAt, stateById } from '../data/states.js';
+import { TEXAS, MAP_LABELS, STATE_MAP_LABELS } from '../data/metro.js';
 
 // neighborhood names over each out-of-state city, by block [i, j]
 const STATE_LABELS = Object.fromEntries(Object.entries({
   ga: [['BUCKHEAD', 3, 1], ['DOWNTOWN ATLANTA', 2, 4], ['EAST ATLANTA', 6, 3], ['ZONE 6', 6, 6], ['COLLEGE PARK', 2, 6.5]],
   ca: [['HOLLYWOOD', 4, 1], ['VENICE', 1, 4], ['DOWNTOWN LA', 5, 4], ['COMPTON', 5, 6.5], ['THE HILLS', 6, -1]],
-  fl: [['WYNWOOD', 3, 1], ['BRICKELL', 3, 4], ['LITTLE HAVANA', 3, 6.5], ['SOUTH BEACH', 7, 4], ['ATLANTIC OCEAN', 9.5, 4]],
-}).map(([id, list]) => [id, list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK])]));
+  fl: [['WYNWOOD', 3, 1], ['BRICKELL', 3, 4], ['LITTLE HAVANA', 3, 6.5], ['SOUTH BEACH', 7, 4], ['BISCAYNE BAY', 11.6, 2.5], ['ATLANTIC OCEAN', 21.5, 4]],
+}).map(([id, list]) => [id, [...list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK]), ...(STATE_MAP_LABELS[id] || [])]]));
 import { fmtMoney } from '../core/state.js';
 
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', plane: '✈' };
@@ -109,7 +110,7 @@ export function renderMap(scr, ctx) {
     st.k = clamp(Math.min(W / Math.max(300, (x1 - x0) * 1.2), H / Math.max(300, (z1 - z0) * 1.2)), 0.025, 1.2);
   };
   // how far you can pan: Texas, or the state you've flown to
-  const bounds = () => { const h = here(); if (h === 'tx') return [-11200, 7000, -7700, 10100]; const r = regionRect(STATES[h]); return [r.x0, r.x1, r.z0, r.z1]; };
+  const bounds = () => { const h = here(); if (h === 'tx') return [TEXAS.x0, TEXAS.x1, TEXAS.z0, TEXAS.z1]; const r = regionRect(STATES[h]); return [r.x0, r.x1, r.z0, r.z1]; };
   const toScreen = (x, z) => [(x - st.cx) * st.k + W / 2, (z - st.cz) * st.k + H / 2];
   const toWorld = (sx, sy) => [(sx - W / 2) / st.k + st.cx, (sy - H / 2) / st.k + st.cz];
   let dirty = true, selRoute = null;
@@ -139,7 +140,7 @@ export function renderMap(scr, ctx) {
       const inner = k > 0.11 ? [['STOCKYARDS', 0, -650], ['NEAR SOUTHSIDE', 300, 800], ['ARLINGTON HEIGHTS', -650, -450], ['CROWLEY', -650, 500], ['RIVERSIDE', 650, -300], ['UPTOWN', 5550, -1950], ['DOWNTOWN DALLAS', 5100, -1580], ['DEEP ELLUM', 5950, -1580], ['OAK CLIFF', 4950, -1000], ['SOUTH DALLAS', 5850, -1000], ['WEST DALLAS', 4800, -1880], ['THE SQUARE', 675, -6440], ['UNT', 225, -6400], ['TWU', 675, -6900], ['SOUTHEAST DENTON', 820, -5900], ['ALLIANCE AIRPORT', 800, -4450], ['NORTHLAKE', -650, -4250], ['TEXAS MOTOR SPEEDWAY', 650, -5420], ['ROANOKE', 2200, -4180], ['ARGYLE', -700, -5200], ['LAKE LEWISVILLE', 2800, -5900], ['MINERAL WELLS', -9000, -1350], ['PALO PINTO COUNTY', -9600, -500], ['WEST I-20', -7600, -1350], ['LAKE MINERAL WELLS', -8790, -70]] : [];
       const away = here() !== 'tx' ? STATES[here()] : null;
       const names = away ? [[away.city.toUpperCase(), away.cx + 600, away.cz - 120], [`${away.city.toUpperCase()} AIRPORT`, away.cx - 330, away.cz + AIRPORT_ROW * STATE_BLOCK + 140], ...STATE_LABELS[away.id]]
-        : [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['EVERMAN', 1900, 700], ['LOOP 820', 0, -1330], ['LAKE WORTH', -2100, -500], ['BURLESON', -450, 1900], ['CHISHOLM TRAIL PKWY', 0, 2950], ['JOHNSON COUNTY', -1200, 4300], ['JOSHUA', 300, 3650], ['I-30', 3200, -1380], ['ARLINGTON', 3800, -1120], ['DALLAS', 5400, -2260], ['TRINITY RIVER', 4440, -620], ['I-35W', 60, -2600], ['ALLIANCE', -500, -3700], ['SPEEDWAY', 650, -5420], ['DENTON', 600, -7120], ['MINERAL WELLS', -9000, -1350], ['PALO PINTO', -10100, -700], ['WEST I-20', -7600, -1350], ['BOSQUE COUNTY', -700, 6800], ['HILL COUNTY', 900, 7000], ['FM 916', -1600, 6060], ['BRAZOS RIVER', -700, 10080]];
+        : [['DOWNTOWN', 0, 0], ...inner, ['STOP SIX', 1800, -420], ['EVERMAN', 1900, 700], ['LOOP 820', 0, -1330], ['LAKE WORTH', -2100, -500], ['BURLESON', -450, 1900], ['CHISHOLM TRAIL PKWY', 0, 2950], ['JOHNSON COUNTY', -1200, 4300], ['JOSHUA', 300, 3650], ['I-30', 3200, -1380], ['ARLINGTON', 3800, -1120], ['DALLAS', 5400, -2260], ['TRINITY RIVER', 4440, -620], ['I-35W', 60, -2600], ['ALLIANCE', -500, -3700], ['SPEEDWAY', 650, -5420], ['DENTON', 600, -7120], ['MINERAL WELLS', -9000, -1350], ['PALO PINTO', -10100, -700], ['WEST I-20', -7600, -1350], ['BOSQUE COUNTY', -700, 6800], ['HILL COUNTY', 900, 7000], ['FM 916', -1600, 6060], ['BRAZOS RIVER', -700, 10080], ...MAP_LABELS];
       for (const [t, x, z] of names) { const [a, b] = toScreen(x, z); g.fillText(t, a, b); }
     }
 

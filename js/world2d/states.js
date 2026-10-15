@@ -81,14 +81,14 @@ export function addStates({ buildings, lots, trees, props }, { landmarkBlock } =
     }
     // round the edge: woods in Atlanta, the hills over LA, the beach and the ocean off Miami
     if (st.id === 'fl') {
-      water.push({ x: c.x1 + 120, z: reg.z0, w: reg.x1 - c.x1 - 120, d: reg.z1 - reg.z0, kind: 'sea' });
+      // the bayfront: a strip of sand and palms (Biscayne Bay, the causeways and Miami Beach are world2d/metro.js)
       lots.push({ x: c.x1 + 30, z: reg.z0, w: 90, d: reg.z1 - reg.z0, kind: 'sand' });
       for (let z = reg.z0 + 10; z < reg.z1; z += 22) trees.push({ x: c.x1 + 26, z, r: 3, kind: 'palm' });
       for (let z = reg.z0 + 30; z < reg.z1 - 30; z += R(30, 60)) props.push({ k: 'umbrella', x: c.x1 + R(60, 110), z, r: 1.6, c: pick(['#ff1a2e', '#2c6fbb', '#e8c21a', '#2cff7a']) });
     }
     const edgeOk = (x, z) => !(x > c.x0 - 30 && x < c.x1 + 30 && z > c.z0 - 30 && z < c.z1 + 30) && !(x < c.x0 && Math.abs(z - ay) < 300) && !(st.id === 'fl' && x > c.x1)
       && !(x > c.x1 + 20 && x < c.x1 + 280 && z > c.z0 + 120 && z < c.z0 + 400);   // the land for sale
-    for (let k = 0; k < 600; k++) {
+    for (let k = 0; k < 1800; k++) {
       const x = R(reg.x0 + 10, reg.x1 - 10), z = R(reg.z0 + 10, reg.z1 - 10);
       if (!edgeOk(x, z)) continue;
       if (st.id === 'ca' && z < c.z0 - 40 && rnd() < 0.08) { buildings.push({ x, z: z - 30, w: R(40, 110), d: R(30, 60), h: R(10, 30), color: pick(['#8a7a5a', '#7a6a4a', '#9a8a6a']), kind: 'rock' }); continue; }
