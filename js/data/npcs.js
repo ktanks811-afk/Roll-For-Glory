@@ -192,6 +192,8 @@ export const PEOPLE = {
   repo:    { name: 'DFW Recovery & Repo', role: 'Repo company', color: '#5b5b5b', bio: 'Tow trucks, a gate code to every apartment complex in Tarrant County, and no sense of humor.' },
   cowpay:  { name: 'Cowtown Pay', role: 'Send money · Cowtown Credit Union', color: '#1f8f3a', bio: 'Send money to other players on your server, straight from checking.' },
   priya:   { name: 'Priya Shah', role: 'Agent · Bayline Realty', color: '#1f8f3a', bio: 'Sells garages with houses attached.' },
+  primo:   { name: 'Primo', role: 'Texas connect · Stop Six', color: '#3fae5a', bio: 'Buys Colorado flower by the pound and pays cash the day it lands. Never touches it himself.' },
+  dea:     { name: 'DEA Dallas Field Division', role: 'Drug Enforcement Administration · federal', color: '#1b2a44', bio: 'The North Texas HIDTA task force. Wiretaps, pole cameras and a lot of patience.' },
   plug:    { name: 'Lil Tre', role: 'The plug · Stop Six', color: '#2cff7a', bio: 'Runs the corner store on the east side. The good stuff is behind the counter.' },
   builder: { name: 'Cowtown Custom Builders', role: 'Construction', color: '#c8a46a', bio: 'Pour the slab Monday, hand you the keys Thursday.' },
   ar:      { name: 'Tasha "Ears" Greene', role: 'A&R · your record label', color: '#c04aff', bio: 'Hears a hit before the hook comes in. Knows every rapper from Stop Six to South Dallas.' },

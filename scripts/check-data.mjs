@@ -2326,5 +2326,54 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (s.cash + s.bank - c0 >= WD.SHOPS.disp_colfax.price) bad('flipped a dispensary for a profit');
   game.s = null;
 }
+// ---------------------------------------------------------------- shipping Colorado weed into Texas: the DEA case
+{
+  const TR = await import('../js/core/traffick.js'), TD = await import('../js/data/traffick.js'), WE = await import('../js/core/weed.js');
+  const { PEOPLE } = await import('../js/data/npcs.js');
+  for (const c of ['primo', 'dea']) if (!PEOPLE[c]) bad(`contact ${c} is missing`);
+  const s = createState({ name: 'Mule', age: 25, look: {}, story: false });
+  game.s = s; s.cash = 5e6; s.bank = 0;
+  WE.buyFarm(s, 'grow_commerce');
+  WE.ensureWeed(s).farms.grow_commerce.vault = { gelato: 3000, bluedream: 3000 };
+  const never = () => 0.99, always = () => 0;
+  // a delivered load pays dirty cash, more than a Denver shelf would
+  const r = TR.ship(s, { from: 'farm:grow_commerce', oz: 100, method: 'mule', dest: 'connect' });
+  if (!r.ok || r.load.oz !== 100) bad(`shipping a load: ${r.text}`);
+  if (WE.total(WE.ensureWeed(s).farms.grow_commerce.vault) !== 5900) bad('the load didn\'t come out of the vault');
+  if (!(TR.ensureDea(s).heat > 0)) bad('a load should build DEA heat');
+  if (r.load.value <= 100 * 280) bad(`Texas should pay more than a Denver shelf (${r.load.value})`);
+  const d0 = s.dirty || 0;
+  s.time.day += 1; TR.traffickDay(s, never);
+  if ((s.dirty || 0) - d0 !== r.load.value) bad('Primo should pay the load in dirty cash');
+  if (TR.ensureDea(s).shipped !== 100) bad('delivered weight should go on the federal case');
+  // too big for the method, or more than you have
+  if (TR.ship(s, { from: 'farm:grow_commerce', oz: 999, method: 'mail' }).load?.oz > 24) bad('the mail carried more than it holds');
+  if (TR.ship(s, { from: 'farm:grow_commerce', oz: 9e6, method: 'rig', dest: 'trap:nope' }).ok) bad('shipped to a trap you don\'t own');
+  // a seized load pays nothing and makes the case worse
+  const dea = TR.ensureDea(s), h0 = dea.heat, cash0 = s.cash;
+  TR.ship(s, { from: 'farm:grow_commerce', oz: 100, method: 'mule' });
+  s.time.day += 1; TR.traffickDay(s, always);
+  if (s.cash >= cash0) bad('a seized load paid out');
+  if (!(dea.heat > h0)) bad('a seized load should raise the heat');
+  // surveillance arms a raid; the raid takes a cut of the bank and charges the weight
+  s.warrants = []; dea.hunt = false; dea.loads = [];
+  dea.heat = TD.SURVEIL; dea.raid = false; dea.last = s.time.day;
+  s.time.day += 1; TR.traffickDay(s, always);
+  if (!dea.raid) bad('surveillance should get a search warrant signed');
+  s.bank = 100000; dea.earned = 100000;
+  const raid = TR.raidHome(s);
+  if (!raid.items.length || !raid.items[0].kind.startsWith('drugs_') || raid.forfeited !== 30000 || s.bank !== 70000) bad(`raid: ${JSON.stringify(raid)}`);
+  // 100 is a federal indictment: a warrant, the hunt, no more loads
+  dea.heat = 95;
+  TR.ship(s, { from: 'farm:grow_commerce', oz: 1600, method: 'rig' });
+  if (!dea.hunt || !TR.deaWarrant(s)) bad('100 heat should mean a federal warrant');
+  if (TR.ship(s, { from: 'farm:grow_commerce', oz: 10, method: 'mail' }).ok) bad('shipped while indicted');
+  // served: the hunt is over and the case cools
+  s.warrants = [];
+  TR.traffickDay(s, never);
+  if (dea.hunt || dea.heat !== 35) bad('serving the federal warrant should end the hunt');
+  if (TD.trafficClass(4000) !== 'F1' || TD.trafficClass(10) !== 'SJF') bad('federal weight classes');
+  game.s = null;
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

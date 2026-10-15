@@ -111,7 +111,7 @@ export function spriteKey(style, v, lv, cond) {
 // v: visual object, lv: performance stage levels, cond: condition (for damage)
 export function carSprite(style, v = {}, lv = {}, cond = null, opts = {}) {
   const art = style && typeof style === 'object' ? artOf(style.id) : null;
-  const key = spriteKey(style, v, lv, cond) + (opts.police ? 'P' : '') + (opts.taxi ? 'T' : '') + (art ? 'A' : '');
+  const key = spriteKey(style, v, lv, cond) + (opts.police ? (opts.swat ? 'S' : 'P') : '') + (opts.taxi ? 'T' : '') + (art ? 'A' : '');
   if (cache.has(key)) return cache.get(key);
   const sh = shapeOf(style && typeof style === 'object' ? style : { id: 'body:' + style, body: style });
   const S = art ? SPRITE_PX * 2 : SPRITE_PX;   // hand-drawn art keeps its detail when shown big
@@ -189,7 +189,7 @@ export function carSprite(style, v = {}, lv = {}, cond = null, opts = {}) {
   if (opts.police) {
     g.fillStyle = '#0d0d0d';
     g.fillRect(-W / 2 + 0.02, y(xCowl), W - 0.04, L * (xD - xCowl));
-    g.fillStyle = '#f2f2f2';
+    g.fillStyle = opts.swat ? '#15171b' : '#f2f2f2';
     g.fillRect(-W / 2 + 0.25, y(xA), W - 0.5, L * (xC - xA));
   }
 
@@ -212,7 +212,7 @@ export function carSprite(style, v = {}, lv = {}, cond = null, opts = {}) {
     g.fillStyle = glass(roofX0, roofX1);
     for (const s of [-1, 1]) { g.fillRect(s > 0 ? rw / 2 - 0.02 : -rw / 2 - 0.08, roofX0 + 0.18, 0.1, roofX1 - roofX0 - 0.1); }
     // roof panel
-    const roofCol = opts.police ? '#f2f2f2' : paintFill(g, paint, finish, W);
+    const roofCol = opts.police ? (opts.swat ? '#1d2026' : '#f2f2f2') : paintFill(g, paint, finish, W);
     if (sh.glassRoof) {
       g.fillStyle = glass(roofX0, roofX1);
       rrect(g, -rw / 2 + 0.04, roofX0, rw - 0.08, roofX1 - roofX0 + 0.05, 0.22); g.fill();

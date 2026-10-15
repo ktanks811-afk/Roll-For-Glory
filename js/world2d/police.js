@@ -30,6 +30,7 @@ const SPIKE_START_S = 42;
 const SPIKE_INTERVAL_S = 32;
 const INTERCEPTOR_START_S = 75;
 const PURSUIT_INTERCEPTOR = 'dodge_charger_srt_hellcat_redeye_2021';
+const SWAT_MODELS = ['chevrolet_tahoe_lt_2007', 'ford_explorer_xlt_2002'];
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // Traffic stop: seconds to pull over, how long you have to sit still to count
@@ -42,10 +43,12 @@ export const OFFICER_LOOK = { top: '#1c2c55', skin: '#8d5a3b', hair: '#111' };
 let unitSeq = 12;
 
 class Unit {
-  constructor(model, x, z, h) {
+  constructor(model, x, z, h, swat = false) {
     this.model = model;
     this.dims = dimsFor(model);
-    this.sprite = carSprite(model, { paint: '#f2f2f2' }, {}, null, { police: true });
+    // SWAT and the DEA roll in blacked-out trucks (world2d/dea.js)
+    this.sprite = carSprite(model, { paint: swat ? '#15171b' : '#f2f2f2' }, {}, null, { police: true, swat });
+    this.swat = swat;
     this.x = x; this.z = z; this.h = h; this.v = 0;
     this.id = unitSeq++;
     this.mode = 'pursuit';
@@ -423,6 +426,31 @@ export class PoliceSystem {
     this.unseenT = 0;
   }
 
+  // A federal warrant (core/traffick.js): blacked-out SWAT trucks come up
+  // on you from close by, lights on. Pull over and they take you out of the
+  // car at gunpoint (your warrant makes the stop an arrest); run and it's a
+  // pursuit with a lot of heat on it.
+  swatStop(w) {
+    const p = w.player;
+    // a felony stop runs like a traffic stop: stop and they walk up, or it's a pursuit
+    this.phase = 'notice';
+    this.crimeResponse = false;
+    this.pullT = PULL_OVER_S; this.stillT = 0;
+    this.eyesOn = true; this.footOnly = !p.inCar; this.chaseDisguise = 0;
+    this.lastSeen = { x: p.x, z: p.z, vx: p.vx, vz: p.vz };
+    this.units = [];
+    for (let i = 0; i < 3; i++) {
+      const ep = this.map.roads.randomNear?.(p.x, p.z, 60, 120, 40) || { x: p.x + 70 * Math.cos(i * 2.1), z: p.z + 70 * Math.sin(i * 2.1) };
+      const u = new Unit(CAR_BY_ID[SWAT_MODELS[i % SWAT_MODELS.length]], ep.x, ep.z, Math.atan2(p.x - ep.x, -(p.z - ep.z)), true);
+      u.box = i;   // where it parks once you stop: in front, or alongside
+      this.units.push(u);
+    }
+    this.s.heat = Math.min(this.s.heat, 1.5);   // 2+ skips straight to a pursuit
+    this.decayHold = 25;
+    w.audio.music(null);
+    w.hud.radio('DEA and Tarrant County SWAT: FELONY STOP! Pull over, engine off, hands out the window!');
+  }
+
   // When a pursuit suspect bails out, the nearest pursuit unit stops and the officer
   // gets out. The officer then runs the suspect down instead of magically keeping
   // the police car glued to them.
@@ -587,7 +615,13 @@ export class PoliceSystem {
     // choose target
     let tx, tz, chasing = false;
     const dToP = Math.hypot(p.x - u.x, p.z - u.z);
-    if ((this.phase === 'chase' || (this.phase === 'notice' && this.crimeResponse)) && this.lastSeen) {
+    // SWAT boxes in a car that stopped for them instead of ramming it
+    if (u.box != null && (this.phase === 'stop' || (this.phase === 'notice' && p.speed < 3)) && dToP < 300) {
+      const fx = Math.sin(p.h), fz = -Math.cos(p.h), [a, side] = [[11, 0], [-1, 6.5], [-1, -6.5]][u.box % 3];
+      this.parkUnit(u, dt, p.x + fx * a - fz * side, p.z + fz * a + fx * side, p.h + (u.box ? 0 : Math.PI / 2));
+      return;
+    }
+    if ((this.phase === 'chase' || (this.phase === 'notice' && (this.crimeResponse || u.box != null))) && this.lastSeen) {
       if (dToP < 160 && lineOfSight(this.map, u.x, u.z, p.x, p.z)) {
         tx = p.x + p.vx * 0.6; tz = p.z + p.vz * 0.6; chasing = true;
       } else { const wp = this.waypoint(u, this.lastSeen.x, this.lastSeen.z); tx = wp.x; tz = wp.z; }
@@ -791,7 +825,7 @@ export class PoliceSystem {
 
   // Didn't stop in time: it's a pursuit now.
   failedToYield(w) {
-    this.addHeat(0.5, 'Failure to yield.', null);
+    this.addHeat(this.units.some(u => u.swat) ? 2 : 0.5, 'Failure to yield.', null);
     this.eyesOn = true;
     this.note({ kind: 'evading', text: 'Failure to yield to an emergency vehicle.', fine: 900 });
     this.phase = 'chase';
