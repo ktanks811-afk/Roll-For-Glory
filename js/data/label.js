@@ -7,6 +7,8 @@ export const MAX_ROSTER = 8;
 
 // Where you cut records. `q` adds to every session's quality, `rate` scales the price.
 export const STUDIOS = {
+  // the #1 studio in the game: Kimari's own room, a block off Downtown Fort Worth
+  virl_studios: { name: 'VirL Studios', q: 20, rate: 2.5, owner: 'Kimari Tanks', top: true, tagline: 'Downtown Fort Worth · the #1 studio in the game · where hits get made' },
   magnolia_sound: { name: 'Magnolia Sound', q: 0, rate: 1, owner: 'Big Lou', tagline: 'Near Southside · two booths · Lou has engineered half of Fort Worth' },
   ellum_lab: { name: 'Deep Ellum Sound Lab', q: 7, rate: 1.6, owner: 'Nina Cole', tagline: 'Deep Ellum · SSL board · Grammy plaques in the hallway' },
   trap_house_studios: { name: 'Trap House Studios', q: 5, rate: 1.25, owner: 'Trap House Staff', tagline: 'Southside · hard drums, loud rooms and late-night sessions' },
@@ -44,7 +46,7 @@ export const ARTISTS = [
   A('lil_six', 'Lil Six', 'Marcus Dunbar', 'Drill', 'Stop Six', 'plug', 58, 4200, 'Raps on the porch on Ramey Ave every night. The whole east side knows his hooks.', { street: true }),
   A('ramey_rae', 'Ramey Rae', 'Raeven Collins', 'R&B', 'Stop Six', 'taco_stopsix', 71, 9000, 'Sang in the choir at Dunbar High. Now she sings over trap beats and the comments go crazy.'),
   A('poly_pooh', 'Poly Pooh', 'Darnell Hicks', 'Trap', 'Polytechnic', 'corner_riverside', 46, 1500, 'Freestyles outside the Mini Mart for anybody with a phone out.', { street: true }),
-  A('como_kid', 'Como Kid', 'Jalen Pierce', 'Rap', 'Como', 'kessler_lot', 52, 2600, 'Battle rapper from Como. Fast mouth, no filter.'),
+  A('como_kid', 'Como Kid', 'Jalen Pierce', 'Rap', 'Como', 'corner_como', 52, 2600, 'Battle rapper from Como. Fast mouth, no filter.'),
   A('northside_nena', 'Nena del Norte', 'Marisol Peña', 'Tejano Trap', 'Northside', 'corner_northside', 63, 7500, 'Puts accordion samples under 808s. Big on the Northside and growing in Oak Cliff.'),
   A('stockyard_slim', 'Stockyard Slim', 'Wade Tillman', 'Country Rap', 'Stockyards', 'cowtown_diner', 55, 3800, 'Boots, a Cadillac and a banjo loop. Somehow it works.'),
   A('magnolia_mo', 'Magnolia Mo', 'Morgan Ellis', 'Neo-Soul', 'Near Southside', 'taco_magnolia', 67, 5200, 'Plays the patio bars on Magnolia. Writes everything on napkins.'),
@@ -135,7 +137,7 @@ export const GIGS = [
   { id: 'club', name: 'Club show', venue: 'The Basement on Magnolia', front: 2500, nights: 1, days: 1, cap: 300, ticket: 20, draw: 0.06, minFans: 0 },
   { id: 'concert', name: 'Concert', venue: 'Southside Ballroom', front: 25000, nights: 1, days: 1, cap: 2500, ticket: 40, draw: 0.06, minFans: 12000 },
   { id: 'tx_tour', name: 'Texas tour', venue: 'Houston, Austin, San Antonio, Lubbock, El Paso', front: 90000, nights: 5, days: 5, cap: 2000, ticket: 35, draw: 0.06, minFans: 25000 },
-  { id: 'arena', name: 'Arena headline', venue: 'Cowtown Coliseum', front: 150000, nights: 1, days: 1, cap: 12000, ticket: 65, draw: 0.06, minFans: 80000 },
+  { id: 'arena', name: 'Arena headline', venue: 'Dickies Arena', front: 150000, nights: 1, days: 1, cap: 14000, ticket: 65, draw: 0.06, minFans: 80000 },
   { id: 'us_tour', name: 'National tour', venue: '12 cities coast to coast', front: 450000, nights: 12, days: 12, cap: 4500, ticket: 55, draw: 0.035, minFans: 150000 },
 ];
 export const GIG_BY_ID = Object.fromEntries(GIGS.map(g => [g.id, g]));

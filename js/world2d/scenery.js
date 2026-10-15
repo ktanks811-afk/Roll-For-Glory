@@ -10,7 +10,7 @@
 // are not in the road graph, so traffic, police routing and the GPS ignore them.
 
 import { BACKROAD } from './map.js';
-import { GRID, HWY_Z, HWY_W, DESERT_Z, SEA_X, RIVER_X, TUNNEL, LOCATIONS, districtAt } from '../data/world.js';
+import { GRID, HWY_Z, HWY_W, DESERT_Z, SEA_X, RIVER_X, TUNNEL, LOCATIONS, LEAFY, districtAt } from '../data/world.js';
 
 const HOUSE_ROOFS = ['#6b3a2e', '#3f4a5a', '#5a4632', '#2f3b2f', '#6e6e6e', '#7a4b3a', '#4a3a4a', '#585048', '#3a4f5f'];
 const SIX_ROOFS = ['#5a4632', '#6e6e6e', '#3f4a5a', '#7a4b3a', '#4a3a4a', '#585048', '#8a7a62', '#2f3b2f', '#6b3a2e'];
@@ -34,7 +34,8 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
   // ---------------- Fort Worth landmarks: make room in their blocks ----------------
   const blockRect = (i, j) => ({ x: GRID[i] + 14, z: GRID[j] + 14, w: 122, d: 122 });
   const SQUARE = blockRect(6, 5), COURT = blockRect(5, 4), PENS = blockRect(6, 1), COLISEUM = blockRect(6, 2), HONKY = blockRect(7, 1);
-  for (const r of [SQUARE, COURT, PENS, COLISEUM, HONKY]) {
+  const DICKIES = blockRect(3, 5), TCU = blockRect(2, 8), AMON = blockRect(3, 8);   // Cultural District and TCU, on the west side
+  for (const r of [SQUARE, COURT, PENS, COLISEUM, HONKY, DICKIES, TCU, AMON]) {
     const inR = o => o.x >= r.x - 1 && o.z >= r.z - 1 && o.x + (o.w || 0) <= r.x + r.w + 1 && o.z + (o.d || 0) <= r.z + r.d + 1;
     keep(buildings, b => b.loc || !inR(b)); keep(lots, l => !inR(l)); keep(trees, t => !inR(t));
   }
@@ -385,6 +386,35 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
       put({ x: r.x + 6, z: r.z + 6, w: 110, d: 46, h: 10, color: '#5a4632', kind: 'landmark', label: 'Cowtown Honky-Tonk', labelColor: '#ff4a5a' });
       parkCars(pl, 0.6);
     }
+    // Dickies Arena: tan brick bowl under a big dome, parking all round
+    {
+      const r = DICKIES;
+      const pl = lot({ ...r, kind: 'parking' });
+      put({ x: r.x + 14, z: r.z + 10, w: 94, d: 74, h: 20, color: '#b08a62', kind: 'landmark' });
+      put({ x: r.x + r.w / 2 - 22, z: r.z + 25, w: 44, d: 44, h: 30, color: '#c9a27a', kind: 'dome', round: true });
+      put({ x: r.x + 26, z: r.z + 84, w: 70, d: 14, h: 12, color: '#9a7652', kind: 'landmark', label: 'Dickies Arena', labelColor: '#e8c21a' });   // the front entrance
+      for (let s = 8; s < r.w - 8; s += 10) tree(r.x + s, r.z + r.d - 4, R(2, 3));
+      parkCars(pl, 0.5);
+    }
+    // TCU: purple-roofed halls around a lawn, Frog Fountain in the middle
+    {
+      const r = TCU;
+      lot({ ...r, kind: 'park', lawn: true });
+      put({ x: r.x + 6, z: r.z + 40, w: 32, d: 70, h: 16, color: '#5b2a86', kind: 'landmark', label: 'TCU', labelColor: '#c9a0ff' });
+      put({ x: r.x + r.w - 38, z: r.z + 40, w: 32, d: 70, h: 14, color: '#4d1979', kind: 'landmark' });
+      put({ x: r.x + 44, z: r.z + r.d - 26, w: 34, d: 22, h: 12, color: '#6a3a96', kind: 'landmark' });
+      put({ x: r.x + r.w / 2 - 5, z: r.z + 62, w: 10, d: 10, h: 1.4, color: '#7fb8d8', kind: 'fountain', round: true });
+      for (let s = 6; s < r.w - 6; s += 9) tree(r.x + s, r.z + 30, R(2.5, 3.5));
+      for (let k = 0; k < 6; k++) props.push({ k: 'bench', x: r.x + 44 + k * 6, z: r.z + 80, w: 2.4, d: 0.8 });
+    }
+    // Amon G. Carter Stadium, next door to campus
+    {
+      const r = AMON;
+      lot({ x: r.x + 26, z: r.z + 30, w: 70, d: 62, kind: 'field', c: '#3f8a3a', dir: 'none' });
+      put({ x: r.x + 6, z: r.z + 20, w: 18, d: 82, h: 14, color: '#4d1979', kind: 'stands', label: 'Amon G. Carter Stadium', labelColor: '#c9a0ff' });
+      put({ x: r.x + r.w - 24, z: r.z + 20, w: 18, d: 82, h: 14, color: '#4d1979', kind: 'stands' });
+      put({ x: r.x + 26, z: r.z + 6, w: 70, d: 16, h: 9, color: '#5b2a86', kind: 'stands' });
+    }
     // Trinity Trail along the south bank
     lot({ x: TRINITY.x, z: TRINITY.z + TRINITY.d + 1, w: TRINITY.w, d: 3, kind: 'trail' });
     for (let x = TRINITY.x + 10; x < TRINITY.x + TRINITY.w; x += R(14, 30)) { const tz = TRINITY.z + TRINITY.d + R(6, 12), r = R(3, 5); if (Math.abs(x) > 26) tree(x, tz, r); }
@@ -504,7 +534,7 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
       const a = c + dir * v0, b = c + dir * v1, lo = Math.min(a, b), hi = Math.max(a, b);
       return axis === 'x' ? { x: u0, z: lo, w: u1 - u0, d: hi - lo } : { x: lo, z: u0, w: hi - lo, d: u1 - u0 };
     };
-    if (district === 'Arlington Heights' || district === 'Crowley') {
+    if (LEAFY.has(district)) {
       houseRow(axis, c, 14, dir, from, to, { roofs: HOUSE_ROOFS, depth: 66, pitch: 30 });
       for (let k = 0; k < 4; k++) { const u = R(from + 4, to - 4), v = R(58, 78); tree(axis === 'x' ? u : c + dir * v, axis === 'x' ? c + dir * v : u, R(3, 5)); }
     } else if (district === 'Riverside Industrial') {

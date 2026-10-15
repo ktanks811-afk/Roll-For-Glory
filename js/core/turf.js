@@ -18,11 +18,16 @@ import { LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
 export const HOODS = [
   { id: 'Downtown', owner: 'apex_syndicate', take: 1200, box: [-300, 300, -300, 300], c: [0, 0] },
   { id: 'Stockyards', aka: 'North Side', owner: 'iron_saints', take: 600, box: [-300, 300, -1000, -300], c: [0, -650] },
-  { id: 'Riverside Industrial', short: 'Riverside', owner: 'iron_saints', take: 500, box: [300, 1000, -1000, 600], c: [650, -200] },
+  { id: 'Riverside Industrial', short: 'Riverside', owner: 'iron_saints', take: 500, box: [300, 1000, -1000, 300], c: [650, -200] },
+  { id: 'Poly', aka: 'Polytechnic', owner: null, take: 400, box: [300, 1000, 300, 600], c: [650, 450] },
   // the Southside runs east through the old Lakeside blocks too (ext: a second rectangle on the turf map)
   { id: 'Near Southside', short: 'Southside', owner: 'midnight_static', take: 750, box: [-300, 300, 300, 1050], ext: [300, 1000, 600, 1050], c: [0, 650] },
   { id: 'Arlington Heights', short: 'Heights', owner: 'velvet_ghosts', take: 700, box: [-1000, -300, -1000, 0], c: [-650, -450] },
-  { id: 'Crowley', owner: null, take: 400, box: [-1000, -300, 0, 1050], c: [-650, 500] },
+  // the west side south of the Heights: Como, TCU, North Crowley, Crowley
+  { id: 'Como', owner: null, take: 450, box: [-1000, -300, 0, 300], c: [-650, 150] },
+  { id: 'TCU', owner: null, take: 550, box: [-1000, -300, 300, 600], c: [-650, 450] },
+  { id: 'North Crowley', short: 'N Crowley', owner: null, take: 400, box: [-1000, -300, 600, 750], c: [-650, 750] },
+  { id: 'Crowley', owner: null, take: 350, box: [-1000, -300, 750, 1050], c: [-650, 900] },
   { id: 'Stop Six', owner: null, take: 400, box: [1000, 2700, -1000, 190], c: [1700, -400] },
   { id: 'Benbrook Hills', owner: null, take: 300, box: [-2700, -1000, -100, 1050], c: [-1500, 450] },
   { id: 'Lake Worth', owner: 'dust_devils', take: 350, box: [-2700, -1000, -1000, -100], c: [-1500, -550] },
