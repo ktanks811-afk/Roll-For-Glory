@@ -2277,5 +2277,54 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   }
   game.s = null;
 }
+// ---------------------------------------------------------------- Colorado: the legal weed business
+{
+  const WD = await import('../js/data/weed.js'), WE = await import('../js/core/weed.js');
+  const { LOC_BY_ID } = await import('../js/data/world.js');
+  const { legalWeedAt } = await import('../js/data/states.js');
+  const map = buildMap(), air = LOC_BY_ID[STATES.co.airport];
+  for (const id of [...WD.FARM_IDS, ...WD.SHOP_IDS]) {
+    const l = LOC_BY_ID[id];
+    if (!l || stateAt(l.x, l.z) !== 'co') { bad(`${id} isn't in Denver`); continue; }
+    const r = map.roads.routeBetween(air.x, air.z, l.x, l.z);
+    if (!r?.path?.length || r.meters > 6000) bad(`${id}: no road from Denver International (${r?.meters})`);
+    const near = map.roads.nearestOnRoad(l.x, l.z);
+    if (!near || Math.hypot(near.x - l.x, near.z - l.z) > 45) bad(`${id}: the door is too far from the road`);
+  }
+  if (!legalWeedAt(LOC_BY_ID.disp_colfax.x, LOC_BY_ID.disp_colfax.z) || legalWeedAt(0, 0)) bad('weed should be legal in Colorado only');
+  const s = createState({ name: 'Grower', age: 25, look: {}, story: false });
+  game.s = s; s.cash = 5e6; s.bank = 0;
+  const rng = () => 0.5;
+  if (!WE.buyFarm(s, 'grow_commerce').ok || !WE.buyShop(s, 'disp_colfax').ok) bad('buying a farm and a dispensary');
+  if (WE.plant(s, 'grow_commerce', 'gelato').ok !== true) bad('planting');
+  if (WE.harvest(s, 'grow_commerce').ok) bad('harvested before it was ready');
+  s.time.day += WE.growDays('grow_commerce', 'gelato');
+  const h = WE.harvest(s, 'grow_commerce', rng);
+  if (!h.ok || Math.abs(h.oz - WE.expectedYield('grow_commerce', 'gelato', WD.FARMS.grow_commerce.plants)) > 1) bad(`harvest came to ${h.oz} oz`);
+  const before = s.bank, day = WE.weedDay(s, () => 0.5);
+  const t = WE.shopOf(s, 'disp_colfax').today;
+  if (!(t.oz > 0) || !(day.net > 0) || s.bank <= before - 2000) bad(`a stocked dispensary should make money (${day.net})`);
+  // the shelf price beats wholesale, so your own shop is the better outlet
+  for (const g of WD.STRAINS) if (!(WE.shelfPrice('disp_colfax', g.id) * (1 - WD.TAX) > g.wholesale * 1.5)) bad(`${g.id}: retail barely beats wholesale`);
+  // an empty shelf sells nothing
+  WE.shopOf(s, 'disp_colfax').shelf = {}; WE.ensureWeed(s).farms.grow_commerce.vault = {};
+  if (WE.sellDay(s, 'disp_colfax', rng).oz !== 0) bad('sold from an empty shelf');
+  // a grower harvests and replants on his own
+  WE.setGrower(s, 'grow_commerce', true); WE.plant(s, 'grow_commerce', 'bluedream');
+  s.time.day += 5; WE.weedDay(s, () => 0.5);
+  const farm = WE.ensureWeed(s).farms.grow_commerce;
+  if (!WE.total(farm.vault) && !WE.shopOf(s, 'disp_colfax').today.oz) bad('the grower didn\'t harvest');
+  if (!farm.crop || farm.crop.strain !== 'bluedream') bad('the grower didn\'t replant');
+  // carrying: 2 oz is legal in Colorado, a charge in Texas; over 2 oz is a charge anywhere
+  DR.ensureDrugs(s).bag = { loud: 2 };
+  if (DR.seizeBag(s, { legalOz: WD.LEGAL_OZ }).length || DR.ensureDrugs(s).bag.loud !== 2) bad('2 oz should be legal in Colorado');
+  if (!DR.seizeBag(s).length) bad('2 oz should be a charge in Texas');
+  DR.ensureDrugs(s).bag = { loud: 3 };
+  if (!DR.seizeBag(s, { legalOz: WD.LEGAL_OZ }).length) bad('3 oz should be a charge even in Colorado');
+  // selling back loses money
+  const c0 = s.cash + s.bank; WE.sellShop(s, 'disp_colfax');
+  if (s.cash + s.bank - c0 >= WD.SHOPS.disp_colfax.price) bad('flipped a dispensary for a profit');
+  game.s = null;
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

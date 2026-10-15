@@ -23,6 +23,7 @@ import './core/hdranch.js';
 import { settleHighPoint } from './core/hdtrials.js';
 import { labelDay } from './core/label.js';
 import { drugsDay } from './core/drugs.js';
+import { weedDay } from './core/weed.js';
 import { fedsDay } from './core/bank.js';
 import { creditDay, insurancePremium } from './core/credit.js';
 import { chopDay, PARTS_CHARGE } from './core/chop.js';
@@ -198,6 +199,8 @@ function newDay() {
   const lb = labelDay(s);
   for (const n of lb.notes) toast(n, 'good');
   for (const t of lb.texts) sendMessage(s, 'ar', t);
+  // Colorado: grow farms grow, dispensaries sell, the profit lands in the bank (core/weed.js)
+  for (const n of weedDay(s).notes) toast(n, 'good');
   // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at
   const dr = drugsDay(s);
   for (const n of dr.notes) toast(n, 'info');

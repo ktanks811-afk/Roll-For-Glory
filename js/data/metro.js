@@ -256,6 +256,9 @@ export const STATE_ROUTES = {
     RT('Normandie Ave', 'city', [[14300, 1200], [14300, 1500]]), RT('Avalon Blvd', 'city', [[14900, 1200], [14900, 1500]])],
   fl: [RT('MacArthur Causeway', 'pkwy', [[15200, 3600], [16050, 3600]]), RT('Julia Tuttle Causeway', 'pkwy', [[15200, 4050], [16050, 4050]]),
     RT('Douglas Rd', 'city', [[14300, 4200], [14300, 4500]]), RT('SW 17th Ave', 'city', [[14900, 4200], [14900, 4500]])],
+  // Denver (city grid at 14000, 6000): I-70 east out of town on its second
+  // street line and E-470 south past the grow farms (data/weed.js)
+  co: [RT('I-70', 'pkwy', [[15200, 6150], [17500, 6150]]), RT('E-470', 'farm', [[16600, 6150], [16600, 7950]])],
 };
 
 // ---------------------------------------------------------------- lakes
