@@ -1540,7 +1540,22 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!collideCircle(map, W.DTRINITY_X, W.HWY_Z - 120, 1)) bad('the Trinity in Dallas should be water');
   // the corridor is open, the land past it is not
   if (collideCircle(map, 3500, -1800, 1)) bad('the I-30 corridor north of the freeway should be open');
-  if (!collideCircle(map, 5000, 600, 1) || !collideCircle(map, W.DALLAS_ZONE.x1 + 50, -1350, 1)) bad('the world should end past Dallas');
+  { const { TEXAS: TX } = await import('../js/data/metro.js');
+    if (!collideCircle(map, TX.x1 + 50, -1350, 1) || !collideCircle(map, TX.x1 + 50, 3000, 1)) bad('the world should end past Dallas'); }
+  // the big map: every town place has a building beside it, is off the street, and the GPS drives you there from downtown
+  { const { TOWN_BY_ID: TB } = await import('../js/data/metro.js');
+    for (const l of W.LOCATIONS.filter(l => l.city && TB[l.city])) {
+      if (!map.buildings.some(b => (!b.noCollide || b.kind === 'canopy') && l.x > b.x - 14 && l.x < b.x + b.w + 14 && l.z > b.z - 14 && l.z < b.z + b.d + 14)) bad(`${l.id}: no building beside it`);
+      if (collideCircle(map, l.x, l.z, 1)) bad(`${l.id}: the marker is blocked`);
+      if (l.state) continue;
+      const r = R.routeBetween(0, 0, l.x, l.z);
+      if (!r?.names?.some(Boolean) || r.meters > 30000) bad(`${l.id}: no road from downtown (${r?.meters})`);
+    }
+    for (const [x, z, what] of [[-9600, 2400, 'Stephenville'], [8000, -7600, 'McKinney'], [8400, 3800, 'Ennis'], [-5000, -1350, 'I-20 west']]) {
+      const r = R.routeBetween(0, 0, x, z);
+      if (!r?.names?.some(Boolean) || r.path.length < 4) bad(`no road from Fort Worth to ${what}`);
+    }
+  }
   // the neighbourhoods
   for (const [x, z, d] of [[5100, -1580, 'Downtown Dallas'], [5950, -1580, 'Deep Ellum'], [5550, -1950, 'Uptown'], [4950, -1000, 'Oak Cliff'], [5850, -1000, 'South Dallas'], [4800, -1880, 'West Dallas'], [3800, -1300, 'Arlington']])
     if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
@@ -1591,7 +1606,8 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const e of oval) for (let t = 0.05; t < 1; t += 0.1) if (collideCircle(map, e.ax + (e.bx - e.ax) * t, e.az + (e.bz - e.az) * t, 1.5)) { bad(`the oval is blocked on ${e.ax},${e.az}`); break; }
   // open up north, closed past it; the lake is water
   if (collideCircle(map, 600, -4000, 1) && collideCircle(map, 600, -3990, 1)) bad('Alliance should be open');
-  if (!collideCircle(map, 0, W.NORTH.z0 - 50, 1) || !collideCircle(map, W.NORTH.x0 - 100, -5000, 1) || !collideCircle(map, W.NORTH.x1 + 50, -5000, 1)) bad('the world should end past North Texas');
+  { const { TEXAS: TX } = await import('../js/data/metro.js');
+    if (!collideCircle(map, 0, TX.z0 - 50, 1) || !collideCircle(map, TX.x0 - 50, -5000, 1) || !collideCircle(map, TX.x1 + 50, -5000, 1) || !collideCircle(map, 0, TX.z1 + 50, 1)) bad('the world should end past North Texas'); }
   if (!collideCircle(map, (W.LEWISVILLE.x0 + W.LEWISVILLE.x1) / 2, -6000, 1)) bad('Lake Lewisville should be water');
   if (W.districtAt(-2000, -2000) !== 'Loop 820' && W.districtAt(-2000, -2000) !== 'Lake Worth') bad(`north of 820 out west moved: ${W.districtAt(-2000, -2000)}`);
   for (const [x, z, d] of [[675, -6475, 'The Square'], [225, -6300, 'UNT'], [675, -6900, 'TWU'], [900, -5900, 'Southeast Denton'], [600, -5075, 'Texas Motor Speedway'], [2200, -4400, 'Roanoke'], [-500, -3700, 'Alliance'], [1250, -4300, 'Alliance Airport'], [-600, -4250, 'Northlake'], [-700, -5200, 'Argyle'], [2800, -6000, 'Lake Lewisville']])

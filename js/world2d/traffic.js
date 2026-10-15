@@ -101,9 +101,11 @@ export class TrafficSystem {
   }
   spawnNear(px, pz, minD, maxD, opts) {
     for (let tries = 0; tries < 30; tries++) {
-      const e = this.roads.edges[Math.floor(Math.random() * this.roads.edges.length)];
+      // a road near you (the map is far too big to pick from all of them)
+      const hit = this.roads.randomNear ? this.roads.randomNear(px, pz, minD, maxD, 1) : null;
+      const e = hit ? hit.edge : this.roads.edges[Math.floor(Math.random() * this.roads.edges.length)];
       if (e.track) continue;
-      const s = Math.random() * e.len;
+      const s = hit ? hit.s : Math.random() * e.len;
       const x = e.ax + e.dx * s, z = e.az + e.dz * s;
       const d = Math.hypot(x - px, z - pz);
       if (d < minD || d > maxD) continue;
