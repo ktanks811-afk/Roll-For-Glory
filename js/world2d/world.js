@@ -2,7 +2,9 @@
 // time of day, weather, fuel, damage and every "press E" interaction.
 
 import { buildMap, collideCircle, onBackroad } from './map.js';
-import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, renderOverview, signalState } from './render.js';
+import { luxPerks } from '../core/luxury.js';
+import { Boats } from './boats.js';
+import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState } from './render.js';
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
 import { missionTick } from '../core/missions.js';
@@ -15,12 +17,14 @@ import { GangWorld } from './gangs.js';
 import { StreetRaces } from './streetRace.js';
 import { Trailers } from './trailer.js';
 import { Pullups } from './pullups.js';
+import { bots } from '../net/bots.js';
 import { RideAlong } from './rides.js';
 import { Ranch } from './ranch.js';
 import { inHouse } from './house.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W, inCityGrid } from '../data/world.js';
+import { stateAt, stateById, flightQuote } from '../data/states.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
 import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
@@ -41,9 +45,10 @@ import { charge, fileCase, openCase, hasFelonyPrior, IMPOUND_LOT } from '../core
 import { extraTickets } from '../data/charges.js';
 import { equippedGun } from '../data/weapons.js';
 import { toggleMask, masked } from '../core/disguise.js';
-import { wx, isWet, nextWeather, weatherToast, nightShift } from '../core/weather.js';
+import { wx, isWet, nextWeather, weatherToast, nightShift, windOf } from '../core/weather.js';
 import { tickNeeds, runMul } from '../core/needs.js';
 import { applyEstate } from './estate.js';
+import { Showcase } from './showcase.js';
 import { estateTick } from './trap.js';
 import { seizeBag } from '../core/drugs.js';
 import { seizeCash } from '../core/bank.js';
@@ -102,7 +107,11 @@ export class World {
     this.trailers = new Trailers(this);
     this.pullups = new Pullups(this);
     this.rides = new RideAlong(this);
+    bots.attach(this);   // the regulars on a quiet server drive on these roads
     this.ranch = new Ranch(this);
+    this.showcase = new Showcase(this);   // other players' places on your server, and yours on theirs
+    this.boats = new Boats(this);         // marinas, boats on the lakes, and yours when you take it out
+    this.visiting = null;       // another player's garage or house you've walked into
     this.doors = doors;
     this.spawnPlayer();
   }
@@ -188,7 +197,7 @@ export class World {
     s.playTime += dt;
     this.advanceClock(dt);
 
-    if (input.pressed('enterExit')) { if (this.rides.riding) this.rides.getOut(); else this.toggleCar(); }
+    if (input.pressed('enterExit')) { if (this.boats.boating) this.boats.tryUse(); else if (this.rides.riding) this.rides.getOut(); else this.toggleCar(); }
     if (input.pressed('phone')) { this.ui.openPhone(); return; }
     if (input.pressed('map')) { this.ui.openPhone('map'); return; }
     if (input.pressed('pause')) { this.ui.openPause(); return; }
@@ -202,16 +211,21 @@ export class World {
     const p = this.playerState();
     this.offence = null;
     if (this.inCar && !this.vehicle) this.inCar = false;
-    if (this.inCar && this.vehicle) this.updateDriving(dt);
+    const boat = this.boats.active;
+    this.boats.update(dt);   // out on the water: the boat is you (world2d/boats.js)
+    if (boat) { this.foot.x = boat.x; this.foot.z = boat.z; this.foot.h = boat.h; this.foot.moving = 0; }
+    else if (this.inCar && this.vehicle) this.updateDriving(dt);
     else if (!this.rides.riding) this.updateFoot(dt);
     this.rides.update(dt);   // riding in another player's car: you go where it goes
-    this.combat.update(dt);
-    this.carjacks.update(dt);
-    this.thefts.update(dt);
+    if (!boat) {   // nobody robs, races or carjacks you in the middle of a lake
+      this.combat.update(dt);
+      this.carjacks.update(dt);
+      this.thefts.update(dt);
+      this.gangs.update(dt);
+      this.races.update(dt);
+      this.pullups.update(dt);
+    }
     this.gigs.update(dt);
-    this.gangs.update(dt);
-    this.races.update(dt);
-    this.pullups.update(dt);
     this.trailers.update(dt);
     this.updateOnline(dt);
     this.doors.update(dt, this);
@@ -234,27 +248,29 @@ export class World {
       extraObstacles: [...(this.vehicle ? [this.vehicleMover()] : []), ...this.police.allCars(), ...this.races.cars(), ...this.pullups.cars(), ...this.thefts.obstacles(), ...this.trailers.obstacles()],
     });
     this.traffic.update(dt, this.trafficCtx);
-    this.police.update(dt, this);
+    if (!boat) this.police.update(dt, this);
     if (this.inCar && this.vehicle) this.police.checkBlocks(this, this.vehicle);
     this.updatePoliceAudio();
 
     // interactions
     this.updateInteractions();
     this.updateGarageCars(dt);
-    for (const g of this.map.garages) g.roof.a += ((g === this.inGarage ? 0 : 1) - g.roof.a) * Math.min(1, dt * 4);
-    for (const h of this.map.houses) if (h.mass) h.mass.a += ((h === this.inHouse ? 0 : 1) - h.mass.a) * Math.min(1, dt * 4);
+    for (const g of this.map.garages) g.roof.a += ((g === this.inGarage || g === this.visiting ? 0 : 1) - g.roof.a) * Math.min(1, dt * 4);
+    for (const h of this.map.houses) if (h.mass) h.mass.a += ((h === this.inHouse || h === this.visiting ? 0 : 1) - h.mass.a) * Math.min(1, dt * 4);
+    this.showcase.update(dt);
     this.ranch.update(dt);
 
     // camera
     // riding along in another player's car, the camera rides with that car
-    const car = this.inCar && this.vehicle ? this.vehicle : this.rides.view();
+    const car = boat || (this.inCar && this.vehicle ? this.vehicle : this.rides.view());
     const focus = car || this.foot;
     const vx = car ? car.vx : 0, vz = car ? car.vz : 0;
     const spd = Math.hypot(vx, vz);
-    const base = (window.innerWidth < 700 ? 7.5 : 11) * [1, 0.55, 1.5][this.zoomLevel ?? 0];
+    const base = ((this.cam.vw || window.innerWidth) < 700 ? 7.5 : 11) * [1, 0.55, 1.5][this.zoomLevel ?? 0];
     // a traffic stop pulls the camera in so you can watch the officer walk up
     const stop = this.police.phase === 'stop' ? this.police.stop : null;
-    const targetZoom = stop ? base * 1.35 : car ? base / (1 + spd / 48) : base * 1.2;
+    // a big boat pulls the camera back so you can see all of it
+    const targetZoom = stop ? base * 1.35 : boat ? base / (1 + spd / 40) / Math.max(1, (boat.def.L / 12) ** 0.7) : car ? base / (1 + spd / 48) : base * 1.2;
     this.cam.zoom += (targetZoom - this.cam.zoom) * Math.min(1, dt * 2);
     // Keep the car near the middle of the screen at any speed: only a whisker
     // of look-ahead, and a follow fast enough that the lag cancels it out.
@@ -286,7 +302,7 @@ export class World {
     // persist position
     // (a stolen car isn't saved: load the game and you're on foot, your own car where you left it)
     const hot = this.vehicle?.car?.hot, own = hot ? this.thefts.own?.vehicle : this.vehicle;
-    s.pos = { x: p.x, z: p.z, h: this.inCar ? this.vehicle.h : this.foot.h, inCar: this.inCar && !hot };
+    s.pos = boat ? this.boats.shoreSpot() : { x: p.x, z: p.z, h: this.inCar ? this.vehicle.h : this.foot.h, inCar: this.inCar && !hot };
     if (own) s.carPos = { x: own.x, z: own.z, h: own.h };
 
     this.saveT += dt;
@@ -310,6 +326,7 @@ export class World {
     // with passengers aboard, the gear and revs go out too so their dash shows yours
     const dash = this.inCar && this.vehicle && this.rides.riders().length ? this.dashOf(this.vehicle) : null;
     online.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar, flame: this.inCar ? this.flame : 0, dash });
+    bots.tick(dt, { x: p.x, z: p.z, h: p.h, speed: this.rides.riding ? 0 : speed, inCar: this.inCar && !!this.vehicle });
   }
 
   // Gear and how far up the tach you are (the HUD's dash reads the same thing).
@@ -337,6 +354,13 @@ export class World {
           ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h); ctx.fillStyle = 'rgba(210,30,45,.9)'; ctx.beginPath(); ctx.ellipse(0, 0, 0.65 * cam.zoom, 0.3 * cam.zoom, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
         } else drawPerson(ctx, cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom, { top: '#3a6bff' }, p.sp ? p.walk : 0);
       }
+      // a regular flashing a gun at you, or an opp with it out (net/beef.js)
+      if (!p.dead && p.gun > performance.now() / 1000) {
+        const z = cam.zoom, side = p.inCar ? 0.95 : 0.3;
+        ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h + (p.inCar ? 0.5 : 0));
+        ctx.fillStyle = '#0b0c0e'; ctx.fillRect(side * z - 0.05 * z, -0.55 * z, 0.1 * z, 0.42 * z); ctx.fillRect(side * z - 0.06 * z, -0.2 * z, 0.12 * z, 0.14 * z);
+        ctx.restore();
+      }
     }
     return peers;
   }
@@ -357,14 +381,22 @@ export class World {
     ctx.font = '600 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const p of peers) {
       const aboard = p.inCar ? online.list().filter(o => o.ride === p.id).length + (this.rides.riding?.id === p.id ? 1 : 0) : 0;
-      const label = (p.crew ? `[${p.crew.tag}] ${p.name}` : p.name) + (aboard ? ` +${aboard}` : '');
+      const label = (p.opp ? '☠ OPP · ' : '') + (p.crew ? `[${p.crew.tag}] ${p.name}` : p.name) + (aboard ? ` +${aboard}` : '');
       const w = ctx.measureText(label).width + 14;
       ctx.save();
       ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(-cam.rot);   // keep tags upright in the chase camera
       const x = 0, y = -(p.inCar ? 3.2 : 1.8) * cam.zoom;
       ctx.fillStyle = 'rgba(8,9,12,0.78)'; ctx.fillRect(x - w / 2, y - 9, w, 18);
       ctx.fillStyle = p.crew ? p.crew.color : '#ff2a3a'; ctx.fillRect(x - w / 2, y - 9, 3, 18);
-      ctx.fillStyle = '#f2f4f8'; ctx.fillText(label, x, y + 1);
+      ctx.fillStyle = p.opp ? '#ff5a64' : '#f2f4f8'; ctx.fillText(label, x, y + 1);
+      // what they just said, over their head
+      if (p.bubble && p.bubble.until > performance.now() / 1000) {
+        const t = p.bubble.text.length > 40 ? p.bubble.text.slice(0, 39) + '…' : p.bubble.text;
+        const bw = ctx.measureText(t).width + 16, by = y - 26;
+        ctx.fillStyle = 'rgba(245,246,250,0.95)'; ctx.fillRect(x - bw / 2, by - 10, bw, 20);
+        ctx.beginPath(); ctx.moveTo(x - 5, by + 10); ctx.lineTo(x + 5, by + 10); ctx.lineTo(x, by + 16); ctx.fill();
+        ctx.fillStyle = '#111'; ctx.fillText(t, x, by + 1);
+      }
       ctx.restore();
     }
     ctx.restore();
@@ -376,6 +408,8 @@ export class World {
   }
 
   playerState() {
+    const b = this.boats?.active;
+    if (b) return { x: b.x, z: b.z, vx: b.vx, vz: b.vz, speed: b.speed, h: b.h, inCar: false, boat: true, carName: '' };
     if (this.inCar && this.vehicle) {
       const v = this.vehicle;
       return { x: v.x, z: v.z, vx: v.vx, vz: v.vz, speed: v.speed, h: v.h, inCar: true, carName: carName(v.model) };
@@ -617,7 +651,7 @@ export class World {
     this.liveDb = liveNoiseDb(this.staticDb ?? noiseDb(v.model, v.car.parts), thr, v.sim.rpm / v.spec.redline);
     // engine audio
     if (this.engine) {
-      this.engine.update({ rpm: v.sim.rpm, throttle: thr, boost: v.sim.boost, slip: Math.max(v.sim.slip, v.skid * 0.7), turbo: v.spec.asp === 'turbo', speed: v.speed });
+      this.engine.update({ rpm: v.sim.rpm, throttle: thr, boost: v.sim.boost, slip: Math.max(v.sim.slip, v.skid * 0.7), turbo: v.spec.asp === 'turbo', speed: v.speed, wet: Math.min(1, wx(this.s).rain) });
     }
     if (v.sim.nosOn && !this.nosSound) { audio.nos(); this.nosSound = true; }
     if (!v.sim.nosOn) this.nosSound = false;
@@ -798,6 +832,11 @@ export class World {
   districtAt(x, z) { return districtAt(x, z); }
 
   updateInteractions() {
+    if (this.boats.boating) {   // on the water the only thing to do is tie up (world2d/boats.js)
+      this.nearLoc = null; this.garageHint = '';
+      if (input.pressed('interact')) this.boats.tryUse();
+      return;
+    }
     const p = this.playerState();
     const st = this.s;
     let best = null, bd = 10;
@@ -805,13 +844,16 @@ export class World {
       const d = Math.hypot(l.x - p.x, l.z - p.z);
       if (d < bd) { bd = d; best = l; }
     }
-    // garages: doors open for places you own, the roof fades when you're inside
-    let inside = null, hint = '';
+    // garages: doors open for places you own, and for other players' places
+    // on your server so you can look around; the roof fades when you're inside
+    let inside = null, hint = '', visit = null;
     for (const g of this.map.garages) {
-      const owned = st.properties.includes(g.id);
-      g.panel.off = owned;
+      const owned = st.properties.includes(g.id), theirs = !owned && this.showcase.ownerOf(g.id);
+      g.panel.off = owned || !!theirs;
       const inn = g.inner;
-      if (owned && !this.rides.riding && p.x > inn.x && p.x < inn.x + inn.w && p.z > inn.z && p.z < inn.z + inn.d) inside = g;
+      const inn2 = p.x > inn.x && p.x < inn.x + inn.w && p.z > inn.z && p.z < inn.z + inn.d;
+      if (theirs && inn2 && !this.rides.riding) visit = g;
+      if (owned && !this.rides.riding && inn2) inside = g;
       else if (owned && !inside && Math.hypot(p.x - g.park.x, p.z - g.park.z) < 22 && true) {
         hint = this.inCar ? `Drive into the garage — ${g.loc.name.split(' (')[0]}` : `Walk into your garage — ${g.loc.name.split(' (')[0]}`;
       }
@@ -822,11 +864,14 @@ export class World {
     // away when you walk in so you can see the rooms
     let home = null;
     for (const h of this.map.houses) {
-      if (Math.abs(h.door?.x - p.x) > 80 || Math.abs(h.door?.z - p.z) > 80) { if (h.panel) h.panel.off = st.properties.includes(h.id); continue; }
-      const owned = st.properties.includes(h.id);
-      if (h.panel) h.panel.off = owned;
+      const owned = st.properties.includes(h.id), theirs = !owned && this.showcase.ownerOf(h.id);
+      for (const pn of h.panels || (h.panel ? [h.panel] : [])) pn.off = owned || !!theirs;
+      if (Math.abs(h.door?.x - p.x) > 80 || Math.abs(h.door?.z - p.z) > 80) continue;
       if (owned && !this.inCar && !this.rides.riding && inHouse(h, p.x, p.z)) home = h;
+      if (theirs && !this.inCar && !this.rides.riding && inHouse(h, p.x, p.z)) visit = h;
     }
+    if (visit && visit !== this.visiting) this.ui.toast(`${this.showcase.ownerOf(visit.id)}'s ${visit.mass || visit.floor0 ? 'house' : 'garage'}. Have a look around.`, 'info');
+    this.visiting = visit;
     if (home && home !== this.inHouse) this.ui.toast(`${home.loc.name.split(' (')[0]}: home. Press ${pad.inUse ? 'A' : 'E'} to sleep, save or change clothes.`, 'info');
     this.inHouse = home;
     if (home && !inside) best = home.loc;
@@ -848,11 +893,9 @@ export class World {
     }
   }
 
-  // Your other cars, parked in the bays of the garages you own.
-  updateGarageCars(dt) {
-    this.garageT -= dt;
-    if (this.garageT > 0) return;
-    this.garageT = 0.5;
+  // Which of your other cars sits in which bay: [{ g, bay, car }], garages in
+  // the order you fill them (your home first).
+  garageAssign() {
     const st = this.s;
     const away = awayFromGarage(st);   // on the trailer, or the truck parked out with it
     const others = st.cars.filter(c => c.uid !== st.activeCar && !c.stolen && !away.has(c.uid));
@@ -863,16 +906,29 @@ export class World {
       for (const bay of g.bays) {
         const car = others[k++];
         if (!car) break;
-        const model = CAR_BY_ID[car.modelId];
-        if (!model) continue;
-        const key = car.uid + JSON.stringify([car.visual, levels(car), (car.cond?.body ?? 100) | 0]);
-        let spr = this.garageSprites.get(key);
-        if (!spr) { spr = carSprite(model, car.visual, levels(car), car.cond, { crewColor: st.crew?.color }); this.garageSprites.set(key, spr); }
-        out.push({ x: bay.x, z: bay.z, h: bay.h, sprite: spr, dims: dimsFor(model), garage: g.id, car });
+        if (CAR_BY_ID[car.modelId]) out.push({ g, bay, car });
       }
     }
+    return out;
+  }
+
+  // Your other cars, parked in the bays of the garages you own, and other
+  // players' cars in theirs (world2d/showcase.js).
+  updateGarageCars(dt) {
+    this.garageT -= dt;
+    if (this.garageT > 0) return;
+    this.garageT = 0.5;
+    const st = this.s;
+    const sprite = (model, visual, lv, cond, key, crewColor) => {
+      let spr = this.garageSprites.get(key);
+      if (!spr) { spr = carSprite(model, visual, lv, cond, { crewColor }); this.garageSprites.set(key, spr); }
+      return { sprite: spr, dims: dimsFor(model) };
+    };
+    const out = this.garageAssign().map(({ g, bay, car }) => ({ x: bay.x, z: bay.z, h: bay.h, garage: g.id, car,
+      ...sprite(CAR_BY_ID[car.modelId], car.visual, levels(car), car.cond, car.uid + JSON.stringify([car.visual, levels(car), (car.cond?.body ?? 100) | 0]), st.crew?.color) }));
+    out.push(...this.showcase.cars(c => sprite(CAR_BY_ID[c.m], c.v, c.l, c.cond, 'o:' + JSON.stringify(c), null)));
     this.garageCars = out;
-    if (this.garageSprites.size > 40) this.garageSprites.clear();
+    if (this.garageSprites.size > 80) this.garageSprites.clear();
   }
 
   // The road route from where you are to (x, z): { path: [[x, z], …], names, meters }.
@@ -926,6 +982,15 @@ export class World {
     return { ...(turn || { turn: 'arrive', dist: total, street: s.gps.label }), total, label: s.gps.label };
   }
   setGps(x, z, label) {
+    // somewhere in another state: the GPS takes you to the airport (ui/flights.js)
+    const p = this.playerState(), there = stateAt(x, z), here = stateAt(p.x, p.z);
+    if (there !== here) {
+      const air = LOC_BY_ID[stateById(here).airport];
+      this.s.gps = { x: air.x, z: air.z, label: air.name };
+      this.gpsT = 0;
+      this.ui.toast(`${label} is in ${stateById(there).city}, ${stateById(there).abbr}. GPS set to ${air.name}: catch a flight there.`, 'info');
+      return;
+    }
     this.s.gps = { x, z, label };
     this.gpsT = 0;
     this.ui.toast(`GPS set: ${label}`, 'info');
@@ -943,8 +1008,13 @@ export class World {
     const r = this.routeTo(x, z), p = this.playerState();
     const meters = r.meters > 0 ? r.meters : Math.hypot(x - p.x, z - p.z) * 1.3;
     const car = withCar ? v.car : null;
-    const block = travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car, meters });
-    return { meters, withCar, block, quote: travelQuote(meters, car) };
+    const there = stateAt(x, z);
+    const block = there !== stateAt(p.x, p.z) ? `That's in ${stateById(there).city}. Fly there from the airport.`
+      : travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car, meters });
+    let quote = travelQuote(meters, car);
+    // your own helicopter (Luxe): no fee, a third of the time
+    if (luxPerks(s).heli) quote = { ...quote, fee: 0, minutes: Math.max(5, Math.round(quote.minutes / 3)), heli: true };
+    return { meters, withCar, block, quote };
   }
 
   teleport(x, z, label, locId) {
@@ -987,6 +1057,57 @@ export class World {
     return true;
   }
 
+  // ---------------------------------------------------------------- flights
+  // From an airport to another state's (ui/flights.js is the counter). Your
+  // car rides cargo when you're in it or standing by it at the terminal; on
+  // foot away from it, you fly alone and it waits in the airport lot.
+  flightPlan(toId) {
+    const s = this.s, v = this.vehicle, p = this.playerState();
+    const to = LOC_BY_ID[toId], from = stateAt(p.x, p.z), dest = to ? stateAt(to.x, to.z) : null;
+    const near = !this.inCar && v && !v.car.impound && Math.hypot(v.x - this.foot.x, v.z - this.foot.z) < CAR_REACH;
+    const hot = this.inCar && !!v?.car?.hot;
+    const withCar = !!v && (this.inCar || near) && !v.car.hot;
+    let quote = dest ? flightQuote(from, dest, withCar) : null;
+    // your own jet (Luxe): no ticket, half the time; the big one carries the car free
+    const pk = luxPerks(s);
+    if (quote && pk.jet) { const freight = pk.carFree ? 0 : quote.freight; quote = { ...quote, ticket: 0, freight, total: freight, minutes: Math.round(quote.minutes / 2), jet: true }; }
+    let block = !to || !quote ? 'No flights there.' : dest === from ? 'You\'re already here.'
+      : travelBlock(s, { policePhase: this.police.phase, heat: s.heat, hot, racing: !!this.races?.active, gig: !!this.gigs?.job, robbing: !!(this.combat?.rob || this.combat?.mug), car: withCar ? v.car : null });
+    if (!block && this.rides.riding) block = `You're riding with ${this.rides.riding.name}. Get out first.`;
+    return { to, from, dest, withCar, quote, block };
+  }
+  fly(toId) {
+    const s = this.s, plan = this.flightPlan(toId);
+    if (plan.block) { this.ui.toast(plan.block, 'bad'); return false; }
+    const q = plan.quote, to = plan.to, st = stateById(plan.dest);
+    if (!spend(s, q.total, `Flight to ${st.city}${plan.withCar ? ' + car freight' : ''}`)) { this.ui.toast(`The flight is ${fmtMoney(q.total)}. You're short.`, 'bad'); return false; }
+    const road = this.map.roads.nearestOnRoad(to.x, to.z);
+    const spot = road ? curbSpot(road, to.x, to.z) : { x: to.x, z: to.z, h: 0 };
+    if (plan.withCar) {
+      const v = this.vehicle;
+      v.x = spot.x; v.z = spot.z; v.h = spot.h;
+      v.vx = v.vz = 0; v.rev = 0; v.steer = v.steerIn = 0; v.yawRate = 0; v.sim.v = 0; v.skid = 0;
+      s.carPos = { x: v.x, z: v.z, h: v.h };
+      if (!this.inCar) { this.inCar = true; input.setContext('car'); this.restartEngineSound(); }
+    } else {
+      this.foot.x = to.x; this.foot.z = to.z; this.foot.h = to.face ?? 0;
+    }
+    const p = this.playerState();
+    this.cam.x = p.x; this.cam.z = p.z;
+    this.skids.length = 0; this.smoke.length = 0;
+    this.traffic.cars = [];
+    this.pullups.remove();
+    for (let left = q.minutes; left > 0; left -= 30) this.advanceClock(Math.min(30, left));
+    if (s.gps) { s.gps = null; this.gpsPath = null; }
+    this.warpT = 0.9;
+    s.stats.flights = (s.stats.flights || 0) + 1;
+    const hrs = `${Math.floor(q.minutes / 60)} h ${q.minutes % 60} min`;
+    this.ui.toast(`✈ Landed in ${st.city}, ${st.abbr}${plan.withCar ? '. Your car came off the cargo plane' : ''}. ${fmtMoney(q.total)}, ${hrs} door to door.`, 'good');
+    emit('flight', { to: plan.dest, from: plan.from, fee: q.total });
+    saveGame('auto', true);
+    return true;
+  }
+
   // ---------------------------------------------------------------- draw
   draw(ctx, W, H, dt) {
     const s = this.s;
@@ -1002,7 +1123,8 @@ export class World {
     ctx.translate(shakeX, shakeY);
     if (rotated) { ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.translate(-D / 2, -D / 2); }
     drawGround(ctx, cam);
-    drawWater(ctx, cam, this.map, this.t);
+    drawWater(ctx, cam, this.map, this.t, { night: this.darkness(), low: settings.quality === 'low' });
+    this.boats.drawUnder(ctx, cam);   // docks, wakes and the boats on the water
     const v = cam.view(60);
     const items = this.map.drawGrid.query(v.x0, v.z0, v.x1, v.z1);
     drawLots(ctx, cam, items);
@@ -1061,7 +1183,7 @@ export class World {
     // the officer walking up during a traffic stop
     const cop = this.police.officer;
     if (cop) drawPerson(ctx, cam.sx(cop.x), cam.sy(cop.z), cop.h, cam.zoom, OFFICER_LOOK, cop.moving ? cop.walk : 0);
-    if (!this.inCar && !this.rides.riding) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
+    if (!this.inCar && !this.rides.riding && !this.boats.boating) drawPerson(ctx, cam.sx(this.foot.x), cam.sy(this.foot.z), this.foot.h, cam.zoom, this.s.player.look, this.foot.moving ? this.foot.walk : 0, true);
     this.combat.draw(ctx, cam);
     this.carjacks.draw(ctx, cam);
     this.thefts.draw(ctx, cam);
@@ -1134,9 +1256,10 @@ export class World {
           glows.push({ x: bx, z: bz, r: 4, color: 'rgba(255,0,0,1)', a: 0.8 });
         }
       }
-      for (const l of LOCATIONS) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
+      for (const l of LOCATIONS) if (l.x > v.x0 && l.x < v.x1 && l.z > v.z0 && l.z < v.z1) glows.push({ x: l.x, z: l.z, r: 7, color: l.color, a: 0.18 });
       if (this.inGarage) glows.push({ x: this.inGarage.center.x, z: this.inGarage.center.z, r: 15, color: 'rgba(255,240,205,1)', a: 0.85 });
       if (this.inHouse) { const b = this.inHouse.box; if (b) glows.push({ x: b.x + b.w / 2, z: b.z + b.d / 2, r: Math.max(b.w, b.d) * 0.7, color: 'rgba(255,236,200,1)', a: 0.8 }); }
+      this.boats.glows({ glows, blobs });   // dock lamps, underwater lights, deck LEDs
       drawLighting(ctx, cam, night, this.map.lights, { cars: carsLit, glows, blobs });
       this.drawGpsRoute(ctx, cam, night * 0.85, true);   // the route glows through the dark
       this.races.drawRoute(ctx, cam, night * 0.7, true);
@@ -1167,8 +1290,10 @@ export class World {
       ctx.restore();
     }
     if (livePeers.length) { this.drawPeerFlames(ctx, livePeers); this.drawPeerTags(ctx, livePeers); }
+    this.drawTireSpray(ctx, cam, dt);
     if (rotated) { ctx.restore(); cam.w = W; cam.h = H; }   // rain and fog are screen effects: not rotated
-    drawRain(ctx, cam, wx(s).rain, dt);
+    drawRain(ctx, cam, wx(s).rain, dt, { wind: windOf(s), low: settings.quality === 'low' });
+    this.soundscape(dt);
     if (s.weather === 'storm') this.lightning(ctx, W, H, dt);
     if (this.warpT > 0) {   // teleport flash: white that fades out
       this.warpT = Math.max(0, this.warpT - dt);
@@ -1255,16 +1380,63 @@ export class World {
   }
 
   // A storm throws a white flash across the whole screen now and then, with
-  // thunder rolling in a beat later.
+  // thunder rolling in a beat later: a close strike is a bright flash and an
+  // almost instant crack, a far one a dim flicker and a slow rumble.
   lightning(ctx, W, H, dt) {
     this.boltT = (this.boltT ?? 4 + Math.random() * 8) - dt;
-    if (this.boltT <= 0) { this.bolt = 1; this.boltT = 5 + Math.random() * 12; this.thunderT = 0.4 + Math.random() * 1.2; }
-    if (this.thunderT != null && (this.thunderT -= dt) <= 0) { this.thunderT = null; audio.thunder?.(); }
+    if (this.boltT <= 0) {
+      const near = Math.random();
+      this.boltNear = near; this.bolt = 0.45 + near * 0.55;
+      this.boltT = 5 + Math.random() * 12; this.thunderT = 0.15 + (1 - near) * 2.8;
+    }
+    if (this.thunderT != null && (this.thunderT -= dt) <= 0) {
+      this.thunderT = null; audio.thunder?.(this.boltNear);
+      if (settings.shake && this.boltNear > 0.75) this.cam.shake = Math.max(this.cam.shake, 0.08);
+    }
     if (this.bolt > 0) {
       ctx.fillStyle = `rgba(225,230,255,${0.55 * this.bolt * (Math.random() < 0.3 ? 0.4 : 1)})`;
       ctx.fillRect(0, 0, W, H);
       this.bolt = Math.max(0, this.bolt - dt * 4);
     }
+  }
+
+  // Wet roads: the tires kick up a mist of spray behind your car.
+  drawTireSpray(ctx, cam, dt) {
+    const sp = this.spray || (this.spray = []), rain = wx(this.s).rain, v = this.inCar && this.vehicle;
+    if (v && rain > 0 && v.speed > 7 && sp.length < (settings.quality === 'low' ? 24 : 60)) {
+      const n = Math.min(4, Math.ceil(v.speed / 12 * Math.min(1.5, rain)));
+      const back = (v.dims?.L || 4.6) * 0.5, fx = Math.sin(v.h), fz = -Math.cos(v.h);
+      for (let i = 0; i < n; i++) {
+        const side = (Math.random() - 0.5) * (v.dims?.W || 1.9);
+        sp.push({ x: v.x - fx * back + fz * -side, z: v.z - fz * back + fx * side, vx: -fx * v.speed * 0.25 + (Math.random() - 0.5) * 2, vz: -fz * v.speed * 0.25 + (Math.random() - 0.5) * 2, t: 0, life: 0.5 + Math.random() * 0.4 });
+      }
+    }
+    if (sp.length) drawSpray(ctx, cam, sp, dt);
+  }
+
+  // Everything you hear around you: rain on the roof, wind, the city humming,
+  // dogs and crickets at night, birds in the morning, cars rolling by
+  // (core/audio.js ambience). Runs from draw so it keeps going, quieter,
+  // while the phone or a shop is open.
+  soundscape(dt) {
+    const s = this.s, p = this.playerState();
+    const boat = this.boats.active;
+    const urbanTarget = boat ? 0.15 : this.inCity ? 1 : 0.25;
+    this.urban = (this.urban ?? urbanTarget) + (urbanTarget - (this.urban ?? urbanTarget)) * Math.min(1, dt * 0.5);
+    const inside = this.inHouse || this.inGarage ? 'room' : (this.inCar && this.vehicle) || this.rides.riding ? 'car' : '';
+    let cars = [];
+    if (!this.paused) {
+      for (const c of [...this.traffic.cars, ...this.police.patrols]) {
+        const dx = c.x - p.x, dz = c.z - p.z;
+        if (Math.abs(dx) < 55 && Math.abs(dz) < 55) cars.push({ ref: c, dx, dz, v: c.v, d: dx * dx + dz * dz });
+      }
+      cars.sort((a, b) => a.d - b.d); cars = cars.slice(0, 3);
+    }
+    const h = hourOf(s.time);
+    audio.ambience({
+      rain: wx(s).rain, wind: windOf(s), urban: this.urban, night: isNight(s.time), hour: h,
+      inside, duck: this.paused ? 0.45 : 1, cars, rot: this.cam.rot, police: this.police.active,
+    }, dt);
   }
 
   darkness() {
@@ -1284,6 +1456,7 @@ export class World {
     this.pullups.destroy();
     this.rides.destroy();
     if (this.engine) this.engine.stop();
+    this.boats?.engine?.stop();
     audio.siren(false);
     audio.music(null);
   }

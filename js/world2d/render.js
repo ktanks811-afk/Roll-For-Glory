@@ -1,11 +1,14 @@
 // Draws Fort Worth top-down: ground, roads, lots, buildings (with a
 // parallax lean so they read as 3D), trees, night lighting and weather.
 
-import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, DALLAS, DALLAS_ZONE, DENTON, NORTH, WEST, WEST_CITY, LOCATIONS } from '../data/world.js';
+import { HWY_Z, HWY_W, DESERT_Z, TUNNEL, RIVER_X, SEA_X, ROAD_W, COUNTRY, BRAZOS, DALLAS, DALLAS_ZONE, DENTON, NORTH, WEST, WEST_CITY, LOCATIONS } from '../data/world.js';
+import { STATES, cityRect, regionRect } from '../data/states.js';
+import { ALL_TOWNS, TEXAS } from '../data/metro.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
 import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
 import { LOT_COLOR } from './mapTiles.js';
+import { drawWaterBodies } from './water.js';
 
 export class Camera {
   constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; this.rot = 0; this.vw = 1; this.vh = 1; }
@@ -43,7 +46,16 @@ export function buildStreetLights(map) {
     }
   }
   for (const l of LOCATIONS) out.push({ x: l.x, z: l.z, r: 16, color: l.color });
+  // bucketed so the night pass only looks at the lights near the screen
+  out.cells = new Map();
+  for (const l of out) { const k = Math.floor(l.x / LIGHT_CELL) * 100003 + Math.floor(l.z / LIGHT_CELL); if (!out.cells.has(k)) out.cells.set(k, []); out.cells.get(k).push(l); }
   return out;
+}
+const LIGHT_CELL = 300;
+function* lightsIn(lights, v) {
+  if (!lights.cells) { yield* lights; return; }
+  for (let i = Math.floor(v.x0 / LIGHT_CELL); i <= Math.floor(v.x1 / LIGHT_CELL); i++)
+    for (let j = Math.floor(v.z0 / LIGHT_CELL); j <= Math.floor(v.z1 / LIGHT_CELL); j++) yield* lights.cells.get(i * 100003 + j) || [];
 }
 
 export function drawGround(ctx, cam) {
@@ -58,30 +70,17 @@ export function drawGround(ctx, cam) {
   };
   rect(-4000, DESERT_Z, 4000, COUNTRY.z0, COLORS.sand);
   rect(COUNTRY.x0, COUNTRY.z0, COUNTRY.x1, COUNTRY.z1, COLORS.country);
+  rect(BRAZOS.x0, BRAZOS.z0, BRAZOS.x1, BRAZOS.z1, COLORS.country);
+  for (const st of Object.values(STATES)) { const r = regionRect(st), c = cityRect(st); rect(r.x0, r.z0, r.x1, r.z1, st.ground); rect(c.x0 - 15, c.z0 - 15, c.x1 + 15, c.z1 + 15, COLORS.city); }
   rect(-3300, -1000, -1000, DESERT_Z, '#34402a');
   rect(-985, -985, 985, 985, COLORS.city);
   rect(DALLAS.x0 - 15, DALLAS.z0 - 15, DALLAS.x1 + 15, DALLAS.z1 + 15, COLORS.city);
   rect(DENTON.x0 - 15, DENTON.z0 - 15, DENTON.x1 + 15, DENTON.z1 + 15, COLORS.city);
+  for (const t of ALL_TOWNS) rect(t.x0 - 15, t.z0 - 15, t.x1 + 15, t.z1 + 15, COLORS.city);
 }
 
-export function drawWater(ctx, cam, map, t) {
-  for (const w of map.water) {
-    const v = cam.view(0);
-    const ax = Math.max(w.x, v.x0), az = Math.max(w.z, v.z0), bx = Math.min(w.x + w.w, v.x1), bz = Math.min(w.z + w.d, v.z1);
-    if (ax >= bx || az >= bz) continue;
-    ctx.fillStyle = w.kind === 'river' ? COLORS.river : COLORS.water;
-    ctx.fillRect(cam.sx(ax), cam.sy(az), (bx - ax) * cam.zoom + 1, (bz - az) * cam.zoom + 1);
-    // ripples
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-    const step = 22;
-    for (let z = Math.floor(az / step) * step; z < bz; z += step) {
-      ctx.beginPath();
-      const off = Math.sin(t * 0.6 + z) * 6;
-      ctx.moveTo(cam.sx(ax), cam.sy(z + off * 0.2));
-      ctx.lineTo(cam.sx(bx), cam.sy(z + off * 0.2));
-      ctx.stroke();
-    }
-  }
+export function drawWater(ctx, cam, map, t, opts = {}) {
+  drawWaterBodies(ctx, cam, map, t, opts);   // waves, shallows, foam and glints (world2d/water.js)
   // hills: soft darker mounds
   for (const h of map.hills) {
     if (h.x + h.r < cam.view().x0 || h.x - h.r > cam.view().x1 || h.z + h.r < cam.view().z0 || h.z - h.r > cam.view().z1) continue;
@@ -168,8 +167,7 @@ export function drawLots(ctx, cam, items) {
       ctx.beginPath(); ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2); ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h); ctx.stroke();
     }
   }
-  ctx.fillStyle = COLORS.iwall;
-  for (const l of walls) ctx.fillRect(cam.sx(l.x), cam.sy(l.z), Math.max(1, l.w * z), Math.max(1, l.d * z));
+  for (const l of walls) { ctx.fillStyle = l.c || COLORS.iwall; ctx.fillRect(cam.sx(l.x), cam.sy(l.z), Math.max(1, l.w * z), Math.max(1, l.d * z)); }
   drawProps(ctx, cam, items);
 }
 
@@ -269,8 +267,9 @@ function drawProps(ctx, cam, items) {
 export function drawRoads(ctx, cam, map, signalT) {
   const v = cam.view(20);
   const z = cam.zoom;
-  // asphalt
-  for (const e of map.roads.edges) {
+  // asphalt (only the roads near the screen: the grid in roads.js finds them)
+  const near = map.roads.edgesIn ? map.roads.edgesIn(v.x0 - 20, v.z0 - 20, v.x1 + 20, v.z1 + 20) : map.roads.edges;
+  for (const e of near) {
     const minx = Math.min(e.ax, e.bx) - e.width / 2, maxx = Math.max(e.ax, e.bx) + e.width / 2;
     const minz = Math.min(e.az, e.bz) - e.width / 2, maxz = Math.max(e.az, e.bz) + e.width / 2;
     if (maxx < v.x0 || minx > v.x1 || maxz < v.z0 || minz > v.z1) continue;
@@ -307,7 +306,7 @@ export function drawRoads(ctx, cam, map, signalT) {
     ctx.setLineDash([]);
   }
   // intersections (cover markings) + crosswalks + signals
-  for (const n of map.roads.nodes) {
+  for (const n of map.roads.nodesIn ? map.roads.nodesIn(v.x0, v.z0, v.x1, v.z1) : map.roads.nodes) {
     if (n.x < v.x0 || n.x > v.x1 || n.z < v.z0 || n.z > v.z1) continue;
     // a bend-free join of two pieces of the same road (I-30 at Loop 820) needs no intersection
     if (n.edges.length === 2) { const [a, b] = n.edges.map(id => map.roads.edges[id]); if (a.kind === b.kind && Math.abs(a.dx * b.dx + a.dz * b.dz) > 0.99) continue; }
@@ -333,7 +332,7 @@ export function drawRoads(ctx, cam, map, signalT) {
       }
     }
   }
-  // Cross Timbers Pass
+  // Lake Worth Pass
   ctx.strokeStyle = COLORS.asphalt; ctx.lineWidth = 9 * z; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.beginPath(); BACKROAD.forEach(([x, zz], i) => i ? ctx.lineTo(cam.sx(x), cam.sy(zz)) : ctx.moveTo(cam.sx(x), cam.sy(zz))); ctx.stroke();
   ctx.strokeStyle = COLORS.yellow; ctx.lineWidth = Math.max(1, 0.15 * z); ctx.setLineDash([3 * z, 6 * z]); ctx.stroke(); ctx.setLineDash([]);
@@ -747,18 +746,20 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
   lctx.fillRect(0, 0, w, h);
   lctx.globalCompositeOperation = 'destination-out';
   const v = cam.view(40);
+  // anything whose glow can't reach the screen is skipped: each one is a gradient fill
+  const off = (x, y, r) => x + r < 0 || y + r < 0 || x - r > cam.w || y - r > cam.h;
   const blob = (x, y, r, a = 1) => {
     const g = lctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(1, 'rgba(0,0,0,0)');
     lctx.fillStyle = g; lctx.beginPath(); lctx.arc(x, y, r, 0, Math.PI * 2); lctx.fill();
   };
-  for (const l of lights) {
+  for (const l of lightsIn(lights, v)) {
     if (l.x < v.x0 || l.x > v.x1 || l.z < v.z0 || l.z > v.z1) continue;
     blob(cam.sx(l.x) * scale, cam.sy(l.z) * scale, l.r * cam.zoom * scale, 0.85);
   }
   // headlight cones
   for (const c of extras.cars) {
-    if (!c.lightsOn) continue;
+    if (!c.lightsOn || off(cam.sx(c.x), cam.sy(c.z), (c.beam || 28) * cam.zoom)) continue;
     const x = cam.sx(c.x) * scale, y = cam.sy(c.z) * scale;
     const fx = Math.sin(c.h), fz = -Math.cos(c.h);
     const len = (c.beam || 28) * cam.zoom * scale;
@@ -773,7 +774,7 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
     lctx.closePath(); lctx.fill();
     blob(x, y, 4 * cam.zoom * scale, 0.6);
   }
-  for (const b of extras.blobs) blob(cam.sx(b.x) * scale, cam.sy(b.z) * scale, b.r * cam.zoom * scale, b.a ?? 0.9);
+  for (const b of extras.blobs) { const r = b.r * cam.zoom; if (!off(cam.sx(b.x), cam.sy(b.z), r)) blob(cam.sx(b.x) * scale, cam.sy(b.z) * scale, r * scale, b.a ?? 0.9); }
   ctx.drawImage(lightCanvas, 0, 0, cam.w, cam.h);
 
   // coloured glows on top
@@ -781,6 +782,7 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
   ctx.globalCompositeOperation = 'lighter';
   for (const gl of extras.glows) {
     const x = cam.sx(gl.x), y = cam.sy(gl.z), r = gl.r * cam.zoom;
+    if (off(x, y, r)) continue;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, gl.color); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.globalAlpha = (gl.a ?? 0.6) * Math.min(1, darkness * 1.6 + 0.25);
@@ -790,23 +792,56 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
 }
 
 // ---------------- weather ----------------
-const drops = [];
-export function drawRain(ctx, cam, intensity, dt) {
+// Rain streaks slant with the wind, and drops splash on the street as little
+// rings. Both are screen effects with fixed pools, so a storm costs the same
+// every frame (fewer of each on Low graphics).
+const drops = [], splashes = [];
+export function drawRain(ctx, cam, intensity, dt, { wind = 0.3, low = false } = {}) {
   if (intensity <= 0) return;
-  const n = Math.floor(260 * intensity);
+  const q = low ? 0.5 : 1;
+  const n = Math.floor(260 * intensity * q);
   while (drops.length < n) drops.push({ x: Math.random() * cam.w, y: Math.random() * cam.h, s: 0.6 + Math.random() * 0.8 });
   drops.length = n;
+  const slant = 60 + wind * 420, lean = slant / 900;
   ctx.strokeStyle = 'rgba(180,200,230,0.35)'; ctx.lineWidth = 1;
   ctx.beginPath();
   for (const d of drops) {
-    d.x += -120 * dt * d.s; d.y += 900 * dt * d.s;
-    if (d.y > cam.h) { d.y = -10; d.x = Math.random() * (cam.w + 100); }
+    d.x += -slant * dt * d.s; d.y += 900 * dt * d.s;
+    if (d.y > cam.h) { d.y = -10; d.x = Math.random() * (cam.w + slant); }
     if (d.x < -10) d.x = cam.w + 10;
-    ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 4 * d.s, d.y + 16 * d.s);
+    ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 16 * lean * d.s, d.y + 16 * d.s);
+  }
+  ctx.stroke();
+  // splashes: spawn a few each frame, each a ring that opens and fades
+  let born = 70 * intensity * q * dt + Math.random();
+  while (born-- >= 1 && splashes.length < 90 * q) splashes.push({ x: Math.random() * cam.w, y: Math.random() * cam.h, t: 0 });
+  ctx.strokeStyle = 'rgba(200,215,240,0.4)';
+  ctx.beginPath();
+  for (let i = splashes.length - 1; i >= 0; i--) {
+    const sp = splashes[i];
+    sp.t += dt;
+    if (sp.t > 0.3) { splashes[i] = splashes[splashes.length - 1]; splashes.pop(); continue; }
+    const r = 1 + sp.t * 16;
+    ctx.moveTo(sp.x + r, sp.y); ctx.ellipse(sp.x, sp.y, r, r * 0.45, 0, 0, Math.PI * 2);
   }
   ctx.stroke();
   ctx.fillStyle = `rgba(20,30,45,${0.12 * intensity})`;
   ctx.fillRect(0, 0, cam.w, cam.h);
+}
+
+// Mist thrown off the tires on a wet road (world coords, drawn in the world layer).
+export function drawSpray(ctx, cam, parts, dt) {
+  ctx.save();
+  ctx.fillStyle = 'rgb(205,215,228)';
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.t += dt; p.x += p.vx * dt; p.z += p.vz * dt; p.vx *= 0.94; p.vz *= 0.94;
+    if (p.t > p.life) { parts[i] = parts[parts.length - 1]; parts.pop(); continue; }
+    const k = p.t / p.life;
+    ctx.globalAlpha = 0.22 * (1 - k);
+    ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), (0.35 + k * 1.3) * cam.zoom, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 export function shadeHex(hex, amt) {
@@ -821,30 +856,43 @@ export function shadeHex(hex, amt) {
 
 // Static overview of the whole map for the minimap and phone map.
 export function renderOverview(map, scale = 0.12) {
-  // Overview covers every currently playable region, including the new westward expansion.
-  const x0 = WEST.x0 - 400, z0 = NORTH.z0 - 400, W = DALLAS_ZONE.x1 + 4400 - x0, H = COUNTRY.z1 + 600 - z0;
+  // Overview covers every currently playable region of Texas; each out-of-state
+  // city gets its own small one in `more` (no point painting the empty miles between).
+  const main = paintOverview(map, scale, TEXAS.x0 - 400, TEXAS.z0 - 400, TEXAS.x1 + 400, TEXAS.z1 + 400);
+  main.more = Object.values(STATES).map(st => { const r = regionRect(st); return paintOverview(map, scale, r.x0, r.z0, r.x1, r.z1, st.ground); });
+  return main;
+}
+function paintOverview(map, scale, x0, z0, x1, z1, ground) {
+  const W = x1 - x0, H = z1 - z0, inside = (x, z, w, d) => x + w > x0 && x < x1 && z + d > z0 && z < z1;
   const c = document.createElement('canvas');
   c.width = W * scale; c.height = H * scale;
   const g = c.getContext('2d');
   const sx = x => (x - x0) * scale, sy = z => (z - z0) * scale;
-  g.fillStyle = '#1e2619'; g.fillRect(0, 0, c.width, c.height);
-  g.fillStyle = '#7d6a4c'; g.fillRect(0, sy(DESERT_Z), c.width, (COUNTRY.z0 - DESERT_Z) * scale);
-  g.fillStyle = '#2c3a22'; g.fillRect(sx(COUNTRY.x0), sy(COUNTRY.z0), (COUNTRY.x1 - COUNTRY.x0) * scale, (COUNTRY.z1 - COUNTRY.z0) * scale);
-  g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
-  g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
-  g.fillRect(sx(DALLAS.x0 - 15), sy(DALLAS.z0 - 15), (DALLAS.x1 - DALLAS.x0 + 30) * scale, (DALLAS.z1 - DALLAS.z0 + 30) * scale);
-  g.fillRect(sx(DENTON.x0 - 15), sy(DENTON.z0 - 15), (DENTON.x1 - DENTON.x0 + 30) * scale, (DENTON.z1 - DENTON.z0 + 30) * scale);
-  g.fillRect(sx(WEST_CITY.x0 - 15), sy(WEST_CITY.z0 - 15), (WEST_CITY.x1 - WEST_CITY.x0 + 30) * scale, (WEST_CITY.z1 - WEST_CITY.z0 + 30) * scale);
-  for (const l of map.lots) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
-  for (const w of map.water) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
+  g.fillStyle = ground || '#1e2619'; g.fillRect(0, 0, c.width, c.height);
+  if (!ground) {
+    g.fillStyle = '#7d6a4c'; g.fillRect(0, sy(DESERT_Z), c.width, (COUNTRY.z0 - DESERT_Z) * scale);
+    g.fillStyle = '#2c3a22'; g.fillRect(sx(COUNTRY.x0), sy(COUNTRY.z0), (COUNTRY.x1 - COUNTRY.x0) * scale, (COUNTRY.z1 - COUNTRY.z0) * scale);
+    g.fillRect(sx(BRAZOS.x0), sy(BRAZOS.z0), (BRAZOS.x1 - BRAZOS.x0) * scale, (BRAZOS.z1 - BRAZOS.z0) * scale);
+    g.fillStyle = '#262f20'; g.fillRect(sx(-3300), sy(-1000), (3300 - 1000) * scale, (DESERT_Z + 1000) * scale);
+    g.fillStyle = '#34363b'; g.fillRect(sx(-985), sy(-985), 1970 * scale, 1970 * scale);
+    g.fillRect(sx(DALLAS.x0 - 15), sy(DALLAS.z0 - 15), (DALLAS.x1 - DALLAS.x0 + 30) * scale, (DALLAS.z1 - DALLAS.z0 + 30) * scale);
+    g.fillRect(sx(DENTON.x0 - 15), sy(DENTON.z0 - 15), (DENTON.x1 - DENTON.x0 + 30) * scale, (DENTON.z1 - DENTON.z0 + 30) * scale);
+    g.fillRect(sx(WEST_CITY.x0 - 15), sy(WEST_CITY.z0 - 15), (WEST_CITY.x1 - WEST_CITY.x0 + 30) * scale, (WEST_CITY.z1 - WEST_CITY.z0 + 30) * scale);
+  }
+  g.fillStyle = '#34363b';
+  for (const t of ALL_TOWNS) if (inside(t.x0, t.z0, t.x1 - t.x0, t.z1 - t.z0)) g.fillRect(sx(t.x0 - 15), sy(t.z0 - 15), (t.x1 - t.x0 + 30) * scale, (t.z1 - t.z0 + 30) * scale);
+  for (const l of map.lots) if (inside(l.x, l.z, l.w, l.d)) { g.fillStyle = LOT_COLOR[l.kind] || '#333'; g.fillRect(sx(l.x), sy(l.z), l.w * scale, l.d * scale); }
+  for (const w of map.water) if (inside(w.x, w.z, w.w, w.d)) { g.fillStyle = '#16314a'; g.fillRect(sx(w.x), sy(w.z), w.w * scale, w.d * scale); }
   g.fillStyle = 'rgba(80,90,100,0.9)';
-  for (const b of map.buildings) if (b.kind !== 'parked') g.fillRect(sx(b.x), sy(b.z), Math.max(1, b.w * scale), Math.max(1, b.d * scale));
+  for (const b of map.buildings) if (b.kind !== 'parked' && inside(b.x, b.z, b.w, b.d)) g.fillRect(sx(b.x), sy(b.z), Math.max(1, b.w * scale), Math.max(1, b.d * scale));
   for (const e of map.roads.edges) {
     g.strokeStyle = e.kind === 'highway' ? '#e8c21a' : e.kind === 'desert' ? '#c9b48a' : '#c8cad0';
     g.lineWidth = Math.max(1.5, e.width * scale * (e.kind === 'highway' ? 1 : 1.4));
     g.beginPath(); g.moveTo(sx(e.ax), sy(e.az)); g.lineTo(sx(e.bx), sy(e.bz)); g.stroke();
   }
-  g.strokeStyle = '#a8aab0'; g.lineWidth = 1.5;
-  g.beginPath(); BACKROAD.forEach(([x, z], i) => i ? g.lineTo(sx(x), sy(z)) : g.moveTo(sx(x), sy(z))); g.stroke();
+  if (!ground) {
+    g.strokeStyle = '#a8aab0'; g.lineWidth = 1.5;
+    g.beginPath(); BACKROAD.forEach(([x, z], i) => i ? g.lineTo(sx(x), sy(z)) : g.moveTo(sx(x), sy(z))); g.stroke();
+  }
   return { canvas: c, scale, x0, z0 };
 }

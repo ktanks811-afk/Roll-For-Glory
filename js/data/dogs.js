@@ -2,6 +2,7 @@
 // the same breeds, stats, temperaments and coat genetics, priced for Murda
 // Worth money. Rules live in core/dogs.js (kennel, breeding, training) and
 // core/hoghunt.js (the hunt). DOM-free so check-data can test it.
+import { NEW_BREEDS } from './hdref.js';
 
 // stat keys, in the order breed `pot` arrays use: spd str sta int trk obd grip
 export const STATS = [['spd', 'Speed'], ['str', 'Strength'], ['sta', 'Stamina'], ['int', 'Hunting sense'], ['trk', 'Tracking'], ['obd', 'Obedience'], ['grip', 'Catch']];
@@ -57,6 +58,10 @@ export const BREEDS = {
   'Cane Corso': { short: 'Corso', role: 'catch', price: 3200, kg: [40, 50], pot: [74, 94, 86, 86, 75, 81, 94],
     range: [[65, 82], [88, 99], [78, 94], [78, 94], [65, 85], [72, 90], [88, 99]], health: [78, 94], whiteBias: -.12, speck: 0, noPiebald: true, freq: { B: { B: 1, b: 0 }, D: { D: .6, d: .4 }, E: { Em: .6, eg: 0, E: .4, e: 0 }, K: { K: .45, br: .35, y: .2 }, A: { ay: 1, as: 0, at: 0, a: 0 }, S: { S: .9, sp: .1, sw: 0 }, M: { M: 0, m: 1 }, T: { T: 0, t: 1 }, L: { L: 1, l: 0 }, R: { R: 0, r: 1 } } },
 };
+// the eight real hog breeds from H&D 2.29, and sizes brought in line with the
+// breed standards (Catahoula 50–95 lb, Plott 40–75 lb, Blue Lacy 30–55 lb)
+for (const [b, N] of Object.entries(NEW_BREEDS)) BREEDS[b] = N.b;
+BREEDS['Catahoula Leopard Dog'].kg = [23, 43]; BREEDS['Plott Hound'].kg = [18, 34]; BREEDS['Blue Lacy'].kg = [14, 25];
 export const BREED_NAMES = Object.keys(BREEDS);
 
 export const RARITY = [['Common', '#9aa0a6'], ['Uncommon', '#3ecf6a'], ['Rare', '#3aa0ff'], ['Epic', '#b45cff'], ['Legendary', '#ffb020']];
@@ -87,13 +92,40 @@ export const HOGS = {
   spotted: { name: 'Spotted boar',       w: [150, 260], mult: 1.8, rar: 2, color: '#6a4a36', spots: '#d8c8b0', speed: 7.5 },
   russian: { name: 'Russian-cross boar', w: [200, 350], mult: 2.4, rar: 3, color: '#3a3430', speed: 8.5 },
   ghost:   { name: 'Ghost boar',         w: [300, 460], mult: 5,   rar: 4, color: '#cfc8bc', speed: 9 },
+  // the county's legend: only ever on the trail cams or the bounty job
+  giant:   { name: 'Giant boar',         w: [480, 620], mult: 7,   rar: 4, color: '#2a2420', speed: 8 },
+  // the other hunts from Hogs & Dogs, run by the same simulation. pay: a flat
+  // price (fur buyer, bounty, the landowner) instead of the processor by the pound.
+  // tree: the hounds tree it and you walk up; self: the dogs catch it themselves;
+  // fight: it cuts dogs like a boar does.
+  coon:     { name: 'Raccoon',        w: [12, 28],   mult: 0, rar: 0, color: '#6e6a64', speed: 5,   pay: 70,   tree: true,  game: 1, icon: '🦝' },
+  squirrel: { name: 'Fox squirrel',   w: [1, 3],     mult: 0, rar: 0, color: '#a5653a', speed: 6,   pay: 18,   tree: true,  game: 1, icon: '🐿️' },
+  bobcat:   { name: 'Bobcat',         w: [18, 34],   mult: 0, rar: 2, color: '#9c7a52', speed: 8,   pay: 1100, tree: true,  fight: 0.5, game: 1, icon: '🐈' },
+  lion:     { name: 'Mountain lion',  w: [90, 160],  mult: 0, rar: 3, color: '#b8915a', speed: 9,   pay: 3500, tree: true,  fight: 1.4, game: 1, icon: '🐆' },
+  bear:     { name: 'Black bear',     w: [180, 320], mult: 0, rar: 4, color: '#1d1a18', speed: 7,   pay: 6000, tree: true,  fight: 2,   game: 1, icon: '🐻' },
+  rabbit:   { name: 'Cottontail',     w: [2, 4],     mult: 0, rar: 0, color: '#9a8466', speed: 9,   pay: 25,   self: true,  game: 1, icon: '🐇' },
+  jack:     { name: 'Jackrabbit',     w: [4, 8],     mult: 0, rar: 1, color: '#b39a72', speed: 11,  pay: 45,   self: true,  game: 1, icon: '🐇' },
+  deer:     { name: 'Wounded whitetail', w: [120, 220], mult: 0, rar: 1, color: '#8a6440', speed: 3.5, pay: 900, tree: true, game: 1, icon: '🦌' },
 };
+// What you're after. hog is the hog lease as it always was; the rest use the
+// same dogs (bay dogs only, no catch dogs) on their own grounds.
+export const HUNT_MODES = [
+  { id: 'hog',      name: 'Hog hunt',       icon: '🐗', desc: 'Bay dogs find them, catch dogs hold them, you tie them off.' },
+  { id: 'night',    name: 'Night hog hunt', icon: '🌙', desc: 'More hogs move after dark and you see less. A thermal scope shows them; a rifle takes a bayed hog.', hog: true, night: true },
+  { id: 'coon',     name: 'Coon hunt',      icon: '🦝', desc: 'Hounds run coons up the trees in the creek bottoms at night. The fur buyer pays per coon.', night: true, game: [['coon', 100]], count: 6, fee: 0 },
+  { id: 'squirrel', name: 'Squirrel hunt',  icon: '🐿️', desc: 'Feists and curs tree fox squirrels in the pecan bottoms. Good work for pups and green dogs.', game: [['squirrel', 100]], count: 9, fee: 0, pups: true },
+  { id: 'lion',     name: 'Lion & bear',    icon: '🐆', desc: 'A road trip out west. Hounds tree bobcats, lions and the odd bear; the ranchers pay a bounty. Cats fight.', game: [['bobcat', 60], ['lion', 32], ['bear', 8]], count: 4, fee: 4000, tier: 3 },
+  { id: 'rabbit',   name: 'Rabbit hunt',    icon: '🐇', desc: 'Beagles and fast curs run rabbits until they catch one. No catch dogs needed.', game: [['rabbit', 75], ['jack', 25]], count: 8, fee: 0, self: true },
+  { id: 'blood',    name: 'Blood trail',    icon: '🦌', desc: 'A neighbor hit a buck and lost it. Your best nose trails it down; the landowner pays to recover it.', game: [['deer', 100]], count: 1, fee: 0, brush: 0.55, once: true },
+];
+export const MODE_BY_ID = Object.fromEntries(HUNT_MODES.map(m => [m.id, m]));
 // Hunting grounds in Johnson County. fee: the day lease. hogs: [kind, weight].
 export const HUNT_GROUNDS = [
   { id: 'nolan',   name: 'Nolan River Bottoms',   fee: 0,    hogs: [['feral', 75], ['razor', 25]], count: 4, brush: 0.35, desc: 'Your lease off FM 4. Creek bottoms and wallows. Good for green dogs.' },
   { id: 'cedar',   name: 'Cross Timbers Cedar Breaks', fee: 600,  hogs: [['feral', 45], ['razor', 35], ['spotted', 20]], count: 5, brush: 0.5, tier: 2, desc: 'Post oak and cedar. Long runs; speed and stamina matter.' },
   { id: 'brazos',  name: 'Brazos River Thicket',  fee: 1500, hogs: [['razor', 35], ['spotted', 30], ['russian', 30], ['ghost', 5]], count: 5, brush: 0.65, tier: 3, desc: 'Heavy boars and the odd legend. Bring your best catch dogs.' },
   { id: 'chalk',   name: 'Chalk Mountain Ranch',  fee: 3500, hogs: [['spotted', 35], ['russian', 50], ['ghost', 15]], count: 6, brush: 0.75, tier: 4, desc: 'Brutal cover, trophy hogs. The ranch pays a bounty on every one.' },
+  { id: 'southtx', name: 'South Texas Brush Country', fee: 7000, hogs: [['razor', 20], ['spotted', 30], ['russian', 38], ['ghost', 12]], count: 7, brush: 0.6, tier: 4, trip: true, desc: 'A road trip down past San Antonio. Mesquite, prickly pear and big boars. Takes the whole day.' },
 ];
 export const GROUND_BY_ID = Object.fromEntries(HUNT_GROUNDS.map(g => [g.id, g]));
 export const HOG_PER_LB = 2.5;          // what the processor in Joshua pays, before the trophy multiplier

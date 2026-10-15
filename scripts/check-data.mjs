@@ -5,6 +5,7 @@ import { CARS, CAR_BY_ID } from '../js/data/cars.js';
 import { CATALOG, ITEM_BY_ID, fits } from '../js/data/catalog.js';
 import { RACERS } from '../js/data/npcs.js';
 import { LOCATIONS } from '../js/data/world.js';
+import { STATES, STATE_IDS, stateAt, flightQuote, regionRect, cityRect } from '../js/data/states.js';
 import { generateListings } from '../js/data/market.js';
 import { buildSpec, metrics, launchCheck } from '../js/sim/powertrain.js';
 import { partLevels } from '../js/data/parts.js';
@@ -932,9 +933,13 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     HM.paint(d, 0, 0, 0, 5, 4, 'L');
     if (HM.paint(d, 1, 7, 0, 9, 2, 'B')) bad('an upper floor painted over nothing');
     if (HM.paint(d, 0, 0, 0, 2, 0, 'P') !== 3) bad('painting the porch');
+    if (HM.paint(d, 1, 0, 0, 2, 2, 'B') || HM.floorOpen(d, 1)) bad('no 2nd floor until there are stairs up to it');
+    const up = HM.place(d, 0, 'stairs', 4, 1);
+    if (!up.ok || up.opened !== 1 || !(up.landing > 0) || !HM.floorOpen(d, 1) || HM.floorOpen(d, 2)) bad('stairs should open the floor above (and only that one)');
     if (HM.paint(d, 1, 0, 0, 2, 2, 'B') !== 6) bad('the 2nd floor should only go over the rooms, not the porch');
-    if (HM.check(d).ok) bad('a 2nd floor without stairs should not pass');
-    if (!HM.place(d, 0, 'stairs', 4, 1).ok || !HM.check(d).ok) bad('stairs should fix it');
+    if (!HM.check(d).ok) bad('a 2nd floor with stairs should pass');
+    const well = [...HM.stairwell(d, 1)][0];
+    if (well === undefined || HM.place(d, 1, 'bed', well % HD.GW, Math.floor(well / HD.GW)).ok) bad('a bed on the stairwell upstairs');
     if (HM.place(d, 0, 'toilet', 1, 2).ok) bad('a toilet outside the bathroom');
     if (HM.place(d, 0, 'couch', 4, 2).ok) bad('a couch on top of the stairs');
     if (!HM.place(d, 0, 'rug', 2, 2).ok || !HM.place(d, 0, 'couch', 2, 2).ok) bad('a couch on a rug should be fine');
@@ -969,6 +974,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     for (const o of ESTATE_LOCATIONS) if (o !== l && l.lot.x0 < o.lot.x1 && l.lot.x1 > o.lot.x0 && l.lot.z0 < o.lot.z1 && l.lot.z1 > o.lot.z0) bad(`${l.id} overlaps ${o.id}`);
     const r = map.roads.routeBetween(0, 0, l.x, l.z);
     // The world is intentionally growing westward; validate that GPS actually found a named road route, but allow longer Texas-map drives than the old 9 km city-only limit.
+    if (LAND[l.id]?.state) { if (stateAt(l.x, l.z) !== LAND[l.id].state) bad(`${l.id} isn't in ${LAND[l.id].state}`); continue; }   // a flight away, no road from Fort Worth
     if (!r?.path?.length || !r.names?.some(Boolean) || r.meters > 15000) bad(`${l.id}: no road route from downtown (${r?.meters})`);
   }
   for (const id of ['land_six_bunche', 'land_six_stalcup', 'six_bungalow']) if (districtAt(LOC_BY_ID[id].x, LOC_BY_ID[id].z) !== 'Stop Six') bad(`${id} isn't in Stop Six`);
@@ -1036,13 +1042,91 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const fences = map.buildings.filter(b => b.kind === 'fence' && b.loc === land);
   if (fences.length < 5) bad(`pasture fence has ${fences.length} pieces`);
   if (vh && vh.box.z + vh.box.d > P.z0) bad('the pasture fence cuts through the house');
-  if (FENCES.length !== 3 || !(FENCES[2].cap >= 40)) bad('fence sizes');
+  if (FENCES.length < 3 || !(FENCES[2].cap >= 40) || !FENCES.some(f => f.cap >= 400)) bad('fence sizes');
   if (!(EST.landValue(st, land) > 1e6)) bad('ranch land value should count the vault, house and herd');
   if (!EST.sellAnimal(st, land, 'horse').ok) bad('selling a horse');
   // loading another career clears it all off the map
   const fresh = createState({ name: 'F', age: 25, look: {}, story: false });
   applyEstate(map, fresh);
   if (map.houses.some(h => h.id === land) || map.buildings.some(b => b.kind === 'fence' && b.loc === land)) bad('another career\'s house or fence stayed up');
+  for (const id of Object.keys(LAND)) delete PROPERTIES[id];
+  game.s = null;
+}
+// rentals: neighborhoods and apartments on your land, rent every morning
+{
+  const { DEVS, DEV_BY_ID } = await import('../js/data/estate.js');
+  const { LOC_BY_ID } = await import('../js/data/world.js');
+  const { cleanBuild } = await import('../js/net/builds.js');
+  const { setForeignLand } = await import('../js/world2d/estate.js');
+  const st = createState({ name: 'Landlord', age: 30, look: {}, story: false });
+  game.s = st; st.cash = 5e8; st.rep = 40000;
+  const map = buildMap();
+  for (const D of DEVS) if (!Object.keys(LAND).some(id => EST.devFits(id, D.id))) bad(`${D.id} fits on no land`);
+  for (const id of Object.keys(LAND)) if (!EST.devFits(id, 'duplex')) bad(`${id}: no room for even a duplex row`);
+  // the biggest thing that fits, behind a 10-car shop and a house, on every piece of land
+  for (const id of Object.keys(LAND)) {
+    EST.buyLand(st, id); EST.build(st, id, 'compound');
+    const big = DEVS.filter(D => EST.devFits(id, D.id)).at(-1);
+    const r = EST.buildDev(st, id, big.id);
+    if (!r.ok) bad(`building ${big.id} on ${id}: ${r.text}`);
+    if (EST.buildDev(st, id, 'duplex').ok) bad('building over a crew that is still working');
+  }
+  if (EST.buildFence(st, 'land_buffalo', 'wire').ok) bad('a pasture fence over the apartments');
+  st.time.day += 6;
+  EST.finishBuilds(st);
+  if (EST.finishDevs(st).length !== Object.keys(LAND).length) bad('rentals did not finish');
+  applyEstate(map, st);
+  for (const id of Object.keys(LAND)) {
+    const D = DEV_BY_ID[EST.devOf(st, id).id], lot = LOC_BY_ID[id].lot;
+    const mine = map.buildings.filter(b => b.loc === id && (b.devUnit || b.kind === 'store'));
+    if (mine.length !== D.bldgs + (D.pool ? 1 : 0)) bad(`${id}: ${mine.length} rental buildings for ${D.bldgs}`);
+    const rest = map.buildings.filter(b => b.loc === id && !mine.includes(b));
+    for (const b of mine) {
+      if (b.x < lot.x0 || b.z < lot.z0 || b.x + b.w > lot.x1 || b.z + b.d > lot.z1) bad(`${id}: a ${D.id} building sticks out of the lot`);
+      const hit = rest.find(o => o.x < b.x + b.w && o.x + o.w > b.x && o.z < b.z + b.d && o.z + o.d > b.z);
+      if (hit) { bad(`${id}: a ${D.id} building runs into the ${hit.kind}`); break; }
+      if (mine.some(o => o !== b && o.x < b.x + b.w && o.x + o.w > b.x && o.z < b.z + b.d && o.z + o.d > b.z)) { bad(`${id}: two ${D.id} buildings overlap`); break; }
+    }
+    const g = map.garages.find(q => q.id === id);
+    if (g) { g.panel.off = true; for (let i = 0; i <= 40; i++) { const k = i / 40; if (collideCircle(map, g.park.x + (g.center.x - g.park.x) * k, g.park.z + (g.center.z - g.park.z) * k, 1.1)) { bad(`${id}: rentals block the garage`); break; } } }
+  }
+  // the first morning: tenants sign, rent less upkeep goes in the bank
+  const id = 'land_buffalo', d = EST.devOf(st, id), D = DEV_BY_ID[d.id];
+  const bank0 = st.bank, day = EST.estateDay(st);
+  if (!(d.leased > 0 && d.leased <= EST.devUnits(D))) bad(`${d.leased} leased after the first morning`);
+  if (!(day.rent > 0) || st.bank - bank0 !== day.rent) bad(`rent paid ${day.rent}`);
+  for (let k = 0; k < 10; k++) EST.rentDay(st, () => 0.99);
+  if (d.leased !== Math.round(EST.devUnits(D) * 0.94)) bad(`market rent should settle at 94% leased, got ${d.leased}/${EST.devUnits(D)}`);
+  EST.setRent(st, id, 'low'); for (let k = 0; k < 5; k++) EST.rentDay(st, () => 0.99);
+  if (d.leased !== EST.devUnits(D)) bad('below-market rent should fill every unit');
+  const low = EST.rentRoll(st, id).gross; EST.setRent(st, id, 'high');
+  if (!(EST.rentRoll(st, id).gross > low)) bad('top dollar should bring in more per day on the same tenants');
+  for (let k = 0; k < 3; k++) EST.rentDay(st, () => 0);
+  if (!(d.leased < EST.devUnits(D))) bad('tenants should move out');
+  // a land with rentals is worth more, and building something else knocks it down
+  const v0 = EST.landValue(st, 'land_stopsix');
+  if (!(v0 > EST.landValue(st, 'land_six_bunche') - 1e9) || !(v0 > LAND.land_stopsix.price)) bad('land value should count the rentals');
+  const swap = DEVS.find(x => x.id !== EST.devOf(st, 'land_stopsix').id && EST.devFits('land_stopsix', x.id));
+  if (!(EST.devCost(st, 'land_stopsix', swap.id) < swap.price) || !EST.buildDev(st, 'land_stopsix', swap.id).ok) bad('replacing rentals should credit the old build');
+  if (EST.devOf(st, 'land_stopsix').leased !== 0) bad('new rentals start empty');
+  if (!EST.tearDownDev(st, 'land_stopsix').ok || EST.devOf(st, 'land_stopsix')) bad('tearing down rentals');
+  // livestock out back blocks it
+  EST.tearDownDev(st, 'land_nolan'); EST.buildFence(st, 'land_nolan', 'wire'); EST.buyAnimal(st, 'land_nolan', 'cow', 2);
+  if (EST.buildDev(st, 'land_nolan', 'duplex').ok) bad('rentals over a herd of cows');
+  // tier gates the big ones
+  const rookie = createState({ name: 'R', age: 22, look: {}, story: false }); rookie.cash = 1e8; EST.buyLand(rookie, 'land_bluebonnet');
+  if (EST.buildDev(rookie, 'land_bluebonnet', 'complex').ok) bad('a tier-1 player built a 120-unit complex');
+  // other players see it: the build carries the dev, cleaned
+  const cb = cleanBuild('land_crosscreek', { land: { dev: 'garden', fence: 'wire' } });
+  if (cb?.land?.dev !== 'garden' || cb.land.fence) bad('a shared build should carry the rentals');
+  if (cleanBuild('land_crosscreek', { land: { dev: 'casino' } })?.land?.dev) bad('a made-up development got through');
+  const other = createState({ name: 'O', age: 25, look: {}, story: false });
+  setForeignLand({ land_crosscreek: { name: 'Dre', land: cb.land } });
+  applyEstate(map, other);
+  const theirs = map.buildings.filter(b => b.loc === 'land_crosscreek' && b.devUnit);
+  if (theirs.length !== DEV_BY_ID.garden.bldgs || !theirs.some(b => b.label === "Dre's Apartments")) bad(`another player's apartments: ${theirs.length} buildings`);
+  setForeignLand({}); applyEstate(map, other);
+  if (map.buildings.some(b => b.devUnit)) bad('rentals stayed up after loading another career');
   for (const id of Object.keys(LAND)) delete PROPERTIES[id];
   game.s = null;
 }
@@ -1456,11 +1540,33 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!collideCircle(map, W.DTRINITY_X, W.HWY_Z - 120, 1)) bad('the Trinity in Dallas should be water');
   // the corridor is open, the land past it is not
   if (collideCircle(map, 3500, -1800, 1)) bad('the I-30 corridor north of the freeway should be open');
-  if (!collideCircle(map, 5000, 600, 1) || !collideCircle(map, W.DALLAS_ZONE.x1 + 50, -1350, 1)) bad('the world should end past Dallas');
+  { const { TEXAS: TX } = await import('../js/data/metro.js');
+    if (!collideCircle(map, TX.x1 + 50, -1350, 1) || !collideCircle(map, TX.x1 + 50, 3000, 1)) bad('the world should end past Dallas'); }
+  // the big map: every town place has a building beside it, is off the street, and the GPS drives you there from downtown
+  { const { TOWN_BY_ID: TB } = await import('../js/data/metro.js');
+    for (const l of W.LOCATIONS.filter(l => l.city && TB[l.city])) {
+      if (!map.buildings.some(b => (!b.noCollide || b.kind === 'canopy') && l.x > b.x - 14 && l.x < b.x + b.w + 14 && l.z > b.z - 14 && l.z < b.z + b.d + 14)) bad(`${l.id}: no building beside it`);
+      if (collideCircle(map, l.x, l.z, 1)) bad(`${l.id}: the marker is blocked`);
+      if (l.state) continue;
+      const r = R.routeBetween(0, 0, l.x, l.z);
+      if (!r?.names?.some(Boolean) || r.meters > 30000) bad(`${l.id}: no road from downtown (${r?.meters})`);
+    }
+    for (const [x, z, what] of [[-9600, 2400, 'Stephenville'], [8000, -7600, 'McKinney'], [8400, 3800, 'Ennis'], [-5000, -1350, 'I-20 west']]) {
+      const r = R.routeBetween(0, 0, x, z);
+      if (!r?.names?.some(Boolean) || r.path.length < 4) bad(`no road from Fort Worth to ${what}`);
+    }
+  }
   // the neighbourhoods
   for (const [x, z, d] of [[5100, -1580, 'Downtown Dallas'], [5950, -1580, 'Deep Ellum'], [5550, -1950, 'Uptown'], [4950, -1000, 'Oak Cliff'], [5850, -1000, 'South Dallas'], [4800, -1880, 'West Dallas'], [3800, -1300, 'Arlington']])
     if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
   if (W.districtAt(1800, -420) !== 'Stop Six' || W.districtAt(0, 0) !== 'Downtown') bad('Fort Worth districts moved');
+  // the west side runs Arlington Heights, Como, TCU, North Crowley, Crowley; Poly is east of the Southside
+  for (const [x, z, d] of [[-650, -450, 'Arlington Heights'], [-650, 150, 'Como'], [-650, 450, 'TCU'], [-650, 680, 'North Crowley'], [-650, 900, 'Crowley'], [650, 450, 'Poly'], [650, -200, 'Riverside Industrial']])
+    if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
+  for (const [id, d] of [['dickies_arena', 'Arlington Heights'], ['tcu', 'TCU'], ['virl_studios', 'Downtown'], ['corner_como', 'Como']])
+    if (W.districtAt(W.LOC_BY_ID[id].x, W.LOC_BY_ID[id].z) !== d) bad(`${id} should be in ${d}`);
+  { const { STUDIOS } = await import('../js/data/label.js'); const v = STUDIOS.virl_studios, ids = Object.keys(STUDIOS);
+    if (ids[0] !== 'virl_studios' || Object.values(STUDIOS).some(st => st !== v && st.q >= v.q)) bad('VirL Studios should be the top studio'); }
   // mechanic shops: Fort Worth, Johnson County, Arlington and Dallas, every one with a building and a way in
   const shops = LOCATIONS.filter(l => l.type === 'repair');
   if (shops.length < 9) bad(`only ${shops.length} mechanic shops`);
@@ -1507,9 +1613,10 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const e of oval) for (let t = 0.05; t < 1; t += 0.1) if (collideCircle(map, e.ax + (e.bx - e.ax) * t, e.az + (e.bz - e.az) * t, 1.5)) { bad(`the oval is blocked on ${e.ax},${e.az}`); break; }
   // open up north, closed past it; the lake is water
   if (collideCircle(map, 600, -4000, 1) && collideCircle(map, 600, -3990, 1)) bad('Alliance should be open');
-  if (!collideCircle(map, 0, W.NORTH.z0 - 50, 1) || !collideCircle(map, W.NORTH.x0 - 100, -5000, 1) || !collideCircle(map, W.NORTH.x1 + 50, -5000, 1)) bad('the world should end past North Texas');
+  { const { TEXAS: TX } = await import('../js/data/metro.js');
+    if (!collideCircle(map, 0, TX.z0 - 50, 1) || !collideCircle(map, TX.x0 - 50, -5000, 1) || !collideCircle(map, TX.x1 + 50, -5000, 1) || !collideCircle(map, 0, TX.z1 + 50, 1)) bad('the world should end past North Texas'); }
   if (!collideCircle(map, (W.LEWISVILLE.x0 + W.LEWISVILLE.x1) / 2, -6000, 1)) bad('Lake Lewisville should be water');
-  if (W.districtAt(-2000, -2000) !== 'Loop 820' && W.districtAt(-2000, -2000) !== 'Cross Timbers') bad(`north of 820 out west moved: ${W.districtAt(-2000, -2000)}`);
+  if (W.districtAt(-2000, -2000) !== 'Loop 820' && W.districtAt(-2000, -2000) !== 'Lake Worth') bad(`north of 820 out west moved: ${W.districtAt(-2000, -2000)}`);
   for (const [x, z, d] of [[675, -6475, 'The Square'], [225, -6300, 'UNT'], [675, -6900, 'TWU'], [900, -5900, 'Southeast Denton'], [600, -5075, 'Texas Motor Speedway'], [2200, -4400, 'Roanoke'], [-500, -3700, 'Alliance'], [1250, -4300, 'Alliance Airport'], [-600, -4250, 'Northlake'], [-700, -5200, 'Argyle'], [2800, -6000, 'Lake Lewisville']])
     if (W.districtAt(x, z) !== d) bad(`(${x}, ${z}) should be ${d}, is ${W.districtAt(x, z)}`);
   // every North Texas business is reachable, with a building and a way in
@@ -1725,6 +1832,67 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (LB.signed(s, a.id) || L.releases[0].earned <= 0) bad('an artist who walks leaves their records behind');
   if (LB.signArtist(s, a.id, 'standard', true).ok) bad('they should not re-sign right away');
   if (LB.chartPos(5e6) !== 1 && LB.chartPos(5e6) > 5) bad('chart');
+
+  // rival labels start with artists of their own, and every rival is real
+  for (const rv of LD.RIVALS) if (LB.rivalRoster(s, rv.id).length < 3) bad(`${rv.id} should start with artists`);
+  // bail goes on the artist's tab and comes back out of their royalties
+  const b = LD.ARTIST_BY_ID[L.known.find(id => !LB.signed(s, id) && !LB.rivalOf(s, id) && !LB.cloutNeeded(LD.ARTIST_BY_ID[id]))];
+  L.cooldown = {};
+  if (!LB.signArtist(s, b.id, 'standard', true).ok) bad('second signing');
+  const br = LB.signed(s, b.id); br.jailed = { day: s.time.day, bail: 8000 };
+  LB.postBail(s, b.id);
+  if (br.debt !== 8000) bad(`bail should be artist debt: ${br.debt}`);
+  L.releases.unshift({ id: 'relX', artist: b.id, title: 'Test', kind: 'album', quality: 80, day: s.time.day, promo: 'none', viral: false, daily: 4e6, peak: 4e6, total: 0, earned: 0, last: 0, sales: 0 });
+  let bank1 = s.bank, p1 = 0;
+  for (let i = 0; i < 2; i++) { s.time.day++; p1 += LB.labelDay(s, () => 0.9).paid; }
+  if (br.debt > 0 || br.wallet <= 0 || s.bank !== bank1 + p1 || L.recouped < 8000) bad(`debt should recoup from royalties: debt ${br.debt}, wallet ${br.wallet}`);
+  // the label fronts a show; it goes on the tab and the door pays it back
+  br.buzz = 30000; br.wallet = 0;
+  if (LB.bookGig(s, b.id, 'arena').ok) bad('arena needs more fans');
+  bank1 = s.bank;
+  const g = LB.bookGig(s, b.id, 'concert');
+  if (!g.ok || s.bank !== bank1 - LD.GIG_BY_ID.concert.front || br.debt !== LD.GIG_BY_ID.concert.front) bad('fronting a concert');
+  if (LB.bookSession(s, 'magnolia_sound', b.id, 'single').ok || LB.bookGig(s, b.id, 'club').ok) bad('busy while on a gig');
+  s.time.day++; const gd = LB.labelDay(s, () => 0.9);
+  if (br.gig || !br.gigs.length || !gd.texts.some(t => /concert is done/.test(t)) || br.gigs[0].total <= 0) bad('settling a concert');
+  // an artist with their own money and no debt pays their own way
+  br.debt = 0; br.wallet = 5000; bank1 = s.bank;
+  if (!LB.bookGig(s, b.id, 'club').ok || s.bank !== bank1 || br.wallet !== 2500 || br.debt !== 0) bad('artist paying for a club show');
+  br.gig = null;
+  // they ask for more money over time; a rival offer you ignore costs you the artist
+  br.nextAsk = s.time.day; br.demand = null;
+  s.time.day++; LB.labelDay(s, () => 0.9);
+  if (!br.demand) bad('artists should ask for more money over time');
+  br.demand = null; br.offer = { rival: 'big_d_ent', amount: 5000, day: s.time.day, until: s.time.day };
+  br.debt = 3000; bank1 = s.bank;
+  s.time.day++; const od = LB.labelDay(s, () => 0.9);
+  if (LB.signed(s, b.id) || LB.rivalOf(s, b.id)?.id !== 'big_d_ent' || !(s.bank >= bank1 + 3000)) bad('ignored offer: artist goes to the rival, rival pays the debt');
+  if (LB.signArtist(s, b.id, 'standard', true).ok) bad('rival-signed artists need a buyout');
+  delete L.cooldown[b.id];
+  if (!LB.signArtist(s, b.id, 'buyout', true).ok || LB.rivalOf(s, b.id)) bad('buying out a rival deal');
+  // the monthly showcase: lineup a week out, beat the rival offer in person, the rest go elsewhere
+  L.roster = L.roster.slice(0, 2); L.showcase = null;
+  s.time.day = LD.MONTH * 3 - 5; LB.labelDay(s, () => 0.5);
+  const sc = L.showcase;
+  if (!sc || sc.day !== LD.MONTH * 3 || sc.lineup.length !== 4) bad('showcase announced a week out');
+  const act = sc.lineup[0];
+  if (LB.signAtShowcase(s, act, true).ok) bad('signing before the showcase night');
+  s.time.day = sc.day; LB.labelDay(s, () => 0.5);
+  if (LB.signAtShowcase(s, act, false).ok) bad('showcase signing needs you there');
+  if (sc.bids[act] && LB.showcasePrice(s, act) <= sc.bids[act].amount) bad('you have to beat the rival offer');
+  if (!LB.signAtShowcase(s, act, true).ok || !LB.signed(s, act)) bad('signing off the showcase');
+  s.time.day++; LB.labelDay(s, () => 0.5);
+  if (!sc.done || sc.lineup.slice(1).some(id => !sc.signed[id] && !L.known.includes(id))) bad('after the showcase');
+  // SoundScan: weeks roll over, everybody gets ranked, units = sales + streams/1500
+  for (let i = 0; i < 8; i++) { s.time.day++; LB.labelDay(s, () => 0.5); }
+  const wk = L.ss.hist[0], rows = wk && LB.ssRows(wk.by);
+  if (!rows?.length || rows.some((x, i) => i && x.u > rows[i - 1].u)) bad('SoundScan week');
+  if (!rows?.some(x => wk.owner[x.id] !== 'you')) bad('SoundScan should rank rival artists too');
+  if (LB.unitsOf([3000, 10]) !== 12) bad('units');
+  // old saves: roster entries from before get the new fields
+  const old = createState({ name: 'Old' }); old.label = { name: 'Old Label', founded: 1, clout: 0, known: ['lil_six'], roster: [{ id: 'lil_six', signedDay: 1, cut: 0.2, advance: 0, buzz: 4000, buzz0: 4000, jailed: null, demand: null, shows: 0 }], sessions: [], releases: [], earned: 0, streams: 0, log: [] };
+  old.time.day += 1; LB.labelDay(old, () => 0.9);
+  if (old.label.roster[0].debt !== 0 || !old.label.ss || !old.label.newcomers.length) bad('an old label save should upgrade');
 }
 // credit scores, loans, car financing, repos (core/credit.js)
 {
@@ -1790,6 +1958,85 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (CR.payment(12000, 0.12, 12) !== 1067) bad('payment math: ' + CR.payment(12000, 0.12, 12));
   game.s = null;
 }
+// the rest of Hogs & Dogs (core/hd*.js, core/hogpin.js, core/horses.js)
+{
+  const DG = await import('../js/core/dogs.js'), HH = await import('../js/core/hoghunt.js'), DD = await import('../js/data/dogs.js');
+  const HK = await import('../js/core/hdkennel.js'), HT = await import('../js/core/hdtrials.js'), HP = await import('../js/core/hogpin.js');
+  const HO = await import('../js/core/horses.js'), RN = await import('../js/core/hdranch.js'), HDc = await import('../js/core/hd.js');
+  const { ESTATE_LOCATIONS } = await import('../js/data/estate.js');
+  const { LOC_BY_ID, COUNTRY } = await import('../js/data/world.js');
+  const fs = await import('fs');
+  const mk = () => { const s = createState({ name: 'HD', age: 25, look: {}, story: false }); s.cash = 2000000; s.time.day = 10; game.s = s; s.estate ??= {}; s.estate.land ??= {}; s.estate.land.land_crosscreek = { owned: true, animals: { cow: 4 } }; return s; };
+  const pack = (s, home = 'land_crosscreek') => { const k = DG.ensureKennel(s); for (const b of ['Black Mouth Cur', 'Plott Hound', 'Treeing Walker', 'American Bulldog', 'American Pit Bull Terrier']) k.dogs.push(DG.makeDog(s, { breed: b, age: 30, home })); return k; };
+  const run = (s, ground, mode, seed, extra = {}) => { const pk = HH.autoPick(s); const r = HH.startHunt(s, ground, pk.bay, pk.ctch, seed, { mode, ...extra }); if (!r.ok) { bad(`${mode} hunt would not start: ${r.text}`); return null; } let n = 0; while (!r.hunt.over && n++ < 100000) { HH.autoHunter(r.hunt); HH.step(r.hunt, 0.05); } return HH.settleHunt(s, r.hunt); };
+  // the Bay Pen and the Expo Center are in Johnson County, clear of every other lot
+  for (const id of ['bay_pen', 'expo']) {
+    const l = LOC_BY_ID[id];
+    if (!l || l.z < COUNTRY.z0 || l.x < COUNTRY.x0 || l.x > COUNTRY.x1) { bad(`${id} is not in Johnson County`); continue; }
+    for (const o of ESTATE_LOCATIONS) if (o.id !== id && o.lot.x0 < l.lot.x1 && o.lot.x1 > l.lot.x0 && o.lot.z0 < l.lot.z1 && o.lot.z1 > l.lot.z0) bad(`${id} overlaps ${o.id}`);
+  }
+  // pictures: the horse and hog masters ship with the game
+  const { HORSE_MASTERS, HG } = await import('../js/gfx2d/horseArt.js'), { HOG_MASTERS } = await import('../js/gfx2d/hogArt.js');
+  for (const M of [...Object.values(HORSE_MASTERS), ...Object.values(HOG_MASTERS)]) for (const f of Object.values(M.maps)) if (!fs.existsSync(f)) bad(`missing ${f}`);
+  // the 8 new breeds and the 100 named mixes
+  if (HK.MIXES.length !== 100 || HK.MIXES.some(m => !DD.BREEDS[m.A] || !DD.BREEDS[m.B])) bad('100 mixes, every parent a real breed');
+  const s = mk(), k = pack(s);
+  const m0 = HK.MIXES[0], a = DG.makeDog(s, { breed: m0.A, sex: 'M', age: 24 }), b = DG.makeDog(s, { breed: m0.B, sex: 'F', age: 24 });
+  if (!m0.need.length) { const p = DG.makePuppy(s, a, b); if (!HK.pairRecipes(a, b).some(r => r.id === p.mix?.id) || !HK.mixBook(s)[p.mix?.id]) bad(`${m0.A} × ${m0.B} should make a named breed`); }
+  // shows: a grown dog enters this week's local show and places
+  const sh = HT.enterShow(s, k.dogs[0].id, 'local', { gait: 'steady', stack: 'hand', bait: 'bait' });
+  if (!sh.ok || !(sh.res.place >= 1 && sh.res.place <= 6) || HT.enterShow(s, k.dogs[0].id, 'local', {}).ok) bad('dog show: enter once a week');
+  // the bay pen: a practice trial runs 60 seconds and scores out of 40
+  const bp = HT.startBayPractice(s, k.dogs[1].id);
+  if (!bp.ok) bad('bay pen practice'); else { while (bp.B.t < HT.BAYT.SECS) HT.bayTick(bp.B); HT.finishBayPractice(s, bp.B); if (!(bp.B.tot >= 0 && bp.B.tot <= 40 && bp.B.place >= 1)) bad('bay pen score'); }
+  const sc = HT.startSanctioned(s, 'one', [k.dogs[2].id]);
+  if (!sc.ok) bad('sanctioned trial: ' + sc.text); else { while (!HT.sanctionedOver(sc.B)) HT.sanctionedTick(sc.B); HT.finishSanctioned(s, sc.B); if (!(sc.B.tot >= 0 && sc.B.tot <= 10)) bad('sanctioned score'); }
+  const ct = HT.enterCatchTrial(s, k.dogs[3].id); if (!ct.ok || HT.enterCatchTrial(s, k.dogs[4].id).ok) bad('catch trial: once a week');
+  // every hunt mode brings something home over a few tries
+  for (const mode of ['night', 'coon', 'squirrel', 'rabbit', 'blood']) {
+    let got = 0;
+    for (let i = 0; i < 6; i++) { const s2 = mk(); pack(s2); const sum = run(s2, 'nolan', mode, 300 + i, RN.huntOpts(s2, mode)); got += sum?.hogs.length || 0; if (sum && !(sum.pay >= 0)) bad(`${mode} pay`); }
+    if (!got) bad(`six ${mode} hunts took nothing`);
+  }
+  // after a hunt: keep a hog in the pin, sell one live, tag one; the pin feeds and grows them
+  let sum = null;
+  for (let i = 0; i < 10 && !(sum?.hogs.length >= 3); i++) { const s3 = mk(); pack(s3); sum = run(s3, 'cedar', 'hog', 500 + i); if (sum?.hogs.length >= 3) { Object.assign(s, s3); game.s = s; } }
+  if (!(sum?.hogs.length >= 3)) bad('no 3-hog hunt to test the Hog Pin with');
+  else {
+    const kept = HP.keepHog(s, sum.hogs[0], 'cedar'), live = HP.sellLive(s, sum.hogs[1], 'cedar'), tag = HP.tagHog(s, sum.hogs[2], 'cedar');
+    if (!kept.ok || !live.ok || !tag.ok || HP.keepHog(s, sum.hogs[0], 'cedar').ok) bad(`after the hunt: ${kept.text} / ${live.text} / ${tag.text}`);
+    const hog = HP.pinHogs(s)[0], w0 = hog?.w;
+    for (let d = 0; d < 3; d++) { s.time.day++; DG.dogsDay(s); }
+    if (!hog || !(hog.w >= w0) || hog.age < 3) bad('pin hogs should eat and grow');
+    if (HP.pinCap(s) !== 20) bad('country land holds 20 pin hogs');
+  }
+  // horses: country land has stalls, the market sells, same-breed breeding foals
+  const hs = mk(); hs.time.day = 10;
+  if (HO.stalls(hs) !== 6) bad('6 stalls on country land');
+  for (const x of HO.horseMarket(hs, true)) HO.buyHorse(hs, x.id);
+  const herd = HO.horses(hs);
+  if (!herd.length || herd.some(x => !x.coat || !x.genes)) bad('bought horses should have coats and genes');
+  // a foal: a mare bred to a stallion of her breed foals on her due day
+  const st = HG.create('Quarter Horse', { sex: 'M', age: 48 }), mare = HG.create('Quarter Horse', { sex: 'F', age: 48 });
+  HDc.ensureHd(hs).horses.splice(0, 9, st, mare);
+  if (!HO.breedHorses(hs, st.id, mare.id).ok) bad('horse breeding');
+  for (let d = 0; d < 12; d++) { hs.time.day++; DG.dogsDay(hs); }
+  if (!HO.horses(hs).some(x => x.parents?.length === 2)) bad('no foal 12 days after breeding');
+  // the fair: four times a year, one entry per event
+  while (!HO.fairOpen(hs.time.day)) hs.time.day++;
+  const fe = HO.enterFair(hs, 'barrel', herd.find(HO.isGrown)?.id);
+  if (!fe.ok || HO.enterFair(hs, 'barrel', herd[0].id).ok) bad('fair: barrel racing once per fair ' + fe.text);
+  const au = HO.fairAuction(hs);
+  if (!au.ok || hs.estate.land.land_crosscreek.animals.cow) bad('fair cattle auction ' + au.text);
+  // gear, cams, traps, jobs
+  const gs = mk(); pack(gs);
+  if (!RN.buyGear(gs, 'rifle').ok || RN.buyGear(gs, 'rifle').ok || !RN.buyCam(gs, 'nolan').ok || !RN.buyTrap(gs, 'land_crosscreek').ok) bad('gear, trail cam, trap');
+  const jb = RN.jobBoard(gs); if (jb.length !== 3 || !RN.takeJob(gs, jb[0].id).ok) bad('job board');
+  for (let d = 0; d < 20; d++) { gs.time.day++; DG.dogsDay(gs); }
+  if (!(RN.traps(gs).land_crosscreek.caught > 0)) bad('the corral trap never caught a hog in 20 days');
+  if (!RN.registerDog(gs, DG.ensureKennel(gs).dogs[0].id).ok) bad('papers');
+  game.s = null;
+}
 // ---- the rest of the Penal Code, murder is life, TDCJ (data/charges.js, core/prison.js) ----
 {
   const J = await import('../js/core/justice.js');
@@ -1850,6 +2097,185 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const p3 = PR.enterPrison(s3, sent, {});
   const h = PR.hustle(s3, () => 0);
   if (!h.caught || p3.years !== 5 || !s3.justice.convictions.length) bad('caught hustling: new case and +2 years ' + JSON.stringify(h));
+}
+{
+  // regulars on a quiet server (net/bots.js): the same people in the same places on every phone
+  const BT = await import('../js/net/bots.js');
+  const { buildRoads } = await import('../js/world2d/roads.js');
+  const bm = BT.botMap(buildRoads());
+  if (bm.nodes.length < 100 || bm.spots.length < 10) bad(`regulars have too little of Fort Worth to drive: ${bm.nodes.length} corners, ${bm.spots.length} spots`);
+  const day = 1760000000 - 1760000000 % 86400;
+  let total = 0, empty = 0;
+  for (let m = 0; m < 24 * 60; m += 10) {
+    const t = day + m * 60, on = BT.botsOn('eastgate', t, 0);
+    total += on.length; if (on.length < 1) empty++;
+    if (JSON.stringify(on) !== JSON.stringify(BT.botsOn('eastgate', t, 0))) bad('who is on must not change between phones');
+    if (on.length > BT.MAX_SHOWN) bad('too many regulars on at once: ' + on.length);
+    if (BT.botsOn('eastgate', t, 14).length) bad('regulars must make room once real players fill a server');
+  }
+  if (empty > 4) bad(`Eastgate is empty ${empty} times out of 144`);
+  if (total / 144 < 3) bad('Eastgate is too quiet: ' + (total / 144).toFixed(1) + ' on average');
+  const names = new Set();
+  for (const sv of SERVERS) for (let k = 0; k < BT.SLOTS * 4; k++) {
+    const pp = BT.persona(sv.id, k);
+    if (!/^[\w .'\-]{2,16}$/.test(pp.name)) bad('regular has a name the network would mangle: ' + pp.name);
+    if (!pp.model || pp.model.rig) bad('regular drives no car / a big rig: ' + pp.name);
+    if (pp.crew && !/^[A-Z0-9]{2,4}$/.test(pp.crew.tag)) bad('bad crew tag ' + pp.crew.tag);
+    if (JSON.stringify(pp) !== JSON.stringify(BT.persona(sv.id, k))) bad('a regular must look the same on every phone');
+    names.add(pp.name);
+  }
+  if (names.size < SERVERS.length * BT.SLOTS * 2) bad('regulars repeat names too much: ' + names.size);
+  const pp = BT.persona('eastgate', 3);
+  const plan = BT.makePlan(bm, 4242, pp, 1800);
+  if (JSON.stringify(plan) !== JSON.stringify(BT.makePlan(bm, 4242, pp, 1800))) bad('a route must come out the same on every phone');
+  if (plan[plan.length - 1].t1 < 1800) bad('route runs out early');
+  let prev = null, jump = 0, fast = 0, foot = 0, out = 0;
+  for (let t = 0; t < 1800; t += 0.25) {
+    const a = BT.planAt(plan, t);
+    if (prev) jump = Math.max(jump, Math.hypot(a.x - prev.x, a.z - prev.z) - a.v * 0.25);
+    fast = Math.max(fast, a.v); if (!a.inCar) foot++;
+    if (a.x < -1400 || a.x > 2100 || a.z < -1500 || a.z > 1400) out++;
+    prev = a;
+  }
+  if (jump > 5) bad('regular jumps along the route: ' + jump.toFixed(1) + ' m');
+  if (fast > 45 || fast < 10) bad('regular drives at a silly top speed: ' + fast.toFixed(1));
+  if (!foot) bad('regular never gets out of the car');
+  if (out) bad('regular left Fort Worth');
+  const local = BT.makePlan(bm, 7, pp, 300, { x: 120, z: 40, h: 1.2, v: 12 });
+  const a0 = BT.planAt(local, 0);
+  if (Math.hypot(a0.x - 120, a0.z - 40) > 0.1 || Math.abs(a0.v - 12) > 0.1) bad('a regular driving off on their own must start where they are');
+}
+{
+  // street beef and opps with the regulars (core/opps.js, net/beef.js)
+  const O = await import('../js/core/opps.js');
+  const BT = await import('../js/net/bots.js');
+  const BF = await import('../js/data/beefTalk.js');
+  const s = createState({ name: 'Beefy', age: 25, look: {}, story: false });
+  let k = 0; const rng = () => ((k = (k * 9301 + 49297) % 233280) / 233280);
+  const key = O.oppKey('eastgate', 5), name = BT.persona('eastgate', 5).name;
+  const msgs0 = s.messages.length, feed0 = (s.feed || []).length;
+  let out = O.addBeef(s, key, name, 12, { rng });
+  if (out.r.opp || out.posted) bad('one bit of trash talk must not make an opp or a post');
+  out = O.addBeef(s, key, name, 15, { rng });
+  if (!out.posted || s.feed.length !== feed0 + 1 || s.feed[0].handle !== O.handleOf(name)) bad('salty regular must post about you on Throttle');
+  out = O.addBeef(s, key, name, 25, { rng });
+  if (!out.texted || s.messages.length !== msgs0 + 1 || s.messages[0].action?.type !== 'opp') bad('heated regular must text you with answers');
+  if (O.oppOptions(s, key).map(o => o.id).join() !== 'opp,post,squash') bad('opp text options');
+  const why = O.answerOpp(s, s.messages[0], 'opp', 0.5, rng);
+  if (why || !O.isOpp(s, key) || O.opps(s).length !== 1) bad('pull up then must make them your opp: ' + why);
+  if (s.messages[0].action?.type !== 'opp' || s.messages[0].from !== name) bad('your new opp texts you');
+  // beef that never became opps cools off; opps don't
+  const k2 = O.oppKey('eastgate', 7);
+  O.addBeef(s, k2, 'Somebody', 15, { rng });
+  s.time.day += 3; O.coolOff(s);
+  if (O.beefWith(s, k2)) bad('small beef should cool off after a few days');
+  if (!O.isOpp(s, key)) bad('an opp stays an opp until squashed');
+  // you start it
+  const k3 = O.oppKey('eastgate', 9);
+  const st = O.startBeef(s, k3, 'Other', 'post', rng);
+  if (!s.feed.some(p => p.mine && p.text.includes('other'))) bad('posting on someone puts it on your Throttle');
+  if (st.r.heat !== 45) bad('posting on them is +45 heat');
+  O.startBeef(s, k3, 'Other', 'opp', rng);
+  if (!O.isOpp(s, k3)) bad('make them your opp works straight away');
+  // slides go on the record; squashing a hothead the same day fails, a calm one can work
+  O.afterSlide(s, key, { hitYou: true, rng });
+  if (O.beefWith(s, key).slid !== 1 || O.beefWith(s, key).hits !== 1 || s.opps.stats.slid !== 1) bad('slide record');
+  const no = O.squash(s, key, 1, () => 0.99);
+  if (!no || !O.isOpp(s, key)) bad('a hothead should not squash it');
+  if (!O.squash(s, key, 0, () => 0)) bad('only one try a day');
+  s.time.day += 1;
+  if (O.squash(s, key, 0, () => 0) || O.beefWith(s, key)) bad('a calm opp can squash it the next day');
+  // shooting first: dropping somebody makes them your opp
+  O.smokedThem(s, O.oppKey('glory', 2), 'Shot', rng);
+  if (!O.isOpp(s, O.oppKey('glory', 2))) bad('dropping a regular makes them your opp');
+  for (const [n, list] of Object.entries(BF)) if (Array.isArray(list) && (!list.length || list.some(l => typeof l !== 'string' || !l.trim()))) bad('empty beef line in ' + n);
+  if (!BF.INSULT.test('you lame bro') || BF.INSULT.test('yo whats good')) bad('insult check');
+  // an opp coming to find you drives the roads
+  const { buildRoads } = await import('../js/world2d/roads.js');
+  const bm = BT.botMap(buildRoads());
+  const pp = BT.persona('eastgate', 5);
+  const plan = BT.chasePlan(bm, pp, { x: 200, z: 100, h: 0, v: 10 }, 900, -400, 11);
+  const end = BT.planAt(plan, plan[plan.length - 1].t1);
+  if (!plan.length || Math.hypot(end.x - 900, end.z + 400) > 80) bad('chase plan should end near you: ' + JSON.stringify(end));
+}
+// walls in the builder, stairs that open the next floor, big ranches, and flights out of state
+{
+  const HM = await import('../js/core/homes.js');
+  const HD = await import('../js/data/homes.js');
+  const d = HM.blankDesign();
+  HM.paint(d, 0, 0, 0, 5, 4, 'L');
+  const base = HM.cost(d);
+  if (HM.drawWall(d, 0, 3, 0, 3, 5, 'door') !== 5 || HM.wallAt(d, 0, 'v', 3, 2) !== 'door' || HM.edgeType(d, 0, 'v', 3, 2) !== 'inner') bad('drawing a wall of doors down the middle of a room');
+  if (HM.drawWall(d, 0, 0, 0, 6, 0, 'window') !== 6 || HM.edgeType(d, 0, 'h', 2, 0) !== 'outer') bad('a row of windows along the front');
+  if (HM.drawWall(d, 0, 10, 8, 14, 8, 'wall')) bad('a wall out in the yard with no floor next to it');
+  if (!(HM.cost(d) > base)) bad('walls should cost money');
+  const kept = HM.sanitize(JSON.parse(JSON.stringify(d)));
+  if (HM.allWalls(kept).length !== 11) bad(`walls should survive a save (${HM.allWalls(kept).length})`);
+  if (HM.drawWall(d, 0, 3, 0, 3, 5, '.') !== 5 || HM.allWalls(d).length !== 6) bad('erasing a line of wall');
+  if (HM.drawWall(d, 1, 0, 0, 3, 0, 'wall')) bad('walls upstairs before there are stairs');
+  for (const id of ['stairs', 'spiral', 'elevator']) {
+    const e = HM.blankDesign(); HM.paint(e, 0, 0, 0, 5, 4, 'L');
+    const r = HM.place(e, 0, id, 2, 2);
+    if (!r.ok || r.opened !== 1 || !HM.floorOpen(e, 1)) bad(`${id} should open the 2nd floor`);
+  }
+  if (HD.MAX_FLOORS < 5) bad('five floors');
+  if (HM.sanitize({ floors: ['L'.repeat(HD.GW * HD.GD)], furn: [[]], walls: [[{ o: 'q', x: 99, y: -1, k: 'nope' }, { o: 'h', x: 1, y: 0, k: 'glass' }]] }).walls[0].length !== 1) bad('sanitize should drop bad walls');
+}
+{
+  const { homesite, acresOf } = await import('../js/core/estate.js');
+  const { ESTATE_LOCATIONS } = await import('../js/data/estate.js');
+  const { BRAZOS, inBrazos, districtAt: dAt } = await import('../js/data/world.js');
+  const huge = ESTATE_LOCATIONS.filter(l => LAND[l.id]?.huge);
+  if (huge.length < 4 || Math.min(...huge.map(l => acresOf(l.id))) < 400 || Math.max(...huge.map(l => acresOf(l.id))) < 1000) bad('ranches from 400 to 1,000 acres');
+  for (const l of huge) {
+    const r = l.lot, acres = (r.x1 - r.x0) * (r.z1 - r.z0) / 4047, h = homesite(l);
+    if (Math.abs(acres - acresOf(l.id)) / acresOf(l.id) > 0.15) bad(`${l.id}: sold as ${acresOf(l.id)} acres, the lot is ${acres.toFixed(0)}`);
+    if (!inBrazos(l.x, l.z) || !['Bosque County', 'Hill County', 'Brazos River'].includes(dAt(l.x, l.z))) bad(`${l.id} isn't out in Brazos country`);
+    if (h.x0 < r.x0 - 1 || h.x1 > r.x1 + 1 || h.z0 < r.z0 - 1 || h.z1 > r.z1 + 1 || (h.x1 - h.x0) * (h.z1 - h.z0) > 60000) bad(`${l.id}: the homesite should be a corner by the gate`);
+    if (LAND[l.id].price < 1e6) bad(`${l.id} is too cheap for ${acresOf(l.id)} acres`);
+  }
+  if (!(BRAZOS.z1 > 9000)) bad('Brazos country should run south past 9 km');
+}
+{
+  const { LOC_BY_ID } = await import('../js/data/world.js');
+  const { FREIGHT, TEXAS, route } = await import('../js/data/states.js');
+  const D = await import('../js/core/drugs.js');
+  const map = buildMap();
+  const ids = ['tx', ...STATE_IDS];
+  for (const a of ids) for (const b of ids) if (a !== b) {
+    const q = flightQuote(a, b, true);
+    if (!q || q.total !== q.ticket + FREIGHT || !(q.minutes > 60)) bad(`flight ${a} to ${b}`);
+    if (flightQuote(a, b, false).total !== route(a, b).ticket) bad(`flight ${a} to ${b} without a car`);
+  }
+  if (stateAt(0, 0) !== 'tx' || stateAt(LOC_BY_ID[TEXAS.airport].x, LOC_BY_ID[TEXAS.airport].z) !== 'tx') bad('Fort Worth is in Texas');
+  for (const st of Object.values(STATES)) {
+    const air = LOC_BY_ID[st.airport];
+    if (!air || air.type !== 'airport' || stateAt(air.x, air.z) !== st.id) bad(`${st.city} has no airport`);
+    const here = LOCATIONS.filter(l => l.city === st.id);
+    if (here.length < 10) bad(`${st.city}: only ${here.length} places`);
+    if (!here.some(l => l.type === 'plug' && l.rate < 1)) bad(`${st.city}: no cheap plug`);
+    for (const l of here) {
+      if (stateAt(l.x, l.z) !== st.id) bad(`${l.id} isn't in ${st.city}`);
+      const r = map.roads.routeBetween(air.x, air.z, l.x, l.z);
+      if (!r?.path?.length || r.meters > 6000) bad(`${l.id}: no road from the ${st.city} airport (${r?.meters})`);
+    }
+    // walled in: you can't drive out of town toward Texas
+    const reg = regionRect(st), mid = (reg.z0 + reg.z1) / 2;
+    let leaked = true;
+    for (let x = reg.x0 + 30; x > reg.x0 - 80; x -= 2) if (collideCircle(map, x, mid, 1.2)) { leaked = false; break; }
+    if (leaked) bad(`${st.city}: no wall on the west edge`);
+  }
+  // a cheap plug buys back cheap: no flipping it right back to him for a profit
+  const s = createState({ name: 'Flyer', age: 25, look: {}, story: false });
+  game.s = s; s.cash = 1e6;
+  for (const id of ['lean', 'powder', 'loud']) {
+    const rate = 0.55;
+    if (!(D.plugPrice(s, id, rate) < D.plugPrice(s, id))) bad(`${id} should be cheaper out of state`);
+    const before = s.cash + s.bank;
+    D.buy(s, id, 4, rate); D.dump(s, id, 4, rate);
+    if (s.cash + s.bank > before) bad(`${id}: buying and dumping at the same plug made money`);
+  }
+  game.s = null;
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

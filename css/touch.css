@@ -26,6 +26,7 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, .45); transition: transform .05s, background .05s, border-color .05s;
 }
 #touch .tc-btn.on { transform: scale(.93); background: rgba(255, 255, 255, .26); border-color: rgba(255, 255, 255, .6); }
+#touch .tc-run.locked { background: rgba(255, 210, 58, .8); border-color: #ffd23a; color: #111; }
 #touch .tc-round { width: calc(var(--u) * 58); height: calc(var(--u) * 58); border-radius: 50%; }
 #touch .tc-round.tc-sm { width: calc(var(--u) * 46); height: calc(var(--u) * 46); font-size: calc(var(--u) * 10.5); letter-spacing: .03em; }
 #touch .tc-use { border-color: rgba(224, 25, 46, .85); background: rgba(150, 14, 30, .55); }

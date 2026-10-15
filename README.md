@@ -174,6 +174,14 @@ Play it: https://ktanks811-afk.github.io/Roll-For-Glory/
   at the VTEC crossover, turbos whistle and flutter, Roots and twin-screw
   blowers whine differently, and EVs hum a motor whine. Exhaust parts make it
   louder, brighter and raspier, and from stage 2 it burbles on the overrun.
+- **Weather and a city you can hear.** Rain slants harder the windier it
+  gets and splashes on the street, your tires throw spray on wet roads, and a
+  close lightning strike cracks right away while a far one rumbles in late.
+  Rain drums on your roof in the car and goes muffled indoors, wind gusts,
+  the city hums (quietest after 2 AM), cars roll past with a doppler swoosh,
+  and now and then you hear a horn, a siren across town, somebody bumping bass,
+  dogs and crickets at night and birds in the morning. Settings has a World
+  sounds slider. On iPhone, sound starts after your first tap.
 - **Loud exhausts get you pulled over.** Every exhaust part has a real dB
   rating. Cat-backs add a few dB, long tube headers add 15–20, and long tubes
   with straight pipes add over 20 and make the car way louder (in the mix too).
@@ -376,7 +384,7 @@ in the car.
 | Walking | |
 | --- | --- |
 | Move | Joystick (bottom left) |
-| Run | Hold RUN |
+| Run | Tap RUN to keep running (tap again to walk), or hold it |
 | Shops, homes, meets | USE |
 | Get in your car | GET IN (stand next to it) |
 | Draw / holster, fire, reload a gun | ARM, FIRE, RE-LOAD (appear once you own a gun) |

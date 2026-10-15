@@ -8,6 +8,7 @@ import { ROADS } from '../data/world.js';
 import { buildSpec } from '../sim/powertrain.js';
 import { Race } from '../race2d/race.js';
 import { online } from '../net/online.js';
+import { bots } from '../net/bots.js';
 import { pvp, RaceLink, PVP_ROLLS, PVP_DISTS, PVP_WAGERS } from '../net/pvp.js';
 import { audio } from '../core/audio.js';
 
@@ -97,8 +98,9 @@ export function openChallenge(app, peer) {
 async function start(app, peer, cfg, rid, host) {
   const s = game.s, car = activeCar(s);
   closeAllPanels();
-  const link = new RaceLink(rid, host, peer.name);
-  try { await link.open(); } catch (e) { toast(`Couldn't open the race: ${e.message}`, 'bad'); return; }
+  // one of the regulars (net/bots.js) drives their own car right here
+  const link = peer.bot ? null : new RaceLink(rid, host, peer.name);
+  if (link) try { await link.open(); } catch (e) { toast(`Couldn't open the race: ${e.message}`, 'bad'); return; }
   const roadKey = cfg.type === 'drag' ? 'strip' : 'highway';
   const road = ROADS[roadKey];
   const tier = tierOf(s.rep).n;
@@ -113,11 +115,12 @@ async function start(app, peer, cfg, rid, host) {
     type: cfg.type, road: roadKey, dist: cfg.dist, roll: cfg.roll, wager: cfg.wager, tier,
     trafficDensity: cfg.type === 'drag' ? 0 : 0.3,
     player: { name: s.player.name, car, model: modelOf(car), spec: carSpec(car), visual: car.visual, levels: levels(car), cond: car.cond, skill: 1 },
-    npc: { name: peer.name, car: null, model: peer.model, spec: buildSpec(peer.model, peer.levels, {}), visual: peer.visual, levels: peer.levels, cond: {}, skill: 0 },
-    link,
+    npc: { name: peer.name, car: null, model: peer.model, spec: buildSpec(peer.model, peer.levels, {}), visual: peer.visual, levels: peer.levels, cond: {}, skill: peer.bot ? peer.skill : 0 },
+    link: link || undefined,
     onDone: r => {
       clearInterval(alive);
-      link.close();
+      link?.close();
+      if (peer.bot) bots.raced(peer.id, !!r.won);
       if (r.reason === 'noshow') { toast(`${peer.name} never pulled up. No race.`, 'info'); enterWorld(); return; }
       if (r.forfeit && r.won) toast(`${peer.name} dropped out. The win is yours.`, 'good');
       results(app, resultCfg, r);

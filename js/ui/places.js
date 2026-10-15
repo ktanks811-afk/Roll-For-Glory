@@ -28,7 +28,7 @@ import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
 import { openCourthouse, book } from './court.js';
 import { charge, fileCase, IMPOUND_LOT } from '../core/justice.js';
-import { openRealty, openTrap, openLand, openPlug, openRig, openRanch, openRemodel, openBuild } from './estate.js';
+import { openRealty, openTrap, openLand, openPlug, openRig, openRanch, openRemodel, openBuild, openRentals } from './estate.js';
 import { ensureLoot } from '../core/loot.js';
 import { offer as creditOffer, financeCar, payoffOnSale, lienOn, payment as loanPayment, totalCost, AUTO_TERMS, LOAN_CYCLE } from '../core/credit.js';
 import { PLATE_SWAP } from '../world2d/theft.js';
@@ -39,9 +39,13 @@ import { openPawn } from './pawn.js';
 import { openHospital } from './hospital.js';
 import { openTrailerLot, openTrailerHome } from './trailers.js';
 import { openSaleBarn } from './livestock.js';
+import { openAirport } from './flights.js';
 import { openKennel } from './kennel.js';
 import { openLabel } from './label.js';
 import { openHogLease } from './hoghunt.js';
+import { openRanch as openHD } from './hdranch.js';
+import { fairOpen } from '../core/horses.js';
+const fairOpenToday = () => fairOpen(game.s.time.day);
 import { ensureKennel } from '../core/dogs.js';
 import { describe as towLine } from '../core/tow.js';
 import { stockRig } from '../core/livestock.js';
@@ -74,12 +78,17 @@ const HANDLERS = {
   pawn: (loc, app) => openPawn(loc, app),
   trailers: (loc, app) => openTrailerLot(loc, app),
   salebarn: (loc, app) => openSaleBarn(loc, app),
+  airport: (loc, app) => openAirport(loc, app),
+  marina: (loc, app) => import('./marina.js').then(m => m.openMarina(loc, app)),
   kennel: (loc, app) => openKennel(app, { shop: true, tab: 'buy' }),
   studio: (loc, app) => openLabel(app, { studio: loc.id }),
   hoghunt: (loc, app) => openHogLease(loc, app),
+  baypen: (loc, app) => openHD(app, 'trials'),
+  expo: (loc, app) => openHD(app, fairOpenToday() ? 'fair' : 'shows'),
   police,
   work: async (loc, app) => { const { openPhone } = await import('./phone.js'); openPhone('hustle', app); },
   court: (loc, app) => openCourthouse(loc, app),
+  landmark: loc => modal(loc.name, `<p>${esc(loc.blurb || '')}</p>`),
   hospital: (loc, app) => openHospital(loc, app),
   meet: (loc, app, s) => {
     if (loc.weekend) { openNightMeet(loc, app); return; }
@@ -107,7 +116,8 @@ export function homeScreen(loc, app, s) {
     root.innerHTML = head(prop.name, `Home · ${kind ? `${kind} · ` : ''}${prop.slots} car garage · ${esc(prop.desc)}`) + `<div class="p-body"><div class="grid">
       ${prop.land ? `<div class="card click" data-action="remodel"><h3>🏗 Redesign the house</h3><p class="muted small">Rooms, floors, furniture, colors. Sims style.</p></div>
       <div class="card click" data-action="biggarage"><h3>🚗 Bigger garage</h3><p class="muted small">${prop.slots} cars now. Up to a 100-car vault.</p></div>
-      <div class="card click" data-action="ranch"><h3>🐄 Ranch</h3><p class="muted small">Fence the back, buy cows, horses and dogs.${stockRig(s) ? ' <b class="good">Your stock trailer is here: load or turn out cattle.</b>' : ''}</p></div>` : ''}
+      <div class="card click" data-action="ranch"><h3>🐄 Ranch</h3><p class="muted small">Fence the back, buy cows, horses and dogs.${stockRig(s) ? ' <b class="good">Your stock trailer is here: load or turn out cattle.</b>' : ''}</p></div>
+      <div class="card click" data-action="rentals"><h3>🏘 Rentals</h3><p class="muted small">Rent houses, duplexes and apartments out back. Rent every morning.</p></div>` : ''}
       <div class="card click" data-action="kennel"><h3>🐕 Kennel</h3><p class="muted small">${(() => { const n = ensureKennel(s).dogs.filter(d => d.home === loc.id).length; return n ? `${n} dog${n > 1 ? 's' : ''} here.` : 'Your hog dogs: profiles, breeding, training.'; })()}</p></div>
       <div class="card click" data-action="garage"><h3>🔧 Garage</h3><p class="muted small">Install parts (DIY), switch cars, dyno, tune.</p></div>
       <div class="card click" data-action="sleep" data-to="8"><h3>🛏 Sleep until morning</h3><p class="muted small">Skip to 8:00 AM, fully rested. Saves your game.</p></div>
@@ -126,6 +136,7 @@ export function homeScreen(loc, app, s) {
       remodel: () => openRemodel(app, loc.id),
       biggarage: () => openBuild(app, loc.id),
       ranch: () => openRanch(app, loc.id),
+      rentals: () => openRentals(app, loc.id),
       trailer: () => openTrailerHome(app),
       keephot: () => {
         if (!w.thefts.canKeep()) { toast('No room. Sell a car or buy a bigger place first.', 'bad'); return; }
@@ -324,8 +335,12 @@ function usedlot(loc, app, s) {
   openPanel((root, h) => {
     if (!s.rustyStock || s.rustyStock.day !== s.time.day) {
       const cheap = CARS.filter(c => !c.market && c.msrp < 45000 && c.years[1] < 2020);
-      s.rustyStock = { day: s.time.day, list: Array.from({ length: 9 }, () => {
-        const l = makeListing(cheap[Math.floor(Math.random() * cheap.length)]);
+      // Sal always keeps one black box Chevy on the front row
+      const box = CAR_BY_ID.chevrolet_caprice_classic_box_chevy_1986;
+      const picks = [...(box ? [box] : []), ...Array.from({ length: box ? 8 : 9 }, () => cheap[Math.floor(Math.random() * cheap.length)])];
+      s.rustyStock = { day: s.time.day, list: picks.map(m => {
+        const l = makeListing(m);
+        if (m === box) l.visual.paint = box.color;
         l.price = roundPrice(l.value * 1.18 + 600); l.mods = {};
         return l;
       }) };

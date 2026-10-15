@@ -133,6 +133,6 @@ export function addCountry({ buildings, lots, trees, props, roads }) {
     }
   }
   for (let z = 4060; z < C.z1; z += R(12, 22)) trees.push({ x: C.x1 - R(4, 14), z, r: R(4, 7), kind: 'tree' });
-  for (let x = C.x0; x < C.x1; x += R(12, 22)) trees.push({ x, z: C.z1 - R(4, 14), r: R(4, 7), kind: rnd() < 0.5 ? 'tree' : 'pine' });
+  for (let x = C.x0; x < C.x1; x += R(12, 22)) { const r = R(4, 7), k = rnd() < 0.5 ? 'tree' : 'pine'; if (Math.abs(x) > 16) trees.push({ x, z: C.z1 - R(4, 14), r, kind: k }); }   // (Old Cleburne Rd runs on south at x = 0)
   for (let z = C.z0; z < C.z1; z += R(12, 22)) trees.push({ x: C.x0 + R(4, 14), z, r: R(4, 7), kind: 'pine' });
 }

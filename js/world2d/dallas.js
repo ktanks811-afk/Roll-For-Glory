@@ -9,6 +9,7 @@
 // Own seed, so Fort Worth stays exactly as it was. DOM-free.
 
 import { DALLAS, DGRID_X, DGRID_Z, I30_ROW, I30_END, DALLAS_ZONE, DTRINITY_X, ARLINGTON_X, ARLINGTON_END, HWY_Z, HWY_W, HWY_X, BLOCK, ROAD_W, LOCATIONS, districtAt } from '../data/world.js';
+import { RectGrid } from './rectGrid.js';
 
 function mulberry32(a) {
   return () => {
@@ -240,10 +241,11 @@ export function addDallas(out, { landmarkBlock }) {
 
 // nothing grows on a building or a field (trees went down first, fields after)
 function keepTreesOff(trees, lots, buildings) {
-  const solid = [...lots.filter(l => l.kind === 'field' && l.x > 3300), ...buildings.filter(b => b.x > 3300 && b.kind !== 'pier')];
+  const solid = new RectGrid(100);
+  for (const o of [...lots.filter(l => l.kind === 'field' && l.x > 3300), ...buildings.filter(b => b.x > 3300 && b.kind !== 'pier')]) solid.add(o, o.x - 1, o.z - 1, o.x + o.w + 1, o.z + o.d + 1);
   for (let i = trees.length - 1; i >= 0; i--) {
     const t = trees[i];
     if (t.x < 3300) continue;
-    if (solid.some(o => t.x > o.x - 1 && t.x < o.x + o.w + 1 && t.z > o.z - 1 && t.z < o.z + o.d + 1)) trees.splice(i, 1);
+    if (solid.some(t.x, t.z, t.x, t.z, o => t.x > o.x - 1 && t.x < o.x + o.w + 1 && t.z > o.z - 1 && t.z < o.z + o.d + 1)) trees.splice(i, 1);
   }
 }

@@ -24,6 +24,7 @@ import { online } from '../net/online.js';
 import { profile } from '../net/profile.js';
 import { profileChip, showAccount } from './account.js';
 import { auth } from '../net/auth.js';
+import { startTutorial } from './tutorial.js';
 
 // ---------------- animated backdrop ----------------
 const HERO = [
@@ -146,6 +147,7 @@ export function openPause(app) {
         <button data-action="load">Load Game</button>
         <button data-action="settings">Settings</button>
         <button data-action="controls">Controls</button>
+        <button data-action="tutorial">Tutorial<small>Replay the quick tour of the basics</small></button>
         <button data-action="quit">Quit to Title<small>Your progress autosaves</small></button>
       </nav></div>`;
     bind(root, {
@@ -155,6 +157,7 @@ export function openPause(app) {
       load: () => openSlots('load', app),
       settings: () => openSettings(app),
       controls: () => showControls(),
+      tutorial: () => { h.close(); startTutorial(app); },
       quit: async () => { saveGame('auto', true); h.close(); toTitle(); },
     });
   });
@@ -188,7 +191,7 @@ export function showControls() {
   }
   if (touchUi.active) {
     modal('Controls', `<div class="section-title" style="margin-top:0">Walking</div><div class="kv">
-      <span>Move</span><span>Joystick (left)</span><span>Run</span><span>Hold RUN</span>
+      <span>Move</span><span>Joystick (left)</span><span>Run</span><span>Tap RUN to keep running, tap again to walk (or hold it)</span>
       <span>Shops, homes, meets</span><span>USE</span><span>Get in your car</span><span>GET IN (stand next to it)</span></div>
       <div class="section-title">Driving</div><div class="kv">
       <span>Steer</span><span>◀ ▶ arrows (left)</span><span>Gas / brake &amp; reverse</span><span>GAS / BRAKE pedals (right)</span>
@@ -273,12 +276,13 @@ export function openSettings(app) {
     const opt = (key, vals) => `<div class="opts">${vals.map(([v, l]) => `<button class="${settings[key] === v ? 'on' : ''}" data-action="set" data-k="${key}" data-v="${v}">${l}</button>`).join('')}</div>`;
     root.innerHTML = `<div class="p-head"><h1>Settings</h1><button class="btn x" data-action="close">×</button></div>
       <div class="p-body" style="max-width:640px">
-        <label class="field"><span>Graphics quality</span>${opt('quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}</label>
+        <label class="field"><span>Graphics quality</span>${opt('quality', [['low', 'Low'], ['medium', 'Medium (auto)'], ['high', 'High']])}</label>
         <label class="field"><span>Transmission</span>${opt('transmission', [['auto', 'Automatic'], ['manual', 'Manual (Q / E)']])}</label>
         <label class="field"><span>Touch steering</span>${opt('steerMode', [['arrows', 'Arrows'], ['wheel', 'Steering wheel']])}</label>
         <label class="field"><span>Speed units</span>${opt('units', [['mph', 'MPH'], ['kmh', 'KM/H']])}</label>
         <label class="field"><span>Master volume — ${Math.round(settings.volume * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.volume}" data-range="volume" class="input"></label>
         <label class="field"><span>Music volume — ${Math.round(settings.music * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.music}" data-range="music" class="input"></label>
+        <label class="field"><span>World sounds (rain, city, traffic) — ${Math.round(settings.ambience * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.ambience}" data-range="ambience" class="input"></label>
         <label class="field"><span>Camera view (driving) — V</span>${opt('camMode', [['top', 'Top-down'], ['chase', 'Third person']])}</label>
         <label class="field"><span>Camera shake</span>${opt('shake', [[true, 'On'], [false, 'Off']])}</label>
         <label class="field"><span>Racers pulling up on you to race</span>${opt('pullups', [[true, 'On'], [false, 'Off']])}</label>
@@ -299,7 +303,7 @@ export function openSettings(app) {
     });
     root.querySelectorAll('[data-range]').forEach(r => r.oninput = () => {
       settings[r.dataset.range] = +r.value; saveSettings(); audio.applyVolume();
-      r.previousElementSibling.textContent = `${r.dataset.range === 'volume' ? 'Master' : 'Music'} volume — ${Math.round(r.value * 100)}%`;
+      r.previousElementSibling.textContent = `${{ volume: 'Master volume', music: 'Music volume', ambience: 'World sounds (rain, city, traffic)' }[r.dataset.range]} — ${Math.round(r.value * 100)}%`;
     });
   });
 }

@@ -1,18 +1,26 @@
 // Boot, main loop and mode switching (title → character → world ⇄ race).
 
-import { game, fmtMoney, activeCar, carValue, spend, hourOf, dayName } from './core/state.js';
+import { game, fmtMoney, activeCar, carValue, spend, earn, hourOf, dayName } from './core/state.js';
 import { MEET_NIGHTS, MEET_LOC } from './core/nightmeet.js';
 import { on, emit } from './core/events.js';
 import { input } from './core/input.js';
 import { touchUi } from './ui/touch.js';
 import { padNav } from './ui/padnav.js';
+import { tutorialPad, stopTutorial } from './ui/tutorial.js';
 import { audio } from './core/audio.js';
 import { saveGame, settings } from './core/save.js';
 import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { estateDay } from './core/estate.js';
+import { boatsDay } from './core/boats.js';
 import { dogsDay, ensureKennel } from './core/dogs.js';
+// the rest of Hogs & Dogs hooks into the kennel's day: mixes, coyotes, the alpha, the Hog Pin, horses, cams, traps, jobs
+import './core/hdkennel.js';
+import './core/hogpin.js';
+import './core/horses.js';
+import './core/hdranch.js';
+import { settleHighPoint } from './core/hdtrials.js';
 import { labelDay } from './core/label.js';
 import { drugsDay } from './core/drugs.js';
 import { fedsDay } from './core/bank.js';
@@ -51,8 +59,12 @@ import { loadCowArt } from './gfx2d/cowArt.js';
 const canvas = $('#game');
 const ctx = canvas.getContext('2d');
 let W = 0, H = 0, DPR = 1;
+// Medium quality starts at 1.5x sharpness and steps down (1.25x, then 1x)
+// when the phone can't hold its frame rate in the world. Fewer pixels to fill
+// is the biggest single win on an iPhone's big, sharp screen.
+let autoCap = 1.5;
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, settings.quality === 'low' ? 1 : settings.quality === 'high' ? 2 : 1.5);
+  DPR = Math.min(window.devicePixelRatio || 1, settings.quality === 'low' ? 1 : settings.quality === 'high' ? 2 : autoCap);
   W = window.innerWidth; H = window.innerHeight;
   canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
 }
@@ -122,6 +134,7 @@ export function startRace(RaceClass, opts) {
 }
 
 export function toTitle() {
+  stopTutorial();
   leaveWorld();
   if (app.race) { app.race.destroy(); app.race = null; }
   game.s = null;
@@ -177,8 +190,11 @@ function newDay() {
   hustleDay(s);
   // oil leases pay out, the ranch settles up (core/estate.js)
   for (const n of estateDay(s).notes) toast(n, 'good');
+  // marinas bill slip fees and crew, charters pay out (core/boats.js)
+  for (const n of boatsDay(s, spend, earn).notes) toast(n, 'info');
   // the kennel: feed, pups, the dog market restocks (core/dogs.js)
   for (const n of dogsDay(s).notes) toast(n, 'good');
+  for (const n of settleHighPoint(s)) toast(n, 'good');
   // the record label: streams and shows pay out, the A&R texts (core/label.js)
   const lb = labelDay(s);
   for (const n of lb.notes) toast(n, 'good');
@@ -284,8 +300,9 @@ function frame(now) {
   last = now;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   input.pollPad(padNav);   // controller: menus first, then the game
+  tutorialPad();           // D-pad right steps the first-play tour
   // which control scheme is live: walking, driving, racing, or none
-  input.setContext(app.mode === 'race' ? 'race' : app.mode === 'world' && app.world ? (app.world.inCar && app.world.vehicle ? 'car' : 'foot') : 'menu');
+  input.setContext(app.mode === 'race' ? 'race' : app.mode === 'world' && app.world ? ((app.world.inCar && app.world.vehicle) || app.world.boats?.boating ? 'car' : 'foot') : 'menu');
   try {
     if (app.mode === 'world' && app.world) {
       if (!panelOpen() && !modalOpen()) app.world.update(dt);
@@ -302,10 +319,23 @@ function frame(now) {
     if (!frame.errShown) { frame.errShown = true; toast('Something broke: ' + err.message, 'bad'); }
   }
   frames++; fpsT += dt;
-  if (fpsT > 1) { fps = frames; frames = 0; fpsT = 0; }
+  if (fpsT > 1) { fps = frames; frames = 0; fpsT = 0; autoQuality(); }
   if (settings.showFps) { ctx.fillStyle = '#0f0'; ctx.font = '12px monospace'; ctx.fillText(`${fps} fps`, W - 60, H - 8); }
   input.endFrame();
   requestAnimationFrame(frame);
+}
+
+// Once a second: three slow seconds in a row out in the world (menus and
+// loading hitches don't count) and medium quality drops a step for the rest
+// of the session.
+let slowSecs = 0;
+function autoQuality() {
+  if (settings.quality !== 'medium' || app.mode !== 'world' || panelOpen() || modalOpen() || document.hidden) { slowSecs = 0; return; }
+  slowSecs = fps < 45 ? slowSecs + 1 : 0;
+  if (slowSecs < 3 || autoCap <= 1 || DPR <= 1) return;
+  slowSecs = 0;
+  autoCap = autoCap > 1.25 ? 1.25 : 1;
+  resize();
 }
 
 // ---------------- boot ----------------

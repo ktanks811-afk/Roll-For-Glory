@@ -26,7 +26,11 @@ const n = (v, lo, hi, d = 0) => (typeof v === 'number' && isFinite(v) ? clamp(v,
 const padText = t => t.replace('drag the shift knob down to downshift', 'LB to downshift').replace(/\bBRAKE\b/g, 'LT').replace(/\bGAS\b/g, 'RT');
 const T = (phone, keys) => pad.inUse ? padText(phone) : touchUi.active ? phone : keys;
 // fit the whole road comfortably on narrow screens
-const H_ZOOM = () => Math.min(14, window.innerWidth / 34);
+// screen width, kept up to date on resize: reading innerWidth every frame can
+// force the browser to lay the page out again mid-frame
+let viewW = typeof window !== 'undefined' ? window.innerWidth : 1280;
+if (typeof window !== 'undefined') window.addEventListener('resize', () => { viewW = window.innerWidth; });
+const H_ZOOM = () => Math.min(14, viewW / 34);
 const THEMES = {
   highway: { lanes: 6, laneW: 3.7, ground: '#2f3a26', road: '#26272b', side: 'barrier', props: 'city', median: true },
   industrial: { lanes: 4, laneW: 3.6, ground: '#4a4b4f', road: '#2c2d31', side: 'curb', props: 'warehouse' },
@@ -59,6 +63,7 @@ export class Race {
     this.onDone = onDone;
     this.theme = THEMES[opts.road] || THEMES.highway;
     this.isDrag = opts.type === 'drag';
+    this.road = opts.road;
     this.dist = DIST[opts.dist] || DIST.quarter;
     this.t = 0;
     this.phase = this.isDrag ? 'burnout' : 'pace';
@@ -692,10 +697,12 @@ export class Race {
       drawRain(ctx, { w: W, h: H }, this.rain, dt);
       if (this.storm) {
         this.boltT = (this.boltT ?? 3 + Math.random() * 6) - dt;
-        if (this.boltT <= 0) { this.bolt = 1; this.boltT = 5 + Math.random() * 10; audio.thunder?.(); }
+        if (this.boltT <= 0) { const near = Math.random(); this.bolt = 0.45 + near * 0.55; this.boltT = 5 + Math.random() * 10; audio.thunder?.(near); }
         if (this.bolt > 0) { ctx.fillStyle = `rgba(225,230,255,${0.45 * this.bolt})`; ctx.fillRect(0, 0, W, H); this.bolt = Math.max(0, this.bolt - dt * 4); }
       }
     }
+    // rain on the roof, wind, the city or the strip around you (core/audio.js)
+    audio.ambience({ rain: this.rain, wind: this.storm ? 1 : this.rain ? 0.45 : 0.1, urban: this.road === 'strip' ? 0.4 : 0.7, night: this.night > 0, hour: this.night > 0 ? 23 : 14, inside: 'car' }, dt);
     // mini progress bar
     const pw = Math.min(360, W - 40), px = (W - pw) / 2, py = touchUi.active ? 84 : H - 26;
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(px, py, pw, 8);

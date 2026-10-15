@@ -23,9 +23,9 @@ export const ESTATE_LOCATIONS = [
   P('plug_bankrol', 'plug', "Bankroll's Ladies Club", 'N', 2250, -141, 2340, -55, { color: '#d94cff', icon: 'meet', stock: ['lean', 'smoke', 'molly', 'exo'] }),
   P('land_stopsix', 'land', 'Empty Lot · Stop Six', 'N', 2200, -291, 2330, -172, { color: '#c8a46a', icon: 'key' }),
   // east of Stop Six, back off the lake road
-  P('land_lakeworth', 'land', 'Lake Worth Acreage', 'W', 2628, -560, 2770, -430, { color: '#c8a46a', icon: 'key' }),
-  // out on Chisholm Trail Pkwy, past the trailer park
-  P('land_chisholm', 'land', 'Chisholm Flats Ranch Land', 'W', 12, 2420, 140, 2540, { color: '#c8a46a', icon: 'key' }),
+  P('land_lakeworth', 'land', 'Everman Acreage', 'W', 2628, -560, 2770, -430, { color: '#c8a46a', icon: 'key' }),
+  // Burleson, out on Chisholm Trail Pkwy past the trailer park
+  P('land_chisholm', 'land', 'Burleson Ranch Land', 'W', 12, 2420, 140, 2540, { color: '#c8a46a', icon: 'key' }),
   // more of Stop Six: houses for sale and lots, each fronting a side street
   P('six_bungalow', 'property', 'Cass St Bungalow', 'N', 1200, -141, 1330, -21, { color: '#ffffff', icon: 'home' }),
   P('six_twostory', 'property', 'Amanda Ave Two-Story', 'N', 1700, -741, 1830, -621, { color: '#ffffff', icon: 'home' }),
@@ -42,11 +42,27 @@ export const ESTATE_LOCATIONS = [
   P('land_weatherford_north', 'land', 'Weatherford North Acreage', 'S', -5450, -450, -5150, -200, { color: '#c8a46a', icon: 'key' }),
   P('land_parker_ridge', 'land', 'Parker County Ridge Land', 'E', -4550, -500, -4250, -250, { color: '#c8a46a', icon: 'key' }),
   P('land_aledo_pasture', 'land', 'Aledo Pasture Estate', 'N', -4900, -450, -4600, -200, { color: '#c8a46a', icon: 'key' }),
+  // Brazos country, south of Johnson County (world2d/brazos.js): the big
+  // ranches, 400 to 1,000 acres a tract, on FM 916 and FM 2331 (x = 0)
+  P('ranch_bosque', 'land', 'Bosque Valley Ranch', 'N', -1360, 6130, -60, 7380, { color: '#c8a46a', icon: 'key' }),
+  P('ranch_glenrose', 'land', 'Glen Rose Hills Ranch', 'N', -3060, 6130, -1460, 7650, { color: '#c8a46a', icon: 'key' }),
+  P('ranch_hillsboro', 'land', 'Hill County Cattle Co.', 'N', 60, 6130, 1810, 7865, { color: '#c8a46a', icon: 'key' }),
+  P('ranch_meridian', 'land', 'Meridian Creek Ranch', 'W', 60, 7960, 1510, 9355, { color: '#c8a46a', icon: 'key' }),
+  P('ranch_brazos', 'land', 'Brazos River Spread', 'E', -2060, 7960, -50, 9973, { color: '#c8a46a', icon: 'key' }),
+  // out of state (data/states.js): a lot on the east edge of each city, off its
+  // east street (city x0 + 1200). Atlanta's grid starts at z -3000, LA's at 0, Miami's at 3000.
+  P('land_atl', 'land', 'South Fulton Acreage', 'W', 15240, -2850, 15460, -2630, { color: '#c8a46a', icon: 'key', state: 'ga' }),
+  P('land_la', 'land', 'Topanga Canyon Lot', 'W', 15240, 150, 15460, 370, { color: '#c8a46a', icon: 'key', state: 'ca' }),
+  P('land_mia', 'land', 'Redland Acreage', 'W', 15240, 3150, 15460, 3370, { color: '#c8a46a', icon: 'key', state: 'fl' }),
   // the livestock auction on FM 4, where the stock trailer earns its keep (core/livestock.js)
   P('salebarn', 'salebarn', 'Joshua Livestock Auction', 'N', 500, 4520, 660, 4680, { color: '#d9822b', icon: 'tow' }),
   // hog dogs (core/dogs.js, core/hoghunt.js): the kennel that sells them on FM 4, and the hog lease down on the river
   P('dog_kennel', 'kennel', 'Cross Timbers Hog Dogs', 'S', 300, 4340, 460, 4480, { color: '#d9a85a', icon: 'dog' }),
   P('hog_lease', 'hoghunt', 'Nolan River Hog Lease', 'N', -2300, 5420, -2000, 5700, { color: '#8a5a3a', icon: 'hog' }),
+  // the rest of Hogs & Dogs (ui/hdranch.js): the bay pen trials in Rio Vista, and the
+  // Expo Center in Cleburne for dog shows, the horse barn and the county fair
+  P('bay_pen', 'baypen', 'Rio Vista Bay Pen', 'N', -1460, 4560, -1260, 4720, { color: '#c8743a', icon: 'hog' }),
+  P('expo', 'expo', 'Cleburne Expo Center', 'N', 60, 4540, 280, 4740, { color: '#e8c21a', icon: 'dog' }),
   // oil leases: pumpjacks and a tank battery, $40k a day once they're yours
   P('rig_godley', 'rig', 'Godley Pumpjack Lease', 'N', -2400, 3620, -2240, 3760, { color: '#e8c21a', icon: 'oil' }),
   P('rig_cleburne', 'rig', 'Cleburne Well Pad', 'N', -900, 3620, -740, 3760, { color: '#e8c21a', icon: 'oil' }),
@@ -72,8 +88,8 @@ export const LAND = {
   land_stopsix:     { name: 'Empty Lot · Stop Six', short: 'Stop Six', price: 16000, ranch: 0, desc: 'A cleared lot on a Stop Six side street. Close to everything that matters on the east side.' },
   land_six_bunche:  { name: 'Empty Lot · Bunche Dr', short: 'Bunche Dr', price: 14000, ranch: 0, desc: 'Corner of Bunche and the alley. The neighbours have been here since the sixties.' },
   land_six_stalcup: { name: 'Empty Lot · Stalcup Rd', short: 'Stalcup Rd', price: 21000, ranch: 0, desc: 'A wide lot by Stalcup Rd. Big enough for a real garage and a yard for the dogs.' },
-  land_lakeworth:   { name: 'Lake Worth Acreage', short: 'Lake Worth', price: 54000, tier: 2, ranch: 1, desc: 'Two acres of grass by the lake road. Room for a real shop.' },
-  land_chisholm:    { name: 'Chisholm Flats Ranch Land', short: 'Chisholm Flats', price: 38000, ranch: 1, desc: 'Flat desert ground off Chisholm Trail Pkwy. Nobody hears you rev it out here.' },
+  land_lakeworth:   { name: 'Everman Acreage', short: 'Everman', price: 54000, tier: 2, ranch: 1, desc: 'Two acres of grass by the lake road. Room for a real shop.' },
+  land_chisholm:    { name: 'Burleson Ranch Land', short: 'Burleson', price: 38000, ranch: 1, desc: 'Flat desert ground off Chisholm Trail Pkwy. Nobody hears you rev it out here.' },
   land_homestead:   { name: 'Old Cleburne Rd Homestead', short: 'Old Cleburne Rd', price: 120000, ranch: 1, country: true, desc: 'Fifteen acres on the edge of Joshua, a stock tank and an old windmill.' },
   land_crosscreek:  { name: 'Cross Creek Pasture', short: 'Cross Creek', price: 185000, ranch: 2, country: true, desc: 'Twenty-five acres of coastal Bermuda on County Road 1016. Ready for cattle.' },
   land_nolan:       { name: 'Nolan River Acreage', short: 'Nolan River', price: 260000, ranch: 2, country: true, desc: 'Thirty-five acres down by the Nolan River, live oaks and a creek crossing.' },
@@ -82,6 +98,17 @@ export const LAND = {
   land_parker_ridge: { name: 'Parker County Ridge Land', short: 'Parker Ridge', price: 310000, ranch: 2, country: true, tier: 2, desc: 'Twenty-eight acres of rolling Parker County ground with a long gravel approach.' },
   land_aledo_pasture: { name: 'Aledo Pasture Estate', short: 'Aledo Pasture', price: 480000, ranch: 2, country: true, tier: 3, desc: 'Forty-five acres of pasture and tree line west of Weatherford.' },
   land_bluebonnet:  { name: 'Bluebonnet Hill Ranch', short: 'Bluebonnet Hill', price: 520000, ranch: 2, country: true, tier: 3, desc: 'Sixty acres on the high ground. You can see the Fort Worth skyline from the porch.' },
+  // the big ranches in Brazos country: 400 to 1,000 acres. acres is real (the
+  // tract on the map is that big), and they take the biggest fences and herds.
+  ranch_bosque:     { name: 'Bosque Valley Ranch', short: 'Bosque Valley', price: 1800000, acres: 400, ranch: 3, country: true, huge: true, tier: 3, desc: '400 acres of improved grass on FM 916, two stock tanks and a creek bottom full of pecans.' },
+  ranch_meridian:   { name: 'Meridian Creek Ranch', short: 'Meridian Creek', price: 2300000, acres: 500, ranch: 3, country: true, huge: true, tier: 3, desc: '500 acres off FM 2331 with a spring-fed creek, cross-fenced into three pastures.' },
+  ranch_glenrose:   { name: 'Glen Rose Hills Ranch', short: 'Glen Rose Hills', price: 2900000, acres: 600, ranch: 3, country: true, huge: true, tier: 4, desc: '600 acres of cedar hills and live oak flats. Deer, turkey and hogs on every ridge.' },
+  ranch_hillsboro:  { name: 'Hill County Cattle Co.', short: 'Hill County', price: 3600000, acres: 750, ranch: 4, country: true, huge: true, tier: 4, desc: '750 acres of blackland prairie, a working cattle operation with pens, a scale and a hay barn.' },
+  ranch_brazos:     { name: 'Brazos River Spread', short: 'Brazos River', price: 5200000, acres: 1000, ranch: 4, country: true, huge: true, tier: 4, desc: 'A thousand acres down to the Brazos. Your own county road, your own river, your own everything.' },
+  // out of state (fly there from Alliance Airport)
+  land_atl:         { name: 'South Fulton Acreage', short: 'South Fulton', price: 340000, acres: 12, ranch: 1, tier: 3, state: 'ga', desc: 'Atlanta. Twelve wooded acres on the edge of town. Room for a shop and a gate.' },
+  land_la:          { name: 'Topanga Canyon Lot', short: 'Topanga', price: 950000, acres: 12, ranch: 0, tier: 4, state: 'ca', desc: 'Los Angeles. A canyon lot with an ocean view. Build big; everybody out here does.' },
+  land_mia:         { name: 'Redland Acreage', short: 'Redland', price: 410000, acres: 12, ranch: 1, tier: 3, state: 'fl', desc: 'Miami. Mango groves and a gravel drive, twenty minutes from the beach.' },
 };
 
 // The garage you build on your land. The house goes up with it (`house`
@@ -143,6 +170,9 @@ export const FENCES = [
   { id: 'rail',  name: 'Split-rail paddock',  price: 9000,  cap: 6,  color: '#8a6038', desc: 'Cedar posts and two rails. Room for a few head.' },
   { id: 'wire',  name: 'Barbed-wire pasture', price: 28000, cap: 20, color: '#8a8f96', desc: 'Five strands of barbed wire round the back acreage.' },
   { id: 'ranch', name: 'White ranch fence',   price: 65000, cap: 40, color: '#f2f2f2', desc: 'Four-board white fence and a pipe gate. The kind people slow down to look at.' },
+  // the big ranches only
+  { id: 'section', name: 'Cross-fenced section', price: 240000, cap: 150, color: '#b8bcc2', desc: 'Miles of five-strand wire, cross-fenced into pastures you rotate the herd through.' },
+  { id: 'spread', name: 'Perimeter pipe fence', price: 650000, cap: 400, color: '#e8e2d4', desc: 'Welded pipe all the way round, a cattle guard at the gate. A herd in the hundreds.' },
 ];
 export const FENCE_BY_ID = Object.fromEntries(FENCES.map(f => [f.id, f]));
 // feed: what it costs to keep one a day. pays: what it brings in a day
@@ -154,3 +184,36 @@ export const ANIMALS = [
   { id: 'horse',    name: 'Quarter horse',  price: 8500, feed: 35, pays: 240, pen: true, color: '#7a4a2a', icon: '🐎', desc: 'A sorrel quarter horse. Stud and boarding fees.' },
 ];
 export const ANIMAL_BY_ID = Object.fromEntries(ANIMALS.map(a => [a.id, a]));
+
+// ---------------------------------------------------------------- rentals
+// Build a neighborhood or an apartment complex on the back of your land and
+// rent it out (core/estate.js). It goes where the pasture would, so it's one
+// or the other. kind: 'homes' = rent houses down a little street, 'apts' =
+// apartment buildings round a parking lot. bldgs × per = units. rent: what a
+// leased unit brings in a game day. upkeep: repairs, the lawn crew and
+// insurance, a day, for every unit whether it's leased or not.
+// fw × fd: one building's footprint (m), h: how tall. Whether it fits on a
+// piece of land is worked out from the land itself (devLayout).
+export const DEVS = [
+  { id: 'duplex',   name: 'Duplex row',         short: 'Duplexes',   kind: 'homes', bldgs: 4,  per: 2,  rent: 450,  upkeep: 50,  price: 130000,  days: 1,
+    fw: 15, fd: 10, h: 4.2, desc: 'Four brick duplexes down a gravel drive. Two units each, easy to keep full.' },
+  { id: 'renthouses', name: 'Rent houses',      short: 'Rent Houses', kind: 'homes', bldgs: 10, per: 1,  rent: 800,  upkeep: 90,  price: 290000,  days: 2, tier: 2,
+    fw: 12, fd: 10, h: 4.5, desc: 'Ten three-bedroom houses on their own little street. Families sign for a year.' },
+  { id: 'fourplex', name: 'Fourplexes',         short: 'Fourplexes', kind: 'apts',  bldgs: 6,  per: 4,  rent: 600,  upkeep: 70,  price: 520000,  days: 2, tier: 2,
+    fw: 16, fd: 12, h: 7,   desc: 'Six two-story fourplexes round a parking lot. Twenty-four doors.' },
+  { id: 'garden',   name: 'Garden apartments',  short: 'Apartments', kind: 'apts',  bldgs: 4,  per: 12, rent: 700,  upkeep: 80,  price: 1200000, days: 3, tier: 3,
+    fw: 30, fd: 14, h: 10,  desc: 'Four three-story buildings, breezeways and covered parking. Forty-eight units.' },
+  { id: 'subdivision', name: 'Subdivision',     short: 'Estates',    kind: 'homes', bldgs: 28, per: 1,  rent: 1000, upkeep: 110, price: 1000000, days: 3, tier: 3,
+    fw: 14, fd: 12, h: 5,   desc: 'A whole neighborhood: streets, sidewalks and twenty-eight brick houses with two-car garages.' },
+  { id: 'complex',  name: 'Apartment complex',  short: 'Apartments', kind: 'apts',  bldgs: 6,  per: 20, rent: 800,  upkeep: 90,  price: 3400000, days: 4, tier: 4, pool: true,
+    fw: 40, fd: 16, h: 10,  desc: 'Six three-story buildings, a leasing office and a pool. A hundred and twenty units and a waiting list.' },
+];
+export const DEV_BY_ID = Object.fromEntries(DEVS.map(d => [d.id, d]));
+// How you price the units: cheaper fills every door, higher leaves some empty.
+export const RENT_LEVELS = [
+  { id: 'low',  name: 'Below market', mult: 0.85, full: 1.0 },
+  { id: 'fair', name: 'Market rent',  mult: 1.0,  full: 0.94 },
+  { id: 'high', name: 'Top dollar',   mult: 1.3,  full: 0.75 },
+];
+export const RENT_BY_ID = Object.fromEntries(RENT_LEVELS.map(r => [r.id, r]));
+export const DEV_SELL = 0.7;        // what a development sells for with the land

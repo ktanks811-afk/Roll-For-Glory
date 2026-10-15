@@ -1,6 +1,9 @@
 import { STREET_RACES, raceStart } from './streetRaces.js';
 import { ESTATE_LOCATIONS, TRAPS } from './estate.js';
 import { FOOD_SPOTS } from './food.js';
+import { STATES, STATE_BLOCK, AIRPORT_ROW, stateAt, stateDistrict } from './states.js';
+import { TOWN_BY_ID, metroDistrict, townAt, townBlockCenter } from './metro.js';
+import { MARINA_LOCATIONS } from './boats.js';
 
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
 // with a highway to the north, desert to the south, mountains to the west
@@ -21,6 +24,16 @@ export const SEA_X = 1000;         // harbor water east of here (south half)
 // Johnson County: farm country past the end of the desert, south of the city
 export const COUNTRY = { x0: -3300, x1: 1000, z0: 3300, z1: 5800 };
 export const COUNTRY_ROADS = { x: [-2800, -1500, 0, 700], z: [3600, 4500, 5400] };
+// Brazos country: big-ranch land south of Johnson County, past County Road
+// 1200. Tracts of 400 to 1,000 acres (data/estate.js) along FM 916 across
+// the top and FM 2331 down the middle; world2d/brazos.js fills it in.
+export const BRAZOS = { x0: -3300, x1: 1900, z0: 5800, z1: 10100 };
+export const FM916_Z = 6100;                 // across the top, x -3200..1850
+export const FM916_X = [-3200, 1850];
+export const FM2331_END = 9985;              // Old Cleburne Rd carries on south as FM 2331 (x = 0)
+export const inBrazos = (x, z) => x > BRAZOS.x0 && x < BRAZOS.x1 && z > BRAZOS.z0 && z < BRAZOS.z1;
+// how far out anything can be (online positions are clamped to this)
+export const WORLD_R = 30000;
 // Dallas: east of Fort Worth down I-30, which carries on from the east end of
 // Loop 820 past Arlington. Its own 10x10-block grid (150 m blocks); I-30 cuts
 // through the middle of it (row 5), downtown and Deep Ellum north of the
@@ -75,10 +88,11 @@ export const AIRPORT_X = 900;                // Alliance Blvd, from Heritage Tra
 export const LEWISVILLE = { x0: 2450, x1: 3150, z0: -6900, z1: -4900 };   // Lake Lewisville
 export const inDenton = (x, z) => x > DENTON.x0 - 12 && x < DENTON.x1 + 12 && z > DENTON.z0 - 12 && z < DENTON.z1 + 12;
 export const inNorth = (x, z) => z < NORTH.z1 && x > NORTH.x0 && x < NORTH.x1;
-// either city grid outside Fort Worth (sidewalks, red lights, pavement)
-export const inCityGrid = (x, z) => inDallas(x, z) || inDenton(x, z) || inWestCity(x, z);
+// any city grid outside Fort Worth (sidewalks, red lights, pavement): Dallas,
+// Denton, Mineral Wells and every town on the big map (data/metro.js)
+export const inCityGrid = (x, z) => inDallas(x, z) || inDenton(x, z) || inWestCity(x, z) || !!townAt(x, z);
 
-export const STREET_NS = ['Hulen St', 'Montgomery St', 'University Dr', 'Henderson St', 'Throckmorton St', 'Houston St', 'Main St', 'Commerce St', 'Jones St', 'Riverside Dr', 'Beach St', 'Oakland Blvd', 'Lake Worth Blvd'];
+export const STREET_NS = ['Hulen St', 'Montgomery St', 'University Dr', 'Henderson St', 'Throckmorton St', 'Houston St', 'Main St', 'Commerce St', 'Jones St', 'Riverside Dr', 'Beach St', 'Oakland Blvd', 'Everman Pkwy'];
 export const DSTREET_NS = ['Sylvan Ave', 'Riverfront Blvd', 'Lamar St', 'Griffin St', 'Akard St', 'Ervay St', 'Harwood St', 'Pearl St', 'Good Latimer Expy', 'Exposition Ave', 'Haskell Ave'];
 export const DSTREET_EW = ['Lemmon Ave', 'McKinney Ave', 'Ross Ave', 'Elm St', 'Commerce St', 'I-30', 'Jefferson Blvd', 'Davis St', 'MLK Jr Blvd', 'Illinois Ave', 'Kiest Blvd'];
 export const DNSTREET_NS = ['I-35', 'Bonnie Brae St', 'Avenue C', 'Carroll Blvd', 'Elm St', 'Locust St', 'Bell Ave', 'Wood St', 'Loop 288'];
@@ -86,19 +100,25 @@ export const DNSTREET_EW = ['University Dr', 'Sherman Dr', 'Oak St', 'Hickory St
 export const STREET_EW = ['NE 28th St', 'Stockyards Blvd', 'Exchange Ave', 'Northside Dr', 'Belknap St', 'Weatherford St', 'W 7th St', 'Lancaster Ave', 'Vickery Blvd', 'Rosedale St', 'Magnolia Ave', 'Berry St', 'Seminary Dr'];
 
 export function districtAt(x, z) {
+  if (x > 9000) { const st = stateAt(x, z); if (st !== 'tx') return metroDistrict(x, z) || stateDistrict(st, x, z); }
+  // the towns, lakes and country past the old edges of the map (data/metro.js)
+  const big = metroDistrict(x, z);
+  if (big) return big;
   if (inWeatherford(x, z)) return weatherfordDistrict(x, z);
   if (inWest(x, z)) return westDistrict(x, z);
   if (x > DALLAS_ZONE.x0 && z < DALLAS_ZONE.z1 + 400) return dallasDistrict(x, z);
   if (z < NORTH.z1 && x > NORTH.x0 - 200) return northDistrict(x, z);
   if (z < HWY_Z - 60 && Math.abs(x) < 60) return 'I-35W';
   if (z < -1000) return 'Loop 820';
+  if (z > BRAZOS.z0 && inBrazos(x, z)) return x > 0 ? 'Hill County' : z > 8800 ? 'Brazos River' : 'Bosque County';
   if (z > COUNTRY.z0) return 'Johnson County';
   if (z > DESERT_Z) return 'Burleson';
   if (x < -1000) return z < -100 ? 'Lake Worth' : 'Benbrook Hills';
   if (x > SEA_X) return z > 190 ? 'Everman' : z > -1000 ? 'Stop Six' : 'Everman Shore';
   if (Math.abs(x) <= 300 && Math.abs(z) <= 300) return 'Downtown';
-  if (x > 300) return z > 600 ? 'Near Southside' : 'Riverside Industrial';
-  if (x < -300) return z > 300 ? 'Crowley' : 'Arlington Heights';
+  if (x > 300) return z > 600 ? 'Near Southside' : z >= 300 ? 'Poly' : 'Riverside Industrial';
+  // the west side, north to south: Arlington Heights, Como, TCU, North Crowley, then Crowley
+  if (x < -300) return z < 0 ? 'Arlington Heights' : z < 300 ? 'Como' : z < 600 ? 'TCU' : z < 750 ? 'North Crowley' : 'Crowley';
   return z < 0 ? 'Stockyards' : 'Near Southside';
 }
 
@@ -150,6 +170,8 @@ export const DENTON_DISTRICTS = ['TWU', 'The Square', 'UNT', 'North Denton', 'Ea
 export const NORTH_DISTRICTS = [...DENTON_DISTRICTS, 'Denton', 'Lake Lewisville', 'Texas Motor Speedway', 'Roanoke', 'Alliance', 'Alliance Airport', 'Northlake', 'Argyle', 'US-377', 'Justin Prairie'];
 export const WEATHERFORD_DISTRICTS = ['Weatherford','Weatherford North','Weatherford East','Weatherford South'];
 export const WEST_DISTRICTS = ['Mineral Wells','Mineral Wells North','Mineral Wells West','Mineral Wells East','Palo Pinto County','Palo Pinto Mountains','West I-20'];
+// Fort Worth's house-and-yard neighbourhoods (map.js and scenery.js build them alike)
+export const LEAFY = new Set(['Arlington Heights', 'Como', 'TCU', 'North Crowley', 'Crowley', 'Poly']);
 export const DALLAS_DISTRICTS = ['Uptown', 'Downtown Dallas', 'Deep Ellum', 'West Dallas', 'Oak Cliff', 'South Dallas'];
 
 export function blockCenter(i, j, city) {
@@ -157,6 +179,8 @@ export function blockCenter(i, j, city) {
   if (city === 'dallas') return { x: DALLAS.x0 + BLOCK / 2 + BLOCK * i, z: DALLAS.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'weatherford') return { x: WEATHERFORD.x0 + BLOCK / 2 + BLOCK * i, z: WEATHERFORD.z0 + BLOCK / 2 + BLOCK * j };
   if (city === 'west') return { x: WEST_CITY.x0 + BLOCK / 2 + BLOCK * i, z: WEST_CITY.z0 + BLOCK / 2 + BLOCK * j };
+  if (STATES[city]) return { x: STATES[city].cx + STATE_BLOCK / 2 + STATE_BLOCK * i, z: STATES[city].cz + STATE_BLOCK / 2 + STATE_BLOCK * j };
+  if (TOWN_BY_ID[city]) return townBlockCenter(TOWN_BY_ID[city], i, j);
   return { x: -825 + BLOCK * i, z: -825 + BLOCK * j };
 }
 
@@ -180,6 +204,142 @@ const D = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: 
 const N = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'denton', side, ...front(i, j, side, 0, 'denton'), ...extra });
 const W = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'weatherford', side, ...front(i, j, side, 0, 'weatherford'), ...extra });
 const X = (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: 'west', side, ...front(i, j, side, 0, 'west'), ...extra });
+// on a block of an out-of-state city (data/states.js): S('ga')(…)
+const S = st => (id, type, name, i, j, side, extra = {}) => ({ id, type, name, block: [i, j], city: st, state: st, side, ...front(i, j, side, 0, st), ...extra });
+const GA = S('ga'), CA = S('ca'), FL = S('fl');
+// on a block of one of the new towns (data/metro.js): TW('plano')(…)
+const TW = id => (pid, type, name, i, j, side, extra = {}) => ({ id: pid, type, name, block: [i, j], city: id, ...(TOWN_BY_ID[id].state ? { state: TOWN_BY_ID[id].state } : {}), side, ...front(i, j, side, 0, id), ...extra });
+const REP = '#1b4fc4', GASC = '#1f8f3a', FOOD = '#e8c21a', CORNER = '#ff8a1a', HOME = '#ffffff', MEET = '#ff1a2e', MIC = '#c04aff';
+// places in the new towns: gas, food, mechanics, corner stores, a few meets, studios and dealers, and houses for sale
+const TOWN_PLACES = [
+  // Fort Worth's south and west
+  TW('burleson')('burleson_gas', 'gas', 'Burleson Fuel Stop', 5, 1, 'N', { color: GASC, icon: 'gas' }),
+  TW('burleson')('burleson_repair', 'repair', 'Old Town Burleson Auto', 3, 0, 'S', { color: REP, icon: 'repair', rate: 0.85, tagline: 'Two bays and a coffee pot · trucks, hot rods, whatever you drag in' }),
+  TW('burleson')('burleson_food', 'food', 'Hidden Creek Cafe', 3, 3, 'N', { color: FOOD, icon: 'food' }),
+  TW('burleson')('burleson_house', 'property', 'Hidden Creek Ranch House', 6, 4, 'N', { color: HOME, icon: 'home' }),
+  TW('cleburne')('cleburne_gas', 'gas', 'Cleburne Country Fuel', 0, 1, 'E', { color: GASC, icon: 'gas' }),
+  TW('cleburne')('cleburne_cafe', 'food', 'Main St Cafe', 2, 1, 'S', { color: FOOD, icon: 'food', menu: 'diner' }),
+  TW('granbury')('granbury_gas', 'gas', 'Lakeside Fuel', 1, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('granbury')('granbury_repair', 'repair', 'Lake Granbury Auto', 4, 4, 'N', { color: REP, icon: 'repair', rate: 0.9, tagline: 'Boats on Monday, cars the rest of the week' }),
+  TW('granbury')('granbury_food', 'food', 'Pearl St Catfish', 3, 1, 'N', { color: FOOD, icon: 'food' }),
+  TW('granbury')('granbury_lake', 'property', 'Lake Granbury Waterfront', 6, 2, 'E', { color: HOME, icon: 'home' }),
+  TW('granbury')('granbury_meet', 'meet', 'Granbury Square Lot', 2, 4, 'N', { color: MEET, icon: 'meet', tier: 2 }),
+  TW('azle')('azle_gas', 'gas', 'Azle Fuel Center', 1, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('azle')('azle_corner', 'corner', 'Azle Quick Stop', 4, 3, 'N', { color: CORNER, icon: 'food' }),
+  TW('stephenville')('steph_gas', 'gas', 'Erath County Fuel', 4, 1, 'W', { color: GASC, icon: 'gas' }),
+  TW('stephenville')('steph_food', 'food', 'Cowboy Capital Diner', 3, 3, 'N', { color: FOOD, icon: 'food', menu: 'diner' }),
+  TW('stephenville')('steph_repair', 'repair', 'Erath County Truck & Tire', 5, 4, 'N', { color: REP, icon: 'repair', rate: 0.75, tagline: 'Dairy-country prices · farm trucks, stock trailers, your car too' }),
+  // between Fort Worth and Dallas, and south of Dallas
+  TW('arlington')('arl_gas', 'gas', 'Volt & Petrol', 0, 2, 'E', { color: GASC, icon: 'gas' }),
+  TW('arlington')('arl_repair', 'repair', 'Pioneer Pkwy Auto', 4, 3, 'N', { color: REP, icon: 'repair', rate: 0.95, tagline: 'Arlington since 1984 · brakes, tires, AC and engines' }),
+  TW('arlington')('arl_corner', 'corner', 'Abram St Food Mart', 5, 0, 'S', { color: CORNER, icon: 'food' }),
+  TW('arlington')('arl_wings', 'food', 'Cooper St Wings', 1, 4, 'N', { color: FOOD, icon: 'food' }),
+  TW('arlington')('arl_automall', 'dealer', 'Arlington Auto Mall (Ford · Chevy · Toyota · Honda · Nissan)', 6, 3, 'S', { color: '#f2f2f2', icon: 'car', makes: ['ford', 'chevrolet', 'gmc', 'toyota', 'honda', 'nissan', 'hyundai', 'kia'] }),
+  TW('arlington')('arl_meet', 'meet', 'Six Flags Overflow Lot', 6, 1, 'E', { color: MEET, icon: 'meet', tier: 2 }),
+  TW('arlington')('arl_twostory', 'property', 'South Arlington Two-Story', 2, 6, 'N', { color: HOME, icon: 'home' }),
+  TW('grandprairie')('gp_gas', 'gas', 'Gas-N-Go', 3, 0, 'S', { color: GASC, icon: 'gas' }),
+  TW('grandprairie')('gp_trans', 'repair', 'Great Southwest Transmission', 4, 2, 'N', { color: REP, icon: 'repair', rate: 0.85, tagline: 'Transmissions and rear ends · Grand Prairie' }),
+  TW('grandprairie')('gp_corner', 'corner', 'Wheatland Food Mart', 6, 5, 'N', { color: CORNER, icon: 'food' }),
+  TW('grandprairie')('gp_tacos', 'food', 'Duncanville Taqueria', 2, 6, 'N', { color: FOOD, icon: 'food', menu: 'taco' }),
+  TW('grandprairie')('gp_starter', 'property', 'Duncanville Starter', 5, 7, 'N', { color: HOME, icon: 'home' }),
+  TW('mansfield')('mans_gas', 'gas', 'Mansfield Fuel', 2, 0, 'S', { color: GASC, icon: 'gas' }),
+  TW('mansfield')('mans_bbq', 'food', 'Mansfield Smokehouse', 4, 2, 'N', { color: FOOD, icon: 'food' }),
+  TW('mansfield')('mans_brick', 'property', 'Mansfield Brick Two-Story', 6, 4, 'N', { color: HOME, icon: 'home' }),
+  TW('cedarhill')('ch_gas', 'gas', 'Volt & Petrol', 2, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('cedarhill')('ch_repair', 'repair', 'DeSoto Auto & Tire', 5, 2, 'N', { color: REP, icon: 'repair', rate: 0.9, tagline: 'Southern Dallas County · honest work, fair price' }),
+  TW('cedarhill')('ch_corner', 'corner', 'Lancaster Food Mart', 9, 4, 'N', { color: CORNER, icon: 'food' }),
+  TW('cedarhill')('ch_studio', 'studio', 'Hampton Road Studios', 4, 4, 'S', { color: MIC, icon: 'mic' }),
+  TW('cedarhill')('ch_meet', 'meet', 'Lancaster Airport Lot', 8, 1, 'E', { color: MEET, icon: 'meet', tier: 2 }),
+  TW('cedarhill')('ch_estate', 'property', 'Cedar Hill Hilltop Estate', 0, 3, 'E', { color: HOME, icon: 'home' }),
+  TW('waxahachie')('wax_gas', 'gas', 'Ellis County Fuel', 1, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('waxahachie')('wax_repair', 'repair', 'Ellis County Auto', 6, 2, 'N', { color: REP, icon: 'repair', rate: 0.8, tagline: 'Gingerbread town, country rates' }),
+  TW('waxahachie')('wax_cafe', 'food', 'Courthouse Square Cafe', 2, 4, 'N', { color: FOOD, icon: 'food', menu: 'diner' }),
+  TW('waxahachie')('wax_victorian', 'property', 'Waxahachie Victorian', 5, 4, 'N', { color: HOME, icon: 'home' }),
+  TW('ennis')('ennis_gas', 'gas', 'Ennis Travel Stop', 0, 1, 'E', { color: GASC, icon: 'gas' }),
+  TW('ennis')('ennis_kolache', 'food', 'Ennis Kolache Shop', 2, 1, 'N', { color: FOOD, icon: 'food' }),
+  TW('hillsboro')('hb_gas', 'gas', 'Hillsboro Travel Center', 4, 3, 'N', { color: GASC, icon: 'gas' }),
+  TW('hillsboro')('hb_diesel', 'repair', 'Hill County Diesel', 1, 4, 'N', { color: REP, icon: 'repair', rate: 0.8, tagline: 'Off I-35E · big rigs, stock trailers and pickups' }),
+  TW('hillsboro')('hb_grill', 'food', 'Outlet Mall Grill', 5, 4, 'N', { color: FOOD, icon: 'food' }),
+  TW('alvarado')('alv_gas', 'gas', 'Alvarado Fuel', 2, 0, 'S', { color: GASC, icon: 'gas' }),
+  TW('alvarado')('alv_corner', 'corner', 'Venus Mini Mart', 6, 2, 'N', { color: CORNER, icon: 'food' }),
+  TW('alvarado')('alv_farm', 'property', 'Alvarado Farmhouse', 0, 4, 'E', { color: HOME, icon: 'home' }),
+  // Dallas grows
+  TW('eastdallas')('ed_gas', 'gas', 'Gas-N-Go', 2, 6, 'N', { color: GASC, icon: 'gas' }),
+  TW('eastdallas')('ed_repair', 'repair', 'Buckner Blvd Collision', 5, 7, 'N', { color: REP, icon: 'repair', rate: 0.85, tagline: 'Body, paint and frame · Pleasant Grove' }),
+  TW('eastdallas')('ed_corner', 'corner', 'Garland Rd Food Mart', 3, 3, 'S', { color: CORNER, icon: 'food' }),
+  TW('eastdallas')('ed_bbq', 'food', 'Mesquite BBQ Pit', 8, 7, 'S', { color: FOOD, icon: 'food' }),
+  TW('eastdallas')('ed_meet', 'meet', 'Town East Lot', 9, 1, 'S', { color: MEET, icon: 'meet', tier: 2 }),
+  TW('eastdallas')('ed_perf', 'perf', 'Garland Speed & Dyno', 7, 2, 'N', { color: '#e8641a', icon: 'wrench', owner: 'Quan', tagline: 'Quan Tran · turbo Hondas, Supras and street-car dyno tuning · Garland' }),
+  TW('eastdallas')('ed_studio', 'studio', 'Pleasant Grove Sound', 6, 8, 'N', { color: MIC, icon: 'mic' }),
+  TW('eastdallas')('ed_whiterock', 'property', 'White Rock Lake House', 1, 1, 'E', { color: HOME, icon: 'home' }),
+  TW('northdallas')('nd_gas', 'gas', 'Volt & Petrol', 8, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('northdallas')('nd_euro', 'repair', 'Preston Euro Motors', 4, 0, 'S', { color: REP, icon: 'repair', rate: 1.35, tagline: 'Porsche, Ferrari, Bentley · Park Cities prices' }),
+  TW('northdallas')('nd_luxury', 'dealer', 'Park Cities Luxury (BMW · Mercedes · Porsche · Lexus)', 9, 6, 'N', { color: '#f2f2f2', icon: 'car', makes: ['bmw', 'mercedes', 'porsche', 'lexus', 'audi', 'genesis', 'landrover', 'volvo'] }),
+  TW('northdallas')('nd_corner', 'corner', 'Harry Hines Food Mart', 1, 7, 'E', { color: CORNER, icon: 'food' }),
+  TW('northdallas')('nd_tacos', 'food', 'Lower Greenville Tacos', 8, 7, 'N', { color: FOOD, icon: 'food', menu: 'taco' }),
+  TW('northdallas')('nd_studio', 'studio', 'Love Field Records', 1, 6, 'E', { color: MIC, icon: 'mic' }),
+  TW('northdallas')('nd_meet', 'meet', 'NorthPark Garage Lot', 10, 4, 'W', { color: MEET, icon: 'meet', tier: 3 }),
+  TW('northdallas')('nd_preston', 'property', 'Preston Hollow Estate', 4, 1, 'E', { color: HOME, icon: 'home' }),
+  TW('northdallas')('nd_highland', 'property', 'Highland Park Mansion', 5, 5, 'S', { color: HOME, icon: 'home' }),
+  TW('northdallas')('nd_lakehighlands', 'property', 'Lake Highlands Ranch', 12, 2, 'N', { color: HOME, icon: 'home' }),
+  TW('carrollton')('car_gas', 'gas', 'Gas-N-Go', 2, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('carrollton')('car_corner', 'corner', 'Josey Ln Food Mart', 4, 4, 'N', { color: CORNER, icon: 'food' }),
+  TW('carrollton')('car_repair', 'repair', 'Addison Auto Haus', 7, 3, 'N', { color: REP, icon: 'repair', rate: 1.1, tagline: 'German cars and Japanese imports · Addison' }),
+  TW('carrollton')('car_kbbq', 'food', 'Koreatown BBQ', 5, 2, 'S', { color: FOOD, icon: 'food' }),
+  TW('lewisville')('lv_gas', 'gas', 'Lakeside Fuel', 4, 5, 'N', { color: GASC, icon: 'gas' }),
+  TW('lewisville')('lv_repair', 'repair', 'Lewisville Lakeside Auto', 1, 6, 'N', { color: REP, icon: 'repair', rate: 0.95, tagline: 'Boat trailers, lake trucks and daily drivers' }),
+  TW('lewisville')('lv_grill', 'food', 'Old Town Lewisville Grill', 4, 6, 'S', { color: FOOD, icon: 'food' }),
+  TW('lewisville')('lv_meet', 'meet', 'Vista Ridge Lot', 6, 9, 'N', { color: MEET, icon: 'meet', tier: 2 }),
+  TW('lewisville')('lv_flowermound', 'property', 'Flower Mound Two-Story', 2, 2, 'N', { color: HOME, icon: 'home' }),
+  TW('plano')('plano_gas', 'gas', 'Volt & Petrol', 4, 2, 'S', { color: GASC, icon: 'gas' }),
+  TW('plano')('plano_exotics', 'dealer', 'Legacy Exotics (Ferrari · Lamborghini · McLaren · Rolls-Royce)', 1, 1, 'S', { color: '#e8c21a', icon: 'car', makes: ['ferrari', 'lamborghini', 'mclaren', 'astonmartin', 'bentley', 'rollsroyce', 'maserati', 'lotus', 'bugatti', 'koenigsegg', 'pagani'] }),
+  TW('plano')('plano_import', 'repair', 'Plano Import Service', 7, 4, 'N', { color: REP, icon: 'repair', rate: 1.15, tagline: 'Lexus, Acura, Infiniti · loaners and a clean waiting room' }),
+  TW('plano')('plano_corner', 'corner', 'Richardson Food Mart', 5, 6, 'N', { color: CORNER, icon: 'food' }),
+  TW('plano')('plano_pho', 'food', 'Plano Pho House', 8, 2, 'N', { color: FOOD, icon: 'food' }),
+  TW('plano')('plano_penthouse', 'property', 'Legacy Glass Penthouse', 3, 0, 'S', { color: HOME, icon: 'home' }),
+  TW('plano')('plano_richardson', 'property', 'Richardson Ranch', 10, 7, 'N', { color: HOME, icon: 'home' }),
+  TW('frisco')('frisco_gas', 'gas', 'Volt & Petrol', 1, 2, 'E', { color: GASC, icon: 'gas' }),
+  TW('frisco')('frisco_perf', 'perf', 'Frisco Tuning Lab', 5, 1, 'S', { color: '#e8641a', icon: 'wrench', owner: 'Jaylen', tagline: 'Jaylen Ross · E85 conversions, big turbos, launch control · Frisco' }),
+  TW('frisco')('frisco_meet', 'meet', 'The Star Lot', 2, 5, 'E', { color: MEET, icon: 'meet', tier: 4 }),
+  TW('frisco')('frisco_estate', 'property', 'Frisco Gated Estate', 0, 0, 'S', { color: HOME, icon: 'home' }),
+  TW('mckinney')('mck_gas', 'gas', 'Collin County Fuel', 1, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('mckinney')('mck_bistro', 'food', 'Historic Square Bistro', 4, 4, 'N', { color: FOOD, icon: 'food' }),
+  TW('mckinney')('mck_repair', 'repair', 'McKinney Truck & Auto', 6, 4, 'N', { color: REP, icon: 'repair', rate: 1.0, tagline: 'Square deal on the square · since 1962' }),
+  TW('mckinney')('mck_craftsman', 'property', 'McKinney Craftsman', 2, 4, 'N', { color: HOME, icon: 'home' }),
+  // up north and out west of Denton
+  TW('sanger')('sanger_gas', 'gas', 'Sanger Travel Stop', 2, 3, 'W', { color: GASC, icon: 'gas' }),
+  TW('sanger')('sanger_steak', 'food', 'Sanger Steakhouse', 3, 0, 'S', { color: FOOD, icon: 'food' }),
+  TW('decatur')('decatur_gas', 'gas', 'Wise County Fuel', 1, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('decatur')('decatur_food', 'food', 'Decatur Square Diner', 5, 2, 'N', { color: FOOD, icon: 'food', menu: 'diner' }),
+  TW('decatur')('decatur_diesel', 'repair', 'Wise County Diesel', 0, 4, 'E', { color: REP, icon: 'repair', rate: 0.8, tagline: 'Oilfield trucks and ranch rigs · Decatur' }),
+  TW('decatur')('decatur_ranch', 'property', 'Decatur Ranch House', 6, 5, 'N', { color: HOME, icon: 'home' }),
+  // out of state
+  TW('ga_decatur')('ga_dec_gas', 'gas', 'QuikTrip', 1, 4, 'S', { color: GASC, icon: 'gas' }),
+  TW('ga_decatur')('ga_dec_soul', 'food', 'Decatur Soul Food', 2, 1, 'N', { color: FOOD, icon: 'food' }),
+  TW('ga_decatur')('ga_dec_corner', 'corner', 'Candler Rd Quick Shop', 6, 5, 'N', { color: CORNER, icon: 'food' }),
+  TW('ga_decatur')('ga_dec_studio', 'studio', 'DeKalb Sound', 3, 3, 'S', { color: MIC, icon: 'mic' }),
+  TW('ga_decatur')('ga_stonemtn', 'property', 'Stone Mountain Estate', 6, 1, 'E', { color: HOME, icon: 'home' }),
+  TW('ga_eastpoint')('ga_ep_gas', 'gas', 'QuikTrip', 2, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('ga_eastpoint')('ga_ep_corner', 'corner', 'Washington Rd Food Mart', 7, 2, 'N', { color: CORNER, icon: 'food' }),
+  TW('ga_eastpoint')('ga_ep_meet', 'meet', 'Camp Creek Lot', 1, 2, 'N', { color: MEET, icon: 'meet', tier: 2 }),
+  TW('ca_eastla')('ca_ela_tacos', 'food', 'Boyle Heights Tacos', 2, 2, 'N', { color: FOOD, icon: 'food', menu: 'taco' }),
+  TW('ca_eastla')('ca_ela_corner', 'corner', 'Whittier Blvd Market', 3, 6, 'N', { color: CORNER, icon: 'food' }),
+  TW('ca_eastla')('ca_ela_body', 'repair', 'Montebello Body & Paint', 7, 4, 'N', { color: REP, icon: 'repair', rate: 1.1, tagline: 'Candy paint, collision and smog' }),
+  TW('ca_eastla')('ca_downey', 'property', 'Downey Ranch', 6, 6, 'N', { color: HOME, icon: 'home' }),
+  TW('ca_inglewood')('ca_ing_gas', 'gas', 'Arco', 1, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('ca_inglewood')('ca_ing_food', 'food', 'Inglewood Chicken & Waffles', 6, 2, 'N', { color: FOOD, icon: 'food' }),
+  TW('ca_inglewood')('ca_ing_meet', 'meet', 'SoFi Lot', 5, 1, 'W', { color: MEET, icon: 'meet', tier: 3 }),
+  TW('fl_beach')('fl_mb_cafe', 'food', 'Ocean Terrace Cafe', 3, 5, 'E', { color: FOOD, icon: 'food', menu: 'diner' }),
+  TW('fl_beach')('fl_mb_drip', 'clothing', 'Lincoln Rd Boutique', 1, 6, 'N', { color: '#a01aff', icon: 'shirt' }),
+  TW('fl_beach')('fl_mb_meet', 'meet', 'South Pointe Lot', 2, 7, 'S', { color: MEET, icon: 'meet', tier: 3 }),
+  TW('fl_beach')('fl_oceanfront', 'property', 'Collins Ave Oceanfront Condo', 3, 1, 'E', { color: HOME, icon: 'home' }),
+  TW('fl_gables')('fl_cg_gas', 'gas', 'Wawa', 6, 1, 'S', { color: GASC, icon: 'gas' }),
+  TW('fl_gables')('fl_cg_corner', 'corner', 'Bird Rd Mini Mart', 8, 2, 'N', { color: CORNER, icon: 'food' }),
+  TW('fl_gables')('fl_cg_repair', 'repair', 'Coconut Grove Auto', 7, 0, 'S', { color: REP, icon: 'repair', rate: 1.1, tagline: 'Euro and exotic service under the banyan trees' }),
+  TW('fl_gables')('fl_gables', 'property', 'Coral Gables Mediterranean', 0, 1, 'E', { color: HOME, icon: 'home' }),
+];
+// an out-of-state airport: the terminal on the south side of the airport road, west of town
+const airport = (st, id, name) => ({ id, type: 'airport', name, x: STATES[st].cx - 330, z: STATES[st].cz + AIRPORT_ROW * STATE_BLOCK + 14, face: 0, side: 'N', state: st, color: '#5fd3ff', icon: 'plane' });
 
 export const LOCATIONS = [
   L('eastgate_studio', 'home', 'Eastgate Studio (Home)', 8, 6, 'W', { color: '#ffffff', icon: 'home' }),
@@ -208,15 +368,16 @@ export const LOCATIONS = [
   L('corner_rosedale', 'corner', 'Rosedale Food Mart', 6, 9, 'N', { color: '#ff8a1a', icon: 'food' }),
   L('corner_northside', 'corner', 'Northside Quick Stop', 6, 2, 'S', { color: '#ff8a1a', icon: 'food' }),
   L('corner_riverside', 'corner', 'Riverside Mini Mart', 9, 4, 'W', { color: '#ff8a1a', icon: 'food' }),
+  L('corner_como', 'corner', 'Horne St Food Mart', 2, 7, 'N', { color: '#ff8a1a', icon: 'food' }),
   L('corner_camp_bowie', 'corner', 'Camp Bowie Corner Store', 2, 5, 'E', { color: '#ff8a1a', icon: 'food' }),
   L('threadline', 'clothing', 'Threadline Streetwear', 4, 6, 'E', { color: '#a01aff', icon: 'shirt' }),
   L('surplus', 'clothing', 'Riverside Army Surplus', 8, 9, 'W', { color: '#a01aff', icon: 'shirt', shop: 'surplus' }),
   L('bayline', 'realty', 'Bayline Realty', 5, 5, 'S', { color: '#1f8f3a', icon: 'key', contact: 'priya' }),
   L('pspd_central', 'police', 'FWPD Central Precinct', 5, 6, 'N', { color: '#1b4fc4', icon: 'shield' }),
   L('jps', 'hospital', 'JPS Hospital', 6, 8, 'W', { color: '#e0192e', icon: 'cross' }),   // John Peter Smith, the county trauma center on S Main St
-  L('pspd_harbor', 'police', 'FWPD Lake Worth Precinct', 10, 10, 'N', { color: '#1b4fc4', icon: 'shield' }),
-  L('harbor_loft', 'property', 'Lakeside Loft', 9, 10, 'N', { color: '#ffffff', icon: 'home' }),
-  L('westside_house', 'property', 'Arlington Heights House', 1, 6, 'E', { color: '#ffffff', icon: 'home' }),
+  L('pspd_harbor', 'police', 'FWPD Southside Precinct', 10, 10, 'N', { color: '#1b4fc4', icon: 'shield' }),
+  L('harbor_loft', 'property', 'Southside Loft', 9, 10, 'N', { color: '#ffffff', icon: 'home' }),
+  L('westside_house', 'property', 'Como House', 1, 6, 'E', { color: '#ffffff', icon: 'home' }),
   L('hillcrest_villa', 'property', 'Hillcrest Villa', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
   L('foundry_warehouse', 'property', 'Foundry Warehouse Garage', 11, 3, 'W', { color: '#ffffff', icon: 'home' }),
   L('fairmount_craftsman', 'property', 'Fairmount Craftsman', 4, 9, 'N', { color: '#ffffff', icon: 'home' }),
@@ -225,6 +386,8 @@ export const LOCATIONS = [
   L('trap_riverside', 'trap', 'Riverside Duplex', 10, 4, 'W', { color: '#8a1a1a', icon: 'home' }),
   L('marchetti_salvage', 'chop', 'Marchetti Salvage', 10, 7, 'N', { color: '#c9752a', icon: 'wrench', contact: 'junior' }),
   // recording studios: cut records for your label (ui/label.js)
+  // VirL Studios: the best room in the game, a block off Downtown
+  L('virl_studios', 'studio', 'VirL Studios', 7, 6, 'S', { color: '#ffc21a', icon: 'mic', h: 30, top: true }),
   L('magnolia_sound', 'studio', 'Magnolia Sound', 4, 8, 'N', { color: '#c04aff', icon: 'mic' }),
   L('trap_house_studios', 'studio', 'Trap House Studios', 3, 6, 'S', { color: '#c04aff', icon: 'mic' }),
   L('cashcow_pawn', 'pawn', 'Cash Cow Pawn & Gold', 9, 7, 'W', { color: '#d4a017', icon: 'tow' }),
@@ -237,6 +400,11 @@ export const LOCATIONS = [
   // weekend night meet (Fri + Sat, 9 PM to 3 AM): ui/nightmeet.js
   L('gran_plaza', 'meet', 'La Gran Plaza Lot', 7, 10, 'N', { color: '#ff1a2e', icon: 'meet', weekend: true }),
   L('old_foundry', 'meet', 'The Old Foundry', 10, 2, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
+  // the Cultural District just west of Downtown, and TCU on the west side (scenery.js draws them)
+  { id: 'dickies_arena', type: 'landmark', name: 'Dickies Arena', x: -375, z: -13, face: 0, color: '#e8c21a', icon: 'arena',
+    blurb: 'The 14,000-seat arena in the Cultural District, just west of Downtown. Rodeo in the winter, the biggest concerts in Fort Worth the rest of the year. Book an arena headline for one of your artists in the Label app and this is where they play.' },
+  { id: 'tcu', type: 'landmark', name: 'TCU', x: -525, z: 313, face: Math.PI, color: '#a46be0', icon: 'school',
+    blurb: 'Texas Christian University, between Como and North Crowley. Horned Frogs purple everywhere, Frog Fountain out front and Amon G. Carter Stadium next door. On game days the whole west side turns purple.' },
   // on the lawn in front of the pink granite courthouse (block 5,4; scenery draws the building)
   { id: 'courthouse', type: 'court', name: 'Tarrant County Courthouse', x: -75, z: -163, face: 0, color: '#c9a68a', icon: 'court' },
   { id: 'ironline', type: 'drag', name: 'Ironline Dragway', x: 34, z: 1260, face: Math.PI / 2, color: '#ff1a2e', icon: 'flag' },
@@ -310,11 +478,60 @@ export const LOCATIONS = [
   N('oak_victorian', 'property', 'Oak St Victorian', 7, 0, 'S', { color: '#ffffff', icon: 'home' }),
   N('bonnie_brae_ranch', 'property', 'Bonnie Brae Ranch House', 0, 1, 'E', { color: '#ffffff', icon: 'home' }),
   N('se_denton_starter', 'property', 'Southeast Denton Starter', 4, 7, 'N', { color: '#ffffff', icon: 'home' }),
+  // Alliance Airport: the terminal at the top of Alliance Blvd. Flights to
+  // Atlanta, LA and Miami (ui/flights.js); your car rides cargo.
+  { id: 'air_alliance', type: 'airport', name: 'Alliance Airport Terminal', x: AIRPORT_X + 10, z: HTRACE_Z - 216, face: -Math.PI / 2, side: 'W', state: 'tx', color: '#5fd3ff', icon: 'plane' },
+  // Brazos country, out FM 916 past the big ranches: a feed store with pumps
+  { id: 'gas_brazos', type: 'gas', name: 'Brazos Feed & Fuel', x: 300, z: FM916_Z - 14, face: 0, side: 'S', color: '#1f8f3a', icon: 'gas' },
+  // ---------------- out of state: Atlanta, Los Angeles, Miami (data/states.js, world2d/states.js) ----------------
+  airport('ga', 'air_atl', 'Hartsfield-Jackson Atlanta'),
+  GA('atl_studio', 'studio', 'Zone 6 Sound', 6, 5, 'N', { color: '#c04aff', icon: 'mic' }),
+  GA('atl_peachtree', 'studio', 'Peachtree Platinum Studios', 3, 3, 'S', { color: '#c04aff', icon: 'mic' }),
+  GA('atl_plug', 'plug', 'Bankhead Connect', 1, 5, 'E', { color: '#2cff7a', icon: 'tow', stock: ['lean', 'percs', 'loud'], rate: 0.6, tagline: 'Bankhead · lean and percs for less than Texas' }),
+  GA('atl_trucks', 'dealer', 'Peach State Motors (Chevy · GMC · Cadillac · Dodge · Ram)', 4, 6, 'N', { color: '#f2f2f2', icon: 'car', makes: ['chevrolet', 'gmc', 'cadillac', 'dodge', 'ram', 'chrysler', 'buick'] }),
+  GA('atl_perf', 'perf', 'Old National Speed', 2, 7, 'N', { color: '#e8641a', icon: 'wrench', owner: 'Kel', tagline: 'Kel Brooks · donks, Hellcats and turbo LS swaps · Atlanta' }),
+  GA('atl_repair', 'repair', 'Moreland Ave Auto', 5, 4, 'W', { color: '#1b4fc4', icon: 'repair', rate: 0.95, tagline: 'East Atlanta · fair prices, fast turnaround' }),
+  GA('atl_gas', 'gas', 'QuikTrip', 1, 4, 'S', { color: '#1f8f3a', icon: 'gas' }),
+  GA('atl_corner', 'corner', 'Candler Rd Food Mart', 6, 6, 'W', { color: '#ff8a1a', icon: 'food' }),
+  GA('atl_wings', 'food', 'Lemon Pepper Wing Spot', 3, 5, 'N', { color: '#e8c21a', icon: 'food' }),
+  GA('atl_drip', 'clothing', 'Little Five Points Drip', 5, 2, 'S', { color: '#a01aff', icon: 'shirt' }),
+  GA('atl_meet', 'meet', 'Old National Hwy Lot', 4, 7, 'N', { color: '#ff1a2e', icon: 'meet', tier: 2 }),
+  GA('atl_buckhead', 'property', 'Buckhead Gated Estate', 2, 1, 'S', { color: '#ffffff', icon: 'home' }),
+  GA('atl_eastatl', 'property', 'East Atlanta Bungalow', 6, 3, 'W', { color: '#ffffff', icon: 'home' }),
+  airport('ca', 'air_lax', 'LAX'),
+  CA('la_sunset', 'studio', 'Sunset Blvd Recorders', 4, 1, 'S', { color: '#c04aff', icon: 'mic' }),
+  CA('la_plug', 'plug', 'Venice Beach Collective', 1, 4, 'E', { color: '#2cff7a', icon: 'tow', stock: ['loud', 'smoke', 'exo'], rate: 0.55, tagline: 'Venice · loud by the pound, California prices' }),
+  CA('la_exotics', 'dealer', 'Beverly Hills Exotics (Ferrari · Lamborghini · McLaren · Rolls-Royce)', 2, 2, 'S', { color: '#e8c21a', icon: 'car', makes: ['ferrari', 'lamborghini', 'mclaren', 'astonmartin', 'bentley', 'rollsroyce', 'maserati', 'lotus', 'bugatti', 'koenigsegg', 'pagani', 'porsche'] }),
+  CA('la_jdm', 'dealer', 'Gardena JDM Imports (Toyota · Nissan · Honda · Mazda · Subaru)', 5, 6, 'N', { color: '#f2f2f2', icon: 'car', makes: ['toyota', 'lexus', 'honda', 'acura', 'nissan', 'infiniti', 'mazda', 'subaru', 'mitsubishi', 'scion'] }),
+  CA('la_ev', 'dealer', 'Silicon Beach EV (Tesla · Rivian · Lucid)', 1, 3, 'E', { color: '#13b3c4', icon: 'car', makes: ['tesla', 'rivian', 'lucid'] }),
+  CA('la_perf', 'perf', 'Hawthorne Speed Shop', 5, 7, 'N', { color: '#e8641a', icon: 'wrench', owner: 'Nori', tagline: 'Nori Sato · 2JZ, RB and K-swap builds · LA' }),
+  CA('la_lowrider', 'visual', 'East LA Lowriders', 7, 5, 'W', { color: '#d12a8a', icon: 'spray', tagline: 'Candy paint, chrome and hydraulics' }),
+  CA('la_repair', 'repair', 'Crenshaw Auto Care', 3, 4, 'N', { color: '#1b4fc4', icon: 'repair', rate: 1.2, tagline: 'California labor rates · smog check while you wait' }),
+  CA('la_gas', 'gas', 'Arco', 4, 4, 'S', { color: '#1f8f3a', icon: 'gas' }),
+  CA('la_tacos', 'food', "Leo's Taco Truck", 6, 3, 'S', { color: '#e8c21a', icon: 'food', menu: 'taco' }),
+  CA('la_meet', 'meet', 'Angeles Crest Turnout', 3, 0, 'S', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
+  CA('la_hills', 'property', 'Hollywood Hills Glass House', 5, 0, 'S', { color: '#ffffff', icon: 'home' }),
+  CA('la_compton', 'property', 'Compton Starter', 3, 6, 'N', { color: '#ffffff', icon: 'home' }),
+  airport('fl', 'air_mia', 'Miami International'),
+  FL('mia_studio', 'studio', 'Biscayne Bay Studios', 5, 2, 'E', { color: '#c04aff', icon: 'mic' }),
+  FL('mia_plug', 'plug', 'Little Havana Connect', 2, 6, 'N', { color: '#2cff7a', icon: 'tow', stock: ['powder', 'molly', 'ice'], rate: 0.5, tagline: 'Little Havana · straight off the boat, half what Texas pays' }),
+  FL('mia_exotics', 'dealer', 'Ocean Drive Exotics (Lamborghini · Ferrari · Bentley)', 6, 4, 'E', { color: '#e8c21a', icon: 'car', makes: ['ferrari', 'lamborghini', 'mclaren', 'bentley', 'rollsroyce', 'maserati', 'astonmartin', 'porsche', 'mercedes'] }),
+  FL('mia_perf', 'perf', 'Hialeah Speed', 1, 2, 'S', { color: '#e8641a', icon: 'wrench', owner: 'Rafa', tagline: 'Rafa Ortiz · Coyote swaps and nitrous · Miami' }),
+  FL('mia_repair', 'repair', 'Flagler Street Garage', 3, 4, 'S', { color: '#1b4fc4', icon: 'repair', rate: 1.05, tagline: 'Body, mechanical and salt-air rust' }),
+  FL('mia_gas', 'gas', 'Wawa', 4, 1, 'S', { color: '#1f8f3a', icon: 'gas' }),
+  FL('mia_corner', 'corner', 'Calle Ocho Mini Mart', 3, 6, 'N', { color: '#ff8a1a', icon: 'food' }),
+  FL('mia_cafe', 'food', 'Cafecito Ventanita', 4, 6, 'N', { color: '#e8c21a', icon: 'food', menu: 'diner' }),
+  FL('mia_meet', 'meet', 'Ocean Drive Lot', 6, 6, 'E', { color: '#ff1a2e', icon: 'meet', tier: 3 }),
+  FL('mia_brickell', 'property', 'Brickell Penthouse', 4, 3, 'S', { color: '#ffffff', icon: 'home' }),
+  FL('mia_hialeah', 'property', 'Hialeah House', 1, 6, 'N', { color: '#ffffff', icon: 'home' }),
+  // the new towns on the big map (data/metro.js)
+  ...TOWN_PLACES,
   // street race start lines (routes in data/streetRaces.js)
   // trap houses, land for sale and the plug, off the city grid (data/estate.js)
   ...ESTATE_LOCATIONS,
   // taco trucks and diners, each on its own lot (data/food.js)
   ...FOOD_SPOTS,
+  ...MARINA_LOCATIONS,   // marinas on the lakes and Miami's bay (data/boats.js)
   ...STREET_RACES.map(ev => { const st = raceStart(ev); return { id: ev.id, type: 'sprint', name: ev.name, x: st.x, z: st.z, face: st.h, color: '#ffbe1e', icon: 'flag', tier: ev.tier > 1 ? ev.tier : undefined, race: ev.id }; }),
 ];
 
@@ -323,8 +540,8 @@ export const LOC_BY_ID = Object.fromEntries(LOCATIONS.map(l => [l.id, l]));
 // Homes. `slots` is garage capacity. Safehouses clear a pursuit in cooldown.
 export const PROPERTIES = {
   eastgate_studio:   { name: 'Eastgate Studio', price: 0, slots: 2, desc: 'One room, one window, a two-car shared carport. Home.' },
-  harbor_loft:       { name: 'Lakeside Loft', price: 42000, slots: 3, desc: 'Converted cannery loft with a view of the cranes.' },
-  westside_house:    { name: 'Arlington Heights House', price: 135000, slots: 4, house: 'one', desc: 'Brick 1-story ranch on a quiet street, four-car garage with a lift.' },
+  harbor_loft:       { name: 'Southside Loft', price: 42000, slots: 3, desc: 'Converted cannery loft with a view of the cranes.' },
+  westside_house:    { name: 'Como House', price: 135000, slots: 4, house: 'one', desc: 'Brick 1-story ranch on a quiet street, four-car garage with a lift.' },
   hillcrest_villa:   { name: 'Hillcrest Villa', price: 780000, slots: 8, house: 'two', desc: 'Hillside 2-story glass house with a heated showroom garage.', tier: 4 },
   foundry_warehouse: { name: 'Foundry Warehouse Garage', price: 260000, slots: 12, desc: 'A crew HQ: dyno cell, paint booth, twelve bays.', tier: 3 },
   mineral_wells_home: { name: 'Mineral Wells Ranch House', price: 175000, slots: 6, house: 'one', desc: 'A west-side ranch house with six garage spots and room to grow.' },
@@ -344,7 +561,37 @@ export const PROPERTIES = {
   oak_victorian:     { name: 'Oak St Victorian', price: 365000, slots: 6, house: 'three', desc: 'Denton. A restored 1890s Victorian on Oak St, three stories and a six-car carriage house.', tier: 3, wall: '#c9b48a', roof: '#4a2f3a' },
   bonnie_brae_ranch: { name: 'Bonnie Brae Ranch House', price: 118000, slots: 4, house: 'one', desc: 'Denton. A 1-story brick ranch by UNT, four-car garage. The freeway is right out back.' },
   se_denton_starter: { name: 'Southeast Denton Starter', price: 58000, slots: 2, house: 'starter', desc: 'Denton. Two bedrooms, a porch and a carport on Teasley Ln.' },
+  // out of state (data/states.js)
+  atl_buckhead:      { name: 'Buckhead Gated Estate', price: 2400000, slots: 12, house: 'three', desc: 'Atlanta. Three stories behind a gate on West Paces Ferry, a twelve-car garage.', tier: 4, wall: '#e8e2d8', roof: '#2f343d' },
+  atl_eastatl:       { name: 'East Atlanta Bungalow', price: 215000, slots: 3, house: 'starter', desc: 'Atlanta. A craftsman bungalow by the Village, three-car garage out back.' },
+  la_hills:          { name: 'Hollywood Hills Glass House', price: 6200000, slots: 16, house: 'three', desc: 'Los Angeles. Glass on three floors over the city lights, a sixteen-car gallery.', tier: 5, wall: '#f2f2f2', roof: '#1a1c22', style: 'flat' },
+  la_compton:        { name: 'Compton Starter', price: 265000, slots: 3, house: 'starter', desc: 'Los Angeles. Two bedrooms, a lowrider in every driveway on the block.' },
+  mia_brickell:      { name: 'Brickell Penthouse', price: 3300000, slots: 10, desc: 'Miami. The top floor over Biscayne Bay and ten spots in the private garage.', tier: 4 },
+  mia_hialeah:       { name: 'Hialeah House', price: 240000, slots: 3, house: 'one', desc: 'Miami. A one-story stucco house with a palm out front and a three-car garage.', wall: '#f2e2c8', roof: '#b06a32' },
   rivercrest_mansion: { name: 'Rivercrest Mansion', price: 3600000, slots: 14, house: 'three', desc: 'Country club money. Three stories, fourteen climate-controlled bays and a car elevator.', tier: 5, wall: '#e8e2d8', roof: '#2f3b4a', wallH: 5.2 },
+  // the new towns (data/metro.js)
+  burleson_house:    { name: 'Hidden Creek Ranch House', price: 165000, slots: 4, house: 'one', desc: 'Burleson. A brick 1-story on a cul-de-sac, four-car garage and a back porch.' },
+  granbury_lake:     { name: 'Lake Granbury Waterfront', price: 690000, slots: 8, house: 'two', desc: 'Granbury. Two stories on the water, a boat dock and an eight-car garage.', tier: 3, wall: '#d9d0bc', roof: '#3a4a5a' },
+  arl_twostory:      { name: 'South Arlington Two-Story', price: 189000, slots: 4, house: 'two', desc: 'Arlington. Four bedrooms upstairs, four cars below, Six Flags fireworks on Saturdays.' },
+  gp_starter:        { name: 'Duncanville Starter', price: 72000, slots: 2, house: 'starter', desc: 'Duncanville. Two bedrooms and a carport, I-20 traffic for a lullaby.' },
+  mans_brick:        { name: 'Mansfield Brick Two-Story', price: 245000, slots: 5, house: 'two', desc: 'Mansfield. A new-build 2-story on a corner lot, five-car garage.', tier: 2 },
+  ch_estate:         { name: 'Cedar Hill Hilltop Estate', price: 880000, slots: 10, house: 'two', desc: 'Cedar Hill. Up on the escarpment, the Dallas skyline from the pool, a ten-car garage.', tier: 3, wall: '#e8e2d8', roof: '#2f3b4a' },
+  wax_victorian:     { name: 'Waxahachie Victorian', price: 310000, slots: 5, house: 'three', desc: 'Waxahachie. A gingerbread Victorian off the square, a five-car carriage house.', tier: 2, wall: '#c9b48a', roof: '#4a2f3a' },
+  alv_farm:          { name: 'Alvarado Farmhouse', price: 128000, slots: 4, house: 'one', desc: 'Alvarado. A white farmhouse with a tin roof and a four-car shop out back.' },
+  ed_whiterock:      { name: 'White Rock Lake House', price: 960000, slots: 8, house: 'two', desc: 'East Dallas. A mid-century house over White Rock Lake, eight cars in the garage.', tier: 3, style: 'flat' },
+  nd_preston:        { name: 'Preston Hollow Estate', price: 4800000, slots: 16, house: 'three', desc: 'Preston Hollow. Three stories behind a gate, a sixteen-car gallery and a guest house.', tier: 5, wall: '#e8e2d8', roof: '#2f343d', wallH: 5.2 },
+  nd_highland:       { name: 'Highland Park Mansion', price: 3900000, slots: 12, house: 'three', desc: 'Highland Park. Old money, three stories and a twelve-car garage under the oaks.', tier: 4, wall: '#d9d0bc', roof: '#3a3030' },
+  nd_lakehighlands:  { name: 'Lake Highlands Ranch', price: 330000, slots: 4, house: 'one', desc: 'Lake Highlands. A 1-story ranch on a quiet street, four-car garage.', tier: 2 },
+  lv_flowermound:    { name: 'Flower Mound Two-Story', price: 445000, slots: 6, house: 'two', desc: 'Flower Mound. A big 2-story by the lake, six-car garage and a pool.', tier: 2 },
+  plano_penthouse:   { name: 'Legacy Glass Penthouse', price: 1250000, slots: 8, desc: 'Plano. The top floor at Legacy West, eight spots in the private garage.', tier: 4 },
+  plano_richardson:  { name: 'Richardson Ranch', price: 265000, slots: 4, house: 'one', desc: 'Richardson. A 1-story brick ranch, four-car garage, ten minutes from everything.' },
+  frisco_estate:     { name: 'Frisco Gated Estate', price: 2100000, slots: 14, house: 'three', desc: 'Frisco. Three stories in a gated community, a fourteen-car garage with a lift.', tier: 4, wall: '#e8e2d8', roof: '#3a4a3a' },
+  mck_craftsman:     { name: 'McKinney Craftsman', price: 395000, slots: 5, house: 'two', desc: 'McKinney. A restored craftsman two blocks off the square, five-car garage.', tier: 2, wall: '#7f8a6a', roof: '#4a3a2e' },
+  decatur_ranch:     { name: 'Decatur Ranch House', price: 158000, slots: 4, house: 'one', desc: 'Decatur. A ranch house on the edge of town, a four-car shop and room for horses.' },
+  ga_stonemtn:       { name: 'Stone Mountain Estate', price: 760000, slots: 8, house: 'two', desc: 'Atlanta. A 2-story by Stone Mountain Park, eight-car garage.', tier: 3 },
+  ca_downey:         { name: 'Downey Ranch', price: 690000, slots: 4, house: 'one', desc: 'Los Angeles. A Downey ranch house with a four-car garage and a lowrider driveway.', tier: 3, wall: '#f2e2c8', roof: '#b06a32' },
+  fl_oceanfront:     { name: 'Collins Ave Oceanfront Condo', price: 2600000, slots: 8, desc: 'Miami Beach. Ocean on one side, the bay on the other, eight spots downstairs.', tier: 4 },
+  fl_gables:         { name: 'Coral Gables Mediterranean', price: 1900000, slots: 8, house: 'two', desc: 'Coral Gables. Barrel tile, a courtyard fountain and an eight-car garage.', tier: 4, wall: '#f2e2c8', roof: '#b06a32' },
   // trap houses (data/estate.js): customers knock, SWAT might too
   ...Object.fromEntries(Object.entries(TRAPS).map(([id, t]) => [id, { ...t, trap: true }])),
 };
@@ -354,7 +601,7 @@ export const ROADS = {
   industrial: { name: 'East Lancaster', theme: 'industrial', lanes: 4, traffic: 0.35, tier: 1, heat: 0.6, desc: 'Four lanes between the warehouses. Trucks at night.' },
   highway:    { name: 'Loop 820', theme: 'highway', lanes: 6, traffic: 0.55, tier: 1, heat: 1.0, desc: 'Six lanes, long and straight, and the troopers know it.' },
   desert:     { name: 'Chisholm Trail Pkwy', theme: 'desert', lanes: 2, traffic: 0.12, tier: 2, heat: 0.3, desc: 'Two-lane desert straight. Nothing out here but heat haze.' },
-  mountain:   { name: 'Cross Timbers Pass Straight', theme: 'mountain', lanes: 2, traffic: 0.2, tier: 4, heat: 0.4, desc: 'The one straight piece of the pass. Pine trees and a long drop.' },
+  mountain:   { name: 'Lake Worth Pass Straight', theme: 'mountain', lanes: 2, traffic: 0.2, tier: 4, heat: 0.4, desc: 'The one straight piece of the pass. Pine trees and a long drop.' },
   strip:      { name: 'Ironline Dragway', theme: 'strip', lanes: 2, traffic: 0, tier: 1, heat: 0, desc: 'Sanctioned strip. Prepped surface, real timing.' },
 };
 

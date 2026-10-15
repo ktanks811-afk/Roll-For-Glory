@@ -6,6 +6,7 @@
 
 import { online } from '../net/online.js';
 import { rides, REACH, KEEP } from '../net/ride.js';
+import { bots } from '../net/bots.js';
 import { dimsFor } from '../gfx2d/carSprite.js';
 import { pad } from '../core/gamepad.js';
 import { esc } from '../ui/dom.js';
@@ -112,7 +113,10 @@ export class RideAlong {
     const w = this.w, r = rides.with;
     if (!r) return false;
     const p = this.peer;
-    if (!forced && p && Math.abs(p.sp) > OUT_SPEED) { w.ui.toast(`Tell ${r.name} to slow down first.`, 'info'); return true; }
+    if (!forced && p && Math.abs(p.sp) > OUT_SPEED) {
+      if (p.bot) { bots.pullOver(p.id); w.ui.toast(`${r.name} is pulling over.`, 'info'); return true; }
+      w.ui.toast(`Tell ${r.name} to slow down first.`, 'info'); return true;
+    }
     if (p?.model) {
       const W = dimsFor(p.model).W, rx = Math.cos(p.h), rz = Math.sin(p.h);
       w.foot.x = p.x + rx * (W / 2 + 0.8); w.foot.z = p.z + rz * (W / 2 + 0.8); w.foot.h = p.h;

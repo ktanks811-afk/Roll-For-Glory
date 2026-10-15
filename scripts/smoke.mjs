@@ -55,12 +55,30 @@ await step('online profile, no log-in', async () => {
 });
 await snap('01-title');
 await step('new game', async () => {
+  // a clean profile (an earlier step failing can leave its old career behind), so the first-play tour shows
+  await p.evaluate(async () => { const S = await import('./js/core/save.js'); for (const sl of S.SLOTS) S.deleteSlot(sl); S.settings.tutorialSeen = false; S.saveSettings(); });
   await p.click('text=New Game');
   await p.fill('[data-name]', 'Tester');
   await snap('02-create');
   await p.click('text=Hit the streets');
   await p.waitForTimeout(1200);
   await snap('03-world');
+});
+await step('first-play tour', async () => {
+  // a fresh profile's first career gets the tour; walking ticks off the "get moving" step
+  if (!(await p.isVisible('.coach h3:has-text("Welcome")'))) throw new Error('no tour on a new profile');
+  await p.click('.coach [data-coach=next]');
+  await p.evaluate(() => { window.__rfg.app.world.foot.x += 8; }); await p.waitForTimeout(500);
+  if (!(await p.isVisible('.coach h3:has-text("Cash and REP")'))) throw new Error('walking did not move the tour on: ' + await p.textContent('.coach h3'));
+  if (!(await p.isVisible('.coach-ring'))) throw new Error('tour step has no spotlight');
+  await p.click('.coach [data-coach=skip]');
+  if (await p.$('.coach')) throw new Error('Skip did not end the tour');
+  if (!(await p.evaluate(async () => (await import('./js/core/save.js')).settings.tutorialSeen))) throw new Error('tour not marked seen');
+  // replay from the pause menu, then quit it
+  await p.evaluate(async () => (await import('./js/ui/menu.js')).openPause(window.__rfg.app));
+  await p.click('.menu button[data-action=tutorial]');
+  if (!(await p.isVisible('.coach h3:has-text("Welcome")'))) throw new Error('replay from the menu did not start the tour');
+  await p.click('.coach [data-coach=skip]');
 });
 await step('walk', async () => { await key('KeyW', 600); await key('KeyD', 300); });
 await step('weather + night shift', async () => {
@@ -78,6 +96,19 @@ await step('weather + night shift', async () => {
     return out;
   });
   if (!(/Thunderstorm.*Night shift/.test(r.hud) && r.grip < 0.7 && r.patrols === 2 && r.night === 2 && r.noon === 0 && r.dark > 0.7 && r.chain)) throw new Error('weather/night rules off: ' + JSON.stringify(r));
+});
+await step('weather sounds', async () => {
+  // rain, wind and the city come up in a storm and are muffled once you're in a room
+  const r = await p.evaluate(async () => {
+    const { audio } = await import('./js/core/audio.js');
+    const w = window.__rfg.app.world, s = window.__rfg.game.s, saved = s.weather;
+    s.weather = 'storm'; document.querySelectorAll('.modal-back').forEach(m => m.remove()); w.paused = false;
+    await new Promise(r => setTimeout(r, 1500)); const storm = audio.ambienceLevels();
+    s.weather = 'clear'; await new Promise(r => setTimeout(r, 2500)); const clear = audio.ambienceLevels();
+    s.weather = saved;
+    return { storm, clear };
+  });
+  if (!r.storm || !(r.storm.rain > 0.08 && r.storm.wind > 0.01 && r.storm.live > 0.5 && r.clear.rain < r.storm.rain / 2)) throw new Error('ambience off: ' + JSON.stringify(r));
 });
 await step('phone home', async () => { await key('KeyP'); await p.waitForTimeout(300); await snap('04-phone'); });
 for (const app of ['Messages', 'Contacts', 'Map', 'Bank', 'Throttle', 'Races', 'Ryde', 'Crew', 'My Cars', 'Journal']) {
@@ -1092,6 +1123,8 @@ await step('chop shop', async () => {
   await p.evaluate(() => { const v = window.__rfg.app.world.vehicle; v.vx = v.vz = 0; v.sim.v = 0; });
   if (await p.evaluate(() => window.__rfg.app.world.inCar)) { await key('KeyF'); await p.waitForTimeout(150); }
   const jack = async () => {
+    // traffic can be between spawns right after the last step; wait for a civilian car
+    await p.waitForFunction(() => window.__rfg.app.world.traffic.cars.some(c => !c.police), null, { polling: 100 });
     await p.evaluate(() => {
       const w = window.__rfg.app.world, c = w.traffic.cars.find(c => !c.police);
       c.stun = 6; c.v = 0; w.foot.x = c.x - Math.cos(c.h) * 2; w.foot.z = c.z - Math.sin(c.h) * 2; w.cam.x = c.x; w.cam.z = c.z;
@@ -1223,11 +1256,21 @@ await step('online free roam', async () => {
   await snap('23-online-panel');
   await p.keyboard.press('Escape');
   // head-to-head: tab 1 calls tab 2 out, tab 2 accepts, both get a race against the other player
-  await p2.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.inCar = true; });
+  // tab 2 has to be able to say yes: in the car, gas in the tank, no cops on it, money for the wager
+  await p2.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { activeCar } = await import('./js/core/state.js');
+    const r = window.__rfg, w = r.app.world, car = activeCar(r.game.s);
+    w.inCar = true; car.fuel = 1; car.broken = false; r.game.s.heat = 0; r.game.s.cash = Math.max(r.game.s.cash, 5000);
+    if (w.police.active) w.police.reset(w);
+  });
   await p.evaluate(async () => {
     const { pvp } = await import('./js/net/pvp.js');
     const peer = window.__rfg.online.list().find(o => o.name !== 'Eve' && o.id !== 'evil2');
-    window.__rfg.app.world.inCar = true;
+    // the heat set above can bring the cops, and a challenger with cops on them can't start the race
+    const { activeCar } = await import('./js/core/state.js');
+    const r = window.__rfg, w = r.app.world;
+    w.inCar = true; activeCar(r.game.s).fuel = 1; r.game.s.heat = 0; if (w.police.active) w.police.reset(w);
     if (!pvp.challenge(peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 500 })) throw new Error('challenge not sent');
   });
   // tab 2 is a background tab: no animation frames, so poll on a timer instead of waitForSelector
@@ -1266,7 +1309,7 @@ await step('online free roam', async () => {
     const cj = await deeds.join(C, 'harbor');
     out.cConflict = !cj.ok && cj.conflicts?.[0]?.name;
     out.cElsewhere = (await deeds.join(C, 'downtown')).ok;
-    await deeds.release(A, 'six_bungalow');
+    await deeds.release(A, 'six_bungalow');   // deeds are permanent now: Ann keeps it
     out.afterSale = (await deeds.claim(B, 'six_bungalow')).ok;
     for (let i = 0; i < 15; i++) await deeds.join({ uid: 'fill' + String(i).padStart(4, '0'), crewKey: 'fill-key-fill-key', player: { name: 'F' + i }, properties: [], estate: {} }, 'glory');
     out.full = (await deeds.join({ uid: 'late9999', crewKey: 'late-key-late-key', player: { name: 'Late' }, properties: [], estate: {} }, 'glory')).full;
@@ -1275,14 +1318,68 @@ await step('online free roam', async () => {
     return out;
   });
   console.log('     deeds', JSON.stringify(deedCheck));
-  if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
+  if (!(deedCheck.a && deedCheck.b && deedCheck.taken === 'Ann' && !deedCheck.bClaim && deedCheck.bFree && deedCheck.cConflict === 'Ann' && deedCheck.cElsewhere && !deedCheck.afterSale && deedCheck.full)) throw new Error('house deeds broken: ' + JSON.stringify(deedCheck));
+  // your place on their screen: tab 2 (another player) builds a house, garage and pasture on Lake Worth
+  // and parks cars in it; tab 1 sees it go up and can walk into the garage and look at the cars
+  const shown = await p2.evaluate(async () => {
+    const r = window.__rfg, s = r.game.s, w = r.app.world;
+    const { packMine } = await import('./js/world2d/showcase.js');
+    const { builds } = await import('./js/net/builds.js');
+    const { fromPreset, sanitize } = await import('./js/core/homes.js');
+    const { applyEstate } = await import('./js/world2d/estate.js');
+    s.uid = 'zzzz9999'; s.homeServer = 'harbor'; s.player.name = 'Zed';
+    s.estate.land.land_lakeworth = { owned: true, plan: 'modern', ready: 0, done: true, design: sanitize(fromPreset('two')), designOk: true, fence: 'wire', animals: { cow: 4, horse: 1 } };
+    for (let i = 0; i < 3; i++) s.cars.push({ ...structuredClone(s.cars[0]), uid: 'show' + i, visual: { ...s.cars[0].visual, paint: ['#d01818', '#18a0d0', '#e8c020'][i] } });
+    applyEstate(w.map, s);
+    s.home = 'land_lakeworth';
+    const mine = packMine(w);
+    builds.sendT = 0; builds.tick(s, 0.1, mine);
+    return { props: Object.keys(mine), lw: { cars: mine.land_lakeworth?.cars.length, plan: mine.land_lakeworth?.land?.plan, floors: mine.land_lakeworth?.land?.design?.floors.length } };
+  });
+  console.log('     tab 2 shows', JSON.stringify(shown));
+  if (!(shown.lw.cars >= 3 && shown.lw.plan === 'modern' && shown.lw.floors === 2)) throw new Error('your place did not pack up: ' + JSON.stringify(shown));
+  const seenPlace = await p.evaluate(async () => {
+    const r = window.__rfg, s = r.game.s, w = r.app.world;
+    const { builds } = await import('./js/net/builds.js');
+    if (s.estate?.land?.land_lakeworth?.owned) delete s.estate.land.land_lakeworth;
+    s.homeServer = 'harbor';
+    await builds.load('harbor', true);
+    for (let i = 0; i < 20 && !builds.all(s).length; i++) await new Promise(res => setTimeout(res, 150));
+    w.showcase.t = 0; w.showcase.update(0.1); w.updateGarageCars(1);
+    const g = w.map.garages.find(q => q.id === 'land_lakeworth'), h = w.map.houses.find(q => q.id === 'land_lakeworth');
+    if (!g) return { err: 'no garage on their land', all: builds.all(s).map(x => x[0]) };
+    const cars = w.garageCars.filter(c => c.garage === 'land_lakeworth').length;
+    // walk in through the open door
+    w.inCar = false; w.foot.x = g.center.x; w.foot.z = g.center.z; w.updateInteractions();
+    const visiting = w.visiting === g, door = g.panel.off;
+    for (let i = 0; i < 30; i++) w.update(0.05);
+    w.cam.x = g.center.x; w.cam.z = g.center.z;
+    return { cars, visiting, door, roof: g.roof.label, roofA: +g.roof.a.toFixed(2), house: !!h, houseOwner: h?.owner, animals: w.ranch.list.filter(a => a.home === 'land_lakeworth').length };
+  });
+  console.log('     tab 1 sees', JSON.stringify(seenPlace));
+  if (seenPlace.err || seenPlace.cars < 3 || !seenPlace.visiting || !seenPlace.door || !seenPlace.house || seenPlace.houseOwner !== 'Zed' || seenPlace.animals !== 5 || seenPlace.roofA > 0.3) throw new Error('their place does not show right: ' + JSON.stringify(seenPlace));
+  await snap('23d-their-garage');
+  // hostile builds are cleaned up or dropped
+  await p.evaluate(() => {
+    const ch = new BroadcastChannel('rfg:harbor');
+    ch.postMessage({ k: 'bld', id: 'evil3', u: 'evil3', n: '<b>x</b>', p: '__proto__', b: { cars: [{ m: '__proto__' }] } });
+    ch.postMessage({ k: 'bld', id: 'evil3', u: 'evil3', n: 'Eve', p: 'land_six_bunche', b: { cars: [{ m: 'nope' }], land: { plan: 'vault', design: { floors: ['<script>'.repeat(99)], furn: [[{ id: 'bed', x: 1e9 }]] }, animals: { cow: 1e9 } } } });
+    ch.close();
+  });
+  await p.waitForTimeout(400);
+  const evilBuild = await p.evaluate(async () => { const { builds } = await import('./js/net/builds.js'); const e = builds.at(window.__rfg.game.s, 'land_six_bunche'); return { proto: builds.live.has('__proto__'), cows: e?.b.land?.animals.cow, plan: e?.b.land?.plan || null }; });
+  console.log('     hostile build cleaned to', JSON.stringify(evilBuild));
+  if (evilBuild.proto || evilBuild.cows > 400 || evilBuild.plan) throw new Error('hostile build got through: ' + JSON.stringify(evilBuild));
   // riding along: tab 1 walks up and asks tab 2 for a ride, tab 2 lets them in, then the other way round
   const ridePump = pg => pg.evaluate(() => { clearInterval(window.__pump); window.__pump = setInterval(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); }, 120); });
   await ridePump(p); await ridePump(p2);
   const carOf = pg => pg.evaluate(() => { const v = window.__rfg.app.world.vehicle; return { x: v.x, z: v.z, h: v.h }; });
   const standBy = (pg, c) => pg.evaluate(c => { const w = window.__rfg.app.world; w.inCar = false; w.foot.x = c.x + 3; w.foot.z = c.z; w.nearLoc = null; }, c);
   const sitIn = pg => pg.evaluate(() => { const w = window.__rfg.app.world; w.inCar = true; w.vehicle.speed = 0; w.nearLoc = null; });
-  const until = async (pg, fn, what, arg) => { for (let i = 0; i < 30; i++) { if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
+  // the tab being checked goes to the front: a background tab gets no frames (so no HUD) and slowed timers
+  // and both tabs get a network tick each try, so nothing waits on a throttled background timer
+  const tickBoth = () => Promise.all([p, p2].map(pg => pg.evaluate(() => { const w = window.__rfg.app.world; w.rides.update(0.12); w.updateOnline(0.12); })));
+  const until = async (pg, fn, what, arg) => { await pg.bringToFront(); for (let i = 0; i < 50; i++) { await tickBoth(); if (await pg.evaluate(fn, arg)) return; await pg.waitForTimeout(150); } throw new Error(what); };
   await sitIn(p2); await standBy(p, await carOf(p2));
   await until(p, () => window.__rfg.app.world.rides.near?.inCar, 'no "ask for a ride" next to their car');
   const askLine = await p.evaluate(() => window.__rfg.app.world.rides.promptHtml(false));
@@ -1334,6 +1431,150 @@ await step('online free roam', async () => {
   await snap('25-servers');
   await p.keyboard.press('Escape');
   await p2.close();
+});
+
+// ---------------- regulars on a quiet server (net/bots.js) ----------------
+await step('online: regulars fill a quiet server', async () => {
+  const until = async (fn, msg, ms = 12000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await p.evaluate(fn)) return; await p.waitForTimeout(250); } throw new Error(msg); };
+  try {
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { meFromGame } = await import('./js/ui/online.js');
+    const { bots, botsOn } = await import('./js/net/bots.js');
+    // a busy evening on Eastgate, so there's always somebody
+    let t = Math.floor(Date.now() / 1000 / 86400) * 86400 + 26 * 3600;
+    while (botsOn('eastgate', t, 0).length < 4) t += 300;
+    bots.clock = () => t + performance.now() / 1000;
+    bots.force = true;
+    const r = window.__rfg, w = r.app.world; w.paused = false;
+    window.__before = { inCar: w.inCar, x: w.foot.x, z: w.foot.z };
+    w.inCar = true;
+    if (!(await r.online.join('eastgate', meFromGame(), 'local'))) throw new Error('could not join');
+  });
+  await until(() => window.__rfg.online.list().length >= 3, 'nobody showed up on the quiet server');
+  const who = await p.evaluate(() => window.__rfg.online.list().map(o => ({ id: o.id, bot: !!o.bot, name: o.name, car: o.model?.id, inCar: o.inCar, x: o.x, z: o.z })));
+  console.log('     regulars on', JSON.stringify(who.map(o => `${o.name} (${o.car})`)));
+  if (who.some(o => !o.bot || !/^[\w .'\-]{2,16}$/.test(o.name) || !o.car || !isFinite(o.x))) throw new Error('bad regular: ' + JSON.stringify(who));
+  if (!(await p.evaluate(() => document.querySelector('#hud')?.innerText.includes(`${window.__rfg.online.list().length + 1} online`) ?? true))) throw new Error('HUD count does not include them');
+  // they drive around
+  await p.waitForTimeout(1500);
+  const moved = await p.evaluate(was => window.__rfg.online.list().some(o => { const b = was.find(x => x.id === o.id); return b && Math.hypot(o.x - b.x, o.z - b.z) > 3; }), who);
+  if (!moved) throw new Error('nobody is driving around');
+  // nobody on the network can speak for one of them
+  await p.evaluate(id => { const ch = new BroadcastChannel('rfg:eastgate'); ch.postMessage({ k: 'h', id, n: 'Impostor', m: window.__rfg.game.s.cars[0].modelId }); ch.close(); }, who[0].id);
+  await p.waitForTimeout(300);
+  if (await p.evaluate(() => window.__rfg.online.list().some(o => o.name === 'Impostor'))) throw new Error('a network packet took over a regular');
+  // they answer in chat
+  await p.evaluate(() => window.__rfg.online.say('yo whats good'));
+  await until(() => window.__rfg.online.chat.some(c => !c.mine), 'nobody answered in chat');
+  await snap('25b-regulars');
+  // call one out: they answer like a player would (race scene itself is covered above)
+  const ans = await p.evaluate(async () => {
+    const { pvp } = await import('./js/net/pvp.js');
+    const { bots } = await import('./js/net/bots.js');
+    const b = [...bots.list.values()].find(b => b.peer.inCar) || [...bots.list.values()][0];
+    b.p.racer = -1; b.peer.inCar = true;           // this one says no, so no race starts here
+    pvp.challenge(b.peer, { type: 'drag', dist: 'quarter', roll: 40, wager: 0 });
+    return b.peer.name;
+  });
+  await until(() => import('./js/net/pvp.js').then(m => !m.pvp.out), `${ans} never answered the race call`);
+  if (await p.evaluate(() => window.__rfg.app.mode !== 'world')) throw new Error('a race started when they said no');
+  // ask a driver for a ride: they stop, say yes, and you ride along
+  await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const r = window.__rfg, w = r.app.world;
+    const b = [...bots.list.values()].find(b => b.peer.inCar && !b.peer.dead);
+    b.p.rides = 1; window.__rideBot = b.peer.id;
+    r.game.s.heat = 0; try { w.police.reset(w); } catch {} w.combat.rob = w.combat.mug = null;
+    w.inCar = false; w.foot.x = b.peer.x + 4; w.foot.z = b.peer.z;
+    if (!w.rides.request(b.peer)) throw new Error('could not ask for a ride: ' + w.rides.cantRide());
+  });
+  await until(() => window.__rfg.app.world.rides.riding?.id === window.__rideBot, 'the driver never let us in').catch(async e => {
+    throw new Error(e.message + ' ' + await p.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.innerText).join(' | ')));
+  });
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.rides.getOut(); });
+  await until(() => { const w = window.__rfg.app.world; if (w.rides.riding) w.rides.getOut(); return !w.rides.riding; }, 'could not get out of their car', 15000);
+  } finally {
+  await p.evaluate(async () => {
+    (await import('./js/net/ride.js')).rides.stop(false);
+    window.__rfg.online.leave(); (await import('./js/net/bots.js')).bots.force = false;
+    const w = window.__rfg.app.world, was = window.__before;
+    w.foot.x = was.x; w.foot.z = was.z; w.inCar = was.inCar;
+  });
+  }
+  if (await p.evaluate(() => window.__rfg.online.peers.size)) throw new Error('regulars still shown after leaving');
+});
+
+// ---------------- street beef: regulars talk down, opps slide on you (net/beef.js) ----------------
+await step('online: beef with a regular, opp slides and walks you down', async () => {
+  const until = async (fn, msg, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await p.evaluate(fn)) return; await p.waitForTimeout(200); } throw new Error(msg + ' ' + await p.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.innerText).slice(-4).join(' | '))); };
+  try {
+  await p.evaluate(async () => {
+    const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove());
+    const { meFromGame } = await import('./js/ui/online.js');
+    const { bots, botsOn } = await import('./js/net/bots.js');
+    let t = Math.floor(Date.now() / 1000 / 86400) * 86400 + 26 * 3600;
+    while (botsOn('eastgate', t, 0).length < 4) t += 300;
+    bots.clock = () => t + performance.now() / 1000;
+    bots.force = true;
+    const r = window.__rfg, w = r.app.world; w.paused = false;
+    window.__before = { inCar: w.inCar, x: w.foot.x, z: w.foot.z };
+    r.game.s.heat = 0; try { w.police.reset(w); } catch {}
+    // their bullets graze you here, so nobody ends up at JPS mid-test
+    const was = w.gangs.shootAtYou.bind(w.gangs);
+    window.__shots = 0; w.gangs.shootAtYou = (from, me, acc, dmg, who) => { window.__shots++; was(from, me, 1, 1, who); };
+    if (!(await r.online.join('eastgate', meFromGame(), 'local'))) throw new Error('could not join');
+  });
+  await until(() => window.__rfg.online.list().length >= 2, 'nobody showed up');
+  // a hothead you walk up on talks down on you
+  await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const w = window.__rfg.app.world, b = [...bots.list.values()].find(b => !b.peer.dead);
+    b.p.temper = 0.95; bots.holdHere(b, 60); b.peer.sp = 0;
+    window.__beefBot = b.id;
+    w.inCar = false; w.foot.x = b.peer.x + 6; w.foot.z = b.peer.z;
+    bots.beef.lastPick = -999; bots.beef.lookT = 0; b.picked = 0;
+    window.__chat0 = window.__rfg.online.chat.length;
+  });
+  await until(async () => { const { bots } = await import('./js/net/bots.js'); const b = bots.list.get(window.__beefBot); return b && bots.beef.heat(b) > 0 && window.__rfg.online.chat.slice(window.__chat0).some(c => c.name === b.p.name); }, 'the hothead never said anything');
+  // you make them your opp: they post, text, and come for you
+  const info = await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const O = await import('./js/core/opps.js');
+    const s = window.__rfg.game.s, b = bots.list.get(window.__beefBot);
+    bots.beef.startIt(b, 'opp');
+    return { opp: O.isOpp(s, b.okey), text: s.messages[0]?.action?.type, post: s.feed.some(p => p.handle === 'murdaworthtea' && p.mood === 'hot') };
+  });
+  if (!info.opp || info.text !== 'opp' || !info.post) throw new Error('making an opp: ' + JSON.stringify(info));
+  await snap('25c-beef');
+  // drive-by: they roll up and shoot as they pass, then peel off
+  await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const w = window.__rfg.app.world, b = bots.list.get(window.__beefBot), me = w.playerState();
+    b.hold = null; bots.beef.slide(b, { ...me, inCar: false }, bots.clock()); b.attack.mode = 'slide';
+  });
+  await until(() => window.__shots > 0, 'the drive-by never opened fire', 40000);
+  await snap('25d-driveby');
+  await until(async () => { const { bots } = await import('./js/net/bots.js'); return !bots.list.get(window.__beefBot)?.attack; }, 'they never peeled off', 20000);
+  if (!(await p.evaluate(() => window.__rfg.game.s.opps.stats.slid >= 1))) throw new Error('the slide was not recorded');
+  // walk-down: they park, hop out with it out, and you drop them
+  await p.evaluate(async () => {
+    const { bots } = await import('./js/net/bots.js');
+    const w = window.__rfg.app.world, b = bots.list.get(window.__beefBot), me = w.playerState();
+    window.__shots = 0; bots.beef.slide(b, { ...me, inCar: false }, bots.clock()); b.attack.mode = 'walk';
+  });
+  await until(async () => { const { bots } = await import('./js/net/bots.js'); const b = bots.list.get(window.__beefBot); return b?.attack?.phase === 'walk' && !b.peer.inCar; }, 'they never got out to walk you down', 40000);
+  await snap('25e-walkdown');
+  await p.evaluate(async () => { const { bots } = await import('./js/net/bots.js'); const w = window.__rfg.app.world, b = bots.list.get(window.__beefBot); w.combat.hitPeer(b.peer, 100); });
+  await until(() => window.__rfg.game.s.opps.stats.smoked >= 1, 'dropping your opp did not count');
+  } finally {
+  await p.evaluate(async () => {
+    window.__rfg.online.leave(); (await import('./js/net/bots.js')).bots.force = false;
+    const w = window.__rfg.app.world, was = window.__before;
+    w.foot.x = was.x; w.foot.z = was.z; w.inCar = was.inCar;
+    delete w.gangs.shootAtYou; delete window.__rfg.game.s.opps;
+  });
+  }
 });
 
 // ---------------- online crews (permanent, database-backed; two tabs, local database) ----------------
@@ -1454,7 +1695,8 @@ await step('minimap', async () => {
 await step('phone map (places + GPS)', async () => {
   await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); const w = window.__rfg.app.world; window.__rfg.game.s.gps = null; w.gpsPath = null; const { openPhone } = await import('./js/ui/phone.js'); openPhone('map', window.__rfg.app); });
   await p.waitForSelector('[data-map]'); await p.waitForTimeout(800);
-  const total = await p.evaluate(async () => (await import('./js/data/world.js')).LOCATIONS.length);
+  // only what's in Texas: the out-of-state cities are a flight away
+  const total = await p.evaluate(async () => { const { stateAt } = await import('./js/data/states.js'); return (await import('./js/data/world.js')).LOCATIONS.filter(l => stateAt(l.x, l.z) === 'tx').length; });
   const rows = await p.$$eval('.mapapp .li[data-loc]', e => e.length);
   if (rows !== total) throw new Error(`the map lists ${rows} of ${total} places`);
   // the picture is real (not blank) and has pins on it
@@ -2560,6 +2802,59 @@ await step('hog dogs: kennel, dog profiles, breeding, a hog hunt', async () => {
   await clear();
   await p.evaluate(async () => { const s = window.__rfg.game.s; delete s.estate.land.land_crosscreek; s.kennel.dogs = []; s.kennel.preg = []; (await import('./js/world2d/estate.js')).applyEstate(window.__rfg.app.world.map, s); });
 });
+await step('hogs & dogs: bay pen, shows, hog pin, horses, coon hunt', async () => {
+  // CI sometimes reports the context destroyed on this step's first evaluate though the page never reloads;
+  // wait for the game and retry once (every evaluate here is safe to run twice)
+  const ev = async (fn, arg) => { try { return await p.evaluate(fn, arg); } catch (e) { if (!/context was destroyed/.test(e.message)) throw e; await p.waitForTimeout(500); await p.waitForFunction(() => window.__rfg?.game?.s); return await p.evaluate(fn, arg); } };
+  const clear = () => ev(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await clear();
+  await ev(async () => {
+    const s = window.__rfg.game.s, EST = await import('./js/core/estate.js'), DG = await import('./js/core/dogs.js'), k = DG.ensureKennel(s);
+    s.cash += 800000; EST.buyLand(s, 'land_crosscreek');
+    for (const [i, b] of ['Black Mouth Cur', 'Plott Hound', 'Treeing Walker', 'American Bulldog', 'American Pit Bull Terrier', 'Catahoula Leopard Dog'].entries()) k.dogs.push(DG.makeDog(s, { breed: b, age: 30, sex: i % 2 ? 'F' : 'M', home: 'land_crosscreek' }));
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    openPlace(LOC_BY_ID.bay_pen, window.__rfg.app);
+  });
+  await p.waitForSelector('[data-action=bayGo]:visible'); await snap('hd-1-bay-pen');
+  await p.click('[data-action=bayGo]:visible');
+  await p.waitForSelector('.baypen-cv'); await p.waitForTimeout(1200); await snap('hd-2-bay-pen-run');
+  await p.click('[data-action=baySkip]');
+  await p.waitForSelector('[data-action=bayDone]'); await snap('hd-3-bay-pen-result');
+  await p.click('[data-action=bayDone]');
+  for (const tab of ['shows', 'fair', 'pin', 'horses', 'ranch', 'books', 'wall']) {
+    await p.click(`.tabs button[data-id=${tab}]`); await p.waitForTimeout(250);
+    if (tab === 'shows') { await p.click('[data-action=enterShow]'); await p.waitForTimeout(200); }
+    if (tab === 'horses') { await p.click('[data-action=horse] >> nth=0'); await p.waitForSelector('[data-action=hbuy]'); await p.click('[data-action=hbuy]'); await p.waitForTimeout(200); }
+    await p.waitForTimeout(600); await snap(`hd-4-${tab}`);
+  }
+  const st = await ev(() => { const h = window.__rfg.game.s.hd; return { horses: h.horses.length, ribbons: h.st.shows || 0, bay: h.st.bayTrials || 0 }; });
+  if (!st.horses || !st.ribbons || !st.bay) throw new Error('hogs & dogs panel: ' + JSON.stringify(st));
+  await clear();
+  // a coon hunt off the hog lease: the hounds tree them, you walk up
+  await ev(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.hog_lease, window.__rfg.app); });
+  await p.click('[data-action=mode][data-id=coon]');
+  await p.waitForSelector('[data-action=go]:not([disabled])'); await snap('hd-5-coon-setup');
+  await p.click('[data-action=go]');
+  await p.waitForSelector('.hunt-cv');
+  await ev(async () => { const HH = await import('./js/core/hoghunt.js'), h = (await import('./js/ui/hoghunt.js')).activeHunt(); for (let i = 0; i < 4000 && !HH.baying(h).length; i++) { HH.autoHunter(h); HH.step(h, 0.05); } const g = HH.baying(h)[0]; if (g) HH.walkTo(h, g.x - 4, g.y); });
+  await p.waitForTimeout(1500); await snap('hd-6-coon-treed');
+  await p.click('[data-action=leave]'); await p.click('.modal button:has-text("Load up")');
+  await p.waitForSelector('.p-head h1:has-text("Back at the truck")'); await snap('hd-7-coon-results');
+  await clear();
+  // a hog hunt, then keep one in the Hog Pin from the results screen
+  await ev(async () => { const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.hog_lease, window.__rfg.app); });
+  await p.click('[data-action=mode][data-id=hog]');
+  await p.waitForSelector('[data-action=go]:not([disabled])'); await p.click('[data-action=go]');
+  await p.waitForSelector('.hunt-cv');
+  await ev(async () => { const HH = await import('./js/core/hoghunt.js'), h = (await import('./js/ui/hoghunt.js')).activeHunt(); for (let i = 0; i < 20000 && !h.over && h.bag.length < 1; i++) { HH.autoHunter(h); HH.step(h, 0.05); } });
+  await p.click('[data-action=leave]'); await p.click('.modal button:has-text("Load up")');
+  await p.waitForSelector('.p-head h1:has-text("Back at the truck")');
+  if (await p.$('[data-action=keep]')) { await p.click('[data-action=keep] >> nth=0'); await p.waitForTimeout(200); }
+  await snap('hd-8-hog-results');
+  console.log('     pin', await ev(() => window.__rfg.game.s.hd.hogs.length));
+  await clear();
+  await ev(async () => { const s = window.__rfg.game.s; delete s.estate.land.land_crosscreek; s.kennel.dogs = []; s.kennel.preg = []; s.hd.hogs = []; s.hd.horses = []; (await import('./js/world2d/estate.js')).applyEstate(window.__rfg.app.world.map, s); });
+});
 
 await step('record label: start it, sign an artist in person, cut a single, drop it, get paid', async () => {
   const clear = () => p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
@@ -2600,6 +2895,23 @@ await step('record label: start it, sign an artist in person, cut a single, drop
   if (!(paid > 0)) throw new Error('the label made nothing');
   await clear(); await openL({ tab: 'releases' }); await p.waitForTimeout(200); await snap('label-5-releases');
   console.log('     label paid', paid);
+  // shows: the label fronts a club show, it goes on the artist's tab
+  await p.evaluate(id => { const r = window.__rfg.game.s.label.roster.find(r => r.id === id); r.wallet = 0; r.debt = 0; }, artist);
+  await clear(); await openL({ tab: 'shows' });
+  await p.waitForSelector(`[data-action=gig][data-id=${artist}][data-gig=club]:not([disabled])`); await snap('label-6-shows');
+  await p.click(`[data-action=gig][data-id=${artist}][data-gig=club]`); await ok();
+  await p.waitForFunction(id => { const r = window.__rfg.game.s.label.roster.find(r => r.id === id); return r.gig && r.debt === 2500; }, artist);
+  // a week of numbers, the showcase lineup comes out, then SoundScan ranks everybody
+  const sc = await p.evaluate(async () => { const s = window.__rfg.game.s, LB = await import('./js/core/label.js'), { MONTH } = await import('./js/data/label.js'); s.label.showcase = null; while (s.time.day % MONTH !== 0) { s.time.day++; LB.labelDay(s); } return s.label.showcase; });
+  if (!sc?.lineup?.length) throw new Error('no showcase lineup');
+  await clear(); await stand(sc.loc); await openL({ tab: 'showcase' });
+  await p.waitForSelector(`[data-action=sc_sign][data-id=${sc.lineup[0]}]:not([disabled])`); await snap('label-7-showcase');
+  await p.click(`[data-action=sc_sign][data-id=${sc.lineup[0]}]`); await ok();
+  await p.waitForFunction(id => window.__rfg.game.s.label.roster.some(r => r.id === id), sc.lineup[0]);
+  await p.evaluate(async () => { const s = window.__rfg.game.s, LB = await import('./js/core/label.js'); for (let i = 0; i < 8; i++) { s.time.day++; LB.labelDay(s); } });
+  await clear(); await openL({ tab: 'soundscan' });
+  await p.waitForSelector('.p-body table'); await snap('label-8-soundscan');
+  await clear(); await openL({ artist }); await p.waitForTimeout(200); await snap('label-9-artist');
   await clear();
   await p.evaluate(() => { delete window.__rfg.game.s.label; });
 });
@@ -2836,7 +3148,7 @@ await step('crew turf', async () => {
   await p.waitForTimeout(250);
   await snap('27-turf');
   if (!(await p.$('.phone svg[aria-label="Turf map"]'))) throw new Error('no turf map');
-  if ((await p.$$('[data-hood]')).length !== 10) throw new Error('expected 10 neighborhoods');
+  if ((await p.$$('[data-hood]')).length !== 14) throw new Error('expected 14 neighborhoods');
   if (!(await p.$('[data-hood="Stop Six"] button[data-action="claim"]'))) throw new Error('Stop Six is not open to claim');
   if (!(await p.isVisible('[data-hood="Stockyards"]:has-text("Iron Saints")'))) throw new Error('Stockyards should start as Iron Saints turf');
   // Claim: set the GPS, then rep the hood by driving in it

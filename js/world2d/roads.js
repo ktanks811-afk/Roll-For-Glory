@@ -2,7 +2,11 @@
 // Traffic, police routing, GPS and the minimap all read from this.
 
 import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_W, COUNTRY_ROADS, DGRID_X, DGRID_Z, DSTREET_NS, DSTREET_EW, I30_ROW, I30_END, ARLINGTON_X, ARLINGTON_END,
-  DNGRID_X, DNGRID_Z, WGRID_X, WGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, I20_WEST_END, WEST, WEST_CITY, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X } from '../data/world.js';
+  DNGRID_X, DNGRID_Z, WGRID_X, WGRID_Z, DNSTREET_NS, DNSTREET_EW, I35_END, I20_WEST_END, WEST, WEST_CITY, HTRACE_Z, WESTPORT_Z, TX114_Z, TX114_X, ROANOKE_X, ROANOKE_END, US377_Z, TMS, TMS_PIT_X, AIRPORT_X,
+  FM916_Z, FM916_X, FM2331_END } from '../data/world.js';
+import { STATES, STATE_N, STATE_BLOCK, AIRPORT_ROW, cityRect } from '../data/states.js';
+import { ALL_TOWNS, ROUTES, STATE_ROUTES, townMark } from '../data/metro.js';
+import { MARINA_ROADS } from '../data/boats.js';
 
 export function buildRoads() {
   const nodes = [];
@@ -49,6 +53,13 @@ export function buildRoads() {
     for (const [a, b] of [[cx0, cx1], [cx1, cx2], [cx2, cx3]]) edge(node(a, z), node(b, z), { ...FARM, name });
   for (const [x, name] of [[cx0, 'County Road 802'], [cx1, 'County Road 1016'], [cx2, 'Old Cleburne Rd'], [cx3, 'Hwy 174']])
     for (const [a, b] of [[cz0, cz1], [cz1, cz2]]) edge(node(x, a), node(x, b), { ...FARM, name });
+
+  // Brazos country: Old Cleburne Rd runs on south from County Road 1200 as
+  // FM 2331, past the big ranches to the river; FM 916 crosses it at the top
+  edge(node(cx2, cz2), node(cx2, FM916_Z), { ...FARM, name: 'Old Cleburne Rd' });
+  edge(node(cx2, FM916_Z), node(cx2, FM2331_END), { ...FARM, name: 'FM 2331' });
+  edge(node(FM916_X[0], FM916_Z), node(cx2, FM916_Z), { ...FARM, name: 'FM 916' });
+  edge(node(cx2, FM916_Z), node(FM916_X[1], FM916_Z), { ...FARM, name: 'FM 916' });
 
   // I-20: west from Fort Worth into Weatherford. Add the Loop 820/I-20 junction node so the graph is connected at the interchange.
   const I20 = { ...HWY, name: 'I-20' };
@@ -103,7 +114,7 @@ export function buildRoads() {
     edge(node(DGRID_X[i], DGRID_Z[j]), node(DGRID_X[i], DGRID_Z[j + 1]), { ...CITY, name: DSTREET_NS[i] });
   for (let j = 0; j < DGRID_Z.length; j++) for (let i = 0; i < DGRID_X.length - 1; i++)
     edge(node(DGRID_X[i], DGRID_Z[j]), node(DGRID_X[i + 1], DGRID_Z[j]), j === I30_ROW ? I30 : { ...CITY, name: DSTREET_EW[j] });
-  edge(node(DGRID_X[DGRID_X.length - 1], HWY_Z), node(I30_END, HWY_Z), I30);
+  // (east of Dallas, I-30 is the middle street line of East Dallas: data/metro.js)
 
   // North Texas: I-35W on north from Loop 820 through Alliance, past the
   // speedway, to Denton (world2d/north.js builds what's along it)
@@ -135,9 +146,135 @@ export function buildRoads() {
     edge(node(DNGRID_X[i], DNGRID_Z[j]), node(DNGRID_X[i + 1], DNGRID_Z[j]), { ...CITY, name: DNSTREET_EW[j] });
   edge(node(0, DNGRID_Z[0]), node(0, I35_END), { ...I35, name: 'I-35' });
 
+  // Out of state (data/states.js): each city is its own grid with an airport
+  // road in from the west. Nothing connects them to Texas; you fly.
+  for (const st of Object.values(STATES)) {
+    const c = cityRect(st), xs = [], zs = [];
+    for (let k = 0; k <= STATE_N; k++) { xs.push(c.x0 + k * STATE_BLOCK); zs.push(c.z0 + k * STATE_BLOCK); }
+    for (let i = 0; i < xs.length; i++) for (let j = 0; j < zs.length - 1; j++) edge(node(xs[i], zs[j]), node(xs[i], zs[j + 1]), { ...CITY, name: st.streetsNS[i] });
+    for (let j = 0; j < zs.length; j++) for (let i = 0; i < xs.length - 1; i++) edge(node(xs[i], zs[j]), node(xs[i + 1], zs[j]), { ...CITY, name: st.streetsEW[j] });
+    edge(node(c.x0 - 560, zs[AIRPORT_ROW]), node(c.x0, zs[AIRPORT_ROW]), { ...CITY, speed: 20, name: 'Airport Blvd' });
+  }
+
+  // ---------------- the big map (data/metro.js): new towns and the highways between ----------------
+  const hasEdge = (a, b) => a.edges.some(id => { const e = edges[id]; return (e.a === a.id && e.b === b.id) || (e.a === b.id && e.b === a.id); });
+  const KIND = {
+    highway: HWY, pkwy: { ...PKWY, speed: 24 }, city: CITY,
+    farm: { kind: 'desert', width: 11, lanes: [2.6], speed: 24 },
+  };
+  const fresh = [];
+  const add = (a, b, props) => { if (a !== b && !hasEdge(a, b)) fresh.push(edge(a, b, props)); };
+  for (const t of ALL_TOWNS) {
+    const X = i => t.x0 + i * t.b, Z = j => t.z0 + j * t.b;
+    // no street through the middle of a landmark that covers several blocks
+    const within = (i0, j0, i1, j1) => { const k = townMark(t, i0, j0); return k >= 0 && k === townMark(t, i1, j1); };
+    const hw = t.hwy ? { ...HWY, name: t.hwy.name } : null;
+    for (let i = 0; i <= t.nx; i++) for (let j = 0; j < t.nz; j++) {
+      if (i > 0 && i < t.nx && within(i - 1, j, i, j)) continue;
+      add(node(X(i), Z(j)), node(X(i), Z(j + 1)), hw && t.hwy.col === i ? hw : { ...CITY, name: t.ns[i] || `${t.name} St` });
+    }
+    for (let j = 0; j <= t.nz; j++) for (let i = 0; i < t.nx; i++) {
+      if (j > 0 && j < t.nz && within(i, j - 1, i, j)) continue;
+      add(node(X(i), Z(j)), node(X(i + 1), Z(j)), hw && t.hwy.row === j ? hw : { ...CITY, name: t.ew[j] || `${t.name} Ave` });
+    }
+  }
+  for (const r of [...ROUTES, ...Object.values(STATE_ROUTES).flat(), ...MARINA_ROADS]) {
+    const props = { ...KIND[r.kind], name: r.name };
+    for (let k = 0; k < r.pts.length - 1; k++) add(node(...r.pts[k]), node(...r.pts[k + 1]), props);
+  }
+  // Every place two roads meet becomes a corner: a road ending on the
+  // middle of another (a T), or two crossing (a +). Splits keep the edge's
+  // props, so the street keeps its name on both sides.
+  const split = (e, x, z) => {
+    const m = node(x, z), b = nodes[e.b];
+    if (m === b || m.id === e.a) return null;
+    const rest = { ...e, id: edges.length, a: m.id, ax: m.x, az: m.z, len: Math.hypot(b.x - m.x, b.z - m.z) };
+    edges.push(rest); m.edges.push(rest.id);
+    b.edges[b.edges.indexOf(e.id)] = rest.id;
+    e.b = m.id; e.bx = m.x; e.bz = m.z; e.len = Math.hypot(m.x - e.ax, m.z - e.az);
+    m.edges.push(e.id);
+    return rest;
+  };
+  const inside = (e, x, z) => {          // (x, z) strictly between e's ends, on its line
+    if (Math.abs(e.dx) > 0.5) return Math.abs(z - e.az) < 0.5 && x > Math.min(e.ax, e.bx) + 0.5 && x < Math.max(e.ax, e.bx) - 0.5;
+    return Math.abs(x - e.ax) < 0.5 && z > Math.min(e.az, e.bz) + 0.5 && z < Math.max(e.az, e.bz) - 0.5;
+  };
+  {
+    const C = 600, cells = new Map(), ck = (i, j) => i * 100003 + j;
+    const put = e => { for (let i = Math.floor(Math.min(e.ax, e.bx) / C); i <= Math.floor(Math.max(e.ax, e.bx) / C); i++) for (let j = Math.floor(Math.min(e.az, e.bz) / C); j <= Math.floor(Math.max(e.az, e.bz) / C); j++) { const k = ck(i, j); if (!cells.has(k)) cells.set(k, []); cells.get(k).push(e); } };
+    edges.forEach(put);
+    const near = e => { const out = new Set(); for (let i = Math.floor(Math.min(e.ax, e.bx) / C); i <= Math.floor(Math.max(e.ax, e.bx) / C); i++) for (let j = Math.floor(Math.min(e.az, e.bz) / C); j <= Math.floor(Math.max(e.az, e.bz) / C); j++) for (const f of cells.get(ck(i, j)) || []) out.add(f); return out; };
+    const queue = [...fresh];
+    while (queue.length) {
+      const e = queue.pop();
+      for (const f of near(e)) {
+        if (f === e) continue;
+        let hit = null;
+        if (inside(f, e.ax, e.az)) hit = [f, e.ax, e.az];
+        else if (inside(f, e.bx, e.bz)) hit = [f, e.bx, e.bz];
+        else if (inside(e, f.ax, f.az)) hit = [e, f.ax, f.az];
+        else if (inside(e, f.bx, f.bz)) hit = [e, f.bx, f.bz];
+        else if (Math.abs(e.dx * f.dx + e.dz * f.dz) < 0.01) {
+          const v = Math.abs(e.dx) > 0.5 ? f : e, h = v === e ? f : e;     // a vertical and a horizontal
+          if (inside(h, v.ax, h.az) && inside(v, v.ax, h.az)) { const r1 = split(h, v.ax, h.az), r2 = split(v, v.ax, h.az); for (const r of [r1, r2]) if (r) { put(r); queue.push(r); } queue.push(e); break; }
+        }
+        if (hit) { const r = split(hit[0], hit[1], hit[2]); if (r) { put(r); queue.push(r); } queue.push(e); break; }
+      }
+    }
+  }
+
   const graph = { nodes, edges, byKey };
 
+  // ---------------- finding roads fast: a grid of edges and of nodes ----------------
+  const EC = 250, egrid = new Map(), ngrid = new Map(), gk = (i, j) => i * 100003 + j;
+  for (const e of edges) {
+    const h = e.width / 2 + 1;
+    for (let i = Math.floor((Math.min(e.ax, e.bx) - h) / EC); i <= Math.floor((Math.max(e.ax, e.bx) + h) / EC); i++)
+      for (let j = Math.floor((Math.min(e.az, e.bz) - h) / EC); j <= Math.floor((Math.max(e.az, e.bz) + h) / EC); j++) { const k = gk(i, j); if (!egrid.has(k)) egrid.set(k, []); egrid.get(k).push(e); }
+  }
+  for (const n of nodes) { const k = gk(Math.floor(n.x / EC), Math.floor(n.z / EC)); if (!ngrid.has(k)) ngrid.set(k, []); ngrid.get(k).push(n); }
+  // everything in the cells overlapping a rectangle
+  graph.edgesIn = (x0, z0, x1, z1, out = new Set()) => {
+    for (let i = Math.floor(x0 / EC); i <= Math.floor(x1 / EC); i++) for (let j = Math.floor(z0 / EC); j <= Math.floor(z1 / EC); j++) for (const e of egrid.get(gk(i, j)) || []) out.add(e);
+    return out;
+  };
+  graph.nodesIn = (x0, z0, x1, z1, out = []) => {
+    for (let i = Math.floor(x0 / EC); i <= Math.floor(x1 / EC); i++) for (let j = Math.floor(z0 / EC); j <= Math.floor(z1 / EC); j++) for (const n of ngrid.get(gk(i, j)) || []) out.push(n);
+    return out;
+  };
+  // A random point on a road between minD and maxD from (x, z), or null.
+  graph.randomNear = (x, z, minD, maxD, tries = 30) => {
+    const list = [...graph.edgesIn(x - maxD, z - maxD, x + maxD, z + maxD)].filter(e => !e.track);
+    if (!list.length) return null;
+    for (let k = 0; k < tries; k++) {
+      const e = list[Math.floor(Math.random() * list.length)], s = Math.random() * e.len;
+      const px = e.ax + e.dx * s, pz = e.az + e.dz * s, d = Math.hypot(px - x, pz - z);
+      if (d >= minD && d <= maxD) return { edge: e, s, x: px, z: pz };
+    }
+    return null;
+  };
+  // search outward ring by ring until nothing closer can be left
+  const ringSearch = (grid, x, z, test) => {
+    const ci = Math.floor(x / EC), cj = Math.floor(z / EC);
+    let best = null;
+    for (let r = 0; r <= 48; r++) {
+      if (best && best.dist <= (r - 1) * EC) return best;
+      for (let i = ci - r; i <= ci + r; i++) for (let j = cj - r; j <= cj + r; j++) {
+        if (Math.max(Math.abs(i - ci), Math.abs(j - cj)) !== r) continue;
+        for (const o of grid.get(gk(i, j)) || []) { const c = test(o); if (c && (!best || c.dist < best.dist)) best = c; }
+      }
+    }
+    return best;
+  };
+  const onEdge = (e, x, z) => {
+    let s = (x - e.ax) * e.dx + (z - e.az) * e.dz;
+    s = Math.max(0, Math.min(e.len, s));
+    const px = e.ax + e.dx * s, pz = e.az + e.dz * s;
+    return { edge: e, s, dist: Math.hypot(px - x, pz - z), x: px, z: pz };
+  };
   graph.nearestNode = (x, z) => {
+    const r = ringSearch(ngrid, x, z, n => ({ n, dist: Math.hypot(n.x - x, n.z - z) }));
+    if (r) return r.n;
     let best = null, bd = Infinity;
     for (const n of nodes) { const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; best = n; } }
     return best;
@@ -145,14 +282,10 @@ export function buildRoads() {
 
   // Closest point on any edge. Returns { edge, s (distance from a), dist, x, z }.
   graph.nearestOnRoad = (x, z) => {
+    const r = ringSearch(egrid, x, z, e => onEdge(e, x, z));
+    if (r) return r;
     let best = null;
-    for (const e of edges) {
-      let s = (x - e.ax) * e.dx + (z - e.az) * e.dz;
-      s = Math.max(0, Math.min(e.len, s));
-      const px = e.ax + e.dx * s, pz = e.az + e.dz * s;
-      const d = Math.hypot(px - x, pz - z);
-      if (!best || d < best.dist) best = { edge: e, s, dist: d, x: px, z: pz };
-    }
+    for (const e of edges) { const c = onEdge(e, x, z); if (!best || c.dist < best.dist) best = c; }
     return best;
   };
 
@@ -161,25 +294,34 @@ export function buildRoads() {
     return r && r.dist < r.edge.width / 2 + 1 ? r : null;
   };
 
+  // Dijkstra on a binary heap. `dist` comes in with the start costs set;
+  // stops early once `toId` is settled (when given).
+  const dijkstra = (dist, prev, toId = -1) => {
+    const hk = [], hv = [];
+    const push = (k, v) => { hk.push(k); hv.push(v); let i = hk.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (hk[p] <= hk[i]) break; [hk[p], hk[i]] = [hk[i], hk[p]]; [hv[p], hv[i]] = [hv[i], hv[p]]; i = p; } };
+    const pop = () => {
+      const k = hk[0], v = hv[0], lk = hk.pop(), lv = hv.pop();
+      if (hk.length) { hk[0] = lk; hv[0] = lv; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < hk.length && hk[l] < hk[m]) m = l; if (r < hk.length && hk[r] < hk[m]) m = r; if (m === i) break; [hk[i], hk[m]] = [hk[m], hk[i]]; [hv[i], hv[m]] = [hv[m], hv[i]]; i = m; } }
+      return [k, v];
+    };
+    for (let i = 0; i < dist.length; i++) if (dist[i] < Infinity) push(dist[i], i);
+    while (hk.length) {
+      const [d, u] = pop();
+      if (d > dist[u]) continue;
+      if (u === toId) break;
+      for (const eid of nodes[u].edges) {
+        const e = edges[eid], v = e.a === u ? e.b : e.a, nd = d + e.len / (e.speed || 15);
+        if (nd < dist[v]) { dist[v] = nd; prev[v] = u; push(nd, v); }
+      }
+    }
+  };
   // Dijkstra. Returns a list of node ids from -> to.
   graph.route = (fromId, toId) => {
     if (fromId === toId) return [fromId];
     const dist = new Float64Array(nodes.length).fill(Infinity);
     const prev = new Int32Array(nodes.length).fill(-1);
-    const done = new Uint8Array(nodes.length);
     dist[fromId] = 0;
-    for (;;) {
-      let u = -1, ud = Infinity;
-      for (let i = 0; i < nodes.length; i++) if (!done[i] && dist[i] < ud) { ud = dist[i]; u = i; }
-      if (u < 0 || u === toId) break;
-      done[u] = 1;
-      for (const eid of nodes[u].edges) {
-        const e = edges[eid];
-        const v = e.a === u ? e.b : e.a;
-        const nd = ud + e.len / (e.speed || 15);
-        if (nd < dist[v]) { dist[v] = nd; prev[v] = u; }
-      }
-    }
+    dijkstra(dist, prev, toId);
     if (prev[toId] < 0) return null;
     const path = [];
     for (let v = toId; v >= 0; v = prev[v]) { path.unshift(v); if (v === fromId) break; }
@@ -199,22 +341,12 @@ export function buildRoads() {
     else {
       const dist = new Float64Array(nodes.length).fill(Infinity);
       const prev = new Int32Array(nodes.length).fill(-1);
-      const done = new Uint8Array(nodes.length);
       for (const [id, d, sgn] of [[se.a, s.s, -1], [se.b, se.len - s.s, 1]]) {
         let c = d / (se.speed || 15);
         if (heading != null && (Math.sin(heading) * se.dx - Math.cos(heading) * se.dz) * sgn < -0.5) c += 6;
         if (c < dist[id]) dist[id] = c;
       }
-      for (;;) {
-        let u = -1, ud = Infinity;
-        for (let i = 0; i < nodes.length; i++) if (!done[i] && dist[i] < ud) { ud = dist[i]; u = i; }
-        if (u < 0) break;
-        done[u] = 1;
-        for (const eid of nodes[u].edges) {
-          const e = edges[eid], v = e.a === u ? e.b : e.a, nd = ud + e.len / (e.speed || 15);
-          if (nd < dist[v]) { dist[v] = nd; prev[v] = u; }
-        }
-      }
+      dijkstra(dist, prev);
       const endA = dist[te.a] + t.s / (te.speed || 15), endB = dist[te.b] + (te.len - t.s) / (te.speed || 15);
       if (!Number.isFinite(Math.min(endA, endB))) return { path: [[x0, z0], [x1, z1]], names: [null], meters: Math.hypot(x1 - x0, z1 - z0) };
       const ids = [];

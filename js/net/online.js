@@ -11,6 +11,7 @@
 
 import { CAR_BY_ID } from '../data/cars.js';
 import { defaultVisual, PERF } from '../data/parts.js';
+import { WORLD_R } from '../data/world.js';
 
 export const SUPABASE_URL = 'https://fikdilgfjponqygiwofa.supabase.co';
 // Publishable (public-by-design) key. Only used for realtime broadcast.
@@ -24,12 +25,12 @@ const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 // holds SERVER_CAP careers, and houses are deeded per server (net/deeds.js).
 export const SERVER_CAP = 15;
 export const SERVERS = [
-  { id: 'harbor',    name: 'Lake Worth',    blurb: 'Lakefront docks and warehouses, never sleeps' },
+  { id: 'harbor',    name: 'Everman',    blurb: 'Lakefront docks and warehouses, never sleeps' },
   { id: 'downtown',  name: 'Downtown',  blurb: 'Lights, traffic, and a lot of cops' },
   { id: 'eastgate',  name: 'Eastgate',  blurb: 'Where everyone starts out' },
   { id: 'ironside',  name: 'Riverside',  blurb: 'Industrial roads, long straights' },
   { id: 'dustline',  name: 'Dustline',  blurb: 'Desert highway and open sand' },
-  { id: 'northridge',name: 'Cross Timbers', blurb: 'Mountain roads' },
+  { id: 'northridge',name: 'Lake Worth', blurb: 'Hill roads out west' },
   { id: 'pier9',     name: 'Pier 9',    blurb: 'Meet-night crowd' },
   { id: 'glory',     name: 'Glory Row', blurb: 'The big leagues' },
 ];
@@ -258,7 +259,7 @@ class Online {
   pruneToPresence() {
     if (!this.presence) return;
     const here = new Set(this.presence);
-    for (const id of [...this.peers.keys()]) if (!here.has(id)) this.peers.delete(id);
+    for (const [id, p] of [...this.peers]) if (!p.bot && !here.has(id)) this.peers.delete(id);
   }
 
   leave() {
@@ -272,6 +273,8 @@ class Online {
 
   send(msg) {
     if (!this.active || !this.tr) return;
+    // to one of the regulars on a quiet server (net/bots.js): answered right here
+    if (this.botHook?.(msg)) return;
     try { this.tr.send({ ...msg, id: this.id }); } catch { /* dropped packet */ }
   }
 
@@ -290,7 +293,7 @@ class Online {
   honk() { this.send({ k: 'ho' }); }
   pvpHit(to, damage, weapon, x, z, h) {
     if (!this.active || !to) return;
-    this.send({ k: 'pvp', t: 'hit', to, d: num(damage, 1, 100, 1), w: weapon === 'melee' ? 'melee' : 'gun', x: +num(x, -9000, 9000).toFixed(2), z: +num(z, -9000, 9000).toFixed(2), h: +num(h, -20, 20).toFixed(3) });
+    this.send({ k: 'pvp', t: 'hit', to, d: num(damage, 1, 100, 1), w: weapon === 'melee' ? 'melee' : 'gun', x: +num(x, -WORLD_R, WORLD_R).toFixed(2), z: +num(z, -WORLD_R, WORLD_R).toFixed(2), h: +num(h, -20, 20).toFixed(3) });
   }
   pvpState(type) {
     if (!this.active || (type !== 'dead' && type !== 'alive')) return;
@@ -304,17 +307,20 @@ class Online {
   }
 
   // ---------------------------------------------------------------- incoming
-  receive(m) {
+  // local = from net/bots.js; nobody on the network gets to speak for them
+  receive(m, local = false) {
     if (!m || typeof m !== 'object' || typeof m.id !== 'string' || m.id === this.id || m.id.length > 16) return;
+    if ((m.id[0] === '~') !== local) return;
     const now = performance.now() / 1000;
     let p = this.peers.get(m.id);
     if (m.k === 'bye') { if (p) { this.peers.delete(m.id); this.emit('peers'); } return; }
     if (!p) {
-      if (this.peers.size >= MAX_PEERS) return;
+      if (this.realCount() >= MAX_PEERS) return;
       p = { id: m.id, name: 'Racer', model: null, visual: null, levels: cleanLevels(), tier: 1, x: 0, z: 0, h: 0, sp: 0, inCar: true, flame: 0, walk: 0, seen: now, t: now, fresh: true, sprite: null, spriteKey: '', snaps: [], interp: INTERP_BASE, lastPacketAt: now, jitter: 0, hp: 100, dead: false };
       this.peers.set(m.id, p);
       // we don't know this car yet: introduce ourselves so they can draw us too
       if (now - this.helloReplyT > 1) { this.helloReplyT = now; this.sendHello(); }
+      this.emit('newpeer', p);   // … and show them our place (net/builds.js)
     }
     p.seen = now;
     if (m.k === 'h') {
@@ -333,7 +339,7 @@ class Online {
       const q = num(m.q, 0, 1e9, 0);
       if (q && p.q && q <= p.q && p.q - q < 1e6) return;
       p.q = q;
-      const x = num(m.x, -9000, 9000), z = num(m.z, -9000, 9000);
+      const x = num(m.x, -WORLD_R, WORLD_R), z = num(m.z, -WORLD_R, WORLD_R);
       p.st = { x, z, h: num(m.h, -20, 20), v: num(m.v, -80, 120), r: num(m.r, -4, 4), a: num(m.a, -30, 30) };
       const gap = Math.max(0, now - (p.lastPacketAt || now));
       p.jitter = p.jitter * 0.82 + Math.abs(gap - (p.packetGap || gap)) * 0.18;
@@ -353,7 +359,7 @@ class Online {
       if (!type) return;
       if (type === 'hit') {
         if (m.to !== this.id) return;
-        const dmg = num(m.d, 1, 100, 1), ax = num(m.x, -9000, 9000), az = num(m.z, -9000, 9000);
+        const dmg = num(m.d, 1, 100, 1), ax = num(m.x, -WORLD_R, WORLD_R), az = num(m.z, -WORLD_R, WORLD_R);
         const p = this.peers.get(m.id);
         if (!p || Math.hypot(p.x - ax, p.z - az) > 14) return;
         this.emit('pvp', { type: 'hit', from: m.id, peer: p, damage: dmg, weapon: String(m.w || 'gun').slice(0, 12) });
@@ -367,6 +373,9 @@ class Online {
       p.honkAt = now; this.emit('honk', p);
     } else if (m.k === 'deed') {
       this.emit('deed', m);
+    } else if (m.k === 'bld') {
+      // what a player has built on their property (net/builds.js)
+      this.emit('bld', m);
     } else if (m.k === 'pay') {
       // Cowtown Pay: "check your mailbox" for whoever got paid (net/pay.js)
       if (typeof m.u === 'string' && m.u.length <= 16) this.emit('pay', { u: m.u });
@@ -409,7 +418,7 @@ class Online {
         }
       }
       if (need) {
-        const hz = this.peers.size > 8 ? BUSY_HZ : MAX_HZ;
+        const hz = this.realCount() > 8 ? BUSY_HZ : MAX_HZ;
         this.sendT = 1 / hz;
         const msg = { k: 's', q: ++this.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: +me.flame.toFixed(1) };
         if (this.ride) { msg.rd = this.ride; msg.v = msg.r = msg.a = 0; }
@@ -421,6 +430,7 @@ class Online {
     if (this.helloT <= 0) { this.helloT = HELLO_EVERY; this.sendHello(); }
     let gone = false;
     for (const p of this.peers.values()) {
+      if (p.bot) continue;   // net/bots.js moves them
       if (now - p.seen > PEER_TIMEOUT) { this.peers.delete(p.id); gone = true; continue; }
       if (p.fresh || !p.st) continue;
       // GTA-style remote movement: render from a tiny buffered window and
@@ -465,6 +475,7 @@ class Online {
   }
 
   list() { return [...this.peers.values()].filter(p => p.model); }
+  realCount() { let n = 0; for (const p of this.peers.values()) if (!p.bot) n++; return n; }
 }
 
 export const online = new Online();

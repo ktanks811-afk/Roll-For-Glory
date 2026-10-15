@@ -13,6 +13,7 @@ import { settings, saveSettings } from '../core/save.js';
 import { game } from '../core/state.js';
 import { online } from '../net/online.js';
 
+const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;   // a touch screen
 const S = 220;                         // logical size of the canvas
 const MODES = [
   { name: 'HEADING UP', rot: true, zoom: 'auto' },
@@ -20,7 +21,7 @@ const MODES = [
   { name: 'HEADING UP · FAR', rot: true, zoom: 'far' },
   { name: 'NORTH UP', rot: false, zoom: 'auto' },
 ];
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', court: '⚖', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', court: '⚖', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓' };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const BEARINGS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const MAP_ALPHA = 0.6;                 // how solid the map is; the markers stay fully solid
@@ -48,6 +49,8 @@ export class MiniMap {
 
   // ---------------------------------------------------------------- drawing
   draw(w, p) {
+    // phones: redraw at half the frame rate, half the work for a picture that only turns slowly
+    if (COARSE && (this.odd = !this.odd)) return;
     const now = performance.now(), dt = Math.min(0.1, (now - this.t) / 1000); this.t = now;
     const mode = this.mode, g = this.g, map = w.map;
     // heading eases so the map turns smoothly
@@ -72,7 +75,7 @@ export class MiniMap {
     // base map: blurry overview first, then the sharp tiles on top
     g.save(); g.globalAlpha = MAP_ALPHA; g.translate(S / 2, S / 2 + OFF); g.rotate(-h); g.scale(s, s); g.translate(-p.x, -p.z);
     g.imageSmoothingEnabled = true;
-    const ov = map.overview; if (ov) g.drawImage(ov.canvas, ov.x0, ov.z0, ov.canvas.width / ov.scale, ov.canvas.height / ov.scale);
+    const ov = map.overview; if (ov) for (const o of [ov, ...(ov.more || [])]) g.drawImage(o.canvas, o.x0, o.z0, o.canvas.width / o.scale, o.canvas.height / o.scale);
     const R = ((S / 2) * 1.45 + OFF) / s;
     const i0 = Math.floor((p.x - R) / TILE), i1 = Math.floor((p.x + R) / TILE), j0 = Math.floor((p.z - R) / TILE), j1 = Math.floor((p.z + R) / TILE);
     if ((i1 - i0 + 1) * (j1 - j0 + 1) <= 36) {
