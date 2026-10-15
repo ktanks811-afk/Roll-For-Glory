@@ -115,7 +115,8 @@ export function addScenery({ roads, buildings, lots, trees, rocks, props, water,
       if (rnd() < p) parked(l.x + sx + 1.5, l.z + l.d - 3.5, 'z', 4.4, 1.9, pick(colors));
     }
   };
-  const nearLocation = (x, z, r) => LOCATIONS.some(l => Math.hypot(l.x - x, l.z - z) < r);
+  const cityLocs = LOCATIONS.filter(l => Math.abs(l.x) < 1000 && Math.abs(l.z) < 1000);   // street trees only go in the old city (|x|, |z| < 905)
+  const nearLocation = (x, z, r) => cityLocs.some(l => Math.hypot(l.x - x, l.z - z) < r);
 
   landmarks();
 

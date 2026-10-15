@@ -12,6 +12,7 @@ import { settings, saveSettings } from '../core/save.js';
 import { game } from '../core/state.js';
 import { online } from '../net/online.js';
 
+const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;   // a touch screen
 const S = 220;                         // logical size of the canvas
 const MODES = [
   { name: 'HEADING UP', rot: true, zoom: 'auto' },
@@ -44,6 +45,8 @@ export class MiniMap {
 
   // ---------------------------------------------------------------- drawing
   draw(w, p) {
+    // phones: redraw at half the frame rate, half the work for a picture that only turns slowly
+    if (COARSE && (this.odd = !this.odd)) return;
     const now = performance.now(), dt = Math.min(0.1, (now - this.t) / 1000); this.t = now;
     const mode = this.mode, g = this.g, map = w.map;
     // heading eases so the map turns smoothly

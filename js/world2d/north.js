@@ -11,6 +11,7 @@
 // `landmarkBlock`. Own seed, so the rest of the map stays as it was. DOM-free.
 
 import { NORTH, DENTON, DNGRID_X, DNGRID_Z, I35_END, HTRACE_Z, WESTPORT_Z, TX114_Z, ROANOKE_X, ROANOKE_END, TMS, TMS_PIT_X, AIRPORT_X, LEWISVILLE, HWY_Z, HWY_W, BLOCK, ROAD_W, LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
+import { RectGrid } from './rectGrid.js';
 
 function mulberry32(a) {
   return () => {
@@ -42,13 +43,15 @@ export function addNorth(out, { landmarkBlock, roads }) {
 
   // ---------------- what nothing may touch ----------------
   const edges = roads.edges.filter(e => Math.min(e.az, e.bz) < HWY_Z - 40 && Math.max(e.ax, e.bx) > NORTH.x0 - 100 && Math.min(e.ax, e.bx) < NORTH.x1 + 100);
-  const onRoad = (x0, z0, x1, z1, pad) => edges.some(e => {
+  const edgeGrid = new RectGrid(200);
+  for (const e of edges) edgeGrid.add(e, Math.min(e.ax, e.bx) - e.width / 2, Math.min(e.az, e.bz) - e.width / 2, Math.max(e.ax, e.bx) + e.width / 2, Math.max(e.az, e.bz) + e.width / 2);
+  const onRoad = (x0, z0, x1, z1, pad) => edgeGrid.some(x0 - pad - 1, z0 - pad - 1, x1 + pad + 1, z1 + pad + 1, e => {
     const h = e.width / 2 + pad;
     return x0 < Math.max(e.ax, e.bx) + h && x1 > Math.min(e.ax, e.bx) - h && z0 < Math.max(e.az, e.bz) + h && z1 > Math.min(e.az, e.bz) - h;
   });
-  const busy = [];
-  const claim = (x0, z0, x1, z1) => busy.push({ x0, z0, x1, z1 });
-  const isBusy = (x0, z0, x1, z1, pad = 0) => busy.some(b => x0 < b.x1 + pad && x1 > b.x0 - pad && z0 < b.z1 + pad && z1 > b.z0 - pad);
+  const busy = new RectGrid(100);
+  const claim = (x0, z0, x1, z1) => busy.add({ x0, z0, x1, z1 }, x0, z0, x1, z1);
+  const isBusy = (x0, z0, x1, z1, pad = 0) => busy.some(x0 - pad - 1, z0 - pad - 1, x1 + pad + 1, z1 + pad + 1, b => x0 < b.x1 + pad && x1 > b.x0 - pad && z0 < b.z1 + pad && z1 > b.z0 - pad);
   const inZone = (x0, z0, x1, z1) => x0 > NORTH.x0 + 10 && x1 < NORTH.x1 - 10 && z0 > NORTH.z0 + 10 && z1 < NORTH.z1 - 120;
   const free = (x0, z0, x1, z1, pad = 6) => inZone(x0, z0, x1, z1) && !onRoad(x0, z0, x1, z1, pad) && !isBusy(x0, z0, x1, z1, 2);
   const bld = (b, pad = 4) => { if (!free(b.x, b.z, b.x + b.w, b.z + b.d, pad)) return false; buildings.push(b); claim(b.x, b.z, b.x + b.w, b.z + b.d); return true; };
@@ -339,11 +342,12 @@ export function addNorth(out, { landmarkBlock, roads }) {
 }
 
 function keepTreesOff(trees, buildings) {
-  const solid = buildings.filter(b => b.z < NORTH.z1 + 40 && b.kind !== 'pier' && !b.noCollide);
+  const solid = new RectGrid(100);
+  for (const b of buildings) if (b.z < NORTH.z1 + 40 && b.kind !== 'pier' && !b.noCollide) solid.add(b, b.x - 1, b.z - 1, b.x + b.w + 1, b.z + b.d + 1);
   for (let i = trees.length - 1; i >= 0; i--) {
     const t = trees[i];
     if (t.z > NORTH.z1 + 40) continue;
-    if (solid.some(o => t.x > o.x - 1 && t.x < o.x + o.w + 1 && t.z > o.z - 1 && t.z < o.z + o.d + 1)) trees.splice(i, 1);
+    if (solid.some(t.x, t.z, t.x, t.z, o => t.x > o.x - 1 && t.x < o.x + o.w + 1 && t.z > o.z - 1 && t.z < o.z + o.d + 1)) trees.splice(i, 1);
   }
 }
 

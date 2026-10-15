@@ -191,7 +191,14 @@ export function loadCarArt(ms = 4000) {
   const jobs = Object.entries(CAR_ART).map(async ([id, a]) => {
     try {
       const [side, top] = await Promise.all([loadImg(a.side), loadImg(a.top)]);
-      ready[id] = { meta: a, side: keepChrome(analyse(side), a.chrome?.side), top: keepChrome(analyse(top), a.chrome?.top) };
+      // pixel analysis waits until a car first needs that view: reading back
+      // every picture at boot cost phones a noticeable chunk of loading time
+      let sideL = null, topL = null;
+      ready[id] = {
+        meta: a,
+        get side() { return sideL ||= keepChrome(analyse(side), a.chrome?.side); },
+        get top() { return topL ||= keepChrome(analyse(top), a.chrome?.top); },
+      };
     } catch (e) { console.warn(e); }
   });
   return Promise.race([Promise.all(jobs), new Promise(r => setTimeout(r, ms))]);

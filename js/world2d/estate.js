@@ -10,6 +10,7 @@
 // Customers and SWAT raids are in world2d/trap.js.
 
 import { garageBlock } from './map.js';
+import { RectGrid } from './rectGrid.js';
 import { ESTATE_LOCATIONS, RIGS, FENCE_BY_ID, LAND, DEV_BY_ID } from '../data/estate.js';
 import { PROPERTIES } from '../data/world.js';
 import { registerBuilds, isBuilt, houseDesign, pasture, homesite, builtProperty, devOf, devLayout, rentRoll, now } from '../core/estate.js';
@@ -22,13 +23,31 @@ const keep = (arr, fn) => { let j = 0; for (let i = 0; i < arr.length; i++) if (
 export function addEstate(out) {
   const { buildings, lots, trees, props } = out;
   out.oil = [];
+  // make room: the filler houses, yards and trees on every lot go. One pass
+  // over what was already on the map (with the lots bucketed so each thing
+  // only checks the lots near it), then each lot below only has to clear what
+  // the lots before it put down.
+  const rule = {
+    b: r => b => b.loc || b.noCollide || !overlaps(b, r, 1),
+    l: r => l => l.kind === 'lane' || l.loc || !overlaps(l, r, -1),
+    t: r => t => !inLot(t.x, t.z, r, t.r),
+    p: r => p => !inLot(p.x, p.z, r, 1),
+  };
+  const lotGrid = new RectGrid(200);
+  for (const loc of ESTATE_LOCATIONS) lotGrid.add(loc.lot, loc.lot.x0, loc.lot.z0, loc.lot.x1, loc.lot.z1);
+  const clearAll = (arr, k, box) => arr && keep(arr, o => { const [x0, z0, x1, z1] = box(o); return !lotGrid.some(x0, z0, x1, z1, r => !rule[k](r)(o)); });
+  clearAll(buildings, 'b', b => [b.x - 2, b.z - 2, b.x + (b.w || 0) + 2, b.z + (b.d || 0) + 2]);
+  clearAll(lots, 'l', l => [l.x - 2, l.z - 2, l.x + (l.w || 0) + 2, l.z + (l.d || 0) + 2]);
+  clearAll(trees, 't', t => [t.x - Math.abs(t.r) - 2, t.z - Math.abs(t.r) - 2, t.x + Math.abs(t.r) + 2, t.z + Math.abs(t.r) + 2]);
+  clearAll(props, 'p', p => [p.x - 2, p.z - 2, p.x + 2, p.z + 2]);
+  const base = { b: buildings.length, l: lots.length, t: trees.length, p: props?.length };
+  const keepNew = (arr, from, fn) => { let j = from; for (let i = from; i < arr.length; i++) if (fn(arr[i])) arr[j++] = arr[i]; arr.length = j; };
   for (const loc of ESTATE_LOCATIONS) {
     const r = loc.lot, w = r.x1 - r.x0, d = r.z1 - r.z0;
-    // make room: the filler houses, yards and trees on this lot go
-    keep(buildings, b => b.loc || b.noCollide || !overlaps(b, r, 1));
-    keep(lots, l => l.kind === 'lane' || l.loc || !overlaps(l, r, -1));
-    keep(trees, t => !inLot(t.x, t.z, r, t.r));
-    if (props) keep(props, p => !inLot(p.x, p.z, r, 1));
+    keepNew(buildings, base.b, rule.b(r));
+    keepNew(lots, base.l, rule.l(r));
+    keepNew(trees, base.t, rule.t(r));
+    if (props) keepNew(props, base.p, rule.p(r));
     if (loc.type === 'trap' || loc.type === 'property') garageBlock(out, loc, r.x0, r.z0, r.x1, r.z1, PROPERTIES[loc.id]);
     else if (loc.type === 'rig') oilPad(out, loc);
     else if (loc.type === 'land') {

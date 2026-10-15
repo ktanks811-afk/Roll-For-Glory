@@ -273,7 +273,7 @@ export function openSettings(app) {
     const opt = (key, vals) => `<div class="opts">${vals.map(([v, l]) => `<button class="${settings[key] === v ? 'on' : ''}" data-action="set" data-k="${key}" data-v="${v}">${l}</button>`).join('')}</div>`;
     root.innerHTML = `<div class="p-head"><h1>Settings</h1><button class="btn x" data-action="close">×</button></div>
       <div class="p-body" style="max-width:640px">
-        <label class="field"><span>Graphics quality</span>${opt('quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}</label>
+        <label class="field"><span>Graphics quality</span>${opt('quality', [['low', 'Low'], ['medium', 'Medium (auto)'], ['high', 'High']])}</label>
         <label class="field"><span>Transmission</span>${opt('transmission', [['auto', 'Automatic'], ['manual', 'Manual (Q / E)']])}</label>
         <label class="field"><span>Touch steering</span>${opt('steerMode', [['arrows', 'Arrows'], ['wheel', 'Steering wheel']])}</label>
         <label class="field"><span>Speed units</span>${opt('units', [['mph', 'MPH'], ['kmh', 'KM/H']])}</label>

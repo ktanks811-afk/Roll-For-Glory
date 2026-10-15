@@ -26,7 +26,11 @@ const n = (v, lo, hi, d = 0) => (typeof v === 'number' && isFinite(v) ? clamp(v,
 const padText = t => t.replace('drag the shift knob down to downshift', 'LB to downshift').replace(/\bBRAKE\b/g, 'LT').replace(/\bGAS\b/g, 'RT');
 const T = (phone, keys) => pad.inUse ? padText(phone) : touchUi.active ? phone : keys;
 // fit the whole road comfortably on narrow screens
-const H_ZOOM = () => Math.min(14, window.innerWidth / 34);
+// screen width, kept up to date on resize: reading innerWidth every frame can
+// force the browser to lay the page out again mid-frame
+let viewW = typeof window !== 'undefined' ? window.innerWidth : 1280;
+if (typeof window !== 'undefined') window.addEventListener('resize', () => { viewW = window.innerWidth; });
+const H_ZOOM = () => Math.min(14, viewW / 34);
 const THEMES = {
   highway: { lanes: 6, laneW: 3.7, ground: '#2f3a26', road: '#26272b', side: 'barrier', props: 'city', median: true },
   industrial: { lanes: 4, laneW: 3.6, ground: '#4a4b4f', road: '#2c2d31', side: 'curb', props: 'warehouse' },
