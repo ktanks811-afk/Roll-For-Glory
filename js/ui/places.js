@@ -334,8 +334,12 @@ function usedlot(loc, app, s) {
   openPanel((root, h) => {
     if (!s.rustyStock || s.rustyStock.day !== s.time.day) {
       const cheap = CARS.filter(c => !c.market && c.msrp < 45000 && c.years[1] < 2020);
-      s.rustyStock = { day: s.time.day, list: Array.from({ length: 9 }, () => {
-        const l = makeListing(cheap[Math.floor(Math.random() * cheap.length)]);
+      // Sal always keeps one black box Chevy on the front row
+      const box = CAR_BY_ID.chevrolet_caprice_classic_box_chevy_1986;
+      const picks = [...(box ? [box] : []), ...Array.from({ length: box ? 8 : 9 }, () => cheap[Math.floor(Math.random() * cheap.length)])];
+      s.rustyStock = { day: s.time.day, list: picks.map(m => {
+        const l = makeListing(m);
+        if (m === box) l.visual.paint = box.color;
         l.price = roundPrice(l.value * 1.18 + 600); l.mods = {};
         return l;
       }) };
