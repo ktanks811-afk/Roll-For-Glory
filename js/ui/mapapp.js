@@ -20,7 +20,7 @@ const STATE_LABELS = Object.fromEntries(Object.entries({
 }).map(([id, list]) => [id, [...list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK]), ...(STATE_MAP_LABELS[id] || [])]]));
 import { fmtMoney } from '../core/state.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', plane: '✈' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', plane: '✈', boat: '⚓', gem: '💎' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop', 'trailers'] },
@@ -33,11 +33,13 @@ const CATS = [
   { id: 'police', label: 'Police & courts', types: ['police', 'court'] },
   { id: 'health', label: 'Hospital', types: ['hospital'] },
   { id: 'fly', label: 'Airports', types: ['airport'] },
+  { id: 'boats', label: 'Marinas', types: ['marina'] },
 ];
 const WHAT = {
   home: 'Your place: sleep, save, garage, change clothes.',
   property: 'A house: 1, 2 or 3 stories, a garage and a safehouse.',
   land: 'Land for sale. Build a house and a garage up to 100 cars, fence it, run cattle.',
+  marina: 'A marina. Buy boats from jet skis to superyachts, launch yours, dock up and customize.',
   airport: 'The airport. Fly to Atlanta, LA, Miami or home to Texas, and bring your car on the cargo plane.',
   rig: 'An oil lease. Pays $40,000 a day once it\'s yours.',
   kennel: 'Cross Timbers Hog Dogs: curs, hounds, bulldogs, Dogos and Corsos for sale, plus collars and cut vests.',

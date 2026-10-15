@@ -79,6 +79,7 @@ const HANDLERS = {
   trailers: (loc, app) => openTrailerLot(loc, app),
   salebarn: (loc, app) => openSaleBarn(loc, app),
   airport: (loc, app) => openAirport(loc, app),
+  marina: (loc, app) => import('./marina.js').then(m => m.openMarina(loc, app)),
   kennel: (loc, app) => openKennel(app, { shop: true, tab: 'buy' }),
   studio: (loc, app) => openLabel(app, { studio: loc.id }),
   hoghunt: (loc, app) => openHogLease(loc, app),

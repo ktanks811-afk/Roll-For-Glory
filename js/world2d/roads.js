@@ -6,6 +6,7 @@ import { GRID, HWY_Z, HWY_X, DESERT_ROAD_END, STREET_NS, STREET_EW, ROAD_W, HWY_
   FM916_Z, FM916_X, FM2331_END } from '../data/world.js';
 import { STATES, STATE_N, STATE_BLOCK, AIRPORT_ROW, cityRect } from '../data/states.js';
 import { ALL_TOWNS, ROUTES, STATE_ROUTES, townMark } from '../data/metro.js';
+import { MARINA_ROADS } from '../data/boats.js';
 
 export function buildRoads() {
   const nodes = [];
@@ -177,7 +178,7 @@ export function buildRoads() {
       add(node(X(i), Z(j)), node(X(i + 1), Z(j)), hw && t.hwy.row === j ? hw : { ...CITY, name: t.ew[j] || `${t.name} Ave` });
     }
   }
-  for (const r of [...ROUTES, ...Object.values(STATE_ROUTES).flat()]) {
+  for (const r of [...ROUTES, ...Object.values(STATE_ROUTES).flat(), ...MARINA_ROADS]) {
     const props = { ...KIND[r.kind], name: r.name };
     for (let k = 0; k < r.pts.length - 1; k++) add(node(...r.pts[k]), node(...r.pts[k + 1]), props);
   }

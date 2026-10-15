@@ -15,6 +15,7 @@ import { addWeatherford } from './weatherford.js';
 import { addWest } from './west.js';
 import { addBrazos } from './brazos.js';
 import { addStates } from './states.js';
+import { addMarinas } from './marinas.js';
 import { addMetro } from './metro.js';
 import { TEXAS } from '../data/metro.js';
 import { houseBlock } from './house.js';
@@ -253,6 +254,8 @@ export function buildMap() {
   // the big map: the new towns, the highways between, the lakes and the open country (world2d/metro.js)
   const metro = addMetro({ ...gout, props, rocks, waterAll: water }, { landmarkBlock, roads });
   water.push(...metro.water);
+  // marinas: clubhouses and lots on the shore (the docks are world2d/boats.js)
+  addMarinas({ ...gout, props });
 
   // ---------------- colliders ----------------
   const colliders = [];

@@ -1,6 +1,6 @@
 // Boot, main loop and mode switching (title → character → world ⇄ race).
 
-import { game, fmtMoney, activeCar, carValue, spend, hourOf, dayName } from './core/state.js';
+import { game, fmtMoney, activeCar, carValue, spend, earn, hourOf, dayName } from './core/state.js';
 import { MEET_NIGHTS, MEET_LOC } from './core/nightmeet.js';
 import { on, emit } from './core/events.js';
 import { input } from './core/input.js';
@@ -12,6 +12,7 @@ import { initStory, maybeChallenge, sendMessage } from './core/story.js';
 import { offerMission } from './core/missions.js';
 import { newDay as hustleDay, ensure as ensureHustle } from './core/hustle.js';
 import { estateDay } from './core/estate.js';
+import { boatsDay } from './core/boats.js';
 import { dogsDay, ensureKennel } from './core/dogs.js';
 // the rest of Hogs & Dogs hooks into the kennel's day: mixes, coyotes, the alpha, the Hog Pin, horses, cams, traps, jobs
 import './core/hdkennel.js';
@@ -182,6 +183,8 @@ function newDay() {
   hustleDay(s);
   // oil leases pay out, the ranch settles up (core/estate.js)
   for (const n of estateDay(s).notes) toast(n, 'good');
+  // marinas bill slip fees and crew, charters pay out (core/boats.js)
+  for (const n of boatsDay(s, spend, earn).notes) toast(n, 'info');
   // the kennel: feed, pups, the dog market restocks (core/dogs.js)
   for (const n of dogsDay(s).notes) toast(n, 'good');
   for (const n of settleHighPoint(s)) toast(n, 'good');
@@ -270,7 +273,7 @@ function frame(now) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   input.pollPad(padNav);   // controller: menus first, then the game
   // which control scheme is live: walking, driving, racing, or none
-  input.setContext(app.mode === 'race' ? 'race' : app.mode === 'world' && app.world ? (app.world.inCar && app.world.vehicle ? 'car' : 'foot') : 'menu');
+  input.setContext(app.mode === 'race' ? 'race' : app.mode === 'world' && app.world ? ((app.world.inCar && app.world.vehicle) || app.world.boats?.boating ? 'car' : 'foot') : 'menu');
   try {
     if (app.mode === 'world' && app.world) {
       if (!panelOpen() && !modalOpen()) app.world.update(dt);
