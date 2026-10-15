@@ -2784,8 +2784,8 @@ await step('hogs & dogs: bay pen, shows, hog pin, horses, coon hunt', async () =
     const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
     openPlace(LOC_BY_ID.bay_pen, window.__rfg.app);
   });
-  await p.waitForSelector('[data-action=bayGo]'); await snap('hd-1-bay-pen');
-  await p.click('[data-action=bayGo]');
+  await p.waitForSelector('[data-action=bayGo]:visible'); await snap('hd-1-bay-pen');
+  await p.click('[data-action=bayGo]:visible');
   await p.waitForSelector('.baypen-cv'); await p.waitForTimeout(1200); await snap('hd-2-bay-pen-run');
   await p.click('[data-action=baySkip]');
   await p.waitForSelector('[data-action=bayDone]'); await snap('hd-3-bay-pen-result');
