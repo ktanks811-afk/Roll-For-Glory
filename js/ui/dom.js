@@ -17,7 +17,11 @@ export function el(html) {
 }
 
 // ---------------- toasts ----------------
+// main.js can claim some toasts (GPS, jobs) for the HUD's top banner instead
+let toastRouter = null;
+export function setToastRouter(fn) { toastRouter = fn; }
 export function toast(text, kind = 'info') {
+  if (toastRouter && toastRouter(String(text), kind)) return;
   const root = $('#toasts');
   if (!root) return;
   const t = el(`<div class="toast toast-${kind}">${esc(text)}</div>`);

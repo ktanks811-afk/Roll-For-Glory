@@ -137,7 +137,7 @@ export class Gigs {
     if (this.rider && this.job.stage === 'drop') this.leaving(this.w.vehicle);
     this.rider = null;
     this.clear();
-    this.w.ui.toast(why, 'bad');
+    this.w.ui.pop(why, { kind: 'bad', icon: '📦', title: 'Shift' });
   }
 
   finish() {
@@ -151,7 +151,7 @@ export class Gigs {
     audio.click?.();
     const stars = '★'.repeat(Math.round(r.stars)) + '☆'.repeat(5 - Math.round(r.stars));
     const streak = G.ensure(this.s).streak;
-    this.w.ui.toast(`${j.gig.co}: +${fmtMoney(r.pay)} to your bank${r.tip ? ` · ${fmtMoney(r.tip)} tip` : ''} · ${stars}${r.notes.length ? ' · ' + r.notes.join(', ') : ''} · clean streak ${streak}`, 'good');
+    this.w.ui.pop(`${j.gig.co}: +${fmtMoney(r.pay)} to your bank${r.tip ? ` · ${fmtMoney(r.tip)} tip` : ''} · ${stars}${r.notes.length ? ' · ' + r.notes.join(', ') : ''} · clean streak ${streak}`, { kind: 'good', icon: '📦', title: 'Shift done' });
     return r;
   }
 
@@ -224,7 +224,7 @@ export class Gigs {
     j.body0 = v.car.cond.body;
     j.lastSpeed = v.speed;
     this.route(j.drop);
-    this.w.ui.toast(text, 'good');
+    this.w.ui.pop(text, { kind: 'good', icon: '📦', title: 'Shift' });
   }
 
   updateDrop(dt, d, stopped) {
@@ -244,7 +244,7 @@ export class Gigs {
     else j.hold = 0;
   }
 
-  say(text) { this.w.ui.toast(text, 'info'); }
+  say(text) { this.w.ui.pop(text, { kind: 'job', icon: '📦', title: 'Shift' }); }
 
   // The towed car trails behind your hitch on a short bar and swings when you're fast.
   dragTow(dt) {
