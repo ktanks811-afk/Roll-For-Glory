@@ -279,6 +279,7 @@ export function openSettings(app) {
         <label class="field"><span>Speed units</span>${opt('units', [['mph', 'MPH'], ['kmh', 'KM/H']])}</label>
         <label class="field"><span>Master volume — ${Math.round(settings.volume * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.volume}" data-range="volume" class="input"></label>
         <label class="field"><span>Music volume — ${Math.round(settings.music * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.music}" data-range="music" class="input"></label>
+        <label class="field"><span>World sounds (rain, city, traffic) — ${Math.round(settings.ambience * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.ambience}" data-range="ambience" class="input"></label>
         <label class="field"><span>Camera view (driving) — V</span>${opt('camMode', [['top', 'Top-down'], ['chase', 'Third person']])}</label>
         <label class="field"><span>Camera shake</span>${opt('shake', [[true, 'On'], [false, 'Off']])}</label>
         <label class="field"><span>Racers pulling up on you to race</span>${opt('pullups', [[true, 'On'], [false, 'Off']])}</label>
@@ -299,7 +300,7 @@ export function openSettings(app) {
     });
     root.querySelectorAll('[data-range]').forEach(r => r.oninput = () => {
       settings[r.dataset.range] = +r.value; saveSettings(); audio.applyVolume();
-      r.previousElementSibling.textContent = `${r.dataset.range === 'volume' ? 'Master' : 'Music'} volume — ${Math.round(r.value * 100)}%`;
+      r.previousElementSibling.textContent = `${{ volume: 'Master volume', music: 'Music volume', ambience: 'World sounds (rain, city, traffic)' }[r.dataset.range]} — ${Math.round(r.value * 100)}%`;
     });
   });
 }

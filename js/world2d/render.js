@@ -789,23 +789,56 @@ export function drawLighting(ctx, cam, darkness, lights, extras) {
 }
 
 // ---------------- weather ----------------
-const drops = [];
-export function drawRain(ctx, cam, intensity, dt) {
+// Rain streaks slant with the wind, and drops splash on the street as little
+// rings. Both are screen effects with fixed pools, so a storm costs the same
+// every frame (fewer of each on Low graphics).
+const drops = [], splashes = [];
+export function drawRain(ctx, cam, intensity, dt, { wind = 0.3, low = false } = {}) {
   if (intensity <= 0) return;
-  const n = Math.floor(260 * intensity);
+  const q = low ? 0.5 : 1;
+  const n = Math.floor(260 * intensity * q);
   while (drops.length < n) drops.push({ x: Math.random() * cam.w, y: Math.random() * cam.h, s: 0.6 + Math.random() * 0.8 });
   drops.length = n;
+  const slant = 60 + wind * 420, lean = slant / 900;
   ctx.strokeStyle = 'rgba(180,200,230,0.35)'; ctx.lineWidth = 1;
   ctx.beginPath();
   for (const d of drops) {
-    d.x += -120 * dt * d.s; d.y += 900 * dt * d.s;
-    if (d.y > cam.h) { d.y = -10; d.x = Math.random() * (cam.w + 100); }
+    d.x += -slant * dt * d.s; d.y += 900 * dt * d.s;
+    if (d.y > cam.h) { d.y = -10; d.x = Math.random() * (cam.w + slant); }
     if (d.x < -10) d.x = cam.w + 10;
-    ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 4 * d.s, d.y + 16 * d.s);
+    ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 16 * lean * d.s, d.y + 16 * d.s);
+  }
+  ctx.stroke();
+  // splashes: spawn a few each frame, each a ring that opens and fades
+  let born = 70 * intensity * q * dt + Math.random();
+  while (born-- >= 1 && splashes.length < 90 * q) splashes.push({ x: Math.random() * cam.w, y: Math.random() * cam.h, t: 0 });
+  ctx.strokeStyle = 'rgba(200,215,240,0.4)';
+  ctx.beginPath();
+  for (let i = splashes.length - 1; i >= 0; i--) {
+    const sp = splashes[i];
+    sp.t += dt;
+    if (sp.t > 0.3) { splashes[i] = splashes[splashes.length - 1]; splashes.pop(); continue; }
+    const r = 1 + sp.t * 16;
+    ctx.moveTo(sp.x + r, sp.y); ctx.ellipse(sp.x, sp.y, r, r * 0.45, 0, 0, Math.PI * 2);
   }
   ctx.stroke();
   ctx.fillStyle = `rgba(20,30,45,${0.12 * intensity})`;
   ctx.fillRect(0, 0, cam.w, cam.h);
+}
+
+// Mist thrown off the tires on a wet road (world coords, drawn in the world layer).
+export function drawSpray(ctx, cam, parts, dt) {
+  ctx.save();
+  ctx.fillStyle = 'rgb(205,215,228)';
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.t += dt; p.x += p.vx * dt; p.z += p.vz * dt; p.vx *= 0.94; p.vz *= 0.94;
+    if (p.t > p.life) { parts[i] = parts[parts.length - 1]; parts.pop(); continue; }
+    const k = p.t / p.life;
+    ctx.globalAlpha = 0.22 * (1 - k);
+    ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), (0.35 + k * 1.3) * cam.zoom, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 export function shadeHex(hex, amt) {

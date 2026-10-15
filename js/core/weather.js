@@ -13,6 +13,9 @@ export const WEATHER = {
 };
 export const wx = s => WEATHER[s.weather] || WEATHER.clear;
 export const isWet = s => wx(s).rain > 0;
+// How hard the wind blows (0-1): it slants the rain and drives the wind sound.
+const WIND = { clear: 0.1, cloudy: 0.3, rain: 0.45, storm: 1, fog: 0.02 };
+export const windOf = s => WIND[s.weather] ?? 0.1;
 
 // Fort Worth weather sticks around: each hour it usually holds, and when it
 // turns it moves to a neighbour (clouds before rain, rain before a storm).
