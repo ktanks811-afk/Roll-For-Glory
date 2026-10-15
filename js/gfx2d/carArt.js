@@ -83,6 +83,16 @@ export const CAR_ART = {
     archY: 258,
     tireR: 0.357,
   },
+  // Kimari's box Chevy sheet, 2026-10-15. Drawn black on a checkerboard; the
+  // body was lifted to white when it was cut so any paint takes, and the solid
+  // black wheel wells were opened up for the game's wheels.
+  chevrolet_caprice_classic_box_chevy_1986: {
+    side: 'img/cars/caprice-classic-side.png',
+    top: 'img/cars/caprice-classic-top.png',
+    wheels: [187, 802],
+    archY: 228,
+    tireR: 0.345,
+  },
   cadillac_ct5_v_blackwing_2022: {
     side: 'img/cars/cadillac-ct5-v-blackwing-side.webp',
     top: 'img/cars/cadillac-ct5-v-blackwing-top.webp',

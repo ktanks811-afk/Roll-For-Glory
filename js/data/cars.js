@@ -196,6 +196,7 @@ export const CARS = [
 
   // ---------------- GM: Chevrolet / GMC / Cadillac / Buick / Pontiac ----------------
   C('chevrolet', 'Chevelle', 'SS 454', 1970, 1970, 'Muscle', 4500, 450, 500, 1700, 'RWD', 'na', '7.4L LS6 V8', '4MT', 5600, 'muscle', '#c41b1b', { market: 90000, grip: 0.82 }),
+  C('chevrolet', 'Caprice', 'Classic (Box Chevy)', 1986, 1990, 'Sedan', 15500, 170, 255, 1640, 'RWD', 'na', '5.0L 305 V8', '4AT', 4600, 'sedan', '#0d0d0d', { market: 14000 }),
   C('chevrolet', 'Impala', 'SS', 1994, 1996, 'Muscle', 22000, 260, 330, 1900, 'RWD', 'na', '5.7L LT1 V8', '4AT', 5200, 'sedan', '#24262b', { market: 17000 }),
   C('chevrolet', 'Malibu', 'LT', 2008, 2012, 'Sedan', 22000, 169, 160, 1530, 'FWD', 'na', '2.4L Ecotec I4', '6AT', 6500, 'sedan', '#9aa0a8'),
   C('chevrolet', 'Cruze', 'LT', 2011, 2015, 'Sedan', 19000, 138, 148, 1430, 'FWD', 'turbo', '1.4L Turbo I4', '6AT', 6000, 'sedan', '#24262b'),

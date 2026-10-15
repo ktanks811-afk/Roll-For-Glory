@@ -121,6 +121,7 @@ const T = {
   lincoln_town_car_signature_2003: ['S', 5.47, 1.99, 1.47, 3.05, { lights: 'rect', tl: 'rect', xA: .43, xC: .68, xD: .79, deck: .72 }],
   // ---- GM
   chevrolet_chevelle_ss_454_1970: ['M', 4.97, 1.88, 1.37, 2.92, { lights: 'quad', tl: 'rect', xCowl: .34, xA: .50, xC: .70, xD: .82, hoodF: .62, scoop: true }],
+  chevrolet_caprice_classic_box_chevy_1986: ['S', 5.39, 1.92, 1.42, 2.95, { lights: 'quad', tl: 'rect', xA: .45, xC: .69, xD: .80, deck: .68 }],
   chevrolet_impala_ss_1994: ['S', 5.44, 1.95, 1.38, 2.94, { lights: 'swept', tl: 'rect', xA: .44, xC: .70, xD: .83, deck: .70 }],
   chevrolet_malibu_lt_2008: ['S', 4.85, 1.85, 1.46, 2.85, { lights: 'swept', tl: 'wrap' }],
   chevrolet_cruze_lt_2011: ['S', 4.60, 1.79, 1.48, 2.69, { lights: 'swept', tl: 'wrap' }],
