@@ -1,5 +1,9 @@
 // In-world HUD: clock, money, rep, heat, speedo/tach, fuel, nitrous,
 // minimap, prompts, police radio and the current objective.
+//
+// The top-middle column is the "what's happening" strip: GPS turn-by-turn,
+// the story step / job / gig you're on, then texts and GPS / job updates
+// that pop in one at a time (pop()), then the police radio.
 
 import { BREAKDOWNS } from '../core/upkeep.js';
 import { $, el, esc } from './dom.js';
@@ -54,9 +58,7 @@ export class Hud {
         <div class="hud-place" data-place></div>
         <button class="hud-needs" data-needs aria-label="Food and energy"><span data-nfood>🌮<i><b></b></i></span><span data-nenergy>⚡<i><b></b></i></span></button>
         <button class="hud-online hidden" data-online aria-label="Online players"></button>
-        <div class="hud-objective" data-obj></div>
-        <div class="hud-gig hidden" data-gig></div>
-        <div class="hud-mini"><canvas width="200" height="200" data-mini></canvas><div class="mini-n">N</div></div>
+        <div class="hud-mini"><canvas width="200" height="200" data-mini></canvas></div>
       </div>
       <div class="hud-tr">
         <div class="hud-money"><span data-cash></span><small data-bank></small></div>
@@ -81,9 +83,14 @@ export class Hud {
       </div>
         <div class="hud-weapon hidden" data-weapon></div>
       </div>
-      <div class="hud-nav hidden" data-nav><svg viewBox="0 0 24 24" data-navicon></svg><div><b data-navdist></b><small data-navstreet></small></div></div>
+      <div class="hud-top" data-top>
+        <div class="hud-nav hidden" data-nav><svg viewBox="0 0 24 24" data-navicon></svg><div><b data-navdist></b><small data-navstreet></small></div></div>
+        <div class="hud-objective hidden" data-obj></div>
+        <div class="hud-gig hidden" data-gig></div>
+        <div class="hud-pop hidden" data-pop></div>
+        <div class="hud-radio" data-radio></div>
+      </div>
       <div class="hud-pit hidden" data-pit><b>PIT</b><span>POLICE ARE SETTING UP A PIT</span></div>
-      <div class="hud-radio" data-radio></div>
       <div class="hud-prompt hidden" data-prompt></div>
       <div class="hud-help" data-help></div>
       <div class="hud-hotbar" data-hotbar aria-label="Inventory hotbar"></div>
@@ -92,7 +99,17 @@ export class Hud {
     this.minimap = new MiniMap(this.q('mini'));
     this.last = 0;
     this.radioLines = [];
+    this.pops = [];
     this.helpCtx = null;
+    // toasts sit under the top strip, however tall it is right now
+    if (typeof ResizeObserver === 'function') new ResizeObserver(([e]) => document.documentElement.style.setProperty('--hudtop', `${Math.round(e.target.getBoundingClientRect().bottom)}px`)).observe(this.q('top'));
+    // tap a text banner to read it in Messages
+    this.q('pop').addEventListener('pointerdown', async e => {
+      if (!this.popCur?.text) return;
+      e.preventDefault();
+      const { openPhone } = await import('./phone.js'); const { app } = await import('../main.js');
+      this.popCur.until = 0; openPhone('messages', app, { onClose: () => {} });
+    });
     this.q('online').addEventListener('pointerdown', async e => { e.preventDefault(); const { openOnline } = await import('./online.js'); const { app } = await import('../main.js'); openOnline(app); });
     this.q('needs').addEventListener('pointerdown', async e => { e.preventDefault(); const { openBag } = await import('./needs.js'); const { app } = await import('../main.js'); openBag(app); });
     this.q('inventory').addEventListener('pointerdown', async e => { e.preventDefault(); const { openPhone } = await import('./phone.js'); const { app } = await import('../main.js'); openPhone('inventory', app, { onClose: () => {} }); });
@@ -172,6 +189,29 @@ export class Hud {
       sp.classList.add('scroll'); sp.style.setProperty('--scroll', `${-over}px`); sp.style.setProperty('--dur', `${secs + 1.6}s`);
       this.radioCur.until += secs * 1000;
     }
+  }
+
+  // Top-middle banner: one at a time, long enough to read, newest last.
+  // kind: text (a phone text) · gps · job · good · bad · info
+  pop(body, { title = '', icon = '', kind = 'info' } = {}) {
+    const q = this.pops, cur = this.popCur;
+    if ((cur && cur.body === body && performance.now() < cur.until) || q.some(x => x.body === body)) return;
+    q.push({ body, title, icon, kind, text: kind === 'text' });
+    if (q.length > 4) q.splice(0, q.length - 4);
+    this.renderPop();
+  }
+  renderPop() {
+    const now = performance.now(), cur = this.popCur, box = this.q('pop');
+    if (cur && now < cur.until) return;
+    const next = this.pops.shift();
+    if (!next) { if (cur) { this.popCur = null; box.classList.add('hidden'); } return; }
+    const words = (next.title + ' ' + next.body).split(/\s+/).length;
+    // a queue behind it: move along a little faster
+    next.until = now + Math.min(7000, 2600 + words * 200) * (this.pops.length ? 0.7 : 1);
+    this.popCur = next;
+    box.className = `hud-pop k-${next.kind}`;
+    box.innerHTML = `<span class="pop-ic">${esc(next.icon)}</span><div>${next.title ? `<small>${esc(next.title)}</small>` : ''}<p>${esc(next.body)}</p></div>`;
+    void box.offsetWidth; box.classList.add('in');
   }
 
   update(w) {
@@ -363,6 +403,7 @@ export class Hud {
       this.q('carname').textContent = `${v.car.year} ${v.model.model}${hot ? (hot.reported ? ' · 🚨 STOLEN' : ' · STOLEN') : ''}${v.car.broken ? ` · 🛠 ${BREAKDOWNS[v.car.broken]?.short || 'BROKEN DOWN'}` : ''}${v.car.cond.tires <= 1 ? ' · FLAT TIRES' : v.car.cond.tires < 20 ? ' · BALD TIRES' : ''}`;
     }
     this.renderRadio();
+    this.renderPop();
   }
 
   show(v) { this.root.classList.toggle('hidden', !v); }

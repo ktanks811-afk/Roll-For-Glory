@@ -2,7 +2,8 @@
 // roads, buildings, lots and water (not a blurry shrunken picture), rotates
 // with your heading, zooms out as you speed up, and shows the GPS route, the
 // destination (pinned to the edge when it's off the map), cops, roadblocks,
-// other players and your parked car.
+// other players and your parked car. It's see-through so the street shows
+// under it, with a compass ring (N/E/S/W turn with the map) and your heading.
 //
 // Tap it to switch view: heading-up (auto zoom) → close → far → north-up.
 
@@ -21,6 +22,9 @@ const MODES = [
 ];
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', court: '⚖', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤' };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const BEARINGS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const MAP_ALPHA = 0.6;                 // how solid the map is; the markers stay fully solid
+const RING = S / 2 - 11;               // compass letters ride this circle
 const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
 export class MiniMap {
@@ -60,13 +64,13 @@ export class MiniMap {
 
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     g.clearRect(0, 0, S, S);
-    g.fillStyle = '#0c0d10'; g.fillRect(0, 0, S, S);
+    g.fillStyle = 'rgba(12,13,16,.28)'; g.fillRect(0, 0, S, S);
     // world → minimap pixels (heading-up: forward points up)
     const ca = Math.cos(-h), sa = Math.sin(-h);
     const P = (x, z) => { const dx = (x - p.x) * s, dz = (z - p.z) * s; return [S / 2 + dx * ca - dz * sa, S / 2 + OFF + dx * sa + dz * ca]; };
 
     // base map: blurry overview first, then the sharp tiles on top
-    g.save(); g.translate(S / 2, S / 2 + OFF); g.rotate(-h); g.scale(s, s); g.translate(-p.x, -p.z);
+    g.save(); g.globalAlpha = MAP_ALPHA; g.translate(S / 2, S / 2 + OFF); g.rotate(-h); g.scale(s, s); g.translate(-p.x, -p.z);
     g.imageSmoothingEnabled = true;
     const ov = map.overview; if (ov) g.drawImage(ov.canvas, ov.x0, ov.z0, ov.canvas.width / ov.scale, ov.canvas.height / ov.scale);
     const R = ((S / 2) * 1.45 + OFF) / s;
@@ -79,7 +83,7 @@ export class MiniMap {
 
     // night
     const dark = w.darkness ? w.darkness() : 0;
-    if (dark > 0.02) { g.fillStyle = `rgba(4,8,30,${dark * 0.5})`; g.fillRect(0, 0, S, S); }
+    if (dark > 0.02) { g.fillStyle = `rgba(4,8,30,${dark * 0.3})`; g.fillRect(0, 0, S, S); }
 
     // GPS route: dark casing, then the route in red
     const gps = game.s.gps;
@@ -96,7 +100,7 @@ export class MiniMap {
       g.fillStyle = 'rgba(8,9,12,.8)'; g.beginPath(); g.arc(a, b, 8, 0, 7); g.fill();
       g.fillStyle = l.color; g.beginPath(); g.arc(a, b, 6.4, 0, 7); g.fill();
       g.fillStyle = '#000'; g.font = '700 10px sans-serif'; g.fillText(ICON[l.icon] || '•', a, b + 0.5);
-      if (s > 0.55 && Math.hypot(a - S / 2, b - S / 2) < S / 2 - 24 && b < S - 44 && Math.hypot(l.x - p.x, l.z - p.z) < 130) {
+      if (s > 0.55 && Math.hypot(a - S / 2, b - S / 2) < S / 2 - 24 && b < S - 62 && Math.hypot(l.x - p.x, l.z - p.z) < 130) {
         g.font = '700 10px Rajdhani, sans-serif'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.85)'; g.strokeText(l.name, a, b + 15); g.fillStyle = '#f2f4f8'; g.fillText(l.name, a, b + 15);
       }
     }
@@ -140,7 +144,7 @@ export class MiniMap {
 
     // destination: a flag, or an arrow on the rim when it's off the map
     if (gps) {
-      const [a, b] = P(gps.x, gps.z), dx = a - S / 2, dy = b - S / 2, d = Math.hypot(dx, dy), lim = S / 2 - 13;
+      const [a, b] = P(gps.x, gps.z), dx = a - S / 2, dy = b - S / 2, d = Math.hypot(dx, dy), lim = RING - 16;   // inside the compass ring
       if (d <= lim) { this.flag(g, a, b); }
       else {
         const ang = Math.atan2(dy, dx), ex = S / 2 + Math.cos(ang) * lim, ey = S / 2 + Math.sin(ang) * lim;
@@ -158,23 +162,52 @@ export class MiniMap {
     g.fillStyle = '#e0192e'; g.beginPath(); g.moveTo(0, -6); g.lineTo(3.2, 4); g.lineTo(0, 2); g.lineTo(-3.2, 4); g.closePath(); g.fill();
     g.restore();
 
-    // compass: N rides the rim as the map turns
-    { const nx = S / 2 + Math.sin(h) * (S / 2 - 12), ny = S / 2 - Math.cos(h) * (S / 2 - 12);
-      g.fillStyle = 'rgba(8,9,12,.85)'; g.beginPath(); g.arc(nx, ny, 8.5, 0, 7); g.fill();
-      g.fillStyle = '#ff4a58'; g.font = '700 11px Rajdhani, sans-serif'; g.fillText('N', nx, ny + 0.5); }
-
     // street name chip along the bottom
     const street = w.streetAt ? w.streetAt(p.x, p.z) : '';
     if (street) {
-      g.font = '700 11px Rajdhani, sans-serif'; const tw = Math.min(150, g.measureText(street).width + 16);
-      g.fillStyle = 'rgba(8,9,12,.82)'; g.fillRect(S / 2 - tw / 2, S - 28, tw, 17); g.fillStyle = '#e8eaee'; g.fillText(street, S / 2, S - 19, 140);
+      g.font = '700 11px Rajdhani, sans-serif'; const tw = Math.min(130, g.measureText(street).width + 16);
+      g.fillStyle = 'rgba(8,9,12,.82)'; g.fillRect(S / 2 - tw / 2, S - 44, tw, 17); g.fillStyle = '#e8eaee'; g.fillText(street, S / 2, S - 35, 120);
     }
-    // vignette + current mode
-    const vg = g.createRadialGradient(S / 2, S / 2, S * 0.36, S / 2, S / 2, S * 0.5); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)'); g.fillStyle = vg; g.fillRect(0, 0, S, S);
+    // soft dark edge so the compass ring reads over a busy street
+    if (!this.vg) { this.vg = g.createRadialGradient(S / 2, S / 2, S * 0.36, S / 2, S / 2, S * 0.5); this.vg.addColorStop(0, 'rgba(0,0,0,0)'); this.vg.addColorStop(1, 'rgba(0,0,0,.42)'); }
+    g.fillStyle = this.vg; g.fillRect(0, 0, S, S);
+    this.compass(g, h, p.h, rot);
     if (this.modeT > 0) {
       g.globalAlpha = Math.min(1, this.modeT); g.font = '700 11px Rajdhani, sans-serif';
-      const tw = g.measureText(mode.name).width + 16; g.fillStyle = 'rgba(8,9,12,.9)'; g.fillRect(S / 2 - tw / 2, 40, tw, 18); g.fillStyle = '#fff'; g.fillText(mode.name, S / 2, 49.5); g.globalAlpha = 1;
+      const tw = g.measureText(mode.name).width + 16; g.fillStyle = 'rgba(8,9,12,.9)'; g.fillRect(S / 2 - tw / 2, 48, tw, 18); g.fillStyle = '#fff'; g.fillText(mode.name, S / 2, 57.5); g.globalAlpha = 1;
     }
+  }
+
+  // Compass ring: ticks every 15°, N/E/S/W where those directions really are
+  // on the map (north is -z), and your heading in a chip at the top.
+  compass(g, h, facing, rot) {
+    const c = S / 2, ca = Math.cos(-h), sa = Math.sin(-h);
+    // a world bearing (clockwise from north) → where it sits on the rim
+    const at = (b, r) => { const dx = Math.sin(b), dz = -Math.cos(b); return [c + (dx * ca - dz * sa) * r, c + (dx * sa + dz * ca) * r]; };
+    g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 20; g.beginPath(); g.arc(c, c, RING, 0, 7); g.stroke();
+    g.lineCap = 'round';
+    for (let k = 0; k < 24; k++) {
+      if (k % 6 === 0) continue;   // letters go there
+      const b = k * Math.PI / 12, big = k % 3 === 0, [x0, y0] = at(b, RING + (big ? 7 : 8)), [x1, y1] = at(b, RING + (big ? 1 : 4));
+      g.strokeStyle = big ? 'rgba(255,255,255,.75)' : 'rgba(255,255,255,.4)'; g.lineWidth = big ? 1.6 : 1;
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    }
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let k = 0; k < 4; k++) {
+      const [x, y] = at(k * Math.PI / 2, RING), n = k === 0;
+      if (n) { g.fillStyle = '#e0192e'; g.beginPath(); g.arc(x, y, 8.5, 0, 7); g.fill(); }
+      g.font = `700 ${n ? 13 : 12}px Rajdhani, sans-serif`; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.85)';
+      if (!n) g.strokeText('NESW'[k], x, y + 0.5);
+      g.fillStyle = '#fff'; g.fillText('NESW'[k], x, y + 0.5);
+    }
+    // heading: which way you're pointed, e.g. "NE 045°"
+    const deg = Math.round((((facing * 180 / Math.PI) % 360) + 360) % 360) % 360;
+    const label = `${BEARINGS[Math.round(deg / 45) % 8]} ${String(deg).padStart(3, '0')}°`;
+    g.font = '700 11px Rajdhani, sans-serif'; const tw = g.measureText(label).width + 14, y = 36;
+    g.fillStyle = 'rgba(8,9,12,.82)'; g.beginPath(); g.roundRect ? g.roundRect(c - tw / 2, y - 8, tw, 16, 8) : g.rect(c - tw / 2, y - 8, tw, 16); g.fill();
+    g.fillStyle = '#fff'; g.fillText(label, c, y + 0.5);
+    // a little pointer above it marks straight ahead in heading-up
+    if (rot) { g.fillStyle = '#fff'; g.beginPath(); g.moveTo(c, y - 13); g.lineTo(c - 4, y - 8); g.lineTo(c + 4, y - 8); g.closePath(); g.fill(); }
   }
 
   flag(g, x, y) {
