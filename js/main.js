@@ -101,6 +101,7 @@ export function enterWorld() {
   app.mode = 'world';
   if (!app.hud) app.hud = new Hud();
   app.hud.show(true);
+  for (const [t, o] of earlyPops.splice(0)) app.hud.pop(t, o);
   if (!app.world) app.world = new World(ui);
   else app.world.refreshCar();
   app.world.paused = false;
@@ -241,10 +242,14 @@ function newDay() {
 // ---------------- notifications ----------------
 // Out in the world, texts and GPS / job / story updates pop in the HUD's
 // top-middle banner. Anywhere else (a panel, a race, the title) they're toasts.
+// The HUD only ticks while you're out in the world (not under a panel), so a
+// banner queued from the phone or the new-game screen shows once you're back.
 const hudLive = () => app.mode === 'world' && app.hud && !app.hud.root.classList.contains('hidden') && !panelOpen();
 const TOAST_KIND = { gps: 'info', job: 'info', text: 'info', good: 'good', bad: 'bad', info: 'info' };
+const earlyPops = [];   // texts from before the HUD exists (the new-game intro text)
 function hudPop(text, opts = {}) {
-  if (hudLive()) { app.hud.pop(text, opts); return; }
+  if (app.mode === 'world' && app.hud) { app.hud.pop(text, opts); return; }
+  if (app.mode === 'title' && !app.hud) { earlyPops.push([text, opts]); if (earlyPops.length > 4) earlyPops.shift(); return; }
   toast(opts.title && opts.kind === 'text' ? `${opts.icon || ''} ${opts.title}: ${text}` : text, TOAST_KIND[opts.kind] || 'info');
 }
 const POP_RULES = [
@@ -268,8 +273,7 @@ on('message', m => {
   if (app.world?.downed) return;   // laid up at JPS: the texts wait in your phone (ui/hospital.js)
   audio.phone();
   const who = m.from === 'marketplace' ? 'Marketplace' : m.from === 'partshub' ? 'PartsHub' : m.from === 'insurance' ? 'Insurance' : contactInfo(m.from).name;
-  if (hudLive()) app.hud.pop(m.text, { kind: 'text', icon: '📱', title: who });
-  else toast(`📱 ${who}: ${m.text.slice(0, 70)}${m.text.length > 70 ? '…' : ''}`, 'info');
+  hudPop(m.text, { kind: 'text', icon: '📱', title: who });
 });
 
 setPanelListener(n => {
