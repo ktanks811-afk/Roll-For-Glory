@@ -19,6 +19,7 @@ import { openNightMeet } from './nightmeet.js';
 import { openKustoms } from './kustoms.js';
 import { openCarShow } from './carshow.js';
 import { drawPortrait } from '../gfx2d/person.js';
+import { openMirror } from './create.js';
 import { emit } from '../core/events.js';
 import { saveGame } from '../core/save.js';
 import { openSlots } from './menu.js';
@@ -126,6 +127,7 @@ export function homeScreen(loc, app, s) {
       <div class="card click" data-action="sleep" data-to="21"><h3>🌙 Rest until night</h3><p class="muted small">Skip to 9:00 PM, fully rested. Meets are on. Saves your game.</p></div>
       <div class="card click" data-action="nap"><h3>💤 Quick nap</h3><p class="muted small">2 hours, +40 energy. ${needsLine(s)}</p></div>
       <div class="card click" data-action="wardrobe"><h3>👕 Wardrobe</h3><p class="muted small">${s.player.outfits.length} items owned.</p></div>
+      <div class="card click" data-action="mirror"><h3>💈 Mirror</h3><p class="muted small">New hairstyle, beard, chains and more. Free.</p></div>
       <div class="card click" data-action="save"><h3>💾 Save game</h3><p class="muted small">Manual save slots.</p></div>
       ${w?.thefts?.near(loc) ? `<div class="card click" data-action="keephot"><h3>🔑 Keep the stolen car</h3><p class="muted small">New plates and a VIN swap: ${fmtMoney(PLATE_SWAP)}. It gets a rebuilt title and goes in a bay.${w.thefts.canKeep() ? '' : ' <b class="bad">Your garage is full.</b>'}</p></div>` : ''}
       ${s.trailers?.length ? `<div class="card click" data-action="trailer"><h3>🚚 Trailer</h3><p class="muted small">${esc(towLine(s))} Hitch it to a truck and load a car.</p></div>` : ''}
@@ -166,6 +168,7 @@ export function homeScreen(loc, app, s) {
         h.refresh();
       },
       wardrobe: () => wardrobe(app, s),
+      mirror: () => openMirror(s),
       save: () => openSlots('save', app),
     });
   });
