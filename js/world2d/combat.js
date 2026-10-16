@@ -26,6 +26,7 @@ import { addLoot, rollLoot, grabLoot, lootNames } from '../core/loot.js';
 import { LOOT_BY_ID } from '../data/loot.js';
 import { healthMods } from '../core/health.js';
 import { online } from '../net/online.js';
+import { bumpFeds } from '../core/bank.js';
 
 // A forced-reset trigger turns a semi-auto pistol into a full-auto one: very fast, wild, and unreliable.
 export const FRT = { cd: 0.062, spread: 1.7, jam: 0.045, burst: 0.2 };
@@ -37,6 +38,8 @@ const STORES = {
   gas:      { min: 250, max: 800, dur: [5, 7], alarm: 0.4, fight: 0.1, what: 'register', loot: [1, 2] },
   food:     { min: 180, max: 520, dur: [4, 6], alarm: 0.3, fight: 0.08, what: 'till', loot: [0, 1] },
   clothing: { min: 450, max: 1400, dur: [6, 8], alarm: 0.55, fight: 0.12, what: 'safe', loot: [1, 2] },
+  // a teller-line robbery: no plan, just the drawers. Dye packs, a guard, and the FBI
+  bank:     { min: 2500, max: 9000, dur: [6, 8], alarm: 0.85, fight: 0.08, what: 'teller drawers', loot: [0, 0], dye: 0.35, fbi: 15 },
 };
 const STALL = 0.22;      // chance an unmasked robber gets a clerk who drags their feet
 const REACH = 1.3;       // seconds you have to fire a warning shot once the clerk goes for the shotgun
@@ -335,7 +338,7 @@ export class Combat {
   }
   finishRobbery(r, amount) {
     const a = this.arms, s = this.s;
-    a.cooldown[r.loc.id] = s.time.day + 1;
+    a.cooldown[r.loc.id] = s.time.day + (r.cfg.fbi ? 3 : 1);
     a.robberies++;
     s.stats.robberies = (s.stats.robberies || 0) + 1;
     s.stats.stolen = (s.stats.stolen || 0) + amount;
@@ -345,11 +348,12 @@ export class Combat {
   }
   completeRob() {
     const r = this.rob; this.rob = null;
-    let pay = r.pay, dye = Math.random() < 0.1;
+    let pay = r.pay, dye = Math.random() < (r.cfg.dye ?? 0.1);
     if (dye) pay = Math.round(pay * 0.5);
     this.s.cash += pay; this.s.dirty = (this.s.dirty || 0) + pay;
     const got = this.takeLoot(r);
     this.finishRobbery(r, pay);
+    if (r.cfg.fbi) bumpFeds(this.s, r.cfg.fbi, `Bank robbery at ${r.loc.name}: the FBI opened a case`);
     this.say(`Robbery done: +${fmtMoney(pay)}${dye ? ' (a dye pack burst — half ruined)' : ''}${got.length ? `, plus ${got.join(', ')}` : ''}. Now get out of there!`, 'good');
     audio.buy();
     if (!r.alarmed && r.alarm) this.w.police.dispatchRobbery(this.w, r.loc, false, false, r.conceal);

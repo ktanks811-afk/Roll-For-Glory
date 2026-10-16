@@ -5,6 +5,7 @@ import { STATES, STATE_BLOCK, AIRPORT_ROW, stateAt, stateDistrict } from './stat
 import { TOWN_BY_ID, metroDistrict, townAt, townBlockCenter } from './metro.js';
 import { MARINA_LOCATIONS } from './boats.js';
 import { WEED_LOCATIONS } from './weed.js';
+import { BANK_SPOTS, BANK_COLOR } from './banks.js';
 
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
 // with a highway to the north, desert to the south, mountains to the west
@@ -339,6 +340,9 @@ const TOWN_PLACES = [
   TW('fl_gables')('fl_cg_repair', 'repair', 'Coconut Grove Auto', 7, 0, 'S', { color: REP, icon: 'repair', rate: 1.1, tagline: 'Euro and exotic service under the banyan trees' }),
   TW('fl_gables')('fl_gables', 'property', 'Coral Gables Mediterranean', 0, 1, 'E', { color: HOME, icon: 'home' }),
 ];
+// banks on every map (data/banks.js): the teller, casing it, and heists
+const ON = { dallas: D, denton: N, weatherford: W, west: X };
+const BANKS = BANK_SPOTS.map(([id, name, city, i, j, side, tier]) => (city == null ? L : ON[city] || (STATES[city] ? S(city) : TW(city)))(id, 'bank', name, i, j, side, { color: BANK_COLOR, icon: 'bank', bank: tier }));
 // an out-of-state airport: the terminal on the south side of the airport road, west of town
 const airport = (st, id, name) => ({ id, type: 'airport', name, x: STATES[st].cx - 330, z: STATES[st].cz + AIRPORT_ROW * STATE_BLOCK + 14, face: 0, side: 'N', state: st, color: '#5fd3ff', icon: 'plane' });
 
@@ -546,6 +550,7 @@ export const LOCATIONS = [
   ...WEED_LOCATIONS,
   // the new towns on the big map (data/metro.js)
   ...TOWN_PLACES,
+  ...BANKS,
   // street race start lines (routes in data/streetRaces.js)
   // trap houses, land for sale and the plug, off the city grid (data/estate.js)
   ...ESTATE_LOCATIONS,

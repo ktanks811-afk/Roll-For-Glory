@@ -182,9 +182,9 @@ export function fight(s, rng = Math.random) {
 }
 
 // A disciplinary case that the DA files: a new conviction and more time.
-function newCase(s, kind) {
+export function newCase(s, kind, years = null) {
   const p = s.prison, c = CHARGE_BY_KIND[kind];
-  const add = c.cls === 'F2' ? 3 : 2;
+  const add = years ?? (c.cls === 'F2' ? 3 : 2);
   p.infractions++;
   p.conduct = clamp(p.conduct - 30);
   if (!p.life) p.years += add;

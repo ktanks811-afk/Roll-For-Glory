@@ -605,7 +605,7 @@ function drawGarageRoof(ctx, b, rx, ry, w, d, z, showLabels) {
 }
 
 // Shopfront on the street side of a landmark: awning, glass, doors, props.
-const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', chop: '#c9752a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', corner: '#ff8a1a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e', carshow: '#e8c21a', hospital: '#e0192e' };
+const AWN = { dealer: '#e8e8e8', usedlot: '#c8b98a', chop: '#c9752a', perf: '#e8641a', visual: '#d12a8a', repair: '#1b4fc4', gas: '#1f8f3a', food: '#e8c21a', corner: '#ff8a1a', clothing: '#a01aff', realty: '#1f8f3a', police: '#1b4fc4', meet: '#ff1a2e', carshow: '#e8c21a', hospital: '#e0192e', bank: '#d4af37' };
 function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
   const side = b.side, ns = side === 'N' || side === 'S';
   const len = ns ? w : d;
@@ -651,6 +651,19 @@ function drawStorefront(ctx, b, rx, ry, w, d, z, night) {
     box(fr(0, len, -1.4 * z, -0.4 * z), '#1b4fc4');
     ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(rx + w / 2, ry + d / 2 - (ns ? 0 : 0), Math.min(w, d) * 0.22, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#1b4fc4'; ctx.font = `700 ${Math.max(8, Math.min(w, d) * 0.3)}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('H', rx + w / 2, ry + d / 2 + 1);
+  }
+  if (shop === 'bank') {
+    // stone columns along the front, a gold band over the doors, the vault dial on the roof
+    box(fr(0, len, -1.2 * z, -0.3 * z), '#d4af37');
+    const n = Math.max(3, Math.floor(len / (5 * z)));
+    for (let k = 0; k <= n; k++) { const u = len * (0.08 + 0.84 * k / n); box(fr(u - 0.5 * z, u + 0.5 * z, 0, 1.6 * z), '#e8e2d0'); }
+    box(fr(len * 0.42, len * 0.58, -0.3 * z, 0), '#2a2a2a');
+    const cx = rx + w / 2, cy = ry + d / 2, r = Math.min(w, d) * 0.18;
+    ctx.fillStyle = '#9a9488'; ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d4af37'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#5a4a1a'; ctx.lineWidth = Math.max(1, r * 0.12); ctx.beginPath();
+    for (let k = 0; k < 3; k++) { const a = k * Math.PI / 3; ctx.moveTo(cx + Math.cos(a) * r * 0.8, cy + Math.sin(a) * r * 0.8); ctx.lineTo(cx - Math.cos(a) * r * 0.8, cy - Math.sin(a) * r * 0.8); }
+    ctx.stroke();
   }
   if (shop === 'hospital') {
     // red cross on the roof, ER band over the doors

@@ -5,9 +5,12 @@
 // visitation (money on your books), the chapel, your job and the back gate.
 // Rules: core/prison.js. The courts hand you over from ui/court.js.
 
-import { openPanel, bind, esc, toast, modal, confirm, closePanel } from './dom.js';
+import { openPanel, bind, esc, toast, modal, confirm, closePanel, bar } from './dom.js';
 import { game, fmtMoney, canAfford, addRep } from '../core/state.js';
 import * as PR from '../core/prison.js';
+import * as BR from '../core/breakout.js';
+import { LOC_BY_ID } from '../data/world.js';
+import { activeCar } from '../core/state.js';
 import { advanceTime } from './garage.js';
 import { saveGame } from '../core/save.js';
 import { sendMessage } from '../core/story.js';
@@ -44,6 +47,7 @@ export const SPOTS = [
   { id: 'court', x: 52, y: 50, label: '🏀 Basketball court' },
   { id: 'hustle', x: 62, y: 62, label: '📦 Back of the yard (hustle)' },
   { id: 'gate', x: 70, y: 90.5, label: '🚪 Sally port' },
+  { id: 'fence', x: 126, y: 88, label: '🔩 Back fence · plan a break' },
 ];
 const REACH = 3.6;
 
@@ -94,6 +98,7 @@ export function servePrison(app, sent = null, { crime = '', evidence = 0.85, cau
       case 'admin': return jobs();
       case 'library': return library();
       case 'gate': return gate();
+      case 'fence': return breakout();
     }
   }
 
@@ -211,6 +216,79 @@ export function servePrison(app, sent = null, { crime = '', evidence = 0.85, cau
     await modal('Sally port', `<p>The officer in the picket doesn't even look up.</p><p>${p.life ? (p.lwop ? '"Life without parole. You\'re not going anywhere, ' + esc(s.player.name.split(' ')[0]) + '."' : '"You\'re doing life. Talk to the parole board in ' + Math.max(0, p.paroleAt - p.served) + ' years."') : `"${left} more year${left === 1 ? '' : 's'}. Go to sleep."`}</p><p class="small muted">Every night in your bunk is a year. Win an appeal in the law library and you walk out of here.</p>`);
   }
 
+  // ---------------------------------------------------------------- breaking out
+  function breakout() {
+    BR.ensureBreak(s);
+    openPanel((root, h) => {
+      const e = BR.ensureBreak(s);
+      if (!e) { h.close(); return; }
+      const miss = BR.missing(s), P = BR.PLANS[e.plan], pct = Math.round(BR.odds(s) * 100);
+      const plans = Object.entries(BR.PLANS).map(([id, pl]) => `<div class="li ${e.plan === id ? 'on' : ''}"><div class="grow"><div class="t">${esc(pl.name)}</div><div class="s">${esc(pl.desc)}</div></div>
+        <button class="btn btn-sm ${e.plan === id ? 'btn-primary' : ''}" data-action="plan" data-id="${id}">${e.plan === id ? '✓ The plan' : 'Pick'}</button></div>`).join('');
+      const items = BR.CONTRABAND.map(it => { const have = e.items.includes(it.id), need = P?.items.includes(it.id);
+        return `<div class="li"><span style="font-size:20px">${it.icon}</span><div class="grow"><div class="t">${esc(it.name)}${need ? ' <b class="warn small">needed</b>' : ''}</div><div class="s">${esc(it.desc)}</div></div>
+          <button class="btn btn-sm" data-action="buy" data-id="${it.id}" ${have || p.books < it.price ? 'disabled' : ''}>${have ? '✓ Hidden' : fmtMoney(it.price)}</button></div>`; }).join('');
+      const work = e.plan === 'tunnel' ? `<div class="row" style="align-items:center;gap:8px"><span class="small muted">Tunnel</span>${bar(e.dig)}<b>${e.dig}%</b></div>
+          <button class="btn" data-action="dig" ${p.day.dug || e.dig >= 100 || !e.items.includes('spoon') ? 'disabled' : ''}>${e.dig >= 100 ? 'You can see the stars' : p.day.dug ? 'You dug tonight. Sleep.' : 'Dig tonight'}</button>`
+        : e.plan === 'fence' ? `<p class="small">You've timed the towers ${e.scout} of 3 times. The lights sweep the back fence every ninety seconds.</p><button class="btn" data-action="scout" ${p.day.scouted || e.scout >= 3 ? 'disabled' : ''}>${e.scout >= 3 ? 'You know the towers cold' : p.day.scouted ? 'You watched today' : 'Watch the towers from the bleachers'}</button>`
+        : e.plan === 'laundry' ? `<p class="small">You work ${esc(PR.JOBS[p.job].name.toLowerCase())}.${p.job === 'laundry' ? '' : ' Get on laundry at the job board.'}</p><button class="btn" data-action="bribe" ${e.bribed ? 'disabled' : ''}>${e.bribed ? '✓ The officer was paid' : `Your people pay the officer · ${fmtMoney(BR.BRIBE)}`}</button>`
+        : e.plan === 'crew' ? `<button class="btn" data-action="pay" ${e.paid ? 'disabled' : ''}>${e.paid ? '✓ The crew is paid and waiting' : `Pay the outside crew · ${fmtMoney(BR.CREW_PAY)}`}</button>` : '';
+      root.innerHTML = `<div class="p-head"><h1>Plan a break<small>${esc(PR.UNITS[p.facility].name)} · ${p.life ? 'life' : `${PR.yearsLeft(p)} years left`}${e.attempts ? ` · ${e.attempts} tr${e.attempts > 1 ? 'ies' : 'y'} so far` : ''}</small></h1><button class="btn x" data-action="close">×</button></div>
+        <div class="p-body" style="max-width:620px">
+        <div class="card"><h3>${miss.length ? 'Not yet' : `Ready · about ${pct}% it works`}</h3>
+          ${miss.length ? `<ul class="small">${miss.map(m => `<li>${esc(m)}</li>`).join('')}</ul>` : '<p class="small">Everything is in place. Once you go, there\'s no going back.</p>'}
+          ${work}
+          <div class="row" style="margin-top:10px"><button class="btn btn-danger" data-action="go" ${miss.length ? 'disabled' : ''}>🏃 Go tonight</button></div>
+          <p class="small muted">Caught: attempted escape is a new felony, ${BR.ESCAPE_YEARS} more years, and the plan is blown. Made it: a felony escape warrant and a manhunt, and if they ever catch you, you come back here to finish your time.</p></div>
+        <div class="section-title">The plan</div><div class="list">${plans}</div>
+        <div class="section-title">The connect · paid off your books (${fmtMoney(p.books)})</div><div class="list">${items}</div></div>`;
+      bind(root, {
+        close: () => h.close(),
+        plan: d => { BR.choosePlan(s, d.id); h.refresh(); },
+        buy: async d => { const r = BR.buyItem(s, d.id); if (r.caught) { h.close(); await caseModal(r); return; } if (r.ok) say(`The connect slips you ${r.item.name.toLowerCase()}. You hide it in your mattress.`); h.refresh(); },
+        dig: async () => { const r = BR.dig(s); advanceTime(s, 2 * 60); if (r.caught) { h.close(); say('Shakedown. They found the hole under your bunk.', 'bad'); await caseModal(r); return; } if (r.ok) say(`Dug ${r.got}% more. ${r.dig >= 100 ? 'You broke through past the fence line.' : `Tunnel ${r.dig}%.`}`, 'good'); h.refresh(); },
+        scout: () => { const r = BR.scout(s); if (r.ok) { advanceTime(s, 60); say(`You timed the towers. (${r.scout}/3)`); } h.refresh(); },
+        bribe: () => { const r = BR.bribeOfficer(s); if (r.ok) say('Your cousin met the officer in a Buc-ee\'s parking lot. He\'s in.', 'good'); else if (r.why === 'money') toast('Not enough in your bank.', 'bad'); h.refresh(); },
+        pay: () => { const r = BR.payCrew(s); if (r.ok) say('The crew has the money. They\'re waiting on your call.', 'good'); else if (r.why === 'money') toast('Not enough in your bank.', 'bad'); h.refresh(); },
+        go: async () => {
+          const ok = await confirm('Tonight?', `<p>${esc(BR.PLANS[e.plan].name)}. About <b>${pct}%</b> it works.</p>`, 'Go', true);
+          if (!ok) return;
+          h.close();
+          const r = BR.attempt(s);
+          advanceTime(s, 60);
+          if (r.ok) return breakFree(r.plan);
+          say('Caught. Attempted escape.', 'bad');
+          await modal('Caught', `<p>${esc(CAUGHT[r.plan] || 'They caught you.')}</p><div class="charges"><div class="charge"><span>⚖ ${esc(r.charge)}</span><b class="bad">3rd-degree felony</b></div></div>
+            <p>${r.added ? `<b>${r.added} more years</b> on your sentence.` : 'Stacked on your life sentence.'} Your line class drops, the yard respects the try.</p>`);
+        },
+      });
+    });
+  }
+
+  async function breakFree(plan) {
+    out = true;
+    const yrs = p.served;
+    BR.escape(s, plan);
+    close();
+    await modal('You\'re out', `<p>${esc(MADE_IT[plan])}</p><p class="bad">You're a fugitive. There's a felony warrant for escape and your face is on the news. If they ever pick you up, you go back to finish your time with the escape stacked on.</p>`, [{ label: 'Run', primary: true }]);
+    const w = app.world;
+    if (w) {
+      w.police.reset(w);
+      const l = LOC_BY_ID.gas_brazos || LOC_BY_ID.gas_desert;
+      const car = activeCar(s);
+      if (car && !car.impound) { const sp = w.homeSpot(LOC_BY_ID[s.home] || LOC_BY_ID.eastgate_studio); w.placeCar(car, sp.x, sp.z, sp.h); s.carPos = { x: sp.x, z: sp.z, h: sp.h }; }
+      w.inCar = false;
+      w.foot.x = l.x; w.foot.z = l.z + 6; w.foot.h = 0;
+      w.restartEngineSound?.();
+      if (w.cam) { w.cam.x = w.foot.x; w.cam.z = w.foot.z; }
+      w.police.manhunt(w, w.foot.x, w.foot.z);
+    }
+    sendMessage(s, 'tdcj', `TDCJ inmate #${p.tdcj} escaped from the ${PR.UNITS[p.facility].name} after ${yrs} year${yrs === 1 ? '' : 's'}. Considered dangerous. A felony warrant has been issued. Anyone with information should call Crime Stoppers.`);
+    saveGame('auto', true);
+    toast('ESCAPED! Lay low. Every cop in Texas has your picture.', 'good');
+    resolveDone({ how: 'escape', years: yrs });
+  }
+
   // ---------------------------------------------------------------- walking out
   async function walkOut(how) {
     out = true;
@@ -286,6 +364,26 @@ export function servePrison(app, sent = null, { crime = '', evidence = 0.85, cau
     b.classList.toggle('pulse', !!near);
   }
   return done;
+}
+
+const CAUGHT = {
+  tunnel: 'You came up ten feet short of the fence line, right under a tower. The officer was waiting with a flashlight.',
+  fence: 'Halfway through the second fence the tower light found you. Warning shots into the dirt. You put your hands up.',
+  laundry: 'The truck stopped at the back gate and a dog went straight for your cart.',
+  crew: 'The van took a different route to the hospital. Your people never showed. You still had the cuffs on.',
+};
+const MADE_IT = {
+  tunnel: 'You crawl out into a pasture past the fence line and walk all night through the Sam Houston National Forest. A trucker gives you a ride west on 21.',
+  fence: 'Through both fences, the blanket over the wire, and into the tree line before the count. A cousin picks you up on FM 2821.',
+  laundry: 'Buried in a cart of dirty whites, out the back gate on the laundry truck. You roll out at a red light in Huntsville.',
+  crew: 'Two cars box the transport van on I-45. Masks, a sledgehammer on the back door, and you\'re in a stolen Tahoe headed west.',
+};
+
+// Caught again after a breakout (world.onBusted): back on the chain bus to finish your time.
+export async function backToPrison(app, info) {
+  await modal('Back to TDCJ', `<p>They ran your prints and you came back as an escaped TDCJ inmate. No bond, no magistrate. Straight back on the chain bus to the ${esc(info.unit)}.</p>
+    <p class="bad">${info.added ? `Escape and the new charges: <b>${info.added} more years</b>.` : 'The escape is stacked on your life sentence.'}</p>`, [{ label: 'Step off the bus', primary: true }]);
+  return servePrison(app);
 }
 
 const MAIL = [

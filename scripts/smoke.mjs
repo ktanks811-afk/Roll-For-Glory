@@ -3719,6 +3719,92 @@ await step('xbox controller', async () => {
   await g.close(); await gctx.close();
 });
 
+// ---------------- banks: case it, plan a heist, pull it off, outrun the cops ----------------
+await step('banks: teller, casing, heist planner, the job', async () => {
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await p.evaluate(async () => {
+    const { LOC_BY_ID } = await import('./js/data/world.js');
+    const s = window.__rfg.game.s, w = window.__rfg.app.world, l = LOC_BY_ID.bank_cowtown;
+    s.cash = 300000; s.dirty = 0; s.heat = 0; s.warrants = []; s.heists = null; s.time.min = 11 * 60; w.police.reset(w);
+    w.inCar = false; w.foot.x = l.x - 3; w.foot.z = l.z; w.cam.x = w.foot.x; w.cam.z = w.foot.z;
+    window.__rfg.app.world.ui.openPlace(l, w);
+  });
+  await p.waitForSelector('.panel h1:has-text("Cowtown National Bank")');
+  if (!/Teller window/.test(await p.textContent('.panel:not(.hidden)'))) throw new Error('bank lobby should have a teller window');
+  await p.click('button:has-text("Stand in line and look around")');
+  if ((await p.evaluate(() => window.__rfg.game.s.heists.plans.bank_cowtown.intel)) !== 1) throw new Error('casing should give intel');
+  await snap('37-bank-lobby');
+  await p.click('.panel:not(.hidden) button:has-text("Plan a heist")');
+  await p.waitForSelector('.panel h1:has-text("Heist: Cowtown National Bank")');
+  await p.click('.panel:not(.hidden) [data-action="approach"][data-id="loud"]');
+  await p.click('.panel:not(.hidden) [data-action="hire"][data-id="smoke"]');
+  await p.click('.panel:not(.hidden) [data-action="hire"][data-id="wheels"]');
+  await p.click('.panel:not(.hidden) [data-action="gear"][data-id="bags"]');
+  await p.click('.panel:not(.hidden) [data-action="gear"][data-id="masks"]');
+  await p.click('.panel:not(.hidden) [data-action="gear"][data-id="drill"]');
+  await snap('38-heist-planner');
+  const cash0 = await p.evaluate(() => window.__rfg.game.s.cash);
+  await p.click('.panel:not(.hidden) button:has-text("Go time")');
+  // a phase at a time: take the first choice
+  for (let i = 0; i < 6; i++) {
+    const m = await p.waitForSelector('.modal');
+    const t = await p.textContent('.modal h2');
+    if (/Go, go, go|Clean/.test(t)) break;
+    if (i === 2) await snap('39-heist-vault');
+    await p.click('.modal .btn-primary'); await p.waitForTimeout(150);
+  }
+  if (!/\$/.test(await p.textContent('.modal'))) throw new Error('heist summary missing');
+  await p.click('.modal .btn-primary'); await p.waitForTimeout(300);
+  const r = await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { cash: s.cash, dirty: s.dirty, phase: w.police.phase, rec: w.police.record.map(x => x.kind), locked: s.heists.lockdown.bank_cowtown, day: s.time.day, heists: s.stats.heists }; });
+  if (!(r.cash > cash0 + 100000) || !(r.dirty > 100000) || r.heists !== 1) throw new Error('the job should pay dirty cash ' + JSON.stringify(r));
+  if (r.phase === 'none' || !r.rec.includes('bank_robbery')) throw new Error('a loud job means a chase ' + JSON.stringify(r));
+  if (!(r.locked > r.day)) throw new Error('the bank should lock down');
+  await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; w.police.reset(w); s.heat = 0; s.dirty = 0; s.warrants = []; });
+});
+
+// ---------------- prison break: plan it at the back fence, run, get caught again ----------------
+await step('prison break: plan, escape, manhunt, recaptured', async () => {
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });
+  await p.evaluate(async () => {
+    const { servePrison } = await import('./js/ui/prison.js');
+    const s = window.__rfg.game.s; s.bank = 50000; s.warrants = []; s.fugitive = null; s.justice = { cases: [], convictions: [], probation: null };
+    servePrison(window.__rfg.app, { kind: 'jail', facility: 'prison', days: 365 * 40, served: 365 * 20 }, { crime: 'Aggravated robbery.' });
+  });
+  await p.waitForSelector('.pris'); await p.waitForTimeout(300);
+  await p.evaluate(async () => { const { activePrison } = await import('./js/ui/prison.js'); const c = activePrison(); const b = c.spots.find(x => x.id === 'fence'); c.player.x = b.x; c.player.y = b.y; c.player.tx = null; c.state.books = 1000; });
+  await p.waitForTimeout(300);
+  if (!/Back fence/.test(await p.textContent('.hunt-act'))) throw new Error('action button should offer the back fence');
+  await p.click('.hunt-act');
+  await p.waitForSelector('.panel h1:has-text("Plan a break")');
+  await p.click('.panel:not(.hidden) [data-action="plan"][data-id="crew"]');
+  await p.evaluate(() => { window.__rand = Math.random; Math.random = () => 0.99; });
+  await p.click('.panel:not(.hidden) [data-action="buy"][data-id="phone"]');
+  await p.click('.panel:not(.hidden) [data-action="pay"]');
+  await snap('40-plan-a-break');
+  await p.evaluate(() => { Math.random = () => 0.01; });
+  await p.click('.panel:not(.hidden) button:has-text("Go tonight")');
+  await p.click('.modal button:has-text("Go")');
+  await p.waitForSelector('.modal h2:has-text("You\'re out")');
+  await p.evaluate(() => { Math.random = window.__rand; });
+  await p.click('.modal button:has-text("Run")'); await p.waitForTimeout(400);
+  const f = await p.evaluate(() => { const s = window.__rfg.game.s, w = window.__rfg.app.world; return { prison: !!s.prison, fug: !!s.fugitive, wr: s.warrants.map(x => x.kind), phase: w.police.phase, pris: !!document.querySelector('.pris') }; });
+  if (f.prison || !f.fug || !f.wr.includes('escape') || f.phase === 'none' || f.pris) throw new Error('escaped: fugitive, warrant, manhunt ' + JSON.stringify(f));
+  await snap('41-escaped');
+  // caught again: straight back to TDCJ with the escape stacked on
+  await p.evaluate(() => { const w = window.__rfg.app.world; w.police.phase = 'chase'; w.police.eyesOn = true; w.police.busted(w); });
+  await p.waitForSelector('.modal h2:has-text("BUSTED")');
+  if (!/escaped TDCJ inmate/.test(await p.textContent('.modal'))) throw new Error('bust should know you escaped');
+  await p.click('.modal button:has-text("Back on the chain bus")');
+  await p.click('.modal button:has-text("Step off the bus")');
+  await p.waitForSelector('.pris'); await p.waitForTimeout(300);
+  const back = await p.evaluate(() => { const s = window.__rfg.game.s; return { years: s.prison?.years, fug: !!s.fugitive }; });
+  if (back.fug || !(back.years >= 23)) throw new Error('recaptured should stack the escape ' + JSON.stringify(back));
+  await p.evaluate(async () => { const { activePrison } = await import('./js/ui/prison.js'); await activePrison().walkOut('appeal'); });
+  await p.waitForTimeout(300);
+  await p.evaluate(() => { const s = window.__rfg.game.s; s.justice = { cases: [], convictions: [], probation: null }; s.warrants = []; s.heat = 0; });
+});
+
+
 console.log(errs.length ? '\nERRORS:\n' + errs.join('\n') : '\nno errors');
 await b.close();
 process.exit(errs.length ? 1 : 0);
