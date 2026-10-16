@@ -6,6 +6,9 @@ import { luxPerks } from '../core/luxury.js';
 import { Boats } from './boats.js';
 import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState, drawPoles } from './render.js';
 import { sun, setSun, shadowFill } from '../gfx2d/sun.js';
+
+const TILT_C = 0.78;   // tilted view: how much the ground is squashed top to bottom (cos of the view angle)
+const TILT_H = 0.55;   // tilted view: screen px per metre of height, per px per metre of ground
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
 import { missionTick } from '../core/missions.js';
@@ -1131,20 +1134,25 @@ export class World {
     const cam = this.cam;
     // Chase camera: draw the world into a square big enough that rotating it
     // about the screen centre never shows an empty corner.
-    const rotated = Math.abs(cam.rot) > 0.002, D = rotated ? Math.ceil(Math.hypot(W, H)) : 0;
+    // Tilted view (Settings): the ground is squashed by TILT_C so you look at
+    // it at an angle, and tall things stand straight up the screen.
+    const tilt = settings.view3d === 'tilt', tc = tilt ? TILT_C : 1;
+    const rotated = Math.abs(cam.rot) > 0.002, xf = rotated || tilt, D = rotated ? Math.ceil(Math.hypot(W, H / tc)) : 0;
     cam.vw = W; cam.vh = H;
-    cam.w = rotated ? D : W; cam.h = rotated ? D : H;
+    cam.w = rotated ? D : W; cam.h = rotated ? D : H / tc;
+    cam.tilt = tilt; cam.tc = tc;
+    cam.tx = -Math.sin(cam.rot) * cam.zoom * TILT_H / tc; cam.ty = -Math.cos(cam.rot) * cam.zoom * TILT_H / tc;
     let shakeX = 0, shakeY = 0;
     if (cam.shake > 0) { shakeX = (Math.random() - 0.5) * cam.shake * 14; shakeY = (Math.random() - 0.5) * cam.shake * 14; cam.shake = Math.max(0, cam.shake - dt * 2.5); }
     setSun(hourOf(s.time), s.weather);
     ctx.save();
     ctx.translate(shakeX, shakeY);
-    if (rotated) { ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.translate(-D / 2, -D / 2); }
+    if (xf) { ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(1, tc); ctx.rotate(cam.rot); ctx.translate(-cam.w / 2, -cam.h / 2); }
     drawGround(ctx, cam);
     drawWater(ctx, cam, this.map, this.t, { night: this.darkness(), low: settings.quality === 'low' });
     this.boats.drawUnder(ctx, cam);   // docks, wakes and the boats on the water
-    const v = cam.view(60);
-    const items = this.map.drawGrid.query(v.x0, v.z0, v.x1, v.z1);
+    const v = cam.view(60), vb = tilt ? cam.view(170) : v;   // tilted: towers below the screen still reach up into it
+    const items = this.map.drawGrid.query(vb.x0, vb.z0, vb.x1, vb.z1);
     drawLots(ctx, cam, items);
     drawRoads(ctx, cam, this.map, this.signalT);
     drawSkids(ctx, cam, this.skids);
@@ -1310,7 +1318,7 @@ export class World {
     }
     if (livePeers.length) { this.drawPeerFlames(ctx, livePeers); this.drawPeerTags(ctx, livePeers); }
     this.drawTireSpray(ctx, cam, dt);
-    if (rotated) { ctx.restore(); cam.w = W; cam.h = H; }   // rain and fog are screen effects: not rotated
+    if (xf) { ctx.restore(); cam.w = W; cam.h = H; }   // rain and fog are screen effects: not rotated
     drawRain(ctx, cam, wx(s).rain, dt, { wind: windOf(s), low: settings.quality === 'low' });
     this.soundscape(dt);
     if (s.weather === 'storm') this.lightning(ctx, W, H, dt);

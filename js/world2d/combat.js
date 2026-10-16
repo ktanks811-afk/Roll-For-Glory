@@ -103,7 +103,8 @@ export class Combat {
     // desktop: face the mouse while it's been moving
     if (performance.now() - this.mouse.t < 2500 && !('ontouchstart' in window && !this.mouseFire)) {
       const cam = this.w.cam;
-      const a = Math.atan2(this.mouse.x - cam.sx(f.x), -(this.mouse.y - cam.sy(f.z)));
+      const [fx, fy] = cam.screen(f.x, f.z);
+      const a = Math.atan2(this.mouse.x - fx, -(this.mouse.y - fy) / cam.tc);   // tc: the tilted view squashes up/down
       if (Number.isFinite(a) && !input.held('forward') && !input.held('back') && !input.held('left') && !input.held('right')) return a;
     }
     // otherwise lock onto the nearest target roughly in front

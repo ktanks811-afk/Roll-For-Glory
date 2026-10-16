@@ -8,6 +8,14 @@
 
 export const LEAN = 0.0015;   // 1 / camera height (m): how far a 1 m tall thing leans per pixel off centre
 
+// How far something h metres tall is drawn from its base (in drawing px).
+// Overhead view: away from the screen centre. Tilted view (cam.tilt): straight
+// up the screen, by cam.tx / cam.ty per metre (set in World.draw).
+export const leanX = (cam, px, h) => cam.tilt ? cam.tx * h : (px - cam.w / 2) * h * LEAN;
+export const leanY = (cam, py, h) => cam.tilt ? cam.ty * h : (py - cam.h / 2) * h * LEAN;
+// In the tilted view, draw far things first: larger = further up the screen.
+export const depthOf = (cam, x, z) => -(x * Math.sin(cam.rot) + z * Math.cos(cam.rot));
+
 export const sun = { dx: 0.1, dz: 0.12, a: 0.25, lx: -0.55, lz: -0.83 };
 
 const SOFT = { cloudy: 0.55, rain: 0.4, storm: 0.3, fog: 0.35 };

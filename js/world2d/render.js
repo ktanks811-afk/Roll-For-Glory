@@ -9,18 +9,19 @@ import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
 import { LOT_COLOR } from './mapTiles.js';
 import { drawWaterBodies } from './water.js';
-import { sun, LEAN, shadowFill, boxShadowPath } from '../gfx2d/sun.js';
+import { sun, shadowFill, boxShadowPath, leanX, leanY, depthOf } from '../gfx2d/sun.js';
 
 export class Camera {
-  constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; this.rot = 0; this.vw = 1; this.vh = 1; }
+  constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; this.rot = 0; this.vw = 1; this.vh = 1; this.tilt = false; this.tc = 1; this.tx = 0; this.ty = 0; }
   sx(x) { return (x - this.x) * this.zoom + this.w / 2; }
   sy(z) { return (z - this.z) * this.zoom + this.h / 2; }
   // Real screen position of a world point, for things drawn outside the
   // rotated chase-camera layer (world drawing is rotated by `rot` about the
-  // screen centre; with rot = 0 this is just sx/sy).
+  // screen centre, then squashed by tc in the tilted view; with rot = 0 and
+  // no tilt this is just sx/sy).
   screen(x, z) {
     const lx = (x - this.x) * this.zoom, lz = (z - this.z) * this.zoom, c = Math.cos(this.rot), s = Math.sin(this.rot);
-    return [this.vw / 2 + lx * c - lz * s, this.vh / 2 + lx * s + lz * c];
+    return [this.vw / 2 + lx * c - lz * s, this.vh / 2 + (lx * s + lz * c) * this.tc];
   }
   view(pad = 40) {
     const hw = this.w / 2 / this.zoom + pad, hh = this.h / 2 / this.zoom + pad;
@@ -367,13 +368,15 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
   const z = cam.zoom;
   const list = [];
   for (const it of items) if (it.type === 'b' || it.type === 'r') list.push(it.o);
-  list.sort((a, b) => a.h - b.h);
-  const k = LEAN;
+  // overhead: short to tall, so tall roofs cover short ones; tilted: back to front
+  if (cam.tilt) { for (const b of list) b._d = depthOf(cam, b.x + b.w / 2, b.z + b.d / 2); list.sort((a, b) => b._d - a._d); }
+  else list.sort((a, b) => a.h - b.h);
   const sdx = sun.dx * z, sdz = sun.dz * z, shade = shadowFill(1);
   for (const b of list) {
     const x0 = cam.sx(b.x), y0 = cam.sy(b.z), w = b.w * z, d = b.d * z;
-    const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
-    const ox = cx * b.h * k, oy = cy * b.h * k;
+    const ox = leanX(cam, x0 + w / 2, b.h), oy = leanY(cam, y0 + d / 2, b.h);
+    // tilted view: a building standing between the camera and you goes see-through
+    ctx.globalAlpha = cam.tilt && b.h > 3 && cam.w / 2 > Math.min(x0, x0 + ox) && cam.w / 2 < Math.max(x0, x0 + ox) + w && cam.h / 2 > Math.min(y0, y0 + oy) && cam.h / 2 < Math.max(y0, y0 + oy) + d ? 0.4 : 1;
     if (b.kind === 'roof') { drawGarageRoof(ctx, b, x0 + ox, y0 + oy, w, d, z, showLabels); continue; }
     if (b.kind === 'home') { drawHome(ctx, cam, b, z, night, showLabels); continue; }
     if (b.kind === 'pumpjack') { drawPumpjack(ctx, b, x0, y0, w, d, z); continue; }
@@ -446,6 +449,7 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
       ctx.fillText(b.label.toUpperCase(), tx, ty + 1);
     }
   }
+  ctx.globalAlpha = 1;
 }
 
 // A house: one block per part of equal height (1, 2 or 3 stories), walls
@@ -453,14 +457,12 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
 // you walk in, like the garage roof.
 function drawHome(ctx, cam, b, z, night, showLabels) {
   if (b.a < 0.03) return;
-  const k = LEAN;
   const ps = b.pieces.map(p => {
     const x0 = cam.sx(p.x), y0 = cam.sy(p.z), w = p.w * z, d = p.d * z;
-    const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
-    return { p, x0, y0, w, d, ox: cx * p.h * k, oy: cy * p.h * k };
-  }).sort((a, c) => a.p.h - c.p.h);
+    return { p, x0, y0, w, d, ox: leanX(cam, x0 + w / 2, p.h), oy: leanY(cam, y0 + d / 2, p.h), k: cam.tilt ? -depthOf(cam, p.x + p.w / 2, p.z + p.d / 2) : p.h };
+  }).sort((a, c) => a.k - c.k);
   ctx.save();
-  ctx.globalAlpha = b.a;
+  ctx.globalAlpha *= b.a;
   ctx.fillStyle = shadowFill(1);
   ctx.beginPath();
   for (const q of ps) boxShadowPath(ctx, q.x0, q.y0, q.w, q.d, sun.dx * q.p.h * z, sun.dz * q.p.h * z);
@@ -576,7 +578,7 @@ function drawRound(ctx, b, x0, y0, ox, oy, w, d, z, night) {
 function drawGarageRoof(ctx, b, rx, ry, w, d, z, showLabels) {
   if (b.a < 0.03) return;
   ctx.save();
-  ctx.globalAlpha = b.a;
+  ctx.globalAlpha *= b.a;
   ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(rx + 0.5 * z, ry + 0.6 * z, w, d);
   ctx.fillStyle = b.color; ctx.fillRect(rx, ry, w, d);
   const across = b.side === 'N' || b.side === 'S';
@@ -722,7 +724,7 @@ export function drawTrees(ctx, cam, items) {
     const t = it.o;
     const bx = cam.sx(t.x), by = cam.sy(t.z), r = t.r * z;
     const ht = t.kind === 'pine' ? t.r * 2.6 : t.kind === 'palm' ? 9 : t.kind === 'cactus' ? t.r * 1.4 : t.r * 1.9;   // metres
-    const x = bx + (bx - cam.w / 2) * ht * LEAN, y = by + (by - cam.h / 2) * ht * LEAN;
+    const x = bx + leanX(cam, bx, ht), y = by + leanY(cam, by, ht);
     const shx = sun.dx * ht * z, shy = sun.dz * ht * z;
     if (t.kind === 'cactus') {
       ctx.fillStyle = shadowFill(0.8); ctx.fillRect(bx + shx * 0.5 - r * 0.3, by + shy * 0.5 - r * 0.3, r * 0.6, r * 0.6);
@@ -741,10 +743,12 @@ export function drawTrees(ctx, cam, items) {
     ctx.fillStyle = shadowFill(1);
     ctx.beginPath(); ctx.arc(bx + shx * 0.7, by + shy * 0.7, r, 0, Math.PI * 2); ctx.fill();
     if (Math.abs(x - bx) + Math.abs(y - by) > 1.5) { ctx.strokeStyle = '#4a3826'; ctx.lineWidth = Math.max(1, r * 0.22); ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(x, y); ctx.stroke(); }
+    if (cam.tilt && Math.hypot(x - cam.w / 2, y - cam.h / 2) < r * 1.1) ctx.globalAlpha = 0.45;   // tilted: see through a tree in front of you
     ctx.fillStyle = t.kind === 'pine' ? '#1f3a24' : '#2f5a2a';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = t.kind === 'pine' ? '#284a2c' : '#3c6e34';
     ctx.beginPath(); ctx.arc(x + sun.lx * r * 0.3, y + sun.lz * r * 0.3, r * 0.55, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -893,7 +897,7 @@ export function drawPoles(ctx, cam, lights) {
   for (const l of lightsIn(lights, v)) {
     if (l.color || l.x < v.x0 || l.x > v.x1 || l.z < v.z0 || l.z > v.z1) continue;
     const bx = cam.sx(l.x), by = cam.sy(l.z);
-    pts.push(bx, by, bx + (bx - cam.w / 2) * H * LEAN, by + (by - cam.h / 2) * H * LEAN);
+    pts.push(bx, by, bx + leanX(cam, bx, H), by + leanY(cam, by, H));
   }
   if (!pts.length) return;
   ctx.lineCap = 'round';
