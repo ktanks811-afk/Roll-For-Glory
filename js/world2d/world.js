@@ -42,7 +42,8 @@ import { online } from '../net/online.js';
 import { doors } from '../net/doors.js';
 import { soundProfile, noiseDb, liveNoiseDb, LEGAL_DB } from '../sim/sound.js';
 import { takeWarrants, signCitation, warrantForEscape, CITATION_DAYS, hasWarrant } from '../core/warrants.js';
-import { charge, fileCase, openCase, hasFelonyPrior, IMPOUND_LOT } from '../core/justice.js';
+import { charge, fileCase, openCase, hasFelonyPrior, IMPOUND_LOT, CLASSES } from '../core/justice.js';
+import { isFugitive, recapture } from '../core/breakout.js';
 import { extraTickets } from '../data/charges.js';
 import { equippedGun } from '../data/weapons.js';
 import { toggleMask, masked } from '../core/disguise.js';
@@ -742,6 +743,15 @@ export class World {
     if (!spend(s, total, 'FWPD fines + impound')) { s.bank -= Math.max(0, total - s.cash - s.bank); s.cash = 0; }
     addRep(s, -60, 'Busted'); s.stats.busted++;
     const charges = [...now.charges, ...old.charges];
+    // an escaped TDCJ inmate doesn't see a magistrate: straight back to finish the time (core/breakout.js)
+    if (isFugitive(s)) {
+      const rc = recapture(s, now.charges.filter(c => CLASSES[c.cls]?.felony).length);
+      this.impound();
+      this.ui.modal('BUSTED', `<p>You're in cuffs. The officer runs your name and steps back from the car with a hand on his gun: <b>escaped TDCJ inmate</b>.</p><p>Fines${tickets ? ' and tickets' : ''}: <b>${fmtMoney(total)}</b>. Rep −60.</p>`,
+        [{ label: 'Back on the chain bus', primary: true }]).then(() => this.ui.backToPrison?.(rc));
+      emit('busted', { fine: total, charges: charges.length, recaptured: true });
+      return;
+    }
     // a case you skipped court on comes back to life too
     const c = charges.length || openCase(s)?.fta ? fileCase(s, charges) : null;
     this.impound();

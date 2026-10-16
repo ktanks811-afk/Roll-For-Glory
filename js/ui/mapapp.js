@@ -21,7 +21,7 @@ const STATE_LABELS = Object.fromEntries(Object.entries({
 }).map(([id, list]) => [id, [...list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK]), ...(STATE_MAP_LABELS[id] || [])]]));
 import { fmtMoney } from '../core/state.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓', plane: '✈', boat: '⚓', gem: '💎', leaf: '🌿' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓', plane: '✈', boat: '⚓', gem: '💎', leaf: '🌿', bank: '🏦' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop', 'trailers'] },
@@ -36,6 +36,7 @@ const CATS = [
   { id: 'fly', label: 'Airports', types: ['airport'] },
   { id: 'boats', label: 'Marinas', types: ['marina'] },
   { id: 'weed', label: 'Cannabis', types: ['dispensary', 'growfarm'] },
+  { id: 'banks', label: 'Banks', types: ['bank'] },
 ];
 const WHAT = {
   home: 'Your place: sleep, save, garage, change clothes.',
@@ -43,6 +44,7 @@ const WHAT = {
   land: 'Land for sale. Build a house and a garage up to 100 cars, fence it, run cattle.',
   marina: 'A marina. Buy boats from jet skis to superyachts, launch yours, dock up and customize.',
   airport: 'The airport. Fly to Atlanta, LA, Miami, Denver or home to Texas, and bring your car on the cargo plane.',
+  bank: 'A bank. Deposit or pull out cash at the teller, case the place, or plan a heist on the vault.',
   dispensary: 'A licensed dispensary. Buy it, stock the shelf from your farms and run it: the sales land in your bank every morning.',
   growfarm: 'A licensed grow farm. Buy it, put clones in, harvest by the ounce and stock your dispensaries.',
   rig: 'An oil lease. Pays $40,000 a day once it\'s yours.',
