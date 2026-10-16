@@ -2,6 +2,7 @@
 
 import { CLOTH_BY_ID } from '../data/shops.js';
 import { drawHairPortrait, drawFace, drawExtras, drawHairTop } from './hair.js';
+import { sun, shadowFill } from './sun.js';
 
 const col = (v, fallback) => (CLOTH_BY_ID[v]?.color) || (typeof v === 'string' && v.startsWith('#') ? v : fallback);
 
@@ -17,8 +18,11 @@ export function drawPerson(ctx, x, y, h, zoom, look = {}, walk = 0, isPlayer = f
     ctx.strokeStyle = 'rgba(255,40,60,0.8)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(0, 0, 0.9 * s, 0, Math.PI * 2); ctx.stroke();
   }
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  ctx.beginPath(); ctx.ellipse(0.12 * s, 0.15 * s, 0.32 * s, 0.22 * s, 0, 0, Math.PI * 2); ctx.fill();
+  // shadow along the sun (gfx2d/sun.js), stretched the way it falls
+  ctx.save(); ctx.rotate(-h);
+  ctx.fillStyle = shadowFill(1.2);
+  ctx.beginPath(); ctx.ellipse(sun.dx * 0.9 * s, sun.dz * 0.9 * s, 0.3 * s + Math.hypot(sun.dx, sun.dz) * 0.8 * s, 0.24 * s, Math.atan2(sun.dz, sun.dx), 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
   // legs / feet
   const sw = Math.sin(walk) * 0.22 * s;
   ctx.fillStyle = col(look.shoes, '#e8e8e8');
