@@ -1,6 +1,7 @@
 // Top-down people: shoulders, arms swinging, head and hair/hat.
 
 import { CLOTH_BY_ID } from '../data/shops.js';
+import { drawHairPortrait, drawFace, drawExtras, drawHairTop } from './hair.js';
 
 const col = (v, fallback) => (CLOTH_BY_ID[v]?.color) || (typeof v === 'string' && v.startsWith('#') ? v : fallback);
 
@@ -42,8 +43,7 @@ export function drawPerson(ctx, x, y, h, zoom, look = {}, walk = 0, isPlayer = f
     ctx.beginPath(); ctx.arc(0, 0.01 * s, 0.13 * s, 0, Math.PI * 2); ctx.fill();
     if (hat.style === 'cap') ctx.fillRect(-0.09 * s, -0.22 * s, 0.18 * s, 0.1 * s);
   } else {
-    ctx.fillStyle = look.hair || '#222';
-    ctx.beginPath(); ctx.arc(0, 0.03 * s, 0.11 * s, 0, Math.PI * 2); ctx.fill();
+    drawHairTop(ctx, s, look);
   }
   ctx.restore();
 }
@@ -55,6 +55,10 @@ export function drawPortrait(ctx, w, h, look) {
   const cx = w / 2;
   const k = h / 300;
   ctx.clearRect(0, 0, w, h);
+  const mask = CLOTH_BY_ID[look.mask];
+  const hatOn = !!(hat && hat.style !== 'none'), skimask = mask?.style === 'skimask';
+  // hair that hangs behind the head and shoulders
+  if (!skimask) drawHairPortrait(ctx, cx, k, look, 'back', hatOn);
   // body
   ctx.fillStyle = bottom;
   ctx.fillRect(cx - 34 * k, 190 * k, 30 * k, 100 * k);
@@ -76,11 +80,8 @@ export function drawPortrait(ctx, w, h, look) {
   ctx.fillRect(cx - 74 * k * wide, 200 * k, 18 * k, 14 * k);
   ctx.fillRect(cx + 56 * k * wide, 200 * k, 18 * k, 14 * k);
   // face
-  ctx.fillStyle = '#111';
-  ctx.fillRect(cx - 14 * k, 62 * k, 6 * k, 5 * k); ctx.fillRect(cx + 8 * k, 62 * k, 6 * k, 5 * k);
-  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(cx - 8 * k, 84 * k, 16 * k, 3 * k);
+  drawFace(ctx, cx, k, look);
   // mask: a ski mask covers the whole head (eye and mouth holes), a bandana the lower face
-  const mask = CLOTH_BY_ID[look.mask];
   if (mask?.style === 'skimask') {
     ctx.fillStyle = mask.color;
     ctx.beginPath(); ctx.ellipse(cx, 64 * k, 32 * k, 39 * k, 0, 0, Math.PI * 2); ctx.fill();
@@ -96,19 +97,13 @@ export function drawPortrait(ctx, w, h, look) {
     ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(cx - 10 * k, 86 * k, 3 * k, 0, Math.PI * 2); ctx.arc(cx + 10 * k, 86 * k, 3 * k, 0, Math.PI * 2); ctx.stroke();
   }
-  // hair
-  ctx.fillStyle = look.hair;
-  const hs = look.hairStyle;
-  if (mask?.style === 'skimask' && (!hat || hat.style === 'none')) { /* the mask covers the hair */ }
-  else if (!hat || hat.style === 'none') {
-    if (hs === 'buzz') { ctx.beginPath(); ctx.ellipse(cx, 44 * k, 29 * k, 14 * k, 0, Math.PI, 0); ctx.fill(); }
-    else if (hs === 'curly') { for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.arc(cx + i * 10 * k, 36 * k + Math.abs(i) * 3 * k, 12 * k, 0, Math.PI * 2); ctx.fill(); } }
-    else { ctx.beginPath(); ctx.ellipse(cx, 42 * k, 32 * k, 18 * k, 0, Math.PI, 0); ctx.fill(); ctx.fillRect(cx - 32 * k, 42 * k, 8 * k, hs === 'long' ? 60 * k : 16 * k); ctx.fillRect(cx + 24 * k, 42 * k, 8 * k, hs === 'long' ? 60 * k : 16 * k); }
-    if (hs === 'bun') { ctx.beginPath(); ctx.arc(cx, 20 * k, 12 * k, 0, Math.PI * 2); ctx.fill(); }
-  } else {
+  // hair, hat, extras
+  if (!skimask) drawHairPortrait(ctx, cx, k, look, 'front', hatOn);
+  if (hatOn) {
     ctx.fillStyle = hat.color;
     ctx.beginPath(); ctx.ellipse(cx, 42 * k, 33 * k, 20 * k, 0, Math.PI, 0); ctx.fill();
     if (hat.style === 'cap') ctx.fillRect(cx - 34 * k, 40 * k, 58 * k, 7 * k);
     else ctx.fillRect(cx - 33 * k, 38 * k, 66 * k, 9 * k);
   }
+  drawExtras(ctx, cx, k, look, { hatOn, masked: skimask, topColor: top });
 }
