@@ -5,6 +5,7 @@ import { STATES, STATE_BLOCK, AIRPORT_ROW, stateAt, stateDistrict } from './stat
 import { TOWN_BY_ID, metroDistrict, townAt, townBlockCenter } from './metro.js';
 import { MARINA_LOCATIONS } from './boats.js';
 import { WEED_LOCATIONS } from './weed.js';
+import { MALLS, mallDoor } from './malls.js';
 import { BANK_SPOTS, BANK_COLOR } from './banks.js';
 
 // Fort Worth — map layout. The city is a 12x12-block grid (150 m blocks)
@@ -557,6 +558,9 @@ export const LOCATIONS = [
   // taco trucks and diners, each on its own lot (data/food.js)
   ...FOOD_SPOTS,
   ...MARINA_LOCATIONS,   // marinas on the lakes and Miami's bay (data/boats.js)
+  // malls you can walk into (data/malls.js): a Fort Worth block, or the front door of a town's mall landmark
+  ...MALLS.map(m => m.fw ? L(m.id, 'mall', m.name, m.fw[0], m.fw[1], m.fw[2], { color: m.color, icon: 'bag', h: 16 })
+    : { id: m.id, type: 'mall', name: m.name, ...mallDoor(m), side: 'S', color: m.color, icon: 'bag' }),
   ...STREET_RACES.map(ev => { const st = raceStart(ev); return { id: ev.id, type: 'sprint', name: ev.name, x: st.x, z: st.z, face: st.h, color: '#ffbe1e', icon: 'flag', tier: ev.tier > 1 ? ev.tier : undefined, race: ev.id }; }),
 ];
 

@@ -21,7 +21,7 @@ const MODES = [
   { name: 'HEADING UP · FAR', rot: true, zoom: 'far' },
   { name: 'NORTH UP', rot: false, zoom: 'auto' },
 ];
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', court: '⚖', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', bag: '🛍', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', court: '⚖', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓' };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const BEARINGS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const MAP_ALPHA = 0.6;                 // how solid the map is; the markers stay fully solid

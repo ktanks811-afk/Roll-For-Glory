@@ -3719,6 +3719,28 @@ await step('xbox controller', async () => {
   await g.close(); await gctx.close();
 });
 
+// ---------------- malls: walk in, shop a store, closed at night ----------------
+await step('mall', async () => {
+  await p.evaluate(async () => {
+    (await import('./js/ui/dom.js')).closeAllPanels(); document.querySelectorAll('.modal-back').forEach(e => e.remove());
+    const s = window.__rfg.game.s; s.cash = 5000; s.time.day = 2; s.time.min = 14 * 60;   // Tuesday afternoon
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    openPlace(LOC_BY_ID.mall_hulen, window.__rfg.app);
+  });
+  await p.waitForSelector('#panels h1:has-text("Hulen Mall")');
+  if (!(await p.isVisible('#panels [data-id=kicks]'))) throw new Error('no Kicks Lounge in the directory');
+  await p.click('#panels [data-id=kicks]');
+  await p.waitForSelector('#panels .panel:not(.hidden) h1:has-text("Kicks Lounge")');
+  await p.click('#panels .panel:not(.hidden) [data-action=buy][data-id=mk_af1_white]');
+  if (!(await p.evaluate(() => window.__rfg.game.s.player.outfits.includes('mk_af1_white')))) throw new Error('bought kicks are not in the closet');
+  await p.click('#panels .panel:not(.hidden) [data-action=close]');
+  await p.waitForSelector('#panels .panel:not(.hidden) h1:has-text("Hulen Mall")');
+  await p.evaluate(async () => { (await import('./js/ui/dom.js')).closeAllPanels(); const s = window.__rfg.game.s; s.time.min = 23 * 60;
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js'); openPlace(LOC_BY_ID.mall_hulen, window.__rfg.app); });
+  if (!(await p.isVisible('#panels h1 small:has-text("Closed")'))) throw new Error('the mall is open at 11 PM');
+  await p.evaluate(async () => (await import('./js/ui/dom.js')).closeAllPanels());
+});
+
 // ---------------- banks: case it, plan a heist, pull it off, outrun the cops ----------------
 await step('banks: teller, casing, heist planner, the job', async () => {
   await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); document.querySelectorAll('.modal-back').forEach(m => m.remove()); window.__rfg.app.world.paused = false; });

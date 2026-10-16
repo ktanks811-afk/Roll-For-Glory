@@ -1,6 +1,7 @@
 // Clothing, food and misc items. Clothing ids map onto the character
 // model in gfx/character.js (slot + style + colour).
 
+import { MALL_CLOTHES } from './malls.js';
 import { HAIRSTYLES } from './looks.js';
 
 export const CLOTHES = [
@@ -34,6 +35,8 @@ export const CLOTHES = [
   { id: 'kicks_blackout', slot: 'shoes', style: 'kicks', color: '#121212', name: 'Vortex Triple-Black Runners', price: 110, shop: 'surplus' },
   { id: 'boots_tactical', slot: 'shoes', style: 'boots', color: '#141414', name: 'Black Tactical Boots', price: 140, shop: 'surplus' },
   { id: 'beanie_black', slot: 'hat', style: 'beanie', color: '#121212', name: 'Black Watch Cap', price: 20, shop: 'surplus' },
+  // the mall stores (data/malls.js)
+  ...MALL_CLOTHES,
 ];
 export const MASKS = CLOTHES.filter(c => c.slot === 'mask' && c.conceal);
 // The all-black fit the surplus store sells as one bundle (10% off).

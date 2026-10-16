@@ -21,11 +21,11 @@ const STATE_LABELS = Object.fromEntries(Object.entries({
 }).map(([id, list]) => [id, [...list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK]), ...(STATE_MAP_LABELS[id] || [])]]));
 import { fmtMoney } from '../core/state.js';
 
-const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓', plane: '✈', boat: '⚓', gem: '💎', leaf: '🌿', bank: '🏦' };
+const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', bag: '🛍', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓', plane: '✈', boat: '⚓', gem: '💎', leaf: '🌿', bank: '🏦' };
 const CATS = [
   { id: 'all', label: 'All', types: null },
   { id: 'cars', label: 'Cars', types: ['dealer', 'usedlot', 'chop', 'trailers'] },
-  { id: 'shops', label: 'Shops', types: ['perf', 'visual', 'repair', 'clothing', 'realty', 'pawn'] },
+  { id: 'shops', label: 'Shops', types: ['mall', 'perf', 'visual', 'repair', 'clothing', 'realty', 'pawn'] },
   { id: 'race', label: 'Races & meets', types: ['meet', 'carshow', 'drag', 'roll', 'sprint'] },
   { id: 'fuel', label: 'Gas & food', types: ['gas', 'food', 'corner'] },
   { id: 'work', label: 'Work', types: ['work'] },
@@ -65,6 +65,7 @@ const WHAT = {
   corner: 'Corner store: snacks, drinks, smokes.',
   work: 'Tow yard and gig dispatch: take delivery runs, Ryde riders and tow calls.',
   clothing: 'Outfits and streetwear.',
+  mall: 'A mall: kicks, streetwear, western wear, jewelry and a food court. Open 10 AM to 9 PM, Sunday noon to 6.',
   realty: 'Buy and sell houses, land, oil leases and trap houses.',
   trap: 'A trap house. Stock the stash and customers knock. Too many and SWAT does too.',
   land: 'Land for sale. Buy it and build your own house and garage.',

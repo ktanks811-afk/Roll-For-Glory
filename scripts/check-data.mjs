@@ -2375,6 +2375,49 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (TD.trafficClass(4000) !== 'F1' || TD.trafficClass(10) !== 'SJF') bad('federal weight classes');
   game.s = null;
 }
+// ---- malls: walk-in malls around DFW (data/malls.js, core/mall.js) ----
+{
+  const { MALLS, MALL_STORES, MALL_CLOTHES, mallOpen } = await import('../js/data/malls.js');
+  const MALL = await import('../js/core/mall.js');
+  const { CLOTHES, CLOTH_BY_ID } = await import('../js/data/shops.js');
+  const map = buildMap();
+  const STYLES = { top: ['tee', 'hoodie', 'jacket'], bottom: ['jeans', 'cargo', 'track'], hat: ['cap', 'beanie'], shoes: ['kicks', 'boots'] };
+  if (MALLS.length < 8) bad(`only ${MALLS.length} malls`);
+  for (const m of MALLS) {
+    const l = LOCATIONS.find(x => x.id === m.id);
+    if (!l || l.type !== 'mall') { bad(`${m.id}: no mall location`); continue; }
+    const bs = map.buildings.filter(b => b.loc === m.id);
+    if (!bs.length) { bad(`${m.id}: no mall building`); continue; }
+    const near = Math.min(...bs.map(b => Math.hypot(Math.max(b.x - l.x, 0, l.x - (b.x + b.w)), Math.max(b.z - l.z, 0, l.z - (b.z + b.d)))));
+    if (near > 12) bad(`${m.id}: the doors are ${near.toFixed(0)} m from the marker`);
+    if (!bs.some(b => b.side === l.side && b.shop === 'mall')) bad(`${m.id}: the front of the mall does not face the marker`);
+    if (collideCircle(map, l.x, l.z, 1.5)) bad(`${m.id}: the marker is blocked`);
+    for (const id of m.stores) if (!MALL_STORES[id]) bad(`${m.id}: unknown store ${id}`);
+    for (const id of m.stores) if (MALL_STORES[id].kind === 'clothes' && !MALL_CLOTHES.some(c => c.shop === MALL_STORES[id].shop)) bad(`${m.id}: ${id} has nothing on the racks`);
+  }
+  if (!LOCATIONS.some(l => l.id === 'mall_gran_plaza') || !LOCATIONS.some(l => l.id === 'gran_plaza')) bad('La Gran Plaza should have its mall and its meet lot');
+  // the clothes show on your character and don't clash with the rest of the catalog
+  if (new Set(CLOTHES.map(c => c.id)).size !== CLOTHES.length) bad('two clothes share an id');
+  for (const c of MALL_CLOTHES) {
+    if (!CLOTH_BY_ID[c.id]) bad(`${c.id} is not in the clothes catalog`);
+    if (!STYLES[c.slot]?.includes(c.style)) bad(`${c.id}: ${c.slot} style ${c.style} can't be drawn`);
+    if (!(c.price > 0) || !/^#[0-9a-f]{6}$/i.test(c.color)) bad(`${c.id}: price or color`);
+  }
+  // hours: 10 to 9, Sunday noon to 6 (day 1 is a Monday)
+  if (!mallOpen(1, 10) || mallOpen(1, 9.5) || mallOpen(1, 21) || !mallOpen(1, 20.9)) bad('weekday mall hours');
+  if (mallOpen(7, 11) || !mallOpen(7, 12) || mallOpen(7, 18)) bad('Sunday mall hours');
+  // walking the mall
+  const s = createState({ name: 'Mall Rat' }); game.s = s; s.cash = 1000;
+  const seq = v => () => v;
+  const f0 = s.followers;
+  const r1 = MALL.walkMall(s, MALLS[0], seq(0));
+  if (r1.kind !== 'recognized' || !(s.followers > f0)) bad(`walk: getting recognized should bring followers (${JSON.stringify(r1)})`);
+  const sec = (() => { for (let v = 0; v < 1; v += 0.01) { const t = createState({ name: 'x' }); t.heat = 3; const r = MALL.walkMall(t, MALLS[0], seq(v)); if (r.kind === 'security') return { r, t }; } })();
+  if (!sec || !sec.r.hot || !(sec.t.heat > 3)) bad('mall cops should call in someone with heat');
+  const drop = (() => { for (let v = 0; v < 1; v += 0.01) { const t = createState({ name: 'x' }); game.s = t; const r = MALL.walkMall(t, MALLS[0], seq(v)); if (r.kind === 'drop') return t; } })();
+  if (!drop || !(drop.cash > 0)) bad('flipping kicks from a drop line should pay');
+  for (let k = 0; k < 40; k++) { const r = MALL.walkMall(s, MALLS[k % MALLS.length]); if (!r.text) bad('a mall walk with nothing to say'); }
+}
 // ---- banks on every map, heists, prison breaks (data/banks.js, core/heist.js, core/breakout.js) ----
 {
   const HE = await import('../js/core/heist.js');
