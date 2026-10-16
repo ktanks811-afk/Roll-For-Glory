@@ -9,6 +9,7 @@ import { drawCow, breedOf } from '../gfx2d/cowArt.js';
 import { BACKROAD } from './map.js';
 import { LOT_COLOR } from './mapTiles.js';
 import { drawWaterBodies } from './water.js';
+import { sun, LEAN, shadowFill, boxShadowPath } from '../gfx2d/sun.js';
 
 export class Camera {
   constructor() { this.x = 0; this.z = 0; this.zoom = 6; this.w = 1; this.h = 1; this.shake = 0; this.rot = 0; this.vw = 1; this.vh = 1; }
@@ -209,7 +210,7 @@ function drawProps(ctx, cam, items) {
     const x = cam.sx(p.x), y = cam.sy(p.z), w = p.w * z, h = p.d * z;
     if (p.k === 'hedge') {
       if (p.fence) { ctx.fillStyle = '#8a8f96'; ctx.fillRect(x, y, Math.max(1, w), Math.max(1, h)); continue; }
-      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(x + 0.3 * z, y + 0.3 * z, w, h);
+      ctx.fillStyle = shadowFill(0.8); ctx.fillRect(x + sun.dx * 1.6 * z, y + sun.dz * 1.6 * z, w, h);
       ctx.fillStyle = '#2a4a24'; ctx.fillRect(x, y, w, h);
     } else if (p.k === 'pool') {
       ctx.fillStyle = '#d8d4c8'; ctx.fillRect(x - 0.5 * z, y - 0.5 * z, w + z, h + z);
@@ -229,7 +230,7 @@ function drawProps(ctx, cam, items) {
       }
     } else if (p.k === 'umbrella') {
       const r = p.r * z, cx = cam.sx(p.x), cy = cam.sy(p.z);
-      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(cx + 0.6 * z, cy + 0.7 * z, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = shadowFill(0.8); ctx.beginPath(); ctx.arc(cx + sun.dx * 2.5 * z, cy + sun.dz * 2.5 * z, r, 0, Math.PI * 2); ctx.fill();
       for (let k = 0; k < 6; k++) { ctx.fillStyle = k % 2 ? '#f4f4f4' : p.c; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, k * Math.PI / 3, (k + 1) * Math.PI / 3); ctx.fill(); }
     } else if (p.k === 'cow') {
       const cx = cam.sx(p.x), cy = cam.sy(p.z);
@@ -239,7 +240,7 @@ function drawProps(ctx, cam, items) {
     } else if (p.k === 'furn') {
       if (z > 1.1) drawFurniture(ctx, p.id, x, y, w, h, p.fx, p.fz, z);
     } else if (p.k === 'bale') {
-      if (z > 0.9) { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(cam.sx(p.x) + 0.3 * z, cam.sy(p.z) + 0.4 * z, p.r * z, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), p.r * z, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(90,70,20,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), p.r * z * 0.55, 0, Math.PI * 2); ctx.stroke(); }
+      if (z > 0.9) { ctx.fillStyle = shadowFill(1); ctx.beginPath(); ctx.arc(cam.sx(p.x) + sun.dx * 1.5 * z, cam.sy(p.z) + sun.dz * 1.5 * z, p.r * z, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), p.r * z, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(90,70,20,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), p.r * z * 0.55, 0, Math.PI * 2); ctx.stroke(); }
     } else if (p.k === 'towel') {
       ctx.fillStyle = p.c; ctx.fillRect(x, y, w, h);
     } else if (p.k === 'bench') {
@@ -249,8 +250,8 @@ function drawProps(ctx, cam, items) {
   if (!bushes.size) return;
   const all = [];
   for (const a of bushes.values()) for (const p of a) all.push(p);
-  ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath();
-  for (const p of all) { const x = cam.sx(p.x) + p.r * 0.35 * z, y = cam.sy(p.z) + p.r * 0.35 * z; ctx.moveTo(x + p.r * z, y); ctx.arc(x, y, p.r * z, 0, Math.PI * 2); }
+  ctx.fillStyle = shadowFill(0.9); ctx.beginPath();
+  for (const p of all) { const x = cam.sx(p.x) + sun.dx * p.r * 1.6 * z, y = cam.sy(p.z) + sun.dz * p.r * 1.6 * z; ctx.moveTo(x + p.r * z, y); ctx.arc(x, y, p.r * z, 0, Math.PI * 2); }
   ctx.fill();
   for (const [c, a] of bushes) {
     ctx.fillStyle = c; ctx.beginPath();
@@ -259,7 +260,7 @@ function drawProps(ctx, cam, items) {
   }
   if (z > 2) {
     ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.beginPath();
-    for (const p of all) { const x = cam.sx(p.x) - p.r * 0.3 * z, y = cam.sy(p.z) - p.r * 0.3 * z, r = p.r * 0.45 * z; ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
+    for (const p of all) { const x = cam.sx(p.x) + sun.lx * p.r * 0.4 * z, y = cam.sy(p.z) + sun.lz * p.r * 0.4 * z, r = p.r * 0.45 * z; ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
     ctx.fill();
   }
 }
@@ -360,13 +361,15 @@ export function drawSkids(ctx, cam, skids) {
   }
 }
 
-// Buildings lean away from the screen centre in proportion to height.
+// Buildings lean away from the screen centre in proportion to height, cast
+// their shadow along the sun (gfx2d/sun.js) and have their sunny walls lit.
 export function drawBuildings(ctx, cam, items, night, showLabels = true) {
   const z = cam.zoom;
   const list = [];
   for (const it of items) if (it.type === 'b' || it.type === 'r') list.push(it.o);
   list.sort((a, b) => a.h - b.h);
-  const k = 0.0011;   // 1 / camera height (m): how far roofs lean
+  const k = LEAN;
+  const sdx = sun.dx * z, sdz = sun.dz * z, shade = shadowFill(1);
   for (const b of list) {
     const x0 = cam.sx(b.x), y0 = cam.sy(b.z), w = b.w * z, d = b.d * z;
     const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
@@ -374,12 +377,12 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
     if (b.kind === 'roof') { drawGarageRoof(ctx, b, x0 + ox, y0 + oy, w, d, z, showLabels); continue; }
     if (b.kind === 'home') { drawHome(ctx, cam, b, z, night, showLabels); continue; }
     if (b.kind === 'pumpjack') { drawPumpjack(ctx, b, x0, y0, w, d, z); continue; }
-    if (b.kind === 'fence') { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x0 + 0.4 * z, y0 + 0.5 * z, Math.max(1, w), Math.max(1, d)); ctx.fillStyle = b.color; ctx.fillRect(x0 + ox, y0 + oy, Math.max(1.2, w), Math.max(1.2, d)); continue; }
+    if (b.kind === 'fence') { ctx.fillStyle = shade; ctx.fillRect(x0 + sdx * b.h, y0 + sdz * b.h, Math.max(1, w), Math.max(1, d)); ctx.fillStyle = b.color; ctx.fillRect(x0 + ox, y0 + oy, Math.max(1.2, w), Math.max(1.2, d)); continue; }
     if (b.kind === 'parked') { if (!b.gone) drawParked(ctx, b, x0, y0, w, d, z); continue; }   // gone: stolen (world2d/theft.js)
     if (b.round) { drawRound(ctx, b, x0, y0, ox, oy, w, d, z, night); continue; }
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(x0 + b.h * 0.25 * z * 0.4, y0 + b.h * 0.3 * z * 0.4, w, d);
+    // shadow: the footprint swept along the sun
+    ctx.fillStyle = shade;
+    ctx.beginPath(); boxShadowPath(ctx, x0, y0, w, d, sdx * b.h, sdz * b.h); ctx.fill();
     if (b.kind === 'canopy' || b.kind === 'pier') {
       ctx.fillStyle = b.color; ctx.fillRect(x0 + ox, y0 + oy, w, d);
       if (b.kind === 'canopy' && z > 1.2) {
@@ -389,20 +392,19 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
       }
       continue;
     }
-    // walls
-    const wall = shadeHex(b.color, -0.35);
-    ctx.fillStyle = wall;
-    const quad = (ax, ay, bx, by) => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(bx + ox, by + oy); ctx.lineTo(ax + ox, ay + oy); ctx.closePath(); ctx.fill(); };
-    quad(x0, y0, x0 + w, y0); quad(x0 + w, y0, x0 + w, y0 + d); quad(x0, y0 + d, x0 + w, y0 + d); quad(x0, y0, x0, y0 + d);
-    // lit windows on the walls facing us at night
-    if (night > 0.3 && b.h > 12 && z > 1.4) {
-      ctx.fillStyle = `rgba(255,214,140,${0.5 * night})`;
+    // walls: the ones facing the sun are lighter
+    const quad = (ax, ay, bx, by, nx, ny) => { ctx.fillStyle = wallShade(b.color, nx, ny); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(bx + ox, by + oy); ctx.lineTo(ax + ox, ay + oy); ctx.closePath(); ctx.fill(); };
+    quad(x0, y0, x0 + w, y0, 0, -1); quad(x0 + w, y0, x0 + w, y0 + d, 1, 0); quad(x0, y0 + d, x0 + w, y0 + d, 0, 1); quad(x0, y0, x0, y0 + d, -1, 0);
+    // a row of windows per floor on the walls facing us: glass by day, some lit at night
+    if (b.h > 12 && z > 1.4) {
+      const lit = night > 0.3;
+      ctx.fillStyle = lit ? `rgba(255,214,140,${0.5 * night})` : 'rgba(25,40,60,0.45)';
       const floors = Math.min(30, Math.floor(b.h / 4));
       for (let f = 1; f < floors; f++) {
         const t = f / floors;
-        if (((b.x * 7 + f * 13) | 0) % 3 === 0) continue;
-        if (Math.abs(ox) > 2) ctx.fillRect(ox > 0 ? x0 + w + ox * t - 1 : x0 + ox * t - 1, y0 + oy * t + d * 0.2, 2, d * 0.6);
-        if (Math.abs(oy) > 2) ctx.fillRect(x0 + ox * t + w * 0.2, oy > 0 ? y0 + d + oy * t - 1 : y0 + oy * t - 1, w * 0.6, 2);
+        if (lit && ((b.x * 7 + f * 13) | 0) % 3 === 0) continue;
+        if (Math.abs(ox) > 2) ctx.fillRect(ox > 0 ? x0 + ox * t - 1 : x0 + w + ox * t - 1, y0 + oy * t + d * 0.2, 2, d * 0.6);
+        if (Math.abs(oy) > 2) ctx.fillRect(x0 + ox * t + w * 0.2, oy > 0 ? y0 + oy * t - 1 : y0 + d + oy * t - 1, w * 0.6, 2);
       }
     }
     // roof
@@ -451,7 +453,7 @@ export function drawBuildings(ctx, cam, items, night, showLabels = true) {
 // you walk in, like the garage roof.
 function drawHome(ctx, cam, b, z, night, showLabels) {
   if (b.a < 0.03) return;
-  const k = 0.0011;
+  const k = LEAN;
   const ps = b.pieces.map(p => {
     const x0 = cam.sx(p.x), y0 = cam.sy(p.z), w = p.w * z, d = p.d * z;
     const cx = x0 + w / 2 - cam.w / 2, cy = y0 + d / 2 - cam.h / 2;
@@ -459,8 +461,10 @@ function drawHome(ctx, cam, b, z, night, showLabels) {
   }).sort((a, c) => a.p.h - c.p.h);
   ctx.save();
   ctx.globalAlpha = b.a;
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  for (const q of ps) ctx.fillRect(q.x0 + q.p.h * 0.1 * z, q.y0 + q.p.h * 0.12 * z, q.w, q.d);
+  ctx.fillStyle = shadowFill(1);
+  ctx.beginPath();
+  for (const q of ps) boxShadowPath(ctx, q.x0, q.y0, q.w, q.d, sun.dx * q.p.h * z, sun.dz * q.p.h * z);
+  ctx.fill();
   const wallC = shadeHex(b.wall, -0.3), winC = night > 0.3 ? `rgba(255,214,140,${0.45 + 0.4 * night})` : 'rgba(40,60,80,0.75)';
   for (const q of ps) {
     const { x0, y0, w, d, ox, oy } = q;
@@ -473,8 +477,8 @@ function drawHome(ctx, cam, b, z, night, showLabels) {
       const n = q.p.floors, ww = Math.max(1, 0.9 * z * 0.4);
       for (let f = 0; f < n; f++) {
         const t = (f + 0.55) / (n + 0.15);
-        if (Math.abs(ox) > 2) { const xx = ox > 0 ? x0 + w + ox * t : x0 + ox * t; for (let s = 1.5 * z; s < d - z; s += 3 * z) ctx.fillRect(xx - ww / 2, y0 + oy * t + s, ww, 1.2 * z); }
-        if (Math.abs(oy) > 2) { const yy = oy > 0 ? y0 + d + oy * t : y0 + oy * t; for (let s = 1.5 * z; s < w - z; s += 3 * z) ctx.fillRect(x0 + ox * t + s, yy - ww / 2, 1.2 * z, ww); }
+        if (Math.abs(ox) > 2) { const xx = ox > 0 ? x0 + ox * t : x0 + w + ox * t; for (let s = 1.5 * z; s < d - z; s += 3 * z) ctx.fillRect(xx - ww / 2, y0 + oy * t + s, ww, 1.2 * z); }
+        if (Math.abs(oy) > 2) { const yy = oy > 0 ? y0 + oy * t : y0 + d + oy * t; for (let s = 1.5 * z; s < w - z; s += 3 * z) ctx.fillRect(x0 + ox * t + s, yy - ww / 2, 1.2 * z, ww); }
       }
     }
   }
@@ -552,9 +556,10 @@ function drawParked(ctx, b, x, y, w, h, z) {
 // Silos, water towers, the lighthouse: a cylinder leaning away like the walls do.
 function drawRound(ctx, b, x0, y0, ox, oy, w, d, z, night) {
   const r = w / 2, cx = x0 + r, cy = y0 + d / 2;
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.beginPath(); ctx.arc(cx + b.h * 0.1 * z, cy + b.h * 0.12 * z, r, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = shadeHex(b.color, -0.35); ctx.lineWidth = w; ctx.lineCap = 'round';
+  const sx = sun.dx * b.h * z, sy = sun.dz * b.h * z;
+  ctx.strokeStyle = shadowFill(1); ctx.lineWidth = w; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + sx, cy + sy); ctx.stroke();
+  ctx.strokeStyle = shadeHex(b.color, -0.35);
   ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + ox, cy + oy); ctx.stroke();
   ctx.lineCap = 'butt';
   ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r, 0, Math.PI * 2); ctx.fill();
@@ -708,27 +713,38 @@ function drawGantry(ctx, b, x0, y0, ox, oy, w, d, z) {
   else { ctx.fillRect(x0 - ps / 2, y0 - ps / 2 + d / 2, ps, ps); ctx.fillRect(x0 + w - ps / 2, y0 - ps / 2 + d / 2, ps, ps); }
 }
 
+// Trees stand up: a trunk, a shadow along the sun, and a canopy that leans
+// away from the screen centre like the buildings, lit on its sunny side.
 export function drawTrees(ctx, cam, items) {
   const z = cam.zoom;
   for (const it of items) {
     if (it.type !== 't') continue;
     const t = it.o;
-    const x = cam.sx(t.x), y = cam.sy(t.z), r = t.r * z;
+    const bx = cam.sx(t.x), by = cam.sy(t.z), r = t.r * z;
+    const ht = t.kind === 'pine' ? t.r * 2.6 : t.kind === 'palm' ? 9 : t.kind === 'cactus' ? t.r * 1.4 : t.r * 1.9;   // metres
+    const x = bx + (bx - cam.w / 2) * ht * LEAN, y = by + (by - cam.h / 2) * ht * LEAN;
+    const shx = sun.dx * ht * z, shy = sun.dz * ht * z;
     if (t.kind === 'cactus') {
+      ctx.fillStyle = shadowFill(0.8); ctx.fillRect(bx + shx * 0.5 - r * 0.3, by + shy * 0.5 - r * 0.3, r * 0.6, r * 0.6);
       ctx.fillStyle = '#3f6b35'; ctx.fillRect(x - r * 0.3, y - r, r * 0.6, r * 2); ctx.fillRect(x - r, y - r * 0.2, r * 2, r * 0.45);
       continue;
     }
     if (t.kind === 'palm') {
+      ctx.strokeStyle = shadowFill(1); ctx.lineWidth = Math.max(1, 0.35 * z);
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + shx, by + shy); ctx.stroke();
+      ctx.fillStyle = shadowFill(0.7); ctx.beginPath(); ctx.arc(bx + shx, by + shy, r * 0.8, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#6b5236'; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(x, y); ctx.stroke();
       ctx.strokeStyle = '#2f6b2f'; ctx.lineWidth = Math.max(1, 0.5 * z);
       for (let a = 0; a < 6; a++) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); ctx.stroke(); }
       continue;
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.arc(x + r * 0.35, y + r * 0.35, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = shadowFill(1);
+    ctx.beginPath(); ctx.arc(bx + shx * 0.7, by + shy * 0.7, r, 0, Math.PI * 2); ctx.fill();
+    if (Math.abs(x - bx) + Math.abs(y - by) > 1.5) { ctx.strokeStyle = '#4a3826'; ctx.lineWidth = Math.max(1, r * 0.22); ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(x, y); ctx.stroke(); }
     ctx.fillStyle = t.kind === 'pine' ? '#1f3a24' : '#2f5a2a';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = t.kind === 'pine' ? '#284a2c' : '#3c6e34';
-    ctx.beginPath(); ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.55, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + sun.lx * r * 0.3, y + sun.lz * r * 0.3, r * 0.55, 0, Math.PI * 2); ctx.fill();
   }
 }
 
@@ -855,6 +871,43 @@ export function drawSpray(ctx, cam, parts, dt) {
     ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), (0.35 + k * 1.3) * cam.zoom, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
+}
+
+// A wall's colour: darker than the roof, lighter the more it faces the sun.
+// Cached, since every building on screen asks for four of these each frame.
+const wallCache = new Map();
+function wallShade(hex, nx, ny) {
+  const lit = Math.max(0, nx * sun.lx + ny * sun.lz) * Math.min(1, sun.a / 0.25);
+  const i = Math.round(lit * 6);
+  let row = wallCache.get(hex);
+  if (!row) wallCache.set(hex, row = []);
+  return row[i] || (row[i] = shadeHex(hex, -0.45 + 0.05 * i));
+}
+
+// Street light poles along the roads: a shadow on the ground, the pole
+// leaning up toward the camera like everything tall, and a lamp head.
+export function drawPoles(ctx, cam, lights) {
+  const z = cam.zoom;
+  if (z < 1.1 || !lights) return;
+  const v = cam.view(10), H = 8, pts = [];
+  for (const l of lightsIn(lights, v)) {
+    if (l.color || l.x < v.x0 || l.x > v.x1 || l.z < v.z0 || l.z > v.z1) continue;
+    const bx = cam.sx(l.x), by = cam.sy(l.z);
+    pts.push(bx, by, bx + (bx - cam.w / 2) * H * LEAN, by + (by - cam.h / 2) * H * LEAN);
+  }
+  if (!pts.length) return;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = shadowFill(1); ctx.lineWidth = Math.max(1, 0.22 * z); ctx.beginPath();
+  for (let i = 0; i < pts.length; i += 4) { ctx.moveTo(pts[i], pts[i + 1]); ctx.lineTo(pts[i] + sun.dx * H * z, pts[i + 1] + sun.dz * H * z); }
+  ctx.stroke();
+  ctx.strokeStyle = '#6f737b'; ctx.lineWidth = Math.max(1, 0.25 * z); ctx.beginPath();
+  for (let i = 0; i < pts.length; i += 4) { ctx.moveTo(pts[i], pts[i + 1]); ctx.lineTo(pts[i + 2], pts[i + 3]); }
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.fillStyle = '#c9ccd2'; ctx.beginPath();
+  const hr = Math.max(1.2, 0.4 * z);
+  for (let i = 0; i < pts.length; i += 4) { ctx.moveTo(pts[i + 2] + hr, pts[i + 3]); ctx.arc(pts[i + 2], pts[i + 3], hr, 0, Math.PI * 2); }
+  ctx.fill();
 }
 
 export function shadeHex(hex, amt) {

@@ -4,7 +4,8 @@
 import { buildMap, collideCircle, onBackroad } from './map.js';
 import { luxPerks } from '../core/luxury.js';
 import { Boats } from './boats.js';
-import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState } from './render.js';
+import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState, drawPoles } from './render.js';
+import { sun, setSun, shadowFill } from '../gfx2d/sun.js';
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
 import { missionTick } from '../core/missions.js';
@@ -1135,6 +1136,7 @@ export class World {
     cam.w = rotated ? D : W; cam.h = rotated ? D : H;
     let shakeX = 0, shakeY = 0;
     if (cam.shake > 0) { shakeX = (Math.random() - 0.5) * cam.shake * 14; shakeY = (Math.random() - 0.5) * cam.shake * 14; cam.shake = Math.max(0, cam.shake - dt * 2.5); }
+    setSun(hourOf(s.time), s.weather);
     ctx.save();
     ctx.translate(shakeX, shakeY);
     if (rotated) { ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.translate(-D / 2, -D / 2); }
@@ -1246,6 +1248,7 @@ export class World {
 
     drawBuildings(ctx, cam, items, night);
     drawTrees(ctx, cam, items);
+    drawPoles(ctx, cam, this.map.lights);
     this.combat.drawOverlay(ctx, cam);
     drawTunnel(ctx, cam);
 
@@ -1388,9 +1391,9 @@ export class World {
   drawShadow(ctx, x, z, h, dims) {
     const cam = this.cam;
     ctx.save();
-    ctx.translate(cam.sx(x) + 0.3 * cam.zoom, cam.sy(z) + 0.4 * cam.zoom);
+    ctx.translate(cam.sx(x) + sun.dx * 2 * cam.zoom, cam.sy(z) + sun.dz * 2 * cam.zoom);   // a car is ~1.5 m tall, plus a little so it reads
     ctx.rotate(h);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillStyle = shadowFill(1.35);
     ctx.fillRect(-dims.W / 2 * cam.zoom, -dims.L / 2 * cam.zoom, dims.W * cam.zoom, dims.L * cam.zoom);
     ctx.restore();
   }
