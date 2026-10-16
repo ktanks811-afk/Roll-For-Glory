@@ -283,6 +283,7 @@ export function openSettings(app) {
         <label class="field"><span>Master volume — ${Math.round(settings.volume * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.volume}" data-range="volume" class="input"></label>
         <label class="field"><span>Music volume — ${Math.round(settings.music * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.music}" data-range="music" class="input"></label>
         <label class="field"><span>World sounds (rain, city, traffic) — ${Math.round(settings.ambience * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.ambience}" data-range="ambience" class="input"></label>
+        <label class="field"><span>World view</span>${opt('view3d', [['flat', 'Overhead'], ['tilt', 'Tilted 3D']])}</label>
         <label class="field"><span>Camera view (driving) — V</span>${opt('camMode', [['top', 'Top-down'], ['chase', 'Third person']])}</label>
         <label class="field"><span>Camera shake</span>${opt('shake', [[true, 'On'], [false, 'Off']])}</label>
         <label class="field"><span>Racers pulling up on you to race</span>${opt('pullups', [[true, 'On'], [false, 'Off']])}</label>
