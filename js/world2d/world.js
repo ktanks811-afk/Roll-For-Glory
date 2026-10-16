@@ -4,11 +4,13 @@
 import { buildMap, collideCircle, onBackroad } from './map.js';
 import { luxPerks } from '../core/luxury.js';
 import { Boats } from './boats.js';
-import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState, drawPoles } from './render.js';
+import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState, drawPoles, shadeHex } from './render.js';
 import { sun, setSun, shadowFill } from '../gfx2d/sun.js';
 
 const TILT_C = 0.78;   // tilted view: how much the ground is squashed top to bottom (cos of the view angle)
 const TILT_H = 0.55;   // tilted view: screen px per metre of height, per px per metre of ground
+const CHASE_C = 0.6;   // third-person driving: a lower camera behind the car, looking down the road
+const CHASE_H = 0.8;
 import { Vehicle } from './vehicle.js';
 import { TrafficSystem } from './traffic.js';
 import { missionTick } from '../core/missions.js';
@@ -279,7 +281,7 @@ export class World {
     // a traffic stop pulls the camera in so you can watch the officer walk up
     const stop = this.police.phase === 'stop' ? this.police.stop : null;
     // a big boat pulls the camera back so you can see all of it
-    const targetZoom = stop ? base * 1.35 : boat ? base / (1 + spd / 40) / Math.max(1, (boat.def.L / 12) ** 0.7) : car ? base / (1 + spd / 48) : base * 1.2;
+    const targetZoom = stop ? base * 1.35 : boat ? base / (1 + spd / 40) / Math.max(1, (boat.def.L / 12) ** 0.7) : car ? base * (1 + 0.25 * (this.chaseT || 0)) / (1 + spd / 48) : base * 1.2;   // third person sits a little closer
     this.cam.zoom += (targetZoom - this.cam.zoom) * Math.min(1, dt * 2);
     // Keep the car near the middle of the screen at any speed: only a whisker
     // of look-ahead, and a follow fast enough that the lag cancels it out.
@@ -289,10 +291,11 @@ export class World {
     const cam = this.cam, chase = settings.camMode === 'chase' && !!car;
     let dRot = (chase ? -car.h : 0) - cam.rot; dRot = Math.atan2(Math.sin(dRot), Math.cos(dRot));
     cam.rot += dRot * Math.min(1, dt * (chase ? 7 : 5));
+    this.chaseT = (this.chaseT || 0) + ((chase ? 1 : 0) - (this.chaseT || 0)) * Math.min(1, dt * 3);
     // In a race the car stays dead centre so you can see rivals beside and behind you.
     const pushAhead = chase && !this.races.active;
     this.camLead = (this.camLead || 0) + ((pushAhead ? 1 : 0) - (this.camLead || 0)) * Math.min(1, dt * 4);
-    const lead = this.camLead * (cam.vh || 600) * 0.2 / cam.zoom;   // cruising: car sits in the lower part of the screen
+    const lead = this.camLead * (cam.vh || 600) * 0.13 / cam.zoom / (cam.tc || 1);   // cruising: car sits in the lower part of the screen
     const mid = stop?.unit && Math.hypot(stop.unit.x - focus.x, stop.unit.z - focus.z) < 20 ? stop.unit : null;
     const tx = (mid ? (focus.x + mid.x) / 2 : focus.x + vx * 0.1) - Math.sin(cam.rot) * lead, tz = (mid ? (focus.z + mid.z) / 2 : focus.z + vz * 0.1) - Math.cos(cam.rot) * lead;
     const follow = car ? 1 - Math.exp(-dt * 12) : Math.min(1, dt * 5);
@@ -1136,12 +1139,14 @@ export class World {
     // about the screen centre never shows an empty corner.
     // Tilted view (Settings): the ground is squashed by TILT_C so you look at
     // it at an angle, and tall things stand straight up the screen.
-    const tilt = settings.view3d === 'tilt', tc = tilt ? TILT_C : 1;
+    // Third person (chase) eases into an even lower angle behind the car.
+    const ch = this.chaseT || 0, tc0 = settings.view3d === 'tilt' ? TILT_C : 1;
+    const tc = tc0 + (CHASE_C - tc0) * ch, tilt = tc < 0.995, th = TILT_H + (CHASE_H - TILT_H) * ch;
     const rotated = Math.abs(cam.rot) > 0.002, xf = rotated || tilt, D = rotated ? Math.ceil(Math.hypot(W, H / tc)) : 0;
     cam.vw = W; cam.vh = H;
     cam.w = rotated ? D : W; cam.h = rotated ? D : H / tc;
     cam.tilt = tilt; cam.tc = tc;
-    cam.tx = -Math.sin(cam.rot) * cam.zoom * TILT_H / tc; cam.ty = -Math.cos(cam.rot) * cam.zoom * TILT_H / tc;
+    cam.tx = -Math.sin(cam.rot) * cam.zoom * th / tc; cam.ty = -Math.cos(cam.rot) * cam.zoom * th / tc;
     let shakeX = 0, shakeY = 0;
     if (cam.shake > 0) { shakeX = (Math.random() - 0.5) * cam.shake * 14; shakeY = (Math.random() - 0.5) * cam.shake * 14; cam.shake = Math.max(0, cam.shake - dt * 2.5); }
     setSun(hourOf(s.time), s.weather);
@@ -1151,7 +1156,7 @@ export class World {
     drawGround(ctx, cam);
     drawWater(ctx, cam, this.map, this.t, { night: this.darkness(), low: settings.quality === 'low' });
     this.boats.drawUnder(ctx, cam);   // docks, wakes and the boats on the water
-    const v = cam.view(60), vb = tilt ? cam.view(170) : v;   // tilted: towers below the screen still reach up into it
+    const v = cam.view(60), vb = tilt ? cam.view(110) : v;   // tilted: towers below the screen still reach up into it
     const items = this.map.drawGrid.query(vb.x0, vb.z0, vb.x1, vb.z1);
     drawLots(ctx, cam, items);
     drawRoads(ctx, cam, this.map, this.signalT);
@@ -1182,7 +1187,7 @@ export class World {
     for (const c of cars) {
       if (c.x < v.x0 || c.x > v.x1 || c.z < v.z0 || c.z > v.z1) continue;
       this.drawShadow(ctx, c.x, c.z, c.h, c.dims);
-      drawCar(ctx, c.sprite, cam.sx(c.x), cam.sy(c.z), c.h, cam.zoom);
+      this.upright(ctx, c.x, c.z, () => drawCar(ctx, c.sprite, cam.sx(c.x), cam.sy(c.z), c.h, cam.zoom));
     }
     // the trailer behind your truck (or parked out with it), under the cars
     this.trailers.draw(ctx, cam);
@@ -1190,7 +1195,8 @@ export class World {
     if (this.vehicle) {
       const pv = this.vehicle;
       this.drawShadow(ctx, pv.x, pv.z, pv.h, pv.dims);
-      drawCarPitched(ctx, this.carSpriteImg, cam.sx(pv.x), cam.sy(pv.z), pv.h, cam.zoom, pv.sim.pitch, pv.dims.L, !!pv.spec.barH);
+      if (cam.tilt && (this.chaseT || 0) > 0.3) this.drawRearFace(ctx, pv);
+      this.upright(ctx, pv.x, pv.z, () => drawCarPitched(ctx, this.carSpriteImg, cam.sx(pv.x), cam.sy(pv.z), pv.h, cam.zoom, pv.sim.pitch, pv.dims.L, !!pv.spec.barH));
       if (pv.sim.nosOn && this.inCar) {
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
         const bx = pv.x - Math.sin(pv.h) * (pv.dims.L / 2 + 0.6), bz = pv.z + Math.cos(pv.h) * (pv.dims.L / 2 + 0.6);
@@ -1393,6 +1399,35 @@ export class World {
     ctx.strokeStyle = `rgba(255,42,58,${(1 - pulse) * 0.9})`; ctx.lineWidth = Math.max(3, 0.5 * z);
     ctx.beginPath(); ctx.arc(gx, gy, (3 + pulse * 6) * z, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = 'rgba(255,42,58,0.35)'; ctx.beginPath(); ctx.arc(gx, gy, 3 * z, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // In a tilted view, undo part of the ground squash around (x, z) so a car
+  // drawn from above doesn't look flattened.
+  upright(ctx, x, z, draw) {
+    const cam = this.cam;
+    if (!cam.tilt) { draw(); return; }
+    const sx = cam.sx(x), sy = cam.sy(z);
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate(-cam.rot); ctx.scale(1, cam.tc ** -0.6); ctx.rotate(cam.rot); ctx.translate(-sx, -sy);
+    draw();
+    ctx.restore();
+  }
+
+  // Third person: the back of your car, bumper and tail lights, so it reads
+  // as a car you're sitting behind rather than one seen from straight above.
+  drawRearFace(ctx, pv) {
+    const cam = this.cam, z = cam.zoom, W = pv.dims.W, L = pv.dims.L;
+    const bx = pv.x - Math.sin(pv.h) * L / 2, bz = pv.z + Math.cos(pv.h) * L / 2;
+    const face = Math.abs(Math.cos(pv.h + cam.rot));   // how squarely the back faces the camera
+    if (face < 0.3) return;
+    const hgt = 1.1 * z * CHASE_H * face, w = W * z * 0.96, up = L / 2 * z * (cam.tc ** -0.6 - 1) * Math.cos(pv.h + cam.rot);
+    ctx.save(); ctx.translate(cam.sx(bx), cam.sy(bz)); ctx.rotate(-cam.rot); ctx.scale(1, 1 / cam.tc); ctx.translate(0, up * cam.tc);
+    const paint = pv.car.visual.paint || '#333';
+    ctx.fillStyle = /^#[0-9a-f]{3,6}$/i.test(paint) ? shadeHex(paint, -0.3) : "#2a2a2e";
+    ctx.fillRect(-w / 2, -1, w, hgt);
+    ctx.fillStyle = '#111'; ctx.fillRect(-w * 0.42, hgt * 0.55, w * 0.84, hgt * 0.3);   // bumper
+    ctx.fillStyle = pv.braking ? '#ff2a2a' : '#a8141c';                                // tail lights
+    ctx.fillRect(-w / 2, hgt * 0.12, w * 0.2, hgt * 0.28); ctx.fillRect(w / 2 - w * 0.2, hgt * 0.12, w * 0.2, hgt * 0.28);
     ctx.restore();
   }
 
