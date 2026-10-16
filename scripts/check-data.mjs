@@ -2417,6 +2417,97 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const drop = (() => { for (let v = 0; v < 1; v += 0.01) { const t = createState({ name: 'x' }); game.s = t; const r = MALL.walkMall(t, MALLS[0], seq(v)); if (r.kind === 'drop') return t; } })();
   if (!drop || !(drop.cash > 0)) bad('flipping kicks from a drop line should pay');
   for (let k = 0; k < 40; k++) { const r = MALL.walkMall(s, MALLS[k % MALLS.length]); if (!r.text) bad('a mall walk with nothing to say'); }
+}
+// ---- banks on every map, heists, prison breaks (data/banks.js, core/heist.js, core/breakout.js) ----
+{
+  const HE = await import('../js/core/heist.js');
+  const BR = await import('../js/core/breakout.js');
+  const PR = await import('../js/core/prison.js');
+  const { BANK_TIERS } = await import('../js/data/banks.js');
+  const { STATES } = await import('../js/data/states.js');
+  const { townAt } = await import('../js/data/metro.js');
+  const { buildMap } = await import('../js/world2d/map.js');
+  const banks = LOCATIONS.filter(l => l.type === 'bank');
+  if (banks.length < 40) bad('banks on every map: only ' + banks.length);
+  for (const st of Object.keys(STATES)) if (!banks.some(b => b.state === st)) bad(`no bank in ${STATES[st].city}`);
+  for (const c of ['dallas', 'denton', 'weatherford', 'west']) if (!banks.some(b => b.city === c)) bad(`no bank in ${c}`);
+  if (banks.filter(b => !b.city).length < 5) bad('Fort Worth should have a handful of banks');
+  for (const b of banks) if (!BANK_TIERS[b.bank]) bad(`${b.id}: unknown bank tier ${b.bank}`);
+  { const seen = new Set(); for (const l of LOCATIONS) if (l.block) { const k = `${l.city || 'fw'}:${l.block}`; if (seen.has(k) && banks.includes(l)) bad(`${l.id} shares a block`); seen.add(k); } }
+  // the bank building doesn't sit on top of anything else
+  const map = buildMap();
+  for (const l of banks) for (const b of map.buildings.filter(x => x.loc === l.id)) for (const o of map.buildings) {
+    if (o.loc === l.id || o.noCollide) continue;
+    if (o.x < b.x + b.w && o.x + o.w > b.x && o.z < b.z + b.d && o.z + o.d > b.z) { bad(`${l.id} overlaps a ${o.kind}`); break; }
+  }
+  // casing: once a day, up to 3
+  const s = createState({ name: 'Robber', age: 25, look: {}, story: false }); s.cash = 500000; s.bank = 0; s.time.day = 3; s.time.min = 11 * 60;
+  game.s = s;
+  const bank = banks.find(b => b.id === 'bank_cowtown');
+  if (!HE.caseBank(s, bank).ok || HE.caseBank(s, bank).ok) bad('casing a bank is once a day');
+  s.time.day++; HE.caseBank(s, bank); s.time.day++; HE.caseBank(s, bank); s.time.day++;
+  if (HE.planFor(s, bank.id).intel !== 3 || HE.caseBank(s, bank).ok) bad('intel caps at 3');
+  if (HE.intelLines(bank, 3).length !== 3) bad('three lines of intel');
+  // the plan: an approach, crew, gear
+  if (!HE.missing(s, bank).includes('Pick an approach')) bad('a plan needs an approach');
+  HE.setApproach(s, bank.id, 'loud');
+  if (!HE.missing(s, bank).some(m => /muscle/.test(m)) || !HE.missing(s, bank).some(m => /duffel/.test(m))) bad('loud needs muscle and bags: ' + HE.missing(s, bank));
+  HE.hire(s, bank.id, 'juice'); HE.hire(s, bank.id, 'ghost'); HE.hire(s, bank.id, 'oracle');
+  for (const g of ['bags', 'masks', 'drill', 'scanner']) if (!HE.buyGear(s, bank.id, g).ok) bad('could not buy ' + g);
+  if (HE.buyGear(s, bank.id, 'bags').ok) bad('bought bags twice');
+  if (HE.missing(s, bank).length) bad('should be ready: ' + HE.missing(s, bank));
+  const cash0 = s.cash, rng0 = () => 0.5;
+  const job = HE.startJob(s, bank, rng0);
+  for (let i = 0; i < 6 && !job.over; i++) HE.step(s, job, HE.choices(job)[0].id, rng0);
+  if (!job.over || !(job.vault >= BANK_TIERS.hq.vault[0]) || !(job.drawers > 0)) bad('loud job should end with the vault: ' + JSON.stringify({ over: job.over, vault: job.vault, drawers: job.drawers }));
+  const res = HE.settle(s, job);
+  if (res.net !== res.gross - res.cuts || Math.abs(res.cuts - Math.round(res.gross * 0.45)) > 1) bad('crew cuts: ' + JSON.stringify(res));
+  if (s.cash !== cash0 + res.net || !(s.dirty >= res.net)) bad('the take is dirty cash');
+  if (!res.heat || res.record.kind !== 'bank_robbery' || !(res.record.conceal > 0)) bad('a loud job with the drill means a chase, masked: ' + JSON.stringify(res));
+  if (!HE.lockedDown(s, bank.id) || HE.planFor(s, bank.id).intel !== 0) bad('a hit bank locks down and the plan is used up');
+  if (!(s.feds.heat > 0)) bad('the FBI should be on it');
+  if (classify({ kind: 'bank_robbery' }).cls !== 'F1') bad('bank robbery is a first-degree felony');
+  // quiet: only between midnight and 4
+  const b2 = banks.find(b => b.id === 'bank_poly');
+  s.time.day++; HE.caseBank(s, b2); HE.setApproach(s, b2.id, 'quiet'); HE.hire(s, b2.id, 'pixel'); HE.buyGear(s, b2.id, 'bags'); HE.buyGear(s, b2.id, 'thermite');
+  if (!HE.missing(s, b2).some(m => /midnight/.test(m))) bad('the quiet job waits for night');
+  s.time.min = 2 * 60;
+  if (HE.missing(s, b2).length) bad('quiet job should be ready at 2 AM: ' + HE.missing(s, b2));
+  const q = HE.startJob(s, b2, () => 0.99);
+  while (!q.over) HE.step(s, q, HE.choices(q)[0].id, () => 0.99);
+  if (q.alarm || HE.getawayHeat(q) !== 0) bad('a clean quiet job is no chase');
+  // the inside man can flip
+  const b3 = banks.find(b => b.id === 'bank_magnolia');
+  HE.caseBank(s, b3); HE.setApproach(s, b3.id, 'inside'); HE.buyGear(s, b3.id, 'bags'); HE.buyGear(s, b3.id, 'uniforms');
+  if (!HE.payInside(s, b3).ok || HE.missing(s, b3).length) bad('inside job ready after the bribe');
+  const ij = HE.startJob(s, b3, () => 0.99); while (!ij.over) HE.step(s, ij, HE.choices(ij)[0].id, () => 0.99); HE.settle(s, ij);
+  s.warrants = []; HE.heistDay(s, () => 0);
+  if (!s.warrants.some(w => w.kind === 'bank_robbery' && w.felony)) bad('a flipped manager should mean a federal warrant');
+
+  // prison breaks
+  const sp = createState({ name: 'Runner', age: 25, look: {}, story: false }); sp.cash = 0; sp.bank = 100000; sp.time.day = 4; sp.time.min = 22 * 60;
+  game.s = sp;
+  const pp = PR.enterPrison(sp, { kind: 'jail', facility: 'prison', days: 36500, served: 36500 }, { crime: 'Aggravated robbery.' });
+  pp.books = 2000;
+  if (BR.missing(sp)[0] !== 'Pick a plan') bad('a break needs a plan');
+  BR.choosePlan(sp, 'tunnel');
+  if (BR.buyItem(sp, 'spoon', () => 0.99).caught || !pp.escape.items.includes('spoon')) bad('bought the spoon');
+  let n = 0;
+  while (pp.escape.dig < 100 && n++ < 20) { BR.dig(sp, () => 0.99); if (BR.dig(sp, () => 0.99).ok) bad('dug twice in one day'); PR.sleepYear(sp, () => 0.99); }
+  if (pp.escape.dig < 100 || BR.missing(sp).length) bad('tunnel should finish: ' + pp.escape.dig);
+  const y0 = pp.years, fail = BR.attempt(sp, () => 0.99);
+  if (fail.ok || pp.years !== y0 + BR.ESCAPE_YEARS || pp.escape.dig !== 0) bad('a caught attempt adds years and blows the plan ' + JSON.stringify(fail));
+  // the outside crew: pay from the bank, a phone
+  BR.choosePlan(sp, 'crew'); BR.buyItem(sp, 'phone', () => 0.99);
+  if (!BR.payCrew(sp).ok || sp.bank !== 100000 - BR.CREW_PAY) bad('the crew is paid from the bank');
+  const win = BR.attempt(sp, () => 0);
+  if (!win.ok) bad('crew break should work on a good roll');
+  const left = pp.years - pp.served;
+  BR.escape(sp, win.plan);
+  if (sp.prison || !BR.isFugitive(sp) || !sp.warrants.some(w => w.kind === 'escape' && w.felony)) bad('escaped: a fugitive with a felony warrant');
+  const rc = BR.recapture(sp, 1);
+  if (!sp.prison || sp.fugitive || rc.added !== BR.ESCAPE_YEARS + 2 || sp.prison.years - sp.prison.served !== left + rc.added) bad('recaptured: back with the time stacked ' + JSON.stringify(rc));
+  if (classify({ kind: 'escape' }).cls !== 'F3') bad('escape is a third-degree felony');
   game.s = null;
 }
 // ---- character looks: Black and white hairstyles, origins give a head start ----

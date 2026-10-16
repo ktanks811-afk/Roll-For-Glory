@@ -33,7 +33,8 @@ import { citationsDue, addWarrant } from './core/warrants.js';
 import { courtTick, openCase, probationDay, courtName, fmtCourt } from './core/justice.js';
 import { book } from './ui/court.js';
 import { wakeAtHospital } from './ui/hospital.js';
-import { servePrison } from './ui/prison.js';
+import { servePrison, backToPrison } from './ui/prison.js';
+import { heistDay } from './core/heist.js';
 import { heal, healthDay, INJURIES, HOSPITAL } from './core/health.js';
 import { $, toast, modal, panelOpen, setPanelListener, closePanel, topPanel, modalOpen, setToastRouter } from './ui/dom.js';
 import { Hud } from './ui/hud.js';
@@ -95,6 +96,7 @@ export const ui = {
   onHour() { hourly(); },
   book: c => book(app, c),
   hospital: o => wakeAtHospital(app, o),
+  backToPrison: info => backToPrison(app, info),
 };
 
 // ---------------- mode switching ----------------
@@ -212,6 +214,8 @@ function newDay() {
   for (const r of dr.raids) raidWhileAway(s, r);
   // your businesses wash what you dropped off; the feds cool off or close in
   for (const n of fedsDay(s)) toast(n, 'info');
+  // an inside man on a bank job might flip once the FBI leans on him (core/heist.js)
+  for (const n of heistDay(s)) sendMessage(s, n.from, n.text);
   // the chop shop cools off, or the task force sweeps it while you're not there
   const ch = chopDay(s);
   if (ch?.swept) {

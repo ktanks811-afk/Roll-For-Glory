@@ -80,6 +80,7 @@ const HANDLERS = {
   trailers: (loc, app) => openTrailerLot(loc, app),
   salebarn: (loc, app) => openSaleBarn(loc, app),
   airport: (loc, app) => openAirport(loc, app),
+  bank: (loc, app) => import('./heist.js').then(m => m.openBank(loc, app)),
   dispensary: (loc, app) => import('./weed.js').then(m => m.openDispensary(loc, app)),
   growfarm: (loc, app) => import('./weed.js').then(m => m.openGrowFarm(loc, app)),
   marina: (loc, app) => import('./marina.js').then(m => m.openMarina(loc, app)),

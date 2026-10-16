@@ -237,6 +237,9 @@ const ROWS = [
   ['littering', 'C', 'Littering.', ['arrest'], 0.03, { fine: 200 }],
 
   // ---------------- inside TDCJ ----------------
+  ['bank_robbery', 'F1', 'Aggravated robbery of a bank (federal: 18 U.S.C. § 2113).', [], 0, { tg: true }],
+  ['conspiracy_robbery', 'F2', 'Criminal conspiracy to commit aggravated robbery.', ['bank_robbery'], 0.35],
+  ['escape_attempt', 'F3', 'Attempted escape from a penal institution.', [], 0, { prison: true }],
   ['inmate_assault', 'F3', 'Assault by an inmate.', [], 0, { prison: true }],
   ['prison_phone', 'F3', 'Possession of a cell phone in a correctional facility.', [], 0, { prison: true }],
   ['prison_contraband', 'F3', 'Prohibited substance in a correctional facility.', [], 0, { prison: true }],

@@ -764,6 +764,30 @@ export class PoliceSystem {
     if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') { this.startChase(w, true); this.unseenT = -8; }
   }
 
+  // A bank job went loud (core/heist.js): the alarm reached dispatch, and the
+  // whole department is on the way. heat: the starting level.
+  dispatchHeist(w, loc, heat, record) {
+    w.hud.radio(`Dispatch: 211 at ${loc.name}. Bank robbery, multiple armed suspects. All units, FBI notified.`);
+    const before = this.level;
+    this.s.heat = clamp(Math.max(this.s.heat, heat), 0, 5.99);
+    this.decayHold = 25;
+    if (this.level > before) w.hud.radio(`Dispatch: Heat level ${this.level}. Bank robbery.`);
+    this.note(record);
+    this.lastSeen = { x: loc.x ?? w.player.x, z: loc.z ?? w.player.z, vx: 0, vz: 0 };
+    if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') { this.startChase(w, true); this.unseenT = -6; }
+  }
+
+  // You walked away from TDCJ (core/breakout.js): every agency has your
+  // picture. A search starts near where you came out.
+  manhunt(w, x, z) {
+    w.hud.radio('Dispatch: escaped TDCJ inmate believed to be in the area. Do not approach. Units searching.');
+    this.s.heat = clamp(Math.max(this.s.heat, 2.2), 0, 5.99);
+    this.decayHold = 25;
+    this.note({ kind: 'escape', text: 'Escape from TDCJ custody.', fine: 25000, conceal: 0 });
+    this.lastSeen = { x, z, vx: 0, vz: 0 };
+    if (this.phase === 'none' || this.phase === 'search' || this.phase === 'cooldown') { this.startChase(w, true); this.unseenT = -15; }
+  }
+
   // A stolen car got called in (world2d/theft.js). An officer who saw it
   // chases now; a 911 call sends units to the spot, so they show up a little
   // later. A carjacking is a felony stop from the start.
