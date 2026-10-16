@@ -2419,5 +2419,19 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (let k = 0; k < 40; k++) { const r = MALL.walkMall(s, MALLS[k % MALLS.length]); if (!r.text) bad('a mall walk with nothing to say'); }
   game.s = null;
 }
+// ---- character looks: Black and white hairstyles, origins give a head start ----
+{
+  const L = await import('../js/data/looks.js');
+  const SH = await import('../js/data/shops.js');
+  if (new Set(L.HAIRSTYLES.map(h => h.id)).size !== L.HAIRSTYLES.length) bad('duplicate hairstyle ids');
+  for (const old of ['short', 'buzz', 'long', 'curly', 'bun']) if (!L.HAIR_BY_ID[old]) bad(`old saves use hairstyle ${old}`);
+  if (L.HAIRSTYLES.filter(h => h.group === 'black').length < 15 || L.HAIRSTYLES.filter(h => h.group === 'white').length < 15) bad('need plenty of Black and white hairstyles');
+  if (!SH.SKIN_TONES.includes(SH.defaultLook().skin)) bad('default skin tone missing from the list');
+  for (const o of L.ORIGINS) {
+    const s = createState({ name: 'O', age: 22, look: SH.defaultLook(), story: false });
+    o.apply(s);
+    if (s.cash < 0 || s.cash > 10000 || s.rep < 0 || s.dirty > s.cash) bad(`origin ${o.id} start: $${s.cash} rep ${s.rep} dirty ${s.dirty}`);
+  }
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

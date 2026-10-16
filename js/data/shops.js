@@ -2,6 +2,7 @@
 // model in gfx/character.js (slot + style + colour).
 
 import { MALL_CLOTHES } from './malls.js';
+import { HAIRSTYLES } from './looks.js';
 
 export const CLOTHES = [
   { id: 'hoodie_black', slot: 'top', style: 'hoodie', color: '#1a1a1a', name: 'Black Hoodie', price: 0 },
@@ -50,11 +51,13 @@ export const FOOD = [
   { id: 'energy', name: 'Volt Energy Drink (to go)', price: 6, food: 0, energy: 0, item: 'energyDrinks', desc: 'Keep one in the car. Drink it from the meters on your screen.' },
 ];
 
-export const SKIN_TONES = ['#f1d1b5', '#e0b590', '#c68e65', '#9c6644', '#6b4429', '#3f2a1a'];
-export const HAIR_COLORS = ['#111111', '#3b2414', '#6b4423', '#b07b3e', '#d9c27a', '#9a9a9a', '#b51818', '#2a6bd1'];
-export const HAIR_STYLES = ['short', 'buzz', 'long', 'curly', 'bun'];
+export const SKIN_TONES = ['#f6dcc6', '#f1d1b5', '#e8c19d', '#e0b590', '#d0a077', '#c68e65', '#b07650', '#9c6644', '#845334', '#6b4429', '#55341f', '#3f2a1a', '#2c1d12'];
+// natural shades first, then dye jobs
+export const HAIR_COLORS = ['#111111', '#2a1a10', '#3b2414', '#6b4423', '#8a5a2b', '#b07b3e', '#c9953f', '#d9c27a', '#ece2b8', '#a33a17', '#c2531d', '#9a9a9a', '#e8e8e8',
+  '#b51818', '#e05aa0', '#7b3fc4', '#2a6bd1', '#1fa3a3', '#2f9a4a'];
+export const HAIR_STYLES = HAIRSTYLES.map(h => h.id);
 
 export function defaultLook() {
-  return { skin: SKIN_TONES[2], hair: HAIR_COLORS[0], hairStyle: 'short', build: 1,
+  return { skin: '#c68e65', hair: HAIR_COLORS[0], hairStyle: 'short', build: 1, eyes: '#2a1a10', brows: 'natural', facialHair: 'none', extras: [],
     top: 'hoodie_black', bottom: 'jeans_blue', hat: 'no_hat', shoes: 'kicks_white', mask: 'no_mask' };
 }
