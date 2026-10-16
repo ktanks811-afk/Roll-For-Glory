@@ -37,6 +37,7 @@ const STORES = {
   gas:      { min: 250, max: 800, dur: [5, 7], alarm: 0.4, fight: 0.1, what: 'register', loot: [1, 2] },
   food:     { min: 180, max: 520, dur: [4, 6], alarm: 0.3, fight: 0.08, what: 'till', loot: [0, 1] },
   clothing: { min: 450, max: 1400, dur: [6, 8], alarm: 0.55, fight: 0.12, what: 'safe', loot: [1, 2] },
+  mall:     { min: 600, max: 1800, dur: [7, 9], alarm: 0.75, fight: 0.14, what: 'jewelry case', loot: [2, 3] },   // the jeweler inside
 };
 const STALL = 0.22;      // chance an unmasked robber gets a clerk who drags their feet
 const REACH = 1.3;       // seconds you have to fire a warning shot once the clerk goes for the shotgun

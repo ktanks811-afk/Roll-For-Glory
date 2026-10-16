@@ -41,6 +41,7 @@ export const STORE_LOOT = {
   gas:      [['cigs', 4], ['scratchers', 4], ['vapes', 3], ['giftcards', 2], ['phones', 1], ['energy', 2]],
   food:     [['tipjar', 4], ['liquor', 2], ['tablet', 1]],
   clothing: [['sneakers', 4], ['chain', 2], ['watch', 1]],
+  mall:     [['chain', 4], ['watch', 3], ['diamond_ring', 2], ['cuban_link', 2], ['rolex', 0.4]],   // the jeweler's glass case
 };
 
 // What you get off a person you mug and out of a car you steal (core/loot.js

@@ -12,6 +12,7 @@ import { LOCATIONS } from '../data/world.js';
 import { ALL_TOWNS, ROUTES, STATE_ROUTES, LAKES, DFW, COUNTRYSIDE, MIAMI_BAY, MIAMI_OCEAN, CAUSEWAYS, townStyle, townMark } from '../data/metro.js';
 import { STATES, cityRect, regionRect } from '../data/states.js';
 import { RectGrid } from './rectGrid.js';
+import { MALL_BY_MARK } from '../data/malls.js';
 
 function mulberry32(a) {
   return () => {
@@ -194,7 +195,7 @@ export function addMetro(out, { landmarkBlock, roads }) {
   }
 
   // A landmark over one or more blocks (the streets inside it are left out).
-  function mark(kind, label, x0, z0, x1, z1, { R, pick, rnd, look }) {
+  function mark(kind, label, x0, z0, x1, z1, { R, pick, rnd, look, t }) {
     const W = x1 - x0, D = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     const sign = (b, color = '#e8c21a') => buildings.push({ ...b, label, labelColor: color });
     const ring = (x, z, w, d, t, kindL) => { lots.push({ x, z, w, d: t, kind: kindL }, { x, z: z + d - t, w, d: t, kind: kindL }, { x, z, w: t, d, kind: kindL }, { x: x + w - t, z, w: t, d, kind: kindL }); };
@@ -212,8 +213,10 @@ export function addMetro(out, { landmarkBlock, roads }) {
         return;
       }
       case 'mall': {
+        // a mall you can walk into (data/malls.js) has its front door on the south side
+        const mall = t && MALL_BY_MARK[`${t.id}:${label}`];
         lots.push({ x: x0, z: z0, w: W, d: D, kind: 'parking' });
-        sign({ x: x0 + W * 0.2, z: z0 + D * 0.25, w: W * 0.6, d: D * 0.5, h: 14, color: '#cfc8bc', kind: 'store' }, '#ffffff');
+        sign({ x: x0 + W * 0.2, z: z0 + D * 0.25, w: W * 0.6, d: D * 0.5, h: 14, color: '#cfc8bc', kind: 'store', ...(mall ? { loc: mall.id, shop: 'mall', side: 'S', accent: mall.color } : {}) }, mall ? mall.color : '#ffffff');
         for (const [ax, az] of [[x0 + W * 0.12, cz - 20], [x1 - W * 0.12 - 30, cz - 20]]) buildings.push({ x: ax, z: az, w: 30, d: 40, h: 16, color: '#b8b0a4', kind: 'store' });
         return;
       }

@@ -82,6 +82,7 @@ const HANDLERS = {
   dispensary: (loc, app) => import('./weed.js').then(m => m.openDispensary(loc, app)),
   growfarm: (loc, app) => import('./weed.js').then(m => m.openGrowFarm(loc, app)),
   marina: (loc, app) => import('./marina.js').then(m => m.openMarina(loc, app)),
+  mall: (loc, app) => import('./mall.js').then(m => m.openMall(loc, app)),
   kennel: (loc, app) => openKennel(app, { shop: true, tab: 'buy' }),
   studio: (loc, app) => openLabel(app, { studio: loc.id }),
   hoghunt: (loc, app) => openHogLease(loc, app),
@@ -173,7 +174,7 @@ export function homeScreen(loc, app, s) {
 
 // shop: the clothing store you walked into (null = your own wardrobe).
 // Threadline sells streetwear; Riverside Army Surplus sells the blackout gear.
-function wardrobe(app, s, shop = null) {
+export function wardrobe(app, s, shop = null) {
   const owns = id => id === 'no_mask' || s.player.outfits.includes(id);
   const surplus = shop?.shop === 'surplus';
   openPanel((root, h) => {
@@ -500,7 +501,7 @@ function gas(loc, app, s) {
 
 // Taco trucks, diners, the BBQ joint (data/food.js) and the original two
 // (Lucky's and the noodle bar, data/shops.js).
-function food(loc, app, s) {
+export function food(loc, app, s) {
   const menu = MENUS[loc.menu] || FOOD;
   const truck = !!loc.truck;
   openPanel((root, h) => {

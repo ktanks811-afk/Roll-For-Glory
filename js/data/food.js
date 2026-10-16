@@ -44,4 +44,12 @@ export const MENUS = {
     { id: 'sandwich', name: 'Chopped beef sandwich', price: 10, food: 50, energy: 5, desc: 'Sauce on the side.' },
     { id: 'tea', name: 'Sweet tea', price: 2.5, food: 0, energy: 15, desc: 'Sweeter than it has any right to be.' },
   ],
+  // the mall food court (data/malls.js)
+  foodcourt: [
+    { id: 'orange_chicken', name: 'Orange chicken and fried rice', price: 11, food: 55, energy: 5, desc: 'They hand you a sample on a toothpick first.' },
+    { id: 'chicken_sando', name: 'Spicy chicken sandwich combo', price: 10, food: 50, energy: 5, desc: 'Waffle fries, a lemonade, extra sauce.' },
+    { id: 'pretzel', name: 'Cinnamon sugar pretzel', price: 6, food: 20, energy: 10, desc: 'Warm, buttery, gone before you find a seat.' },
+    { id: 'pizza_slice', name: 'Two slices of pepperoni', price: 8, food: 40, energy: 0, desc: 'Under the heat lamp since lunch. Still hits.' },
+    { id: 'smoothie', name: 'Mango smoothie', price: 7, food: 10, energy: 25, desc: 'Extra boost. The line is all teenagers.' },
+  ],
 };
