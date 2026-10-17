@@ -34,7 +34,7 @@ import { stateAt, stateById, flightQuote, legalWeedAt } from '../data/states.js'
 import { LEGAL_OZ } from '../data/weed.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
-import { game, activeCar, carSpec, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
+import { game, activeCar, carSpec, modelOf, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
 import { input } from '../core/input.js';
 import { pad, rumble } from '../core/gamepad.js';
 import { esc } from '../ui/dom.js';
@@ -155,7 +155,7 @@ export class World {
   }
 
   placeCar(car, x, z, h) {
-    const model = CAR_BY_ID[car.modelId];
+    const model = modelOf(car);
     this.vehicle = new Vehicle(car, model, carSpec(car), x, z, h);
     this.refreshCarSprite();
   }
@@ -182,6 +182,7 @@ export class World {
       else { const hs = this.homeSpot(home); this.placeCar(car, hs.x, hs.z, hs.h); }
       if (this.inCar) { this.inCar = false; this.foot.x = this.vehicle.x + 3; this.foot.z = this.vehicle.z; }
     } else {
+      this.vehicle.model = modelOf(car);   // an engine swap changes the car itself
       this.vehicle.setSpec(carSpec(car));
       this.refreshCarSprite();
     }

@@ -25,6 +25,7 @@ import { saveGame } from '../core/save.js';
 import { openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
 import { SUBS, DOORS, audioBuild } from '../data/carAudio.js';
+import { openEngineBuild } from './engineBuild.js';
 import { rebuildCost, resetEngineWarnings } from '../sim/engine.js';
 import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
@@ -395,12 +396,14 @@ function perf(loc, app, s) {
         <div class="card click" data-action="counter"><h3>🛒 Parts counter</h3><p class="muted small">Buy in-stock parts, installed today.</p></div>
         <div class="card click" data-action="bay"><h3>🔧 Service bay</h3><p class="muted small">Install parts you ordered, remove parts, tune gearing, dyno.</p></div>
         <div class="card click" data-action="online"><h3>💻 Order online (PartsHub)</h3><p class="muted small">Cheaper, ships to your place tomorrow.</p></div>
+        ${engineBuildCard(s)}
       </div></div>`;
     bind(root, {
       close: () => h.close(),
       counter: () => openPartsHub(app, { store: 'perf' }),
       bay: () => openGarage(app, { mode: 'perf', tab: 'install' }),
       online: () => openPartsHub(app),
+      engbuild: () => openEngineBuild(loc, app),
     });
   });
 }
@@ -460,6 +463,7 @@ function repair(loc, app, s) {
         ${needsOil(car) ? `<div class="li"><div style="width:150px">Oil change</div><div class="grow">${bar(car.oil ?? 100, (car.oil ?? 100) < 20 ? 'red' : (car.oil ?? 100) < 45 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.oil ?? 100)}%</span>
         <button class="btn btn-sm" data-action="oil" ${oilDue ? '' : 'disabled'}>${oilDue ? fmtMoney(oilCost, true) : 'OK'}</button></div>` : ''}</div>
       <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn btn-primary" data-action="all" ${total > 0 ? '' : 'disabled'}>Fix everything · ${fmtMoney(total)}</button></div>
+      <div class="grid" style="margin-top:16px">${engineBuildCard(s)}</div>
       ${carAudioHtml(car, rate)}</div>`;
     const fix = k => { car.cond[k] = 100; if (k === 'engine' && car.engineBlown) { car.engineBlown = false; resetEngineWarnings(car); toast('Engine rebuilt. Fix the build or it\'ll happen again.', 'good'); } };
     bind(root, {
@@ -469,8 +473,15 @@ function repair(loc, app, s) {
       all: () => { if (spend(s, total, 'Full repair')) { Object.keys(costs).forEach(fix); if (needsOil(car)) changeOil(car); clearBreakdown(car); app.world?.refreshCar(); toast('Good as new', 'good'); h.refresh(); } },
       subs: d => installAudio(car, 'subs', d.id, rate, h),
       doors: d => installAudio(car, 'doors', d.id, rate, h),
+      engbuild: () => openEngineBuild(loc, app),
     });
   });
+}
+
+// Engine Build: build a crate motor and swap it into the car you're driving.
+function engineBuildCard(s) {
+  const car = activeCar(s), sw = car?.swap;
+  return `<div class="card click" data-action="engbuild"><h3>🔩 Engine Build &amp; swap</h3><p class="muted small">${sw ? `${esc(sw.label)} swap in, ${Math.round(sw.hp)} hp. Rebuild it or try another motor.` : 'Crate V8s, forged internals, blowers, turbos, nitrous and a tune. Built on the dyno, swapped into the car you\'re in.'}</p></div>`;
 }
 
 // Car audio: trunk subs and door speakers, installed at any mechanic shop.

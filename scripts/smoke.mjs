@@ -214,6 +214,55 @@ await step('car audio: subs and speakers', async () => {
   console.log('     car audio', JSON.stringify(r));
   if (r.rows !== 5 || !r.installed || r.spent <= 0 || r.car?.subs !== '4x12' || r.build !== '4x12/pro' || r.pow < 1 || r.sub < 1 || r.rattle < 0.5 || !r.playing) throw new Error('subs not working: ' + JSON.stringify(r));
 });
+await step('engine build: swap a motor into the car you drive', async () => {
+  // the car you're in becomes a Civic (FWD: turned away), then a Box Chevy: a blown build is refused,
+  // an LS3 + Whipple goes in, then the factory motor goes back. The car is put back as it was after.
+  const r = await p.evaluate(async () => {
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const { closeAllPanels } = await import('./js/ui/dom.js'); const { carSpec, activeCar } = await import('./js/core/state.js');
+    const { CARS } = await import('./js/data/cars.js');
+    const g = window.__rfg.game, app = window.__rfg.app, w = app.world;
+    const wait = ms => new Promise(f => setTimeout(f, ms));
+    const ok = async () => { await wait(50); document.querySelector('#modals .btn-primary')?.click(); await wait(80); };
+    const click = sel => { const n = [...document.querySelectorAll(sel)].pop(); if (!n) throw new Error('missing ' + sel); n.click(); };
+    const shop = () => { openPlace(LOC_BY_ID.second_chance, app); click('[data-action=engbuild]'); };
+    const car = activeCar(g.s), keep = JSON.parse(JSON.stringify({ modelId: car.modelId, parts: car.parts, cond: car.cond, nos: car.nos, oil: car.oil })), bin = g.s.partsBin.length, cash = g.s.cash;
+    const as = id => { car.modelId = id; w.refreshCar(); };
+    try {
+      g.s.cash += 60000; delete g.s.engineDraft;
+      as(CARS.find(m => m.model === 'Civic' && m.drive === 'FWD').id);
+      shop();
+      const fwdRefused = [...document.querySelectorAll('[data-action=install]')].pop().disabled && /rear-wheel/.test([...document.querySelectorAll('.p-body')].pop().innerText);
+      closeAllPanels();
+      as(CARS.find(m => m.model === 'Caprice').id);
+      const hp0 = carSpec(car).hp;
+      shop();
+      const canvas = !!document.querySelector('canvas[data-dyno]');
+      click('[data-action=eng][data-k=ls3]');
+      click('[data-action=tab][data-id=inside]'); click('[data-action=in-piston][data-k=wiseco]'); click('[data-action=in-rod][data-k=eagle]'); click('[data-action=in-crank][data-k=scat]');
+      click('[data-action=tab][data-id=boost]'); click('[data-action=pow][data-k=f1x]');
+      click('[data-action=tab][data-id=tune]'); click('[data-action=lvl][data-k="3"]');
+      const blownRefused = [...document.querySelectorAll('[data-action=install]')].pop().disabled;
+      click('[data-action=tab][data-id=boost]'); click('[data-action=pow][data-k=whipple30]');
+      click('[data-action=tab][data-id=swap]');
+      const canInstall = ![...document.querySelectorAll('[data-action=install]')].pop().disabled;
+      const cash0 = g.s.cash;
+      click('[data-action=install]'); await ok();
+      const swap = car.swap && { label: car.swap.label, hp: car.swap.hp, asp: car.swap.asp };
+      const hp1 = carSpec(car).hp, worldModel = w.vehicle?.model?.swap?.label, spent = cash0 - g.s.cash;
+      const sw = !!document.querySelector('[data-action=unswap]');
+      if (sw) { click('[data-action=unswap]'); await ok(); }
+      const back = !car.swap && carSpec(car).hp < hp0 + 100 && !w.vehicle?.model?.swap;   // the shop also freshens the engine, so not exactly hp0
+      return { fwdRefused, canvas, blownRefused, canInstall, swap, hp0, hp1, worldModel, spent, sw, back };
+    } finally {
+      closeAllPanels();
+      car.swap = null; Object.assign(car, keep); g.s.partsBin.length = bin; g.s.cash = cash; delete g.s.engineDraft;
+      w.refreshCar();
+    }
+  });
+  console.log('     engine build', JSON.stringify(r));
+  if (!r.fwdRefused || !r.canvas || !r.blownRefused || !r.canInstall || !r.swap || r.swap.asp !== 'sc' || r.hp1 < r.hp0 + 300 || r.worldModel !== 'LS3 6.2' || r.spent < 15000 || !r.sw || !r.back) throw new Error('engine swap not working: ' + JSON.stringify(r));
+});
 await step('walking vs driving controls', async () => {
   const ctxNow = () => p.evaluate(async () => (await import('./js/core/input.js')).input.context);
   const snapState = () => p.evaluate(() => { const w = window.__rfg.app.world; return { cx: w.vehicle.x, cz: w.vehicle.z, fx: w.foot.x, fz: w.foot.z, inCar: w.inCar }; });

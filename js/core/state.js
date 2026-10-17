@@ -3,6 +3,7 @@
 // and notifications stay consistent.
 
 import { CAR_BY_ID, CURRENT_YEAR } from '../data/cars.js';
+import { swapModel } from '../data/engineBuild.js';
 import { defaultVisual, partLevels, PERF_IDS } from '../data/parts.js';
 import { ITEM_BY_ID } from '../data/catalog.js';
 import { marketValue } from '../data/market.js';
@@ -207,14 +208,25 @@ export function newCar(modelId, extra = {}) {
 
 export function getCar(s, id) { return s.cars.find(c => c.uid === id) || null; }
 export function activeCar(s) { return getCar(s, s.activeCar); }
-export function modelOf(car) { return CAR_BY_ID[car.modelId]; }
+// A car with an Engine Build swap drives as the swapped car (new power,
+// weight, redline, gearbox); everything else reads the factory model.
+const swapCache = new WeakMap();
+export function modelOf(car) {
+  const base = CAR_BY_ID[car.modelId];
+  if (!car.swap || !base) return base;
+  const hit = swapCache.get(car);
+  if (hit && hit.sw === car.swap) return hit.m;
+  const m = swapModel(base, car.swap);
+  swapCache.set(car, { sw: car.swap, m });
+  return m;
+}
 
 const specCache = new WeakMap();
 export function carSpec(car) {
-  const key = JSON.stringify([car.parts, car.cond && Object.values(car.cond).map(Math.round), car.tune, car.visual?.spoiler]);   // rounded: everyday wear ticks every frame
+  const key = JSON.stringify([car.modelId, car.parts, car.swap, car.cond && Object.values(car.cond).map(Math.round), car.tune, car.visual?.spoiler]);   // rounded: everyday wear ticks every frame
   const hit = specCache.get(car);
   if (hit && hit.key === key) return hit.spec;
-  const spec = buildSpec(CAR_BY_ID[car.modelId], partLevels(car.parts), car.cond, car.tune, car.visual);
+  const spec = buildSpec(modelOf(car), partLevels(car.parts), car.cond, car.tune, car.visual);
   specCache.set(car, { key, spec });
   return spec;
 }
@@ -231,7 +243,7 @@ export function partsValue(car) {
 
 export function carValue(car) {
   const model = CAR_BY_ID[car.modelId];
-  return Math.round((marketValue(model, car.year, car.miles, car.cond, car.title) + partsValue(car) * 0.4) / 10) * 10;
+  return Math.round((marketValue(model, car.year, car.miles, car.cond, car.title) + (partsValue(car) + (car.swap?.cost || 0)) * 0.4) / 10) * 10;
 }
 
 // Real-world-ish fuel economy, used for fuel burn and the spec sheet.
@@ -245,7 +257,7 @@ export function tankGallons(car) {
   const m = CAR_BY_ID[car.modelId];
   return m.asp === 'ev' ? 75 : m.body === 'truck' ? 26 : m.body === 'suv' ? 24 : m.kg > 1800 ? 19 : 14;
 }
-export function needsPremium(car) { return carSpec(car).hp > 280 || CAR_BY_ID[car.modelId].asp !== 'na'; }
+export function needsPremium(car) { return carSpec(car).hp > 280 || modelOf(car).asp !== 'na'; }
 
 export function garageCapacity(s, PROPERTIES) {
   return s.properties.reduce((n, id) => n + (PROPERTIES[id]?.slots || 0), 0);

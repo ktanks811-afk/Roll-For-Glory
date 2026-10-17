@@ -778,3 +778,8 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 146) !important; height: calc
 .hs canvas { width: 64px; height: 64px; border-radius: 50%; background: radial-gradient(ellipse at 50% 40%, #2a1418, #0c0c0f 75%); }
 .hs.on { border-color: var(--red); color: #fff; background: #2a1418; }
 .create-tools { margin: 8px 0 4px; justify-content: center; }
+/* Engine Build (mechanic shops) */
+.eb-dyno { width: 100%; height: clamp(130px, 32vh, 300px); border-radius: 6px; display: block; }
+.eb-chips { flex-wrap: wrap; overflow: visible; }
+.eb-chips .chip { text-align: left; line-height: 1.15; }
+.eb-chips .chip small { display: block; font-weight: 600; color: var(--dim); font-size: 11px; }

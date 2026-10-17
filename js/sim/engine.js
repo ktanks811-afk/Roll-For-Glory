@@ -20,7 +20,8 @@ const STRENGTH = [1, 1.12, 1.45, 1.9, 2.6];
 const INTERNALS = ['factory cast internals', 'Stage 1 internals', 'forged Stage 2 internals', 'forged Stage 3 internals', 'Stage 4 billet internals'];
 
 export function internalsLimit(model, engineStage = 0) {
-  const base = model.asp === 'turbo' || model.asp === 'sc' ? 1.5 : 1.4;   // factory boosted motors are built stronger
+  // factory boosted motors are built stronger; a swapped Engine Build motor holds what its bottom end was built for
+  const base = model.swap ? Math.max(1.05, model.swap.lim / model.swap.hp) : model.asp === 'turbo' || model.asp === 'sc' ? 1.5 : 1.4;
   return base * STRENGTH[engineStage || 0];
 }
 
@@ -58,7 +59,7 @@ export function engineLoad({ model, lv, ratio, rawMult, fuelCap, fuelLimited, kn
     if (nRatio > limit) add((nRatio / limit - 1) * 2.5,
       `Spraying the ${nosHp} shot puts you ${pct(nRatio)} over stock, past what the ${INTERNALS[lv.engine || 0]} take.`,
       `Engine Internals stage ${needStage(nRatio)}, or a smaller shot`, true);
-    if (nosHp >= 100 && !lv.fuel) add(0.35, `A ${nosHp} shot on the stock fuel pump goes lean the moment you hit the button.`, 'Fuel System stage 1+', true);
+    if (nosHp >= 100 && !lv.fuel && !model.swap?.shot) add(0.35, `A ${nosHp} shot on the stock fuel pump goes lean the moment you hit the button.`, 'Fuel System stage 1+', true);
   }
   out.risk = clamp(out.risk, 0, 5);
   out.level = levelOf(out.risk + out.nosRisk * 0.5);
