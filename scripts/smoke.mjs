@@ -1320,6 +1320,25 @@ await step('online free roam', async () => {
   const chat = await p2.evaluate(() => window.__rfg.online.chat.map(c => c.text));
   if (!chat.some(t => t.includes('hello'))) throw new Error('chat did not arrive');
   if (chat.some(t => t.includes('<'))) throw new Error('chat was not sanitised');
+  // tab 1's radio with four 12s: tab 2, parked right there, hears that song through those subs
+  // (the game sends what audio.radioShare() says each frame; the test browser can't play the songs, so stand in for it)
+  await p.evaluate(async () => { const { audio } = await import('./js/core/audio.js'); window.__share = audio.radioShare; audio.radioShare = () => ({ tr: 2, pos: 30, sb: '4x12', dr: 'pro' }); window.__rfg.online.radio(audio.radioShare(), 0.1); });
+  await p2.waitForTimeout(400);
+  const heard = await p2.evaluate(async () => {
+    const { audio } = await import('./js/core/audio.js'); const o = window.__rfg.online, v = window.__rfg.app.world.vehicle;
+    audio.init(); const peer = o.list()[0];
+    audio.peerRadios(o.list(), { x: v.x, z: v.z }, false);
+    await new Promise(f => setTimeout(f, 600));
+    return { radio: peer?.radio, st: audio.peerRadioState(), peer: peer?.id };
+  });
+  console.log('     radio heard', JSON.stringify(heard));
+  if (!heard.radio?.on || heard.radio.sb !== '4x12' || heard.st.id !== heard.peer || !/srt-punisher\.m4a$/.test(heard.st.src) || heard.st.build !== '4x12/pro') throw new Error('other player\'s radio not heard: ' + JSON.stringify(heard));
+  await p.evaluate(async () => { const { audio } = await import('./js/core/audio.js'); audio.radioShare = window.__share; audio.radioPower(false); window.__rfg.online.radio(null, 0.1); });
+  await p.waitForTimeout(300);
+  await p2.waitForTimeout(400);
+  const off = await p2.evaluate(async () => { const { audio } = await import('./js/core/audio.js'); const o = window.__rfg.online, v = window.__rfg.app.world.vehicle; audio.peerRadios(o.list(), { x: v.x, z: v.z }, false); return { radio: o.list()[0]?.radio ?? null, id: audio.peerRadioState().id }; });
+  if (off.radio || off.id) throw new Error('other player\'s radio kept playing after they turned it off: ' + JSON.stringify(off));
+  await p.evaluate(async () => (await import('./js/core/audio.js')).audio.radioPower(true));
   // hostile packets must not break anything
   await p.evaluate(() => {
     const ch = new BroadcastChannel('rfg:harbor');
