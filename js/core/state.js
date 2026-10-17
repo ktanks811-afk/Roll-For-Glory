@@ -223,7 +223,7 @@ export function modelOf(car) {
 
 const specCache = new WeakMap();
 export function carSpec(car) {
-  const key = JSON.stringify([car.parts, car.swap, car.cond && Object.values(car.cond).map(Math.round), car.tune, car.visual?.spoiler]);   // rounded: everyday wear ticks every frame
+  const key = JSON.stringify([car.modelId, car.parts, car.swap, car.cond && Object.values(car.cond).map(Math.round), car.tune, car.visual?.spoiler]);   // rounded: everyday wear ticks every frame
   const hit = specCache.get(car);
   if (hit && hit.key === key) return hit.spec;
   const spec = buildSpec(modelOf(car), partLevels(car.parts), car.cond, car.tune, car.visual);
