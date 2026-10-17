@@ -139,13 +139,13 @@ export function soundProfile(m, lv = {}, parts = null) {
     cut: 0.65 + clamp(db, 0, 26) * 0.036, drive: clamp(db / 26, 0, 1), exhaust: ex, db,
     loud: clamp(base * (1 + db * 0.055), 0.25, 2.4),
     turbo, twinCharged: turbo && (m.asp === 'sc' || /Twincharged/.test(m.engine || '')),
-    turboBig: lv.turbo || 0,
+    turboBig: lv.turbo || m.swap?.big || 0,
     blower,
     // Eaton roots: Predator, LT4, Jaguar/Land Rover 5.0, Audi 3.0, Emira. Twin-screw (higher, thinner whine): Hellcat family, Mercedes.
-    blowerKind: blower ? (/Supercharged HEMI/.test(m.engine || '') || m.make === 'mercedes' ? 'screw' : 'roots') : null,
+    blowerKind: blower ? m.swap?.blower || (/Supercharged HEMI/.test(m.engine || '') || m.make === 'mercedes' ? 'screw' : 'roots') : null,
     intake: lv.intake || 0,
     vtec: vtecRpm(m),
-    lope: lopey(m) || kind === 'rotary' ? 1 : 0,
+    lope: lopey(m) || kind === 'rotary' || (m.swap && m.swap.build?.cam !== 'stock') ? 1 : 0,   // a swap with a cam in it lopes
     burble: db < 8 ? 0 : clamp((db - 6) / 22 + (tuned ? 0.1 : 0) + (kind === 'v8x' ? 0.15 : 0), 0, 0.95),
     // pulses per crank turn → fundamental used by the synth
     redline: m.redline,

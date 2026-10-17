@@ -97,6 +97,15 @@ function C(make, model, trim, y0, y1, cls, msrp, hp, tq, kg, drive, asp, engine,
   };
 }
 
+// Same car, new heart (Engine Build swaps): power, weight, redline and
+// gearbox change, and the final drive is re-picked for the new top speed.
+export function regear(m, { hp, kg, redline, asp, trans }) {
+  const gears = GEARS[trans] || m.gears;
+  const vmax = estTopSpeed(hp, m.cd, m.area, kg);
+  const fd = +(redline * Math.PI / 30 * (WHEEL_R[m.body] || 0.32) / (gears[gears.length - 1] * vmax * 1.08)).toFixed(2);
+  return { ...m, hp, kg, redline, asp, transCode: GEARS[trans] ? trans : m.transCode, trans: GEARS[trans] ? transName(trans) : m.trans, gears, fd };
+}
+
 export const CARS = [
   // ---------------- Honda / Acura ----------------
   C('honda', 'Civic', 'EX', 1996, 2000, 'Sedan', 15900, 127, 107, 1110, 'FWD', 'na', '1.6L SOHC VTEC I4', '5MT', 6800, 'hatch', '#2b4a7a'),

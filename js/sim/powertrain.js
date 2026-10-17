@@ -84,7 +84,7 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}, visual = {}) 
     cd: model.cd, area: model.area,
     shiftTime,
     clutchCap: model.tq * LBFT_NM * FX.clutch.cap[L('clutch')],
-    nosHp: FX.nitrous.hp[L('nitrous')], nosSecs: FX.nitrous.secs[L('nitrous')],
+    nosHp: FX.nitrous.hp[L('nitrous')] + (model.swap?.shot || 0), nosSecs: Math.max(FX.nitrous.secs[L('nitrous')], model.swap?.shot ? 8 : 0),
     lv: { ...parts },
     twoStep: L('twostep'),
     launchControl: L('twostep') >= 1,
