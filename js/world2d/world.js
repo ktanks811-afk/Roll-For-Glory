@@ -1196,7 +1196,8 @@ export class World {
       const pv = this.vehicle;
       this.drawShadow(ctx, pv.x, pv.z, pv.h, pv.dims);
       if (cam.tilt && (this.chaseT || 0) > 0.3) this.drawRearFace(ctx, pv);
-      this.upright(ctx, pv.x, pv.z, () => drawCarPitched(ctx, this.carSpriteImg, cam.sx(pv.x), cam.sy(pv.z), pv.h, cam.zoom, pv.sim.pitch, pv.dims.L, !!pv.spec.barH));
+      const bh = this.inCar ? this.bassHit || 0 : 0, jx = bh ? (Math.random() - 0.5) * bh * 0.09 * cam.zoom : 0, jy = bh ? (Math.random() - 0.5) * bh * 0.09 * cam.zoom : 0;   // rocking to the subs
+      this.upright(ctx, pv.x, pv.z, () => drawCarPitched(ctx, this.carSpriteImg, cam.sx(pv.x) + jx, cam.sy(pv.z) + jy, pv.h, cam.zoom * (1 + bh * 0.012), pv.sim.pitch, pv.dims.L, !!pv.spec.barH));
       if (pv.sim.nosOn && this.inCar) {
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
         const bx = pv.x - Math.sin(pv.h) * (pv.dims.L / 2 + 0.6), bz = pv.z + Math.cos(pv.h) * (pv.dims.L / 2 + 0.6);
@@ -1499,7 +1500,12 @@ export class World {
       rain: wx(s).rain, wind: windOf(s), urban: this.urban, night: isNight(s.time), hour: h,
       inside, duck: this.paused ? 0.45 : 1, cars, rot: this.cam.rot, police: this.police.active,
     }, dt);
-    audio.carRadio(inside === 'car' || !!boat);   // the car radio plays your songs while you ride
+    // the car radio plays your songs while you ride, through your car's subs and speakers
+    audio.carRadio(inside === 'car' || !!boat, this.inCar && !this.rides.riding ? this.vehicle?.car : null);
+    // the subs hitting: the car rocks on its springs, and the screen shakes on the big notes
+    const bass = this.inCar ? audio.radioBass() : 0;
+    this.bassHit = Math.max(bass, (this.bassHit || 0) - dt * 6);
+    if (settings.shake && this.bassHit > 0.55) this.cam.shake = Math.max(this.cam.shake, (this.bassHit - 0.55) * 0.12);
 
   }
 

@@ -192,6 +192,28 @@ await step('car radio', async () => {
   if (!ok) throw new Error('car radio off: ' + JSON.stringify(r));
   await snap('09b-radio');
 });
+await step('car audio: subs and speakers', async () => {
+  // buy four 12s and comp speakers at Second Chance; the radio then runs through them
+  const r = await p.evaluate(async () => {
+    const { openPlace } = await import('./js/ui/places.js'); const { LOC_BY_ID } = await import('./js/data/world.js');
+    const { closeAllPanels } = await import('./js/ui/dom.js'); const { audio } = await import('./js/core/audio.js');
+    const g = window.__rfg.game, w = window.__rfg.app.world; g.s.cash += 5000;
+    const cash0 = g.s.cash;
+    openPlace(LOC_BY_ID.second_chance, window.__rfg.app);
+    const rows = document.querySelectorAll('[data-action=subs]').length;
+    document.querySelector('[data-action=subs][data-id="4x12"]').click();
+    document.querySelector('[data-action=doors][data-id=pro]').click();
+    const installed = document.querySelector('[data-action=subs][data-id="4x12"]').disabled;
+    closeAllPanels();
+    // hold the car still while the radio settles, so it doesn't coast into a wall before the next step
+    w.vehicle.vx = w.vehicle.vz = 0; w.vehicle.sim.v = 0; w.paused = true;
+    await new Promise(f => setTimeout(f, 1200));
+    const st = audio.radioState(); w.paused = false;
+    return { rows, installed, spent: cash0 - g.s.cash, car: w.vehicle.car.audio, build: st.build, pow: st.pow, sub: st.sub, rattle: st.rattle, playing: st.playing };
+  });
+  console.log('     car audio', JSON.stringify(r));
+  if (r.rows !== 5 || !r.installed || r.spent <= 0 || r.car?.subs !== '4x12' || r.build !== '4x12/pro' || r.pow < 1 || r.sub < 1 || r.rattle < 0.5 || !r.playing) throw new Error('subs not working: ' + JSON.stringify(r));
+});
 await step('walking vs driving controls', async () => {
   const ctxNow = () => p.evaluate(async () => (await import('./js/core/input.js')).input.context);
   const snapState = () => p.evaluate(() => { const w = window.__rfg.app.world; return { cx: w.vehicle.x, cz: w.vehicle.z, fx: w.foot.x, fz: w.foot.z, inCar: w.inCar }; });

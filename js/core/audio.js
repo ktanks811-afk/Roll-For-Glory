@@ -5,6 +5,7 @@
 
 import { settings, saveSettings } from './save.js';
 import { harmonics } from '../sim/sound.js';
+import { audioBuild } from '../data/carAudio.js';
 
 let ctx = null, master = null, sfxBus = null, musicBus = null, moodBus = null, ambBus = null, noiseBuf = null;
 
@@ -390,7 +391,67 @@ export const STATIONS = [
   { id: 'ass-appeal',       title: 'Ass Appeal' },
 ];
 const RADIO_GAIN = 1.5;
-const radio = { el: null, gain: null, track: -1, playing: false, seen: 0, stop: 0, onChange: null };
+const radio = { el: null, gain: null, fx: null, build: '', pow: 0, track: -1, playing: false, seen: 0, stop: 0, onChange: null };
+
+// The song runs through the car's speakers before it reaches the music bus.
+// Dry: the full song, through a factory or upgraded door-speaker EQ.
+// Bass: the lows split off and fed to the subs, a saturated 808 boom plus a
+// clean sub. Rattle: noise for the trunk lid and plate, its volume driven by
+// how hard the bass is hitting, so it only buzzes on the big notes.
+// A compressor keeps the hits loud without clipping.
+function shaper(fn, n = 1024) {
+  const w = ctx.createWaveShaper(), c = new Float32Array(n);
+  for (let i = 0; i < n; i++) c[i] = fn(i / (n - 1) * 2 - 1);
+  w.curve = c; return w;
+}
+function buildRadioFx(src) {
+  const g = (v = 0) => { const n = ctx.createGain(); n.gain.value = v; return n; };
+  const bq = (type, f, q = 0.7, db = 0) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f; n.Q.value = q; n.gain.value = db; return n; };
+  const out = ctx.createDynamicsCompressor();
+  out.threshold.value = -12; out.knee.value = 8; out.ratio.value = 4; out.attack.value = 0.004; out.release.value = 0.18;
+  // dry: the door speakers
+  const lowCut = bq('highpass', 70, 0.6), mids = bq('peaking', 2400, 0.8, 0), air = bq('highshelf', 7000, 0.7, 0);
+  src.connect(lowCut).connect(mids).connect(air).connect(out);
+  // bass: everything under ~110 Hz
+  const lp1 = bq('lowpass', 110, 0.7), lp2 = bq('lowpass', 110, 0.7);
+  src.connect(lp1).connect(lp2);
+  const boom = shaper(x => Math.tanh(x * 3.2) / Math.tanh(3.2)), boomG = g(), subG = g();
+  lp2.connect(boom).connect(boomG).connect(out);
+  lp2.connect(subG).connect(out);
+  const meter = ctx.createAnalyser(); meter.fftSize = 512; meter.smoothingTimeConstant = 0;
+  lp2.connect(meter);
+  // rattle: the bass's loudness (rectified and smoothed) opens a noise gate
+  const rect = shaper(x => Math.abs(x)), envLp = bq('lowpass', 28, 0.5);
+  const gate = shaper(x => Math.max(0, x - 0.14) * 3), rattleAmt = g();
+  const vca = g(0);
+  lp2.connect(rect).connect(envLp).connect(gate).connect(rattleAmt).connect(vca.gain);
+  const n = noiseSource(), lid = bq('bandpass', 240, 1.6), plate = bq('bandpass', 1100, 2.2), plateG = g(0.45);
+  n.connect(lid).connect(vca); n.connect(plate).connect(plateG).connect(vca);
+  vca.connect(out); startNoise(n);
+  return { out, lowCut, mids, air, boomG, subG, rattleAmt, meter, buf: new Float32Array(512) };
+}
+// set the speakers for the car you're in (null: factory, like a ride-along or a boat)
+function applyRadioBuild(car) {
+  const b = audioBuild(car), key = b.subs.id + '/' + b.doors.id;
+  if (!radio.fx || key === radio.build) return;
+  radio.build = key;
+  const fx = radio.fx, t = ctx.currentTime, set = (p, v) => p.setTargetAtTime(v, t, 0.25);
+  const subs = b.subs.id !== 'none', P = subs ? b.pow : 0;
+  radio.pow = P;
+  set(fx.lowCut.frequency, subs ? 55 : 70);   // with subs in, the doors don't have to carry the low end
+  set(fx.boomG.gain, P * 0.9);
+  set(fx.subG.gain, P * 1.6);
+  set(fx.rattleAmt.gain, P > 0.3 ? (P - 0.3) * 1.1 : 0);
+  set(fx.mids.gain, b.doors.bonus * 20);
+  set(fx.air.gain, b.doors.bonus * 26);
+}
+// how hard the subs are hitting right now, 0 to about 1 (for the car rocking)
+function radioBass() {
+  if (!radio.fx || !radio.playing || radio.pow <= 0 || radio.el?.paused) return 0;
+  const d = radio.fx.buf; radio.fx.meter.getFloatTimeDomainData(d);
+  let pk = 0; for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > pk) pk = a; }
+  return Math.min(1, pk * 1.6) * radio.pow;
+}
 
 function radioTrack() {
   const n = STATIONS.length;
@@ -403,7 +464,8 @@ function radioLoad() {
     radio.el.preload = 'auto'; radio.el.setAttribute('playsinline', '');
     radio.el.addEventListener('ended', () => radioSkip(1));
     radio.gain = ctx.createGain(); radio.gain.gain.value = 0;
-    ctx.createMediaElementSource(radio.el).connect(radio.gain).connect(musicBus);
+    radio.fx = buildRadioFx(ctx.createMediaElementSource(radio.el));
+    radio.fx.out.connect(radio.gain).connect(musicBus);
   }
   if (radio.track !== i) { radio.track = i; radio.el.src = `audio/radio/${STATIONS[i].id}.m4a`; }
 }
@@ -427,12 +489,13 @@ function radioHalt() {
   radioFade(false);
   radio.stop = setTimeout(() => { if (!radio.playing) radio.el.pause(); }, 1200);
 }
-function setCarRadio(inCar) {
+function setCarRadio(inCar, car = null) {
   if (!init()) return;
   radio.seen = performance.now();
   const want = inCar && settings.radio !== false;
   if (want && !radio.playing) radioStart();
   else if (!want && radio.playing) radioHalt();
+  if (want) applyRadioBuild(car);
 }
 setInterval(() => { if (radio.playing && performance.now() - radio.seen > 600) radioHalt(); }, 300);
 
@@ -679,10 +742,11 @@ export const audio = {
   intro: setIntro,
   // car radio: the world calls carRadio(inCar) every frame
   carRadio: setCarRadio,
+  radioBass,
   radioNext() { radioSkip(1); },
   radioPrev() { radioSkip(-1); },
   radioPower,
-  radioState() { return { on: settings.radio !== false, playing: radio.playing, track: radioTrack(), title: STATIONS[radioTrack()].title, src: radio.el?.getAttribute('src') || '', gain: radio.gain?.gain.value ?? 0, mood: moodBus?.gain.value ?? 1 }; },
+  radioState() { return { on: settings.radio !== false, playing: radio.playing, track: radioTrack(), title: STATIONS[radioTrack()].title, src: radio.el?.getAttribute('src') || '', gain: radio.gain?.gain.value ?? 0, mood: moodBus?.gain.value ?? 1, build: radio.build, pow: radio.pow, sub: radio.fx?.subG.gain.value ?? 0, rattle: radio.fx?.rattleAmt.gain.value ?? 0 }; },
   set onRadio(fn) { radio.onChange = fn; },
   horn() { tone(392, 0.45, 'square', 0.08); tone(494, 0.45, 'square', 0.06); },
   beep(f = 880, d = 0.12) { tone(f, d, 'square', 0.1); },

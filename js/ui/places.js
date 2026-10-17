@@ -24,6 +24,7 @@ import { emit } from '../core/events.js';
 import { saveGame } from '../core/save.js';
 import { openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
+import { SUBS, DOORS, audioBuild } from '../data/carAudio.js';
 import { rebuildCost, resetEngineWarnings } from '../sim/engine.js';
 import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
@@ -458,15 +459,43 @@ function repair(loc, app, s) {
         <button class="btn btn-sm" data-action="fix" data-k="${k}" ${v > 0 ? '' : 'disabled'}>${v > 0 ? fmtMoney(v * ins) : 'OK'}</button></div>`).join('')}
         ${needsOil(car) ? `<div class="li"><div style="width:150px">Oil change</div><div class="grow">${bar(car.oil ?? 100, (car.oil ?? 100) < 20 ? 'red' : (car.oil ?? 100) < 45 ? 'yellow' : 'green')}</div><span style="width:44px;text-align:right">${Math.round(car.oil ?? 100)}%</span>
         <button class="btn btn-sm" data-action="oil" ${oilDue ? '' : 'disabled'}>${oilDue ? fmtMoney(oilCost, true) : 'OK'}</button></div>` : ''}</div>
-      <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn btn-primary" data-action="all" ${total > 0 ? '' : 'disabled'}>Fix everything · ${fmtMoney(total)}</button></div></div>`;
+      <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn btn-primary" data-action="all" ${total > 0 ? '' : 'disabled'}>Fix everything · ${fmtMoney(total)}</button></div>
+      ${carAudioHtml(car, rate)}</div>`;
     const fix = k => { car.cond[k] = 100; if (k === 'engine' && car.engineBlown) { car.engineBlown = false; resetEngineWarnings(car); toast('Engine rebuilt. Fix the build or it\'ll happen again.', 'good'); } };
     bind(root, {
       close: () => h.close(),
       fix: d => { if (spend(s, costs[d.k] * ins, `Repair: ${names[d.k]}`)) { fix(d.k); clearBreakdown(car); app.world?.refreshCar(); h.refresh(); } },
       oil: () => { if (spend(s, oilCost, 'Oil change')) { changeOil(car); toast('Fresh oil. Good for another ' + oilInterval(carSpec(car)) + ' miles.', 'good'); app.world?.refreshCar(); h.refresh(); } },
       all: () => { if (spend(s, total, 'Full repair')) { Object.keys(costs).forEach(fix); if (needsOil(car)) changeOil(car); clearBreakdown(car); app.world?.refreshCar(); toast('Good as new', 'good'); h.refresh(); } },
+      subs: d => installAudio(car, 'subs', d.id, rate, h),
+      doors: d => installAudio(car, 'doors', d.id, rate, h),
     });
   });
+}
+
+// Car audio: trunk subs and door speakers, installed at any mechanic shop.
+// The car radio plays through them (core/audio.js), so the bass and the
+// trunk rattle come with the build.
+const audioPrice = (x, rate) => Math.round(x.price * rate / 5) * 5;
+function carAudioHtml(car, rate) {
+  const b = audioBuild(car);
+  const row = (kind, x, cur) => `<div class="li"><div class="grow"><div class="t">${esc(x.name)}${x.id === cur.id ? ' <span class="good">· Installed</span>' : ''}</div><div class="s">${esc(x.desc)}</div></div>
+    <button class="btn btn-sm" data-action="${kind}" data-id="${x.id}" ${x.id === cur.id ? 'disabled' : ''}>${x.id === cur.id ? 'In the car' : x.price ? fmtMoney(audioPrice(x, rate)) : 'Pull them out'}</button></div>`;
+  return `<div class="section-title" style="margin-top:16px">🔊 Car audio</div>
+    <p class="muted">Get in and turn on the radio to hear it. Bigger subs, more bass and more trunk rattle.</p>
+    <div class="list">${SUBS.map(x => row('subs', x, b.subs)).join('')}</div>
+    <div class="list" style="margin-top:8px">${DOORS.map(x => row('doors', x, b.doors)).join('')}</div>`;
+}
+function installAudio(car, kind, id, rate, h) {
+  const x = (kind === 'subs' ? SUBS : DOORS).find(o => o.id === id);
+  if (!x) return;
+  const price = audioPrice(x, rate);
+  if (price && !spend(game.s, price, `Car audio: ${x.name}`)) return;
+  const b = audioBuild(car);
+  car.audio = { subs: b.subs.id, doors: b.doors.id, [kind]: id };
+  if (price) audio.buy();
+  toast(x.price ? `${x.name} installed. Turn the radio up.` : 'Back to factory.', 'good');
+  h.refresh();
 }
 
 function gas(loc, app, s) {
