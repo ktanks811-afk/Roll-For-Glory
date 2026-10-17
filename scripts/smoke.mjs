@@ -2863,7 +2863,7 @@ await step('hogs & dogs: bay pen, shows, hog pin, horses, coon hunt', async () =
   await p.waitForSelector('[data-action=bayDone]'); await snap('hd-3-bay-pen-result');
   await p.click('[data-action=bayDone]');
   for (const tab of ['shows', 'fair', 'pin', 'horses', 'ranch', 'books', 'wall']) {
-    await p.click(`.tabs button[data-id=${tab}]`); await p.waitForTimeout(250);
+    await p.click(`.tabs button[data-id=${tab}]:visible`); await p.waitForTimeout(250);   // the bay pen result panel can still be closing underneath
     if (tab === 'shows') { await p.click('[data-action=enterShow]'); await p.waitForTimeout(200); }
     if (tab === 'horses') { await p.click('[data-action=horse] >> nth=0'); await p.waitForSelector('[data-action=hbuy]'); await p.click('[data-action=hbuy]'); await p.waitForTimeout(200); }
     await p.waitForTimeout(600); await snap(`hd-4-${tab}`);
