@@ -358,10 +358,12 @@ export class World {
   drawPeers(ctx, v) {
     const cam = this.cam;
     const peers = online.list().filter(p => !p.fresh && !p.ride && p.x > v.x0 - 8 && p.x < v.x1 + 8 && p.z > v.z0 - 8 && p.z < v.z1 + 8);
+    const thump = audio.peerBass();   // the player whose radio you hear rocks to their subs
     for (const p of peers) {
       if (p.inCar) {
         this.drawShadow(ctx, p.x, p.z, p.h, dimsFor(p.model));
-        drawCar(ctx, this.peerSprite(p), cam.sx(p.x), cam.sy(p.z), p.h, cam.zoom);
+        const bh = thump.id === p.id ? thump.bass : 0, jx = bh ? (Math.random() - 0.5) * bh * 0.09 * cam.zoom : 0, jy = bh ? (Math.random() - 0.5) * bh * 0.09 * cam.zoom : 0;
+        drawCar(ctx, this.peerSprite(p), cam.sx(p.x) + jx, cam.sy(p.z) + jy, p.h, cam.zoom * (1 + bh * 0.012));
       } else {
         if (p.dead) {
           ctx.save(); ctx.translate(cam.sx(p.x), cam.sy(p.z)); ctx.rotate(p.h); ctx.fillStyle = 'rgba(210,30,45,.9)'; ctx.beginPath(); ctx.ellipse(0, 0, 0.65 * cam.zoom, 0.3 * cam.zoom, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
@@ -1502,6 +1504,12 @@ export class World {
     }, dt);
     // the car radio plays your songs while you ride, through your car's subs and speakers
     audio.carRadio(inside === 'car' || !!boat, this.inCar && !this.rides.riding ? this.vehicle?.car : null);
+    // your radio goes out online, and you hear the closest player's radio (their subs thump from down the block)
+    if (online.active) {
+      const share = this.inCar && !this.rides.riding ? audio.radioShare() : null;
+      online.radio(share, dt);
+      audio.peerRadios(this.paused ? [] : online.list(), p, !!share);
+    } else audio.peerRadios([], p, false);
     // the subs hitting: the car rocks on its springs, and the screen shakes on the big notes
     const bass = this.inCar ? audio.radioBass() : 0;
     this.bassHit = Math.max(bass, (this.bassHit || 0) - dt * 6);

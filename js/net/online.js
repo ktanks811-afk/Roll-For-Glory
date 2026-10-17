@@ -52,6 +52,7 @@ const ERR_POS = 0.5;         // metres of prediction error before we send
 const ERR_HEAD = 0.05;       // radians
 const ERR_SPD = 1.2;         // m/s
 const HELLO_EVERY = 6;       // seconds between car-appearance refreshes
+const RADIO_EVERY = 5;       // seconds between car-radio refreshes while it plays
 const PEER_TIMEOUT = 7;      // seconds of silence before a peer disappears
 const MAX_PEERS = 24;
 const MAX_SNAPSHOTS = 24;
@@ -291,6 +292,17 @@ class Online {
     this.addChat(this.name, t, true);
   }
   honk() { this.send({ k: 'ho' }); }
+  // your car radio, so players near you hear it (core/audio.js peerRadios).
+  // Goes out when the song, the subs or on/off change, and every few seconds
+  // while it plays so newcomers pick it up and stay in step with the song.
+  radio(share, dt) {
+    if (!this.active) return;
+    this.radioT = (this.radioT || 0) - dt;
+    const key = share ? `${share.tr}/${share.sb}/${share.dr}` : 'off';
+    if (key === this.radioKey && (this.radioT > 0 || !share)) return;
+    this.radioKey = key; this.radioT = RADIO_EVERY;
+    this.send(share ? { k: 'rd', on: 1, tr: share.tr, pos: +share.pos.toFixed(1), sb: share.sb, dr: share.dr } : { k: 'rd', on: 0 });
+  }
   pvpHit(to, damage, weapon, x, z, h) {
     if (!this.active || !to) return;
     this.send({ k: 'pvp', t: 'hit', to, d: num(damage, 1, 100, 1), w: weapon === 'melee' ? 'melee' : 'gun', x: +num(x, -WORLD_R, WORLD_R).toFixed(2), z: +num(z, -WORLD_R, WORLD_R).toFixed(2), h: +num(h, -20, 20).toFixed(3) });
@@ -369,6 +381,9 @@ class Online {
       }
     } else if (m.k === 'c') {
       this.addChat(cleanName(m.n, p.name), cleanText(m.x));
+    } else if (m.k === 'rd') {
+      const id = v => typeof v === 'string' && /^[a-z0-9]{1,8}$/.test(v) ? v : '';
+      p.radio = m.on ? { on: true, tr: Math.round(num(m.tr, 0, 99, 0)), pos: num(m.pos, 0, 3600, 0), at: now, sb: id(m.sb), dr: id(m.dr) } : null;
     } else if (m.k === 'ho') {
       p.honkAt = now; this.emit('honk', p);
     } else if (m.k === 'deed') {
