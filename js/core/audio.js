@@ -39,6 +39,7 @@ function applyVolume() {
 ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'keydown'].forEach(ev => window.addEventListener(ev, () => {
   init(); if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
   if (radio.el && radio.playing && radio.el.paused && !document.hidden) radio.el.play().catch(() => {});
+  if (peerRadio.el && peerRadio.id && peerRadio.el.paused && !document.hidden) peerRadio.el.play().catch(() => {});
 }, { passive: true, capture: true }));
 
 function noiseSource() {
@@ -369,7 +370,7 @@ function setIntro(on) {
 }
 // Leaving the app shouldn't keep the song going in the background.
 document.addEventListener('visibilitychange', () => {
-  for (const [el, on] of [[introEl, introOn], [radio.el, radio.playing]]) {
+  for (const [el, on] of [[introEl, introOn], [radio.el, radio.playing], [peerRadio.el, !!peerRadio.id]]) {
     if (!el) continue;
     if (document.hidden) el.pause();
     else if (on) el.play().catch(() => {});
@@ -431,13 +432,13 @@ function buildRadioFx(src) {
   return { out, lowCut, mids, air, boomG, subG, rattleAmt, meter, buf: new Float32Array(512) };
 }
 // set the speakers for the car you're in (null: factory, like a ride-along or a boat)
-function applyRadioBuild(car) {
+function applyRadioBuild(car, R = radio) {
   const b = audioBuild(car), key = b.subs.id + '/' + b.doors.id;
-  if (!radio.fx || key === radio.build) return;
-  radio.build = key;
-  const fx = radio.fx, t = ctx.currentTime, set = (p, v) => p.setTargetAtTime(v, t, 0.25);
+  if (!R.fx || key === R.build) return;
+  R.build = key;
+  const fx = R.fx, t = ctx.currentTime, set = (p, v) => p.setTargetAtTime(v, t, 0.25);
   const subs = b.subs.id !== 'none', P = subs ? b.pow : 0;
-  radio.pow = P;
+  R.pow = P;
   set(fx.lowCut.frequency, subs ? 55 : 70);   // with subs in, the doors don't have to carry the low end
   set(fx.boomG.gain, P * 0.9);
   set(fx.subG.gain, P * 1.6);
@@ -446,11 +447,68 @@ function applyRadioBuild(car) {
   set(fx.air.gain, b.doors.bonus * 26);
 }
 // how hard the subs are hitting right now, 0 to about 1 (for the car rocking)
-function radioBass() {
-  if (!radio.fx || !radio.playing || radio.pow <= 0 || radio.el?.paused) return 0;
-  const d = radio.fx.buf; radio.fx.meter.getFloatTimeDomainData(d);
+function radioBass(R = radio) {
+  if (!R.fx || !(R === radio ? radio.playing : R.id) || R.pow <= 0 || R.el?.paused) return 0;
+  const d = R.fx.buf; R.fx.meter.getFloatTimeDomainData(d);
   let pk = 0; for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > pk) pk = a; }
-  return Math.min(1, pk * 1.6) * radio.pow;
+  return Math.min(1, pk * 1.6) * R.pow;
+}
+
+// ---------------- other players' radios ----------------
+// The closest online player with their radio on plays through a second
+// <audio> element, in step with their song. From outside the car you mostly
+// hear the low end: the farther away, the lower the muffle cuts, so a car
+// with subs thumps from down the block and a factory radio fades out fast.
+const peerRadio = { el: null, fx: null, muffle: null, gain: null, id: '', build: '', pow: 0, track: -1, want: 0, seekAt: 0 };
+const PEER_RANGE = 28;   // metres a factory radio carries; subs add up to ~55 more
+function peerRadioLoad() {
+  if (peerRadio.el) return;
+  const el = peerRadio.el = new Audio();
+  el.preload = 'auto'; el.setAttribute('playsinline', ''); el.loop = true;
+  el.addEventListener('loadedmetadata', () => { if (peerRadio.want) { try { el.currentTime = peerRadio.want % (el.duration || 1e9); } catch { /* not seekable yet */ } } });
+  peerRadio.fx = buildRadioFx(ctx.createMediaElementSource(el));
+  peerRadio.muffle = ctx.createBiquadFilter(); peerRadio.muffle.type = 'lowpass'; peerRadio.muffle.frequency.value = 1200; peerRadio.muffle.Q.value = 0.5;
+  peerRadio.gain = ctx.createGain(); peerRadio.gain.gain.value = 0;
+  peerRadio.fx.out.connect(peerRadio.muffle).connect(peerRadio.gain).connect(musicBus);
+}
+// peers: [{ id, x, z, radio: { on, tr, pos, at, sb, dr } }], me: { x, z }
+function setPeerRadios(peers, me, inOwnCar) {
+  if (!ctx) return;
+  const now = performance.now() / 1000;
+  let best = null, bestK = 0;
+  for (const p of peers) {
+    const r = p.radio;
+    if (!r?.on || !p.inCar || now - r.at > 20) continue;
+    const b = audioBuild({ audio: { subs: r.sb, doors: r.dr } }), pow = b.subs.id === 'none' ? 0 : b.pow;
+    const range = PEER_RANGE + pow * 55, d = Math.hypot(p.x - me.x, p.z - me.z);
+    if (d >= range) continue;
+    const k = 1 - d / range;
+    if (k > bestK) { best = { p, d, k, range }; bestK = k; }
+  }
+  if (!best) {
+    if (peerRadio.id) {
+      peerRadio.id = '';
+      peerRadio.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.3);
+      setTimeout(() => { if (!peerRadio.id) peerRadio.el.pause(); }, 1200);
+    }
+    return;
+  }
+  peerRadioLoad();
+  const { p, d, k } = best, r = p.radio, el = peerRadio.el;
+  const n = STATIONS.length, tr = ((Math.round(r.tr) % n) + n) % n;
+  const want = r.pos + (now - r.at);
+  if (peerRadio.id !== p.id || peerRadio.track !== tr) {
+    peerRadio.id = p.id; peerRadio.track = tr; peerRadio.want = want;
+    el.src = `audio/radio/${STATIONS[tr].id}.m4a`;
+  } else if (el.readyState >= 1 && el.duration && now - peerRadio.seekAt > 3 && Math.abs(el.currentTime - want % el.duration) > 2.5) {
+    peerRadio.seekAt = now;
+    try { el.currentTime = want % el.duration; } catch { /* not seekable yet */ }
+  }
+  if (el.paused && !document.hidden) el.play().catch(() => {});
+  applyRadioBuild({ audio: { subs: r.sb, doors: r.dr } }, peerRadio);
+  const t = ctx.currentTime;
+  peerRadio.muffle.frequency.setTargetAtTime(d < 6 ? 2600 : 180 + 1600 * k * k, t, 0.2);
+  peerRadio.gain.gain.setTargetAtTime(RADIO_GAIN * 0.9 * k * k * (inOwnCar ? 0.4 : 1), t, 0.2);
 }
 
 function radioTrack() {
@@ -742,7 +800,17 @@ export const audio = {
   intro: setIntro,
   // car radio: the world calls carRadio(inCar) every frame
   carRadio: setCarRadio,
-  radioBass,
+  radioBass() { return radioBass(radio); },
+  // other online players' radios: the closest one plays, and its subs thump
+  peerRadios: setPeerRadios,
+  peerBass() { return { id: peerRadio.id, bass: radioBass(peerRadio) }; },
+  peerRadioState() { return { id: peerRadio.id, src: peerRadio.el?.getAttribute('src') || '', build: peerRadio.build, gain: peerRadio.gain?.gain.value ?? 0 }; },
+  // what goes out online about your radio (null when it isn't playing in your car)
+  radioShare() {
+    if (!radio.playing || !radio.el || radio.el.paused) return null;
+    const [sb, dr] = (radio.build || 'none/stock').split('/');
+    return { tr: radioTrack(), pos: radio.el.currentTime || 0, sb, dr };
+  },
   radioNext() { radioSkip(1); },
   radioPrev() { radioSkip(-1); },
   radioPower,
