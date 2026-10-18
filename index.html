@@ -63,6 +63,8 @@ body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--bo
 .pad { position: fixed; bottom: 0; left: 0; right: 0; pointer-events: none; display: none; justify-content: space-between; align-items: flex-end; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .pad.on { display: flex; }
 .pad .grp { display: flex; gap: 10px; pointer-events: auto; }
+.pad .pcol { display: flex; flex-direction: column; gap: 8px; align-self: flex-end; }
+@media (max-width: 600px) { #radio { margin-bottom: 58px; } }
 .pbtn { width: 64px; height: 64px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-family: var(--body); font-weight: 700; font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; touch-action: none; -webkit-tap-highlight-color: transparent; }
 .pbtn.hold { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 #hud { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 14px); text-align: right; pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,0.6); display: none; }
@@ -273,7 +275,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 <div id="stick" aria-label="Walk"><div id="knob"></div></div>
 <div class="pad" id="pad">
   <div class="grp"><button class="pbtn" id="b-left" aria-label="Steer left">◀</button><button class="pbtn" id="b-right" aria-label="Steer right">▶</button></div>
-  <div class="grp"><button class="pbtn sm" id="b-out">Out</button><button class="pbtn" id="b-brake">Brake</button><button class="pbtn" id="b-gas">Gas</button></div>
+  <div class="grp"><div class="pcol"><button class="pbtn sm" id="b-hb" aria-label="Handbrake">E-brk</button><button class="pbtn sm" id="b-out">Out</button></div><button class="pbtn" id="b-brake">Brake</button><button class="pbtn" id="b-gas">Gas</button></div>
 </div>
 <div class="dock">
   <div class="panel row scroll" id="panel-map"></div>
@@ -4035,6 +4037,177 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     toast(first ? `${L.seller} dropped off your ${carLabel(carOf(c.id))}. It's parked right here.` : `Bought it. Your ${carLabel(carOf(c.id))} is in your garage.`, 'good');
   }
 
+  // ---------- car physics: real tire grip, so the back steps out, the tires spin, and you can hold a slide ----------
+  // a two-axle (bicycle) model: each axle makes sideways grip from its slip angle on a curve that peaks and then
+  // falls off, the rear tires share their grip between pushing and holding (friction circle), so too much gas
+  // spins them and the back comes around. Gas + brake from a stop is a burnout. The handbrake locks the rears.
+  const G9 = 9.81, TIRE = { vx: 0, vz: 0, w: 0, ax: 0, ay: 0, wv: 0, spin: 0, slipR: 0, slipF: 0, delta: 0, smokeT: 0, marks: [null, null] };
+  // peaks near 7 degrees of slip, then a sliding tire holds less
+  function tireCurve(a) { return Math.sin(1.6 * Math.atan(11 * a)); }
+  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = 0; TIRE.marks = [null, null]; }
+  function carDims(m) {
+    if (m && m.userData.wb == null) {
+      const xs = m.userData.wheels.map(w => w.position.x), wb = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+      m.userData.wb = wb > 1.8 && wb < 7 ? wb : 2.8;
+      for (const w of m.userData.wheels) w.userData.front = w.position.x > (Math.max(...xs) + Math.min(...xs)) / 2;
+    }
+    return m ? m.userData.wb : 2.8;
+  }
+  // one physics step; I = { gas, brake, steer, hb }. Moves drv.x/z/yaw and returns nothing; drv.v is forward speed
+  function physStep(I, P, h) {
+    const sy = Math.sin(drv.yaw), cy = Math.cos(drv.yaw), fx = -sy, fz = -cy, lx = -cy, lz = sy;
+    let u = TIRE.vx * fx + TIRE.vz * fz, vl = TIRE.vx * lx + TIRE.vz * lz, w = TIRE.w;
+    const L = carDims(car && car.userData.model), a = L / 2, b = L / 2, k2 = a * b * 1.05;
+    const grip = P.grip, mu = (0.72 + grip * 0.42) * G9; // cornering grip, about 1 g on good tires
+    // weight moves back when you accelerate, forward when you brake
+    const shift = clamp(TIRE.ax * 0.045, -0.35, 0.35), Nf = 0.5 - shift * 0.5, Nr = 0.5 + shift * 0.5;
+    const spd = Math.hypot(u, vl);
+    // steering: lots of lock when slow, less at speed
+    // caster: when the car slides, the front wheels swing toward where it's going on their own (a real car's wheel
+    // spins into the countersteer when you loosen your grip), so your input steers relative to the slide
+    const betaF = u > 1 ? Math.atan2(vl + a * w, u) : 0, cast = clamp((Math.abs(betaF) - 0.05) / 0.1, 0, 1) * betaF * 0.85;
+    const delta = clamp(drv.steer * 0.62 / (1 + Math.abs(u) / 22) + cast, -0.7, 0.7); TIRE.delta = delta;
+    // ---- rear axle: the driven wheels ----
+    // the motor pulls hardest in the low gears, then the push falls off as the car goes faster
+    const taper = Math.max(0, 1 - Math.max(0, u) / Math.max(1, P.top)), gear = 1 / (1 + Math.max(0, u - 10) / 30), drive = P.acc * I.gas * taper * gear;
+    const trac = (6 + grip * 6) * Nr * 2; // how hard the rears can push before they break loose
+    const burnout = I.gas > 0.3 && I.brake > 0.3 && Math.abs(u) < 3.5;
+    // a rear that is already sliding sideways has little grip left to push with, so gas in a slide keeps it lit
+    const slideR = clamp((Math.abs(Math.atan2(vl - b * w, Math.max(2.2, Math.abs(u)))) - 0.12) / 0.3, 0, 1);
+    const wantSpin = burnout || drive > trac * ((TIRE.spin > 0.5 ? 0.95 : 1.04) - 0.55 * slideR);
+    TIRE.spin += ((wantSpin ? 1 : 0) - TIRE.spin) * Math.min(1, h * (wantSpin ? 9 : 4));
+    let Fxr;
+    if (I.hb) Fxr = -Math.sign(u) * Math.min(Math.abs(u) / h, mu * Nr * 0.8);
+    else if (I.brake && !burnout && u > 0.4) Fxr = -Math.min(u / h, 11 * I.brake * Nr * grip);
+    else if (I.brake && !burnout && !I.gas) Fxr = -7 * I.brake * (u > -14 ? 1 : 0); // reverse
+    else Fxr = TIRE.spin > 0.5 ? Math.min(drive, trac * 0.82) : Math.min(drive, trac);
+    if (burnout) Fxr = 0; // the front brakes hold it, the rears just spin
+    // what the rears have left for grip sideways
+    const used = I.hb ? 0.85 : clamp(Math.abs(Fxr) / Math.max(1, trac), 0, 1) * (TIRE.spin > 0.5 ? 1 : 0.85);
+    const latR = (I.hb ? 0.32 : TIRE.spin > 0.5 ? 0.42 : Math.sqrt(Math.max(0.12, 1 - used * used)));
+    const lonR = Math.max(2.2, Math.abs(u)), vlR = vl - b * w, alphaR = Math.atan2(vlR, lonR);
+    const Fyr = -mu * 1.1 * (0.5 + (Nr - 0.5) * 0.35) * tireCurve(alphaR) * latR; // a bit more grip out back keeps it stable until you provoke it
+    // ---- front axle: steers, and brakes ----
+    const cd = Math.cos(delta), sd = Math.sin(delta), vlF = vl + a * w;
+    const lonW = u * cd + vlF * sd, latW = -u * sd + vlF * cd, alphaF = Math.atan2(latW, Math.max(2.2, Math.abs(lonW)));
+    const FyW = -mu * (0.5 + (Nf - 0.5) * 0.35) * tireCurve(alphaF);
+    let FxW = 0;
+    if (burnout) FxW = -u / h * 0.9;
+    else if (I.brake && u > 0.4) FxW = -Math.min(u / h, 11 * I.brake * Nf * grip);
+    const Fxf = FxW * cd - FyW * sd, Fyf = FxW * sd + FyW * cd;
+    // rolling and air drag, plus engine braking off the gas
+    const drag = Math.sign(u) * (0.35 + 0.0009 * u * u + (I.gas ? 0 : 1.2));
+    let Ax = Fxr + Fxf - drag, Ay = Fyr + Fyf;
+    let dw = (a * Fyf - b * Fyr) / k2;
+    // in a parking lot, the car just follows its wheels (no tire model at walking pace)
+    const slow = TIRE.spin > 0.5 || I.hb ? 0 : clamp(1 - spd / 5, 0, 1);
+    u += Ax * h; vl += Ay * h; w += dw * h;
+    if (slow > 0) { const kin = u * Math.tan(delta) / L; w += (kin - w) * slow * Math.min(1, h * 25); vl *= 1 - slow * Math.min(1, h * 20); }
+    if (Math.abs(u) < 0.05 && !I.gas && !I.brake) u = 0;
+    // a little yaw damping from the suspension, more once the car is well sideways so a held slide doesn't
+    // snap into a spin the moment you breathe on the gas (you can still spin it with full lock and full gas)
+    const side = clamp((Math.abs(Math.atan2(vl, Math.max(1, Math.abs(u)))) - 0.3) / 0.5, 0, 1);
+    w *= 1 - Math.min(1, h * (0.6 + side * 2.2 * (1 - 0.6 * Math.abs(drv.steer) * I.gas)));
+    // wheel speed (for the sound, the spinning rims and smoke)
+    const wvWant = I.hb ? 0 : TIRE.spin > 0.5 ? Math.max(u, 0) + 7 + 14 * I.gas * Math.min(1.6, P.acc / 12) : u;
+    TIRE.wv += (wvWant - TIRE.wv) * Math.min(1, h * (TIRE.spin > 0.5 ? 3 : 14));
+    TIRE.ax += ((Ax + vl * w) - TIRE.ax) * Math.min(1, h * 6); TIRE.ay += ((Ay) - TIRE.ay) * Math.min(1, h * 6);
+    TIRE.slipR = Math.max(Math.abs(vlR) * (spd > 2 ? 1 : 0), Math.abs(TIRE.wv - u));
+    TIRE.slipF = Math.abs(latW) * (spd > 3 ? 1 : 0);
+    TIRE.vx = fx * u + lx * vl; TIRE.vz = fz * u + lz * vl; TIRE.w = w;
+    drv.yaw += w * h; drv.v = u;
+  }
+
+  // ---------- tire smoke ----------
+  const SMOKE = { list: [], tex: null, i: 0 };
+  function smokeTex() {
+    if (SMOKE.tex) return SMOKE.tex;
+    const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+    gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.45, 'rgba(240,240,240,0.45)'); gr.addColorStop(1, 'rgba(230,230,230,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); SMOKE.tex = new THREE.CanvasTexture(c); return SMOKE.tex;
+  }
+  function puff(x, y, z, vx, vz, thick) {
+    if (SMOKE.list.length < 90) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex(), color: 0xdedede, transparent: true, depthWrite: false, opacity: 0 })); s.visible = false; scene.add(s); SMOKE.list.push({ s, t: 9, life: 1 }); }
+    const p = SMOKE.list[SMOKE.i++ % SMOKE.list.length];
+    p.s.visible = true; p.s.position.set(x + (Math.random() - 0.5) * 0.4, y, z + (Math.random() - 0.5) * 0.4); p.t = 0; p.life = 1.6 + thick * 1.8 + Math.random();
+    p.vx = vx * 0.25 + (Math.random() - 0.5) * 1.2; p.vz = vz * 0.25 + (Math.random() - 0.5) * 1.2; p.vy = 0.5 + Math.random() * 0.6; p.a = 0.2 + thick * 0.2; p.g = 2 + thick * 2.6;
+  }
+  function stepSmoke(dt) {
+    for (const p of SMOKE.list) {
+      if (p.t >= p.life) { p.s.visible = false; continue; }
+      p.t += dt; const k = p.t / p.life, sc = 0.7 + p.g * Math.sqrt(k);
+      p.s.position.x += p.vx * dt; p.s.position.y += p.vy * dt; p.s.position.z += p.vz * dt; p.vx *= 1 - dt * 0.8; p.vz *= 1 - dt * 0.8;
+      p.s.scale.set(sc, sc, sc); p.s.material.opacity = p.a * Math.min(1, k * 8) * (1 - k);
+    }
+  }
+
+  // ---------- skid marks: black rubber laid on the road, a ring buffer of quads ----------
+  const SKID = { n: 1600, i: 0, mesh: null, pos: null, al: null };
+  function skidMesh() {
+    if (SKID.mesh) return SKID.mesh;
+    const g = new THREE.BufferGeometry(); SKID.pos = new Float32Array(SKID.n * 6 * 3); SKID.al = new Float32Array(SKID.n * 6);
+    g.setAttribute('position', new THREE.BufferAttribute(SKID.pos, 3)); g.setAttribute('alpha', new THREE.BufferAttribute(SKID.al, 1));
+    const mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+      // the map renders with a logarithmic depth buffer, so the marks have to write the same depth as the road
+      vertexShader: '#include <common>\n#include <logdepthbuf_pars_vertex>\nattribute float alpha; varying float vA; void main(){ vA = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);\n#include <logdepthbuf_vertex>\n}',
+      fragmentShader: '#include <logdepthbuf_pars_fragment>\nvarying float vA; void main(){\n#include <logdepthbuf_fragment>\ngl_FragColor = vec4(0.04,0.04,0.045, vA); }' });
+    SKID.mesh = new THREE.Mesh(g, mat); SKID.mesh.frustumCulled = false; SKID.mesh.renderOrder = 1; scene.add(SKID.mesh); return SKID.mesh;
+  }
+  function skidSeg(p0, p1, wd, al) {
+    skidMesh(); const dx = p1.x - p0.x, dz = p1.z - p0.z, d = Math.hypot(dx, dz) || 1, ox = -dz / d * wd / 2, oz = dx / d * wd / 2, y = 0.152;
+    const v = [p0.x - ox, y, p0.z - oz, p0.x + ox, y, p0.z + oz, p1.x + ox, y, p1.z + oz, p0.x - ox, y, p0.z - oz, p1.x + ox, y, p1.z + oz, p1.x - ox, y, p1.z - oz];
+    const i = SKID.i++ % SKID.n; SKID.pos.set(v, i * 18); SKID.al.fill(al, i * 6, i * 6 + 6);
+    SKID.mesh.geometry.attributes.position.needsUpdate = true; SKID.mesh.geometry.attributes.alpha.needsUpdate = true;
+  }
+
+  // ---------- tire squeal: band-passed noise that rises with the slide ----------
+  const SQ = { a: null };
+  function stepSqueal(slip, on) {
+    const ctx = audioCtx(); if (!ctx || ctx.state !== 'running') return;
+    if (!SQ.a) {
+      const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 9;
+      const bp2 = ctx.createBiquadFilter(); bp2.type = 'bandpass'; bp2.frequency.value = 2900; bp2.Q.value = 14;
+      const g = ctx.createGain(); g.gain.value = 0; src.connect(bp); src.connect(bp2); bp.connect(g); bp2.connect(g); g.connect(ctx.destination); src.start();
+      SQ.a = { g, bp, bp2 };
+    }
+    const t = ctx.currentTime, k = on ? clamp((slip - 2.5) / 10, 0, 1) : 0, wob = 1 + Math.sin(t * 23) * 0.04;
+    SQ.a.g.gain.setTargetAtTime(k * k * 0.9 + k * 0.25, t, 0.05);
+    SQ.a.bp.frequency.setTargetAtTime((1150 + 600 * k) * wob, t, 0.05); SQ.a.bp2.frequency.setTargetAtTime((2600 + 700 * k) * wob, t, 0.05);
+  }
+
+  // smoke, rubber, squeal, body lean and the rims, once per frame after the physics
+  const _wp = new THREE.Vector3();
+  function driveFx(dt, on) {
+    stepSmoke(dt); stepSqueal(Math.max(TIRE.slipR, TIRE.slipF * 0.8), on);
+    const m = car && car.userData.model; if (!m || !on) return;
+    carDims(m);
+    // body roll and squat (the model sits in the car group, which leans)
+    const pitch = clamp(TIRE.ax * 0.0045, -0.05, 0.05), roll = clamp(-TIRE.ay * 0.0055, -0.07, 0.07);
+    m.rotation.x += (pitch - m.rotation.x) * Math.min(1, dt * 7); m.rotation.z += (roll - m.rotation.z) * Math.min(1, dt * 7);
+    // rims: the fronts roll with the road and steer, the rears turn at wheel speed
+    const r = m.userData.r || 0.34;
+    for (const w of m.userData.wheels) { w.rotation.z -= (w.userData.front ? drv.v : TIRE.wv) * dt / r; if (w.userData.front) w.rotation.y = TIRE.delta; }
+    // rear tires: smoke when they spin or slide hard, black marks while they slide
+    const rears = m.userData.wheels.filter(w => !w.userData.front);
+    rears.forEach((w, i) => {
+      w.getWorldPosition(_wp);
+      const slip = TIRE.slipR, mark = slip > 3.2, smoke = slip > 5;
+      if (mark) {
+        const p = { x: _wp.x, z: _wp.z }, last = TIRE.marks[i], d = last ? Math.hypot(p.x - last.x, p.z - last.z) : 0;
+        if (!last || d > 3) TIRE.marks[i] = p;
+        else if (d > 0.35) { skidSeg(last, p, 0.3, clamp((slip - 3) / 9, 0.25, 0.7)); TIRE.marks[i] = p; }
+      } else TIRE.marks[i] = null;
+      if (smoke) {
+        const thick = clamp((slip - 5) / 18, 0, 1), rate = 8 + thick * 24;
+        TIRE.smokeT += dt * rate; while (TIRE.smokeT > 1) { TIRE.smokeT -= 1; puff(_wp.x, 0.35, _wp.z, TIRE.vx, TIRE.vz, thick); }
+      }
+    });
+    // sliding chews up the tires
+    if (TIRE.slipR > 3) S.car.cond.tires = Math.max(0, S.car.cond.tires - dt * TIRE.slipR * 0.006);
+  }
+
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
@@ -4297,51 +4470,63 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     for (const q of STREET.list) idlePerson(q.P, t + q.ph);
   }
   function input() {
-    let gas = 0, brake = 0, steer = 0;
+    let gas = 0, brake = 0, steer = 0, hb = 0;
     if (keys.ArrowUp || keys.KeyW || hold.gas) gas = 1;
-    if (keys.ArrowDown || keys.KeyS || keys.Space || hold.brake) brake = 1;
+    if (keys.ArrowDown || keys.KeyS || hold.brake) brake = 1;
+    if (keys.Space || keys.ShiftLeft || hold.hb) hb = 1;
     if (keys.ArrowLeft || keys.KeyA || hold.left) steer += 1;
     if (keys.ArrowRight || keys.KeyD || hold.right) steer -= 1;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) { if (!p) continue; const ax = p.axes[0] || 0; if (Math.abs(ax) > 0.15) steer = -ax; const rt = p.buttons[7] ? p.buttons[7].value : 0, lt = p.buttons[6] ? p.buttons[6].value : 0; if (rt > 0.05) gas = rt; if (lt > 0.05) brake = lt; if (p.buttons[0] && p.buttons[0].pressed) gas = 1; if (p.buttons[2] && p.buttons[2].pressed && cardMode === 'near') pullIn(); }
-    return { gas, brake, steer };
+    for (const p of pads) { if (!p) continue; const ax = p.axes[0] || 0; if (Math.abs(ax) > 0.15) steer = -ax; const rt = p.buttons[7] ? p.buttons[7].value : 0, lt = p.buttons[6] ? p.buttons[6].value : 0; if (rt > 0.05) gas = rt; if (lt > 0.05) brake = lt; if (p.buttons[0] && p.buttons[0].pressed) gas = 1; if (p.buttons[1] && p.buttons[1].pressed) hb = 1; if (p.buttons[2] && p.buttons[2].pressed && cardMode === 'near') pullIn(); }
+    return { gas, brake, steer, hb };
   }
   function stepDrive(dt) {
-    const I = input(), fwd = drv.v; drv.gas = I.gas || 0;
-    const P = carPerf(), top = P.top, acc = P.acc * Math.max(0, 1 - Math.abs(fwd) / Math.max(1, top));
-    const ox = drv.x, oz = drv.z, vBefore = Math.abs(drv.v);
-    if (I.gas) drv.v += acc * I.gas * dt;
-    if (I.brake) drv.v -= (drv.v > 0.5 ? 26 : 7) * I.brake * dt;
-    if (!I.gas && !I.brake) drv.v -= Math.sign(drv.v) * Math.min(Math.abs(drv.v), (2 + Math.abs(drv.v) * 0.04) * dt);
-    drv.v = clamp(drv.v, -14, Math.max(top, 0.01));
-    drv.steer = lerp(drv.steer, I.steer, 1 - Math.exp(-dt * 8));
-    const turn = drv.steer * Math.min(1, Math.abs(drv.v) / 6) * (1.9 / (1 + Math.abs(drv.v) * 0.03));
-    drv.yaw += turn * dt * Math.sign(drv.v || 1);
-    let nx = drv.x - Math.sin(drv.yaw) * drv.v * dt, nz = drv.z - Math.cos(drv.yaw) * drv.v * dt;
+    const I = window.__drvIn ? window.__drvIn() : input(); drv.gas = I.gas || 0;
+    const P = carPerf();
+    // moved by something else (teleport, garage, getting back in): start from rest
+    if (drv.px == null || Math.hypot(drv.x - drv.px, drv.z - drv.pz) > 0.01 || drv.v === 0 && drv.pv !== 0) { physReset(); drv.camYaw = drv.yaw; }
+    const ox = drv.x, oz = drv.z, vBefore = Math.hypot(TIRE.vx, TIRE.vz);
+    drv.steer = lerp(drv.steer, I.steer, 1 - Math.exp(-dt * 7));
+    // the tire model runs in small steps so slides stay stable on a slow phone
+    const n = Math.max(2, Math.ceil(Math.min(dt, 0.06) / 0.008)), h = Math.min(dt, 0.06) / n;
+    let nx = drv.x, nz = drv.z;
+    for (let i = 0; i < n; i++) { physStep(I, P, h); nx += TIRE.vx * h; nz += TIRE.vz * h; }
     // push out of buildings
     const R = 1.7; let hit = false;
     for (let it = 0; it < 2; it++) for (const b of solids.at(nx, nz).concat(solids.at(nx + R, nz + R), solids.at(nx - R, nz - R))) {
       const cx = clamp(nx, b.x0, b.x1), cz = clamp(nz, b.z0, b.z1), dx = nx - cx, dz = nz - cz, d = Math.hypot(dx, dz);
-      if (d < R) { hit = true; if (d > 1e-4) { nx = cx + dx / d * R; nz = cz + dz / d * R; } else { const l = nx - b.x0, r2 = b.x1 - nx, t = nz - b.z0, bo = b.z1 - nz, m = Math.min(l, r2, t, bo); if (m === l) nx = b.x0 - R; else if (m === r2) nx = b.x1 + R; else if (m === t) nz = b.z0 - R; else nz = b.z1 + R; } }
+      if (d < R) {
+        hit = true; let ux = 0, uz = 0;
+        if (d > 1e-4) { nx = cx + dx / d * R; nz = cz + dz / d * R; ux = dx / d; uz = dz / d; } else { const l = nx - b.x0, r2 = b.x1 - nx, t = nz - b.z0, bo = b.z1 - nz, m = Math.min(l, r2, t, bo); if (m === l) { nx = b.x0 - R; ux = -1; } else if (m === r2) { nx = b.x1 + R; ux = 1; } else if (m === t) { nz = b.z0 - R; uz = -1; } else { nz = b.z1 + R; uz = 1; } }
+        // stop the part of the motion going into the wall, scrub the rest
+        const vn = TIRE.vx * ux + TIRE.vz * uz; if (vn < 0) { TIRE.vx -= vn * ux * 1.15; TIRE.vz -= vn * uz * 1.15; }
+      }
     }
-    if (hit) drv.v *= Math.pow(0.05, dt * 4);
+    if (hit) { const k = Math.pow(0.25, dt * 4); TIRE.vx *= k; TIRE.vz *= k; TIRE.w *= Math.pow(0.1, dt * 4); drv.v = TIRE.vx * -Math.sin(drv.yaw) + TIRE.vz * -Math.cos(drv.yaw); }
     const crash = hit && !drv.hitting ? vBefore : 0; drv.hitting = hit;
     drv.x = clamp(nx, WB.x0, WB.x1); drv.z = clamp(nz, WB.z0, WB.z1);
     wearDrive(Math.hypot(drv.x - ox, drv.z - oz), dt, crash);
     if (S.car.fuel <= 0 && (frame % 240) === 0) toast('Out of gas. Pull into a gas station, or fly to one from Places.', 'bad');
-    car.position.set(drv.x, 0.12, drv.z); car.rotation.y = drv.yaw; spinWheels(car.userData.model, drv.v * dt);
+    car.position.set(drv.x, 0.12, drv.z); car.rotation.y = drv.yaw;
+    driveFx(dt, true);
+    // the camera swings toward where the car is actually going, so you can see a slide
+    const spd = Math.hypot(TIRE.vx, TIRE.vz), head = spd > 4 && drv.v > -1 ? Math.atan2(-TIRE.vx, -TIRE.vz) : drv.yaw;
+    let dyaw = head - drv.yaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+    drv.camYaw = drv.camYaw == null ? drv.yaw : drv.camYaw;
+    let cy = drv.yaw + clamp(dyaw, -0.9, 0.9) * 0.55 - drv.camYaw; cy = Math.atan2(Math.sin(cy), Math.cos(cy)); drv.camYaw += cy * (1 - Math.exp(-dt * 4));
     const back = drv.far ? 26 : 11.5, up = drv.far ? 12 : 4.2;
-    const want = v4.set(drv.x + Math.sin(drv.yaw) * back, up, drv.z + Math.cos(drv.yaw) * back);
+    const want = v4.set(drv.x + Math.sin(drv.camYaw) * back, up, drv.z + Math.cos(drv.camYaw) * back);
     drv.cam.lerp(want, 1 - Math.exp(-dt * 5));
     camera.position.copy(drv.cam);
-    drv.look.set(drv.x - Math.sin(drv.yaw) * 8, 1.6, drv.z - Math.cos(drv.yaw) * 8); camera.lookAt(drv.look);
-    spdEl.firstChild.nodeValue = Math.round(Math.abs(drv.v) * 2.237);
+    drv.look.set(drv.x - Math.sin(drv.camYaw) * 8, 1.6, drv.z - Math.cos(drv.camYaw) * 8); camera.lookAt(drv.look);
+    spdEl.firstChild.nodeValue = Math.round(spd * 2.237);
     if ((frame & 7) === 0) { const s = streetAt(drv.x, drv.z); streetEl.textContent = s ? s.name : districtAt(drv.x, drv.z); }
+    drv.px = drv.x; drv.pz = drv.z; drv.pv = drv.v;
   }
   const spdEl = document.getElementById('spd'), streetEl = document.getElementById('street');
   addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; keys[e.code] = true; if (creating) return; if (driving && e.code.startsWith('Arrow')) e.preventDefault(); if (inside) { if (e.code === 'Escape') { if (menuFn) closeMenu(); else leaveInterior(); } if (e.code === 'KeyE' && IN.near && !menuFn) useStation(); return; } if (e.code === 'Escape') { if (menuFn) closeMenu(); else if (cardPlace) showCard(null); } if (driving && e.code === 'KeyF') { if (foot.on) getIn(); else getOut(); return; } if (e.code === 'KeyE') { if (foot.on && foot.nearCar) getIn(); else if (cardMode === 'near') pullIn(); } });
   addEventListener('keyup', e => { keys[e.code] = false; });
-  for (const [id, k] of [['b-left', 'left'], ['b-right', 'right'], ['b-gas', 'gas'], ['b-brake', 'brake']]) {
+  for (const [id, k] of [['b-left', 'left'], ['b-right', 'right'], ['b-gas', 'gas'], ['b-brake', 'brake'], ['b-hb', 'hb']]) {
     const el = document.getElementById(id);
     const on = e => { e.preventDefault(); hold[k] = true; el.classList.add('hold'); }, off = () => { hold[k] = false; el.classList.remove('hold'); };
     el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
@@ -4468,7 +4653,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     if ((frame & 15) === 0) syncCarModel();
     if (car) stepPanels(car.userData.model, dt); if (car && driving) stepCarAudio();
-    { const on = !!(car && driving && !foot.on && !inside && S.car && S.car.fuel > 0); stepEngineSound(dt, on, drv.v, on ? carPerf().top : 30, drv.gas || 0); if (car) stepEngineAnim(car.userData.model, on, drv.gas || 0); }
+    { const on = !!(car && driving && !foot.on && !inside && S.car && S.car.fuel > 0); stepEngineSound(dt, on, TIRE.wv || drv.v, on ? carPerf().top : 30, drv.gas || 0); if (car) stepEngineAnim(car.userData.model, on, drv.gas || 0); }
     if ((frame & 7) === 0 && worldOn) stepCarUI();
     controls.enabled = !driving && !inside;
     const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); resize(); }
@@ -4532,7 +4717,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = {
-    ready: false, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
