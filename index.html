@@ -87,6 +87,9 @@ body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--bo
 #prompt { position: fixed; left: 50%; transform: translateX(-50%); bottom: 150px; display: flex; gap: 10px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 6px 6px 16px; font-size: 16px; font-weight: 700; z-index: 6; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 #prompt[hidden], #menu[hidden], #toast[hidden], #walkhint[hidden] { display: none; }
 #prompt small { opacity: 0.6; margin-left: 4px; }
+#engbuild { position: fixed; inset: 0; z-index: 30; background: #121016; }
+#engbuild[hidden] { display: none; }
+#engbuild iframe { width: 100%; height: 100%; border: 0; display: block; }
 #menu { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 12px); width: min(520px, calc(100% - 32px)); max-height: 62vh; display: flex; flex-direction: column; background: rgba(18, 15, 24, 0.94); border: 1px solid var(--line); border-radius: 14px; z-index: 8; overflow: hidden; }
 #menu .mh { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 12px 14px 8px; border-bottom: 1px solid var(--line); }
 #menu .mh b { display: block; font-family: var(--display); font-weight: 400; font-size: 18px; }
@@ -324,6 +327,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 <div id="loading"><img class="ld-art" src="img/loading.webp" alt="Murda Worth"><div class="ld-bottom"><div class="ld-bar"><i id="ld-fill"></i></div><div id="ld-msg">Loading Fort Worth…</div><div id="ld-tap">Tap for sound</div></div></div>
 <div id="err" hidden>The 3D view could not start on this device.</div>
 
+<div id="engbuild" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
@@ -1089,7 +1093,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   function earn(v, what) { v = Math.round(v); S.cash += v; S.log.unshift(`+${money(v)} ${what}`); S.log.length = Math.min(S.log.length, 30); save(); refreshStats(); }
   const clamp100 = v => Math.max(0, Math.min(100, v));
   const carHealth = c => Math.round((c.cond.body + c.cond.lights + c.cond.tires + c.cond.engine + c.cond.trans) / 5);
-  const carHp = c => Math.round(carOf(c.id).hp * (1 + (c.mods.intake ? 0.05 : 0) + (c.mods.tune ? 0.08 : 0) + (c.mods.turbo ? 0.25 : 0) + (c.mods.nitrous ? 0.1 : 0) + (c.mods.hot ? 0.08 : 0)));
+  const carHp = c => c.swap ? c.swap.hp : Math.round(carOf(c.id).hp * (c.engK || 1) * (1 + (c.mods.intake ? 0.05 : 0) + (c.mods.tune ? 0.08 : 0) + (c.mods.turbo ? 0.25 : 0) + (c.mods.nitrous ? 0.1 : 0) + (c.mods.hot ? 0.08 : 0)));
   const tankGal = c => { const b = carOf(c.id).body; return b === 'truck' || b === 'suv' ? 26 : 16; };
   const isEV = c => carOf(c.id).asp === 'ev' || /tesla|rivian|lucid/.test(c.id);
   const carValue = c => { const m = carOf(c.id), base = m.market || m.msrp * Math.max(0.25, 1 - (2026 - m.y) * 0.06); return Math.round(base * (0.45 + carHealth(c) / 200) / 50) * 50; };
@@ -1158,7 +1162,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     },
     engine(p) { if (!S.car) return noCar(p);
       const c = S.car, rate = p.rate || 1;
-      return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${carOf(c.id).engine}`, rows: UPGRADES.map(([k, n, pr, d]) => ({ t: n, s: d, btn: c.mods[k] ? 'Installed' : money(pr * rate), off: !!c.mods[k], act: () => { if (spend(pr * rate, n)) { c.mods[k] = true; toast(`${n} installed. ${carHp(c)} hp.`, 'good'); } } })) };
+      return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: motorRows(p).concat(c.swap ? [] : UPGRADES.map(([k, n, pr, d]) => ({ t: n, s: d, btn: c.mods[k] ? 'Installed' : money(pr * rate), off: !!c.mods[k], act: () => { if (spend(pr * rate, n)) { c.mods[k] = true; toast(`${n} installed. ${carHp(c)} hp.`, 'good'); } } }))) };
     },
     dyno(p) { if (!S.car) return noCar(p); const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
     paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: PAINTS.map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
@@ -1292,10 +1296,10 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   // ---------- the real cars: each one we built by hand, baked to cars/<id>.json and painted your color ----------
-  const CARS3D = { cache: {}, live: new Set() };
+  const CARS3D = { cache: {}, done: {}, live: new Set() };
   const b64arr = (s, T) => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new T(u.buffer); };
   function carData(id) {
-    if (!CARS3D.cache[id]) CARS3D.cache[id] = fetch('cars/' + id + '.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(bakeCar)
+    if (!CARS3D.cache[id]) CARS3D.cache[id] = fetch('cars/' + id + '.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(bakeCar).then(T => (CARS3D.done[id] = T))
       .catch(e => { delete CARS3D.cache[id]; console.warn('car model ' + id + ': ' + e.message); return null; });
     return CARS3D.cache[id];
   }
@@ -1324,7 +1328,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const A = d.audio, audio = A && { seats: A.seats ? build(A.seats) : null,
       subs: Object.fromEntries(Object.entries(A.subs).map(([k, v]) => [k, { body: build(v.body), lid: v.lid, lidParts: build(v.lidParts), noSeats: v.noSeats }])),
       doors: Object.fromEntries(Object.entries(A.doors).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).map(([n, q]) => [n, build(q)]))])) };
-    return { audio, mats, body: build(d.body), wheels: d.wheels.map(w => ({ pos: w.pos, scale: w.scale, parts: build(w.parts) })), panels: (d.panels || []).map(p => ({ ...p, parts: build(p.parts) })), box: d.box };
+    const engines = (d.engines || []).map(e => ({ kind: e.kind, label: e.label, stock: e.stock, box: e.box, parts: build(e.parts) }));
+    return { engines, audio, mats, body: build(d.body), wheels: d.wheels.map(w => ({ pos: w.pos, scale: w.scale, parts: build(w.parts) })), panels: (d.panels || []).map(p => ({ ...p, parts: build(p.parts) })), box: d.box };
   }
   // a fresh copy of a car: front faces -z like everything else on the map, sitting on y = 0
   function carMesh(T, color) {
@@ -1349,7 +1354,12 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       for (const [k, v] of Object.entries(T.audio.subs)) AU.subs[k] = [grp(inner, v.body), v.lid && panels[v.lid] ? grp(panels[v.lid].g, v.lidParts) : null, v.noSeats];
       for (const [k, v] of Object.entries(T.audio.doors)) AU.doors[k] = Object.entries(v).filter(([n]) => panels[n]).map(([n, q]) => grp(panels[n].g, q));
     }
-    root.userData = { audio: AU, panels, wheels, paint: myPaint, len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
+    // the motors: each one sits in a mount that shakes while it runs; a swapped crate motor goes in the same spot
+    const motors = {}, mount = (box) => { const c = [0, 1, 2].map(i => (box[0][i] + box[1][i]) / 2), w = new THREE.Group(), g = new THREE.Group(); w.position.fromArray(c); g.position.set(-c[0], -c[1], -c[2]); w.add(g); inner.add(w); return [w, g]; };
+    for (const e of T.engines) { const [w, g] = mount(e.box); for (const q of e.parts) g.add(new THREE.Mesh(q.geo, matOf(q.mat))); w.visible = e.stock; motors[e.kind] = w; }
+    const stockE = T.engines.find(e => e.stock) || T.engines[0];
+    const ENG = { motors, kinds: T.engines.map(e => ({ kind: e.kind, label: e.label, stock: e.stock })), box: stockE ? stockE.box : null, kind: stockE ? stockE.kind : '', swap: null, swapKey: '', on: 0, rev: 0 };
+    root.userData = { eng: ENG, audio: AU, panels, wheels, paint: myPaint, len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
     return root;
   }
   // drop a car into any group; the model streams in, the slot is ready right away
@@ -1381,6 +1391,35 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     for (const [k, [b, lid, noSeats]] of Object.entries(A.subs)) { const on = k === sk; b.visible = on; if (lid) lid.visible = on; if (on && noSeats) seats = false; }
     if (A.seats) A.seats.visible = seats;
     for (const [k, list] of Object.entries(A.doors)) for (const g of list) g.visible = k === dk;
+  }
+  // which motor shows: one of the car's own (kind), or a crate motor baked from the Engine Build page (swap)
+  function setCarEngine(m, kind, swap) {
+    const E = m && m.userData.eng; if (!E) return;
+    const key = swap ? swap.key : '';
+    if (E.swapKey !== key) {
+      if (E.swap) { E.swap.parent.remove(E.swap); E.swap = null; }
+      E.swapKey = key;
+      if (swap && E.box) {
+        // the crate motor's crank runs along z with the front at +z; in the car the front is +x. Front of the motor to the front of the bay, sat on the bay floor
+        const b = E.box, w = new THREE.Group(), g = new THREE.Group(), sb = swap.box;
+        w.position.set((b[0][0] + b[1][0]) / 2, (b[0][1] + b[1][1]) / 2, (b[0][2] + b[1][2]) / 2);
+        g.rotation.y = Math.PI / 2; g.position.set(b[1][0] - w.position.x - sb[1][2], b[0][1] - w.position.y - sb[0][1], (sb[0][0] + sb[1][0]) / 2);
+        for (const q of swap.parts) g.add(new THREE.Mesh(q.geo, q.mat));
+        w.add(g); m.children[0].add(w); E.swap = w;
+      }
+    }
+    if (!swap && !E.motors[kind]) kind = (E.kinds.find(k => k.stock) || {}).kind;
+    for (const [k, w] of Object.entries(E.motors)) w.visible = !swap && k === kind;
+    E.kind = swap ? 'swap' : kind;
+  }
+  // a running motor rocks on its mounts, harder on the gas
+  function stepEngineAnim(m, on, gas) {
+    const E = m && m.userData.eng; if (!E) return;
+    const w = E.swap || E.motors[E.kind]; if (!w) return;
+    const amp = on ? 0.004 + gas * 0.008 : 0;
+    w.rotation.x = amp ? (Math.random() - 0.5) * amp * 2.5 + gas * 0.02 : 0; w.rotation.z = amp ? (Math.random() - 0.5) * amp : 0;
+    if (w.userData.y0 === undefined) w.userData.y0 = w.position.y;
+    w.position.y = w.userData.y0 + (amp ? (Math.random() - 0.5) * amp : 0);
   }
   // ---------- people: the character builder from the characters page ----------
   const PEOPLE = (function () {
@@ -2845,7 +2884,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   function rbox(x0, y0, z0, x1, y1, z1, color, solid = true) { prism(RA.plain, RA.plain, R4(x0, z0, x1, z1), y0, y1, lin(color), lin(color), 1.5, 1.5); if (solid && y0 < 1.2) IN.solids.push({ x0, z0, x1, z1, h: y1 }); }
   function station(name, x, z, menu, r = 2.2) { IN.stations.push({ name, x, z, menu, r }); }
   function addMesh(geo, mat, x, y, z, ry = 0) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; IN.room.add(m); return m; }
-  function roomCar(x, z, ry, color, y = 0, id, who) { const c = who || (!id && S.car), g = putCar(IN.room, id || (S.car && S.car.id) || BUILT[0], color, m => { if (c) { const b = audioBuild(c); setCarAudio(m, b.subs.id, b.doors.id); } }); g.position.set(x, y, z); g.rotation.y = ry; if (y < 0.5) IN.solids.push({ x0: x - (ry ? 2.5 : 1.05), z0: z - (ry ? 1.05 : 2.5), x1: x + (ry ? 2.5 : 1.05), z1: z + (ry ? 1.05 : 2.5), h: 1.4 }); return g; }
+  function roomCar(x, z, ry, color, y = 0, id, who) { const c = who || (!id && S.car), g = putCar(IN.room, id || (S.car && S.car.id) || BUILT[0], color, m => { if (c) { const b = audioBuild(c); setCarAudio(m, b.subs.id, b.doors.id); applyMotor(m, c); } }); g.position.set(x, y, z); g.rotation.y = ry; if (y < 0.5) IN.solids.push({ x0: x - (ry ? 2.5 : 1.05), z0: z - (ry ? 1.05 : 2.5), x1: x + (ry ? 2.5 : 1.05), z1: z + (ry ? 1.05 : 2.5), h: 1.4 }); return g; }
   function wallSign(text, color, x, y, z, w) {
     const c = document.createElement('canvas'), k = c.getContext('2d'); c.width = 1024; c.height = 160;
     k.fillStyle = '#141417'; k.fillRect(0, 0, 1024, 160); k.font = '700 92px "Barlow Condensed", "Arial Narrow", sans-serif'; k.fillStyle = color; k.textAlign = 'center'; k.textBaseline = 'middle'; k.fillText(text.toUpperCase(), 512, 84, 980);
@@ -3331,7 +3370,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     $('rd-prev').onclick = () => radioSkip(-1);
     addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !document.body.classList.contains('incar')) return; if (e.code === 'KeyR') radioSkip(1); if (e.code === 'KeyO') { radioSet().on = !radioSet().on; radioStep(true); save(); } });
     // iPhone only starts audio from a tap, so any tap while the radio should be playing kicks it
-    addEventListener('pointerdown', () => { if (FX.ctx && FX.ctx.state !== 'running') FX.ctx.resume().catch(() => {}); if (RADIO.want && RADIO.el && RADIO.el.paused) RADIO.el.play().catch(() => {}); }, true);
+    addEventListener('pointerdown', () => { if (AC0 && AC0.state !== 'running') AC0.resume().catch(() => {}); if (RADIO.want && RADIO.el && RADIO.el.paused) RADIO.el.play().catch(() => {}); }, true);
   }
   // ---------- car radio: Kimari's songs from the 2D game, only while you're in the car ----------
   const STATIONS = [['smooth-criminals', 'Smooth Criminals'], ['hustlin', 'Hustlin'], ['srt-punisher', 'SRT Punisher'], ['murda-dance', 'Murda Dance'], ['ass-appeal', 'Ass Appeal']];
@@ -3399,7 +3438,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (FX.fx || !RADIO.el) return FX.fx;
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
     try {
-      const ctx = FX.ctx = new AC(), src = ctx.createMediaElementSource(RADIO.el);
+      const ctx = FX.ctx = audioCtx(), src = ctx.createMediaElementSource(RADIO.el);
       const g = (v = 0) => { const n = ctx.createGain(); n.gain.value = v; return n; };
       const bq = (type, f, q = 0.7, db = 0) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f; n.Q.value = q; n.gain.value = db; return n; };
       const shaper = fn => { const w = ctx.createWaveShaper(), c = new Float32Array(1024); for (let i = 0; i < 1024; i++) c[i] = fn(i / 1023 * 2 - 1); w.curve = c; return w; };
@@ -3442,6 +3481,138 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const b = audioBuild(S.car); setCarAudio(m, b.subs.id, b.doors.id);
     const k = radioBass();
     for (const [n, p] of Object.entries(m.userData.panels)) { const kind = panelKind(n); p.rat = k ? (Math.random() - 0.5) * k * (kind === 'trunk' ? 0.06 : kind === 'hood' ? 0.008 : 0.012) : 0; }
+  }
+  // ---------- motors: each car's own engines with their sound, and the 3D Engine Build for swaps ----------
+  // one AudioContext for the radio and the engine
+  let AC0 = null;
+  function audioCtx() { if (!AC0) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) AC0 = new AC(); } return AC0; }
+  // stock motor sounds, from each car page's own Start/Rev (base = firing pitch, lfo/lg = cam lope, lp = how dark, peak = how far it revs)
+  const HEMI = { n392: { base: 32, lfo: 6.2, lp: 460 }, hc: { base: 36, lfo: 7.4, lp: 620, whine: ['sine', 900, 0.02, 0.05], o: 0.5 } };
+  const MOTOR_SND = {
+    chevrolet_caprice_classic_box_chevy_1986: { s350: { base: 30, lfo: 6.5, lg: 0.08, lp: 380 }, b454: { base: 34, lfo: 4.2, lg: 0.14, lp: 520, whine: ['sawtooth', 380, 0.012, 0.05], o: 0.6 } },
+    dodge_charger_srt_hellcat_widebody_2020: HEMI, dodge_charger_scat_pack_2015: HEMI, ram_1500_trx_2021: HEMI, chevrolet_camaro_ss_2016: HEMI, chevrolet_tahoe_2021: HEMI,
+    ford_f_150_regular_cab_2021: { v8: { base: 33, lfo: 6.6, lp: 520 }, eb: { base: 42, lfo: 9.6, lp: 700, whine: ['sine', 2200, 0.004, 0.03], turbo: true } },
+    chevrolet_corvette_stingray_c8_2020: { lt2: { base: 34, lfo: 7.0, lg: 0.1, lp: 560 }, lt6: { base: 50, lfo: 13, lg: 0.05, lp: 1300, peak: 5.2, o: 0.6 } },
+  };
+  // a swapped crate motor sounds like the Engine Build page says: open pipes are louder, brighter and crackle, a cam lopes, blowers whine, turbos whistle and hiss
+  function swapSnd(s) {
+    const W = { screw: ['triangle', 900, 0.01, 0.05], roots: ['sawtooth', 380, 0.012, 0.05], cent: ['sine', 1500, 0.002, 0.04], turbo1: ['sine', 2400, 0.002, 0.03], turbo2: ['sine', 2800, 0.002, 0.03] }[s.type];
+    return { base: s.base, o: s.o, lfo: s.base * (s.cam ? 0.12 : 0.2), lg: 0.06 + 0.06 * s.o + (s.cam ? 0.06 : 0), lp: 420 + 1000 * s.o, drive: 1 + 5 * s.o + (s.cam ? 1.5 : 0), vol: 0.14 + 0.12 * s.o, peak: 2.4 + s.red / 2200, whine: W || null, turbo: /turbo/.test(s.type) };
+  }
+  function carSnd(c) {
+    if (c.swap && c.swap.snd) return swapSnd(c.swap.snd);
+    const T = MOTOR_SND[c.id] || HEMI, k = T[c.eng] || T[stockKind(c)] || T[Object.keys(T)[0]];
+    return Object.assign({ lg: 0.09, o: 0.3, drive: 1.6, vol: 0.2, peak: 3.6 }, k);
+  }
+  // the motors a car's model has (once it has loaded): [{ kind, label, stock }]
+  const motorKinds = c => { const T = CARS3D.done[c.id]; if (!T) carData(c.id); return T ? T.engines.map(e => ({ kind: e.kind, label: e.label, stock: e.stock })) : []; };
+  const stockKind = c => { const s = motorKinds(c).find(k => k.stock); return s ? s.kind : ''; };
+  // the running motor: two oscillators through a drive and a lowpass, lope on the gain, an optional whine; pitch follows rpm
+  const ENGS = { a: null, key: '', rpm: 0, gas: 0, lift: 0, popT: 0 };
+  function engineStart(P) {
+    const ctx = audioCtx(); if (!ctx) return null;
+    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(); o1.type = 'sawtooth'; o2.type = 'square'; o1.frequency.value = P.base; o2.frequency.value = P.base / 2;
+    const ws = ctx.createWaveShaper(), n = 1024, cv = new Float32Array(n), dr = P.drive; for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; cv[i] = Math.tanh(x * dr) / Math.tanh(dr); } ws.curve = cv;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = P.lp;
+    const gain = ctx.createGain(); gain.gain.value = 0;
+    const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = P.lfo; const lg = ctx.createGain(); lg.gain.value = P.lg; lfo.connect(lg).connect(gain.gain);
+    const out = ctx.createGain(); out.gain.value = 0; out.connect(ctx.destination);
+    o1.connect(ws); o2.connect(ws); ws.connect(lp).connect(gain).connect(out);
+    const t = ctx.currentTime; out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(1, t + 0.4);
+    o1.frequency.setValueAtTime(P.base * 2.2, t); o1.frequency.exponentialRampToValueAtTime(P.base, t + 0.9);   // the start-up flare
+    const osc = [o1, o2, lfo]; let whine = null, wg = null;
+    if (P.whine) { whine = ctx.createOscillator(); whine.type = P.whine[0]; whine.frequency.value = P.whine[1]; wg = ctx.createGain(); wg.gain.value = P.whine[2]; whine.connect(wg).connect(out); osc.push(whine); }
+    osc.forEach(o => o.start());
+    return { ctx, P, o1, o2, lp, gain, lfo, whine, wg, out, osc };
+  }
+  function engineStop() { const a = ENGS.a; if (!a) return; ENGS.a = null; ENGS.key = ''; const t = a.ctx.currentTime; a.out.gain.cancelScheduledValues(t); a.out.gain.setValueAtTime(a.out.gain.value, t); a.out.gain.linearRampToValueAtTime(0, t + 0.35); setTimeout(() => a.osc.forEach(o => { try { o.stop(); } catch (e) {} }), 500); }
+  function noisePop(ctx, at, f, peak, len, dest) {
+    const b = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * len), ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * len * 0.2));
+    const s = ctx.createBufferSource(); s.buffer = b; const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 0.7; const g = ctx.createGain(); g.gain.value = peak;
+    s.connect(bp).connect(g).connect(dest); s.start(at);
+  }
+  // every frame in the car: rpm climbs through the gears with speed, the gas opens it up, lifting off crackles open exhaust and blows off the turbo
+  function stepEngineSound(dt, on, v, top, gas) {
+    if (!on || !S.car) { engineStop(); return; }
+    const P = carSnd(S.car), key = JSON.stringify(P);
+    if (key !== ENGS.key) { engineStop(); ENGS.key = key; ENGS.a = engineStart(P); }
+    const a = ENGS.a; if (!a || a.ctx.state !== 'running') return;
+    const s = Math.min(1, Math.abs(v) / Math.max(10, top)), G = [0.16, 0.34, 0.55, 0.78, 1.0];
+    let gi = G.findIndex(x => s <= x); if (gi < 0) gi = 4; const lo = gi ? G[gi - 1] : 0, gf = (s - lo) / (G[gi] - lo);
+    const want = Math.abs(v) < 0.6 ? 0.08 * gas : 0.28 + 0.72 * gf * (gi ? 1 : 0.9);
+    ENGS.rpm += (Math.max(want, gas * 0.25) - ENGS.rpm) * Math.min(1, dt * (want > ENGS.rpm ? 6 : 9));
+    const r = ENGS.rpm, t = a.ctx.currentTime, k = 0.06;
+    a.o1.frequency.setTargetAtTime(P.base * (1 + (P.peak - 1) * r), t, k); a.o2.frequency.setTargetAtTime(P.base / 2 * (1 + (P.peak - 1) * r), t, k);
+    a.lfo.frequency.setTargetAtTime(P.lfo + (40 - P.lfo) * Math.min(1, r * 1.6), t, 0.1);
+    a.lp.frequency.setTargetAtTime(P.lp + (P.lp * 1.4 + 1600 * P.o) * (0.35 * r + 0.65 * gas), t, k);
+    a.gain.gain.setTargetAtTime(P.vol * (0.75 + 0.5 * r + 0.35 * gas), t, k);
+    if (a.whine) { a.whine.frequency.setTargetAtTime(Math.min(11000, P.whine[1] * (1 + (P.peak - 1) * 0.9 * r)), t, k); a.wg.gain.setTargetAtTime(P.whine[2] + (P.whine[3] - P.whine[2]) * gas * Math.max(r, P.turbo ? r * r : 0.3), t, 0.1); }
+    // lift off the gas at high rpm: pops through open pipes, the blow-off valve on a turbo
+    if (ENGS.gas > 0.6 && gas < 0.2 && r > 0.45) {
+      if (P.o > 0.35) { const pops = Math.round(4 + 10 * P.o); for (let i = 0; i < pops; i++) noisePop(a.ctx, t + 0.04 + Math.random() * 0.7, 500 + Math.random() * 1600, 0.12 + Math.random() * 0.25 * P.o, 0.05, a.out); }
+      if (P.turbo) noisePop(a.ctx, t + 0.02, 2600, 0.12, 0.5, a.out);
+    }
+    ENGS.gas = gas;
+  }
+
+  // ---------- the Engine Build page, opened over the shop; Install puts that motor in your car ----------
+  function openEngineBuild(p) {
+    if (!S.car) return;
+    const c = S.car, m = carOf(c.id), q = new URLSearchParams({ game: '1', car: carLabel(m), stock: c.swap ? c.swap.label : motorLabel(c), hp: carHp(c), kg: m.kg || 1600, rate: p.rate || 1 });
+    if (c.swap) q.set('cfg', JSON.stringify(c.swap.cfg));
+    const el = $('engbuild'); el.innerHTML = `<iframe src="engine.html?${q}" title="Engine Build"></iframe>`; el.hidden = false; closeMenu();
+    ENGB.place = p;
+  }
+  const ENGB = { place: null };
+  addEventListener('message', e => {
+    const d = e.data; if (!d || !d.mw || e.source === window) return;
+    if (d.mw === 'engine-close') { $('engbuild').hidden = true; $('engbuild').innerHTML = ''; }
+    if (d.mw === 'engine-install' && S.car) {
+      if (!spend(d.total, 'Engine swap: ' + d.label)) return;
+      S.car.swap = { cfg: d.cfg, snd: d.snd, hp: d.hp, label: d.label }; save(); refreshStats();
+      $('engbuild').hidden = true; $('engbuild').innerHTML = '';
+      toast(`${d.label} is in. ${d.hp} hp. Pop the hood.`, 'good');
+      if (car) applyMotor(car.userData.model);
+      if (inside) redoRoom && redoRoom();
+    }
+  });
+  const motorLabel = c => { const k = motorKinds(c).find(x => x.kind === (c.eng || stockKind(c))); return k ? k.label : carOf(c.id).engine || 'stock motor'; };
+  // crate motors are baked once per build by the Engine Build page in a hidden frame, then shared
+  const SWAPS3D = {};
+  function swapMotor(cfg) {
+    const key = JSON.stringify(cfg);
+    if (!SWAPS3D[key]) SWAPS3D[key] = new Promise(res => {
+      const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;left:-9999px;top:0;width:64px;height:64px;border:0;visibility:hidden'; f.src = 'engine.html?bake=1';
+      let tries = 0; const done = v => { res(v); setTimeout(() => f.remove(), 50); };
+      const poll = () => { const w = f.contentWindow; if (w && w.__mw) { try { w.__mw.set(cfg); done(bakeSwap(w.__mw.bake(), key)); } catch (e) { console.warn('engine bake: ' + e.message); done(null); } } else if (++tries < 200) setTimeout(poll, 150); else done(null); };
+      f.onload = () => setTimeout(poll, 100); document.body.appendChild(f);
+    });
+    return SWAPS3D[key];
+  }
+  function bakeSwap(d, key) {
+    const mats = d.mats.map(m => m.basic ? new THREE.MeshBasicMaterial({ color: m.c, side: m.d ? THREE.DoubleSide : THREE.FrontSide })
+      : new THREE.MeshStandardMaterial({ color: m.c, emissive: m.e, metalness: m.mt, roughness: m.r, flatShading: m.f, side: m.d ? THREE.DoubleSide : THREE.FrontSide, transparent: m.t, opacity: m.o === undefined ? 1 : m.o }));
+    mats.forEach(m => { m.color.convertSRGBToLinear(); m.emissive && m.emissive.convertSRGBToLinear(); });
+    const parts = d.parts.map(q => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(q.p), 3)); g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(q.n), 3)); g.computeBoundingSphere(); g.userData.shared = true; return { geo: g, mat: mats[q.m] }; });
+    return { key, parts, box: d.box };
+  }
+  // show the right motor in a car model: a swap, a factory option, or the stock one
+  function applyMotor(m, c = S.car) {
+    if (!m || !c) return;
+    if (c.swap) { setCarEngine(m, '', null); swapMotor(c.swap.cfg).then(sw => { if (sw && c.swap && JSON.stringify(c.swap.cfg) === sw.key) setCarEngine(m, '', sw); }); }
+    else setCarEngine(m, c.eng || '', null);
+  }
+  // factory motors: the other engine each car page has (a Hellcat for the Scat Pack, the blown 454 for the box Chevy...)
+  function motorRows(p) {
+    const c = S.car, kinds = motorKinds(c), rate = p.rate || 1, rows = [];
+    rows.push({ t: 'Engine Build (3D)', s: c.swap ? `In it now: ${c.swap.label}, ${c.swap.hp} hp. Build another or tune this one.` : 'Build a crate motor, dyno it, and drop it in this car', btn: 'Open', act: () => openEngineBuild(p) });
+    if (kinds.length) {
+      const stockI = Math.max(0, kinds.findIndex(k => k.stock)), cur = c.swap ? 'swap' : (c.eng || kinds[stockI].kind);
+      kinds.forEach((k, i) => { const up = i > stockI, pr = k.stock ? 1800 : (up ? 16500 : 6500);
+        rows.push({ t: k.label + (k.stock ? ' (factory)' : ''), s: k.stock ? 'Put the original motor back' : up ? 'Factory upgrade motor for this car' : 'The other factory motor', btn: cur === k.kind ? 'In it now' : money(pr * rate), off: cur === k.kind,
+          act: () => { if (!spend(pr * rate, k.label)) return; c.eng = k.kind; c.swap = null; c.engK = k.stock ? 1 : up ? 1.25 : 0.82; applyMotor(car && car.userData.model); toast(`${k.label} is in. ${carHp(c)} hp.`, 'good'); } }); });
+    }
+    return rows;
   }
   // ---------- character creation: the first screen a new player sees ----------
   const CR = { on: false, scene: null, cam: null, stand: null, P: null, look: null, name: '', origin: 'fresh', tab: 'you', hgroup: 'black', fsub: 'skin', csub: 'top', yaw: 0.35, frame: 'full', fy: 0.95, fh: 1.95, drag: null, first: false, dirty: false };
@@ -3986,7 +4157,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const key = S.car ? S.car.id + '|' + S.car.color : '', U = car.userData; if (U.key === key) return; U.key = key;
     if (U.slot) { U.slot.userData.dead = true; car.remove(U.slot); U.slot = null; U.model = null; }
     if (!S.car) return;
-    const slot = U.slot = putCar(car, S.car.id, S.car.color, m => { m.position.y = -0.12; U.model = m; U.head.position.z = -m.userData.front + 0.2; });
+    const slot = U.slot = putCar(car, S.car.id, S.car.color, m => { m.position.y = -0.12; U.model = m; applyMotor(m); U.head.position.z = -m.userData.front + 0.2; });
     slot.name = 'model';
   }
   function nearestRoad(x, z) {
@@ -4136,7 +4307,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     return { gas, brake, steer };
   }
   function stepDrive(dt) {
-    const I = input(), fwd = drv.v;
+    const I = input(), fwd = drv.v; drv.gas = I.gas || 0;
     const P = carPerf(), top = P.top, acc = P.acc * Math.max(0, 1 - Math.abs(fwd) / Math.max(1, top));
     const ox = drv.x, oz = drv.z, vBefore = Math.abs(drv.v);
     if (I.gas) drv.v += acc * I.gas * dt;
@@ -4297,6 +4468,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     if ((frame & 15) === 0) syncCarModel();
     if (car) stepPanels(car.userData.model, dt); if (car && driving) stepCarAudio();
+    { const on = !!(car && driving && !foot.on && !inside && S.car && S.car.fuel > 0); stepEngineSound(dt, on, drv.v, on ? carPerf().top : 30, drv.gas || 0); if (car) stepEngineAnim(car.userData.model, on, drv.gas || 0); }
     if ((frame & 7) === 0 && worldOn) stepCarUI();
     controls.enabled = !driving && !inside;
     const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); resize(); }
@@ -4360,7 +4532,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = {
-    ready: false, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
