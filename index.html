@@ -161,6 +161,26 @@ body.creating > .top, body.creating > .dock, body.creating #hud, body.creating #
   #spd { font-size: 30px; }
 }
 @media (max-height: 500px) { .top #facts { display: none; } .dock { gap: 5px; padding-top: 6px; } .btn { padding: 5px 9px; font-size: 14px; } .chip { padding: 4px 8px; } #places { max-height: 22vh; } .pbtn { width: 54px; height: 54px; font-size: 13px; } }
+/* minimap + compass top-left whenever you're out in the world */
+#mini { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); left: max(16px, env(safe-area-inset-left, 0px)); width: 132px; height: 132px; display: none; pointer-events: none; z-index: 6; }
+#mini canvas { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
+#mini-hd { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); font-size: 13px; font-weight: 700; letter-spacing: 0.06em; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+body.busy:not(.indoors):not(.creating) #mini { display: block; }
+body.busy .top { display: none !important; }
+body.busy #card { top: calc(env(safe-area-inset-top, 0px) + 172px); }
+/* gas and brake only in the car; on foot the menus tuck away behind one button */
+body:not(.incar) .pad { display: none !important; }
+#walkmenu { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 176px); left: max(16px, env(safe-area-inset-left, 0px)); width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 20px; display: none; z-index: 6; cursor: pointer; }
+body.walking:not(.creating) #walkmenu { display: block; }
+body.walking:not(.dockopen) > .dock, body.walking #card { display: none !important; }
+body.walking.dockopen #walkmenu { background: var(--accent); color: #121016; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #mini { width: 112px; height: 112px; top: calc(env(safe-area-inset-top, 0px) + 8px); }
+  body.busy #card { top: calc(env(safe-area-inset-top, 0px) + 8px); left: calc(max(16px, env(safe-area-inset-left, 0px)) + 126px); }
+  #walkmenu { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); left: auto; right: max(16px, env(safe-area-inset-right, 0px)); }
+  body.dockopen #walkmenu { bottom: calc(env(safe-area-inset-bottom, 0px) + 62px); }
+}
+#prompt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
 </style>
 </head>
 <body>
@@ -172,6 +192,8 @@ body.creating > .top, body.creating > .dock, body.creating #hud, body.creating #
 </div>
 <div id="card" hidden><div class="ct"><b id="c-type"></b><button class="x" id="c-x" aria-label="Close">✕</button></div><h2 id="c-name"></h2><p id="c-info"></p><p id="c-more"></p><div class="row" id="c-act"></div></div>
 <div id="hud"><div id="spd">0<small>MPH</small></div><div id="street"></div><div id="stats"></div></div>
+<div id="mini" aria-hidden="true"><canvas id="mini-c"></canvas><div id="mini-hd"></div></div>
+<button id="walkmenu" aria-label="Menu">☰</button>
 <div id="prompt" hidden></div>
 <div id="menu" hidden></div>
 <div id="toast" hidden></div>
@@ -2815,7 +2837,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   }
   const prompt = () => document.getElementById('prompt');
   function showPrompt(st) {
-    const el = prompt();
+    const el = prompt(); foot.pkey = '';
     if (!st) { el.hidden = true; return; }
     el.innerHTML = `<span>${esc(st.menu ? st.name : 'Door')}</span><button class="btn go" id="p-use">${st.menu ? 'Use' : 'Leave'} <small>E</small></button>`;
     el.hidden = false; document.getElementById('p-use').onclick = useStation;
@@ -2826,6 +2848,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   // the on-screen stick drives the same joystick input as dragging the screen
   function bindStick() {
+    document.getElementById('walkmenu').addEventListener('click', () => { document.body.classList.toggle('dockopen'); resize(); });
     const st = document.getElementById('stick'), kn = document.getElementById('knob'); let id = null;
     const move = e => { const r = st.getBoundingClientRect(), R = r.width / 2, dx = e.clientX - r.left - R, dy = e.clientY - r.top - R, d = Math.hypot(dx, dy), k = d > R ? R / d : 1;
       kn.style.transform = `translate(${dx * k}px, ${dy * k}px)`; joy.x = clamp(dx / R, -1, 1); joy.y = clamp(dy / R, -1, 1); IN.target = null; if (foot) foot.target = null; st.classList.toggle('run', d > R * 0.95); };
@@ -3046,6 +3069,60 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     crEl('cr-go').onclick = closeCreator;
     document.querySelectorAll('#cr-tabs .tab').forEach(t => t.onclick = () => { CR.tab = t.dataset.tab; crFill(); crFrame(); });
   }
+  // ---------- minimap: roads and places around you, turned to where you face, with a compass ring ----------
+  const MINI = { c: null, x: null, hd: null, size: 0, r: 200, seen: new Set(), fwd: new THREE.Vector3() };
+  function stepMini() {
+    if (!MINI.c) { MINI.c = document.getElementById('mini-c'); MINI.x = MINI.c.getContext('2d'); MINI.hd = document.getElementById('mini-hd'); }
+    const el = MINI.c, box = el.parentNode.getBoundingClientRect(); if (!box.width) return;
+    const dpr = Math.min(2, devicePixelRatio || 1), S = Math.round(box.width * dpr);
+    if (S !== MINI.size) { MINI.size = el.width = el.height = S; }
+    const px = foot.on ? foot.x : drv.x, pz = foot.on ? foot.z : drv.z;
+    camera.getWorldDirection(MINI.fwd); let fx = MINI.fwd.x, fz = MINI.fwd.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
+    const rx = -fz, rz = fx; // right of where you face
+    const want = foot.on ? 140 : clamp(220 + Math.abs(drv.v) * 4, 220, 520); MINI.r += (want - MINI.r) * 0.08;
+    const R = MINI.r, half = S / 2, k = (half - 6 * dpr) / R, x = MINI.x;
+    const to = (wx, wz) => { const dx = wx - px, dz = wz - pz; return [half + (dx * rx + dz * rz) * k, half - (dx * fx + dz * fz) * k]; };
+    x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, S, S);
+    x.save(); x.beginPath(); x.arc(half, half, half - 1, 0, Math.PI * 2); x.clip();
+    x.fillStyle = 'rgba(18,16,22,0.62)'; x.fillRect(0, 0, S, S);
+    // roads
+    const cs = streets.cs, n = Math.ceil(R * 1.45 / cs); MINI.seen.clear(); x.lineCap = 'round'; x.strokeStyle = 'rgba(214,206,196,0.78)';
+    for (let i = -n; i <= n; i++) for (let j = -n; j <= n; j++) for (const e of streets.at(px + i * cs, pz + j * cs)) {
+      if (MINI.seen.has(e)) continue; MINI.seen.add(e);
+      const a = to(e.ax, e.az), b = to(e.bx, e.bz);
+      x.lineWidth = Math.max(1.5 * dpr, e.w * k); x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke();
+    }
+    // places
+    for (const p of DATA.P) {
+      const dx = p.x - px, dz = p.z - pz; if (dx * dx + dz * dz > R * R * 1.5) continue;
+      const q = to(p.x, p.z); x.fillStyle = p.color && p.color !== '#ffffff' ? p.color : '#ffd23f';
+      x.beginPath(); x.arc(q[0], q[1], 3.2 * dpr, 0, Math.PI * 2); x.fill(); x.lineWidth = dpr; x.strokeStyle = 'rgba(0,0,0,0.6)'; x.stroke();
+    }
+    // your car when you're walking
+    if (foot.on && foot.park) { const q = to(foot.park.x, foot.park.z); x.fillStyle = '#7fd1ff'; x.fillRect(q[0] - 3 * dpr, q[1] - 4.5 * dpr, 6 * dpr, 9 * dpr); }
+    x.restore();
+    // pin: on the map, or an arrow on the rim pointing at it
+    if (pin.visible) {
+      const q = to(pin.position.x, pin.position.z), dx = q[0] - half, dy = q[1] - half, d = Math.hypot(dx, dy), lim = half - 9 * dpr;
+      const t = d > lim ? lim / d : 1, mx = half + dx * t, my = half + dy * t;
+      x.save(); x.translate(mx, my); x.rotate(Math.atan2(dy, dx) + Math.PI / 2); x.fillStyle = '#ffb636'; x.strokeStyle = '#121016'; x.lineWidth = 1.5 * dpr;
+      x.beginPath(); if (t < 1) { x.moveTo(0, -7 * dpr); x.lineTo(5 * dpr, 4 * dpr); x.lineTo(-5 * dpr, 4 * dpr); } else x.arc(0, 0, 5 * dpr, 0, Math.PI * 2); x.closePath(); x.fill(); x.stroke(); x.restore();
+    }
+    // you, always pointing up
+    x.save(); x.translate(half, half); x.fillStyle = '#ffffff'; x.strokeStyle = '#121016'; x.lineWidth = 1.5 * dpr;
+    x.beginPath(); x.moveTo(0, -8 * dpr); x.lineTo(6 * dpr, 6 * dpr); x.lineTo(0, 3 * dpr); x.lineTo(-6 * dpr, 6 * dpr); x.closePath(); x.fill(); x.stroke(); x.restore();
+    // compass ring: north is -z
+    x.lineWidth = 2 * dpr; x.strokeStyle = 'rgba(241,236,228,0.35)'; x.beginPath(); x.arc(half, half, half - 1.5 * dpr, 0, Math.PI * 2); x.stroke();
+    x.font = `700 ${Math.round(12 * dpr)}px "Barlow Condensed", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (const [lab, wx, wz] of [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['W', -1, 0]]) {
+      const sx = wx * rx + wz * rz, sy = -(wx * fx + wz * fz), ex = half + sx * (half - 9 * dpr), ey = half + sy * (half - 9 * dpr);
+      x.fillStyle = 'rgba(18,16,22,0.85)'; x.beginPath(); x.arc(ex, ey, 8 * dpr, 0, Math.PI * 2); x.fill();
+      x.fillStyle = lab === 'N' ? '#ff5a4e' : '#f1ece4'; x.fillText(lab, ex, ey + 0.5 * dpr);
+    }
+    let deg = Math.round(Math.atan2(fx, -fz) * 180 / Math.PI); if (deg < 0) deg += 360;
+    const txt = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8] + ' ' + String(deg).padStart(3, '0') + '°';
+    if (MINI.hd.textContent !== txt) MINI.hd.textContent = txt;
+  }
 
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
@@ -3215,9 +3292,12 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     $('pad').classList.add('on'); $('hud').classList.remove('foot'); $('walkhint').hidden = true; syncDrive(); resize();
   }
   function carPrompt(on) {
-    if (on === foot.nearCar) return; foot.nearCar = on; const el = $('prompt');
-    if (!on) { el.hidden = true; return; }
-    el.innerHTML = '<span>Your car</span><button class="btn go" id="p-use">Get in <small>E</small></button>'; el.hidden = false; $('p-use').onclick = getIn;
+    foot.nearCar = on; const el = $('prompt'), p = !on && cardMode === 'near' ? cardPlace : null, key = on ? 'car' : p ? 'p:' + p.id : '';
+    if (key === foot.pkey) return; foot.pkey = key;
+    if (!key) { el.hidden = true; return; }
+    if (on) { el.innerHTML = '<span>Your car</span><button class="btn go" id="p-use">Get in <small>E</small></button>'; $('p-use').onclick = getIn; }
+    else { el.innerHTML = `<span>${p.name.replace(/</g, '&lt;')}</span><button class="btn go" id="p-use">${STYLE[p.type] ? 'Walk in' : 'Check it out'} <small>E</small></button>`; $('p-use').onclick = pullIn; }
+    el.hidden = false;
   }
   function stepFoot(dt) {
     let mx = 0, mz = 0, run = keys.ShiftLeft || keys.ShiftRight;
@@ -3462,10 +3542,12 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     controls.enabled = !driving && !inside;
-    const walking = inside || foot.on; if (walking !== document.body.classList.contains('walking')) document.body.classList.toggle('walking', walking);
+    const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); if (!walking) bc.remove('dockopen'); resize(); }
+    const incar = driving && !foot.on && !inside; if (incar !== bc.contains('incar')) bc.toggle('incar', incar); if (inside !== bc.contains('indoors')) bc.toggle('indoors', inside);
     if (creating) { crStep(dt); renderer.render(CR.scene, CR.cam); return; }
     if (inside) { stepInterior(dt); if ((frame & 31) === 0) refreshStats(); renderer.render(IN.scene, IN.cam); return; }
     if (driving) { if (foot.on) stepFoot(dt); else stepDrive(dt); } else { stepFly(dt); controls.update(); }
+    if (driving && (frame & 1)) stepMini();
     const focus = driving ? (foot.on ? foot.holder.position : car.position) : controls.target, dist = driving ? (foot.on ? 14 : 30) : camera.position.distanceTo(controls.target);
     // fog and the sun's shadow box follow the zoom
     scene.fog.near = driving ? 700 : Math.max(1500, dist * 1.1); scene.fog.far = driving ? (phone ? 3200 : 4800) : Math.max(9000, dist * 4 + 8000);
