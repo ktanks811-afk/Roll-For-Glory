@@ -2777,10 +2777,10 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
 
   // ---------- interior builder ----------
   let RA = null;
-  function rbox(x0, y0, z0, x1, y1, z1, color, solid = true) { prism(RA.plain, RA.plain, R4(x0, z0, x1, z1), y0, y1, lin(color), lin(color), 1.5, 1.5); if (solid && y0 < 1.2) IN.solids.push({ x0, z0, x1, z1 }); }
+  function rbox(x0, y0, z0, x1, y1, z1, color, solid = true) { prism(RA.plain, RA.plain, R4(x0, z0, x1, z1), y0, y1, lin(color), lin(color), 1.5, 1.5); if (solid && y0 < 1.2) IN.solids.push({ x0, z0, x1, z1, h: y1 }); }
   function station(name, x, z, menu, r = 2.2) { IN.stations.push({ name, x, z, menu, r }); }
   function addMesh(geo, mat, x, y, z, ry = 0) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; IN.room.add(m); return m; }
-  function roomCar(x, z, ry, color, y = 0, id) { const g = putCar(IN.room, id || (S.car && S.car.id) || BUILT[0], color); g.position.set(x, y, z); g.rotation.y = ry; if (y < 0.5) IN.solids.push({ x0: x - (ry ? 2.5 : 1.05), z0: z - (ry ? 1.05 : 2.5), x1: x + (ry ? 2.5 : 1.05), z1: z + (ry ? 1.05 : 2.5) }); return g; }
+  function roomCar(x, z, ry, color, y = 0, id) { const g = putCar(IN.room, id || (S.car && S.car.id) || BUILT[0], color); g.position.set(x, y, z); g.rotation.y = ry; if (y < 0.5) IN.solids.push({ x0: x - (ry ? 2.5 : 1.05), z0: z - (ry ? 1.05 : 2.5), x1: x + (ry ? 2.5 : 1.05), z1: z + (ry ? 1.05 : 2.5), h: 1.4 }); return g; }
   function wallSign(text, color, x, y, z, w) {
     const c = document.createElement('canvas'), k = c.getContext('2d'); c.width = 1024; c.height = 160;
     k.fillStyle = '#141417'; k.fillRect(0, 0, 1024, 160); k.font = '700 92px "Barlow Condensed", "Arial Narrow", sans-serif'; k.fillStyle = color; k.textAlign = 'center'; k.textBaseline = 'middle'; k.fillText(text.toUpperCase(), 512, 84, 980);
@@ -2959,7 +2959,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     station('Leave', 0, D / 2 - 0.8, null, 1.6);
     const g = toGeo(RA.plain), m = new THREE.Mesh(g, MAT.plain); m.castShadow = m.receiveShadow = true; IN.room.add(m);
     IN.scene.add(IN.room);
-    IN.pos.set(0, 0, D / 2 - 1.8); IN.yaw = 0; IN.target = null; IN.avatar.position.copy(IN.pos); IN.avatar.rotation.y = 0;
+    IN.pos.set(0, 0, D / 2 - 1.8); IN.yaw = 0; IN.camYaw = 0; LOOK.pitch = 0.3; IN.look = null; IN.target = null; IN.avatar.position.copy(IN.pos); IN.avatar.rotation.y = 0;
     placeCrowd(style);
     IN.camPos.set(0, Math.max(7.5, D * 0.6), D / 4 + Math.max(7.5, D * 0.6));
     wearMe(IN.avatar); inside = true; drv.v = 0; document.body.classList.add('busy');
@@ -3001,12 +3001,38 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     st.addEventListener('pointermove', e => { if (e.pointerId === id) move(e); });
     st.addEventListener('pointerup', e => { if (e.pointerId === id) end(); }); st.addEventListener('pointercancel', end);
   }
+  // third-person look: drag anywhere off the stick to turn the camera round you and tilt it up or down
+  const LOOK = { id: null, ox: 0, oy: 0, lx: 0, ly: 0, t: 0, moved: false, pitch: 0.3, dragAt: -1e9 };
+  function turnCam(dyaw, dpitch) {
+    if (inside) IN.camYaw += dyaw; else foot.camYaw += dyaw;
+    LOOK.pitch = clamp(LOOK.pitch + dpitch, -0.3, 1.1); LOOK.dragAt = performance.now();
+  }
+  // where the camera sits: behind and a little over your right shoulder, looking past your head
+  function orbitCam(x, z, yaw, dist, side, out, look) {
+    const p = LOOK.pitch, rx = Math.cos(yaw), rz = -Math.sin(yaw), px = x + rx * side, pz = z + rz * side, hy = 1.55;
+    look.set(px, hy, pz);
+    out.set(px + Math.sin(yaw) * Math.cos(p) * dist, Math.max(0.35, hy + Math.sin(p) * dist), pz + Math.cos(yaw) * Math.cos(p) * dist);
+    // walls and buildings between you and the camera pull it in so it never sees through them
+    const blocked = (x, y, z) => inside
+      ? IN.solids.some(b => y < (b.h || 4.2) && x > b.x0 - 0.15 && x < b.x1 + 0.15 && z > b.z0 - 0.15 && z < b.z1 + 0.15)
+      : solids.at(x, z).some(b => x > b.x0 - 0.2 && x < b.x1 + 0.2 && z > b.z0 - 0.2 && z < b.z1 + 0.2);
+    for (let t = 0.1; t <= 1.0001; t += 0.05) {
+      if (blocked(look.x + (out.x - look.x) * t, look.y + (out.y - look.y) * t, look.z + (out.z - look.z) * t)) { const k = Math.max(0.1, t - 0.08); out.set(look.x + (out.x - look.x) * k, look.y + (out.y - look.y) * k, look.z + (out.z - look.z) * k); break; }
+    }
+    // backed right up against a wall the camera is in your head: hide your body so you can still see out
+    if (ME) ME.wrap.visible = out.distanceTo(look) > 0.9;
+  }
   function bindInteriorInput(el) {
-    el.addEventListener('pointerdown', e => { if (!inside && !foot.on) return; joy.on = true; joy.ox = e.clientX; joy.oy = e.clientY; joy.x = joy.y = 0; joy.t = performance.now(); joy.moved = false; });
-    el.addEventListener('pointermove', e => { if ((!inside && !foot.on) || !joy.on) return; const dx = e.clientX - joy.ox, dy = e.clientY - joy.oy; if (Math.hypot(dx, dy) > 12) { joy.moved = true; IN.target = null; } joy.x = clamp(dx / 60, -1, 1); joy.y = clamp(dy / 60, -1, 1); });
+    el.addEventListener('pointerdown', e => { if ((!inside && !foot.on) || LOOK.id !== null) return; LOOK.id = e.pointerId; LOOK.ox = LOOK.lx = e.clientX; LOOK.oy = LOOK.ly = e.clientY; LOOK.t = performance.now(); LOOK.moved = false; });
+    el.addEventListener('pointermove', e => {
+      if (e.pointerId !== LOOK.id || (!inside && !foot.on)) return;
+      const dx = e.clientX - LOOK.lx, dy = e.clientY - LOOK.ly; LOOK.lx = e.clientX; LOOK.ly = e.clientY;
+      if (Math.hypot(e.clientX - LOOK.ox, e.clientY - LOOK.oy) > 8) LOOK.moved = true;
+      if (LOOK.moved) turnCam(-dx * 0.0065, dy * 0.0045);
+    });
     const up = e => {
-      if ((!inside && !foot.on) || !joy.on) return; joy.on = false; joy.x = joy.y = 0;
-      if (!joy.moved && performance.now() - joy.t < 400) {
+      if (e.pointerId !== LOOK.id) return; LOOK.id = null; if (!inside && !foot.on) return;
+      if (!LOOK.moved && performance.now() - LOOK.t < 400) {
         const r = el.getBoundingClientRect(); ndc.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
         ray.setFromCamera(ndc, inside ? IN.cam : camera); const hit = new THREE.Vector3(); if (ray.ray.intersectPlane(floorPlane, hit)) {
           if (!inside) { if (hit.distanceTo(v5.set(foot.x, 0, foot.z)) < 60) foot.target = hit.setY(0); return; }
@@ -3016,15 +3042,15 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         }
       }
     };
-    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', () => { joy.on = false; joy.x = joy.y = 0; });
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', e => { if (e.pointerId === LOOK.id) LOOK.id = null; });
   }
   function stepInterior(dt) {
     let mx = 0, mz = 0;
     if (keys.ArrowUp || keys.KeyW) mz -= 1; if (keys.ArrowDown || keys.KeyS) mz += 1; if (keys.ArrowLeft || keys.KeyA) mx -= 1; if (keys.ArrowRight || keys.KeyD) mx += 1;
     mx += joy.x; mz += joy.y;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) { if (!p) continue; if (Math.abs(p.axes[0]) > 0.15) mx += p.axes[0]; if (Math.abs(p.axes[1]) > 0.15) mz += p.axes[1]; if (p.buttons[0] && p.buttons[0].pressed && !IN.padA && IN.near && !menuFn) useStation(); if (p.buttons[1] && p.buttons[1].pressed && menuFn) closeMenu(); IN.padA = p.buttons[0] && p.buttons[0].pressed; }
-    if (mx || mz) IN.target = null;
+    for (const p of pads) { if (!p) continue; if (Math.abs(p.axes[0]) > 0.15) mx += p.axes[0]; if (Math.abs(p.axes[1]) > 0.15) mz += p.axes[1]; if (Math.abs(p.axes[2] || 0) > 0.15 || Math.abs(p.axes[3] || 0) > 0.15) turnCam(-(p.axes[2] || 0) * dt * 2.6, (p.axes[3] || 0) * dt * 1.6); if (p.buttons[0] && p.buttons[0].pressed && !IN.padA && IN.near && !menuFn) useStation(); if (p.buttons[1] && p.buttons[1].pressed && menuFn) closeMenu(); IN.padA = p.buttons[0] && p.buttons[0].pressed; }
+    if (mx || mz) { IN.target = null; const cy = IN.camYaw || 0, c = Math.cos(cy), s = Math.sin(cy), wx = c * mx + s * mz, wz = -s * mx + c * mz; mx = wx; mz = wz; }
     else if (IN.target) { const dx = IN.target.x - IN.pos.x, dz = IN.target.z - IN.pos.z, d = Math.hypot(dx, dz); if (d < 0.25) IN.target = null; else { mx = dx / d; mz = dz / d; } }
     const l = Math.hypot(mx, mz), sp = 3.4;
     if (l > 0.05 && !menuFn) {
@@ -3047,11 +3073,12 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const ch = Math.max(7.5, IN.D * 0.6) * (asp < 0.8 ? 1.9 : asp < 1.2 ? 1.4 : 1), cz = clamp(IN.pos.z * 0.5, -IN.D / 4, IN.D / 4);
       want = v4.set(IN.pos.x * 0.55, ch, cz + ch * 0.95); look = v5.set(IN.pos.x * 0.6, 0.5, cz - 2);
     } else {
-      const k = asp < 0.8 ? 1.6 : asp < 1.2 ? 1.25 : 1, back = 6.2 * k, up = 4.6 * k;
-      want = v4.set(clamp(IN.pos.x, -IN.W / 2 + 1, IN.W / 2 - 1), up, IN.pos.z + back); look = v5.set(IN.pos.x, 1.1, IN.pos.z - 1.2);
+      want = v4; look = v5; orbitCam(IN.pos.x, IN.pos.z, IN.camYaw || 0, asp < 0.8 ? 4.2 : 3.6, asp < 0.8 ? 0.35 : 0.55, want, look);
+      // keep the camera inside the walls; it slides in closer instead of going through them
+      want.x = clamp(want.x, -IN.W / 2 + 0.3, IN.W / 2 - 0.3); want.z = clamp(want.z, -IN.D / 2 + 0.3, IN.D / 2 + 3.5); want.y = Math.min(want.y, 3.9);
     }
-    IN.camPos.lerp(want, 1 - Math.exp(-dt * 4)); IN.cam.position.copy(IN.camPos);
-    IN.look = IN.look || look.clone(); IN.look.lerp(look, 1 - Math.exp(-dt * 6)); IN.cam.lookAt(IN.look);
+    IN.camPos.lerp(want, 1 - Math.exp(-dt * (drv.far ? 4 : 12))); IN.cam.position.copy(IN.camPos);
+    IN.look = IN.look || look.clone(); IN.look.lerp(look, 1 - Math.exp(-dt * 14)); IN.cam.lookAt(IN.look);
     // nearest station
     let best = null, bd = 1e9; for (const st of IN.stations) { const d = Math.hypot(st.x - IN.pos.x, st.z - IN.pos.z); if (d < st.r && d < bd) { bd = d; best = st; } }
     if (best !== IN.near) { IN.near = best; showPrompt(best); if (!best && menuFn) closeMenu(); }
@@ -3878,6 +3905,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     for (const p of pads) {
       if (!p) continue; if (Math.abs(p.axes[0]) > 0.15) mx += p.axes[0]; if (Math.abs(p.axes[1]) > 0.15) mz += p.axes[1];
       if (p.buttons[7] && p.buttons[7].value > 0.3) run = true;
+      if (Math.abs(p.axes[2] || 0) > 0.15 || Math.abs(p.axes[3] || 0) > 0.15) turnCam(-(p.axes[2] || 0) * dt * 2.6, (p.axes[3] || 0) * dt * 1.6);
       const a = p.buttons[0] && p.buttons[0].pressed; if (a && !foot.padA && !menuFn) { if (foot.nearCar) getIn(); else if (cardMode === 'near') pullIn(); } foot.padA = a;
       if (!foot.on) return;
     }
@@ -3901,16 +3929,16 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       foot.yaw = Math.atan2(-wx, -wz); foot.walk += dt * (run ? 11 : 8.5) * k;
       // the camera swings round behind you while you walk forward-ish
       let dc = foot.yaw - foot.camYaw; dc = Math.atan2(Math.sin(dc), Math.cos(dc));
-      if (Math.abs(dc) < 2.0) foot.camYaw += dc * Math.min(1, dt * (run ? 1.6 : 1.0)) * k;
+      if (Math.abs(dc) < 2.0 && performance.now() - LOOK.dragAt > 1500) foot.camYaw += dc * Math.min(1, dt * (run ? 1.6 : 1.0)) * k;
     }
     const h = foot.holder; h.position.set(foot.x, 0, foot.z);
     let dy = foot.yaw - h.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); h.rotation.y += dy * Math.min(1, dt * 12);
     if (ME) { if (moving) animPerson(ME, foot.walk, run ? 1.25 : 1); else idlePerson(ME, performance.now() / 1000); }
     drv.x = foot.x; drv.z = foot.z;
-    const tall = innerWidth < innerHeight * 0.8, back = drv.far ? 15 : tall ? 6.8 : 4.6, up = drv.far ? 8 : tall ? 3 : 2.2;
-    v4.set(foot.x + Math.sin(foot.camYaw) * back, up, foot.z + Math.cos(foot.camYaw) * back);
-    foot.cam.lerp(v4, 1 - Math.exp(-dt * 5)); camera.position.copy(foot.cam);
-    v5.set(foot.x + fx * 1.6, 1.35, foot.z + fz * 1.6); foot.look.lerp(v5, 1 - Math.exp(-dt * 8)); camera.lookAt(foot.look);
+    const tall = innerWidth < innerHeight * 0.8;
+    orbitCam(foot.x, foot.z, foot.camYaw, drv.far ? 12 : tall ? 4.4 : 3.6, drv.far ? 0 : tall ? 0.35 : 0.55, v4, v5);
+    foot.cam.lerp(v4, 1 - Math.exp(-dt * 12)); camera.position.copy(foot.cam);
+    foot.look.lerp(v5, 1 - Math.exp(-dt * 14)); camera.lookAt(foot.look);
     carPrompt(!!foot.park && Math.hypot(foot.x - foot.park.x, foot.z - foot.park.z) < 3.8);
     if ((frame & 7) === 0) { const s = streetAt(foot.x, foot.z); streetEl.textContent = s ? s.name : districtAt(foot.x, foot.z); }
   }
