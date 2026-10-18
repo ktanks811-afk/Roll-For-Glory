@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>MW Test</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="img/icon-192.png">
@@ -27,6 +27,8 @@
   color-scheme: dark;
 }
 html, body { height: 100%; }
+html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+* { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
@@ -333,6 +335,10 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
+  // feel like an app, not a web page: no pinch zoom, no double-tap zoom, no page bounce
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1 || e.scale && e.scale !== 1) e.preventDefault(); }, { passive: false });
+  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
 (function () {
   if (!window.THREE) { document.getElementById('err').hidden = false; return; }
   const stage = document.getElementById('stage');
