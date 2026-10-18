@@ -1,13 +1,13 @@
 {
   "name": "Murda Worth TEST",
   "short_name": "MW Test",
-  "description": "Build your car. Build your name.",
+  "description": "Murda Worth in 3D (test build)",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
-  "orientation": "landscape",
-  "background_color": "#050506",
-  "theme_color": "#0a0a0c",
+  "orientation": "any",
+  "background_color": "#121016",
+  "theme_color": "#121016",
   "icons": [
     {
       "src": "img/icon-192.png",
