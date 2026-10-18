@@ -203,6 +203,13 @@ body.carnear:not(.creating):not(.phoning):not(.indoors) #carbtn { display: block
 #carpanel { position: fixed; right: calc(max(16px, env(safe-area-inset-right, 0px)) + 58px); top: calc(env(safe-area-inset-top, 0px) + 160px); z-index: 9; display: flex; flex-direction: column; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
 #carpanel[hidden], body:not(.carnear) #carpanel { display: none; }
 #carpanel .btn { white-space: nowrap; }
+#fobbtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 222px); width: 50px; height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 22px; display: none; z-index: 8; padding: 0; cursor: pointer; }
+#fobbtn small { display: block; font: 600 10px var(--body); margin-top: 3px; }
+body.fobok:not(.creating):not(.phoning):not(.indoors) #fobbtn { display: block; }
+#fobpanel { position: fixed; right: calc(max(16px, env(safe-area-inset-right, 0px)) + 58px); top: calc(env(safe-area-inset-top, 0px) + 222px); z-index: 9; display: flex; flex-direction: column; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
+#fobpanel[hidden], body:not(.fobok) #fobpanel { display: none; }
+#fobpanel .btn { white-space: nowrap; touch-action: none; }
+#fobpanel .btn[disabled] { opacity: 0.45; }
 #radio { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: none; align-items: center; gap: 4px; background: rgba(14,15,18,0.82); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px; z-index: 7; max-width: calc(100vw - 32px); }
 body.incar:not(.creating):not(.phoning) #radio { display: flex; }
 #radio button { background: none; border: 0; color: var(--fg); font-size: 18px; width: 34px; height: 34px; cursor: pointer; padding: 0; }
@@ -237,7 +244,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 .ph-bar button { width: 130px; height: 6px; border-radius: 3px; background: #666; border: 0; cursor: pointer; padding: 0; }
 @media (orientation: landscape) and (max-height: 500px) {
   #phonebtn { top: calc(env(safe-area-inset-top, 0px) + 84px); width: 44px; height: 44px; font-size: 21px; }
-  #carbtn, #carpanel { top: calc(env(safe-area-inset-top, 0px) + 136px); } #carbtn { width: 44px; height: 50px; font-size: 19px; } #carpanel { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 52px); } #radio { bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  #carbtn, #carpanel { top: calc(env(safe-area-inset-top, 0px) + 136px); } #fobbtn, #fobpanel { top: calc(env(safe-area-inset-top, 0px) + 192px); } #fobbtn { width: 44px; height: 50px; font-size: 19px; } #fobpanel { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 52px); } #carbtn { width: 44px; height: 50px; font-size: 19px; } #carpanel { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 52px); } #radio { bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
   #garbtn { top: calc(env(safe-area-inset-top, 0px) + 136px); width: 44px; height: 50px; font-size: 19px; }
   .ph { width: min(640px, 100%); border-radius: 26px; }
   .ph-home { grid-template-columns: repeat(7, 1fr); }
@@ -266,6 +273,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 <button id="phonebtn" aria-label="Phone">📱</button>
 <button id="carbtn" aria-label="Car doors, hood and trunk">🚘<small>Car</small></button>
 <div id="carpanel" hidden></div>
+<button id="fobbtn" aria-label="Key fob">🔑<small>Fob</small></button>
+<div id="fobpanel" hidden></div>
 <div id="radio"><button id="rd-on" aria-label="Radio on or off">📻</button><span id="rd-title">Radio</span><button id="rd-prev" aria-label="Last song">⏮</button><button id="rd-next" aria-label="Next song">⏭</button></div>
 <button id="garbtn" aria-label="Garage">🚗<small>Garage</small></button>
 <div id="phone" hidden><div class="ph"><div class="ph-status"><span id="ph-time"></span><span id="ph-cash"></span></div><div class="ph-screen" id="ph-screen"></div><div class="ph-bar"><button id="ph-home" aria-label="Home"></button></div></div></div>
@@ -3524,14 +3533,14 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = P.lp;
     const gain = ctx.createGain(); gain.gain.value = 0;
     const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = P.lfo; const lg = ctx.createGain(); lg.gain.value = P.lg; lfo.connect(lg).connect(gain.gain);
-    const out = ctx.createGain(); out.gain.value = 0; out.connect(ctx.destination);
+    const out = ctx.createGain(); out.gain.value = 0; const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null; if (pan) out.connect(pan).connect(ctx.destination); else out.connect(ctx.destination);
     o1.connect(ws); o2.connect(ws); ws.connect(lp).connect(gain).connect(out);
     const t = ctx.currentTime; out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(1, t + 0.4);
     o1.frequency.setValueAtTime(P.base * 2.2, t); o1.frequency.exponentialRampToValueAtTime(P.base, t + 0.9);   // the start-up flare
     const osc = [o1, o2, lfo]; let whine = null, wg = null;
     if (P.whine) { whine = ctx.createOscillator(); whine.type = P.whine[0]; whine.frequency.value = P.whine[1]; wg = ctx.createGain(); wg.gain.value = P.whine[2]; whine.connect(wg).connect(out); osc.push(whine); }
     osc.forEach(o => o.start());
-    return { ctx, P, o1, o2, lp, gain, lfo, whine, wg, out, osc };
+    return { ctx, P, o1, o2, lp, gain, lfo, whine, wg, out, pan, osc };
   }
   function engineStop() { const a = ENGS.a; if (!a) return; ENGS.a = null; ENGS.key = ''; const t = a.ctx.currentTime; a.out.gain.cancelScheduledValues(t); a.out.gain.setValueAtTime(a.out.gain.value, t); a.out.gain.linearRampToValueAtTime(0, t + 0.35); setTimeout(() => a.osc.forEach(o => { try { o.stop(); } catch (e) {} }), 500); }
   function noisePop(ctx, at, f, peak, len, dest) {
@@ -3540,27 +3549,74 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     s.connect(bp).connect(g).connect(dest); s.start(at);
   }
   // every frame in the car: rpm climbs through the gears with speed, the gas opens it up, lifting off crackles open exhaust and blows off the turbo
-  function stepEngineSound(dt, on, v, top, gas) {
+  // vol < 1 when you hear it from outside (the key fob); pan puts it left or right of you
+  function stepEngineSound(dt, on, v, top, gas, vol = 1, pan = 0) {
     if (!on || !S.car) { engineStop(); return; }
     const P = carSnd(S.car), key = JSON.stringify(P);
     if (key !== ENGS.key) { engineStop(); ENGS.key = key; ENGS.a = engineStart(P); }
     const a = ENGS.a; if (!a || a.ctx.state !== 'running') return;
     const s = Math.min(1, Math.abs(v) / Math.max(10, top)), G = [0.16, 0.34, 0.55, 0.78, 1.0];
     let gi = G.findIndex(x => s <= x); if (gi < 0) gi = 4; const lo = gi ? G[gi - 1] : 0, gf = (s - lo) / (G[gi] - lo);
-    const want = Math.abs(v) < 0.6 ? 0.08 * gas : 0.28 + 0.72 * gf * (gi ? 1 : 0.9);
+    const want = Math.abs(v) < 0.6 ? 0.8 * gas : 0.28 + 0.72 * gf * (gi ? 1 : 0.9);
     ENGS.rpm += (Math.max(want, gas * 0.25) - ENGS.rpm) * Math.min(1, dt * (want > ENGS.rpm ? 6 : 9));
     const r = ENGS.rpm, t = a.ctx.currentTime, k = 0.06;
     a.o1.frequency.setTargetAtTime(P.base * (1 + (P.peak - 1) * r), t, k); a.o2.frequency.setTargetAtTime(P.base / 2 * (1 + (P.peak - 1) * r), t, k);
     a.lfo.frequency.setTargetAtTime(P.lfo + (40 - P.lfo) * Math.min(1, r * 1.6), t, 0.1);
     a.lp.frequency.setTargetAtTime(P.lp + (P.lp * 1.4 + 1600 * P.o) * (0.35 * r + 0.65 * gas), t, k);
-    a.gain.gain.setTargetAtTime(P.vol * (0.75 + 0.5 * r + 0.35 * gas), t, k);
-    if (a.whine) { a.whine.frequency.setTargetAtTime(Math.min(11000, P.whine[1] * (1 + (P.peak - 1) * 0.9 * r)), t, k); a.wg.gain.setTargetAtTime(P.whine[2] + (P.whine[3] - P.whine[2]) * gas * Math.max(r, P.turbo ? r * r : 0.3), t, 0.1); }
+    a.gain.gain.setTargetAtTime(P.vol * (0.75 + 0.5 * r + 0.35 * gas) * vol, t, k); if (a.pan) a.pan.pan.setTargetAtTime(pan, t, 0.08);
+    if (a.whine) { a.whine.frequency.setTargetAtTime(Math.min(11000, P.whine[1] * (1 + (P.peak - 1) * 0.9 * r)), t, k); a.wg.gain.setTargetAtTime((P.whine[2] + (P.whine[3] - P.whine[2]) * gas * Math.max(r, P.turbo ? r * r : 0.3)) * vol, t, 0.1); }
     // lift off the gas at high rpm: pops through open pipes, the blow-off valve on a turbo
     if (ENGS.gas > 0.6 && gas < 0.2 && r > 0.45) {
-      if (P.o > 0.35) { const pops = Math.round(4 + 10 * P.o); for (let i = 0; i < pops; i++) noisePop(a.ctx, t + 0.04 + Math.random() * 0.7, 500 + Math.random() * 1600, 0.12 + Math.random() * 0.25 * P.o, 0.05, a.out); }
-      if (P.turbo) noisePop(a.ctx, t + 0.02, 2600, 0.12, 0.5, a.out);
+      if (P.o > 0.35) { const pops = Math.round(4 + 10 * P.o); for (let i = 0; i < pops; i++) noisePop(a.ctx, t + 0.04 + Math.random() * 0.7, 500 + Math.random() * 1600, (0.12 + Math.random() * 0.25 * P.o) * vol, 0.05, a.out); }
+      if (P.turbo) noisePop(a.ctx, t + 0.02, 2600, 0.12 * vol, 0.5, a.out);
     }
     ENGS.gas = gas;
+  }
+
+  // ---------- key fob: start and stop the car from outside, rev it, lock it; you hear it from where you stand ----------
+  const FOB = { run: false, rev: false, range: 150, pan: 0 };
+  function fobDist() { return foot.on && foot.park ? Math.hypot(foot.x - foot.park.x, foot.z - foot.park.z) : 1e9; }
+  function fobVol() {
+    const d = fobDist(), dx = (foot.park.x - foot.x) / (d || 1), dz = (foot.park.z - foot.z) / (d || 1);
+    FOB.pan = d < 1.5 ? 0 : clamp(dx * Math.cos(foot.camYaw) - dz * Math.sin(foot.camYaw), -1, 1) * 0.75;
+    return 0.85 / (1 + Math.pow(d / 7, 1.25)); // loud next to it, still there across a parking lot
+  }
+  function fobIdle(dt) { const c = S.car; if (!isEV(c)) c.fuel = Math.max(0, c.fuel - dt / 3600 * 0.6 / tankGal(c)); }
+  function fobChirp(n) {
+    const ctx = audioCtx(); if (!ctx) return; if (ctx.state !== 'running') ctx.resume().catch(() => {});
+    const t = ctx.currentTime, v = Math.min(0.35, fobVol() * 0.6 + 0.05);
+    for (let i = 0; i < n; i++) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = 2350; g.gain.setValueAtTime(0, t + i * 0.16); g.gain.linearRampToValueAtTime(v, t + i * 0.16 + 0.01); g.gain.setValueAtTime(v, t + i * 0.16 + 0.09); g.gain.linearRampToValueAtTime(0, t + i * 0.16 + 0.11); o.connect(g).connect(ctx.destination); o.start(t + i * 0.16); o.stop(t + i * 0.16 + 0.13); }
+    // the lights flash with the chirp
+    if (car && car.userData.head) { const h = car.userData.head, was = h.visible; let k = 0; const blink = () => { h.visible = !h.visible; if (++k < n * 2) setTimeout(blink, 160); else h.visible = was; }; blink(); }
+  }
+  function fobPress(what) {
+    if (!S.car || !foot.on || !foot.park) return;
+    if (fobDist() > FOB.range) { toast('Too far. The fob reaches about 150 m.', 'bad'); return; }
+    if (what === 'start') {
+      if (FOB.run) { FOB.run = false; fobChirp(1); toast('Engine off.'); }
+      else if (S.car.fuel <= 0) toast('No gas in the tank.', 'bad');
+      else { FOB.run = true; fobChirp(2); toast('Remote started. It idles until you shut it off.', 'good'); }
+    } else if (what === 'lock') { fobChirp(1); toast('Locked.'); }
+    renderFob();
+  }
+  function renderFob() {
+    const el = $('fobpanel'); if (el.hidden) return;
+    el.innerHTML = `<button class="btn${FOB.run ? ' go' : ''}" data-f="start">${FOB.run ? 'Stop engine' : 'Start engine'}</button><button class="btn" data-f="rev"${FOB.run ? '' : ' disabled'}>Hold to rev</button><button class="btn" data-f="lock">Lock</button>`;
+    el.querySelector('[data-f=start]').onclick = () => fobPress('start');
+    el.querySelector('[data-f=lock]').onclick = () => fobPress('lock');
+    const rv = el.querySelector('[data-f=rev]'), up = () => { FOB.rev = false; rv.classList.remove('go'); };
+    rv.addEventListener('pointerdown', e => { e.preventDefault(); if (FOB.run) { FOB.rev = true; rv.classList.add('go'); } });
+    rv.addEventListener('pointerup', up); rv.addEventListener('pointerleave', up); rv.addEventListener('pointercancel', up);
+  }
+  function bindFob() {
+    $('fobbtn').onclick = () => { const el = $('fobpanel'); el.hidden = !el.hidden; if (!el.hidden) $('carpanel').hidden = true; renderFob(); };
+    addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !foot.on || inside) return; if (e.code === 'KeyK') fobPress('start'); if (e.code === 'KeyV' && FOB.run) FOB.rev = true; });
+    addEventListener('keyup', e => { if (e.code === 'KeyV') FOB.rev = false; });
+  }
+  // the fob button shows on foot while your car is in range
+  function stepFob() {
+    const ok = !!(S.car && foot.on && foot.park && !inside && !creating && fobDist() < FOB.range), bc = document.body.classList;
+    if (ok !== bc.contains('fobok')) { bc.toggle('fobok', ok); if (!ok) { $('fobpanel').hidden = true; FOB.rev = false; } }
   }
 
   // ---------- the Engine Build page, opened over the shop; Install puts that motor in your car ----------
@@ -4659,8 +4715,13 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     if ((frame & 15) === 0) syncCarModel();
     if (car) stepPanels(car.userData.model, dt); if (car && driving) stepCarAudio();
-    { const on = !!(car && driving && !foot.on && !inside && S.car && S.car.fuel > 0); stepEngineSound(dt, on, TIRE.wv || drv.v, on ? carPerf().top : 30, drv.gas || 0); if (car) stepEngineAnim(car.userData.model, on, drv.gas || 0); }
-    if ((frame & 7) === 0 && worldOn) stepCarUI();
+    { // in the car, or idling outside after a remote start from the key fob
+      if (FOB.run && (!S.car || S.car.fuel <= 0)) FOB.run = false;
+      const inCar = !!(car && driving && !foot.on && !inside && S.car && S.car.fuel > 0), remote = !!(car && driving && foot.on && foot.park && FOB.run && !inside);
+      const on = inCar || remote, gas = inCar ? drv.gas || 0 : FOB.rev ? 1 : 0;
+      stepEngineSound(dt, on, inCar ? TIRE.wv || drv.v : 0, on ? carPerf().top : 30, gas, inCar ? 1 : remote ? fobVol() : 0, inCar ? 0 : FOB.pan);
+      if (car) stepEngineAnim(car.userData.model, on, gas); if (remote) fobIdle(dt); }
+    if ((frame & 7) === 0 && worldOn) { stepCarUI(); stepFob(); }
     controls.enabled = !driving && !inside;
     const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); resize(); }
     const incar = driving && !foot.on && !inside; if (incar !== bc.contains('incar')) bc.toggle('incar', incar); if (inside !== bc.contains('indoors')) bc.toggle('indoors', inside);
@@ -4715,7 +4776,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       makeLabels(D); LABELS.push(...[textSprite('FORT WORTH', 44, '#ffd23f')].map(sp => { sp.position.set(DOWNTOWN.x, 30, DOWNTOWN.z); sp.userData.big = true; scene.add(sp); return sp; }));
       controls.target.set(DOWNTOWN.x, 0, DOWNTOWN.z); camera.position.set(DOWNTOWN.x + 380, 330, DOWNTOWN.z + 520);
       $('facts').textContent = `${(nB).toLocaleString()} buildings · ${(D.T.length / 4).toLocaleString()} trees · ${Math.round(D.E.length / 7).toLocaleString()} streets · ${D.P.length} places`;
-      setTime('day'); resize(); controls.update(); bindInteriorInput(renderer.domElement); bindStick(); bindPhone(); bindCarUI(); refreshStats();
+      setTime('day'); resize(); controls.update(); bindInteriorInput(renderer.domElement); bindStick(); bindPhone(); bindCarUI(); bindFob(); refreshStats();
       ld.hidden = true;
       if (!S.made) openCreator(true); else enterWorld();
       window.__map.ready = true;
@@ -4723,7 +4784,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = {
-    ready: false, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, FOB, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
