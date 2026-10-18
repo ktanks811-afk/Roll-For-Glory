@@ -1242,7 +1242,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const eng = c.cond.engine / 100, tr = c.cond.trans / 100;
     if (c.fuel <= 0) { top = 0; acc = 0; }
     top *= 0.55 + 0.45 * Math.min(eng, tr); acc *= 0.5 + 0.5 * eng;
-    return { top, acc, grip: 0.6 + c.cond.tires / 250 };
+    return Object.assign({ top, acc, grip: 0.6 + c.cond.tires / 250 }, dragPerf(c));
   }
 
   // ---------- menus: every system the place runs ----------
@@ -3007,7 +3007,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   function rbox(x0, y0, z0, x1, y1, z1, color, solid = true) { prism(RA.plain, RA.plain, R4(x0, z0, x1, z1), y0, y1, lin(color), lin(color), 1.5, 1.5); if (solid && y0 < 1.2) IN.solids.push({ x0, z0, x1, z1, h: y1 }); }
   function station(name, x, z, menu, r = 2.2) { IN.stations.push({ name, x, z, menu, r }); }
   function addMesh(geo, mat, x, y, z, ry = 0) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; IN.room.add(m); return m; }
-  function roomCar(x, z, ry, color, y = 0, id, who) { const c = who || (!id && S.car), g = putCar(IN.room, id || (S.car && S.car.id) || BUILT[0], color, m => { if (c) { const b = audioBuild(c); setCarAudio(m, b.subs.id, b.doors.id); applyMotor(m, c); } }); g.position.set(x, y, z); g.rotation.y = ry; if (y < 0.5) IN.solids.push({ x0: x - (ry ? 2.5 : 1.05), z0: z - (ry ? 1.05 : 2.5), x1: x + (ry ? 2.5 : 1.05), z1: z + (ry ? 1.05 : 2.5), h: 1.4 }); return g; }
+  function roomCar(x, z, ry, color, y = 0, id, who) { const c = who || (!id && S.car), g = putCar(IN.room, id || (S.car && S.car.id) || BUILT[0], color, m => { if (c) { const b = audioBuild(c); setCarAudio(m, b.subs.id, b.doors.id); applyMotor(m, c); applyDrag(m, c); } }); g.position.set(x, y, z); g.rotation.y = ry; if (y < 0.5) IN.solids.push({ x0: x - (ry ? 2.5 : 1.05), z0: z - (ry ? 1.05 : 2.5), x1: x + (ry ? 2.5 : 1.05), z1: z + (ry ? 1.05 : 2.5), h: 1.4 }); return g; }
   function wallSign(text, color, x, y, z, w) {
     const c = document.createElement('canvas'), k = c.getContext('2d'); c.width = 1024; c.height = 160;
     k.fillStyle = '#141417'; k.fillRect(0, 0, 1024, 160); k.font = '700 92px "Barlow Condensed", "Arial Narrow", sans-serif'; k.fillStyle = color; k.textAlign = 'center'; k.textBaseline = 'middle'; k.fillText(text.toUpperCase(), 512, 84, 980);
@@ -3051,6 +3051,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       counter(W / 2 - 6, 2.5, W / 2 - 1, 3.3, '#3a3d44'); station('Service desk', W / 2 - 3.5, 4.4, () => p.type === 'perf' ? MENUS.engine(p) : p.type === 'visual' ? MENUS.paint(p) : p.type === 'chop' ? MENUS.chop(p) : MENUS.repair(p));
       if (p.type === 'repair') station('Engine bay', -W / 2 + 2.2, 4, () => MENUS.engine(p));
       if (p.type === 'repair' || p.type === 'perf') { subWall(-W / 2 + 0.2, -6.6); station('Car audio', -W / 2 + 2.2, -5.6, () => MENUS.audio(p)); }
+      if (p.type === 'repair' || p.type === 'perf') { dragWall(W / 2, -3.5); station('Drag packs', W / 2 - 2, -3.5, () => MENUS.drag(p)); }
       rbox(W / 2 - 4, 0, -D / 2 + 0.3, W / 2 - 1, 1.6, -D / 2 + 1.2, '#4a4e56');
     },
     store(p, W, D) {
@@ -4226,7 +4227,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const sy = Math.sin(drv.yaw), cy = Math.cos(drv.yaw), fx = -sy, fz = -cy, lx = -cy, lz = sy;
     let u = TIRE.vx * fx + TIRE.vz * fz, vl = TIRE.vx * lx + TIRE.vz * lz, w = TIRE.w;
     const L = carDims(car && car.userData.model), a = L / 2, b = L / 2, k2 = a * b * 1.05;
-    const grip = P.grip, mu = (0.72 + grip * 0.42) * G9; // cornering grip, about 1 g on good tires
+    const grip = P.grip, mu = (0.72 + grip * 0.42) * G9 * (P.corner || 1); // cornering grip, about 1 g on good tires
     // weight moves back when you accelerate, forward when you brake
     const shift = clamp(TIRE.ax * 0.045, -0.35, 0.35), Nf = 0.5 - shift * 0.5, Nr = 0.5 + shift * 0.5;
     const spd = Math.hypot(u, vl);
@@ -4238,7 +4239,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // ---- rear axle: the driven wheels ----
     // the motor pulls hardest in the low gears, then the push falls off as the car goes faster
     const taper = Math.max(0, 1 - Math.max(0, u) / Math.max(1, P.top)), gear = 1 / (1 + Math.max(0, u - 10) / 30), drive = P.acc * I.gas * taper * gear;
-    const trac = (6 + grip * 6) * Nr * 2; // how hard the rears can push before they break loose
+    const trac = (6 + grip * 6) * Nr * 2 * (1 + (P.launch || 0) * clamp(1 - Math.abs(u) / 30, 0, 1)); // how hard the rears can push before they break loose
     const burnout = I.gas > 0.3 && I.brake > 0.3 && Math.abs(u) < 3.5;
     // a rear that is already sliding sideways has little grip left to push with, so gas in a slide keeps it lit
     const slideR = clamp((Math.abs(Math.atan2(vl - b * w, Math.max(2.2, Math.abs(u)))) - 0.12) / 0.3, 0, 1);
@@ -4349,7 +4350,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const _wp = new THREE.Vector3();
   function driveFx(dt, on) {
     stepSmoke(dt); stepSqueal(Math.max(TIRE.slipR, TIRE.slipF * 0.8), on);
-    const m = car && car.userData.model; if (!m || !on) return;
+    const m = car && car.userData.model; dragPose(m, dt, on); if (!m || !on) return;
     carDims(m);
     // body roll and squat (the model sits in the car group, which leans)
     const pitch = clamp(TIRE.ax * 0.0045, -0.05, 0.05), roll = clamp(-TIRE.ay * 0.0055, -0.07, 0.07);
@@ -4498,7 +4499,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const key = S.car ? S.car.id + '|' + S.car.color : '', U = car.userData; if (U.key === key) return; U.key = key;
     if (U.slot) { U.slot.userData.dead = true; car.remove(U.slot); U.slot = null; U.model = null; }
     if (!S.car) return;
-    const slot = U.slot = putCar(car, S.car.id, S.car.color, m => { m.position.y = -0.12; U.model = m; applyMotor(m); U.head.position.z = -m.userData.front + 0.2; });
+    const slot = U.slot = putCar(car, S.car.id, S.car.color, m => { m.position.y = -0.12; U.model = m; applyMotor(m); applyDrag(m, S.car); U.head.position.z = -m.userData.front + 0.2; });
     slot.name = 'model';
   }
   function nearestRoad(x, z) {
@@ -4889,6 +4890,264 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       window.__map.ready = true;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
+  }
+  // ---------- drag packs: skinny front runners and wide rear drag wheels on radials or slicks ----------
+  // the packs are the 2D game's (same brands, stages, prices, launch grip and wheelie), the wheels are built in code
+  // with the Rim Shop's forged-rim recipe. Wheel units: tire radius 1, width 0.7 (z -0.35..0.35), face toward +z.
+  const DRAGW = (() => {
+    const V2 = (x, y) => new THREE.Vector2(x, y), lerp = (a, b, t) => a + (b - a) * t;
+    const sm = o => new THREE.MeshStandardMaterial(o);
+    const M = {
+      polish: sm({ color: 0xe6e9ee, metalness: 1, roughness: 0.1 }), barrel: sm({ color: 0xc9ced6, metalness: 1, roughness: 0.2, side: THREE.DoubleSide }),
+      shadow: sm({ color: 0x141418, roughness: 0.8 }), rotor: sm({ color: 0x3a3b3f, metalness: 0.8, roughness: 0.5 }), cal: sm({ color: 0xc8161d, roughness: 0.35, metalness: 0.2 }),
+      cap: sm({ color: 0x0b0b0d, metalness: 0.6, roughness: 0.2 }), tire: sm({ color: 0x121113, roughness: 0.92, envMapIntensity: 0.25 }), slick: sm({ color: 0x18171a, roughness: 0.6, envMapIntensity: 0.35 }),
+      groove: sm({ color: 0x050506, roughness: 1 }),
+    };
+    const F = { gloss: sm({ color: 0x0c0c0f, metalness: 0.5, roughness: 0.18 }), gun: sm({ color: 0x4a4d53, metalness: 0.9, roughness: 0.3 }), red: sm({ color: 0x9a0612, metalness: 0.7, roughness: 0.18 }),
+      blue: sm({ color: 0x0b2f9a, metalness: 0.7, roughness: 0.18 }), gold: sm({ color: 0xd8a93a, metalness: 1, roughness: 0.12 }), bronze: sm({ color: 0x8a5a2b, metalness: 0.9, roughness: 0.3 }) };
+    // a = face, b = accent spokes, lip, hub
+    const FIN = {
+      polish:  { label: 'Polished', sw: '#d9dde3', a: M.polish, b: M.polish, lip: M.polish, hub: M.polish },
+      black:   { label: 'Black, polished lip', sw: '#16161a', a: F.gloss, b: F.gloss, lip: M.polish, hub: F.gloss },
+      blackout:{ label: 'All black', sw: '#0c0c0f', a: F.gloss, b: F.gloss, lip: F.gloss, hub: F.gloss },
+      gun:     { label: 'Gunmetal', sw: '#4a4d53', a: F.gun, b: F.gun, lip: M.polish, hub: F.gun },
+      red:     { label: 'Red anodized', sw: '#9a0612', a: F.red, b: F.red, lip: M.polish, hub: F.red },
+      blue:    { label: 'Blue anodized', sw: '#0b2f9a', a: F.blue, b: F.blue, lip: M.polish, hub: F.blue },
+      gold:    { label: 'Gold', sw: '#d8a93a', a: F.gold, b: F.gold, lip: M.polish, hub: F.gold },
+      bronze:  { label: 'Bronze', sw: '#8a5a2b', a: F.bronze, b: F.bronze, lip: F.bronze, hub: F.bronze },
+    };
+    // ten drag wheel styles (made-up line, no real logos): spoke recipes like the Rim Shop's catalog
+    const RIMS = [
+      { id: 'rt5', name: 'Ironline RT-5', price: 1400, n: 5, w0: 0.1, w1: 0.06, dish: 0.05 },
+      { id: 'mag', name: 'Ironline Magnum', price: 1500, n: 5, w0: 0.22, w1: 0.15, hole: 1, dish: 0.06 },
+      { id: 'star', name: 'Ironline Drag Star', price: 1100, n: 5, w0: 0.17, w1: 0.06, dish: 0.08 },
+      { id: 'lite', name: 'Ironline Draglite', price: 1000, n: 0, face: { n: 5, ww: 0.13, wl: 0.13, wr: 0.56, round: 1 }, dish: 0 },
+      { id: 'pro12', name: 'Ironline Pro 12', price: 1700, n: 12, w0: 0.05, w1: 0.04, dish: 0.06 },
+      { id: 'convo', name: 'Ironline Convo', price: 1600, n: 5, fork: 0.15, forkAt: 0.5, w0: 0.15, w1: 0.065, dish: 0.06 },
+      { id: 'v', name: 'Ironline V-Series', price: 1900, n: 5, split: 0.13, w0: 0.09, w1: 0.065, dish: 0.07 },
+      { id: 'ven', name: 'Ironline Ventura', price: 1500, n: 6, sweep: 0.45, bow: 0.08, w0: 0.11, w1: 0.065, dish: 0.06 },
+      { id: 'mesh', name: 'Ironline Mesh', price: 2100, w0: 0.06, w1: 0.045, dish: 0.05, layers: [{ n: 10, sweep: 0.35 }, { n: 10, sweep: -0.35, dz: 0.012 }] },
+      { id: 'mod', name: 'Ironline Pro Mod', price: 2400, n: 10, split: 0.05, w0: 0.065, w1: 0.05, dish: 0.08, cap: 'dome' },
+    ];
+    // the 2D parts counter's drag packs: [brand, name, part price, stage, install hours, wheels they come on, finish]
+    const FX = { launch: [0, 0.45, 0.6, 0.8, 1.0], corner: [1, 0.95, 0.92, 0.88, 0.85], wheelie: [0, 0.12, 0.2, 0.26, 0.32] };
+    const PACKS = [
+      ['mt', 'Mickey Thompson', 'ET Street R Radials + Front Runner Skinnies', 1650, 1, 2, 'rt5', 'polish'],
+      ['nitto', 'Nitto', 'NT555RII Drag Radials + NT555 Front Runners', 1550, 1, 2, 'lite', 'black'],
+      ['s71', 'Weld Racing', 'S71 Drag Pack (wheels + M/T radials + skinnies)', 2900, 1, 2, 'rt5', 'black'],
+      ['rs92', 'Race Star Industries', '92 Drag Star Drag Pack + Drag Shocks', 2400, 2, 4, 'star', 'polish'],
+      ['viking', 'Viking Performance', 'Drag Pack: Radials, Skinnies + Double-Adjustable Shocks', 2650, 2, 5, 'mag', 'gun'],
+      ['qa1', 'QA1', 'Drag Pack: Radials, Skinnies + Drag Shocks', 2900, 2, 5, 'pro12', 'black'],
+      ['calvert', 'Calvert Racing', 'CalTracs Bars + Drag Radials + Skinnies Pack', 3400, 3, 6, 'convo', 'polish'],
+      ['rts', 'Weld Racing', 'RT-S S71 Beadlock Drag Pack + ET Street Slicks', 3900, 3, 6, 'rt5', 'red'],
+      ['strange', 'Strange Engineering', 'Drag Pack: Slicks + Double-Adjustable Shocks', 4200, 3, 6, 'mesh', 'blackout'],
+      ['vser', 'Weld Racing', 'V-Series Beadlock Pro Drag Pack + M&H Slicks', 5600, 4, 8, 'v', 'polish'],
+      ['santhuff', "Santhuff's", 'Pro Drag Pack: Slicks + Coilover Drag Shocks', 6200, 4, 8, 'ven', 'gold'],
+      ['menscer', 'Menscer Motorsports', 'Pro Mod Drag Pack: Slicks + Triple-Adjustable Shocks', 7400, 4, 8, 'mod', 'black'],
+    ].map(([id, brand, name, part, stage, hrs, rim, fin]) => ({ id, brand, name, stage, rim, fin, price: Math.round(part * 1.1 / 5) * 5 + hrs * 125,
+      tire: /slick/i.test(name) ? 'slick' : 'radial', bead: stage >= 3, launch: FX.launch[stage], corner: FX.corner[stage], wheelie: FX.wheelie[stage] }));
+
+    // ---- geometry helpers (the Rim Shop's) ----
+    const disc = (r, z, mat) => { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 40), mat); m.position.z = z; return m; };
+    const lathe = (pts, mat, seg) => { const g = new THREE.LatheGeometry(pts, seg || 48); g.rotateX(Math.PI / 2); const m = new THREE.Mesh(g, mat); m.castShadow = true; return m; };
+    const cylZ = (r0, r1, h, mat, z, seg, open) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, seg || 32, 1, !!open), mat); m.rotation.x = Math.PI / 2; m.position.z = z; return m; };
+    function strip(ra, ta, rb, tb, wa, wb, bow, N) {
+      const L = [], Rt = []; N = N || 10;
+      const P = t => { const r = lerp(ra, rb, t), th = lerp(ta, tb, t) + bow * Math.sin(Math.PI * t); return V2(r * Math.sin(th), r * Math.cos(th)); };
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, c = P(t), d = P(Math.min(1, t + 0.02)).sub(P(Math.max(0, t - 0.02))).normalize(), n = V2(-d.y, d.x), w = lerp(wa, wb, t) / 2;
+        L.push(c.clone().addScaledVector(n, w)); Rt.push(c.clone().addScaledVector(n, -w));
+      }
+      return { L, Rt };
+    }
+    const shapeOf = s => new THREE.Shape(s.L.concat(s.Rt.slice().reverse()));
+    function spokeShapes(R, o) {
+      const r0 = R * 0.2, r1 = R * (o.r1 || 0.88), w0 = R * o.w0, w1 = R * o.w1, sw = o.sweep || 0, bow = o.bow || 0;
+      if (o.fork) {
+        const rm = lerp(r0, r1, o.forkAt || 0.5), tm = sw * (o.forkAt || 0.5);
+        return [shapeOf(strip(r0, 0, rm + w0 * 0.3, tm, w0, w0 * 0.9, 0, 6)), ...[-1, 1].map(k => shapeOf(strip(rm, tm, r1, sw + k * o.fork, w1 * 1.05, w1, bow * 0.5, 8)))];
+      }
+      const sh = shapeOf(strip(r0, 0, r1, sw, w0, w1, bow));
+      if (o.hole) { const h = strip(lerp(r0, r1, 0.3), sw * 0.3, lerp(r0, r1, 0.78), sw * 0.78, w0 * 0.42, w1 * 0.38, bow * 0.6, 8); sh.holes.push(new THREE.Path(h.L.concat(h.Rt.slice().reverse()))); }
+      return [sh];
+    }
+    function faceShape(R, o) {
+      const sh = new THREE.Shape(); sh.absarc(0, 0, R * 0.88, 0, Math.PI * 2, false);
+      const hub = new THREE.Path(); hub.absarc(0, 0, R * 0.2, 0, Math.PI * 2, true); sh.holes.push(hub);
+      for (let i = 0; i < o.n; i++) {
+        const a = i / o.n * Math.PI * 2, pts = [];
+        for (let j = 0; j < 28; j++) {
+          const u = j / 28 * Math.PI * 2, c = Math.cos(u), s = Math.sin(u), p = o.round ? 2 : 4;
+          const x = Math.sign(c) * Math.pow(Math.abs(c), 2 / p) * R * o.ww, y = Math.sign(s) * Math.pow(Math.abs(s), 2 / p) * R * o.wl + R * o.wr;
+          pts.push(V2(x * Math.cos(a) + y * Math.sin(a), -x * Math.sin(a) + y * Math.cos(a)));
+        }
+        sh.holes.push(new THREE.Path(pts));
+      }
+      return sh;
+    }
+    function mergeGeos(list) {
+      const parts = list.map(({ geo, m4 }) => { const g = geo.index ? geo.toNonIndexed() : geo.clone(); g.applyMatrix4(m4); return g; }), out = new THREE.BufferGeometry();
+      for (const k of ['position', 'normal']) {
+        const arr = new Float32Array(parts.reduce((s, g) => s + g.attributes[k].array.length, 0)); let o = 0;
+        for (const g of parts) { arr.set(g.attributes[k].array, o); o += g.attributes[k].array.length; }
+        out.setAttribute(k, new THREE.BufferAttribute(arr, 3));
+      }
+      parts.forEach(g => g.dispose()); return out;
+    }
+    const extrude = (shapes, depth, bev) => { const g = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: true, bevelThickness: bev, bevelSize: bev * 0.8, bevelSegments: 2, curveSegments: 10 }); g.translate(0, 0, -depth / 2); return g; };
+    // the spoked face, merged per material (a whole face is one or two draw calls)
+    function face(g, R, d, f, fz, th) {
+      const buckets = new Map(), push = (mat, geo, m4) => { if (!buckets.has(mat)) buckets.set(mat, []); buckets.get(mat).push({ geo, m4 }); };
+      for (const [li, L] of (d.layers || (d.n ? [d] : [])).entries()) {
+        const geo = extrude(spokeShapes(R, Object.assign({}, d, L)), th, 0.01), n = L.n, splits = L.split ? [-1, 1] : [0];
+        for (let i = 0; i < n; i++) for (const k of splits) {
+          const m4 = new THREE.Matrix4().makeRotationZ(i * Math.PI * 2 / n + k * (L.split || 0) + (L.rot || 0));
+          m4.multiply(new THREE.Matrix4().makeTranslation(0, 0, fz + (L.dz || 0))).multiply(new THREE.Matrix4().makeRotationX(d.dish));
+          push(k < 0 || li > 0 ? f.b : f.a, geo, m4);
+        }
+      }
+      if (d.face) push(f.a, extrude([faceShape(R, d.face)], th * 1.2, 0.012), new THREE.Matrix4().makeTranslation(0, 0, fz));
+      buckets.forEach((list, mat) => { const m = new THREE.Mesh(mergeGeos(list), mat); m.castShadow = true; g.add(m); });
+    }
+    function bolts(g, r, z, n, s) {
+      const im = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.016 * s, 0.016 * s, 0.03, 6), M.polish, n), m4 = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)), one = new THREE.Vector3(1, 1, 1);
+      for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; im.setMatrixAt(i, m4.compose(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z), q, one)); }
+      g.add(im);
+    }
+    // a drag wheel: rears have the face set deep in a polished barrel with a beadlock ring on the big packs,
+    // front runners are a flat face right out at the edge of a narrow rim
+    function rim(R, d, f, rear, bead) {
+      const g = new THREE.Group();
+      g.add(cylZ(R * 0.93, R * 0.93, 0.62, M.barrel, 0, 40, true), disc(R * 0.93, -0.14, M.shadow));
+      g.add(cylZ(R * 0.62, R * 0.62, 0.04, M.rotor, -0.06, 28));
+      const cal = new THREE.Mesh(new THREE.BoxGeometry(0.3 * R, 0.12 * R, 0.14), M.cal); cal.position.set(-R * 0.36, R * 0.38, -0.02); cal.rotation.z = 0.7; g.add(cal);
+      let fz;
+      if (rear) {   // deep: the lathe runs from the recessed face out to the lip
+        fz = 0.1; const rf = R * 0.86, lm = f.lip.clone(); lm.side = THREE.DoubleSide;
+        g.add(lathe([V2(rf * 0.98, fz - 0.02), V2(rf, fz + 0.03), V2(R * 0.9, 0.3), V2(R * 0.97, 0.32), V2(R, 0.34), V2(R * 0.995, 0.37), V2(R * 0.95, 0.375), V2(R * 0.9, 0.36)], lm, 56));
+        if (bead) {   // beadlock ring bolted round the outer lip
+          g.add(lathe([V2(R * 0.9, 0.37), V2(R * 0.9, 0.4), V2(R * 1.05, 0.4), V2(R * 1.07, 0.385), V2(R * 1.05, 0.365)], f.lip, 56));
+          bolts(g, R * 0.98, 0.41, 24, 1);
+        }
+      } else {
+        fz = 0.22;
+        g.add(lathe([V2(R * 0.84, 0.2), V2(R * 0.95, 0.28), V2(R, 0.31), V2(R * 0.995, 0.35), V2(R * 0.95, 0.355), V2(R * 0.86, 0.33)], f.lip, 56));
+      }
+      face(g, R, d, f, fz, rear ? 0.08 : 0.16);
+      // hub, lugs, cap
+      g.add(cylZ(R * 0.2, R * 0.24, 0.1, f.hub, fz + 0.05));
+      for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2, nut = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.06, 6), M.polish); nut.rotation.x = Math.PI / 2; nut.position.set(Math.cos(a) * R * 0.14, Math.sin(a) * R * 0.14, fz + 0.11); g.add(nut); }
+      if (d.cap === 'dome') { const c = new THREE.Mesh(new THREE.SphereGeometry(R * 0.09, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), f.hub); c.rotation.x = Math.PI / 2; c.position.z = fz + 0.1; g.add(c); }
+      else g.add(cylZ(R * 0.075, R * 0.075, 0.03, M.cap, fz + 0.115));
+      return g;
+    }
+    // the rubber: drag radials (grooves, white letters), slicks (smooth, round shoulders) and tall skinny front runners
+    const letters = {};
+    function letterMat(text) {
+      if (letters[text]) return letters[text];
+      const c = document.createElement('canvas'); c.width = 2048; c.height = 64; const k = c.getContext('2d');
+      k.fillStyle = '#ece8df'; k.font = '700 50px "Barlow Condensed", "Arial Narrow", sans-serif'; k.textAlign = 'center'; k.textBaseline = 'middle';
+      for (const x of [512, 1536]) k.fillText(text, x, 34, 900);
+      const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4;
+      return (letters[text] = new THREE.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.4, roughness: 0.7, depthWrite: false }));
+    }
+    function letterRing(r0, r1, z, text) {   // a flat ring with polar UVs so the words run round the sidewall
+      const N = 96, pos = [], uv = [], idx = [];
+      for (let i = 0; i <= N; i++) { const a = -i / N * Math.PI * 2 + Math.PI / 2, c = Math.cos(a), s = Math.sin(a); pos.push(c * r0, s * r0, z, c * r1, s * r1, z); uv.push(i / N, 0, i / N, 1); }
+      for (let i = 0; i < N; i++) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+      return new THREE.Mesh(g, letterMat(text));
+    }
+    function tire(Ri, kind) {
+      const g = new THREE.Group(), slick = kind === 'slick', front = kind === 'front';
+      const prof = front ? [V2(Ri, -0.33), V2(Ri + 0.03, -0.35), V2(0.9, -0.35), V2(0.975, -0.3), V2(1, -0.16), V2(1, 0.16), V2(0.975, 0.3), V2(0.9, 0.35), V2(Ri + 0.03, 0.35), V2(Ri, 0.33)]
+        : slick ? [V2(Ri, -0.33), V2(Ri + 0.03, -0.355), V2(0.88, -0.36), V2(0.96, -0.33), V2(0.995, -0.27), V2(1, -0.2), V2(1, 0.2), V2(0.995, 0.27), V2(0.96, 0.33), V2(0.88, 0.36), V2(Ri + 0.03, 0.355), V2(Ri, 0.33)]
+        : [V2(Ri, -0.33), V2(Ri + 0.03, -0.35), V2(0.92, -0.35), V2(0.98, -0.32), V2(1, -0.26), V2(1, 0.26), V2(0.98, 0.32), V2(0.92, 0.35), V2(Ri + 0.03, 0.35), V2(Ri, 0.33)];
+      g.add(lathe(prof, slick ? M.slick : M.tire, 48));
+      // grooves round the tread
+      for (const z of front ? [-0.09, 0.09] : slick ? [] : [-0.15, -0.05, 0.05, 0.15]) g.add(cylZ(1.002, 1.002, front ? 0.03 : 0.022, M.groove, z, 48, true));
+      if (kind === 'radial') {   // little tread slots out on the shoulders
+        const N = 36, im = new THREE.InstancedMesh(new THREE.BoxGeometry(0.03, 0.02, 0.07), M.groove, N * 2), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
+        let k = 0; for (let i = 0; i < N; i++) for (const row of [-1, 1]) { const a = (i + (row > 0 ? 0.5 : 0)) / N * Math.PI * 2; q.setFromEuler(new THREE.Euler(0, row * 0.4, a)); im.setMatrixAt(k++, m4.compose(new THREE.Vector3(Math.cos(a) * 0.996, Math.sin(a) * 0.996, row * 0.22), q, one)); }
+        g.add(im);
+      }
+      const r1 = 0.89, r0 = Math.max(Ri + 0.06, r1 - 0.14), zf = (slick ? 0.36 : 0.35) + 0.003;
+      g.add(letterRing(r0, r1, zf, front ? 'FRONT RUNNER · FRONT RUNNER' : slick ? 'PRO DRAG SLICK · TRACK USE ONLY' : 'DRAG RADIAL · DOT STREET LEGAL'));
+      g.traverse(o => { o.castShadow = true; });
+      return g;
+    }
+    const cache = new Map();
+    // one finished wheel in wheel units; Ri = rim radius over tire radius
+    function wheel(rimId, finKey, kind, bead, Ri) {
+      const key = [rimId, finKey, kind, bead ? 1 : 0, Ri.toFixed(3)].join('|');
+      if (!cache.has(key)) {
+        const g = new THREE.Group(), d = RIMS.find(r => r.id === rimId) || RIMS[0], f = FIN[finKey] || FIN.polish;
+        g.add(tire(Ri, kind), rim(Ri - 0.005, d, f, kind !== 'front', bead)); cache.set(key, g);
+      }
+      return cache.get(key).clone();
+    }
+    return { FIN, RIMS, PACKS, wheel };
+  })();
+  const DRAG_PACKS = DRAGW.PACKS, DRAG_RIMS = DRAGW.RIMS, DRAG_FIN = DRAGW.FIN;
+  const dragPack = c => c && c.drag && DRAG_PACKS.find(k => k.id === c.drag.pack);
+  const dragKey = c => c && c.drag ? [c.drag.pack, c.drag.rim, c.drag.fin].join('|') : '';
+  // launch grip, corner grip and how hard it stands up, for carPerf
+  function dragPerf(c) { const k = dragPack(c); return k ? { launch: k.launch, corner: k.corner, wheelie: k.wheelie } : { launch: 0, corner: 1, wheelie: 0 }; }
+  // swap a car model's wheels for its drag pack (or put the stock ones back); the wheel groups stay, so steering and spin still work
+  const dragLive = new Set();
+  function applyDrag(m, c) {
+    if (!m || !m.userData.wheels) return;
+    dragLive.add(m); m.userData.dragCar = c;
+    const U = m.userData, want = dragKey(c); if ((U.dragKey || '') === want) return; U.dragKey = want;
+    const k = dragPack(c), xs = U.wheels.map(w => w.position.x), mid = (Math.max(...xs) + Math.min(...xs)) / 2;
+    for (const w of U.wheels) {
+      const st = w.userData.stock || (w.userData.stock = { kids: w.children.slice(), scale: w.scale.clone() });
+      for (const o of w.children.slice()) w.remove(o);
+      if (!k) { st.kids.forEach(o => w.add(o)); w.scale.copy(st.scale); continue; }
+      const front = w.position.x > mid, tr = st.scale.x, stockW = st.scale.z * 0.7;
+      const width = front ? 0.12 : clamp(stockW * 1.06, 0.27, 0.36), Ri = clamp(0.19 / tr, 0.4, 0.62);   // 15 in rims, tall sidewalls
+      w.scale.set(tr, tr, width / 0.7);
+      const hold = DRAGW.wheel(c.drag.rim, c.drag.fin, front ? 'front' : k.tire, !front && k.bead, Ri);
+      // left-side wheels face the other way; skinnies sit tucked in behind the fender
+      if (w.position.z < 0) hold.rotation.y = Math.PI;
+      if (front) hold.position.z = -Math.sign(w.position.z) * Math.max(0, (stockW - width) / 2 - 0.03) / (width / 0.7);
+      w.add(hold);
+    }
+  }
+  // after a purchase: every model of this car in the world (on the street, on the lift, in the garage) gets the new wheels
+  function dragRefresh(c) { for (const m of dragLive) { let o = m; while (o.parent) o = o.parent; if (o.type !== 'Scene') { dragLive.delete(m); continue; } if (m.userData.dragCar === c) applyDrag(m, c); } }
+  // wheelies: the front comes up off the rear axle when a drag pack hooks hard at low speed
+  const WHEELIE = { a: 0, told: false };
+  function dragPose(m, dt, on) {
+    if (!m || !m.parent) return; const s = m.parent, k = on && S.car && dragPack(S.car);
+    const want = k ? k.wheelie * 0.5 * clamp((TIRE.ax - 6) / 8, 0, 1) * (TIRE.spin > 0.5 ? 0.2 : 1) * clamp(1 - Math.abs(drv.v) / 24, 0, 1) : 0;
+    WHEELIE.a += (want - WHEELIE.a) * Math.min(1, dt * (want > WHEELIE.a ? 5 : 2.2));
+    if (WHEELIE.a > 0.07 && !WHEELIE.told) { WHEELIE.told = true; toast('WHEELIE · front end up', 'good'); }
+    if (Math.abs(drv.v) < 1) WHEELIE.told = false;
+    const a = WHEELIE.a, xs = m.userData.wheels.map(w => w.position.x), zr = xs.length ? -Math.min(...xs) : 1.4, y0 = m.position.y;
+    s.rotation.x = a; s.position.y = y0 * (1 - Math.cos(a)) + zr * Math.sin(a); s.position.z = zr * (1 - Math.cos(a)) - y0 * Math.sin(a);
+  }
+  // the Drag packs wall: what the 2D parts counter sells, then the wheel styles and finishes for the pack you run
+  MENUS.drag = p => { if (!S.car) return noCar(p);
+    const c = S.car, rate = p.rate || 1, k = dragPack(c), rows = [], set = (d, msg) => { c.drag = d; save(); dragRefresh(c); toast(msg, 'good'); };
+    for (const x of DRAG_PACKS) rows.push({ t: `${x.brand} ${x.name}`, s: `Stage ${x.stage} · launch grip +${Math.round(x.launch * 100)}% · ${x.tire === 'slick' ? 'slicks' : 'drag radials'}${x.bead ? ' on beadlocks' : ''} · may wheelie`, btn: k === x ? 'Installed' : money(x.price * rate), off: k === x,
+      act: () => { if (spend(x.price * rate, x.name)) set({ pack: x.id, rim: x.rim, fin: x.fin }, `${x.brand} drag pack on. It hooks now.`); } });
+    for (const r of DRAG_RIMS) rows.push({ t: `Wheels: ${r.name}`, s: k ? '15 in skinnies up front, 15x10 out back' : 'Needs a drag pack first', btn: !k ? '—' : c.drag.rim === r.id ? 'On the car' : money(r.price * rate), off: !k || c.drag.rim === r.id,
+      act: () => { if (spend(r.price * rate, r.name)) set(Object.assign({}, c.drag, { rim: r.id }), `${r.name} wheels on.`); } });
+    for (const [id, f] of Object.entries(DRAG_FIN)) rows.push({ sw: f.sw, t: `Finish: ${f.label}`, s: k ? 'Strip and refinish the set' : 'Needs a drag pack first', btn: !k ? '—' : c.drag.fin === id ? 'On the car' : money(350 * rate), off: !k || c.drag.fin === id,
+      act: () => { if (spend(350 * rate, 'Wheel refinish')) set(Object.assign({}, c.drag, { fin: id }), `${f.label} wheels.`); } });
+    if (k) rows.push({ t: 'Pull the drag pack', s: 'Stock wheels and tires back on', btn: 'Swap back', act: () => set(null, 'Stock wheels back on.') });
+    return { title: 'Drag packs', sub: k ? `${k.brand} · ${(DRAG_RIMS.find(r => r.id === c.drag.rim) || {}).name} · ${DRAG_FIN[c.drag.fin].label}` : 'Skinnies up front, drag radials or slicks out back', rows };
+  };
+  // a wall of drag wheels in the shop: a beadlock rear, a skinny and a slick, with the sign over them
+  function dragWall(x, z) {
+    rbox(x - 0.15, 0.3, z - 2.6, x, 3.1, z + 2.6, '#1a1a1c', false);
+    const show = [['rt5', 'red', 'radial', true, -1.6, 1.6], ['v', 'polish', 'front', false, 0, 1.3], ['mod', 'black', 'slick', true, 1.6, 1.6]];
+    for (const [rim, fin, kind, bead, dz, y] of show) {
+      const tr = 0.36, g = DRAGW.wheel(rim, fin, kind, bead, 0.53); g.scale.set(tr, tr, (kind === 'front' ? 0.12 : 0.3) / 0.7);
+      g.rotation.y = -Math.PI / 2; g.position.set(x - 0.12 - g.scale.z * 0.36, y, z + dz); IN.room.add(g);
+    }
+    wallSign('Drag packs', '#ffb636', x - 0.17, 2.75, z, 3.4); IN.room.children[IN.room.children.length - 1].rotation.y = -Math.PI / 2;
   }
   window.__map = {
     ready: false, HS, FOB, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
