@@ -714,7 +714,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const c = lin(hex, GB), ring = R4(x0, z0, x1, z1);
     const roofFlat = lin(FLAT_ROOFS[Math.floor(hs2 * FLAT_ROOFS.length)]);
     switch (kind) {
-      case 'house': case 'home': {
+      case 'house': addHouseSpot(x0, z0, w, d, h, bi); break;   // one of our house designs (_houses.js)
+      case 'home': {
         const hw = Math.max(2.9, Math.min(h * 0.58, 6.5)), rise = Math.min(Math.min(w, d) * 0.32, h * 0.5 + 1);
         prism(A('house'), null, ring, 0, hw, c, null, 16, 6, Math.floor(hs * 4) / 4, 0);
         const ov = 0.45;
@@ -927,6 +928,102 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; t.minFilter = THREE.LinearMipmapLinearFilter;
     return t;
   }
+
+  // ---------- houses: every house spot on the map gets one of the house designs we built together ----------
+  // (houses.json is baked from the houses page by houses/hexport.js: the outside of each design, no furniture).
+  // Up close each house is the real design, instanced; further out a plain box + roof in the design's colours.
+  const HOUSE_LOOK = { starter: ['#b8a58a', '#5a4632', 'shingle'], one: ['#a0805e', '#6b3a2e', 'shingle'], two: ['#d9c9a8', '#2f3b4a', 'shingle'], three: ['#e8e2d8', '#1a1c22', 'flat'], stopsix: ['#7f8a6a', '#45484d', 'metal'], mansion: ['#d9c9a8', '#3a3330', 'shingle'] };
+  const HOUSE_SIZE = { starter: [12, 12, 1], one: [20, 14, 1], two: [20, 12, 2], three: [24, 12, 3], stopsix: [8, 20, 1], mansion: [32, 20, 2] };
+  const HS = { list: [], data: null, det: {}, wall: null, roof: null, lastX: 1e9, lastZ: 1e9, lastY: 1e9, R: phone ? 300 : 430, dirty: true };
+  function addHouseSpot(x0, z0, w, d, h, bi) {
+    const cx = x0 + w / 2, cz = z0 + d / 2;
+    // face the nearest street
+    let best = 1e9, fx = 0, fz = -1;
+    const seen = new Set();
+    for (const [ox, oz] of [[0, 0], [60, 0], [-60, 0], [0, 60], [0, -60]]) for (const e of streets.at(cx + ox, cz + oz)) {
+      if (seen.has(e)) continue; seen.add(e);
+      const horiz = Math.abs(e.bz - e.az) < 0.01;
+      if (horiz) { if (cx < Math.min(e.ax, e.bx) - 4 || cx > Math.max(e.ax, e.bx) + 4) continue; const dd = Math.abs(cz - e.az); if (dd < best) { best = dd; fx = 0; fz = Math.sign(e.az - cz) || -1; } }
+      else { if (cz < Math.min(e.az, e.bz) - 4 || cz > Math.max(e.az, e.bz) + 4) continue; const dd = Math.abs(cx - e.ax); if (dd < best) { best = dd; fx = Math.sign(e.ax - cx) || -1; fz = 0; } }
+    }
+    const side = fx !== 0, lw = side ? d : w, ld = side ? w : d;   // width along the street, depth into the lot
+    // pick the design that fits this spot best (stories from the spot's height), a little variety from the hash
+    const two = h >= 6.6, hs = hash(bi * 3 + 11);
+    let pick = 'starter', ps = 1e9;
+    for (const [id, [fw, fd, nF]] of Object.entries(HOUSE_SIZE)) {
+      if ((nF > 1) !== two) continue;
+      const s = Math.abs(Math.log(lw / fw)) + Math.abs(Math.log(ld / fd)) + hash(bi * 7 + id.length) * 0.35;
+      if (s < ps) { ps = s; pick = id; }
+    }
+    const [fw, fd] = HOUSE_SIZE[pick];
+    HS.list.push({ cx, cz, ry: Math.atan2(-fx, -fz), sx: lw / fw, sz: ld / fd, id: pick, hs });
+    HS.dirty = true;
+  }
+  const _hm = new THREE.Matrix4(), _hq = new THREE.Quaternion(), _hp = new THREE.Vector3(), _hsv = new THREE.Vector3(), _hy = new THREE.Vector3(0, 1, 0);
+  function houseMatrix(H, sy) { _hq.setFromAxisAngle(_hy, H.ry); _hp.set(H.cx, 0.04, H.cz); _hsv.set(H.sx, sy, H.sz); return _hm.compose(_hp, _hq, _hsv); }
+  // the far stand-ins: walls and a roof, one instanced mesh each, coloured per house
+  function houseProxies() {
+    const n = HS.list.length; if (!n || HS.wall) return;
+    const wg = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    const a = new Acc(), W1 = lin('#ffffff'); roofHip(a, a, -0.52, -0.52, 0.52, 0.52, 0, 0.35, W1, W1, false); const rg = toGeo(a); rg.deleteAttribute('color');
+    HS.wall = new THREE.InstancedMesh(wg, new THREE.MeshStandardMaterial({ roughness: 0.85, envMapIntensity: 0.3 }), n);
+    HS.roof = new THREE.InstancedMesh(rg, new THREE.MeshStandardMaterial({ roughness: 0.9, envMapIntensity: 0.3 }), n);
+    for (const m of [HS.wall, HS.roof]) { m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3); m.frustumCulled = false; m.count = 0; m.receiveShadow = true; scene.add(m); }
+  }
+  // the real designs: materials that differ only in colour share one material (colour moves into the vertices)
+  function loadHouses() {
+    fetch('houses.json').then(r => r.ok ? r.json() : null).then(J => {
+      if (!J) return;
+      const texs = {}, mats = {}, dec = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; };
+      for (const [k, t] of Object.entries(J.textures)) { const tx = new THREE.TextureLoader().load(t.url); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(t.rx, t.ry); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4; texs[k] = tx; }
+      const matOf = m => { const key = [m.map, m.rough, m.metal, m.transparent, m.opacity, m.side, m.emissive, m.ei].join('|'); return mats[key] || (mats[key] = new THREE.MeshStandardMaterial({ vertexColors: true, map: m.map ? texs[m.map] : null, roughness: m.rough, metalness: m.metal, transparent: m.transparent, opacity: m.opacity, side: m.side, depthWrite: !m.transparent, emissive: m.emissive ? new THREE.Color(parseInt(m.emissive.slice(1), 16)) : undefined, emissiveIntensity: m.ei, envMapIntensity: 0.5 })); };
+      const max = HS.list.length;
+      for (const [id, d] of Object.entries(J.designs)) {
+        const groups = new Map();
+        for (const m of d.mats) { const mat = matOf(m); if (!groups.has(mat)) groups.set(mat, []); groups.get(mat).push(m); }
+        HS.det[id] = [];
+        for (const [mat, list] of groups) {
+          const n = list.reduce((s, m) => s + m.count, 0), P = new Float32Array(n * 3), N = new Float32Array(n * 3), U = new Float32Array(n * 2), C = new Float32Array(n * 3);
+          let o = 0;
+          for (const m of list) {
+            const p = new Int16Array(dec(m.p)), nn = new Int8Array(dec(m.n)), u = new Float32Array(dec(m.u)), col = new THREE.Color(parseInt(m.color.slice(1), 16));
+            for (let i = 0; i < m.count; i++) { P[(o + i) * 3] = p[i * 3] / 1000; P[(o + i) * 3 + 1] = p[i * 3 + 1] / 1000; P[(o + i) * 3 + 2] = p[i * 3 + 2] / 1000; N[(o + i) * 3] = nn[i * 3] / 127; N[(o + i) * 3 + 1] = nn[i * 3 + 1] / 127; N[(o + i) * 3 + 2] = nn[i * 3 + 2] / 127; U[(o + i) * 2] = u[i * 2]; U[(o + i) * 2 + 1] = u[i * 2 + 1]; C[(o + i) * 3] = col.r; C[(o + i) * 3 + 1] = col.g; C[(o + i) * 3 + 2] = col.b; }
+            o += m.count;
+          }
+          const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.BufferAttribute(U, 2)); g.setAttribute('color', new THREE.BufferAttribute(C, 3));
+          const im = new THREE.InstancedMesh(g, mat, Math.min(max, phone ? 500 : 900)); im.count = 0; im.frustumCulled = false; im.castShadow = !mat.transparent; im.receiveShadow = true; if (mat.transparent) im.renderOrder = 2;
+          scene.add(im); HS.det[id].push(im);
+        }
+      }
+      HS.data = J; HS.dirty = true;
+    }).catch(() => {});
+  }
+  // every so often: real designs near the camera, stand-ins for the rest
+  function stepHouses() {
+    if (!HS.list.length) return; houseProxies();
+    const cp = camera.position;
+    if (!HS.dirty && Math.hypot(cp.x - HS.lastX, cp.z - HS.lastZ) < 25 && Math.abs(cp.y - HS.lastY) < 25) return;
+    HS.dirty = false; HS.lastX = cp.x; HS.lastZ = cp.z; HS.lastY = cp.y;
+    const R = HS.data ? HS.R : 0, far = VIS.mid, cnt = {}, cap = HS.data ? HS.det.starter[0].instanceMatrix.count : 0;
+    let np = 0;
+    for (const id in HS.det) cnt[id] = 0;
+    HS.list.forEach((H, i) => {
+      const d = Math.hypot(H.cx - cp.x, H.cz - cp.z, cp.y * 0.6);
+      if (d < R && cnt[H.id] < cap) { const M = houseMatrix(H, 1); for (const im of HS.det[H.id]) im.setMatrixAt(cnt[H.id], M); cnt[H.id]++; return; }
+      if (d > far) return;
+      const [, , nF] = HOUSE_SIZE[H.id], wallH = 0.45 + nF * 3.2;
+      HS.wall.setMatrixAt(np, houseMatrix(Object.assign({}, H, { sx: H.sx * HOUSE_SIZE[H.id][0], sz: H.sz * HOUSE_SIZE[H.id][1] }), wallH));
+      const rm = houseMatrix(Object.assign({}, H, { sx: H.sx * HOUSE_SIZE[H.id][0], sz: H.sz * HOUSE_SIZE[H.id][1] }), HOUSE_LOOK[H.id][2] === 'flat' ? 0.02 : Math.min(H.sx * HOUSE_SIZE[H.id][0], H.sz * HOUSE_SIZE[H.id][1]) * 0.9);
+      rm.elements[13] += wallH; HS.roof.setMatrixAt(np, rm);
+      // stand-ins keep the house's own colour slot
+      HS.wall.setColorAt(np, _hc.set(lin(HOUSE_LOOK[H.id][0]))); HS.roof.setColorAt(np, _hc.set(lin(HOUSE_LOOK[H.id][1])));
+      np++;
+    });
+    for (const id in HS.det) for (const im of HS.det[id]) { im.count = cnt[id]; im.instanceMatrix.needsUpdate = true; }
+    HS.wall.count = HS.roof.count = np; HS.wall.instanceMatrix.needsUpdate = HS.roof.instanceMatrix.needsUpdate = true;
+    if (HS.wall.instanceColor) HS.wall.instanceColor.needsUpdate = HS.roof.instanceColor.needsUpdate = true;
+  }
+  const _hc = new THREE.Color();
 
   // ---------- game places: every spot from data/world.js LOCATIONS gets a door, a sign and a hook ----------
   const TYPE_INFO = {
@@ -4738,6 +4835,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (inside) { stepInterior(dt); if ((frame & 31) === 0) refreshStats(); renderer.render(IN.scene, IN.cam); return; }
     if (driving) { if (foot.on) stepFoot(dt); else stepDrive(dt); } else { stepFly(dt); controls.update(); }
     if (driving && (frame & 1)) stepMini();
+    if (!inside) stepHouses();
     const focus = driving ? (foot.on ? foot.holder.position : car.position) : controls.target, dist = driving ? (foot.on ? 14 : 30) : camera.position.distanceTo(controls.target);
     // fog and the sun's shadow box follow the zoom
     scene.fog.near = driving ? 700 : Math.max(1500, dist * 1.1); scene.fog.far = driving ? (phone ? 3200 : 4800) : Math.max(9000, dist * 4 + 8000);
@@ -4776,7 +4874,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       addRoads(D);
       const nB = D.B.length / 8, step = 4000;
       for (let s = 0; s < nB; s += step) { ld.textContent = `Building Murda Worth… ${Math.round(s / nB * 100)}%`; await wait(); for (let i = s; i < Math.min(nB, s + step); i++) addBuilding(D, i * 8, i); }
-      addGaragePlaces(D); addPlaces(D);
+      addGaragePlaces(D); addPlaces(D); loadHouses();
       ld.textContent = 'Planting trees…'; await wait();
       addTrees(D);
       ld.textContent = 'Finishing up…'; await wait();
@@ -4793,7 +4891,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = {
-    ready: false, FOB, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, HS, FOB, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
