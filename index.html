@@ -215,6 +215,15 @@ body.phoning #phonebtn { background: var(--accent); }
   .ph { width: min(640px, 100%); border-radius: 26px; }
   .ph-home { grid-template-columns: repeat(7, 1fr); }
 }
+.mk-info { padding: 10px 14px 0; color: var(--muted); font-size: 14px; }
+.mk-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px 12px 14px; }
+.mk-item { background: #17181d; border: 1px solid var(--line); border-radius: 10px; padding: 0 0 8px; overflow: hidden; color: var(--fg); text-align: left; display: flex; flex-direction: column; gap: 2px; cursor: pointer; font-family: var(--body); }
+.mk-item canvas { width: 100%; height: auto; display: block; margin-bottom: 4px; }
+.mk-item b, .mk-item span, .mk-item small { padding: 0 10px; } .mk-item b { font-size: 17px; } .mk-item span { font-size: 14px; line-height: 1.2; } .mk-item small { color: var(--muted); font-size: 12px; }
+.mk-detail canvas { width: 100%; height: auto; border-radius: 10px; }
+.mk-price { font-size: 26px; font-weight: 700; } .mk-title { font-size: 18px; font-weight: 600; } .mk-sub, .mk-note { color: var(--muted); font-size: 14px; margin: 0; }
+.mk-seller { background: #17181d; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+@media (orientation: landscape) and (max-height: 500px) { .mk-grid { grid-template-columns: repeat(4, 1fr); } .mk-detail canvas { max-height: 140px; object-fit: contain; } }
 </style>
 </head>
 <body>
@@ -1037,7 +1046,7 @@ body.phoning #phonebtn { background: var(--accent); }
   function newCar(id, color, cond = 100) { const m = carOf(id); return { id: m.id, color: color || m.color, cond: { body: cond, lights: cond, tires: cond, engine: cond, trans: cond }, fuel: 1, oil: 100, mods: {}, tint: false }; }
   function freshSave() {
     return { v: 1, cash: 2500, bank: 0, loan: 0, credit: 640, hunger: 70, energy: 70, health: 100, heat: 0, rep: 0, day: 1,
-      car: newCar('chevrolet_caprice_classic_box_chevy_1986', '#7a1820', 78), garage: [], owned: ['hoodie_black'], wear: { top: 'hoodie_black', bottom: '', hat: '', shoes: '' },
+      car: null, garage: [], owned: ['hoodie_black'], wear: { top: 'hoodie_black', bottom: '', hat: '', shoes: '' },
       bag: { snacks: 0, energyDrinks: 0 }, loot: [], props: [], tracks: 0, released: 0, cattle: 0, dogs: 0, boats: [], trailers: [], weed: 0, product: 0, log: [] };
   }
   function loadSave() { try { const j = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (j && j.v === 1) return Object.assign(freshSave(), j); } catch (e) {} return freshSave(); }
@@ -1062,7 +1071,7 @@ body.phoning #phonebtn { background: var(--accent); }
   function refreshStats() {
     const el = document.getElementById('stats'); if (!el || !S) return;
     const c = S.car;
-    el.innerHTML = `<b>${money(S.cash)}</b> · Fuel ${Math.round(c.fuel * 100)}% · Car ${carHealth(c)}%${S.hunger < 25 ? ' · <span class="hot">Hungry</span>' : ''}${S.energy < 20 ? ' · <span class="hot">Tired</span>' : ''}${S.heat ? ` · <span class="hot">Heat ${S.heat}</span>` : ''}`;
+    el.innerHTML = `<b>${money(S.cash)}</b>${c ? ` · Fuel ${Math.round(c.fuel * 100)}% · Car ${carHealth(c)}%` : ' · No car'}${S.hunger < 25 ? ' · <span class="hot">Hungry</span>' : ''}${S.energy < 20 ? ' · <span class="hot">Tired</span>' : ''}${S.heat ? ` · <span class="hot">Heat ${S.heat}</span>` : ''}`;
   }
   // driving wears things down
   function wearDrive(dist, dt, crash) {
@@ -1110,8 +1119,9 @@ body.phoning #phonebtn { background: var(--accent); }
     save(); refreshStats(); toast(msg, 'good');
   }
   // station menus. Each returns { title, sub, rows:[{t, s, price, btn, act, off}] }
+  function noCar(p) { return { title: p && p.name || 'No car', sub: 'You need a car for this', rows: [{ t: 'Find a cheap first car', s: 'Private sellers on Marketplace', btn: 'Marketplace', act: () => { closeMenu(); openPhone(); phoneApp('market'); } }] }; }
   const MENUS = {
-    repair(p) {
+    repair(p) { if (!S.car) return noCar(p);
       const c = S.car, costs = repairCosts(p.rate), rows = [];
       for (const k in costs) rows.push({ t: PART_NAMES[k], s: `${Math.round(c.cond[k])}%`, bar: c.cond[k], btn: costs[k] ? money(costs[k]) : 'OK', off: !costs[k], act: () => { if (spend(costs[k], 'Repair: ' + PART_NAMES[k])) c.cond[k] = 100; } });
       const oil = c.oil < 99 ? Math.round(79 * (p.rate || 1)) : 0;
@@ -1120,14 +1130,14 @@ body.phoning #phonebtn { background: var(--accent); }
       rows.push({ t: 'Fix everything', s: 'Good as new', btn: tot ? money(tot) : 'Nothing to fix', off: !tot, act: () => { if (spend(tot, 'Full repair')) { for (const k in c.cond) c.cond[k] = 100; c.oil = 100; toast('Good as new', 'good'); } } });
       return { title: p.name, sub: `${carLabel(carOf(c.id))}${p.rate ? ` · prices ×${p.rate}` : ''}`, rows };
     },
-    engine(p) {
+    engine(p) { if (!S.car) return noCar(p);
       const c = S.car, rate = p.rate || 1;
       return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${carOf(c.id).engine}`, rows: UPGRADES.map(([k, n, pr, d]) => ({ t: n, s: d, btn: c.mods[k] ? 'Installed' : money(pr * rate), off: !!c.mods[k], act: () => { if (spend(pr * rate, n)) { c.mods[k] = true; toast(`${n} installed. ${carHp(c)} hp.`, 'good'); } } })) };
     },
-    dyno(p) { const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
-    paint(p) { const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: PAINTS.map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
-    chop(p) { return { title: p.name, sub: 'No questions asked', rows: [{ t: 'Hot engine tune', s: '+8% hp, off the books. Heat +1', btn: S.car.mods.hot ? 'Installed' : money(600), off: !!S.car.mods.hot, act: () => { if (spend(600, 'Hot tune')) { S.car.mods.hot = true; S.heat = Math.min(5, S.heat + 1); } } }, { t: 'Swap the VIN', s: 'Clears 1 heat', btn: money(900), off: !S.heat, act: () => { if (spend(900, 'VIN swap')) S.heat--; } }] }; },
-    fuel(p) {
+    dyno(p) { if (!S.car) return noCar(p); const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
+    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: PAINTS.map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
+    chop(p) { if (!S.car) return noCar(p); return { title: p.name, sub: 'No questions asked', rows: [{ t: 'Hot engine tune', s: '+8% hp, off the books. Heat +1', btn: S.car.mods.hot ? 'Installed' : money(600), off: !!S.car.mods.hot, act: () => { if (spend(600, 'Hot tune')) { S.car.mods.hot = true; S.heat = Math.min(5, S.heat + 1); } } }, { t: 'Swap the VIN', s: 'Clears 1 heat', btn: money(900), off: !S.heat, act: () => { if (spend(900, 'VIN swap')) S.heat--; } }] }; },
+    fuel(p) { if (!S.car) return noCar(p);
       const c = S.car, ev = isEV(c), grade = ev ? 'kwh' : carHp(c) > 300 ? 'premium' : 'regular', price = G.gas[grade], need = (1 - c.fuel) * (ev ? 75 : tankGal(c)), cost = need * price;
       return { title: 'Pump ' + (1 + Math.floor(Math.random() * 8)), sub: `${ev ? 'DC fast charge' : grade === 'premium' ? 'Premium 93' : 'Regular 87'} · $${price.toFixed(2)}/${ev ? 'kWh' : 'gal'}`, rows: [
         { t: ev ? 'Charge to 100%' : 'Fill it up', s: `${Math.round(c.fuel * 100)}% now · ${need.toFixed(1)} ${ev ? 'kWh' : 'gal'}`, bar: c.fuel * 100, btn: need > 0.05 ? money(cost) : 'Full', off: need <= 0.05, act: () => { if (spend(cost, 'Fuel')) { c.fuel = 1; toast('Tank full', 'good'); } } },
@@ -1209,14 +1219,15 @@ body.phoning #phonebtn { background: var(--accent); }
     },
     atm() { return MENUS.teller({ name: 'ATM' }); },
     cars(p, list, used) {
-      const rows = list.map(m => { const price = used ? Math.round(carValue(newCar(m.id, null, 70)) * 1.15 / 50) * 50 : m.msrp; return { t: carLabel(m), s: `${m.hp} hp · ${m.cls} · ${m.engine}`, sw: m.color, btn: money(price), act: () => { if (spend(price, carLabel(m))) { S.garage.push(S.car); S.car = newCar(m.id, m.color, used ? 70 : 100); if (car) car.userData.body.color.copy(lin(S.car.color)); toast(`It's yours. Your old car went to the garage.`, 'good'); } } }; });
-      if (S.garage.length) rows.unshift({ t: 'Trade in your ' + carLabel(carOf(S.car.id)), s: 'Swaps to the next car in your garage', btn: money(carValue(S.car) * 0.8), act: () => { earn(carValue(S.car) * 0.8, 'Trade-in'); S.car = S.garage.shift(); if (car) car.userData.body.color.copy(lin(S.car.color)); } });
+      const rows = list.map(m => { const price = used ? Math.round(carValue(newCar(m.id, null, 70)) * 1.15 / 50) * 50 : m.msrp; return { t: carLabel(m), s: `${m.hp} hp · ${m.cls} · ${m.engine}`, sw: m.color, btn: money(price), act: () => { if (spend(price, carLabel(m))) { if (S.car) S.garage.push(S.car); S.car = newCar(m.id, m.color, used ? 70 : 100); if (!foot.park) deliverCar(); if (car) car.userData.body.color.copy(lin(S.car.color)); toast(`It's yours. Your old car went to the garage.`, 'good'); } } }; });
+      if (S.garage.length && S.car) rows.unshift({ t: 'Trade in your ' + carLabel(carOf(S.car.id)), s: 'Swaps to the next car in your garage', btn: money(carValue(S.car) * 0.8), act: () => { earn(carValue(S.car) * 0.8, 'Trade-in'); S.car = S.garage.shift(); if (car) car.userData.body.color.copy(lin(S.car.color)); } });
       if (!list.length) rows.push({ t: 'Nothing on the lot yet', s: 'New 3D cars land here as we build them', btn: 'OK', off: true, act: () => {} });
-      return { title: p.name, sub: `You drive a ${carLabel(carOf(S.car.id))}`, rows };
+      return { title: p.name, sub: S.car ? `You drive a ${carLabel(carOf(S.car.id))}` : 'You need a ride', rows };
     },
     garage() {
-      const rows = S.garage.map((c, i) => ({ t: carLabel(carOf(c.id)), s: `${carHealth(c)}% · ${carHp(c)} hp`, sw: c.color, btn: 'Drive it', act: () => { S.garage[i] = S.car; S.car = c; if (car) car.userData.body.color.copy(lin(c.color)); toast('Swapped.', 'good'); } }));
-      return { title: 'Garage', sub: rows.length ? 'Pick what you drive' : 'Only one car. Buy another at a dealer.', rows };
+      if (!S.car && !S.garage.length) return noCar({ name: 'My Cars' });
+      const rows = S.garage.map((c, i) => ({ t: carLabel(carOf(c.id)), s: `${carHealth(c)}% · ${carHp(c)} hp`, sw: c.color, btn: 'Drive it', act: () => { if (S.car) S.garage[i] = S.car; else S.garage.splice(i, 1); S.car = c; if (!foot.park) deliverCar(); if (car) car.userData.body.color.copy(lin(c.color)); toast('Swapped.', 'good'); } }));
+      return { title: 'Garage', sub: rows.length ? 'Pick what you drive' : 'Only one car. Buy another on Marketplace or at a dealer.', rows };
     },
     bed(p) { return { title: 'Bed', sub: `Day ${S.day} · Energy ${Math.round(S.energy)}`, rows: [{ t: 'Sleep (saves the game)', s: 'Energy 100, streams and rent pay out', btn: 'Sleep', act: () => sleep(p) }] }; },
     fridge() { return { title: 'Fridge', sub: `Snacks in your bag: ${S.bag.snacks || 0}`, rows: [{ t: 'Make a plate', s: 'Food +40', btn: money(6), act: () => { if (spend(6, 'Groceries')) S.hunger = clamp100(S.hunger + 40); } }, { t: 'Eat a snack from your bag', btn: 'Eat', off: !S.bag.snacks, act: () => { S.bag.snacks--; S.hunger = clamp100(S.hunger + 20); } }] }; },
@@ -1233,8 +1244,8 @@ body.phoning #phonebtn { background: var(--accent); }
     cattle() { return { title: 'Sale barn', sub: `You own ${S.cattle} head`, rows: [{ t: 'Buy 10 head', btn: money(14000), act: () => { if (spend(14000, 'Cattle')) S.cattle += 10; } }, { t: 'Sell 10 head', btn: money(15500), off: S.cattle < 10, act: () => { S.cattle -= 10; earn(15500, 'Cattle sale'); } }] }; },
     dogs() { return { title: 'Kennel', sub: `${S.dogs} hog dogs`, rows: [{ t: 'Buy a catch dog pup', btn: money(800), act: () => { if (spend(800, 'Pup')) S.dogs++; } }, { t: 'Run the dogs on hogs', s: 'Bounty per hog', btn: 'Hunt', off: !S.dogs, act: () => { const h = 1 + Math.floor(Math.random() * 3 * S.dogs); earn(h * 50, 'Hog bounty'); toast(`${h} hogs caught.`, 'good'); } }] }; },
     weed(p) { return { title: p.name, sub: `Carrying ${S.weed} oz`, rows: [{ t: 'Buy an ounce', btn: money(p.type === 'dispensary' ? 180 : 140), act: () => { if (spend(p.type === 'dispensary' ? 180 : 140, 'Ounce')) S.weed++; } }, { t: 'Move an ounce', s: 'Heat +1', btn: '+' + money(320), off: !S.weed, act: () => { S.weed--; earn(320, 'Sold an ounce'); S.heat = Math.min(5, S.heat + (Math.random() < 0.3 ? 1 : 0)); } }] }; },
-    race(p) { const hp = carHp(S.car), opp = Math.round(hp * (0.8 + Math.random() * 0.5)); return { title: p.name, sub: `You: ${hp} hp · Next up: ${opp} hp`, rows: [{ t: 'Run it for $500', btn: 'Race', act: () => { if (!spend(500, 'Race buy-in')) return; const win = Math.random() < hp / (hp + opp) * (0.6 + 0.4 * carHealth(S.car) / 100) * 1.1; if (win) { earn(1000, 'Race win'); S.rep++; toast('You won!', 'good'); } else toast('Lost by a fender.', 'bad'); } }] }; },
-    meet(p) { return { title: p.name, sub: `Rep ${S.rep}`, rows: [{ t: 'Show out', s: 'Paint, mods and a clean car earn rep', btn: 'Show', act: () => { const r = 1 + Object.keys(S.car.mods).length + (S.car.tint ? 1 : 0) + (carHealth(S.car) > 90 ? 1 : 0); S.rep += r; toast(`+${r} rep`, 'good'); save(); } }, ...MENUS.race(p).rows] }; },
+    race(p) { if (!S.car) return noCar(p); const hp = carHp(S.car), opp = Math.round(hp * (0.8 + Math.random() * 0.5)); return { title: p.name, sub: `You: ${hp} hp · Next up: ${opp} hp`, rows: [{ t: 'Run it for $500', btn: 'Race', act: () => { if (!spend(500, 'Race buy-in')) return; const win = Math.random() < hp / (hp + opp) * (0.6 + 0.4 * carHealth(S.car) / 100) * 1.1; if (win) { earn(1000, 'Race win'); S.rep++; toast('You won!', 'good'); } else toast('Lost by a fender.', 'bad'); } }] }; },
+    meet(p) { if (!S.car) return noCar(p); return { title: p.name, sub: `Rep ${S.rep}`, rows: [{ t: 'Show out', s: 'Paint, mods and a clean car earn rep', btn: 'Show', act: () => { const r = 1 + Object.keys(S.car.mods).length + (S.car.tint ? 1 : 0) + (carHealth(S.car) > 90 ? 1 : 0); S.rep += r; toast(`+${r} rep`, 'good'); save(); } }, ...MENUS.race(p).rows] }; },
   };
   function stateCenter(s) { let sx = 0, sz = 0, n = 0; for (let i = 0; i < DATA.B.length; i += 8) { const k = DATA.kinds[DATA.B[i + 5]]; if ((k === 'tower' || k === 'midrise') && DATA.B[i] >= s.rect.x0 && DATA.B[i] <= s.rect.x1 && DATA.B[i + 1] >= s.rect.z0 && DATA.B[i + 1] <= s.rect.z1) { sx += DATA.B[i]; sz += DATA.B[i + 1]; n++; } } return n ? { x: sx / n, z: sz / n } : { x: s.cx, z: s.cz }; }
   function dealerCars(p) {
@@ -2699,7 +2710,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const FURNISH = {
     shop(p, W, D) {
       for (let i = -2; i <= 0; i++) { const x = i * 7 + 3; rbox(x - 2.4, 0.4, -D / 2 + 0.05, x + 2.4, 3.9, -D / 2 + 0.12, '#8e9298', false); for (let y = 0.6; y < 3.8; y += 0.3) rbox(x - 2.4, y, -D / 2 + 0.12, x + 2.4, y + 0.04, -D / 2 + 0.14, '#6e7278', false); }
-      lift(-6, -3.5, S.car.color, true);
+      lift(-6, -3.5, S.car ? S.car.color : '#6b6e78', true);
       station(p.type === 'perf' ? 'Your car on the lift: engine' : p.type === 'chop' ? 'Your car on the lift' : 'Your car on the lift', -6, -0.6, () => p.type === 'perf' ? MENUS.engine(p) : p.type === 'chop' ? MENUS.chop(p) : MENUS.repair(p), 2.6);
       if (p.type === 'perf') { rbox(1.5, 0, -6, 4.5, 0.25, -1, '#2a2a2e'); roomCar(3, -3.5, 0, PAINTS[Math.floor(rnd() * PAINTS.length)][1], 0.25); station('Dyno', 3, -0.4, () => MENUS.dyno(p)); }
       else if (p.type === 'visual') { glassWall(0.5, -8.6, 0.56, -1.2, 3.4); glassWall(7.4, -8.6, 7.46, -1.2, 3.4); roomCar(4, -5, 0, PAINTS[Math.floor(rnd() * PAINTS.length)][1]); station('Paint booth', 4, -0.4, () => MENUS.paint(p), 2.6); }
@@ -3188,6 +3199,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   function enterWorld() {
     worldOn = true; introStop();
     const A = S.at, home = DATA.P.find(p => p.type === 'home') || DATA.P[0];
+    if (!S.car) { if (A && isFinite(A.fx)) spawnFoot(A.fx, A.fz, A.fyaw); else { setPin(home.name, home.x, home.z); spawnFoot(home.x, home.z); } return; }
     if (A && isFinite(A.x)) {
       startDrive(A.x, A.z); drv.x = A.x; drv.z = A.z; drv.yaw = A.yaw || 0;
       if (A.foot) { getOut(); foot.x = A.fx; foot.z = A.fz; foot.yaw = foot.camYaw = A.fyaw || 0; foot.holder.position.set(foot.x, 0, foot.z); foot.cam.set(foot.x + Math.sin(foot.camYaw) * 4.6, 2.2, foot.z + Math.cos(foot.camYaw) * 4.6); }
@@ -3195,7 +3207,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   }
   function rememberSpot() {
     if (!worldOn || inside || !driving || !S) return;
-    const p = foot.on ? foot.park : drv;
+    const p = foot.on ? foot.park || foot : drv;
     S.at = { x: +p.x.toFixed(1), z: +p.z.toFixed(1), yaw: +(p.yaw || 0).toFixed(3), foot: foot.on, fx: +foot.x.toFixed(1), fz: +foot.z.toFixed(1), fyaw: +foot.yaw.toFixed(3) };
     save();
   }
@@ -3205,6 +3217,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // ---------- the phone: every app lives here, like the 2D game ----------
   const PHONE_APPS = [
     { id: 'map', name: 'Map', icon: '🗺', bg: '#2a7bff' },
+    { id: 'market', name: 'Marketplace', icon: '🏪', bg: '#1877f2' },
     { id: 'cars', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
     { id: 'bank', name: 'Bank', icon: '🏦', bg: '#1f8f3a' },
     { id: 'stuff', name: 'Inventory', icon: '🎒', bg: '#b08a3e' },
@@ -3231,6 +3244,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (id === 'bank') return toMenu(() => MENUS.teller({ name: 'Cowtown Pay' }));
     if (id === 'stuff') return toMenu(myStuff);
     if (id === 'style') { closePhone(); if (foot.on || !driving) openCreator(false); else openMenu(() => MENUS.look(null)); return; }
+    if (id === 'market') return marketApp(sc);
     if (id === 'map') {
       sc.className = 'ph-screen ph-map'; sc.innerHTML = phoneHead('Map') + '<div class="ph-body" id="ph-mapbody"></div><div class="ph-pick" id="ph-pick" hidden></div>';
       const pp = $('panel-places'); pp.hidden = false; phoneEl('ph-mapbody').append(pp);
@@ -3260,7 +3274,9 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     phoneEl('ph-gps').onclick = () => { setPin(p.name, p.x, p.z); closePhone(); toast(`GPS set: ${p.name}`, 'good'); };
     phoneEl('ph-tp').onclick = () => {
       if (S.cash < fare) { toast('Not enough cash for the trip.', 'bad'); return; } S.cash -= fare; save(); refreshStats();
-      if (foot.on) getIn(); setPin(p.name, p.x, p.z); startDrive(p.x, p.z); closePhone(); toast(`You and your car are at ${p.name}.`, 'good');
+      setPin(p.name, p.x, p.z); closePhone();
+      if (!S.car || foot.on && !foot.park) { spawnFoot(p.x, p.z); toast(`You took a Ryde to ${p.name}.`, 'good'); return; }
+      if (foot.on) getIn(); startDrive(p.x, p.z); toast(`You and your car are at ${p.name}.`, 'good');
     };
     phoneEl('ph-x').onclick = () => { box.hidden = true; };
   }
@@ -3270,6 +3286,93 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     phoneEl('phone').addEventListener('click', e => { if (e.target.id === 'phone') closePhone(); });
     phoneEl('b-out').onclick = getOut;
     addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || creating) return; if (e.code === 'KeyP' || e.code === 'Tab') { e.preventDefault(); PH.open ? closePhone() : openPhone(); } else if (e.code === 'Escape' && PH.open) closePhone(); });
+  }
+
+  // ---------- walking with no car yet ----------
+  function spawnFoot(x, z, yaw) {
+    if (foot.on) { foot.x = x; foot.z = z; } else { startDrive(x, z); getOut(); }
+    const r = nearestRoad(x, z); if (r) { foot.x = r.x + (r.horiz ? 0 : r.e.w / 2 + 3); foot.z = r.z + (r.horiz ? r.e.w / 2 + 3 : 0); } else { foot.x = x; foot.z = z; }
+    if (!S.car) { foot.park = null; car.visible = false; carPrompt(false); }
+    foot.yaw = foot.camYaw = yaw || 0; foot.target = null; foot.holder.position.set(foot.x, 0, foot.z); foot.holder.rotation.y = foot.yaw;
+    drv.x = foot.x; drv.z = foot.z;
+    foot.cam.set(foot.x + Math.sin(foot.camYaw) * 4.6, 2.2, foot.z + Math.cos(foot.camYaw) * 4.6); foot.look.set(foot.x, 1.35, foot.z);
+  }
+  // a car you just got shows up parked on the street next to you
+  function deliverCar() {
+    if (!S.car || !car) return; car.userData.body.color.copy(lin(S.car.color));
+    if (!foot.on) return;
+    const r = nearestRoad(foot.x, foot.z); let x = foot.x + 3, z = foot.z, yaw = 0;
+    if (r) { x = r.horiz ? clamp(foot.x, Math.min(r.e.ax, r.e.bx), Math.max(r.e.ax, r.e.bx)) : r.x + r.e.w / 4; z = r.horiz ? r.z + r.e.w / 4 : clamp(foot.z, Math.min(r.e.az, r.e.bz), Math.max(r.e.az, r.e.bz)); yaw = r.horiz ? Math.PI / 2 : 0; }
+    foot.park = { x, z, yaw }; car.position.set(x, 0.12, z); car.rotation.y = yaw; car.visible = true; foot.pkey = ''; refreshStats(); save();
+  }
+
+  // ---------- Marketplace: private sellers with cheap used cars, like the 2D game ----------
+  const MK_NAMES = ['Dre', 'Tasha', 'Big Mike', 'Lupe', 'Kendrick', 'Ms. Pearl', 'Javi', 'Tre', 'Keisha', 'Rudy', 'Monique', 'Hector', 'Pops', 'Nikki'];
+  const MK_SPOTS = ['Stop Six', 'Eastgate', 'Poly', 'Como', 'Riverside', 'Stockyards', 'Everman', 'Crowley', 'Burleson', 'Arlington Heights', 'Lake Worth', 'Near Southside'];
+  const MK_LINES = ['Runs and drives. Needs a little love.', 'Cold AC. Title in hand.', 'Daily driver, no low ballers.', 'New tires last year. Cash only.', 'Check engine light but it rides smooth.', 'Moving, need it gone this week.', 'Little dent on the quarter, priced to sell.', 'Clean inside, smoke free.', 'Grandma owned it. Garage kept mostly.'];
+  const MK_COLORS = ['#7a1820', '#1d2a44', '#f2f2ee', '#24262b', '#8a8f96', '#2f5d3a', '#5a2a6b', '#b8862e', '#0f0f10', '#9c2f1c'];
+  function mkListings() {
+    if (S.market && S.market.day === S.day && S.market.list.length) return S.market.list;
+    let seed = S.day * 7919 + 13; const R = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const list = [], ids = G.cars.map(c => c.id);
+    // a couple of cheap box Chevys always, so a first car is in reach
+    const pool = [ids[0], ids[0], ...ids, ...ids.slice(1).filter(() => R() < 0.6)];
+    pool.forEach((id, i) => {
+      const cond = Math.round(32 + R() * 40), c = newCar(id, MK_COLORS[Math.floor(R() * MK_COLORS.length)], cond);
+      c.fuel = 0.25 + R() * 0.5; c.oil = Math.round(30 + R() * 60);
+      const miles = Math.round((60 + R() * 180) * 1000), m = carOf(id), dep = Math.max(0.2, 1 - (2026 - m.y) * 0.065), price = Math.max(1200, Math.round(m.msrp * dep * (0.5 + cond / 200) * (0.85 + R() * 0.2) / 50) * 50);
+      list.push({ id: 'mk' + S.day + '_' + i, car: c, price, miles, seller: MK_NAMES[Math.floor(R() * MK_NAMES.length)], spot: MK_SPOTS[Math.floor(R() * MK_SPOTS.length)], line: MK_LINES[Math.floor(R() * MK_LINES.length)], haggled: false });
+    });
+    list.sort((a, b) => a.price - b.price);
+    S.market = { day: S.day, list }; save(); return list;
+  }
+  function carThumb(cv, m, color) {
+    const g = cv.getContext('2d'), w = cv.width, h = cv.height, gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, '#5d6066'); gr.addColorStop(1, '#2e3034'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, h * 0.78, w, h * 0.22);
+    const truck = m.body === 'truck', suv = m.body === 'suv', low = /super|exotic/.test(m.body + m.cls.toLowerCase()), x0 = w * 0.08, x1 = w * 0.92, base = h * 0.74, tall = suv || truck ? h * 0.36 : low ? h * 0.24 : h * 0.3;
+    g.fillStyle = color; g.beginPath(); g.moveTo(x0, base); g.lineTo(x0, base - tall * 0.5); g.lineTo(x0 + w * 0.1, base - tall * 0.58);
+    if (truck) { g.lineTo(w * 0.32, base - tall * 0.6); g.lineTo(w * 0.38, base - tall); g.lineTo(w * 0.58, base - tall); g.lineTo(w * 0.6, base - tall * 0.6); g.lineTo(x1, base - tall * 0.6); }
+    else if (suv) { g.lineTo(w * 0.3, base - tall * 0.62); g.lineTo(w * 0.38, base - tall); g.lineTo(w * 0.86, base - tall); g.lineTo(x1, base - tall * 0.6); }
+    else { g.lineTo(w * 0.3, base - tall * 0.62); g.lineTo(w * 0.42, base - tall); g.lineTo(w * 0.64, base - tall); g.lineTo(w * 0.76, base - tall * 0.62); g.lineTo(x1, base - tall * 0.55); }
+    g.lineTo(x1, base); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(160,200,230,0.55)'; const gx = truck ? [w * 0.4, w * 0.56] : suv ? [w * 0.4, w * 0.82] : [w * 0.44, w * 0.62];
+    g.beginPath(); g.moveTo(gx[0], base - tall * 0.92); g.lineTo(gx[1], base - tall * 0.92); g.lineTo(gx[1] + w * 0.03, base - tall * 0.66); g.lineTo(gx[0] - w * 0.04, base - tall * 0.66); g.closePath(); g.fill();
+    for (const wx of [w * 0.24, w * 0.76]) { g.fillStyle = '#111'; g.beginPath(); g.arc(wx, base, h * 0.11, 0, Math.PI * 2); g.fill(); g.fillStyle = '#9a9ea6'; g.beginPath(); g.arc(wx, base, h * 0.05, 0, Math.PI * 2); g.fill(); }
+  }
+  function marketApp(sc, pick) {
+    const list = mkListings(); PH.app = 'market';
+    sc.className = 'ph-screen'; 
+    if (pick) {
+      const L = list.find(l => l.id === pick); if (!L) return marketApp(sc); const m = carOf(L.car.id);
+      sc.innerHTML = `${phoneHead('Marketplace')}<div class="ph-body mk-detail"><canvas width="560" height="300" id="mk-big"></canvas>
+        <div class="mk-price">${money(L.price)}</div><div class="mk-title">${esc(carLabel(m))}</div>
+        <div class="mk-sub">${Math.round(L.miles / 1000)}K miles · ${carHealth(L.car)}% condition · ${m.hp} hp · ${esc(m.engine)}</div>
+        <div class="mk-seller"><b>${esc(L.seller)}</b> · ${esc(L.spot)}<br>"${esc(L.line)}"</div>
+        <div class="row"><button class="btn go" id="mk-buy">Buy for ${money(L.price)}</button>${L.haggled ? '' : `<button class="btn" id="mk-offer">Offer ${money(Math.round(L.price * 0.85 / 50) * 50)}</button>`}</div>
+        <p class="mk-note">You have ${money(S.cash)} cash${S.car ? '. It goes to your garage.' : '. The seller drops it off where you are.'}</p></div>`;
+      carThumb(phoneEl('mk-big'), m, L.car.color);
+      phoneEl('mk-buy').onclick = () => mkBuy(L);
+      const of = phoneEl('mk-offer'); if (of) of.onclick = () => {
+        L.haggled = true; const ok = Math.random() < 0.45 + (100 - carHealth(L.car)) / 200;
+        if (ok) { L.price = Math.round(L.price * 0.85 / 50) * 50; toast(`${L.seller}: "Bet, ${money(L.price)} works."`, 'good'); } else toast(`${L.seller}: "Nah, price is firm."`, 'bad');
+        save(); marketApp(sc, pick);
+      };
+      sc.querySelector('.ph-back').onclick = () => marketApp(sc);
+      return;
+    }
+    sc.innerHTML = `${phoneHead('Marketplace')}<div class="mk-info">Vehicles near Fort Worth · ${list.length} for sale · ${money(S.cash)} cash</div><div class="mk-grid">${list.map(l => `<button class="mk-item" data-id="${l.id}"><canvas width="220" height="140" data-c="${l.id}"></canvas><b>${money(l.price)}</b><span>${esc(carLabel(carOf(l.car.id)))}</span><small>${Math.round(l.miles / 1000)}K mi · ${esc(l.spot)}</small></button>`).join('') || '<p class="mk-info">Nothing posted today. Check back tomorrow.</p>'}</div>`;
+    sc.querySelectorAll('[data-c]').forEach(cv => { const l = list.find(x => x.id === cv.dataset.c); carThumb(cv, carOf(l.car.id), l.car.color); });
+    sc.querySelectorAll('.mk-item').forEach(b => b.onclick = () => marketApp(sc, b.dataset.id));
+    sc.querySelector('.ph-back').onclick = phoneHome;
+  }
+  function mkBuy(L) {
+    if (S.cash < L.price) { toast(`You need ${money(L.price - S.cash)} more cash.`, 'bad'); return; }
+    S.cash -= L.price; S.market.list = S.market.list.filter(x => x !== L);
+    const c = L.car, first = !S.car;
+    if (first) { S.car = c; deliverCar(); } else S.garage.push(c);
+    save(); refreshStats(); closePhone();
+    toast(first ? `${L.seller} dropped off your ${carLabel(carOf(c.id))}. It's parked right here.` : `Bought it. Your ${carLabel(carOf(c.id))} is in your garage.`, 'good');
   }
 
   // ---------- assemble ----------
@@ -3381,7 +3484,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const keys = {}, hold = {};
   function makeCar() {
     car = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.5, color: lin(S.car.color) });
+    const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.5, color: lin(S.car ? S.car.color : '#7a1820') });
     const m = new THREE.Mesh(SHAPES.car, bodyMat); m.scale.set(1.95, 1.42, 4.9); m.castShadow = true; car.add(m);
     const lights = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.12, 0.05), new THREE.MeshBasicMaterial({ color: 0xd8d0c0 })); lights.position.set(0, 0.62, -2.47); car.add(lights);
     const head = new THREE.SpotLight(0xfff0d0, 4, 90, 0.55, 0.5, 1.2); head.position.set(0, 0.8, -2.3); head.target.position.set(0, 0, -30); car.add(head); car.add(head.target); head.visible = false;
@@ -3416,7 +3519,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   }
   function stopDrive() {
     if (inside) leaveInterior(true);
-    if (foot.on) { foot.on = false; foot.holder.visible = false; showPrompt(null); $('hud').classList.remove('foot'); $('walkhint').hidden = true; drv.x = foot.park.x; drv.z = foot.park.z; }
+    if (foot.on) { foot.on = false; foot.holder.visible = false; showPrompt(null); $('hud').classList.remove('foot'); $('walkhint').hidden = true; if (foot.park) { drv.x = foot.park.x; drv.z = foot.park.z; } }
     if (!driving) return; driving = false; controls.enabled = true; car.visible = false; document.body.classList.remove('busy');
     controls.target.set(drv.x, 0, drv.z); camera.position.set(drv.x + 120, 160, drv.z + 200); controls.update();
     document.getElementById('pad').classList.remove('on'); document.getElementById('hud').classList.remove('on'); syncDrive();
@@ -3435,7 +3538,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     $('pad').classList.remove('on'); $('hud').classList.add('foot'); $('walkhint').hidden = false; clearTimeout(getOut.hint); getOut.hint = setTimeout(() => { $('walkhint').hidden = true; }, 6000); showCard(null); syncDrive(); resize();
   }
   function getIn() {
-    if (!foot.on) return; foot.on = false; foot.holder.visible = false; showPrompt(null); foot.nearCar = false;
+    if (!foot.on || !foot.park) return; foot.on = false; foot.holder.visible = false; showPrompt(null); foot.nearCar = false;
     drv.x = foot.park.x; drv.z = foot.park.z; drv.yaw = foot.park.yaw; drv.v = 0; showCard(null);
     $('pad').classList.add('on'); $('hud').classList.remove('foot'); $('walkhint').hidden = true; syncDrive(); resize();
   }
@@ -3471,8 +3574,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         if (nx > b.x0 - R && nx < b.x1 + R && nz > b.z0 - R && nz < b.z1 + R) { const pl = nx - (b.x0 - R), pr = b.x1 + R - nx, pt = nz - (b.z0 - R), pb = b.z1 + R - nz, m = Math.min(pl, pr, pt, pb); if (m === pl) nx = b.x0 - R; else if (m === pr) nx = b.x1 + R; else if (m === pt) nz = b.z0 - R; else nz = b.z1 + R; }
       }
       // the parked car is in the way too
-      const cx = nx - foot.park.x, cz = nz - foot.park.z, cs = Math.cos(foot.park.yaw), sn = Math.sin(foot.park.yaw), ax = cx * cs - cz * sn, az = cx * sn + cz * cs;
-      if (Math.abs(ax) < 1.05 + R && Math.abs(az) < 2.5 + R) { if (1.05 + R - Math.abs(ax) < 2.5 + R - Math.abs(az)) { const px = Math.sign(ax) * (1.05 + R); nx = foot.park.x + px * cs + az * sn; nz = foot.park.z - px * sn + az * cs; } else { const pz = Math.sign(az) * (2.5 + R); nx = foot.park.x + ax * cs + pz * sn; nz = foot.park.z - ax * sn + pz * cs; } }
+      if (foot.park) { const cx = nx - foot.park.x, cz = nz - foot.park.z, cs = Math.cos(foot.park.yaw), sn = Math.sin(foot.park.yaw), ax = cx * cs - cz * sn, az = cx * sn + cz * cs;
+      if (Math.abs(ax) < 1.05 + R && Math.abs(az) < 2.5 + R) { if (1.05 + R - Math.abs(ax) < 2.5 + R - Math.abs(az)) { const px = Math.sign(ax) * (1.05 + R); nx = foot.park.x + px * cs + az * sn; nz = foot.park.z - px * sn + az * cs; } else { const pz = Math.sign(az) * (2.5 + R); nx = foot.park.x + ax * cs + pz * sn; nz = foot.park.z - ax * sn + pz * cs; } } }
       if (foot.target && Math.hypot(nx - foot.x, nz - foot.z) < 0.0004 * sp) foot.target = null;
       foot.x = clamp(nx, WB.x0, WB.x1); foot.z = clamp(nz, WB.z0, WB.z1);
       foot.yaw = Math.atan2(-wx, -wz); foot.walk += dt * (run ? 11 : 8.5) * k;
@@ -3488,7 +3591,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     v4.set(foot.x + Math.sin(foot.camYaw) * back, up, foot.z + Math.cos(foot.camYaw) * back);
     foot.cam.lerp(v4, 1 - Math.exp(-dt * 5)); camera.position.copy(foot.cam);
     v5.set(foot.x + fx * 1.6, 1.35, foot.z + fz * 1.6); foot.look.lerp(v5, 1 - Math.exp(-dt * 8)); camera.lookAt(foot.look);
-    carPrompt(Math.hypot(foot.x - foot.park.x, foot.z - foot.park.z) < 3.8);
+    carPrompt(!!foot.park && Math.hypot(foot.x - foot.park.x, foot.z - foot.park.z) < 3.8);
     if ((frame & 7) === 0) { const s = streetAt(foot.x, foot.z); streetEl.textContent = s ? s.name : districtAt(foot.x, foot.z); }
   }
   // locals hanging out by the doors of the spots closest to you
@@ -3654,15 +3757,15 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }));
   }
   function myStuff() {
-    const c = S.car, m = carOf(c.id);
+    const c = S.car || newCar(BUILT[0]), m = carOf(c.id);
     const rows = [
-      { t: carLabel(m), s: `${carHp(c)} hp · ${carHealth(c)}% condition · fuel ${Math.round(c.fuel * 100)}% · worth ${money(carValue(c))}`, sw: c.color, btn: 'Garage', act: () => openMenu(MENUS.garage) },
+      S.car ? { t: carLabel(m), s: `${carHp(c)} hp · ${carHealth(c)}% condition · fuel ${Math.round(c.fuel * 100)}% · worth ${money(carValue(c))}`, sw: c.color, btn: 'Garage', act: () => openMenu(MENUS.garage) } : { t: 'No car yet', s: 'Buy a cheap first car on Marketplace', btn: 'Marketplace', act: () => { closeMenu(); openPhone(); phoneApp('market'); } },
       { t: `Cash ${money(S.cash)} · Bank ${money(S.bank)}`, s: `Loan ${money(S.loan)} · Credit ${S.credit} · Rep ${S.rep} · Day ${S.day}`, btn: 'OK', off: true, act: () => {} },
       { t: `Food ${Math.round(S.hunger)} · Energy ${Math.round(S.energy)} · Health ${Math.round(S.health)}`, s: `Bag: ${S.bag.snacks || 0} snacks, ${S.bag.tacos || 0} tacos, ${S.bag.energyDrinks || 0} energy drinks`, btn: 'Eat', off: !(S.bag.snacks || S.bag.tacos || S.bag.energyDrinks), act: () => { const k = S.bag.tacos ? 'tacos' : S.bag.snacks ? 'snacks' : 'energyDrinks'; S.bag[k]--; if (k === 'energyDrinks') S.energy = clamp100(S.energy + 35); else S.hunger = clamp100(S.hunger + (k === 'tacos' ? 40 : 20)); } },
       { t: `${S.props.length} properties · ${S.garage.length + 1} cars · ${S.loot.length} stolen goods`, s: [S.tracks || S.released ? `${S.released} tracks out` : '', S.cattle ? S.cattle + ' cattle' : '', S.dogs ? S.dogs + ' hog dogs' : '', S.boats.length ? S.boats.join(', ') : '', S.trailers.length ? S.trailers.join(', ') : ''].filter(Boolean).join(' · ') || 'Buy houses at a realty office, cars at dealers.', btn: 'OK', off: true, act: () => {} },
       { t: 'Character creator', s: 'Remake your look in the full creator', btn: 'Open', act: () => openCreator(false) },
       { t: 'Your look', s: 'Skin, hair, face, extras, build, clothes', btn: 'Look', act: () => openMenu(() => MENUS.look(null)) },
-      { t: 'Start over', s: 'Wipes this save', btn: 'Reset', act: () => { S = freshSave(); save(); if (car) car.userData.body.color.copy(lin(S.car.color)); dressAvatar(); toast('New save.', ''); } },
+      { t: 'Start over', s: 'Wipes this save', btn: 'Reset', act: () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); } },
     ];
     return { title: 'My stuff', sub: S.heat ? `Heat ${S.heat}` : 'Clean', rows };
   }
@@ -3722,7 +3825,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     try {
       ld.textContent = 'Loading Murda Worth… map data';
       const res = await fetch('map-data.json'); if (!res.ok) throw new Error('map data ' + res.status);
-      const D = DATA = await res.json(); G = D.G; G.cars = builtCars(G.cars); for (const c of PEOPLE.GAME.CLOTHES) if (!G.clothes.some(x => x.id === c.id)) G.clothes.push(c); S = loadSave(); keepBuilt(S.car); S.garage.forEach(keepBuilt); drv.color = S.car.color;
+      const D = DATA = await res.json(); G = D.G; G.cars = builtCars(G.cars); for (const c of PEOPLE.GAME.CLOTHES) if (!G.clothes.some(x => x.id === c.id)) G.clothes.push(c); S = loadSave(); if (S.car) keepBuilt(S.car); S.garage.forEach(keepBuilt); drv.color = S.car ? S.car.color : drv.color;
       D.labels = D.labels.flatMap(l => Array.isArray(l) ? [l] : Object.values(l).flat());
       for (const t of D.towns) if (!D.labels.some(l => l[0] === t.name.toUpperCase())) D.labels.push([t.name.toUpperCase(), (t.x0 + t.x1) / 2, (t.z0 + t.z1) / 2]);
       try { await Promise.race([document.fonts.load('700 30px "Barlow Condensed"'), document.fonts.load('40px Bungee'), new Promise(r => setTimeout(r, 2500))]); } catch (e) {}
