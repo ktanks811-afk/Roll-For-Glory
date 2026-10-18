@@ -190,6 +190,17 @@ body.walking #card { display: none !important; }
 body.busy:not(.creating):not(.indoors) #phonebtn, body.indoors:not(.creating) #phonebtn { display: block; }
 body.phoning #phonebtn { background: var(--accent); }
 #garbtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 160px); width: 50px; height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 22px; display: none; z-index: 8; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.45); padding: 0; line-height: 1; }
+#carbtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 160px); width: 50px; height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 22px; display: none; z-index: 8; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.45); padding: 0; line-height: 1; }
+#carbtn small { display: block; font: 600 10px var(--body); margin-top: 3px; }
+body.carnear:not(.creating):not(.phoning):not(.indoors) #carbtn { display: block; }
+#carpanel { position: fixed; right: calc(max(16px, env(safe-area-inset-right, 0px)) + 58px); top: calc(env(safe-area-inset-top, 0px) + 160px); z-index: 9; display: flex; flex-direction: column; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
+#carpanel[hidden], body:not(.carnear) #carpanel { display: none; }
+#carpanel .btn { white-space: nowrap; }
+#radio { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); display: none; align-items: center; gap: 4px; background: rgba(14,15,18,0.82); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px; z-index: 7; max-width: calc(100vw - 32px); }
+body.incar:not(.creating):not(.phoning) #radio { display: flex; }
+#radio button { background: none; border: 0; color: var(--fg); font-size: 18px; width: 34px; height: 34px; cursor: pointer; padding: 0; }
+#radio span { font: 600 14px var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; padding: 0 2px; }
+#radio.off span { color: var(--muted); } #radio.off #rd-on { opacity: 0.5; }
 #garbtn small { display: block; font: 600 10px var(--body); margin-top: 3px; }
 body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 .hu-top { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; } .hu-top div { background: #17181d; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; } .hu-top small { display: block; color: var(--muted); font-size: 12px; } .hu-top b { font-size: 17px; }
@@ -219,6 +230,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 .ph-bar button { width: 130px; height: 6px; border-radius: 3px; background: #666; border: 0; cursor: pointer; padding: 0; }
 @media (orientation: landscape) and (max-height: 500px) {
   #phonebtn { top: calc(env(safe-area-inset-top, 0px) + 84px); width: 44px; height: 44px; font-size: 21px; }
+  #carbtn, #carpanel { top: calc(env(safe-area-inset-top, 0px) + 136px); } #carbtn { width: 44px; height: 50px; font-size: 19px; } #carpanel { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 52px); } #radio { bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
   #garbtn { top: calc(env(safe-area-inset-top, 0px) + 136px); width: 44px; height: 50px; font-size: 19px; }
   .ph { width: min(640px, 100%); border-radius: 26px; }
   .ph-home { grid-template-columns: repeat(7, 1fr); }
@@ -245,6 +257,9 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 <div id="hud"><div id="spd">0<small>MPH</small></div><div id="street"></div><div id="stats"></div></div>
 <div id="mini" aria-hidden="true"><canvas id="mini-c"></canvas><div id="mini-hd"></div></div>
 <button id="phonebtn" aria-label="Phone">📱</button>
+<button id="carbtn" aria-label="Car doors, hood and trunk">🚘<small>Car</small></button>
+<div id="carpanel" hidden></div>
+<div id="radio"><button id="rd-on" aria-label="Radio on or off">📻</button><span id="rd-title">Radio</span><button id="rd-prev" aria-label="Last song">⏮</button><button id="rd-next" aria-label="Next song">⏭</button></div>
 <button id="garbtn" aria-label="Garage">🚗<small>Garage</small></button>
 <div id="phone" hidden><div class="ph"><div class="ph-status"><span id="ph-time"></span><span id="ph-cash"></span></div><div class="ph-screen" id="ph-screen"></div><div class="ph-bar"><button id="ph-home" aria-label="Home"></button></div></div></div>
 <div id="ph-park" hidden></div>
@@ -1306,7 +1321,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
         return { geo: g, mat: +k };
       });
     };
-    return { mats, body: build(d.body), wheels: d.wheels.map(w => ({ pos: w.pos, scale: w.scale, parts: build(w.parts) })), box: d.box };
+    return { mats, body: build(d.body), wheels: d.wheels.map(w => ({ pos: w.pos, scale: w.scale, parts: build(w.parts) })), panels: (d.panels || []).map(p => ({ ...p, parts: build(p.parts) })), box: d.box };
   }
   // a fresh copy of a car: front faces -z like everything else on the map, sitting on y = 0
   function carMesh(T, color) {
@@ -1316,7 +1331,15 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const root = new THREE.Group(), inner = new THREE.Group(); inner.rotation.y = Math.PI / 2; root.add(inner);
     for (const p of T.body) { const m = new THREE.Mesh(p.geo, matOf(p.mat)); m.castShadow = !m.material.transparent; inner.add(m); }
     const wheels = T.wheels.map(w => { const g = new THREE.Group(); g.position.fromArray(w.pos); g.scale.fromArray(w.scale); for (const p of w.parts) { const m = new THREE.Mesh(p.geo, matOf(p.mat)); m.castShadow = true; g.add(m); } inner.add(g); return g; });
-    root.userData = { wheels, paint: myPaint, len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
+    // doors, hood and trunk hang on their own hinges, closed until you open them
+    const panels = {};
+    for (const p of T.panels) {
+      const hold = new THREE.Group(); hold.matrixAutoUpdate = false; hold.matrix.fromArray(p.pm); inner.add(hold);
+      const g = new THREE.Group(); g.position.fromArray(p.pos); g.rotation.set(p.rot[0], p.rot[1], p.rot[2]); g.scale.fromArray(p.scale); hold.add(g);
+      for (const q of p.parts) { const m = new THREE.Mesh(q.geo, matOf(q.mat)); m.castShadow = !m.material.transparent; g.add(m); }
+      panels[p.name] = { g, axis: p.axis, open: p.open, base: g.rotation[p.axis], t: 0, want: 0 };
+    }
+    root.userData = { panels, wheels, paint: myPaint, len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
     return root;
   }
   // drop a car into any group; the model streams in, the slot is ready right away
@@ -1326,6 +1349,18 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     return slot;
   }
   function spinWheels(m, dist) { if (!m) return; const r = m.userData.r || 0.34; for (const w of m.userData.wheels) w.rotation.z -= dist / r; }
+  // which panels a button moves: all the doors, the hood, or whatever opens at the back
+  const panelKind = n => /^door/.test(n) ? 'doors' : n === 'hood' ? 'hood' : 'trunk';
+  function setPanels(m, kind, open) { if (!m) return; for (const [n, p] of Object.entries(m.userData.panels)) if (panelKind(n) === kind) p.want = open ? 1 : 0; }
+  function panelsOpen(m, kind) { return !!m && Object.entries(m.userData.panels).some(([n, p]) => panelKind(n) === kind && p.want); }
+  function stepPanels(m, dt) {
+    if (!m) return;
+    for (const p of Object.values(m.userData.panels)) {
+      if (p.t === p.want) continue;
+      p.t = p.want > p.t ? Math.min(1, p.t + dt * 1.6) : Math.max(0, p.t - dt * 1.6);
+      const e = p.t * p.t * (3 - 2 * p.t); p.g.rotation[p.axis] = p.base + p.open * e;
+    }
+  }
   // ---------- people: the character builder from the characters page ----------
   const PEOPLE = (function () {
 const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#c68e65","#b07650","#9c6644","#845334","#6b4429","#55341f","#3f2a1a","#2c1d12"],"HAIR_COLORS":["#111111","#2a1a10","#3b2414","#6b4423","#8a5a2b","#b07b3e","#c9953f","#d9c27a","#ece2b8","#a33a17","#c2531d","#9a9a9a","#e8e8e8","#b51818","#e05aa0","#7b3fc4","#2a6bd1","#1fa3a3","#2f9a4a"],"DEFAULT":{"skin":"#c68e65","hair":"#111111","hairStyle":"short","build":1,"eyes":"#2a1a10","brows":"natural","facialHair":"none","extras":[],"top":"hoodie_black","bottom":"jeans_blue","hat":"no_hat","shoes":"kicks_white","mask":"no_mask"},"CLOTHES":[{"id":"hoodie_black","slot":"top","style":"hoodie","color":"#1a1a1a","name":"Black Hoodie","price":0},{"id":"tee_white","slot":"top","style":"tee","color":"#e8e8e8","name":"White Tee","price":25},{"id":"tee_red","slot":"top","style":"tee","color":"#b51818","name":"Red Tee","price":25},{"id":"hoodie_grey","slot":"top","style":"hoodie","color":"#6d7078","name":"Heather Hoodie","price":60},{"id":"bomber_olive","slot":"top","style":"jacket","color":"#4a5232","name":"Olive Bomber","price":140},{"id":"racing_jacket","slot":"top","style":"jacket","color":"#c41b1b","name":"Leather Racing Jacket","price":420},{"id":"varsity_crew","slot":"top","style":"jacket","color":"#0b1f4d","name":"Crew Varsity Jacket","price":260},{"id":"silver_jacket","slot":"top","style":"jacket","color":"#b8bcc4","name":"Silver Tech Shell","price":900},{"id":"jeans_blue","slot":"bottom","style":"jeans","color":"#2c3e66","name":"Blue Jeans","price":0},{"id":"jeans_black","slot":"bottom","style":"jeans","color":"#151515","name":"Black Denim","price":70},{"id":"cargo_tan","slot":"bottom","style":"cargo","color":"#7d6b4c","name":"Tan Cargos","price":65},{"id":"track_black","slot":"bottom","style":"track","color":"#202020","name":"Track Pants","price":55},{"id":"cap_black","slot":"hat","style":"cap","color":"#111111","name":"Black Cap","price":30},{"id":"cap_red","slot":"hat","style":"cap","color":"#b51818","name":"Red Cap","price":30},{"id":"beanie_grey","slot":"hat","style":"beanie","color":"#5b5f66","name":"Grey Beanie","price":25},{"id":"no_hat","slot":"hat","style":"none","color":"#000000","name":"No Hat","price":0},{"id":"kicks_white","slot":"shoes","style":"kicks","color":"#f0f0f0","name":"White Kicks","price":90},{"id":"kicks_red","slot":"shoes","style":"kicks","color":"#c41b1b","name":"Red Racers","price":120},{"id":"boots_black","slot":"shoes","style":"boots","color":"#1a1a1a","name":"Black Boots","price":110},{"id":"no_mask","slot":"mask","style":"none","color":"#000000","name":"No Mask","price":0},{"id":"skimask_black","slot":"mask","style":"skimask","color":"#0c0c0d","name":"Vortex Black Ski Mask","price":35,"shop":"surplus"},{"id":"bandana_black","slot":"mask","style":"bandana","color":"#141414","name":"Black Bandana (over the face)","price":12,"shop":"surplus"},{"id":"fleece_black","slot":"top","style":"hoodie","color":"#0f0f10","name":"Vortex Black Tech Fleece Hoodie","price":120,"shop":"surplus"},{"id":"joggers_black","slot":"bottom","style":"track","color":"#101011","name":"Vortex Black Tech Fleece Joggers","price":95,"shop":"surplus"},{"id":"cargo_black","slot":"bottom","style":"cargo","color":"#18181a","name":"Black Work Cargos","price":60,"shop":"surplus"},{"id":"kicks_blackout","slot":"shoes","style":"kicks","color":"#121212","name":"Vortex Triple-Black Runners","price":110,"shop":"surplus"},{"id":"boots_tactical","slot":"shoes","style":"boots","color":"#141414","name":"Black Tactical Boots","price":140,"shop":"surplus"},{"id":"beanie_black","slot":"hat","style":"beanie","color":"#121212","name":"Black Watch Cap","price":20,"shop":"surplus"},{"id":"mk_jordan_bred","slot":"shoes","style":"kicks","color":"#b51818","name":"Retro 11 \"Bred\" High-tops","price":230,"shop":"kicks"},{"id":"mk_af1_white","slot":"shoes","style":"kicks","color":"#f4f4f4","name":"Triple-White Low Tops","price":115,"shop":"kicks"},{"id":"mk_foams","slot":"shoes","style":"kicks","color":"#2a2f3a","name":"Onyx Foam Runners","price":180,"shop":"kicks"},{"id":"mk_dunk_panda","slot":"shoes","style":"kicks","color":"#d8d8d8","name":"\"Panda\" Low Skates","price":140,"shop":"kicks"},{"id":"mk_uni_blue","slot":"shoes","style":"kicks","color":"#5fa8e8","name":"University Blue 4s","price":260,"shop":"kicks"},{"id":"mk_slides","slot":"shoes","style":"kicks","color":"#151515","name":"Black Slides and Socks","price":65,"shop":"kicks"},{"id":"mh_hoodie_box","slot":"top","style":"hoodie","color":"#c41b1b","name":"Red Box-Logo Hoodie","price":190,"shop":"hype"},{"id":"mh_hoodie_cream","slot":"top","style":"hoodie","color":"#e8dcc0","name":"Cream Essentials Hoodie","price":110,"shop":"hype"},{"id":"mh_tee_graphic","slot":"top","style":"tee","color":"#2a2a2a","name":"Vintage Rap Tee","price":55,"shop":"hype"},{"id":"mh_tee_purple","slot":"top","style":"tee","color":"#6a2ac4","name":"Purple Puff-Print Tee","price":60,"shop":"hype"},{"id":"mh_puffer","slot":"top","style":"jacket","color":"#141414","name":"Black Puffer Jacket","price":320,"shop":"hype"},{"id":"mh_track_green","slot":"bottom","style":"track","color":"#1f5a32","name":"Green Nylon Track Pants","price":85,"shop":"hype"},{"id":"mh_fitted","slot":"hat","style":"cap","color":"#0b1f4d","name":"Navy Fitted Cap","price":45,"shop":"hype"},{"id":"mh_beanie_orange","slot":"hat","style":"beanie","color":"#e8641a","name":"Safety Orange Beanie","price":30,"shop":"hype"},{"id":"md_stacked","slot":"bottom","style":"jeans","color":"#1e2a44","name":"Stacked Flare Jeans","price":150,"shop":"denim"},{"id":"md_ripped","slot":"bottom","style":"jeans","color":"#5a7aa8","name":"Light-Wash Ripped Jeans","price":95,"shop":"denim"},{"id":"md_grey","slot":"bottom","style":"jeans","color":"#55585e","name":"Washed Grey Denim","price":90,"shop":"denim"},{"id":"md_trucker","slot":"top","style":"jacket","color":"#3a5580","name":"Denim Trucker Jacket","price":130,"shop":"denim"},{"id":"md_carpenter","slot":"bottom","style":"cargo","color":"#a07a44","name":"Duck Canvas Carpenter Pants","price":85,"shop":"denim"},{"id":"mw_pearlsnap","slot":"top","style":"jacket","color":"#7a2a2a","name":"Pearl-Snap Western Shirt","price":70,"shop":"western"},{"id":"mw_wranglers","slot":"bottom","style":"jeans","color":"#24324f","name":"Starched Wranglers","price":55,"shop":"western"},{"id":"mw_ropers","slot":"shoes","style":"boots","color":"#6a4423","name":"Brown Roper Boots","price":180,"shop":"western"},{"id":"mw_gator","slot":"shoes","style":"boots","color":"#3a2a1a","name":"Caiman Belly Boots","price":650,"shop":"western"},{"id":"mw_cap_ranch","slot":"hat","style":"cap","color":"#5a4a2a","name":"Feed Store Cap","price":25,"shop":"western"},{"id":"mw_carhartt","slot":"top","style":"jacket","color":"#8a6a2a","name":"Duck Chore Coat","price":140,"shop":"western"},{"id":"mj_dallas_star","slot":"top","style":"tee","color":"#0b1f4d","name":"Dallas Star Jersey (Navy)","price":130,"shop":"jersey"},{"id":"mj_dallas_white","slot":"top","style":"tee","color":"#eef0f4","name":"Dallas Star Jersey (White)","price":130,"shop":"jersey"},{"id":"mj_mavs","slot":"top","style":"tee","color":"#0a5ac4","name":"Dallas Hoops Jersey (Blue)","price":120,"shop":"jersey"},{"id":"mj_rangers","slot":"top","style":"tee","color":"#c41b2a","name":"Arlington Baseball Jersey (Red)","price":110,"shop":"jersey"},{"id":"mj_cap_star","slot":"hat","style":"cap","color":"#9aa0aa","name":"Silver Star Snapback","price":38,"shop":"jersey"},{"id":"mm_mexico","slot":"top","style":"tee","color":"#1a7a3a","name":"Mexico Fútbol Jersey (Green)","price":45,"shop":"mercado"},{"id":"mm_mexico_blk","slot":"top","style":"tee","color":"#121212","name":"Mexico Fútbol Jersey (Black)","price":45,"shop":"mercado"},{"id":"mm_botas","slot":"shoes","style":"boots","color":"#2a1810","name":"Pointy Botas Vaqueras","price":120,"shop":"mercado"},{"id":"mm_tejana","slot":"hat","style":"cap","color":"#d9c8a0","name":"Straw Gorra","price":18,"shop":"mercado"},{"id":"mm_track","slot":"bottom","style":"track","color":"#1a3a7a","name":"Club Track Pants","price":35,"shop":"mercado"},{"id":"mx_monogram","slot":"top","style":"hoodie","color":"#3a2a1a","name":"Monogram Hoodie","price":1450,"shop":"designer"},{"id":"mx_leather","slot":"top","style":"jacket","color":"#0c0c0c","name":"Black Lambskin Biker","price":4800,"shop":"designer"},{"id":"mx_tee_logo","slot":"top","style":"tee","color":"#f2f2f2","name":"Logo Tape Tee","price":620,"shop":"designer"},{"id":"mx_cargo","slot":"bottom","style":"cargo","color":"#202020","name":"Nylon Designer Cargos","price":1200,"shop":"designer"},{"id":"mx_runners","slot":"shoes","style":"kicks","color":"#e8e8e8","name":"Chunky Designer Runners","price":1100,"shop":"designer"},{"id":"mx_redbottoms","slot":"shoes","style":"boots","color":"#0e0e0e","name":"Red-Bottom Spike Boots","price":1650,"shop":"designer"},{"id":"mx_bucket","slot":"hat","style":"beanie","color":"#5a4a3a","name":"Monogram Bucket Hat","price":690,"shop":"designer"}],"HAIR_GROUPS":[{"id":"black","name":"Coils, braids & locs"},{"id":"white","name":"Straight & wavy"},{"id":"any","name":"Everybody"}],"HAIRSTYLES":[{"id":"waves","name":"360 Waves","group":"black"},{"id":"caesar","name":"Low Caesar","group":"black"},{"id":"taper","name":"Taper & Sponge Curls","group":"black"},{"id":"curly","name":"Curly Top","group":"black"},{"id":"short_afro","name":"Short Fro","group":"black"},{"id":"afro","name":"Big Afro","group":"black"},{"id":"high_top","name":"High Top Fade","group":"black"},{"id":"frohawk","name":"Frohawk","group":"black"},{"id":"twists","name":"Two-Strand Twists","group":"black"},{"id":"cornrows","name":"Cornrows","group":"black"},{"id":"braids_back","name":"Feed-In Braids","group":"black"},{"id":"box_braids","name":"Box Braids","group":"black"},{"id":"fulani","name":"Fulani Braids","group":"black"},{"id":"locs","name":"Locs","group":"black"},{"id":"loc_updo","name":"Locs Tied Up","group":"black"},{"id":"freeform","name":"Freeform Dreads","group":"black"},{"id":"bantu","name":"Bantu Knots","group":"black"},{"id":"puff","name":"Afro Puff","group":"black"},{"id":"puffs","name":"Two Puffs","group":"black"},{"id":"silk_press","name":"Silk Press","group":"black"},{"id":"short","name":"Short & Neat","group":"white"},{"id":"crew","name":"Crew Cut","group":"white"},{"id":"side_part","name":"Side Part","group":"white"},{"id":"slick","name":"Slicked Back","group":"white"},{"id":"pompadour","name":"Pompadour","group":"white"},{"id":"spiky","name":"Spiky","group":"white"},{"id":"undercut","name":"Undercut","group":"white"},{"id":"french_crop","name":"French Crop","group":"white"},{"id":"curtains","name":"Curtains","group":"white"},{"id":"flow","name":"Surfer Flow","group":"white"},{"id":"mullet","name":"Mullet","group":"white"},{"id":"shag","name":"Shag","group":"white"},{"id":"long","name":"Long Straight","group":"white"},{"id":"ponytail","name":"Ponytail","group":"white"},{"id":"bob","name":"Bob","group":"white"},{"id":"pixie","name":"Pixie Cut","group":"white"},{"id":"cowboy","name":"Cowboy Flow","group":"white"},{"id":"buzz","name":"Buzz Cut","group":"any"},{"id":"bun","name":"Top Knot","group":"any"},{"id":"mohawk","name":"Mohawk","group":"any"},{"id":"bald","name":"Bald","group":"any"}],"FACIAL_HAIR":[{"id":"none","name":"Clean"},{"id":"stubble","name":"Stubble"},{"id":"mustache","name":"Mustache"},{"id":"goatee","name":"Goatee"},{"id":"chinstrap","name":"Chin Strap"},{"id":"beard","name":"Full Beard"},{"id":"long_beard","name":"Long Beard"}],"EYE_COLORS":["#2a1a10","#4a2c17","#6b4a24","#7a6a2e","#3f7a4a","#3d6fa8","#7d8a94"],"BROWS":[{"id":"natural","name":"Natural"},{"id":"thick","name":"Thick"},{"id":"thin","name":"Thin"},{"id":"slit","name":"Eyebrow Slit"}],"EXTRAS":[{"id":"chain","name":"Gold Chain"},{"id":"cuban","name":"Cuban Link"},{"id":"grill","name":"Gold Grill"},{"id":"studs","name":"Diamond Studs"},{"id":"shades","name":"Shades"},{"id":"glasses","name":"Glasses"},{"id":"teardrop","name":"Teardrop Tat"},{"id":"neck_tat","name":"Neck Tat"},{"id":"freckles","name":"Freckles"},{"id":"durag","name":"Durag"}],"ORIGINS":[{"id":"fresh","name":"Fresh Start","blurb":"New in town with a clean slate. $4,500 cash."},{"id":"stopsix","name":"Stop Six Raised","blurb":"The east side knows your name. +60 REP, +80 followers."},{"id":"hustler","name":"Hustler","blurb":"Came up with a little paper. +$2,500 cash, but $2,000 of it is dirty."},{"id":"working","name":"Working Man","blurb":"Years on the line at the plant. +$4,000 clean in the bank."},{"id":"influencer","name":"Influencer","blurb":"Big following, small wallet. +900 followers, $1,500 less cash."},{"id":"gearhead","name":"Gearhead","blurb":"Grew up under a hood on the Northside. +40 REP, +$1,000 cash."}]};
@@ -3179,6 +3214,56 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       save(); refreshStats(); hustleApp(sc, tab);
     });
   }
+  // ---------- car button: open and close the doors, hood and trunk of your car ----------
+  const backName = () => { const m = car && car.userData.model; const n = m && Object.keys(m.userData.panels).find(k => panelKind(k) === 'trunk'); return n === 'tailgate' ? 'Tailgate' : n === 'hatch' ? 'Hatch' : 'Trunk'; };
+  function carNear() { if (!S || !S.car || !car || !car.userData.model || inside || creating) return false; if (driving && !foot.on) return true; return !!(foot.on && foot.park && Math.hypot(foot.x - foot.park.x, foot.z - foot.park.z) < 12); }
+  function renderCarPanel() {
+    const el = $('carpanel'), m = car && car.userData.model; if (el.hidden) return;
+    el.innerHTML = [['doors', 'Doors'], ['hood', 'Hood'], ['trunk', backName()]].map(([k, l]) => `<button class="btn${panelsOpen(m, k) ? ' go' : ''}" data-pk="${k}">${panelsOpen(m, k) ? 'Close' : 'Open'} ${l.toLowerCase()}</button>`).join('');
+    el.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => { const k = b.dataset.pk; setPanels(car.userData.model, k, !panelsOpen(car.userData.model, k)); renderCarPanel(); });
+  }
+  function bindCarUI() {
+    $('carbtn').onclick = () => { const el = $('carpanel'); el.hidden = !el.hidden; renderCarPanel(); };
+    $('rd-on').onclick = () => { radioSet().on = !radioSet().on; radioStep(true); save(); };
+    $('rd-next').onclick = () => radioSkip(1);
+    $('rd-prev').onclick = () => radioSkip(-1);
+    addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !document.body.classList.contains('incar')) return; if (e.code === 'KeyR') radioSkip(1); if (e.code === 'KeyO') { radioSet().on = !radioSet().on; radioStep(true); save(); } });
+    // iPhone only starts audio from a tap, so any tap while the radio should be playing kicks it
+    addEventListener('pointerdown', () => { if (RADIO.want && RADIO.el && RADIO.el.paused) RADIO.el.play().catch(() => {}); }, true);
+  }
+  // ---------- car radio: Kimari's songs from the 2D game, only while you're in the car ----------
+  const STATIONS = [['smooth-criminals', 'Smooth Criminals'], ['hustlin', 'Hustlin'], ['srt-punisher', 'SRT Punisher'], ['murda-dance', 'Murda Dance'], ['ass-appeal', 'Ass Appeal']];
+  const RADIO = { el: null, want: false, dead: false, src: '' };
+  function radioSet() { S.radio = Object.assign({ on: true, i: 0 }, S.radio || {}); return S.radio; }
+  function radioSkip(d) { const r = radioSet(); r.i = (r.i + d + STATIONS.length) % STATIONS.length; r.on = true; RADIO.dead = false; if (RADIO.el) RADIO.el.currentTime = 0; radioStep(true); save(); }
+  function radioStep(tap) {
+    const r = radioSet(), incar = driving && !foot.on && !inside && !!S.car;
+    RADIO.want = incar && r.on && !document.hidden && !RADIO.dead;
+    if (!RADIO.el && RADIO.want) {
+      RADIO.el = new Audio(); RADIO.el.preload = 'auto'; RADIO.el.volume = 0.8;
+      RADIO.el.onended = () => radioSkip(1);
+      RADIO.el.onerror = () => { RADIO.dead = true; RADIO.src = ''; radioUI(); };
+    }
+    const el = RADIO.el;
+    if (el) {
+      const src = 'audio/radio/' + STATIONS[r.i][0] + '.m4a';
+      if (RADIO.want && RADIO.src !== src) { RADIO.src = src; el.src = src; }
+      if (RADIO.want && el.paused) { if (INTRO.on) introStop(); el.play().catch(() => {}); }
+      if (!RADIO.want && !el.paused) el.pause();
+    }
+    radioUI();
+  }
+  function radioUI() {
+    const r = radioSet(), t = $('rd-title'), txt = RADIO.dead ? 'No signal here' : r.on ? STATIONS[r.i][1] : 'Radio off';
+    if (t.textContent !== txt) t.textContent = txt;
+    $('radio').classList.toggle('off', !r.on || RADIO.dead);
+  }
+  // every few frames: show the car button near your car, keep the radio in step
+  function stepCarUI() {
+    const near = carNear(), bc = document.body.classList;
+    if (near !== bc.contains('carnear')) { bc.toggle('carnear', near); if (!near) $('carpanel').hidden = true; }
+    radioStep(false);
+  }
   // ---------- character creation: the first screen a new player sees ----------
   const CR = { on: false, scene: null, cam: null, stand: null, P: null, look: null, name: '', origin: 'fresh', tab: 'you', hgroup: 'black', fsub: 'skin', csub: 'top', yaw: 0.35, frame: 'full', fy: 0.95, fh: 1.95, drag: null, first: false, dirty: false };
   let creating = false;
@@ -4028,6 +4113,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     if ((frame & 15) === 0) syncCarModel();
+    if (car) stepPanels(car.userData.model, dt);
+    if ((frame & 7) === 0 && worldOn) stepCarUI();
     controls.enabled = !driving && !inside;
     const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); resize(); }
     const incar = driving && !foot.on && !inside; if (incar !== bc.contains('incar')) bc.toggle('incar', incar); if (inside !== bc.contains('indoors')) bc.toggle('indoors', inside);
@@ -4082,7 +4169,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       makeLabels(D); LABELS.push(...[textSprite('FORT WORTH', 44, '#ffd23f')].map(sp => { sp.position.set(DOWNTOWN.x, 30, DOWNTOWN.z); sp.userData.big = true; scene.add(sp); return sp; }));
       controls.target.set(DOWNTOWN.x, 0, DOWNTOWN.z); camera.position.set(DOWNTOWN.x + 380, 330, DOWNTOWN.z + 520);
       $('facts').textContent = `${(nB).toLocaleString()} buildings · ${(D.T.length / 4).toLocaleString()} trees · ${Math.round(D.E.length / 7).toLocaleString()} streets · ${D.P.length} places`;
-      setTime('day'); resize(); controls.update(); bindInteriorInput(renderer.domElement); bindStick(); bindPhone(); refreshStats();
+      setTime('day'); resize(); controls.update(); bindInteriorInput(renderer.domElement); bindStick(); bindPhone(); bindCarUI(); refreshStats();
       ld.hidden = true;
       if (!S.made) openCreator(true); else enterWorld();
       window.__map.ready = true;
@@ -4094,7 +4181,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
-    places() { return DATA.P; }, enter(id) { enterInterior(DATA.P.find(p => p.id === id || p.type === id)); }, use(name) { const st = IN.stations.find(s => s.name.startsWith(name)); if (st) { IN.pos.set(st.x, 0, st.z); IN.near = st; showPrompt(st); if (st.menu) openMenu(st.menu); } return IN.stations.map(s => s.name); }, click(i) { document.querySelectorAll('#menu [data-i]')[i].click(); }, get S() { return S; }, leave: () => leaveInterior(), card: () => [cardMode, cardPlace && cardPlace.name], showCard, getOut, getIn, foot, openCreator, CR, closeCreator, street: () => [STREET.key, CROWD.length, STREET.list.map(q => q.P.wrap.position.toArray().map(Math.round))], people: () => (IN.people || []).map(q => [q.kind, !!q.P]), openMenu, MENUS, get ME() { return ME; }, newCar, storeCar, takeOut, deliverCar, phoneApp, openPhone, hustlePay, sleep, get car() { return car; }, get IN() { return IN; },
+    places() { return DATA.P; }, enter(id) { enterInterior(DATA.P.find(p => p.id === id || p.type === id)); }, use(name) { const st = IN.stations.find(s => s.name.startsWith(name)); if (st) { IN.pos.set(st.x, 0, st.z); IN.near = st; showPrompt(st); if (st.menu) openMenu(st.menu); } return IN.stations.map(s => s.name); }, click(i) { document.querySelectorAll('#menu [data-i]')[i].click(); }, get S() { return S; }, leave: () => leaveInterior(), card: () => [cardMode, cardPlace && cardPlace.name], showCard, getOut, getIn, foot, openCreator, CR, closeCreator, street: () => [STREET.key, CROWD.length, STREET.list.map(q => q.P.wrap.position.toArray().map(Math.round))], people: () => (IN.people || []).map(q => [q.kind, !!q.P]), openMenu, MENUS, get ME() { return ME; }, newCar, storeCar, takeOut, deliverCar, phoneApp, openPhone, hustlePay, sleep, get car() { return car; }, setPanels, RADIO, get IN() { return IN; },
   };
   boot();
 })();
