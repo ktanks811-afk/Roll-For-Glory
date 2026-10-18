@@ -2559,32 +2559,35 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
 
     // --- arms (each swings from the shoulder)
-    const arms = [];
+    const arms = [], fores = [];
     const sleeveLong = ts !== 'tee' && ts !== 'crop';
     const sleeveMat = /varsity/.test(top.id) ? clothMat('#e9e2cf', 'leather', { r: 0.55 }) : tm;
     for (const s of [-1, 1]) {
       const arm = new THREE.Group(); arm.position.set(s * (FEM ? 0.152 : 0.168) * W, U(1.405), -0.004); upper.add(arm); arms.push(arm);
       const el = [s * 0.03, -0.285, -0.008], wr = [s * 0.042, -0.545, 0.024];
+      const fore = new THREE.Group(); fore.position.set(...el); arm.add(fore); fores.push(fore); const toF = g => g.translate(-el[0], -el[1], -el[2]);
       const ra = 0.046 * Wl, re = 0.036 * Wl, rw = 0.027 * Wl;
-      const skinG = [limb([0, 0.01, 0], el, ra, re, false, 1, 22), limb(el, wr, re * 0.96, rw, false, 0.9, 22)];
+      const skinG = [limb([0, 0.01, 0], el, ra, re, false, 1, 22)], handG = [limb(el, wr, re * 0.96, rw, false, 0.9, 22)];
       // hand: palm, curled fingers, thumb
       const hp = [wr[0] + s * 0.004, wr[1] - 0.052, wr[2] + 0.004];
-      skinG.push(ellipsoid(hp, [0.021, 0.054, 0.047], 18));
-      skinG.push(ellipsoid([hp[0] - s * 0.007, hp[1] - 0.05, hp[2] - 0.002], [0.019, 0.036, 0.043], 16, [0.25, 0, 0]));
-      skinG.push(limb([hp[0] - s * 0.005, hp[1] + 0.026, hp[2] + 0.036], [hp[0] - s * 0.014, hp[1] - 0.016, hp[2] + 0.054], 0.012, 0.0105, false, 1, 10));
+      handG.push(ellipsoid(hp, [0.021, 0.054, 0.047], 18));
+      handG.push(ellipsoid([hp[0] - s * 0.007, hp[1] - 0.05, hp[2] - 0.002], [0.019, 0.036, 0.043], 16, [0.25, 0, 0]));
+      handG.push(limb([hp[0] - s * 0.005, hp[1] + 0.026, hp[2] + 0.036], [hp[0] - s * 0.014, hp[1] - 0.016, hp[2] + 0.054], 0.012, 0.0105, false, 1, 10));
+      fore.add(mesh(mergeGeos(handG.map(prep).map(toF)), skinMat));
       arm.add(mesh(mergeGeos(skinG.map(prep)), skinMat));
       const inf = ts === 'jacket' ? 0.017 : ts === 'hoodie' ? 0.014 : 0.012;
-      const sg = [ellipsoid([s * -0.006, 0.002, 0], [0.05 * Wl + inf * 0.5, 0.052 * Wl + inf * 0.4, 0.05 * Wl + inf * 0.4], 22)];
+      const fg = [], sg = [ellipsoid([s * -0.006, 0.002, 0], [0.05 * Wl + inf * 0.5, 0.052 * Wl + inf * 0.4, 0.05 * Wl + inf * 0.4], 22)];
       if (sleeveLong) {
         sg.push(limb([0, 0.02, 0], el, ra + inf, re + inf, true, 1, 22));
-        sg.push(limb(el, [wr[0] - s * 0.002, wr[1] + 0.03, wr[2] - 0.002], re + inf, rw + inf, true, 0.92, 22));
-        sg.push(new THREE.SphereGeometry(re + inf, 22, 12).translate(...el));
+        fg.push(limb(el, [wr[0] - s * 0.002, wr[1] + 0.03, wr[2] - 0.002], re + inf, rw + inf, true, 0.92, 22));
+        fg.push(new THREE.SphereGeometry(re + inf, 22, 12).translate(...el));
       } else {
         const mid = el.map(v => v * 0.46);
         sg.push(limb([0, 0.02, 0], mid, ra + inf, lerp(ra, re, 0.46) + inf + 0.004, true, 1, 22));
       }
       arm.add(mesh(mergeGeos(sg.map(prep)), sleeveMat));
-      if (sleeveLong) { const cuff = limb([wr[0] - s * 0.002, wr[1] + 0.034, wr[2] - 0.002], [wr[0] - s * 0.001, wr[1] + 0.006, wr[2] - 0.001], rw + inf - 0.002, rw + 0.006, true, 0.92, 22); arm.add(mesh(cuff, rib)); }
+      if (fg.length) fore.add(mesh(mergeGeos(fg.map(prep).map(toF)), sleeveMat));
+      if (sleeveLong) { const cuff = limb([wr[0] - s * 0.002, wr[1] + 0.034, wr[2] - 0.002], [wr[0] - s * 0.001, wr[1] + 0.006, wr[2] - 0.001], rw + inf - 0.002, rw + 0.006, true, 0.92, 22); fore.add(mesh(toF(cuff), rib)); }
       if (/racing/.test(top.id)) { const st = limb([s * (ra + inf) * 0.98, 0, 0], [el[0] + s * (re + inf) * 0.97, el[1], el[2]], 0.004, 0.004, false, 0.5, 6); arm.add(mesh(st, clothMat('#f2f2f2', 'leather', { r: 0.45 }), false)); }
     }
 
@@ -2607,7 +2610,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         upper.add(mesh(new THREE.BoxGeometry(w * 0.98, 0.004, 0.058).translate(bx, U(by + 0.06), frontAt(bx, by + 0.03) + 0.03), strapMat, false));
         upper.add(mesh(new THREE.TorusGeometry(0.008, 0.0025, 6, 14).translate(bx, U(by + 0.045), frontAt(bx, by + 0.03) + 0.06), gold, false));
       } else {
-        const arm = arms[1], wr = [0.042, -0.545, 0.024], hp = [wr[0] + 0.004, wr[1] - 0.052, wr[2] + 0.004];
+        const arm = { add: m => { m.geometry.translate(-0.03, 0.285, 0.008); fores[1].add(m); } }, wr = [0.042, -0.545, 0.024], hp = [wr[0] + 0.004, wr[1] - 0.052, wr[2] + 0.004];
         if (bag.style === 'tote') {
           const bg = bagGeo(0.26, 0.22, 0.09, 0.02); bg.rotateY(Math.PI / 2); bg.translate(hp[0] + 0.03, hp[1] - 0.27, hp[2]); arm.add(mesh(bg, bmat));
           for (const dz of [-0.06, 0.06]) arm.add(mesh(strand([[hp[0] + 0.03, hp[1] - 0.06, hp[2] + dz], [hp[0] + 0.02, hp[1] + 0.01, hp[2] + dz * 0.4], [hp[0] + 0.03, hp[1] - 0.06, hp[2] - dz * 0.2]], () => 0.004, 5, 12, 0.5), strapMat, false));
@@ -2621,7 +2624,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const nm = new THREE.MeshStandardMaterial({ color: col(look.bag && bag && bag.style !== 'none' ? bag.color : '#d63a7a'), roughness: 0.15, metalness: 0.1, envMapIntensity: 1.4 });
       arms.forEach((arm, i) => { const s = i ? 1 : -1, wr = [s * 0.042, -0.545, 0.024], hp = [wr[0] + s * 0.004, wr[1] - 0.052, wr[2] + 0.004], g = [];
         for (let k = 0; k < 4; k++) g.push(ellipsoid([hp[0] - s * 0.004, hp[1] - 0.084, hp[2] - 0.022 + k * 0.015], [0.006, 0.006, 0.005], 8));
-        arm.add(mesh(mergeGeos(g.map(prep)), nm, false)); });
+        fores[i].add(mesh(mergeGeos(g.map(prep)).translate(-s * 0.03, 0.285, 0.008), nm, false)); });
     }
 
     // --- pants
@@ -2629,7 +2632,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const bm = bs === 'jeans' ? clothMat(bot.color, 'denim', { r: 0.9 }) : bs === 'cargo' ? clothMat(bot.color, 'canvas') : bs === 'leggings' ? clothMat(bot.color, 'knit', { r: 0.42, env: 0.8 }) : bs === 'skirt' && /denim/.test(bot.id) ? clothMat(bot.color, 'denim', { r: 0.9 }) : clothMat(bot.color, bs === 'skirt' ? 'cotton' : 'knit', { r: 0.75 });
     const loose = bs === 'cargo' ? 0.012 : bs === 'track' ? 0.006 : bs === 'leggings' || bs === 'skirt' ? -0.008 : 0, hipK = FEM ? 1.1 : 1;
     const pelvis = ringSurf([{ y: 0.79, rx: 0.12 * Wl, rz: 0.08 * Wl }, { y: 0.86, rx: 0.148 * lerp(1, W, 0.8) * hipK, rz: 0.096 * lerp(1, W, 0.6) * (FEM ? 1.06 : 1) }, { y: 0.95, rx: 0.148 * lerp(1, W, 0.8) * (FEM ? 1.06 : 1), rz: 0.094 * lerp(1, W, 0.6) }, { y: 1.0, rx: 0.138 * lerp(1, W, 0.8), rz: 0.088 * lerp(1, W, 0.6), zo: 0.003 }], 48, 4);
-    const legG = [pelvis], legGs = [[], []];
+    const legG = [pelvis], legGs = [[], []], shinGs = [[], []], joints = [], knees = [], ankles = [];
     const extraBot = [];
     const legs = [];
     for (const s of [-1, 1]) {
@@ -2637,13 +2640,19 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const g1 = limb(hip, kn, 0.074 * Wl + loose, 0.056 * Wl + loose, false, 1, 26), g2 = limb(kn, an, 0.056 * Wl + loose, 0.047 + (bs === 'track' ? -0.002 : loose), true, 1, 26);
       g2.attributes.uv.array.forEach((v, i, a) => { if (i % 2 === 0 && s > 0) a[i] = v + 0.5; });
       g1.attributes.uv.array.forEach((v, i, a) => { if (i % 2 === 0 && s > 0) a[i] = v + 0.5; });
-      legGs[s < 0 ? 0 : 1].push(g1, g2);
+      legGs[s < 0 ? 0 : 1].push(g1); shinGs[s < 0 ? 0 : 1].push(g2, new THREE.SphereGeometry(0.056 * Wl + loose, 22, 12).translate(...kn)); joints[s < 0 ? 0 : 1] = { kn, an };
       if (bs === 'cargo') extraBot.push(new THREE.BoxGeometry(0.022, 0.09, 0.07).translate(s * (0.088 + 0.062 * Wl + loose + 0.006), 0.66, 0.008));
     }
     if (bs === 'skirt') { const k = lerp(1, W, 0.8) * hipK; root.add(mesh(ringSurf([{ y: 1.0, rx: 0.142 * k, rz: 0.092 }, { y: 0.88, rx: 0.162 * k, rz: 0.108 }, { y: 0.76, rx: 0.18 * k, rz: 0.124 }, { y: 0.66, rx: 0.196 * k, rz: 0.136 }], 48, 3), bm)); }
     if (bs === 'track') bm.map = stripeTex(0.25, '#d8d8d8'), bm.map.repeat.set(1, 1);
     root.add(mesh(mergeGeos(legG.map(prep)), bm));
-    for (let k = 0; k < 2; k++) { const lg = new THREE.Group(); lg.position.y = 0.85; root.add(lg); legs.push(lg); const lm = mesh(mergeGeos(legGs[k].map(prep)), bs === 'skirt' ? skinMat : bm); lm.position.y = -0.85; lg.add(lm); }
+    for (let k = 0; k < 2; k++) {
+      const lg = new THREE.Group(); lg.position.y = 0.85; root.add(lg); legs.push(lg); const lmat = bs === 'skirt' ? skinMat : bm, { kn, an } = joints[k];
+      const lm = mesh(mergeGeos(legGs[k].map(prep)), lmat); lm.position.y = -0.85; lg.add(lm);
+      const kg = new THREE.Group(); kg.position.set(kn[0], kn[1] - 0.85, kn[2]); lg.add(kg); knees.push(kg);
+      const sm = mesh(mergeGeos(shinGs[k].map(prep)), lmat); sm.position.set(-kn[0], -kn[1], -kn[2]); kg.add(sm);
+      const ag = new THREE.Group(); ag.position.set(an[0] - kn[0], an[1] - kn[1], an[2] - kn[2]); kg.add(ag); ankles.push(ag);
+    }
     if (extraBot.length) root.add(mesh(mergeGeos(extraBot.map(prep)), bm));
 
     // --- shoes
@@ -2651,7 +2660,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const upperMat = clothMat(shoe.color, boots || heels ? 'leather' : 'cotton', { r: heels ? 0.3 : boots ? 0.5 : 0.65, env: heels ? 1.1 : 0.5 });
     const soleMat = new THREE.MeshStandardMaterial({ color: col(heels ? (/red_sole/.test(shoe.id) ? '#c8141c' : shadeHex(shoe.color, -0.2)) : boots ? '#1a1612' : (shoe.color === '#121212' ? '#161616' : '#f4f4f2')), roughness: heels ? 0.35 : 0.7 });
     for (const s of [-1, 1]) {
-      const foot = new THREE.Group(); foot.position.set(s * 0.098, 0, 0.0); foot.rotation.y = s * 0.07; foot.position.y = -0.85; legs[s < 0 ? 0 : 1].add(foot);
+      const foot = new THREE.Group(); const J = joints[s < 0 ? 0 : 1].an; foot.position.set(s * 0.098 - J[0], -J[1], -J[2]); foot.rotation.y = s * 0.07; ankles[s < 0 ? 0 : 1].add(foot);
       const sh = new THREE.Shape();
       sh.moveTo(0, -0.055); sh.bezierCurveTo(0.05, -0.055, 0.052, 0.02, 0.05, 0.08); sh.bezierCurveTo(0.048, 0.17, 0.03, 0.2, 0, 0.2); sh.bezierCurveTo(-0.032, 0.2, -0.05, 0.17, -0.048, 0.09); sh.bezierCurveTo(-0.046, 0.02, -0.05, -0.055, 0, -0.055);
       if (heels) foot.scale.set(0.8, 1, 0.92);
@@ -2676,7 +2685,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         foot.add(mesh(mergeGeos(l.map(prep)), new THREE.MeshStandardMaterial({ color: col(shadeHex(shoe.color, shoe.color === '#f0f0f0' ? -0.08 : 0.6)), roughness: 0.8 }), false));
       }
     }
-    return { root, upper, head, arms, lids, legs };
+    return { root, upper, head, arms, lids, legs, knees, ankles, fores };
   }
 
   // every build gets its own copies of the materials and canvases the builder reuses
@@ -2746,16 +2755,50 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const to = parent || (inside ? IN.avatar : foot.on ? foot.holder : IN.avatar); if (to) to.add(ME.wrap);
   }
   function wearMe(holder) { dressAvatar(); if (ME.wrap.parent !== holder) holder.add(ME.wrap); }
-  // walk cycle for anyone built by PEOPLE: legs and arms swing, the body bobs and sways
-  function animPerson(P, ph, k) {
-    const sw = Math.sin(ph) * 0.55 * k;
-    P.legs[0].rotation.x = sw; P.legs[1].rotation.x = -sw;
-    P.arms[0].rotation.x = -sw * 0.75; P.arms[1].rotation.x = sw * 0.75;
-    P.arms[0].rotation.z = -0.06; P.arms[1].rotation.z = 0.06;
-    P.root.position.y = Math.abs(Math.cos(ph)) * 0.035 * k;
-    P.upper.rotation.y = Math.sin(ph) * 0.08 * k; P.upper.rotation.z = 0;
+  // walk and run cycles for anyone built by PEOPLE, from real gait curves: hip, knee and foot angle (degrees) every 10% of a stride, heel strike at 0
+  const GAIT = {
+    walk: { hip: [25, 22, 12, 2, -6, -10, -4, 12, 24, 28], knee: [3, 16, 18, 10, 5, 10, 36, 58, 45, 15], foot: [-18, -3, 0, 0, 4, 16, 35, 18, 2, -10] },
+    run: { hip: [35, 28, 12, -5, -15, -5, 20, 45, 55, 48], knee: [20, 38, 35, 22, 25, 60, 95, 105, 75, 35], foot: [-10, 0, 5, 25, 50, 45, 20, 0, -10, -15] },
+  };
+  function gaitAt(a, t) {   // smooth loop through the keyframes
+    const n = a.length, x = (t - Math.floor(t)) * n, i = Math.floor(x), f = x - i, p0 = a[(i + n - 1) % n], p1 = a[i], p2 = a[(i + 1) % n], p3 = a[(i + 2) % n];
+    return 0.5 * (2 * p1 + (p2 - p0) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f * f + (3 * p1 - p0 - 3 * p2 + p3) * f * f * f);
   }
-  function idlePerson(P, t) { P.legs[0].rotation.x = P.legs[1].rotation.x = 0; P.arms[0].rotation.x = P.arms[1].rotation.x = Math.sin(t * 1.3) * 0.03; P.arms[0].rotation.z = -0.06; P.arms[1].rotation.z = 0.06; P.root.position.y = 0; P.upper.rotation.y = 0; P.upper.rotation.z = Math.sin(t * 0.9) * 0.012; }
+  const DEG = Math.PI / 180;
+  // ph: 2π per stride; k: how big the steps are; run: 0 walking .. 1 running
+  function animPerson(P, ph, k = 1, run = 0) {
+    const t = ph / (Math.PI * 2), r = clamp(run, 0, 1), g = (key, tt) => lerp(gaitAt(GAIT.walk[key], tt), gaitAt(GAIT.run[key], tt), r) * DEG;
+    const hips = [], Hs = P.root.scale.y; let reach = 0;
+    for (let i = 0; i < 2; i++) {
+      const tt = t + i * 0.5, hip = g('hip', tt) * k, knee = g('knee', tt) * k, a1 = -hip, a2 = a1 + knee;
+      const ank = clamp(g('foot', tt) * k - a2, -0.6, 0.9), f = a2 + ank; hips.push(hip);
+      P.legs[i].rotation.x = a1; if (P.knees) { P.knees[i].rotation.x = knee; P.ankles[i].rotation.x = ank; }
+      // how far below the hip this foot reaches: the planted one sets the body height
+      reach = Math.max(reach, 0.35 * Math.cos(a1) + 0.405 * Math.cos(a2) + Math.max(0.095 * Math.cos(f) - 0.055 * Math.sin(f), 0.095 * Math.cos(f) + 0.2 * Math.sin(f)));
+    }
+    // arms swing with the opposite leg; running pumps them with the elbows bent
+    for (let i = 0; i < 2; i++) {
+      const o = hips[1 - i] / DEG, sh = lerp(0.75 * o - 5, 0.85 * o - 14, r) * k, el = lerp(14 + 0.45 * Math.max(0, sh), 82 + 0.4 * sh, r);
+      P.arms[i].rotation.x = -sh * DEG; P.arms[i].rotation.z = (i ? 1 : -1) * (0.06 + 0.07 * r);
+      if (P.fores) P.fores[i].rotation.x = -el * DEG;
+    }
+    // walking keeps a foot on the ground; running dips at each landing and floats between steps
+    const yFoot = (0.85 - reach) * Hs, float = Hs * (-0.06 + 0.04 * (1 + Math.cos(Math.PI * 4 * (t - 0.44))));
+    P.root.position.y = Math.max(yFoot, lerp(yFoot, float, r));
+    const sway = -Math.sin(Math.PI * 2 * t) * 0.022 * (1 - 0.6 * r) * k, ry = P.root.rotation.y;
+    P.root.position.x = sway * Math.cos(ry); P.root.position.z = -sway * Math.sin(ry);
+    // shoulders twist against the hips, the body leans into a run, the head stays level and looking ahead
+    P.upper.rotation.y = (hips[1] - hips[0]) * (0.14 + 0.08 * r) * k;
+    P.upper.rotation.x = (0.03 + 0.12 * r) * Math.min(1, k);
+    P.upper.rotation.z = Math.sin(Math.PI * 2 * t) * 0.025 * (1 - 0.5 * r) * k;
+    if (P.head) { P.head.rotation.y = -P.upper.rotation.y * 0.8; P.head.rotation.x = -P.upper.rotation.x * 0.6; }
+  }
+  function idlePerson(P, t) {
+    P.legs[0].rotation.x = P.legs[1].rotation.x = 0; P.arms[0].rotation.x = P.arms[1].rotation.x = Math.sin(t * 1.3) * 0.03; P.arms[0].rotation.z = -0.06; P.arms[1].rotation.z = 0.06;
+    if (P.knees) for (let i = 0; i < 2; i++) { P.knees[i].rotation.x = 0.04; P.ankles[i].rotation.x = -0.02; P.fores[i].rotation.x = -0.18 - Math.sin(t * 1.3 + i) * 0.03; }
+    P.root.position.set(0, 0, 0); P.upper.rotation.set(Math.sin(t * 1.1) * 0.006, 0, Math.sin(t * 0.9) * 0.012);
+    if (P.head) P.head.rotation.set(0, 0, 0);
+  }
 
   // other people: a small pool of random locals (lower detail), cloned in as staff and customers
   const CROWD = [], CROWD_N = 8;
@@ -2765,13 +2808,14 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   function crowdPerson(i) {
     const P = CROWD[i % CROWD_N]; if (!P) return null;
     const root = P.root.clone(true), w = new THREE.Group(); root.rotation.y = Math.PI; w.add(root);
-    return { wrap: w, root, upper: root.getObjectByName('upper'), legs: [root.getObjectByName('legL'), root.getObjectByName('legR')], arms: [root.getObjectByName('armL'), root.getObjectByName('armR')] };
+    const n = s => [root.getObjectByName(s + 'L'), root.getObjectByName(s + 'R')];
+    return { wrap: w, root, upper: root.getObjectByName('upper'), head: root.getObjectByName('head'), legs: n('leg'), arms: n('arm'), knees: n('knee'), ankles: n('ankle'), fores: n('fore') };
   }
   // builds one more local per call until the pool is full; true once it is
   function growCrowd() {
     if (CROWD.length >= CROWD_N) return true;
     const P = PEOPLE.build(randomLook(CROWD.length), 1);
-    P.upper.name = 'upper'; P.legs[0].name = 'legL'; P.legs[1].name = 'legR'; P.arms[0].name = 'armL'; P.arms[1].name = 'armR';
+    P.upper.name = 'upper'; P.head.name = 'head'; for (const j of ['legs', 'arms', 'knees', 'ankles', 'fores']) P[j].forEach((o, i) => o.name = j.slice(0, -1) + (i ? 'R' : 'L'));
     CROWD.push(P); return CROWD.length >= CROWD_N;
   }
 
@@ -3052,19 +3096,19 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     for (const p of pads) { if (!p) continue; if (Math.abs(p.axes[0]) > 0.15) mx += p.axes[0]; if (Math.abs(p.axes[1]) > 0.15) mz += p.axes[1]; if (Math.abs(p.axes[2] || 0) > 0.15 || Math.abs(p.axes[3] || 0) > 0.15) turnCam(-(p.axes[2] || 0) * dt * 2.6, (p.axes[3] || 0) * dt * 1.6); if (p.buttons[0] && p.buttons[0].pressed && !IN.padA && IN.near && !menuFn) useStation(); if (p.buttons[1] && p.buttons[1].pressed && menuFn) closeMenu(); IN.padA = p.buttons[0] && p.buttons[0].pressed; }
     if (mx || mz) { IN.target = null; const cy = IN.camYaw || 0, c = Math.cos(cy), s = Math.sin(cy), wx = c * mx + s * mz, wz = -s * mx + c * mz; mx = wx; mz = wz; }
     else if (IN.target) { const dx = IN.target.x - IN.pos.x, dz = IN.target.z - IN.pos.z, d = Math.hypot(dx, dz); if (d < 0.25) IN.target = null; else { mx = dx / d; mz = dz / d; } }
-    const l = Math.hypot(mx, mz), sp = 3.4;
+    const l = Math.hypot(mx, mz), sp = 2.5;
     if (l > 0.05 && !menuFn) {
       const k = Math.min(1, l); mx /= l; mz /= l;
       let nx = IN.pos.x + mx * sp * k * dt, nz = IN.pos.z + mz * sp * k * dt, R = 0.3;
       nx = clamp(nx, -IN.W / 2 + R, IN.W / 2 - R); nz = clamp(nz, -IN.D / 2 + R, IN.D / 2 - R);
       for (const b of IN.solids) { if (nx > b.x0 - R && nx < b.x1 + R && nz > b.z0 - R && nz < b.z1 + R) { const pl = nx - (b.x0 - R), pr = b.x1 + R - nx, pt = nz - (b.z0 - R), pb = b.z1 + R - nz, m = Math.min(pl, pr, pt, pb); if (m === pl) nx = b.x0 - R; else if (m === pr) nx = b.x1 + R; else if (m === pt) nz = b.z0 - R; else nz = b.z1 + R; } }
       if (Math.hypot(nx - IN.pos.x, nz - IN.pos.z) < 0.0005 * sp) IN.target = null;
-      IN.pos.set(nx, 0, nz); IN.yaw = Math.atan2(-mx, -mz); IN.walk += dt * 9 * k;
+      IN.pos.set(nx, 0, nz); IN.yaw = Math.atan2(-mx, -mz); IN.walk += dt * sp * k * Math.PI * 2 / 1.5;
     } else IN.walk *= 0.8;
     const a = IN.avatar;
     a.position.copy(IN.pos); let dy = IN.yaw - a.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); a.rotation.y += dy * Math.min(1, dt * 12);
     const t = performance.now() / 1000;
-    if (ME) { if (l > 0.05 && !menuFn) animPerson(ME, IN.walk, 1); else idlePerson(ME, t); }
+    if (ME) { if (l > 0.05 && !menuFn) animPerson(ME, IN.walk, 0.8 + 0.4 * Math.min(1, l)); else idlePerson(ME, t); }
     stepCrowd(dt, t);
     // camera: follows you from behind and above; Far cam shows the whole room
     const asp = innerWidth / Math.max(1, innerHeight);
@@ -3914,7 +3958,10 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     let wx = rx * mx - fx * mz, wz = rz * mx - fz * mz;
     if (wx || wz) foot.target = null;
     else if (foot.target) { const dx = foot.target.x - foot.x, dz = foot.target.z - foot.z, d = Math.hypot(dx, dz); if (d < 0.3) foot.target = null; else { wx = dx / d; wz = dz / d; if (d > 14) run = true; } }
-    const l = Math.hypot(wx, wz), sp = run ? 7.2 : 3.4, moving = l > 0.05 && !menuFn;
+    const l = Math.hypot(wx, wz), moving = l > 0.05 && !menuFn;
+    // ease between walking and running so the stride blends instead of snapping
+    foot.runB = (foot.runB || 0) + ((run && moving ? 1 : 0) - (foot.runB || 0)) * Math.min(1, dt * 5);
+    const sp = lerp(2.5, 7.2, foot.runB);
     if (moving) {
       const k = Math.min(1, l); wx /= l; wz /= l;
       let nx = foot.x + wx * sp * k * dt, nz = foot.z + wz * sp * k * dt; const R = 0.35;
@@ -3926,14 +3973,14 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       if (Math.abs(ax) < 1.05 + R && Math.abs(az) < 2.5 + R) { if (1.05 + R - Math.abs(ax) < 2.5 + R - Math.abs(az)) { const px = Math.sign(ax) * (1.05 + R); nx = foot.park.x + px * cs + az * sn; nz = foot.park.z - px * sn + az * cs; } else { const pz = Math.sign(az) * (2.5 + R); nx = foot.park.x + ax * cs + pz * sn; nz = foot.park.z - ax * sn + pz * cs; } } }
       if (foot.target && Math.hypot(nx - foot.x, nz - foot.z) < 0.0004 * sp) foot.target = null;
       foot.x = clamp(nx, WB.x0, WB.x1); foot.z = clamp(nz, WB.z0, WB.z1);
-      foot.yaw = Math.atan2(-wx, -wz); foot.walk += dt * (run ? 11 : 8.5) * k;
+      foot.yaw = Math.atan2(-wx, -wz); foot.walk += dt * sp * k * Math.PI * 2 / lerp(1.55, 3.8, foot.runB);
       // the camera swings round behind you while you walk forward-ish
       let dc = foot.yaw - foot.camYaw; dc = Math.atan2(Math.sin(dc), Math.cos(dc));
       if (Math.abs(dc) < 2.0 && performance.now() - LOOK.dragAt > 1500) foot.camYaw += dc * Math.min(1, dt * (run ? 1.6 : 1.0)) * k;
     }
     const h = foot.holder; h.position.set(foot.x, 0, foot.z);
     let dy = foot.yaw - h.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); h.rotation.y += dy * Math.min(1, dt * 12);
-    if (ME) { if (moving) animPerson(ME, foot.walk, run ? 1.25 : 1); else idlePerson(ME, performance.now() / 1000); }
+    if (ME) { if (moving) animPerson(ME, foot.walk, lerp(0.8 + 0.4 * Math.min(1, l), 1, foot.runB), foot.runB); else idlePerson(ME, performance.now() / 1000); }
     drv.x = foot.x; drv.z = foot.z;
     const tall = innerWidth < innerHeight * 0.8;
     orbitCam(foot.x, foot.z, foot.camYaw, drv.far ? 12 : tall ? 4.4 : 3.6, drv.far ? 0 : tall ? 0.35 : 0.55, v4, v5);
@@ -4205,7 +4252,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = {
-    ready: false, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, PEOPLE, animPerson, idlePerson, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
