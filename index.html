@@ -104,7 +104,15 @@ body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--bo
 #toast { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 70px); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; font-size: 15px; font-weight: 700; z-index: 9; max-width: calc(100% - 32px); text-align: center; }
 #toast.good { border-color: #5ec26a; } #toast.bad { border-color: #e0483a; }
 #walkhint { position: fixed; left: 50%; transform: translateX(-50%); bottom: 112px; font-size: 13px; color: var(--muted); letter-spacing: 0.04em; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none; white-space: nowrap; }
-#loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 18px; letter-spacing: 0.06em; text-transform: uppercase; pointer-events: none; }
+#loading { position: fixed; inset: 0; z-index: 50; background: #050506; transition: opacity 0.45s; }
+#loading.done { opacity: 0; pointer-events: none; }
+.ld-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+@media (orientation: portrait) { .ld-art { object-fit: contain; object-position: 50% 40%; } }
+.ld-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px max(14px, env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, rgba(5,5,6,0.85) 60%); }
+.ld-bar { width: min(380px, 60vw); height: 4px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; }
+.ld-bar i { display: block; height: 100%; width: 0; background: #e0192e; box-shadow: 0 0 10px #e0192e, 0 0 20px #e0192e; transition: width 0.3s ease-out; }
+#ld-msg { color: #c0c4cc; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; text-align: center; text-shadow: 0 1px 4px #000; }
+#ld-tap { color: #c0c4cc; opacity: 0.55; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
 #loading[hidden] { display: none; }
 @media (max-width: 600px) { #facts { display: none; } body.busy .top { display: none; } }
 /* Walking joystick: bottom-left, shows while you're on foot or inside. */
@@ -170,17 +178,43 @@ body.busy .top { display: none !important; }
 body.busy #card { top: calc(env(safe-area-inset-top, 0px) + 172px); }
 /* gas and brake only in the car; on foot the menus tuck away behind one button */
 body:not(.incar) .pad { display: none !important; }
-#walkmenu { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 176px); left: max(16px, env(safe-area-inset-left, 0px)); width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 20px; display: none; z-index: 6; cursor: pointer; }
-body.walking:not(.creating) #walkmenu { display: block; }
-body.walking:not(.dockopen) > .dock, body.walking #card { display: none !important; }
-body.walking.dockopen #walkmenu { background: var(--accent); color: #121016; }
 @media (orientation: landscape) and (max-height: 500px) {
   #mini { width: 112px; height: 112px; top: calc(env(safe-area-inset-top, 0px) + 8px); }
   body.busy #card { top: calc(env(safe-area-inset-top, 0px) + 8px); left: calc(max(16px, env(safe-area-inset-left, 0px)) + 126px); }
-  #walkmenu { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); left: auto; right: max(16px, env(safe-area-inset-right, 0px)); }
-  body.dockopen #walkmenu { bottom: calc(env(safe-area-inset-bottom, 0px) + 62px); }
 }
 #prompt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+/* no bottom menu in the world: everything lives in the phone */
+body > .dock { display: none !important; }
+body.walking #card { display: none !important; }
+#phonebtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 100px); width: 50px; height: 50px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); font-size: 24px; display: none; z-index: 8; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.45); }
+body.busy:not(.creating):not(.indoors) #phonebtn, body.indoors:not(.creating) #phonebtn { display: block; }
+body.phoning #phonebtn { background: var(--accent); }
+.pbtn.sm { width: 48px; height: 48px; font-size: 12px; align-self: flex-end; opacity: 0.9; }
+#phone { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px calc(env(safe-area-inset-bottom, 0px) + 12px); }
+#phone[hidden] { display: none; }
+.ph { width: min(380px, 100%); height: min(760px, 100%); background: #050506; border: 3px solid #2a2c33; border-radius: 34px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.7); }
+.ph-status { display: flex; justify-content: space-between; padding: 12px 24px 6px; font-size: 14px; font-weight: 700; color: #c0c4cc; }
+.ph-screen { flex: 1; min-height: 0; overflow: auto; background: #0e0f12; display: flex; flex-direction: column; }
+.ph-wall { padding: 18px 18px 0; } .ph-wall .who { font-family: var(--display); font-size: 22px; } .ph-wall .sub { color: var(--muted); font-size: 14px; }
+.ph-home { padding: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 8px; align-content: start; }
+.ph-home .app { background: none; border: 0; color: var(--fg); font: 600 13px var(--body); display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
+.ph-home .app i { width: 58px; height: 58px; border-radius: 15px; display: grid; place-items: center; font-style: normal; font-size: 28px; box-shadow: 0 3px 8px rgba(0,0,0,0.4); }
+.ph-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: #0e0f12; z-index: 1; }
+.ph-head b { font-family: var(--display); font-weight: 400; font-size: 18px; }
+.ph-back { background: none; border: 0; color: var(--accent); font-size: 30px; line-height: 1; padding: 0 8px 4px 2px; cursor: pointer; }
+.ph-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.ph-map .ph-body { flex: 1 0 auto; } .ph-map #panel-places > * { flex-shrink: 0; } .ph-map #panel-places { display: flex; flex-direction: column; gap: 8px; } .ph-map #places { max-height: none; }
+.ph-list .ph-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #17181d; border: 1px solid var(--line); border-radius: 12px; padding: 14px; color: var(--fg); font: 600 16px var(--body); cursor: pointer; text-align: left; }
+.ph-row span { color: var(--muted); font-weight: 500; } .ph-row.on { border-color: var(--accent); } .ph-row.on span { color: var(--accent); } .ph-row.warn b { color: #ff5a4e; }
+.ph-pick { position: sticky; bottom: 0; margin-top: auto; background: #17181d; border-top: 1px solid var(--line); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.ph-pick[hidden] { display: none; } .ph-pick .t { color: var(--accent); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; } .ph-pick h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 18px; } .ph-pick p { margin: 0; color: var(--muted); }
+.ph-bar { display: flex; justify-content: center; padding: 10px 0 14px; background: #050506; }
+.ph-bar button { width: 130px; height: 6px; border-radius: 3px; background: #666; border: 0; cursor: pointer; padding: 0; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #phonebtn { top: calc(env(safe-area-inset-top, 0px) + 84px); width: 44px; height: 44px; font-size: 21px; }
+  .ph { width: min(640px, 100%); border-radius: 26px; }
+  .ph-home { grid-template-columns: repeat(7, 1fr); }
+}
 </style>
 </head>
 <body>
@@ -193,7 +227,9 @@ body.walking.dockopen #walkmenu { background: var(--accent); color: #121016; }
 <div id="card" hidden><div class="ct"><b id="c-type"></b><button class="x" id="c-x" aria-label="Close">✕</button></div><h2 id="c-name"></h2><p id="c-info"></p><p id="c-more"></p><div class="row" id="c-act"></div></div>
 <div id="hud"><div id="spd">0<small>MPH</small></div><div id="street"></div><div id="stats"></div></div>
 <div id="mini" aria-hidden="true"><canvas id="mini-c"></canvas><div id="mini-hd"></div></div>
-<button id="walkmenu" aria-label="Menu">☰</button>
+<button id="phonebtn" aria-label="Phone">📱</button>
+<div id="phone" hidden><div class="ph"><div class="ph-status"><span id="ph-time"></span><span id="ph-cash"></span></div><div class="ph-screen" id="ph-screen"></div><div class="ph-bar"><button id="ph-home" aria-label="Home"></button></div></div></div>
+<div id="ph-park" hidden></div>
 <div id="prompt" hidden></div>
 <div id="menu" hidden></div>
 <div id="toast" hidden></div>
@@ -201,7 +237,7 @@ body.walking.dockopen #walkmenu { background: var(--accent); color: #121016; }
 <div id="stick" aria-label="Walk"><div id="knob"></div></div>
 <div class="pad" id="pad">
   <div class="grp"><button class="pbtn" id="b-left" aria-label="Steer left">◀</button><button class="pbtn" id="b-right" aria-label="Steer right">▶</button></div>
-  <div class="grp"><button class="pbtn" id="b-brake">Brake</button><button class="pbtn" id="b-gas">Gas</button></div>
+  <div class="grp"><button class="pbtn sm" id="b-out">Out</button><button class="pbtn" id="b-brake">Brake</button><button class="pbtn" id="b-gas">Gas</button></div>
 </div>
 <div class="dock">
   <div class="panel row scroll" id="panel-map"></div>
@@ -252,7 +288,7 @@ body.walking.dockopen #walkmenu { background: var(--accent); color: #121016; }
     <button class="btn" id="cr-go">Start in Murda Worth</button>
   </div>
 </div>
-<div id="loading">Loading Murda Worth…</div>
+<div id="loading"><img class="ld-art" src="img/loading.webp" alt="Murda Worth"><div class="ld-bottom"><div class="ld-bar"><i id="ld-fill"></i></div><div id="ld-msg">Loading Fort Worth…</div><div id="ld-tap">Tap for sound</div></div></div>
 <div id="err" hidden>The 3D view could not start on this device.</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -2848,7 +2884,6 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   // the on-screen stick drives the same joystick input as dragging the screen
   function bindStick() {
-    document.getElementById('walkmenu').addEventListener('click', () => { document.body.classList.toggle('dockopen'); resize(); });
     const st = document.getElementById('stick'), kn = document.getElementById('knob'); let id = null;
     const move = e => { const r = st.getBoundingClientRect(), R = r.width / 2, dx = e.clientX - r.left - R, dy = e.clientY - r.top - R, d = Math.hypot(dx, dy), k = d > R ? R / d : 1;
       kn.style.transform = `translate(${dx * k}px, ${dy * k}px)`; joy.x = clamp(dx / R, -1, 1); joy.y = clamp(dy / R, -1, 1); IN.target = null; if (foot) foot.target = null; st.classList.toggle('run', d > R * 0.95); };
@@ -3059,7 +3094,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (first) {
       // you start on foot next to your car outside your place
       const home = DATA.P.find(p => p.type === 'home') || DATA.P[0];
-      setPin(home.name, home.x, home.z); startDrive(home.x, home.z); getOut();
+      enterWorld();
       toast(`Welcome to Murda Worth, ${S.name}.`, 'good');
     } else toast('Look saved.', 'good');
   }
@@ -3122,6 +3157,119 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     let deg = Math.round(Math.atan2(fx, -fz) * 180 / Math.PI); if (deg < 0) deg += 360;
     const txt = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8] + ' ' + String(deg).padStart(3, '0') + '°';
     if (MINI.hd.textContent !== txt) MINI.hd.textContent = txt;
+  }
+  // ---------- loading screen like the 2D game: art, red bar, intro song on first tap ----------
+  const LOADER = {
+    pct: 0,
+    set textContent(t) {
+      const m = /(\d+)%/.exec(t), st = { 'map data': 6, 'textures': 14, 'ground': 20, 'roads': 26, 'trees': 88, 'Finishing': 95 };
+      let p = this.pct; for (const k in st) if (t.includes(k)) p = st[k]; if (m && t.startsWith('Building')) p = 28 + +m[1] * 0.58;
+      this.pct = Math.max(this.pct, p); document.getElementById('ld-fill').style.width = this.pct + '%';
+      document.getElementById('ld-msg').textContent = /^Could not/.test(t) ? t : t.replace(/Murda Worth… map data/, 'Fort Worth…').replace(/ \d+%$/, '');
+    },
+    set hidden(h) { const el = document.getElementById('loading'); if (!h) { el.hidden = false; el.classList.remove('done'); return; } document.getElementById('ld-fill').style.width = '100%'; el.classList.add('done'); setTimeout(() => { el.hidden = true; }, 450); },
+  };
+  const INTRO = { a: null, on: false, armed: false };
+  function introStart() {
+    if (INTRO.on) return; INTRO.on = true;
+    try { if (!INTRO.a) { INTRO.a = new Audio('audio/shooting-stars.m4a'); INTRO.a.loop = true; INTRO.a.volume = 0.7; } INTRO.a.currentTime = 0; INTRO.a.play().catch(() => { INTRO.on = false; }); } catch (e) { INTRO.on = false; }
+  }
+  function introStop() {
+    INTRO.on = false; const a = INTRO.a; if (!a) return;
+    const fade = () => { a.volume = Math.max(0, a.volume - 0.07); if (a.volume > 0) setTimeout(fade, 60); else { a.pause(); a.volume = 0.7; } }; fade();
+  }
+  function armIntro() {
+    if (INTRO.armed) return; INTRO.armed = true;
+    const go = () => { if (!worldOn) introStart(); removeEventListener('pointerdown', go, true); removeEventListener('keydown', go, true); };
+    addEventListener('pointerdown', go, true); addEventListener('keydown', go, true);
+  }
+  // returning players drop straight back where they left off
+  let worldOn = false;
+  function enterWorld() {
+    worldOn = true; introStop();
+    const A = S.at, home = DATA.P.find(p => p.type === 'home') || DATA.P[0];
+    if (A && isFinite(A.x)) {
+      startDrive(A.x, A.z); drv.x = A.x; drv.z = A.z; drv.yaw = A.yaw || 0;
+      if (A.foot) { getOut(); foot.x = A.fx; foot.z = A.fz; foot.yaw = foot.camYaw = A.fyaw || 0; foot.holder.position.set(foot.x, 0, foot.z); foot.cam.set(foot.x + Math.sin(foot.camYaw) * 4.6, 2.2, foot.z + Math.cos(foot.camYaw) * 4.6); }
+    } else { setPin(home.name, home.x, home.z); startDrive(home.x, home.z); getOut(); }
+  }
+  function rememberSpot() {
+    if (!worldOn || inside || !driving || !S) return;
+    const p = foot.on ? foot.park : drv;
+    S.at = { x: +p.x.toFixed(1), z: +p.z.toFixed(1), yaw: +(p.yaw || 0).toFixed(3), foot: foot.on, fx: +foot.x.toFixed(1), fz: +foot.z.toFixed(1), fyaw: +foot.yaw.toFixed(3) };
+    save();
+  }
+  setInterval(rememberSpot, 5000); addEventListener('pagehide', rememberSpot);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { rememberSpot(); if (INTRO.a) INTRO.a.pause(); } else if (INTRO.on && INTRO.a) INTRO.a.play().catch(() => {}); });
+
+  // ---------- the phone: every app lives here, like the 2D game ----------
+  const PHONE_APPS = [
+    { id: 'map', name: 'Map', icon: '🗺', bg: '#2a7bff' },
+    { id: 'cars', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
+    { id: 'bank', name: 'Bank', icon: '🏦', bg: '#1f8f3a' },
+    { id: 'stuff', name: 'Inventory', icon: '🎒', bg: '#b08a3e' },
+    { id: 'style', name: 'Style', icon: '💈', bg: 'linear-gradient(135deg,#a01aff,#ff1a6a)' },
+    { id: 'clock', name: 'Clock', icon: '🌙', bg: '#14161c' },
+    { id: 'settings', name: 'Settings', icon: '⚙', bg: '#2a2c33' },
+  ];
+  const PH = { open: false, app: null, place: null };
+  function phoneEl(id) { return document.getElementById(id); }
+  function phoneStatus() { phoneEl('ph-time').textContent = { day: '12:00 PM', sunset: '7:40 PM', night: '11:30 PM' }[timeName] || ''; phoneEl('ph-cash').textContent = money(S.cash); }
+  function openPhone() { if (!worldOn || creating || inside && menuFn) return; PH.open = true; phoneEl('phone').hidden = false; document.body.classList.add('phoning'); phoneHome(); }
+  function closePhone() { PH.open = false; phoneEl('phone').hidden = true; document.body.classList.remove('phoning'); const pp = $('panel-places'); if (pp.parentNode !== $('ph-park')) $('ph-park').append(pp); }
+  function phoneHome() {
+    PH.app = null; phoneStatus(); const sc = phoneEl('ph-screen'); closePlaces(); sc.className = 'ph-screen';
+    sc.innerHTML = `<div class="ph-wall"><div class="who">${esc(S.name || 'Rookie')}</div><div class="sub">${money(S.cash)} cash · ${money(S.bank)} bank · Rep ${S.rep}</div></div><div class="ph-home">${PHONE_APPS.map(a => `<button class="app" data-id="${a.id}"><i style="background:${a.bg}">${a.icon}</i>${a.name}</button>`).join('')}</div>`;
+    sc.querySelectorAll('.app').forEach(b => b.onclick = () => phoneApp(b.dataset.id));
+  }
+  function closePlaces() { const pp = $('panel-places'); if (pp.parentNode !== $('ph-park')) $('ph-park').append(pp); }
+  function phoneHead(title) { return `<div class="ph-head"><button class="ph-back" aria-label="Back">‹</button><b>${title}</b></div>`; }
+  function phoneApp(id) {
+    const sc = phoneEl('ph-screen'); PH.app = id;
+    const toMenu = fn => { closePhone(); openMenu(fn); };
+    if (id === 'cars') return toMenu(MENUS.garage);
+    if (id === 'bank') return toMenu(() => MENUS.teller({ name: 'Cowtown Pay' }));
+    if (id === 'stuff') return toMenu(myStuff);
+    if (id === 'style') { closePhone(); if (foot.on || !driving) openCreator(false); else openMenu(() => MENUS.look(null)); return; }
+    if (id === 'map') {
+      sc.className = 'ph-screen ph-map'; sc.innerHTML = phoneHead('Map') + '<div class="ph-body" id="ph-mapbody"></div><div class="ph-pick" id="ph-pick" hidden></div>';
+      const pp = $('panel-places'); pp.hidden = false; phoneEl('ph-mapbody').append(pp);
+    } else if (id === 'clock') {
+      sc.className = 'ph-screen'; sc.innerHTML = phoneHead('Clock') + `<div class="ph-body ph-list">${[['day', 'Day', '12:00 PM'], ['sunset', 'Sunset', '7:40 PM'], ['night', 'Night', '11:30 PM']].map(([n, l, t]) => `<button class="ph-row${timeName === n ? ' on' : ''}" data-t="${n}"><b>${l}</b><span>${t}</span></button>`).join('')}</div>`;
+      sc.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { setTime(b.dataset.t); phoneApp('clock'); phoneStatus(); });
+    } else if (id === 'settings') {
+      sc.className = 'ph-screen'; sc.innerHTML = phoneHead('Settings') + `<div class="ph-body ph-list">
+        <button class="ph-row" data-s="far"><b>Camera</b><span>${drv.far ? 'Far' : 'Close'}</span></button>
+        <button class="ph-row" data-s="labels"><b>Town names in the sky</b><span>${labelsOn ? 'On' : 'Off'}</span></button>
+        <button class="ph-row" data-s="music"><b>Intro song</b><span>Play</span></button>
+        <button class="ph-row warn" data-s="reset"><b>Start over</b><span>Wipes this save</span></button></div>`;
+      sc.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+        const k = b.dataset.s;
+        if (k === 'far') drv.far = !drv.far; else if (k === 'labels') labelsOn = !labelsOn; else if (k === 'music') { if (INTRO.on) introStop(); else introStart(); }
+        else if (k === 'reset') { if (!b.classList.contains('sure')) { b.classList.add('sure'); b.querySelector('span').textContent = 'Tap again to wipe'; return; } try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); return; }
+        phoneApp('settings');
+      });
+    }
+    const back = sc.querySelector('.ph-back'); if (back) back.onclick = phoneHome;
+  }
+  // tapping a place in the Map app
+  function phonePick(p) {
+    const box = phoneEl('ph-pick'); if (!box) return; PH.place = p; box.hidden = false;
+    const d = Math.hypot(p.x - (foot.on ? foot.x : drv.x), p.z - (foot.on ? foot.z : drv.z)), mi = d / 1609, fare = Math.round(Math.max(25, mi * 18) / 5) * 5;
+    box.innerHTML = `<b class="t">${typeLabel(p.type)}</b><h3>${esc(p.name)}</h3><p>${mi < 0.1 ? 'Right here' : mi.toFixed(1) + ' mi away'}</p><div class="row"><button class="btn go" id="ph-gps">Set GPS</button><button class="btn" id="ph-tp">Fast travel ${money(fare)}</button><button class="btn" id="ph-x">Close</button></div>`;
+    phoneEl('ph-gps').onclick = () => { setPin(p.name, p.x, p.z); closePhone(); toast(`GPS set: ${p.name}`, 'good'); };
+    phoneEl('ph-tp').onclick = () => {
+      if (S.cash < fare) { toast('Not enough cash for the trip.', 'bad'); return; } S.cash -= fare; save(); refreshStats();
+      if (foot.on) getIn(); setPin(p.name, p.x, p.z); startDrive(p.x, p.z); closePhone(); toast(`You and your car are at ${p.name}.`, 'good');
+    };
+    phoneEl('ph-x').onclick = () => { box.hidden = true; };
+  }
+  function bindPhone() {
+    phoneEl('phonebtn').onclick = () => PH.open ? closePhone() : openPhone();
+    phoneEl('ph-home').onclick = () => PH.app ? phoneHome() : closePhone();
+    phoneEl('phone').addEventListener('click', e => { if (e.target.id === 'phone') closePhone(); });
+    phoneEl('b-out').onclick = getOut;
+    addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || creating) return; if (e.code === 'KeyP' || e.code === 'Tab') { e.preventDefault(); PH.open ? closePhone() : openPhone(); } else if (e.code === 'Escape' && PH.open) closePhone(); });
   }
 
   // ---------- assemble ----------
@@ -3414,7 +3562,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if ((frame & 7) === 0) { const s = streetAt(drv.x, drv.z); streetEl.textContent = s ? s.name : districtAt(drv.x, drv.z); }
   }
   const spdEl = document.getElementById('spd'), streetEl = document.getElementById('street');
-  addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; keys[e.code] = true; if (creating) return; if (driving && e.code.startsWith('Arrow')) e.preventDefault(); if (inside) { if (e.code === 'Escape') { if (menuFn) closeMenu(); else leaveInterior(); } if (e.code === 'KeyE' && IN.near && !menuFn) useStation(); return; } if (e.code === 'Escape') { if (menuFn) closeMenu(); else if (cardPlace) showCard(null); else stopDrive(); } if (driving && e.code === 'KeyF') { if (foot.on) getIn(); else getOut(); return; } if (e.code === 'KeyE') { if (foot.on && foot.nearCar) getIn(); else if (cardMode === 'near') pullIn(); } });
+  addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; keys[e.code] = true; if (creating) return; if (driving && e.code.startsWith('Arrow')) e.preventDefault(); if (inside) { if (e.code === 'Escape') { if (menuFn) closeMenu(); else leaveInterior(); } if (e.code === 'KeyE' && IN.near && !menuFn) useStation(); return; } if (e.code === 'Escape') { if (menuFn) closeMenu(); else if (cardPlace) showCard(null); } if (driving && e.code === 'KeyF') { if (foot.on) getIn(); else getOut(); return; } if (e.code === 'KeyE') { if (foot.on && foot.nearCar) getIn(); else if (cardMode === 'near') pullIn(); } });
   addEventListener('keyup', e => { keys[e.code] = false; });
   for (const [id, k] of [['b-left', 'left'], ['b-right', 'right'], ['b-gas', 'gas'], ['b-brake', 'brake']]) {
     const el = document.getElementById(id);
@@ -3480,7 +3628,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         if (grp && !grp.includes(p.type)) continue;
         if (q && !(p.name.toLowerCase().includes(q) || typeLabel(p.type).toLowerCase().includes(q) || districtAt(p.x, p.z).toLowerCase().includes(q))) continue;
         if (++n > 90) break;
-        out.append(btn(`<b>${typeLabel(p.type)}</b>${p.name.replace(/</g, '&lt;')}`, () => { setPin(p.name, p.x, p.z); flyTo(p.x, p.z, 240); showCard(p, 'view'); }));
+        out.append(btn(`<b>${typeLabel(p.type)}</b>${p.name.replace(/</g, '&lt;')}`, () => { if (worldOn) { phonePick(p); return; } setPin(p.name, p.x, p.z); flyTo(p.x, p.z, 240); showCard(p, 'view'); }));
       }
       if (!n) out.innerHTML = '<span class="chip">No places match</span>';
     }
@@ -3542,7 +3690,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     controls.enabled = !driving && !inside;
-    const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); if (!walking) bc.remove('dockopen'); resize(); }
+    const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); resize(); }
     const incar = driving && !foot.on && !inside; if (incar !== bc.contains('incar')) bc.toggle('incar', incar); if (inside !== bc.contains('indoors')) bc.toggle('indoors', inside);
     if (creating) { crStep(dt); renderer.render(CR.scene, CR.cam); return; }
     if (inside) { stepInterior(dt); if ((frame & 31) === 0) refreshStats(); renderer.render(IN.scene, IN.cam); return; }
@@ -3570,7 +3718,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // ---------- boot ----------
   const wait = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
   async function boot() {
-    const ld = $('loading');
+    const ld = LOADER; armIntro();
     try {
       ld.textContent = 'Loading Murda Worth… map data';
       const res = await fetch('map-data.json'); if (!res.ok) throw new Error('map data ' + res.status);
@@ -3595,9 +3743,9 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       makeLabels(D); LABELS.push(...[textSprite('FORT WORTH', 44, '#ffd23f')].map(sp => { sp.position.set(DOWNTOWN.x, 30, DOWNTOWN.z); sp.userData.big = true; scene.add(sp); return sp; }));
       controls.target.set(DOWNTOWN.x, 0, DOWNTOWN.z); camera.position.set(DOWNTOWN.x + 380, 330, DOWNTOWN.z + 520);
       $('facts').textContent = `${(nB).toLocaleString()} buildings · ${(D.T.length / 4).toLocaleString()} trees · ${Math.round(D.E.length / 7).toLocaleString()} streets · ${D.P.length} places`;
-      setTime('day'); resize(); controls.update(); bindInteriorInput(renderer.domElement); bindStick(); refreshStats();
+      setTime('day'); resize(); controls.update(); bindInteriorInput(renderer.domElement); bindStick(); bindPhone(); refreshStats();
       ld.hidden = true;
-      if (!S.made) openCreator(true);
+      if (!S.made) openCreator(true); else enterWorld();
       window.__map.ready = true;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
