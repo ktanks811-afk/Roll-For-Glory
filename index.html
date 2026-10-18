@@ -891,11 +891,20 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     SHAPES.pool = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   }
   const TREE_COL = { tree: ['#3f6a2e', '#4a7a34', '#3a5e2a', '#557f38', '#476c2c'], street: ['#4a7a34', '#5a8a3a'], pine: ['#2e4c2a', '#35532e', '#2a4426'], palm: ['#5b8a3a', '#6a9640'], cactus: ['#4f7a3a', '#5a8040'] };
+  // keep trees off the pavement: the trunk clears the road and its sidewalk, and the branches don't hang over the lanes
+  function offRoad(x, z, R) {
+    for (const e of streets.at(x, z).concat(streets.at(x + R + 8, z), streets.at(x - R - 8, z), streets.at(x, z + R + 8), streets.at(x, z - R - 8))) {
+      const pad = e.w / 2 + (e.kind === 'city' ? 2.6 : 1.5) + R;
+      if (x > Math.min(e.ax, e.bx) - pad && x < Math.max(e.ax, e.bx) + pad && z > Math.min(e.az, e.bz) - pad && z < Math.max(e.az, e.bz) + pad) return false;
+    }
+    return true;
+  }
   function addTrees(D) {
     const T = D.T;
     for (let i = 0; i < T.length; i += 4) {
       const x = T[i], z = T[i + 1], r = T[i + 2], k = D.tkinds[T[i + 3]], h = hash(i * 0.37 + 5), pal = TREE_COL[k] || TREE_COL.tree;
       const s = k === 'pine' ? r * 1.25 : k === 'palm' ? 1.4 + r * 0.45 : k === 'cactus' ? 0.8 + r * 0.6 : r * 1.05;
+      if (!offRoad(x, z, k === 'palm' || k === 'cactus' ? 0.6 : s * 0.75)) continue;
       inst('near', k === 'street' ? 'tree' : k, x, z, [x, 0, z, h * 6.28, s * (0.9 + h * 0.2), s * (0.85 + hash(i + 2) * 0.35), s * (0.9 + h * 0.2), pal[Math.floor(h * pal.length)]]);
     }
   }
