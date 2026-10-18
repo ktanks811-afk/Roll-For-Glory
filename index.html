@@ -576,6 +576,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     MAT.facade = S({ map: TEX.facade, vertexColors: true, roughness: 0.6, emissiveMap: TEX.facadeEm, emissive: 0xffffff, emissiveIntensity: 0 });
     MAT.glass = S({ map: TEX.glass, vertexColors: true, roughness: 0.22, metalness: 0.4, emissiveMap: TEX.glassEm, emissive: 0xffffff, emissiveIntensity: 0, envMapIntensity: 1.3 });
     WINDOW_MATS.push(MAT.house, MAT.store, MAT.facade, MAT.glass);
+    buildSkyMats();
     MAT.road = S({ map: TEX.road, roughness: 0.92, envMapIntensity: 0.2 });
     MAT.walk = S({ map: TEX.walk, color: lin('#9c9b96'), roughness: 0.9, envMapIntensity: 0.3 });
     MAT.lot = S({ map: TEX.lot, vertexColors: true, roughness: 0.95, envMapIntensity: 0.3 });
@@ -704,6 +705,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const B = D.B, x0 = B[i], z0 = B[i + 1], w = B[i + 2], d = B[i + 3], h = B[i + 4], kind = D.kinds[B[i + 5]], hex = D.colors[B[i + 6]], ex = B[i + 7] >= 0 ? D.extras[B[i + 7]] : null;
     const x1 = x0 + w, z1 = z0 + d, cx = x0 + w / 2, cz = z0 + d / 2, hs = hash(bi + 1), hs2 = hash(bi * 7 + 3);
     if (!NO_SOLID.has(kind) && kind !== 'parked') solids.add({ x0, z0, x1, z1 }, x0, z0, x1, z1);
+    if (LM.byB.has(i)) return;   // one of our banks or shops stands here (_landmarks.js)
     if (kind === 'parked') {
       solids.add({ x0, z0, x1, z1 }, x0, z0, x1, z1);
       inst('near', 'car', cx, cz, [cx, 0.1, cz, w > d ? Math.PI / 2 : 0, Math.min(w, d), h, Math.max(w, d), hex]);
@@ -740,16 +742,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
         addSign(x0, z0, x1, z1, h, ex, kind === 'landmark' && h >= 14);
         break;
       }
-      case 'midrise': case 'tower': {
-        const glass = kind === 'tower' || (hs < 0.25 && h > 30), m = glass ? 'glass' : 'facade';
-        const uo = Math.floor(hs * 8) / 8, vo = Math.floor(hs2 * 8) / 8;
-        let r = ex && ex.round ? circ(cx, cz, w / 2, d / 2, 24) : ring;
-        if (kind === 'tower' && h > 70 && !(ex && ex.round)) {
-          const h1 = h * 0.82; prism(A(m), A('plain'), r, 0, h1, c, roofFlat, 25.6, 28.8, uo, vo);
-          const r2 = scaleRing(r, 0.78); prism(A(m), A('plain'), r2, h1, h, c, roofFlat, 25.6, 28.8, uo, vo);
-          if (h > 150) prism(A('plain'), A('plain'), R4(cx - 0.6, cz - 0.6, cx + 0.6, cz + 0.6), h, h + 22, lin('#b0b0b0'), lin('#c0c0c0'), 4, 4);
-        } else prism(A(m), A('plain'), r, 0, h, c, roofFlat, 25.6, 28.8, uo, vo);
-        if (!(ex && ex.round) && w > 14 && d > 14) { const ux = cx - 3 + (hs - 0.5) * w * 0.4, uz = cz - 2 + (hs2 - 0.5) * d * 0.4; prism(A('plain'), A('plain'), R4(ux, uz, ux + 6, uz + 4), kind === 'tower' && h > 70 ? h : h, (kind === 'tower' && h > 70 ? h : h) + 3, lin('#8c8d90'), lin('#7c7d80'), 4, 4); }
+      case 'midrise': case 'tower': {   // our Skyline page's towers (_sky.js)
+        skyTower(D, i, bi, x0, z0, w, d, h, kind, A, c, ex);
         addSign(x0, z0, x1, z1, h, ex, true);
         break;
       }
@@ -929,6 +923,136 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     return t;
   }
 
+  // ---------- skyscrapers and midrises from the Skyline page we built (facade styles, stacked levels, the named towers) ----------
+  const SKY_BAY = 3.2, SKY_FLOOR = 4.0, SKY_TILE = 8;
+  const SKY_STYLES = {
+    blueGlass: { kind: 'curtain', glass: 0x4d7aa6, frame: 0x8a9aa8, metal: 0.8, rough: 0.12 },
+    blackGlass: { kind: 'curtain', glass: 0x15191f, frame: 0x2a2f36, metal: 0.85, rough: 0.1 },
+    greenGlass: { kind: 'curtain', glass: 0x2f4f4c, frame: 0x55625e, metal: 0.8, rough: 0.12 },
+    bronzeGlass: { kind: 'curtain', glass: 0x5c4630, frame: 0x7a6650, metal: 0.8, rough: 0.14 },
+    silverGlass: { kind: 'curtain', glass: 0x8e9cab, frame: 0xc4ccd4, metal: 0.85, rough: 0.1 },
+    granite: { kind: 'punched', wall: 0x7a5248, glass: 0x1a2028, metal: 0.2, rough: 0.6 },
+    limestone: { kind: 'punched', wall: 0xcbbc98, glass: 0x1d2530, metal: 0.1, rough: 0.8 },
+    brick: { kind: 'punched', wall: 0x8a3e2c, glass: 0x1a1e24, metal: 0.05, rough: 0.9, small: true },
+    white: { kind: 'punched', wall: 0xdedcd6, glass: 0x26303c, metal: 0.2, rough: 0.5 },
+    concrete: { kind: 'bands', wall: 0x9a968e, glass: 0x15161a, metal: 0, rough: 0.95 },
+  };
+  function buildSkyMats() {
+    const hx = h => '#' + h.toString(16).padStart(6, '0');
+    const canvasTex = draw => { const c = document.createElement('canvas'); c.width = c.height = 256; draw(c.getContext('2d'), 32); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.encoding = THREE.sRGBEncoding; return t; };
+    const litTex = (win, seed) => { let a = seed; const r = () => { a = (a * 16807) % 2147483647; return a / 2147483647; }; return canvasTex((x, s) => { x.fillStyle = '#000'; x.fillRect(0, 0, 256, 256); for (let i = 0; i < SKY_TILE; i++) for (let j = 0; j < SKY_TILE; j++) { if (r() > 0.42) continue; const k = r(); x.fillStyle = k < 0.6 ? '#ffd9a0' : k < 0.85 ? '#fff4e0' : '#bcd8ff'; x.fillRect(i * s + win[0], j * s + win[1], win[2], win[3]); } }); };
+    Object.keys(SKY_STYLES).forEach((k, n) => {
+      const s = SKY_STYLES[k]; let win;
+      const map = canvasTex((x, z) => {
+        if (s.kind === 'curtain') {
+          x.fillStyle = hx(s.glass); x.fillRect(0, 0, 256, 256);
+          for (let i = 0; i < SKY_TILE; i++) { x.fillStyle = hx(s.frame); x.fillRect(i * z, 0, 2, 256); x.fillRect(0, i * z, 256, 3); x.globalAlpha = 0.35; x.fillRect(0, i * z + 3, 256, 6); x.globalAlpha = 1; }
+          win = [3, 10, z - 4, z - 11];
+        } else if (s.kind === 'punched') {
+          x.fillStyle = hx(s.wall); x.fillRect(0, 0, 256, 256);
+          win = s.small ? [10, 8, 12, 17] : [6, 7, 20, 19];
+          for (let i = 0; i < SKY_TILE; i++) for (let j = 0; j < SKY_TILE; j++) { x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(i * z + win[0] - 1, j * z + win[1] - 1, win[2] + 2, win[3] + 3); x.fillStyle = hx(s.glass); x.fillRect(i * z + win[0], j * z + win[1], win[2], win[3]); }
+        } else {
+          x.fillStyle = hx(s.glass); x.fillRect(0, 0, 256, 256);
+          for (let j = 0; j < SKY_TILE; j++) { x.fillStyle = hx(s.wall); x.fillRect(0, j * z, 256, 12); }
+          for (let i = 0; i < SKY_TILE; i += 2) { x.fillStyle = hx(s.wall); x.fillRect(i * z, 0, 5, 256); }
+          win = null;
+        }
+      });
+      const m = new THREE.MeshStandardMaterial({ map, vertexColors: true, metalness: s.metal * 0.75, roughness: Math.max(0.18, s.rough), envMapIntensity: s.kind === 'curtain' ? 1.2 : 0.6, emissive: win ? 0xffffff : 0x000000, emissiveMap: win ? litTex(win, 1000 + n * 77) : null, emissiveIntensity: 0 });
+      MAT['sky_' + k] = m; if (win) WINDOW_MATS.push(m);
+    });
+  }
+  // the page's footprints, sized w x d, centred on 0
+  function skyFoot(shape, w, d, ch) {
+    const hw = w / 2, hd = d / 2; let p;
+    if (shape === 'rect') p = [[hw, hd], [hw, -hd], [-hw, -hd], [-hw, hd]];
+    else if (shape === 'chamfer') { const c = ch || Math.min(w, d) * 0.18; p = [[hw, hd - c], [hw, -hd + c], [hw - c, -hd], [-hw + c, -hd], [-hw, -hd + c], [-hw, hd - c], [-hw + c, hd], [hw - c, hd]]; }
+    else if (shape === 'notch') { const c = ch || Math.min(w, d) * 0.12; p = [[hw, hd - c], [hw, -hd + c], [hw - c, -hd + c], [hw - c, -hd], [-hw + c, -hd], [-hw + c, -hd + c], [-hw, -hd + c], [-hw, hd - c], [-hw + c, hd - c], [-hw + c, hd], [hw - c, hd], [hw - c, hd - c]]; }
+    else if (shape === 'tri') p = [[hw, hd], [0, -hd], [-hw, hd]];
+    else if (shape === 'wedge') p = [[hw, hd], [hw, -hd * 0.2], [-hw * 0.2, -hd], [-hw, -hd], [-hw, hd]];
+    else { const n = shape === 'oct' ? 8 : 28; p = []; for (let i = 0; i < n; i++) { const a = -i / n * Math.PI * 2 + (shape === 'oct' ? Math.PI / 8 : 0); p.push([Math.cos(a) * hw, Math.sin(a) * hd]); } }
+    let A = 0; for (let i = 0; i < p.length; i++) { const [x0, z0] = p[i], [x1, z1] = p[(i + 1) % p.length]; A += x0 * z1 - x1 * z0; }
+    if (A > 0) p.reverse();   // same winding as the map's rings, so walls face out
+    return p;
+  }
+  // flat roof over any footprint, notched or wedged ones too
+  function skyCap(a, ring, y, c) {
+    const T = THREE.ShapeUtils.triangulateShape(ring.map(([x, z]) => new THREE.Vector2(x, z)), []);
+    for (const [i, j, k] of T) { const A = ring[i], B = ring[j], C = ring[k], s = (B[0] - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (B[1] - A[1]); const [P, Q] = s < 0 ? [B, C] : [C, B]; tri(a, [A[0], y, A[1]], [P[0], y, P[1]], [Q[0], y, Q[1]], [A[0] / 8, A[1] / 8], [P[0] / 8, P[1] / 8], [Q[0] / 8, Q[1] / 8], c); }
+  }
+  // a THREE geometry dropped into a map accumulator at (cx, y, cz)
+  function geoInto(a, geo, cx, cy, cz, c, rotY) {
+    const g = geo.index ? geo.toNonIndexed() : geo; if (rotY) g.rotateY(rotY);
+    const P = g.attributes.position.array, U = g.attributes.uv ? g.attributes.uv.array : null;
+    for (let i = 0; i < P.length; i += 9) { const k = i / 3 * 2; tri(a, [cx + P[i], cy + P[i + 1], cz + P[i + 2]], [cx + P[i + 3], cy + P[i + 4], cz + P[i + 5]], [cx + P[i + 6], cy + P[i + 7], cz + P[i + 8]], U ? [U[k], U[k + 1]] : [0, 0], U ? [U[k + 2], U[k + 3]] : [0, 0], U ? [U[k + 4], U[k + 5]] : [0, 0], c); }
+  }
+  // the named towers from the page; level sizes get fitted to the spot's footprint
+  const SKY_NAMED = {
+    burnett: { style: 'blackGlass', levels: [['notch', 50, 34, 160]], top: 'beacon' },
+    citycenter: { twin: true, style: 'greenGlass', levels: [['chamfer', 38, 38, 150, Math.PI / 4, 9], ['chamfer', 30, 30, 10, Math.PI / 4, 7], ['chamfer', 20, 20, 8, Math.PI / 4, 5]], top: 'beacon' },
+    continental: { style: 'silverGlass', levels: [['chamfer', 40, 40, 132, 0, 6], ['chamfer', 30, 30, 8]], top: 'pyramid', capH: 18 },
+    omni: { style: 'blueGlass', levels: [['rect', 64, 22, 98], ['rect', 50, 18, 12]], top: 'helipad' },
+    courthouse: { style: 'granite', levels: [['rect', 36, 36, 70], ['rect', 30, 30, 14], ['rect', 22, 22, 10]], top: 'crown' },
+    boaplaza: { style: 'greenGlass', levels: [['notch', 54, 42, 270, 0, 6]], top: 'flat' },
+    reunion: { reunion: true },
+    fountain: { style: 'blueGlass', levels: [['wedge', 56, 56, 150], ['wedge', 50, 46, 30, 0.2], ['tri', 44, 40, 24, 0.3], ['tri', 30, 26, 12, 0.3]], top: 'none' },
+    renaissance: { style: 'silverGlass', levels: [['chamfer', 44, 44, 230, 0, 4]], top: 'spire', spireH: 34 },
+    comerica: { style: 'limestone', levels: [['notch', 48, 48, 190, 0, 8], ['notch', 38, 38, 18, 0, 6], ['notch', 28, 28, 14, 0, 5]], top: 'pyramid', capH: 26 },
+  };
+  let SKY_PICK = null;
+  function skyLandmarks(D) {
+    SKY_PICK = new Map();
+    const B = D.B, list = [];
+    for (let i = 0; i < B.length; i += 8) if (D.kinds[B[i + 5]] === 'tower') list.push({ i, h: B[i + 4], x: B[i] + B[i + 2] / 2, z: B[i + 1] + B[i + 3] / 2 });
+    list.sort((a, b) => b.h - a.h);
+    const near = (cx, cz) => list.filter(t => Math.hypot(t.x - cx, t.z - cz) < 1500);
+    near(0, 0).slice(0, 5).forEach((t, k) => SKY_PICK.set(t.i, ['burnett', 'citycenter', 'continental', 'omni', 'courthouse'][k]));
+    near(5450, -1500).slice(0, 6).forEach((t, k) => SKY_PICK.set(t.i, ['boaplaza', 'renaissance', 'comerica', 'fountain', 'reunion', 'omni'][k]));
+  }
+  function skyTower(D, i, bi, x0, z0, w, d, h, kind, A, c, ex) {
+    if (!SKY_PICK) skyLandmarks(D);
+    const cx = x0 + w / 2, cz = z0 + d / 2, hs = hash(bi + 1), hs2 = hash(bi * 7 + 3), W1 = lin('#ffffff'), roofC = lin('#5c5c60'), metalC = lin('#b8bec6'), concC = lin('#b0aca2');
+    const named = SKY_PICK.get(i);
+    let spec;
+    if (named) spec = SKY_NAMED[named];
+    else {
+      const tall = kind === 'tower' ? ['blueGlass', 'blackGlass', 'greenGlass', 'bronzeGlass', 'silverGlass', 'granite', 'limestone'] : ['brick', 'limestone', 'white', 'concrete', 'granite', 'blueGlass', 'brick', 'silverGlass'];
+      const style = tall[Math.floor(hs * tall.length)], shape = kind === 'tower' ? ['rect', 'chamfer', 'notch', 'rect'][Math.floor(hs2 * 4)] : 'rect';
+      const levels = h > 50 && hs2 < 0.5 ? [[shape, w, d, h * 0.8], [shape, w * 0.75, d * 0.75, h * 0.2]] : [[shape, w, d, h]];
+      spec = { style, levels, top: h > 40 ? 'flat' : 'none' };
+    }
+    if (spec.reunion) {   // the ball tower: concrete shafts and the geodesic ball
+      geoInto(A('plain'), new THREE.CylinderGeometry(4.2, 4.6, 150, 16), cx, 75, cz, concC);
+      for (let k = 0; k < 3; k++) { const a = k * Math.PI * 2 / 3; geoInto(A('plain'), new THREE.CylinderGeometry(2.6, 2.8, 146, 12), cx + Math.cos(a) * 6.2, 73, cz + Math.sin(a) * 6.2, concC); }
+      geoInto(A('plain'), new THREE.CylinderGeometry(15, 9, 8, 24), cx, 150, cz, concC);
+      geoInto(A('glass'), new THREE.IcosahedronGeometry(18, 2), cx, 166, cz, lin('#9aa4ae'));
+      return;
+    }
+    // fit the design's widest level into this footprint
+    const sw = Math.max(...spec.levels.map(l => l[1])), sd = Math.max(...spec.levels.map(l => l[2]));
+    const fx = spec.twin ? w / 2 / sw : w / sw, fz = d / sd, m = 'sky_' + spec.style;
+    const one = (ox, hk) => {
+      let y = 0, last = null; const uo = hs * 40;
+      spec.levels.forEach(([shape, lw, ld, lh, rot, ch], n) => {
+        const hh = named ? (n === 0 && hk ? lh * hk : lh) : lh;
+        let ring = skyFoot(shape, lw * fx, ld * fz, ch ? ch * Math.min(fx, fz) : 0);
+        if (rot) { const cr = Math.cos(rot), sr = Math.sin(rot), k = 1 / (Math.abs(cr) + Math.abs(sr)); ring = ring.map(([x, z]) => [(x * cr - z * sr) * k, (x * sr + z * cr) * k]); }
+        ring = ring.map(([x, z]) => [cx + ox + x, cz + z]);
+        loft(A(m), ring, y, ring, y + hh, W1, SKY_BAY * SKY_TILE, SKY_FLOOR * SKY_TILE, uo, 0);
+        skyCap(A('plain'), ring, y + hh, roofC);
+        last = { lw: lw * fx, ld: ld * fz, ring, shape, rot }; y += hh;
+      });
+      const H = y, top = spec.top || 'flat', L = last;
+      if (top === 'flat' || top === 'beacon') prism(A('plain'), A('plain'), R4(cx + ox - L.lw * 0.175, cz - L.ld * 0.15, cx + ox + L.lw * 0.175, cz + L.ld * 0.15), H, H + 5, concC, concC, 4, 4);
+      else if (top === 'pyramid') { const capH = spec.capH || L.lw * 0.6, r = L.ring; loft(A(spec.style === 'limestone' ? 'sky_silverGlass' : 'plain'), r, H, r.map(() => [cx + ox, cz]), H + capH, spec.style === 'limestone' ? W1 : metalC, 25.6, 32); }
+      else if (top === 'spire') geoInto(A('plain'), new THREE.CylinderGeometry(0.4, 1.4, spec.spireH || 40, 6), cx + ox, H + (spec.spireH || 40) / 2, cz, metalC);
+      else if (top === 'crown') for (let k = 0; k < 3; k++) { const s = 1 - k * 0.22, r = L.ring.map(([x, z]) => [cx + ox + (x - cx - ox) * s, cz + (z - cz) * s]); loft(A('plain'), r, H + k * 6, r, H + k * 6 + 5, metalC, 4, 4); }
+      else if (top === 'helipad') geoInto(A('plain'), new THREE.CylinderGeometry(Math.min(L.lw, L.ld) * 0.32, Math.min(L.lw, L.ld) * 0.32, 1, 20), cx + ox, H + 0.5, cz, concC);
+    };
+    if (spec.twin) { one(-w / 4, 1); one(w / 4, 0.8); } else one(0, 1);
+  }
+
   // ---------- houses: every house spot on the map gets one of the house designs we built together ----------
   // (houses.json is baked from the houses page by houses/hexport.js: the outside of each design, no furniture).
   // Up close each house is the real design, instanced; further out a plain box + roof in the design's colours.
@@ -1020,10 +1144,81 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       np++;
     });
     for (const id in HS.det) for (const im of HS.det[id]) { im.count = cnt[id]; im.instanceMatrix.needsUpdate = true; }
+    stepLandmarks(cp);
     HS.wall.count = HS.roof.count = np; HS.wall.instanceMatrix.needsUpdate = HS.roof.instanceMatrix.needsUpdate = true;
     if (HS.wall.instanceColor) HS.wall.instanceColor.needsUpdate = HS.roof.instanceColor.needsUpdate = true;
   }
   const _hc = new THREE.Color();
+
+  // ---------- our banks (branch, city, HQ) and Vega Kustoms, baked from their pages into landmarks.json ----------
+  // Each one replaces the stand-in building at its place: same spot, turned to face the door, scaled to the lot.
+  const LM = { byB: new Map(), spots: [], det: {}, data: null };
+  function landmarkSpots(D) {
+    const B = D.B;
+    for (const p of D.P) {
+      const key = p.type === 'bank' ? p.bank : p.name === 'Vega Kustoms' ? 'vega' : null;
+      if (!key) continue;
+      let best = -1, bd = 30;
+      for (let i = 0; i < B.length; i += 8) {
+        const k = D.kinds[B[i + 5]]; if (k === 'parked' || k === 'crate' || k === 'dumpster' || k === 'fence' || k === 'canopy') continue;
+        const x0 = B[i], z0 = B[i + 1], x1 = x0 + B[i + 2], z1 = z0 + B[i + 3];
+        if (p.x < x0 - bd || p.x > x1 + bd || p.z < z0 - bd || p.z > z1 + bd) continue;
+        const d = Math.hypot(Math.max(x0 - p.x, 0, p.x - x1), Math.max(z0 - p.z, 0, p.z - z1));
+        if (d < bd && !LM.byB.has(i)) { bd = d; best = i; }
+      }
+      if (best < 0) continue;
+      const w = B[best + 2], d = B[best + 3], side = Math.abs(Math.sin(p.face || 0)) > 0.7;
+      const S = { key, cx: B[best] + w / 2, cz: B[best + 1] + d / 2, ry: p.face || 0, lw: side ? d : w, ld: side ? w : d };
+      LM.byB.set(best, S); LM.spots.push(S);
+    }
+  }
+  function loadLandmarks() {
+    fetch('landmarks.json').then(r => r.ok ? r.json() : null).then(J => {
+      if (!J) return;
+      const texs = {}, mats = {}, dec = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; };
+      for (const [k, t] of Object.entries(J.textures)) { const tx = new THREE.TextureLoader().load(t.url); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(t.rx, t.ry); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4; texs[k] = tx; }
+      const matOf = m => {
+        const key = [m.basic, m.map, m.em, m.rough, m.metal, m.transparent, m.opacity, m.side, m.emissive, m.ei].join('|');
+        if (mats[key]) return mats[key];
+        const o = { vertexColors: true, map: m.map ? texs[m.map] : null, transparent: m.transparent, opacity: m.opacity, side: m.side, depthWrite: !m.transparent };
+        const mt = m.basic ? new THREE.MeshBasicMaterial(o) : new THREE.MeshStandardMaterial(Object.assign(o, { roughness: m.rough, metalness: m.metal, emissive: m.emissive ? new THREE.Color(parseInt(m.emissive.slice(1), 16)) : undefined, emissiveMap: m.em ? texs[m.em] : null, emissiveIntensity: m.ei, envMapIntensity: 0.7 }));
+        return (mats[key] = mt);
+      };
+      for (const [id, d] of Object.entries(J.designs)) {
+        const n = LM.spots.filter(s => s.key === id).length; if (!n) continue;
+        const groups = new Map();
+        for (const m of d.mats) { const mt = matOf(m); if (!groups.has(mt)) groups.set(mt, []); groups.get(mt).push(m); }
+        LM.det[id] = { d, meshes: [] };
+        for (const [mt, list] of groups) {
+          const cnt = list.reduce((s, m) => s + m.count, 0), P = new Float32Array(cnt * 3), N = new Float32Array(cnt * 3), U = new Float32Array(cnt * 2), C = new Float32Array(cnt * 3);
+          let o = 0;
+          for (const m of list) {
+            const p = new Int16Array(dec(m.p)), nn = new Int8Array(dec(m.n)), u = m.u ? new Float32Array(dec(m.u)) : null, col = new THREE.Color(parseInt(m.color.slice(1), 16));
+            for (let i = 0; i < m.count; i++) { const j = o + i; P[j * 3] = p[i * 3] / 100; P[j * 3 + 1] = p[i * 3 + 1] / 100; P[j * 3 + 2] = p[i * 3 + 2] / 100; N[j * 3] = nn[i * 3] / 127; N[j * 3 + 1] = nn[i * 3 + 1] / 127; N[j * 3 + 2] = nn[i * 3 + 2] / 127; if (u) { U[j * 2] = u[i * 2]; U[j * 2 + 1] = u[i * 2 + 1]; } C[j * 3] = col.r; C[j * 3 + 1] = col.g; C[j * 3 + 2] = col.b; }
+            o += m.count;
+          }
+          const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.BufferAttribute(U, 2)); g.setAttribute('color', new THREE.BufferAttribute(C, 3));
+          const im = new THREE.InstancedMesh(g, mt, n); im.count = 0; im.frustumCulled = false; im.castShadow = !mt.transparent; im.receiveShadow = true; if (mt.transparent) im.renderOrder = 2;
+          scene.add(im); LM.det[id].meshes.push(im);
+        }
+      }
+      LM.data = J; HS.dirty = true;
+    }).catch(() => {});
+  }
+  // shown near the camera (an HQ tower from much further away), refreshed with the houses
+  function stepLandmarks(cp) {
+    if (!LM.data) return;
+    const cnt = {};
+    for (const S of LM.spots) {
+      const L = LM.det[S.key]; if (!L) continue;
+      const far = S.key === 'hq' ? VIS.mid : phone ? 1200 : 1800;
+      if (Math.hypot(S.cx - cp.x, S.cz - cp.z) > far) continue;
+      const k = Math.max(0.6, Math.min(1.4, Math.min(S.lw / L.d.w, S.ld / L.d.d)));
+      _hq.setFromAxisAngle(_hy, S.ry); _hp.set(S.cx, 0.04, S.cz); _hsv.set(k, S.key === 'hq' ? 1 : k, k); _hm.compose(_hp, _hq, _hsv);
+      const c = cnt[S.key] = (cnt[S.key] || 0); for (const im of L.meshes) im.setMatrixAt(c, _hm); cnt[S.key]++;
+    }
+    for (const id in LM.det) for (const im of LM.det[id].meshes) { im.count = cnt[id] || 0; im.instanceMatrix.needsUpdate = true; }
+  }
 
   // ---------- game places: every spot from data/world.js LOCATIONS gets a door, a sign and a hook ----------
   const TYPE_INFO = {
@@ -4871,10 +5066,10 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       ld.textContent = 'Laying the ground…'; await wait();
       makeGround(D); addGround(D);
       ld.textContent = 'Paving roads…'; await wait();
-      addRoads(D);
+      addRoads(D); landmarkSpots(D);
       const nB = D.B.length / 8, step = 4000;
       for (let s = 0; s < nB; s += step) { ld.textContent = `Building Murda Worth… ${Math.round(s / nB * 100)}%`; await wait(); for (let i = s; i < Math.min(nB, s + step); i++) addBuilding(D, i * 8, i); }
-      addGaragePlaces(D); addPlaces(D); loadHouses();
+      addGaragePlaces(D); addPlaces(D); loadHouses(); loadLandmarks();
       ld.textContent = 'Planting trees…'; await wait();
       addTrees(D);
       ld.textContent = 'Finishing up…'; await wait();
@@ -4891,7 +5086,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = {
-    ready: false, HS, FOB, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, HS, LM, FOB, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
