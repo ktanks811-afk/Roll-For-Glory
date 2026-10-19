@@ -5491,7 +5491,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const SPLITS = [[18.29, '60 ft'], [100.58, '330 ft'], [201.17, '1/8 mile'], [304.8, '1000 ft'], [402.34, '1/4 mile']];
   const STRIP = { on: false, scene: null, cam: null, bulbs: null, me: null, opp: null, el: null };
   function stripBuild() {
-    const sc = STRIP.scene = new THREE.Scene(); sc.background = new THREE.Color(0x9cc4e8); sc.fog = new THREE.Fog(0x9cc4e8, 250, 900);
+    const sc = STRIP.scene = new THREE.Scene(); sc.background = new THREE.Color(0x9cc4e8); sc.environment = ENV.day; sc.fog = new THREE.Fog(0x9cc4e8, 250, 900);
     STRIP.cam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1200);
     sc.add(new THREE.HemisphereLight(0xdfeaff, 0x5a5040, 0.9)); const sun = new THREE.DirectionalLight(0xfff1dc, 1.1); sun.position.set(-40, 80, 30); sc.add(sun);
     const flat = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.9 }, o)), box = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); sc.add(m); return m; };
@@ -5675,7 +5675,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
 
   const ROLL = { on: false, scene: null, cam: null, me: null, opp: null, el: null, mode: 'roll40' };
   function rollBuild() {
-    const sc = ROLL.scene = new THREE.Scene(); sc.background = new THREE.Color(0x2a3554); sc.fog = new THREE.Fog(0x2a3554, 180, 950);
+    const sc = ROLL.scene = new THREE.Scene(); sc.background = new THREE.Color(0x2a3554); sc.environment = ENV.sunset; sc.fog = new THREE.Fog(0x2a3554, 180, 950);
     ROLL.cam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1400);
     sc.add(new THREE.HemisphereLight(0x9fb0d8, 0x2a2620, 0.75)); const moon = new THREE.DirectionalLight(0xffd9b0, 0.8); moon.position.set(60, 50, 40); sc.add(moon);
     const flat = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.92 }, o));
