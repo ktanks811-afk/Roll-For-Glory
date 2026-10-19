@@ -6903,6 +6903,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       const a = to(e.ax, e.az), b = to(e.bx, e.bz);
       x.lineWidth = Math.max(1.5 * dpr, e.w * k); x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke();
     }
+    hoodMini(x, to, dpr, R, px, pz);   // gang turf and the people around you (_hood.js)
     // places
     for (const p of DATA.P) {
       const dx = p.x - px, dz = p.z - pz; if (dx * dx + dz * dz > R * R * 1.5) continue;
@@ -7298,6 +7299,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
         x.lineWidth = 3; x.strokeStyle = 'rgba(14,14,18,0.85)'; x.strokeText(nm, 0, 0); x.fillStyle = '#e9e3d6'; x.fillText(nm, 0, 0); x.restore();
       }
     }
+    hoodBigMap(x, SX, SZ, k);   // gang turf (_hood.js)
     // GPS route
     if (GPS.pts) {
       x.strokeStyle = '#3d9bff'; x.lineWidth = Math.max(4, 8 * k); x.lineJoin = 'round'; x.beginPath();
@@ -10231,6 +10233,800 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     v.bm = m; v.bk = p.buildKey; const b = p.build || {};
     try { applyDrag(m, b); applyMotor(m, b); peerRide(m, b.rh || 0); } catch (e) { console.warn('peer build: ' + e.message); }
   });
+  // ---------- the hood (_hood.js): sets that claim blocks, their people on the corners, and AI players around town ----------
+  // Fort Worth is cut into 300 m blocks, each named for the corner at its middle. Eight made-up sets (the 2D game's five
+  // plus Poly, Everman and the Westside) each claim the blocks around their side of town; you see it on the Map app and
+  // the minimap. Every claimed block has its people posted on the corner: walk up and talk to them, get put on, rank up,
+  // run jobs for the big homie, talk down, get flashed on, and shoot it out. Drop a rival block's corner and hold it for
+  // your set. AI players (the 2D game's regulars) drive their built cars around you and hang out at the gas stations and
+  // food spots: talk to them, race them for real, ask for a ride, or start beef that turns into an opp who slides on you.
+  const HOOD_SETS = {
+    six_block: { name: 'Six Block', short: 'Six Block', color: '#7b2bd1', at: [1050, -150], boss: 'Trevon "Big Tre" Simms', rivals: ['hemphill', 'riverside', 'everman'],
+      style: 'East side. Grew up on Rosedale and Stalcup. Loyal to the block, quick to slide.',
+      fit: { top: ['mh_tee_purple', 'mh_tee_purple', 'hoodie_black', 'mh_puffer'], bottom: ['jeans_black', 'joggers_black'], hat: ['no_hat', 'beanie_black', 'cap_black'], shoes: ['mk_jordan_bred', 'kicks_blackout', 'mk_af1_white'] } },
+    northside: { name: 'Northside Reyes', short: 'Reyes', color: '#e8c21a', at: [0, -750], boss: 'Jesus "Chuy" Ortega', rivals: ['riverside', 'heights'],
+      style: 'North Side, Stockyards to Diamond Hill. Old school, family first, never talk to the police.',
+      fit: { top: ['mw_carhartt', 'mm_mexico_blk', 'tee_white'], bottom: ['mw_wranglers', 'cargo_tan'], hat: ['mm_tejana', 'mw_cap_ranch', 'no_hat'], shoes: ['mm_botas', 'mk_af1_white'] } },
+    hemphill: { name: 'Hemphill Boyz', short: 'Hemphill', color: '#c41b1b', at: [-50, 850], boss: 'Dwayne "Dub" Rhodes', rivals: ['six_block', 'como', 'poly'],
+      style: 'Southside. Hemphill Street corners, loud cars, louder mouths.',
+      fit: { top: ['tee_red', 'mh_hoodie_box', 'mj_rangers'], bottom: ['jeans_black', 'md_stacked'], hat: ['cap_red', 'no_hat'], shoes: ['kicks_red', 'mk_jordan_bred'] } },
+    riverside: { name: 'Riverside Rydaz', short: 'Rydaz', color: '#1b8fd1', at: [600, -600], boss: 'Antoine "Slim" Webb', rivals: ['northside', 'six_block'],
+      style: 'Warehouses and rail yards by the Trinity. They move product and they move quiet.',
+      fit: { top: ['mj_mavs', 'varsity_crew', 'md_trucker'], bottom: ['md_ripped', 'jeans_blue'], hat: ['mh_fitted', 'no_hat'], shoes: ['mk_uni_blue', 'mk_af1_white'] } },
+    como: { name: 'Como Gang', short: 'Como', color: '#1f8f3a', at: [-700, 150], boss: 'Dorian "Peanut" Hayes', rivals: ['hemphill', 'heights'],
+      style: 'West side, out of Como. Small set, long memory.',
+      fit: { top: ['mm_mexico', 'bomber_olive'], bottom: ['mh_track_green', 'cargo_black'], hat: ['beanie_grey', 'no_hat'], shoes: ['mk_foams', 'kicks_white'] } },
+    poly: { name: 'Poly Mob', short: 'Poly', color: '#e8641a', at: [600, 450], boss: 'Marcus "Vaughn" Price', rivals: ['hemphill', 'everman'],
+      style: 'Polytechnic, East Rosedale to Vaughn. Orange beanies. Quiet till they not.',
+      fit: { top: ['mh_puffer', 'hoodie_grey', 'hoodie_black'], bottom: ['track_black', 'joggers_black'], hat: ['mh_beanie_orange'], shoes: ['kicks_blackout', 'mk_slides'] } },
+    everman: { name: 'Everman Boyz', short: 'Everman', color: '#f2f2f2', at: [1050, 850], boss: 'Darnell "D-Wayne" Fields', rivals: ['poly', 'six_block'],
+      style: 'South past Everman. All white everything, loud at the gas station.',
+      fit: { top: ['mj_dallas_white', 'mx_tee_logo', 'tee_white'], bottom: ['md_grey', 'jeans_blue'], hat: ['no_hat', 'mj_cap_star'], shoes: ['mk_af1_white', 'mk_dunk_panda'] } },
+    heights: { name: 'Westside Heights', short: 'Heights', color: '#13b3c4', at: [-700, -700], boss: 'Cody "Westside" Burke', rivals: ['northside', 'como'],
+      style: 'Arlington Heights and out west. Money on the hill, problems on the corner.',
+      fit: { top: ['mh_hoodie_cream', 'md_trucker', 'silver_jacket'], bottom: ['md_ripped', 'cargo_tan'], hat: ['mh_fitted', 'no_hat'], shoes: ['mk_dunk_panda', 'kicks_white'] } },
+  };
+  const HOOD_IDS = Object.keys(HOOD_SETS);
+  const HOOD_RANKS = [
+    { name: 'Lil Homie', respect: 0, homies: 1, bag: 100 }, { name: 'Soldier', respect: 150, homies: 2, bag: 250 }, { name: 'Hitter', respect: 400, homies: 2, bag: 450 },
+    { name: 'Lieutenant', respect: 900, homies: 3, bag: 800 }, { name: 'Shot Caller', respect: 1800, homies: 3, bag: 1300 }, { name: 'OG', respect: 3500, homies: 3, bag: 2000 },
+  ];
+  const H_NICKS = ['Lil Man', 'Boobie', 'Pooh', 'Lil Tre', 'Smoke', 'Bam', 'Tank', 'June', 'Buddah', 'Peewee', 'Scrap', 'Red', 'Ghost', 'Juju', 'Dre', 'Shorty', 'Ace', 'Lil Dee', 'Bird', 'Nook', 'Tweet', 'Mookie', 'Spud', 'Duke', 'Loc', 'Fats', 'Cuz', 'Woo', 'Rell', 'Kane'];
+  // what the corner says (the 2D game's beef lines plus corner talk)
+  const HL = {
+    hi: ['wsg', 'yo', 'wassup', 'whats good', 'you good?', 'what it do'],
+    homie: ['wsg {me}', 'thats the homie', 'we good over here', 'you strapped? stay ready', 'big homie lookin for you', 'block hot today, watch yourself', 'say less {me}'],
+    who: ['this {set} over here', 'you on {set} turf', '{block} been ours', 'ask about {set}'],
+    trash: ['you aint from round here', 'who is this goofy', 'keep it movin', 'lookin like a opp', 'move around', 'lame ass dude', 'you lost?'],
+    flash: ['keep lookin and see what happen', 'try me', 'i aint playin wit you', 'you wanna get spun on?', 'aint gon tell you twice', 'back up off the block'],
+    fight: ['its up', 'get him', 'thats a opp', 'spin on him', 'aint no hiding'],
+    hit: ['ahh', 'im hit', 'bro!', 'damn'],
+    drop: ['thats crazy', 'you gon pay for that'],
+    squashY: ['aight we good', 'its love', 'say less, we good', 'aight. dont let it happen again'],
+    squashN: ['too late for that', 'nah you started this', 'aint no squashin it'],
+    join: ['welcome to the set', 'you one of us now', 'dont make us regret it'],
+  };
+  // the regulars (2D net/bots + botTalk): names, chat, answers
+  const R_FIRST = ['Tre', 'Dre', 'KeKe', 'Jay', 'Marcus', 'Kayla', 'Juan', 'Carlos', 'Tex', 'Rich', 'Smoke', 'Rico', 'Deshawn', 'Bri', 'Tasha', 'Mike', 'Cody', 'Bubba', 'Hector', 'Luis', 'Jalen', 'Zay', 'Ty', 'Nae', 'Kiki', 'Quan', 'Boogie', 'Slim', 'Peanut', 'Pooh', 'Ant', 'Chino', 'Junior', 'Toro', 'Nova', 'Blaze', 'Dez', 'Mari', 'Jojo', 'Lexi', 'Trey', 'Moe', 'Javi', 'Angel', 'Izzy', 'Rocky', 'Vic'];
+  const R_WORDS = ['Boostin', 'Built', 'Hemi', 'Turbo', 'Dubs', 'Pulls', 'Racing', 'Speed', 'Shift', 'Torque', 'Revs', 'Slammed', 'Boost', 'Drag'];
+  const R_SHAPES = [['a', '817'], ['a', '682'], ['lil ', 'a'], ['Big', 'a'], ['a', 'w'], ['w', 'a'], ['a', '_', 'w'], ['a', '.TX'], ['a', 'OnDubs'], ['FW', 'a'], ['its', 'a'], ['a', '_817'], ['a', 'G'], ['Cowtown', 'a']];
+  const RL = {
+    amb: ['anybody tryna run it on 820?', 'cops thick on {street} rn', 'meet at La Gran Plaza tonight?', 'just put a turbo on mine 😮‍💨', 'lol who keep honking', 'who tryna roll 40 for 5k',
+      'my car lowkey slow 😭', 'who got the loudest car out here', 'gas went up again smh', 'stay off {street} the cops sittin there', 'who tryna cruise', 'this side goin crazy tonight', 'yall seen the new parts at the shop?'],
+    hi: ['yo', 'wsg {me}', 'wassup', '👋', 'yoo', 'whats good'],
+    car: ['that {mycar} hard 🔥', 'what you got in that {mycar}?', 'clean car fr', 'you tryna run it?'],
+    yes: ['bet', 'pull up', 'send it', 'say less', 'run it'],
+    ride: ['i got you, hop in', 'aight get in', 'bet, where you goin?'],
+    noride: ['nah im good', 'not rn', 'my car full'],
+    won: ['gg ez', 'too easy', 'good race tho', 'come back when you built 😂'],
+    lost: ['gg', 'run it back', 'my tires was cold', 'ok ok i see you'],
+    shot: ['bro why you shooting 😂', 'chill', 'you dead wrong for that', 'stop 😭'],
+    down: ['lame', 'goofy', 'who asked you', 'bum', 'stay in your lane'],
+    clap: ['say it to my face', 'aight bet', 'you just made a opp', 'ok. remember you said that', 'bet 🤫'],
+    slide: ['found you 🤫', 'told you its on sight', 'we outside', 'thought you was safe?'],
+    walk: ['you thought i was playin?', 'run then', 'aint no hiding', 'its up'],
+    got: ['caught you lackin 😂', 'told you', 'stay in the house next time'],
+    smoked: ['thats crazy', 'ima be back', 'this aint over'],
+  };
+  const H_STREETS = ['Berry', 'Rosedale', 'Lancaster', 'Vickery', 'Hulen', 'Seminary', 'Belknap', 'University', '820', 'I-30'];
+  const H_GUN_DMG = { g19: 24, g20: 30, arp: 34 };
+  const HB = { x0: -1200, z0: -1200, bs: 300, nx: 8, nz: 8 };   // the block grid over Fort Worth
+  // Fort Worth's main grid is 6 x 6 blocks (Montgomery to Oakland, Stockyards Blvd to Berry); '-' is nobody's, '?' goes to the closest set
+  const HOOD_MAP = ['? ? ? ? ? ? ? ?',
+    '? heights heights northside northside riverside riverside ?',
+    '? heights heights northside northside riverside six_block ?',
+    '? como heights - - riverside six_block ?',
+    '? como como - - poly six_block ?',
+    '? como - hemphill hemphill poly everman ?',
+    '? - hemphill hemphill - everman everman ?',
+    '? ? ? ? ? ? ? ?'];
+  const HOOD = { ready: false, blocks: [], byId: new Map(), group: null, ents: [], last: 0, cur: null, near: null, pill: null, pillKey: '', act: {}, bases: {}, baseQ: [],
+    nodeGrid: null, regT: 3, ambT: 8, slideT: 240, hold: null, ride: null, flips: 0, bubbles: [], seed: 1, toldT: 0 };
+  const hRnd = () => (HOOD.seed = (HOOD.seed * 16807) % 2147483647) / 2147483647;
+  const hPick = a => a[Math.floor(hRnd() * a.length)];
+  const hHash = s => { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 1000003; return h; };
+  const hNorm = a => Math.atan2(Math.sin(a), Math.cos(a));
+  function hS() {
+    const h = S.hood || (S.hood = {});
+    h.set = h.set || null; h.own = h.own || null; h.respect = h.respect || 0; h.turf = h.turf || {}; h.beef = h.beef || {}; h.regs = h.regs || {};
+    h.stats = h.stats || { drops: 0, taken: 0, lost: 0, jobs: 0 }; h.job = h.job || null; h.init = h.init || null; h.homies = h.homies || 0;
+    return h;
+  }
+  function hMe() { return foot.on || !driving ? [foot.x, foot.z] : [drv.x, drv.z]; }
+  function hInCar() { return driving && !foot.on && !inside; }
+  function setOf(id) { if (id === 'own') { const o = hS().own; return o ? { id, name: o.name, short: o.name, color: o.color, boss: S.name || 'You', rivals: [], style: 'Your own set.' } : null; } return HOOD_SETS[id] ? { id, ...HOOD_SETS[id] } : null; }
+  function hRank() {
+    const h = hS(); if (h.set === 'own') return { n: HOOD_RANKS.length, name: 'Big Homie', homies: 3, bag: 400 + h.stats.taken * 40, next: null };
+    let n = 0; for (let i = 0; i < HOOD_RANKS.length; i++) if (h.respect >= HOOD_RANKS[i].respect) n = i;
+    return { n, ...HOOD_RANKS[n], next: HOOD_RANKS[n + 1] || null };
+  }
+  function hRivals() { const h = hS(); if (!h.set) return []; if (h.set === 'own') return HOOD_IDS.slice(); return HOOD_SETS[h.set].rivals; }
+  // does this set shoot at you when it sees you?
+  function hHostile(gid) { const h = hS(); if (!gid || gid === h.set) return false; return (h.beef[gid] || 0) >= 50 || hRivals().includes(gid); }
+  function hBeef(gid, n) {
+    const h = hS(); if (!HOOD_SETS[gid] || gid === h.set) return; const b = h.beef[gid] || 0; h.beef[gid] = clamp(Math.round(b + n), 0, 100);
+    if (b < 50 && h.beef[gid] >= 50) toast(`${HOOD_SETS[gid].name} want smoke with you now. Their corners shoot on sight.`, 'bad');
+  }
+  function hRespect(n, why) {
+    const h = hS(); if (!h.set || !n) return; const before = hRank().n; h.respect = Math.max(0, Math.round(h.respect + n)); const r = hRank();
+    if (r.n > before) toast(`Ranked up: ${r.name}. ${r.homies} homie${r.homies > 1 ? 's' : ''} can roll with you and the bag is ${money(r.bag)} a day.`, 'good');
+    else if (why) toast(`+${n} respect · ${why}`, 'good');
+  }
+
+  // ---------- blocks ----------
+  function hBuild() {
+    const g = gpsGraph(), cells = new Map();
+    // every intersection, bucketed for quick lookups (corners, the AI drivers' roads)
+    for (let n = 0; n < g.nx.length; n++) { const k = Math.floor(g.nx[n] / 100) + ',' + Math.floor(g.nz[n] / 100); let a = cells.get(k); if (!a) cells.set(k, a = []); a.push(n); }
+    HOOD.nodeGrid = cells;
+    for (let j = 0; j < HB.nz; j++) for (let i = 0; i < HB.nx; i++) {
+      const cx = HB.x0 + (i + 0.5) * HB.bs, cz = HB.z0 + (j + 0.5) * HB.bs;
+      let best = -1, bd = 70;
+      for (const n of hNodesNear(cx, cz, 1)) { if (g.adj[n].length < 3) continue; const d = Math.hypot(g.nx[n] - cx, g.nz[n] - cz); if (d < bd) { bd = d; best = n; } }
+      if (best < 0) continue;
+      const nx = g.nx[best], nz = g.nz[best], names = [...new Set(g.adj[best].map(a => a[2]).filter(Boolean))].map(s => TC(s));
+      const hood = districtAt(cx, cz) || '';
+      if (!hood || /Loop|I-3|US-|Lake Worth$|Benbrook/.test(hood) && !names.length) continue;
+      const name = names.length >= 2 ? `${names[0]} & ${names[1]}` : names.length ? `${names[0]} block` : `${hood} block`;
+      // the corner: a sidewalk spot off the intersection that isn't inside a building
+      let corner = null;
+      for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { const x = nx + sx * 12, z = nz + sz * 12; if (!solids.at(x, z).some(b => x > b.x0 - 1 && x < b.x1 + 1 && z > b.z0 - 1 && z < b.z1 + 1)) { corner = { x, z, sx, sz }; break; } }
+      if (!corner) continue;
+      const id = i + ',' + j, h = hHash(id);
+      // who holds it at the start: the hand-laid map for the city grid, the closest set's home anywhere else
+      let own = (HOOD_MAP[j] || '').split(' ')[i];
+      if (own === undefined || own === '?') { own = null; let od = 700; for (const k of HOOD_IDS) { const s = HOOD_SETS[k], d = Math.hypot(cx - s.at[0], cz - s.at[1]); if (d < od) { od = d; own = k; } } }
+      else if (own === '-') own = null;
+      const b = { id, i, j, x0: cx - HB.bs / 2, z0: cz - HB.bs / 2, x1: cx + HB.bs / 2, z1: cz + HB.bs / 2, cx, cz, nx, nz, node: best, corner, name, hood, own0: own, h, down: 0, crew: [] };
+      HOOD.blocks.push(b); HOOD.byId.set(id, b);
+    }
+    HOOD.ready = true;
+  }
+  function hNodesNear(x, z, r) {
+    const out = [], ci = Math.floor(x / 100), cj = Math.floor(z / 100);
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) { const l = HOOD.nodeGrid.get((ci + a) + ',' + (cj + b)); if (l) out.push(...l); }
+    return out;
+  }
+  function hNearestNode(x, z, minAdj = 2) {
+    const g = gpsGraph(); let best = -1, bd = 1e9;
+    for (let r = 1; r < 4 && best < 0; r++) for (const n of hNodesNear(x, z, r)) { if (g.adj[n].length < minAdj) continue; const d = Math.hypot(g.nx[n] - x, g.nz[n] - z); if (d < bd) { bd = d; best = n; } }
+    return best;
+  }
+  const hOwner = b => { const t = hS().turf; return b.id in t ? t[b.id] : b.own0; };
+  function hBlockAt(x, z) { const i = Math.floor((x - HB.x0) / HB.bs), j = Math.floor((z - HB.z0) / HB.bs); return HOOD.byId.get(i + ',' + j) || null; }
+  function hColor(gid) { const s = setOf(gid); return s ? s.color : '#888'; }
+  // turf on the Map app (_bigmap.js calls this under the places)
+  function hoodBigMap(x, SX, SZ, k) {
+    if (!HOOD.ready || !S) return;
+    const mine = hS().set;
+    for (const b of HOOD.blocks) {
+      const o = hOwner(b); if (!o) continue;
+      const ax = SX(b.x0), az = SZ(b.z0), w = (b.x1 - b.x0) * k, hgt = (b.z1 - b.z0) * k; if (ax > BM.w || az > BM.h || ax + w < 0 || az + hgt < 0) continue;
+      x.globalAlpha = o === mine ? 0.3 : 0.2; x.fillStyle = hColor(o); x.fillRect(ax, az, w, hgt);
+      x.globalAlpha = 0.65; x.strokeStyle = hColor(o); x.lineWidth = o === mine ? 2 : 1; x.strokeRect(ax + 0.5, az + 0.5, w - 1, hgt - 1); x.globalAlpha = 1;
+      if (k > 0.3) { x.font = `800 ${Math.round(clamp(k * 22, 9, 14))}px "Barlow Condensed", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 3; x.strokeStyle = 'rgba(10,10,12,0.85)'; const t = setOf(o).short.toUpperCase(); x.strokeText(t, ax + w / 2, az + hgt / 2); x.fillStyle = hColor(o); x.fillText(t, ax + w / 2, az + hgt / 2); }
+    }
+  }
+  // and on the minimap (_mini.js), plus the people you can see
+  function hoodMini(x, to, dpr, R, px, pz) {
+    if (!HOOD.ready || !S) return;
+    for (const b of HOOD.blocks) {
+      if (b.x1 < px - R * 1.5 || b.x0 > px + R * 1.5 || b.z1 < pz - R * 1.5 || b.z0 > pz + R * 1.5) continue;
+      const o = hOwner(b); if (!o) continue;
+      const q = [to(b.x0, b.z0), to(b.x1, b.z0), to(b.x1, b.z1), to(b.x0, b.z1)];
+      x.globalAlpha = 0.16; x.fillStyle = hColor(o); x.beginPath(); x.moveTo(q[0][0], q[0][1]); for (let i = 1; i < 4; i++) x.lineTo(q[i][0], q[i][1]); x.closePath(); x.fill(); x.globalAlpha = 1;
+    }
+    for (const e of HOOD.ents) {
+      if (e.gone || !e.g || !e.g.visible) continue; const dx = e.x - px, dz = e.z - pz; if (dx * dx + dz * dz > R * R * 1.4) continue;
+      const q = to(e.x, e.z), hot = e.mode === 'fight' || e.opp;
+      x.fillStyle = e.down ? '#555' : hot ? '#ff4a3a' : e.kind === 'reg' ? '#ffd23f' : hColor(e.gang); x.strokeStyle = '#121016'; x.lineWidth = dpr;
+      x.beginPath(); x.arc(q[0], q[1], (e.inCar ? 3.6 : 2.8) * dpr, 0, Math.PI * 2); x.fill(); x.stroke();
+    }
+  }
+
+  // ---------- people: gang members are a couple of built looks per set, cloned; regulars come from the street crowd ----------
+  function hNameParts(P) { P.upper.name = 'upper'; P.head.name = 'head'; for (const j of ['legs', 'arms', 'knees', 'ankles', 'fores']) P[j].forEach((o, i) => o.name = j.slice(0, -1) + (i ? 'R' : 'L')); return P; }
+  function hClone(P) {
+    const root = P.root.clone(true), w = new THREE.Group(); root.rotation.y = Math.PI; w.add(root);
+    const n = s => [root.getObjectByName(s + 'L'), root.getObjectByName(s + 'R')];
+    return { wrap: w, root, upper: root.getObjectByName('upper'), head: root.getObjectByName('head'), legs: n('leg'), arms: n('arm'), knees: n('knee'), ankles: n('ankle'), fores: n('fore') };
+  }
+  function hGangLook(gid, v) {
+    const s = HOOD_SETS[gid] || HOOD_SETS.six_block, f = s.fit; let sd = hHash(gid + v) || 1; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647; R();
+    const L = PEOPLE.randomLook(R, v === 2), at = a => a[Math.floor(R() * a.length)];
+    return { ...L, top: at(f.top), bottom: at(f.bottom), hat: v === 1 ? 'no_hat' : at(f.hat), shoes: at(f.shoes), mask: v === 0 && R() < 0.3 ? 'bandana_black' : 'no_mask' };
+  }
+  // one build at a time, spread over frames, so walking into a hood doesn't hitch
+  function hBase(gid, v) {
+    const k = gid + v; if (HOOD.bases[k]) return HOOD.bases[k];
+    if (!HOOD.baseQ.includes(k)) HOOD.baseQ.push(k); return null;
+  }
+  function hBuildBases() {
+    if (!HOOD.baseQ.length || (frame % 9)) return;
+    const k = HOOD.baseQ.shift(), v = +k.slice(-1), gid = k.slice(0, -1);
+    try { HOOD.bases[k] = hNameParts(PEOPLE.build(gid === 'own' ? { ...myLook(), mask: 'no_mask' } : hGangLook(gid, v), 1)); } catch (e) { HOOD.bases[k] = null; }
+  }
+  const hGun = id => { const G = window.__guns, D = G && G.GUN_DEF[id]; return D ? { id, mag: D.std, sw: false, optic: false, light: false, laser: false, comp: false, brake: false, brace: true } : null; };
+  // a person or a car in the world: gang members, homies, regulars and opps all run on this
+  function hEnt(o) {
+    const e = Object.assign({ hp: 100, x: 0, z: 0, yaw: 0, walk: 0, ph: hRnd() * 6, mode: 'idle', t: 0, gd: 0, ge: 0, dead: false, deadAt: 0, inCar: false, sp: 0, shotT: 0, sayT: 2 + hRnd() * 6, view: null, hits: 0 }, o);
+    e.g = new THREE.Group(); e.g.name = 'hood:' + e.name; HOOD.group.add(e.g); e.view = { g: e.g, P: null, gun: null };
+    HOOD.ents.push(e); return e;
+  }
+  function hDress(e, P) {
+    if (e.view.P) { e.g.remove(e.view.P.wrap); if (e.view.gun) { try { window.__guns.pv.disposeGun(e.view.gun.b); } catch (er) {} e.view.gun = null; } }
+    e.view.P = P; P.wrap.rotation.y = e.yaw; e.g.add(P.wrap);
+  }
+  function hLabel(e) {
+    if (e.label) { e.g.remove(e.label); e.label.material.map.dispose(); e.label.material.dispose(); }
+    const s = e.gang ? setOf(e.gang) : null, txt = e.opp ? `☠ ${e.name}` : s ? `${e.name} · ${s.short}` : e.name;
+    e.label = textSprite(txt, 26, e.opp ? '#ff5a4e' : s ? s.color : '#ffd23f'); e.label.visible = false; e.g.add(e.label);
+  }
+  function hKill(e) {
+    e.gone = true; if (e.view.gun) { try { window.__guns.pv.disposeGun(e.view.gun.b); } catch (er) {} }
+    if (e.label) { e.label.material.map.dispose(); e.label.material.dispose(); }
+    if (e.slot) e.slot.userData.dead = true; if (e.g.parent) e.g.parent.remove(e.g);
+    if (e.blk) e.blk.crew = e.blk.crew.filter(m => m !== e);
+  }
+  function hSay(e, text, toYou) {
+    if (!text || e.gone) return;
+    text = text.replace(/\{me\}/g, S.name || 'bro').replace(/\{set\}/g, e.gang ? setOf(e.gang).name : 'us').replace(/\{block\}/g, e.blk ? e.blk.name : 'this block')
+      .replace(/\{mycar\}/g, S.car ? carOf(S.car.id).model || 'car' : 'car').replace(/\{street\}/g, hPick(H_STREETS));
+    if (e.bub) { e.g.remove(e.bub); e.bub.material.map.dispose(); e.bub.material.dispose(); }
+    e.bub = textSprite(text, 28, '#ffffff'); e.bubT = 4.2; e.g.add(e.bub);
+    const [mx, mz] = hMe(); if (toYou && Math.hypot(e.x - mx, e.z - mz) < 60) toast(`💬 ${e.name}: ${text}`);
+  }
+
+  // ---------- gang members on the corner ----------
+  function hCrew(b) {
+    const o = hOwner(b); if (!o || b.crew.length || performance.now() < b.down) return;
+    const n = 3 + (b.h % 2), gidv = [0, 1, 2].map(v => hBase(o, o === 'own' ? 0 : v)); if (gidv.some(v => !v)) return;
+    for (let k = 0; k < n; k++) {
+      const a = k / n * Math.PI * 2 + b.h, r = 1.6 + (k % 2) * 1.4, x = b.corner.x + Math.cos(a) * r, z = b.corner.z + Math.sin(a) * r;
+      const e = hEnt({ kind: 'member', gang: o, blk: b, name: H_NICKS[(b.h + k * 7) % H_NICKS.length], x, z, hx: x, hz: z, yaw: Math.atan2(-(b.corner.x - x), -(b.corner.z - z)) + Math.PI + (k - 1) * 0.6, gunId: ['g19', 'g20', 'arp'][(b.h + k) % 3 === 2 && k === 0 ? 2 : (b.h + k) % 2] });
+      hDress(e, hClone(gidv[k % 3])); hLabel(e); b.crew.push(e);
+    }
+  }
+  function hHomies(want) {
+    const have = HOOD.ents.filter(e => e.kind === 'homie' && !e.gone);
+    if (have.length > want) { for (const e of have.slice(want)) hKill(e); return; }
+    const gid = hS().set; if (!gid) return;
+    for (let k = have.length; k < want; k++) {
+      const B = hBase(gid, (k + 1) % 3); if (!B) return; const [mx, mz] = hMe();
+      const e = hEnt({ kind: 'homie', gang: gid, name: H_NICKS[(hHash(S.name || 'me') + k * 11) % H_NICKS.length], x: mx + 2 + k, z: mz + 2, gunId: k ? 'g19' : 'arp' });
+      hDress(e, hClone(B)); hLabel(e);
+    }
+  }
+  // AI regulars and opps get a whole car and a person from the street crowd
+  function hPersona(key) {
+    let sd = hHash(key) || 1; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647; R();
+    const a = R_FIRST[Math.floor(R() * R_FIRST.length)], w = R_WORDS[Math.floor(R() * R_WORDS.length)], sh = R_SHAPES[Math.floor(R() * R_SHAPES.length)];
+    const name = sh.map(p => p === 'a' ? a : p === 'w' ? w : p).join('').slice(0, 16);
+    const racer = STREET3D[Math.floor(R() * 7)], id = BUILT[Math.floor(R() * BUILT.length)], color = PAINTS[Math.floor(R() * PAINTS.length)][1];
+    return { key, name, temper: R(), skill: 0.3 + R() * 0.5, look: Math.floor(R() * 8), r: { name, nick: 'Regular', id, color, b: racer.b, need: 0, skill: 0.3 + R() * 0.5, rep: 3 + Math.floor(R() * 6), wager: [250, 400, 600, 900][Math.floor(R() * 4)] } };
+  }
+  function hReg(key, opts) {
+    const pr = hPersona(key), P = crowdPerson(pr.look + 3); if (!P) return null;
+    const e = hEnt(Object.assign({ kind: 'reg', key, name: pr.name, pr, carId: pr.r.id, color: pr.r.color }, opts));
+    hDress(e, P); hLabel(e);
+    e.slot = putCar(e.g, e.carId, e.color, m => { m.position.y = 0; e.model = m; try { applyMotor(m); } catch (er) {} });
+    const beef = hS().regs[key]; if (beef && beef.opp) { e.opp = true; hLabel(e); }
+    return e;
+  }
+
+  // ---------- driving on the road graph ----------
+  function hNext(e) {
+    const g = gpsGraph(), adj = g.adj[e.b] || [];
+    if (e.path && e.path.length) return e.path.shift();
+    const [mx, mz] = hMe(), opts = adj.filter(a => a[0] !== e.a);
+    const ok = (opts.length ? opts : adj).filter(a => Math.hypot(g.nx[a[0]] - mx, g.nz[a[0]] - mz) < 700);
+    return (ok.length ? hPick(ok) : hPick(opts.length ? opts : adj) || [e.a])[0];
+  }
+  function hDrive(e, dt, want) {
+    const g = gpsGraph(); if (e.a == null) return;
+    const ax = g.nx[e.a], az = g.nz[e.a], bx = g.nx[e.b], bz = g.nz[e.b], L = Math.max(0.1, Math.hypot(bx - ax, bz - az)), fx = (bx - ax) / L, fz = (bz - az) / L;
+    // ease off into turns and for your car sitting in the lane
+    let tgt = want; if (L - e.u < 16) tgt = Math.min(tgt, 6);
+    const [mx, mz] = hMe(), ex = mx - e.x, ez = mz - e.z, ahead = ex * fx + ez * fz, side = Math.abs(ex * -fz + ez * fx);
+    if (ahead > 0 && ahead < 11 && side < 3.2 && !(e.ride && hInCar())) tgt = 0;
+    for (const o of HOOD.ents) { if (o === e || !o.inCar || o.gone || o.a !== e.a || o.b !== e.b) continue; const d = o.u - e.u; if (d > 0 && d < 10) tgt = 0; }
+    e.sp += clamp(tgt - e.sp, -9 * dt, 4.5 * dt); e.u += e.sp * dt;
+    if (e.u >= L) { e.u -= L; const nb = hNext(e); e.a = e.b; e.b = nb; if (e.a === e.b) { e.sp = 0; e.u = 0; } }
+    const ax2 = g.nx[e.a], az2 = g.nz[e.a], bx2 = g.nx[e.b], bz2 = g.nz[e.b], L2 = Math.max(0.1, Math.hypot(bx2 - ax2, bz2 - az2)), gx = (bx2 - ax2) / L2, gz = (bz2 - az2) / L2;
+    const u = Math.min(e.u, L2), lane = 3.6, tx = ax2 + gx * u - gz * lane, tz = az2 + gz * u + gx * lane;
+    const k = 1 - Math.exp(-dt * 6); e.x += (tx - e.x) * k; e.z += (tz - e.z) * k;
+    const yw = Math.atan2(-gx, -gz); e.yaw += hNorm(yw - e.yaw) * Math.min(1, dt * 5);
+  }
+  function hPlaceOnRoad(e, x, z) {
+    const g = gpsGraph(), n = hNearestNode(x, z); if (n < 0) return false; const adj = g.adj[n]; if (!adj.length) return false;
+    e.a = n; e.b = hPick(adj)[0]; e.u = 0; e.x = g.nx[n]; e.z = g.nz[n]; e.yaw = Math.atan2(-(g.nx[e.b] - e.x), -(g.nz[e.b] - e.z)); return true;
+  }
+  // A* between two intersections (for rides and opps coming for you)
+  function hRoute(a, b) {
+    const g = gpsGraph(), N = g.nx.length, dist = new Map([[a, 0]]), prev = new Map(), done = new Set(), heap = [[0, a]];
+    const hh = n => Math.hypot(g.nx[n] - g.nx[b], g.nz[n] - g.nz[b]);
+    let guard = 0;
+    while (heap.length && guard++ < 6000) {
+      let mi = 0; for (let i = 1; i < heap.length; i++) if (heap[i][0] < heap[mi][0]) mi = i;
+      const [, n] = heap.splice(mi, 1)[0]; if (done.has(n)) continue; done.add(n); if (n === b) break;
+      for (const [m, c] of g.adj[n]) { const d = dist.get(n) + c; if (d < (dist.has(m) ? dist.get(m) : Infinity)) { dist.set(m, d); prev.set(m, n); heap.push([d + hh(m), m]); } }
+    }
+    if (!done.has(b) || N === 0) return null;
+    const p = []; for (let n = b; n !== a && n != null; n = prev.get(n)) p.push(n); return p.reverse();
+  }
+
+  // ---------- shooting: you can hit them (a hook in the guns' castShot), they can hit you (the PvP hurt path) ----------
+  function hSlab(O, D, x0, y0, z0, x1, y1, z1) {
+    let t0 = -1e9, t1 = 1e9, ax = 0, sg = 1;
+    for (const [o, d, a, b, i] of [[O.x, D.x, x0, x1, 0], [O.y, D.y, y0, y1, 1], [O.z, D.z, z0, z1, 2]]) {
+      if (Math.abs(d) < 1e-9) { if (o < a || o > b) return null; continue; }
+      let ta = (a - o) / d, tb = (b - o) / d, s = -1; if (ta > tb) { [ta, tb] = [tb, ta]; s = 1; }
+      if (ta > t0) { t0 = ta; ax = i; sg = s; } t1 = Math.min(t1, tb); if (t0 > t1) return null;
+    }
+    return t1 < 0 ? null : { t: t0, ax, sg };
+  }
+  window.__shotHook = (O, D, best, t0) => {
+    if (!HOOD.ready) return;
+    for (const e of HOOD.ents) {
+      if (e.gone || e.down || !e.g.visible || e.kind === 'homie') continue;
+      const dx = e.x - O.x, dz = e.z - O.z, rr = best.t + 4; if (dx * dx + dz * dz > rr * rr) continue;
+      if (e.inCar) {
+        const c = Math.cos(e.yaw), s = Math.sin(e.yaw), lo = { x: (O.x - e.x) * c - (O.z - e.z) * s, y: O.y, z: (O.x - e.x) * s + (O.z - e.z) * c }, ld = { x: D.x * c - D.z * s, y: D.y, z: D.x * s + D.z * c };
+        const r = hSlab(lo, ld, -1, 0.2, -2.4, 1, 1.45, 2.4);
+        if (r && r.t > t0 && r.t < best.t) { best.t = r.t; best.kind = 'npc'; best.npc = e; best.part = lo.y + ld.y * r.t > 1 ? 'glass' : 'car'; best.box = null; best.n.set(0, 1, 0); }
+      } else {
+        const gy = e.gy || 0;
+        for (const [w, y0, y1, part] of [[0.25, 0, 1.5, 'body'], [0.14, 1.5, 1.86, 'head']]) {
+          const r = hSlab(O, D, e.x - w, gy + y0, e.z - w, e.x + w, gy + y1, e.z + w);
+          if (r && r.t > t0 && r.t < best.t) { best.t = r.t; best.kind = 'npc'; best.npc = e; best.part = part; best.box = null; best.n.set(0, 0, 0).setComponent(r.ax, r.sg); }
+        }
+      }
+    }
+  };
+  window.__shotLand = (B, fx) => {
+    const h = B.hit, e = h.npc; if (!e || e.gone) return;
+    if (h.part === 'car') { fx.sparks(h.p, B.d); e.hits++; hShotAt(e, 0); return; }
+    fx.blood(h.p, B.d); hShotAt(e, (H_GUN_DMG[B.gid] || 24) * (h.part === 'head' ? 2.2 : h.part === 'glass' ? 0.55 : 1));
+  };
+  function hShotAt(e, dmg) {
+    const h = hS();
+    if (e.kind === 'reg') {
+      if (e.inCar && !dmg) { if (e.hits >= 6 && e.mode !== 'flee') { e.mode = 'flee'; e.want = 22; hSay(e, e.opp ? hPick(RL.smoked) : hPick(RL.shot), true); } else if (e.hits === 1) hSay(e, hPick(RL.shot), true); hRegBeef(e, 15); return; }
+      hRegBeef(e, 30);
+    }
+    e.hp -= dmg; if (dmg) hSay(e, hPick(HL.hit));
+    // the whole corner turns on you
+    if (e.gang && e.kind === 'member') { hBeef(e.gang, 20); for (const m of (e.blk ? e.blk.crew : [])) if (!m.down) { m.mode = 'fight'; m.t = 0; } }
+    if (e.kind === 'reg' && e.temper > 0.35 && !e.inCar) { e.mode = 'fight'; e.t = 0; }
+    if (e.hp <= 0) hDrop(e);
+  }
+  function hDrop(e) {
+    if (e.down) return; e.down = true; e.dead = true; e.mode = 'down'; e.gd = 0; e.t = 0; e.inCar = false;
+    const h = hS(); h.stats.drops++; S.heat = Math.min(5, (S.heat || 0) + 1);
+    if (e.kind === 'member') {
+      const b = e.blk, rival = hRivals().includes(e.gang);
+      if (h.set && rival) hRespect(25, `dropped ${e.name} from ${setOf(e.gang).short}`); else toast(`You dropped ${e.name}${e.gang ? ' from ' + setOf(e.gang).short : ''}.`, 'good');
+      if (h.init && h.init.vs.includes(e.gang)) { h.init.got++; if (h.init.got >= h.init.need) hJoin(h.init.set, 'work'); else toast(`${h.init.got}/${h.init.need} for ${setOf(h.init.set).short}.`, 'good'); }
+      if (h.job && h.job.kind === 'work' && rival) { h.job.got++; if (h.job.got >= h.job.need) hJobDone(); }
+      if (b && b.crew.every(m => m.down)) { b.down = performance.now() + 240000; if (h.set && hOwner(b) !== h.set) toast(`${b.name} is open. Hold the corner to take it for ${setOf(h.set).short}.`, 'good'); }
+    } else if (e.kind === 'reg') {
+      const r = hS().regs[e.key]; if (r && r.opp) { r.smoked = (r.smoked || 0) + 1; toast(`You smoked ${e.name}. They'll be back.`, 'good'); } else toast(`You dropped ${e.name}.`, 'good');
+      if (e.ride) hRideOut(true);
+    }
+    save(); refreshStats();
+  }
+  // they shoot at you: a tracer from their gun, and if it lands, the same hurt as an online player's hit
+  function hFire(e, mx, mz, dist) {
+    const G = window.__guns; if (!G || !G.pv) return;
+    const pv = G.pv; if (pv.PV.down > 0) return;
+    const incar = hInCar(), D = G.GUN_DEF[e.gunId] || G.GUN_DEF.g19, gy = e.gy || 0;
+    let chance = clamp(0.5 - dist * 0.012, 0.06, 0.42) * (incar ? 0.7 : 1) * (foot.on && foot.runB > 0.5 ? 0.7 : 1) * (e.kind === 'homie' ? 1 : 1);
+    const hit = Math.random() < chance, o = new THREE.Vector3(e.x, gy + 1.4, e.z), mh = incar ? 1.0 : (G.ME ? 1.25 : 1.2);
+    const t = new THREE.Vector3(mx + (hit ? 0 : (Math.random() - 0.5) * 3), (hit ? mh : Math.random() * 1.6), mz + (hit ? 0 : (Math.random() - 0.5) * 3));
+    try { pv.fxInit(); pv.pvPlay({ p: { view: e.view, gun: { id: e.gunId }, name: e.name }, o, h: t, k: hit ? (incar ? 3 : 4) : 1 }); } catch (er) {}
+    if (!hit) return;
+    const dmg = H_GUN_DMG[e.gunId] || 24, head = !incar && Math.random() < 0.08, glass = incar && Math.random() < 0.35;
+    const m = incar ? { pd: glass ? dmg * 0.55 : 0, cb: glass ? 0 : D.body || 6, ce: 0, ct: 0, x: e.x, z: e.z } : { pd: dmg * (head ? 2 : 0.6), hd: head ? 1 : 0, x: e.x, z: e.z };
+    const wasUp = pv.PV.down <= 0;
+    pv.pvHurt({ name: e.name, x: e.x, z: e.z }, m);
+    if (wasUp && pv.PV.down > 0) { HOOD.dropped = performance.now(); const take = Math.round(S.cash * 0.15); if (take > 20) { S.cash -= take; setTimeout(() => toast(`${e.name} went in your pockets: −${money(take)}.`, 'bad'), 1800); } if (e.kind === 'reg') hSay(e, hPick(RL.got), true); else hSay(e, hPick(HL.drop), true); for (const o2 of HOOD.ents) if (o2.mode === 'fight') { o2.mode = 'idle'; o2.gd = 0; } }
+  }
+  // the homies shoot at whoever is shooting at you
+  function hHomieFire(e, tgt, dist) {
+    const G = window.__guns; if (!G || !G.pv) return;
+    const hit = Math.random() < clamp(0.5 - dist * 0.01, 0.1, 0.45), gy = tgt.gy || 0;
+    const t = new THREE.Vector3(tgt.x + (hit ? 0 : (Math.random() - 0.5) * 2.5), gy + (hit ? 1.2 : Math.random() * 1.5), tgt.z + (hit ? 0 : (Math.random() - 0.5) * 2.5));
+    try { G.pv.fxInit(); G.pv.pvPlay({ p: { view: e.view, gun: { id: e.gunId }, name: e.name }, o: new THREE.Vector3(e.x, (e.gy || 0) + 1.4, e.z), h: t, k: hit ? 4 : 1 }); } catch (er) {}
+    if (hit) { tgt.hp -= (H_GUN_DMG[e.gunId] || 24) * 0.8; if (tgt.hp <= 0) hDrop(tgt); }
+  }
+
+  // ---------- the brains ----------
+  function hFootMove(e, tx, tz, dt, run) {
+    const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz); if (d < 0.4) return false;
+    const sp = run ? 6 : 2.2, nx = e.x + dx / d * sp * dt, nz = e.z + dz / d * sp * dt;
+    if (!solids.at(nx, nz).some(b => nx > b.x0 - 0.3 && nx < b.x1 + 0.3 && nz > b.z0 - 0.3 && nz < b.z1 + 0.3)) { e.x = nx; e.z = nz; } else return false;
+    e.yaw += hNorm(Math.atan2(-dx, -dz) - e.yaw) * Math.min(1, dt * 8); e.walk += dt * sp * Math.PI * 2 / (run ? 3.8 : 1.55); e.moving = run ? 2 : 1; return true;
+  }
+  const hFace = (e, x, z, dt) => { e.yaw += hNorm(Math.atan2(-(x - e.x), -(z - e.z)) - e.yaw) * Math.min(1, dt * 6); };
+  function hMember(e, dt, mx, mz, d, aiming) {
+    const h = hS(), mine = e.gang === h.set, hostile = hHostile(e.gang), b = e.blk;
+    if (e.mode === 'fight') {
+      e.gd = 1; hFace(e, mx, mz, dt); e.ge = clamp(((hInCar() ? 1 : 1.3) - 1.4) / Math.max(4, d), -0.5, 0.5);
+      if (d > 14 && d < 70) hFootMove(e, mx, mz, dt, true); else if (d > 90 || (HOOD.dropped && performance.now() - HOOD.dropped < 6000)) { e.mode = 'idle'; e.gd = 0; }
+      e.shotT -= dt; if (e.shotT <= 0 && d < 60) { e.shotT = (e.gunId === 'arp' ? 0.35 : 0.7) + Math.random() * 0.8; hFire(e, mx, mz, d); }
+      if (Math.random() < dt * 0.15) hSay(e, hPick(HL.fight));
+      return;
+    }
+    if (e.mode === 'aim') {
+      e.gd = 1; hFace(e, mx, mz, dt); e.t += dt;
+      if (e.t > 1 && (aiming || d < 6)) { e.mode = 'fight'; e.t = 0; hSay(e, hPick(HL.fight), true); for (const m of b.crew) if (!m.down) m.mode = 'fight'; }
+      else if (d > 45) { e.mode = 'idle'; e.gd = 0; }
+      else if (e.t > 9) { e.mode = hostile ? 'fight' : 'idle'; e.gd = e.mode === 'fight' ? 1 : 0; }
+      return;
+    }
+    e.gd = 0;
+    // posted up: shift around the corner, turn to watch whoever walks up
+    if (!mine && hostile && d < 32 && !(HOOD.dropped && performance.now() - HOOD.dropped < 15000)) { e.mode = 'aim'; e.t = 0; hSay(e, hPick(HL.flash), true); return; }
+    if (d < 9) hFace(e, mx, mz, dt);
+    else { e.t -= dt; if (e.t <= 0) { e.t = 4 + Math.random() * 8; e.tx = e.hx + (Math.random() - 0.5) * 3; e.tz = e.hz + (Math.random() - 0.5) * 3; } if (e.tx != null) hFootMove(e, e.tx, e.tz, dt, false); }
+    if (d < 7) { e.sayT -= dt; if (e.sayT <= 0) { e.sayT = 9 + Math.random() * 10; hSay(e, hPick(mine ? HL.homie : h.set && !mine ? HL.trash : HL.hi)); } }
+  }
+  function hHomie(e, dt, mx, mz) {
+    const d = Math.hypot(mx - e.x, mz - e.z);
+    let tgt = null, td = 45;
+    for (const o of HOOD.ents) if (!o.gone && !o.down && !o.inCar && o.mode === 'fight' && o.kind !== 'homie') { const dd = Math.hypot(o.x - e.x, o.z - e.z); if (dd < td) { td = dd; tgt = o; } }
+    if (tgt) { e.gd = 1; hFace(e, tgt.x, tgt.z, dt); e.shotT -= dt; if (e.shotT <= 0) { e.shotT = 0.5 + Math.random() * 0.6; hHomieFire(e, tgt, td); } if (d > 10) hFootMove(e, mx, mz, dt, true); return; }
+    e.gd = 0;
+    if (hInCar()) { e.g.visible = false; e.x = mx; e.z = mz; return; }
+    e.g.visible = true;
+    if (d > 60) { e.x = mx - 2; e.z = mz + 2; }   // caught back up when you got out of the car
+    else if (d > 3.2) hFootMove(e, mx + Math.cos(e.ph) * 1.8, mz + Math.sin(e.ph) * 1.8, dt, d > 9);
+  }
+  function hRegBrain(e, dt, mx, mz, d) {
+    const R = hS().regs[e.key];
+    if (e.mode === 'fight') {
+      if (e.inCar) { e.inCar = false; e.slot && (e.slot.visible = true); e.parked = { x: e.x, z: e.z, yaw: e.yaw }; e.x += Math.cos(e.yaw) * 1.9; e.z -= Math.sin(e.yaw) * 1.9; }
+      e.gd = 1; hFace(e, mx, mz, dt); if (d > 12 && d < 80) hFootMove(e, mx, mz, dt, true);
+      e.shotT -= dt; if (e.shotT <= 0 && d < 55) { e.shotT = 0.5 + Math.random() * 0.7; hFire(e, mx, mz, d); }
+      if (d > 140 || (HOOD.dropped && performance.now() - HOOD.dropped < 4000)) { e.mode = 'leave'; e.gd = 0; }
+      return;
+    }
+    if (e.mode === 'leave') { e.gd = 0; if (!e.inCar && e.parked) { if (!hFootMove(e, e.parked.x, e.parked.z, dt, true) || Math.hypot(e.parked.x - e.x, e.parked.z - e.z) < 1.5) { e.inCar = true; e.x = e.parked.x; e.z = e.parked.z; hPlaceOnRoad(e, e.x, e.z); e.want = 16; e.mode = 'cruise'; } } else { e.mode = 'cruise'; e.want = 16; } return; }
+    if (e.inCar) {
+      // opps come for you: drive at you on the roads, shoot on the pass, or park and walk you down
+      if (e.opp && e.mode === 'slide') {
+        e.t += dt; e.want = d < 60 ? 9 : 17;
+        if (e.t > 2.5) { e.t = 0; const n = hNearestNode(mx, mz); if (n >= 0 && n !== e.b) { const p = hRoute(e.b, n); if (p) e.path = p; } }
+        if (d < 34) { e.gd = 1; e.shotT -= dt; if (e.shotT <= 0) { e.shotT = 0.22 + Math.random() * 0.35; hFire(e, mx, mz, d); e.burst = (e.burst || 0) + 1; } if (e.burst === 1) hSay(e, hPick(RL.slide), true); }
+        if ((e.burst || 0) > 9 || e.t2 > 70) { e.mode = 'cruise'; e.want = 20; e.path = null; e.gd = 0; R && (R.lastSlide = Date.now()); }
+        if (foot.on && d < 40 && e.walkDown) { e.mode = 'fight'; e.sp = 0; hSay(e, hPick(RL.walk), true); }
+        e.t2 = (e.t2 || 0) + dt;
+      }
+      if (e.mode === 'flee') e.want = 24;
+      hDrive(e, dt, e.want || 12);
+      // pull-up challenges: a regular rolling next to you asks to run it
+      if (!e.opp && hInCar() && d < 12 && Math.abs(drv.v) > 3 && Math.abs(hNorm(drv.yaw - e.yaw)) < 0.4 && !e.asked && e.pr.temper < 0.85) { e.asked = true; hSay(e, hPick(['wanna run it?', 'you tryna roll?', 'run it 40?', 'what that do?']), true); }
+      return;
+    }
+    // hanging out by their car
+    e.gd = 0;
+    if (d < 8) hFace(e, mx, mz, dt);
+    if (d < 6 && R && R.heat >= 20 && !R.opp) { e.sayT -= dt; if (e.sayT <= 0) { e.sayT = 8 + Math.random() * 8; hSay(e, hPick(R.heat >= 50 ? HL.flash : HL.trash), true); if (R.heat >= 50) e.gd = 1; } }
+    if (d > 300 && !e.ride) { e.mode = 'cruise'; e.inCar = true; }
+  }
+  function hRegBeef(e, n) {
+    const h = hS(), R = h.regs[e.key] || (h.regs[e.key] = { name: e.name, heat: 0, opp: false });
+    if (e.pr.temper < 0.4 && !R.opp) { R.heat = Math.min(40, R.heat + n / 2); return; }
+    R.heat = Math.min(100, R.heat + n);
+    if (R.heat >= 100 && !R.opp) { R.opp = true; R.since = Date.now(); e.opp = true; hLabel(e); toast(`${e.name} is your opp now. They'll pull up when they see you.`, 'bad'); }
+  }
+
+  // ---------- spawning around you ----------
+  function hSpawn(mx, mz) {
+    const live = HOOD.ents.filter(e => !e.gone);
+    // corners within reach get their people, far ones send them home
+    for (const b of HOOD.blocks) {
+      const d = Math.hypot(b.corner.x - mx, b.corner.z - mz);
+      if (d < 230) hCrew(b);
+      else if (d > 330 && b.crew.length) for (const e of b.crew.slice()) hKill(e);
+    }
+    // regulars: some cruising, some at the gas station or the food spot
+    const regs = live.filter(e => e.kind === 'reg');
+    for (const e of regs) if (Math.hypot(e.x - mx, e.z - mz) > 520 && !e.ride && e.mode !== 'slide') hKill(e);
+    HOOD.regT -= 1; if (HOOD.regT > 0 || CROWD.length < CROWD_N) return; HOOD.regT = 4;
+    const want = phone ? 4 : 6; if (regs.length >= want) return;
+    const slot = Math.floor(Date.now() / 600000), key = `r${slot}:${Math.floor(hRnd() * 40)}`; if (regs.some(e => e.key === key)) return;
+    const R = hS().regs[key]; if (R && R.opp) return;
+    if (hRnd() < 0.45) {
+      // parked at a spot near you
+      let best = null, bd = 260;
+      for (const p of DATA.P) { if (!/gas|food|corner|meet|carshow|club|liquor/.test(p.type)) continue; const dd = Math.hypot(p.x - mx, p.z - mz); if (dd > 70 && dd < bd && !live.some(e => e.at === p.id)) { bd = dd; best = p; } }
+      if (best) {
+        const [ox, oz] = outDir(best), e = hReg(key, { mode: 'hang', at: best.id }); if (!e) return;
+        const cx = best.x + ox * 9 + oz * 3, cz = best.z + oz * 9 - ox * 3; e.parked = { x: cx, z: cz, yaw: Math.atan2(-ox, -oz) + Math.PI / 2 };
+        e.x = cx + Math.cos(e.parked.yaw) * 1.9; e.z = cz - Math.sin(e.parked.yaw) * 1.9; e.yaw = Math.atan2(ox, oz); return;
+      }
+    }
+    const g = gpsGraph(), a = hRnd() * Math.PI * 2, r = 160 + hRnd() * 140, e = hReg(key, { mode: 'cruise', inCar: true, want: 10 + hRnd() * 6 });
+    if (!e) return; if (!hPlaceOnRoad(e, mx + Math.cos(a) * r, mz + Math.sin(a) * r)) hKill(e);
+  }
+  // an opp pulls up every few minutes
+  function hOppSlide(mx, mz) {
+    const h = hS(), opps = Object.entries(h.regs).filter(([, r]) => r.opp && (!r.lastSlide || Date.now() - r.lastSlide > 180000));
+    if (!opps.length || HOOD.ents.some(e => e.mode === 'slide' && !e.gone)) return;
+    const [key, r] = hPick(opps), old = HOOD.ents.find(e => e.key === key && !e.gone); if (old) hKill(old);
+    const a = hRnd() * Math.PI * 2, e = hReg(key, { mode: 'slide', inCar: true, want: 17, walkDown: hRnd() < 0.45, t: 3 });
+    if (!e) return; e.opp = true; hLabel(e); r.lastSlide = Date.now();
+    if (!hPlaceOnRoad(e, mx + Math.cos(a) * 240, mz + Math.sin(a) * 240)) hKill(e);
+  }
+  // a rival set slides on a block you hold
+  function hSetSlide(mx, mz) {
+    const h = hS(); if (!h.set) return;
+    const b = HOOD.blocks.find(b => hOwner(b) === h.set && Math.hypot(b.corner.x - mx, b.corner.z - mz) < 180); if (!b) return;
+    const riv = hRivals().filter(id => HOOD_SETS[id]), gid = hPick(riv.length ? riv : HOOD_IDS.filter(i => i !== h.set)); if (!gid) return;
+    const bases = [0, 1].map(v => hBase(gid, v)); if (bases.some(x => !x)) return;
+    const a = hRnd() * Math.PI * 2;
+    for (let k = 0; k < 2 + (h.respect > 900 ? 1 : 0); k++) {
+      const x = b.corner.x + Math.cos(a) * 45 + k * 2, z = b.corner.z + Math.sin(a) * 45;
+      const e = hEnt({ kind: 'member', gang: gid, blk: null, slider: true, name: H_NICKS[(hHash(gid) + k * 5 + frame) % H_NICKS.length], x, z, hx: x, hz: z, mode: 'fight', gunId: k ? 'g19' : 'arp' });
+      hDress(e, hClone(bases[k % 2])); hLabel(e);
+    }
+    toast(`${HOOD_SETS[gid].name} are sliding on ${b.name}. Hold it down.`, 'bad');
+    if (h.job && h.job.kind === 'hold' && h.job.blk === b.id) h.job.live = true;
+  }
+
+  // ---------- taking a block: drop its corner (or find it empty) and stand on it ----------
+  function hHoldStep(dt, mx, mz) {
+    const h = hS(); if (!h.set || hInCar()) { HOOD.hold = null; return; }
+    const b = HOOD.cur; if (!b || hOwner(b) === h.set || Math.hypot(b.corner.x - mx, b.corner.z - mz) > 24) { HOOD.hold = null; return; }
+    if (b.crew.some(m => !m.down)) { HOOD.hold = null; return; }
+    if (!HOOD.hold || HOOD.hold.b !== b) HOOD.hold = { b, t: 0, backup: false };
+    if (HOOD.ents.some(e => !e.gone && !e.down && e.mode === 'fight')) return;   // can't hold it mid shootout
+    HOOD.hold.t += dt;
+    if (!HOOD.hold.backup && HOOD.hold.t > 12 && hOwner(b)) { HOOD.hold.backup = true; const gid = hOwner(b), B = hBase(gid, 0); if (B && gid !== 'own') for (let k = 0; k < 2; k++) { const x = b.corner.x + 40, z = b.corner.z + k * 3; const e = hEnt({ kind: 'member', gang: gid, blk: null, slider: true, name: H_NICKS[(b.h + k * 13) % H_NICKS.length], x, z, hx: x, hz: z, mode: 'fight', gunId: 'g19' }); hDress(e, hClone(B)); hLabel(e); } toast(`${setOf(gid).short} sent backup.`, 'bad'); }
+    if (HOOD.hold.t >= 30) {
+      const was = hOwner(b); h.turf[b.id] = h.set; h.stats.taken++; HOOD.hold = null; b.down = 0; for (const e of b.crew.slice()) hKill(e);
+      hRespect(was ? 80 : 40, `took ${b.name}${was ? ' from ' + setOf(was).short : ''}`); if (was) hBeef(was, 30);
+      toast(`${b.name} is ${setOf(h.set).name} now.`, 'good');
+      if (h.job && h.job.kind === 'take' && h.job.blk === b.id) hJobDone();
+      save(); if (BM.open) bmDirty();
+    }
+  }
+
+  // ---------- rides with a regular ----------
+  function hRideAsk(e) {
+    if (e.pr.temper > 0.8 || (hS().regs[e.key] || {}).heat >= 20) { hSay(e, hPick(RL.noride), true); return; }
+    const G = window.__guns; if (G && G.GUN.want) G.gunToggle();
+    // where to: your GPS pin, or somewhere worth going
+    const tries = [];
+    if (pin.visible) tries.push([pin.position.x, pin.position.z, pinLabel && pinLabel.userData.name || 'your pin']);
+    const opts = DATA.P.filter(p => { const dd = Math.hypot(p.x - e.x, p.z - e.z); return dd > 300 && dd < 1600 && Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000 && /food|gas|meet|mall|club|rims|perf|repair|corner|clothing/.test(p.type); });
+    for (let k = 0; k < 4 && opts.length; k++) { const p = hPick(opts); tries.push([p.x, p.z, p.name]); }
+    const n0 = hNearestNode(e.parked ? e.parked.x : e.x, e.parked ? e.parked.z : e.z);
+    let path = null, n1 = -1, where = '';
+    for (const [tx, tz, nm] of tries) { n1 = hNearestNode(tx, tz); path = n0 >= 0 && n1 >= 0 && n1 !== n0 ? hRoute(n0, n1) : null; if (path && path.length) { where = nm; break; } }
+    if (!path || !path.length) { hSay(e, pin.visible ? 'i cant get you there, pick somewhere closer' : 'idk where you tryna go', true); return; }
+    if (e.parked) { e.x = e.parked.x; e.z = e.parked.z; e.yaw = e.parked.yaw; e.parked = null; }
+    const g = gpsGraph(); e.inCar = true; e.a = n0; e.b = path.shift(); e.u = 0; e.path = path; e.mode = 'ride'; e.want = 13; e.dest = [g.nx[n1], g.nz[n1]];
+    HOOD.ride = { e, where, t: 0 }; hSay(e, hPick(RL.ride), true); foot.target = null; if (foot.holder) foot.holder.visible = false; document.body.classList.add('riding');
+    toast(`Riding with ${e.name} to ${where}.`, 'good');
+  }
+  function hRideOut(forced) {
+    const r = HOOD.ride; if (!r) return; const e = r.e;
+    if (!forced && Math.abs(e.sp) > 4) { toast(`Tell ${e.name} to slow down first.`); return; }
+    foot.x = e.x + Math.cos(e.yaw) * 1.9; foot.z = e.z - Math.sin(e.yaw) * 1.9; foot.yaw = foot.camYaw = e.yaw; foot.target = null;
+    if (foot.holder) { foot.holder.visible = true; foot.holder.position.set(foot.x, foot.holder.position.y, foot.z); }
+    drv.x = foot.x; drv.z = foot.z; HOOD.ride = null; document.body.classList.remove('riding');
+    if (!e.gone && !e.down) { e.mode = 'cruise'; e.want = 12; e.path = null; e.ride = false; if (!forced) hSay(e, hPick(['bet', 'be safe', 'aight later', 'you good']), true); }
+  }
+  const _hcam = new THREE.Vector3(), _hlook = new THREE.Vector3();
+  function hRideStep(dt) {
+    const r = HOOD.ride, e = r.e; r.t += dt;
+    if (e.gone || e.down) { hRideOut(true); return; }
+    e.ride = true; foot.x = e.x; foot.z = e.z; drv.x = e.x; drv.z = e.z; if (foot.holder) foot.holder.position.set(e.x, foot.holder.position.y, e.z);
+    if (!e.path || !e.path.length) { const dd = e.dest ? Math.hypot(e.dest[0] - e.x, e.dest[1] - e.z) : 0; if (dd < 30 || r.t > 400) { e.want = 0; if (Math.abs(e.sp) < 0.5) { toast(`${e.name} dropped you off at ${r.where}.`, 'good'); hRideOut(true); return; } } }
+    if (performance.now() - LOOK.dragAt > 1500) foot.camYaw += hNorm(e.yaw - foot.camYaw) * Math.min(1, dt * 2.5);
+    const pt = clamp(LOOK.pitch, -0.1, 1.0), d = 7, cy = foot.camYaw;
+    _hlook.set(e.x, 1.3, e.z); _hcam.set(e.x + Math.sin(cy) * Math.cos(pt) * d, Math.max(0.6, 1.3 + Math.sin(pt) * d + 0.6), e.z + Math.cos(cy) * Math.cos(pt) * d);
+    camera.position.lerp(_hcam, Math.min(1, dt * 10)); camera.lookAt(_hlook);
+  }
+
+  // ---------- talking: the pill over your prompt, and the menu it opens ----------
+  function hTalkMenu(e) {
+    return () => {
+      if (e.gone) return null;
+      const h = hS(), rows = [], s = e.gang ? setOf(e.gang) : null;
+      rows.push({ t: 'Wsg', s: 'Say what\'s up', btn: 'Talk', act: () => hSay(e, hPick(e.kind === 'reg' ? RL.hi : e.gang === h.set ? HL.homie : HL.hi)) });
+      if (e.kind === 'member') {
+        const b = e.blk, mine = e.gang === h.set;
+        rows.push({ t: 'Whose block is this?', s: b ? `${b.name} · ${b.hood}` : s.name, btn: 'Ask', act: () => { hSay(e, hPick(HL.who)); toast(`${b ? b.name + ' is ' : ''}${s.name} turf. Big homie: ${s.boss}. ${s.style}`); } });
+        if (!h.set) {
+          const blocked = (h.beef[e.gang] || 0) >= 25 ? `${s.short} don't trust you yet. Squash it first.` : '';
+          rows.push({ t: `Get jumped in with ${s.short}`, s: blocked || 'Take the beating (−45 health) and you\'re on', btn: 'Jump in', off: !!blocked, act: () => { S.health = clamp100(S.health - 45); hJoin(e.gang, 'jumped'); closeMenu(); } });
+          rows.push({ t: `Put in work for ${s.short}`, s: h.init && h.init.set === e.gang ? `${h.init.got}/${h.init.need} dropped from ${h.init.vs.map(i => HOOD_SETS[i].short).join(' or ')}` : `Drop 3 of their rivals (${s.rivals.map(i => HOOD_SETS[i].short).join(', ')}) and you're on`, btn: h.init && h.init.set === e.gang ? 'On it' : 'Bet', off: !!blocked || (h.init && h.init.set === e.gang), act: () => { h.init = { set: e.gang, vs: s.rivals.slice(), need: 3, got: 0 }; hSay(e, 'go handle that then come see me'); hGpsRival(s.rivals); closeMenu(); } });
+        } else if (mine) {
+          const r = hRank(), cap = r.homies, rolling = HOOD.ents.filter(x => x.kind === 'homie' && !x.gone).length;
+          rows.push({ t: rolling ? 'Fall back' : `Roll with me (${cap})`, s: rolling ? `${rolling} homie${rolling > 1 ? 's' : ''} riding with you` : 'Homies follow you and shoot back', btn: rolling ? 'Fall back' : 'Roll', act: () => { h.homies = rolling ? 0 : cap; hHomies(h.homies); toast(rolling ? 'Homies fell back to the block.' : `${cap} homie${cap > 1 ? 's' : ''} rolling with you.`, 'good'); } });
+          rows.push({ t: 'Anything for me?', s: h.job ? hJobText(h.job) : `${s.boss} has work`, btn: h.job ? 'On it' : 'Get work', off: !!h.job, act: () => { hJobGive(); closeMenu(); } });
+        } else {
+          rows.push({ t: `You ${h.set === 'own' ? 'run your own set' : 'claim ' + setOf(h.set).short}`, s: hHostile(e.gang) ? 'They don\'t like that' : 'They\'re cool with it, for now', btn: 'OK', act: () => {} });
+        }
+        if (!mine) rows.push({ t: 'Talk down', s: 'Disrespect the block', btn: 'Talk down', act: () => { hBeef(e.gang, 35); e.mode = 'aim'; e.t = 0; hSay(e, hPick(HL.flash), true); closeMenu(); } });
+        if (!mine && (h.beef[e.gang] || 0) > 0) { const cost = 250 + (h.beef[e.gang] || 0) * 30; rows.push({ t: 'Squash it', s: `Beef ${h.beef[e.gang]}/100 · pay ${s.boss.split('"')[1] || 'them'} ${money(cost)}`, btn: money(cost), act: () => { if (!spend(cost, `squash with ${s.short}`)) return; h.beef[e.gang] = 0; hSay(e, hPick(HL.squashY), true); for (const m of (e.blk ? e.blk.crew : [])) { m.mode = 'idle'; m.gd = 0; } closeMenu(); } }); }
+      } else {
+        const R = h.regs[e.key] || { heat: 0 }, carMe = hInCar();
+        rows.push({ t: `${e.name}'s ${carLabel(carOf(e.carId))}`, s: racerBlurb(e.pr.r), btn: 'Look', act: () => hSay(e, hPick(['its not done yet', 'all motor', 'appreciate it 🙏', 'she quick'])) });
+        if (S.car) rows.push({ t: `Race ${e.name}`, s: carMe ? `40 roll or a dig for ${money(e.pr.r.wager)}` : 'Get in your car first', btn: carMe ? 'Run it' : 'In car', off: !carMe || R.opp, act: () => { hSay(e, hPick(RL.yes)); closeMenu(); HOOD.racing = e; rollOpen(null, e.pr.r, Math.random() < 0.5 ? 'roll40' : 'dig'); } });
+        if (!carMe && !e.opp) rows.push({ t: `Ask ${e.name} for a ride`, s: pin.visible ? 'To your GPS pin' : 'Set a GPS pin first, or they pick a spot', btn: 'Ask', act: () => { closeMenu(); hRideAsk(e); } });
+        rows.push({ t: 'Talk down', s: R.heat ? `Heat ${Math.round(R.heat)}/100` : 'Start something', btn: 'Talk down', off: R.opp, act: () => { hRegBeef(e, 35); hSay(e, hPick(e.pr.temper > 0.4 ? RL.clap : RL.down), true); if ((h.regs[e.key] || {}).heat >= 50 && e.pr.temper > 0.6 && !e.inCar) { e.mode = 'fight'; e.t = 0; } closeMenu(); } });
+        if (R.heat > 0 || R.opp) rows.push({ t: 'Squash it', s: R.opp ? 'They might not go for it' : 'Dead it before it gets worse', btn: 'Squash', act: () => { const ok = !R.opp || Math.random() > e.pr.temper * 0.8; if (ok) { R.heat = 0; R.opp = false; e.opp = false; hLabel(e); hSay(e, hPick(HL.squashY), true); } else hSay(e, hPick(HL.squashN), true); closeMenu(); } });
+      }
+      return { title: e.name, sub: e.kind === 'member' ? `${s.name}${e.blk ? ' · ' + e.blk.name : ''}` : `${e.opp ? '☠ Your opp · ' : ''}Regular · ${carLabel(carOf(e.carId))}`, rows };
+    };
+  }
+  function hPill() {
+    if (!HOOD.pill) {
+      const st = document.createElement('style');
+      st.textContent = `#hoodpill{position:fixed;left:50%;transform:translateX(-50%);z-index:29;display:flex;gap:8px;align-items:center;background:rgba(18,16,22,0.86);color:#f1ece4;border:1px solid rgba(255,210,63,0.45);border-radius:14px;padding:6px 8px 6px 12px;font:600 14px var(--body);max-width:92vw;bottom:calc(env(safe-area-inset-bottom,0px) + 210px)}
+#hoodpill[hidden]{display:none}#hoodpill span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#hoodpill i{font-style:normal;display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+#hoodpill button{font:800 13px var(--body);letter-spacing:.03em;border-radius:10px;border:0;padding:7px 11px;background:#d1a52a;color:#141016;cursor:pointer;white-space:nowrap}#hoodpill button.no{background:#3a3244;color:#fff}
+body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:none}body.incar #hoodpill{bottom:calc(env(safe-area-inset-bottom,0px) + 250px)}
+#hoodchip{position:fixed;left:12px;top:calc(env(safe-area-inset-top,0px) + 176px);z-index:9;background:rgba(18,16,22,0.72);color:#f1ece4;border-radius:10px;padding:4px 9px;font:700 12px var(--body);pointer-events:none;border-left:4px solid #888}#hoodchip[hidden]{display:none}body.phoning #hoodchip,body.indoors #hoodchip{display:none}`;
+      document.head.append(st);
+      HOOD.pill = document.createElement('div'); HOOD.pill.id = 'hoodpill'; HOOD.pill.hidden = true; document.body.append(HOOD.pill);
+      HOOD.pill.addEventListener('click', ev => { const b = ev.target.closest('button'); if (b && HOOD.act[b.dataset.a]) HOOD.act[b.dataset.a](); });
+      HOOD.chip = document.createElement('div'); HOOD.chip.id = 'hoodchip'; HOOD.chip.hidden = true; document.body.append(HOOD.chip);
+      addEventListener('keydown', ev => { if (ev.code === 'KeyY' && !ev.repeat && ev.target.tagName !== 'INPUT' && HOOD.first && !menuFn) HOOD.first(); });
+    }
+    const esc2 = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
+    let html = '', act = {};
+    if (HOOD.ride) { const e = HOOD.ride.e; html = `<span>🚗 Riding with <b>${esc2(e.name)}</b> · ${Math.round(Math.abs(e.sp) * 2.237)} mph</span><button data-a="out">GET OUT</button>`; act.out = () => hRideOut(false); }
+    else if (HOOD.hold) html = `<span>🏴 Holding <b>${esc2(HOOD.hold.b.name)}</b> · ${Math.floor(HOOD.hold.t)}/30s</span>`;
+    else if (HOOD.near) { const e = HOOD.near, col = e.gang ? hColor(e.gang) : '#ffd23f'; html = `<span><i style="background:${col}"></i>${esc2(e.name)}${e.gang ? ' · ' + esc2(setOf(e.gang).short) : ''}</span><button data-a="talk">TALK <small>Y</small></button>`; act.talk = () => openMenu(hTalkMenu(e)); }
+    HOOD.act = act; HOOD.first = act.out || act.talk || null;
+    if (html !== HOOD.pillKey) { HOOD.pillKey = html; HOOD.pill.innerHTML = html; }
+    const show = !!html && worldOn && !ROLL.on; if (HOOD.pill.hidden === show) HOOD.pill.hidden = !show;
+    // whose turf you're on
+    const b = HOOD.cur, o = b && hOwner(b), txt = b ? `${o ? setOf(o).short.toUpperCase() : 'NO SET'} · ${b.name}` : '';
+    if (HOOD.chip.textContent !== txt) { HOOD.chip.textContent = txt; HOOD.chip.style.borderLeftColor = o ? hColor(o) : '#888'; }
+    const cs = !!txt && worldOn; if (HOOD.chip.hidden === cs) HOOD.chip.hidden = !cs;
+  }
+
+  // ---------- joining, jobs, the daily bag ----------
+  function hJoin(gid, how) {
+    const h = hS(); h.set = gid; h.respect = how === 'work' ? 120 : 40; h.init = null; h.beef[gid] = 0; h.job = null;
+    toast(`You're ${setOf(gid).name} now${how === 'jumped' ? '. They jumped you in.' : '. You put in work.'} Rank: ${hRank().name}.`, 'good');
+    for (const e of HOOD.ents) if (e.gang === gid) { e.mode = 'idle'; e.gd = 0; } const m = HOOD.ents.find(e => e.gang === gid && !e.gone); if (m) hSay(m, hPick(HL.join));
+    save(); refreshStats();
+  }
+  function hLeave() { const h = hS(); if (!h.set) return; const was = h.set; if (was !== 'own') hBeef(was, 60); h.set = null; h.respect = 0; h.job = null; h.homies = 0; hHomies(0); toast(was === 'own' ? 'You shut your set down.' : `You left ${setOf(was) ? setOf(was).name : 'the set'}. They won't forget it.`, 'bad'); save(); }
+  function hFound() {
+    const h = hS(); if (h.set) return; if (!spend(10000, 'starting your own set')) return;
+    const cols = ['#ff3ea5', '#9b5cff', '#ffb636', '#3dd1a0', '#ff6a3a']; h.own = { name: `${(S.name || 'My').split(' ')[0]}'s Set`.slice(0, 18), color: cols[hHash(S.name || 'x') % cols.length] }; h.set = 'own'; h.respect = 0;
+    toast(`${h.own.name} is on. Take blocks to put it on the map.`, 'good'); save();
+  }
+  function hGpsRival(list) { const [mx, mz] = hMe(); let best = null, bd = 1e9; for (const b of HOOD.blocks) { const o = hOwner(b); if (!o || !list.includes(o)) continue; const d = Math.hypot(b.cx - mx, b.cz - mz); if (d < bd) { bd = d; best = b; } } if (best) { setPin(best.name, best.corner.x, best.corner.z); toast(`GPS: ${best.name} (${setOf(hOwner(best)).short})`, 'good'); } return best; }
+  function hJobText(j) { return j.kind === 'take' ? `Take ${HOOD.byId.get(j.blk).name}` : j.kind === 'work' ? `Drop ${j.need} rivals (${j.got}/${j.need})` : `Hold down ${HOOD.byId.get(j.blk).name} when they slide`; }
+  function hJobGive() {
+    const h = hS(); if (!h.set || h.job) return; const [mx, mz] = hMe(), r = hRivals();
+    const pickRoll = hRnd();
+    if (pickRoll < 0.45) { const b = hGpsRival(r.length ? r : HOOD_IDS.filter(i => i !== h.set)); if (b) { h.job = { kind: 'take', blk: b.id, pay: 1500, rsp: 100 }; toast(`Job: take ${b.name}. Drop the corner and hold it.`, 'good'); return; } }
+    if (pickRoll < 0.75) { const mine = HOOD.blocks.filter(b => hOwner(b) === h.set).sort((a, b) => Math.hypot(a.cx - mx, a.cz - mz) - Math.hypot(b.cx - mx, b.cz - mz))[0]; if (mine) { h.job = { kind: 'hold', blk: mine.id, pay: 1200, rsp: 80 }; setPin(mine.name, mine.corner.x, mine.corner.z); toast(`Job: hold down ${mine.name}. They're sliding soon.`, 'good'); HOOD.slideT = 25; return; } }
+    h.job = { kind: 'work', need: 3, got: 0, pay: 900, rsp: 60 }; hGpsRival(r.length ? r : HOOD_IDS.filter(i => i !== h.set)); toast('Job: drop 3 of the opps.', 'good');
+  }
+  function hJobDone() { const h = hS(), j = h.job; if (!j) return; h.job = null; h.stats.jobs++; earn(j.pay, 'set work'); hRespect(j.rsp, 'job done'); save(); }
+  const _hSleep = sleep;
+  sleep = function (p) {
+    const r = _hSleep.apply(this, arguments); if (!S || !S.hood) return r;
+    const h = hS();
+    for (const k of Object.keys(h.beef)) h.beef[k] = Math.max(0, h.beef[k] - 8);
+    for (const R of Object.values(h.regs)) if (!R.opp) R.heat = Math.max(0, R.heat - 10);
+    if (h.set && HOOD.ready) {
+      const mine = HOOD.blocks.filter(b => hOwner(b) === h.set), lost = [];
+      for (const b of mine) if (b.own0 && b.own0 !== h.set && Math.random() < 0.12) { delete h.turf[b.id]; lost.push(b.name); h.stats.lost++; }
+      if (h.set !== 'own') for (const b of HOOD.blocks) if (b.own0 === h.set && b.id in h.turf && h.turf[b.id] !== h.set && Math.random() < 0.08) delete h.turf[b.id];
+      const r = hRank(), bag = r.bag + (mine.length - lost.length) * 120; earn(bag, `${setOf(h.set).short} bag (${mine.length - lost.length} blocks)`);
+      if (lost.length) toast(`Rivals took back ${lost.join(', ')} while you slept.`, 'bad');
+    }
+    save(); return r;
+  };
+  function hoodMenu() {
+    const h = hS(), s = h.set ? setOf(h.set) : null, r = hRank(), [mx, mz] = hMe();
+    const counts = {}; for (const b of HOOD.blocks) { const o = hOwner(b); if (o) counts[o] = (counts[o] || 0) + 1; }
+    const rows = [];
+    if (s) {
+      rows.push({ t: `${s.name} · ${r.name}`, s: `${h.respect} respect${r.next ? ` · ${r.next.respect - h.respect} to ${r.next.name}` : ''} · ${counts[h.set] || 0} blocks · bag ${money(r.bag + (counts[h.set] || 0) * 120)}/day`, sw: s.color, btn: 'GPS', act: () => { const b = HOOD.blocks.filter(b => hOwner(b) === h.set).sort((a, b) => Math.hypot(a.cx - mx, a.cz - mz) - Math.hypot(b.cx - mx, b.cz - mz))[0]; if (b) { setPin(b.name, b.corner.x, b.corner.z); toast(`GPS: ${b.name}`, 'good'); } } });
+      rows.push({ t: h.job ? hJobText(h.job) : `Work from ${s.boss}`, s: h.job ? `Pays ${money(h.job.pay)} and ${h.job.rsp} respect` : 'Take a block, hold one down, or drop some opps', btn: h.job ? 'Drop it' : 'Get work', act: () => { if (h.job) { h.job = null; toast('Dropped the job.'); } else hJobGive(); } });
+      const rolling = HOOD.ents.filter(x => x.kind === 'homie' && !x.gone).length;
+      rows.push({ t: rolling ? `${rolling} homie${rolling > 1 ? 's' : ''} rolling with you` : 'Homies', s: `Your rank lets ${r.homies} roll with you`, btn: rolling ? 'Fall back' : 'Call them', act: () => { h.homies = rolling ? 0 : r.homies; hHomies(h.homies); } });
+    } else {
+      rows.push({ t: 'No set', s: h.init ? `Putting in work for ${setOf(h.init.set).short}: ${h.init.got}/${h.init.need}` : 'Walk up on a corner and talk to them to get put on, or start your own', btn: 'Own set $10k', act: hFound });
+    }
+    for (const id of HOOD_IDS) {
+      const g = HOOD_SETS[id], b = h.beef[id] || 0, rel = id === h.set ? 'Your set' : hHostile(id) ? (b >= 80 ? 'War' : 'Beef · shoots on sight') : b >= 25 ? 'Tension' : 'Cool';
+      rows.push({ t: `${g.name} · ${counts[id] || 0} blocks`, s: `${rel} · ${g.boss}`, sw: g.color, btn: 'GPS', act: () => { let best = null, bd = 1e9; for (const bb of HOOD.blocks) if (hOwner(bb) === id) { const d = Math.hypot(bb.cx - mx, bb.cz - mz); if (d < bd) { bd = d; best = bb; } } if (best) { setPin(best.name, best.corner.x, best.corner.z); toast(`GPS: ${best.name} (${g.short})`, 'good'); } } });
+    }
+    const opps = Object.values(h.regs).filter(R => R.opp);
+    if (opps.length) rows.push({ t: `Opps: ${opps.map(R => R.name).join(', ')}`, s: 'They pull up when they see you', btn: 'OK', act: () => {} });
+    if (s) rows.push({ t: h.set === 'own' ? 'Shut your set down' : `Leave ${s.short}`, s: h.set === 'own' ? '' : 'They\'ll want smoke after', btn: 'Leave', act: hLeave });
+    return { title: '🏴 The Hood', sub: `${HOOD.blocks.length} blocks in Fort Worth · ${h.stats.taken} taken · ${h.stats.drops} dropped`, rows };
+  }
+  PHONE_APPS.splice(5, 0, { id: 'hood', name: 'Hood', icon: '🏴', bg: 'linear-gradient(135deg,#7b2bd1,#c41b1b)' });
+  const _hPhoneApp = phoneApp;
+  phoneApp = function (id) { if (id === 'hood') { closePhone(); if (!HOOD.ready) { toast('Still loading the hood…'); return; } openMenu(hoodMenu); return; } return _hPhoneApp.apply(this, arguments); };
+  const _hGetIn = getIn;
+  getIn = function () { if (HOOD.ride) return; return _hGetIn.apply(this, arguments); };
+  const _hStepFoot = stepFoot;
+  stepFoot = function (dt) { if (HOOD.ride && S) { hRideStep(dt); return; } return _hStepFoot.apply(this, arguments); };
+
+  // ---------- every frame in the world (riding on stepStreet) ----------
+  function hoodTick(dt) {
+    if (!S || !DATA || !worldOn) return;
+    if (!HOOD.ready) { if (CROWD.length < 2) return; try { hBuild(); } catch (er) { console.warn('hood', er); HOOD.ready = true; } HOOD.group = new THREE.Group(); HOOD.group.name = 'hood'; scene.add(HOOD.group); hS(); return; }
+    HOOD.group.visible = driving;
+    if (!driving) return;
+    hBuildBases();
+    const [mx, mz] = hMe(), now = performance.now() / 1000, G = window.__guns, gnd = G && G.test && G.test.groundAt;
+    {
+      const b = hBlockAt(mx, mz);
+      if (b !== HOOD.cur) { const o0 = HOOD.cur && hOwner(HOOD.cur), o1 = b && hOwner(b); HOOD.cur = b; if (b && o1 !== o0 && performance.now() - HOOD.toldT > 8000) { HOOD.toldT = performance.now(); if (o1) toast(`${setOf(o1).name} turf · ${b.name}${hHostile(o1) ? ' · they want smoke' : o1 === hS().set ? ' · your set' : ''}`, hHostile(o1) ? 'bad' : ''); } }
+    }
+    if ((frame & 31) === 0) {
+      hSpawn(mx, mz);
+      const h = hS(); if (h.set && h.homies && !HOOD.ents.some(e => e.kind === 'homie' && !e.gone)) hHomies(Math.min(h.homies, hRank().homies));
+      HOOD.slideT -= 32 / 60; if (HOOD.slideT <= 0) { HOOD.slideT = 200 + hRnd() * 160; if (!(G && G.pv && G.pv.PV.down > 0)) { if (hRnd() < 0.6) hOppSlide(mx, mz); else hSetSlide(mx, mz); } }
+    }
+    // a race just ended: they say something about it
+    if (HOOD.racing && !ROLL.on) { const e = HOOD.racing; HOOD.racing = null; if (!e.gone) hSay(e, hPick((S.log[0] || '').includes('win') ? RL.lost : RL.won), true); }
+    const aiming = !!(G && G.GUN && G.GUN.want && foot.on);
+    let near = null, nd = hInCar() ? 9 : 3.4;
+    HOOD.ambT -= dt;
+    for (const e of HOOD.ents) {
+      if (e.gone) continue;
+      const d = Math.hypot(e.x - mx, e.z - mz);
+      if (e.down) { e.t += dt; e.deadAt = now; if (e.t > 50 || d > 360) { hKill(e); continue; } }
+      else if (e.kind === 'member') hMember(e, dt, mx, mz, d, aiming && d < 40);
+      else if (e.kind === 'homie') hHomie(e, dt, mx, mz);
+      else hRegBrain(e, dt, mx, mz, d);
+      if (e.gone) continue;
+      if (e.kind === 'member' && e.slider && !e.down && d > 260) { hKill(e); continue; }
+      // a hold-it-down job is done once the sliders are dropped
+      const vis = d < (e.inCar ? 420 : 170); e.g.visible = vis && !(e.kind === 'homie' && hInCar());
+      if (!e.g.visible) continue;
+      e.gy = gnd && !e.inCar ? gnd(e.x, e.z) : 0;
+      e.g.position.set(e.x, e.inCar ? 0 : e.gy, e.z);
+      const P = e.view.P;
+      if (e.slot) { e.slot.visible = e.inCar || !!e.parked; if (e.inCar) { e.slot.position.set(0, 0.12, 0); e.slot.rotation.y = e.yaw; if (e.model) spinWheels(e.model, e.sp * dt); } else if (e.parked) { e.slot.position.set(e.parked.x - e.x, 0.12 - e.gy, e.parked.z - e.z); e.slot.rotation.y = e.parked.yaw; } }
+      if (P) {
+        P.wrap.visible = !e.inCar && !(e.ride);
+        if (P.wrap.visible) {
+          P.wrap.rotation.y = e.yaw;
+          if (!e.down) { if (e.moving) animPerson(P, e.walk, 1, e.moving > 1 ? 1 : 0); else idlePerson(P, now + e.ph); }
+          e.moving = 0;
+          if (!e.gun && e.gunId) e.gun = (e.gd || e.kind !== 'reg') && d < 60 ? hGun(e.gunId) : null;
+          if (G && G.pv && G.pv.pvDrawGun && e.gun) try { G.pv.pvDrawGun(e, e.view, dt, now); } catch (er) {}
+          else { P.wrap.rotation.x = e.down ? -Math.PI / 2 : 0; P.wrap.position.y = e.down ? 0.12 : 0; }
+        }
+      }
+      if (e.label) { const on = d < 34 && !e.down; e.label.visible = on; if (on) { e.label.position.set(0, e.inCar ? 2.3 : 2.25, 0); const k = 0.032; e.label.scale.set(k * e.label.userData.aspect, k, 1); } }
+      if (e.bub) { e.bubT -= dt; if (e.bubT <= 0 || d > 70) { e.g.remove(e.bub); e.bub.material.map.dispose(); e.bub.material.dispose(); e.bub = null; } else { e.bub.position.set(0, e.inCar ? 2.75 : 2.62, 0); const k = 0.04; e.bub.scale.set(k * e.bub.userData.aspect, k, 1); } }
+      if (HOOD.ambT <= 0 && e.kind === 'reg' && !e.opp && d < 45 && Math.random() < 0.3) { HOOD.ambT = 14 + Math.random() * 16; hSay(e, hPick(RL.amb)); }
+      // who you can talk to: on foot right next to them, or pulled up beside them in your car
+      if (!e.down && e.kind !== 'homie' && e.mode !== 'fight' && e.mode !== 'slide' && !HOOD.ride) {
+        const carMe = hInCar(); if (carMe ? (e.kind === 'reg' && Math.abs(drv.v) < 6 && Math.abs(e.sp) < 6) : !e.inCar || e.kind === 'reg') if (d < nd) { nd = d; near = e; }
+      }
+    }
+    if (HOOD.ambT <= 0) HOOD.ambT = 6;
+    HOOD.ents = HOOD.ents.filter(e => !e.gone);
+    const h = hS();
+    if (h.job && h.job.kind === 'hold' && h.job.live && !HOOD.ents.some(e => e.slider && !e.down)) { h.job.live = false; hJobDone(); }
+    HOOD.near = (foot.on || hInCar()) ? near : null;
+    hHoldStep(dt, mx, mz);
+    if ((frame & 3) === 0 || HOOD.ride || HOOD.near !== HOOD.pillNear || HOOD.hold) { HOOD.pillNear = HOOD.near; hPill(); }
+  }
+  const _hStepStreet = stepStreet;
+  stepStreet = function (t) { _hStepStreet.apply(this, arguments); const n = performance.now(), dt = Math.min(0.05, (n - (HOOD.last || n)) / 1000); HOOD.last = n; try { hoodTick(dt); } catch (er) { if (!HOOD.err) { HOOD.err = 1; console.error('hood', er); } } };
+  window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire };
 
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
@@ -11883,6 +12679,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
         best.local = { x: _lo.x + _ld.x * r.t, y: O.y + D.y * r.t, z: _lo.z + _ld.z * r.t, h: tall ? 1.9 : 1.35 };
       }
     }
+    if (window.__shotHook) window.__shotHook(O, D, best, t0);   // AI people and cars from _hood.js
     if (netOn() && NET.peers.size) peerHit(O, D, best, t0);
     best.p = new THREE.Vector3().copy(O).addScaledVector(D, best.t);
     return best;
@@ -11902,6 +12699,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     const h = B.hit, p = h.p, n = h.n, D = B.D;
     if (!h.kind) return;
     if (h.kind === 'peer' || h.kind === 'pcar') { peerLand(B); return; }
+    if (h.kind === 'npc') { GUN.hitT = 0.14; if (window.__shotLand) window.__shotLand(B, { blood: (q, d) => { blood(q, d); SND.hit('dirt', q, 0); }, sparks: (q, d) => { burstSparks(q, 12, _v().copy(d).negate(), 6, true); SND.hit('metal', q, 0); } }); return; }
     const back = _v().copy(B.d).negate(), refl = _v().copy(B.d).addScaledVector(n, -2 * B.d.dot(n));
     if (h.kind === 'ground') {
       const road = !!streetAt(p.x, p.z);
@@ -12779,7 +13577,8 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     const dn = PV.down > 0; if (dn !== pvEl.classList.contains('down')) pvEl.classList.toggle('down', dn);
   }
   // their gun on their model: on the hip or slung, up and aimed when they draw, kicking when they shoot
-  NET_HOOK.draw.push((p, v, dt, now) => {
+  // also draws the guns on the AI people in _hood.js
+  const pvDrawGun = (p, v, dt, now) => {
     const P = v.P; if (!P) return;
     if (p.dead && now - (p.deadAt || 0) > 15) p.dead = false;   // missed their 'alive'
     const lying = !!p.dead && !p.inCar; P.wrap.rotation.x = lying ? -Math.PI / 2 : 0; P.wrap.position.y = lying ? 0.12 : 0;
@@ -12801,7 +13600,8 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     }
     b.flash.visible = G.flashT > 0; if (G.flashT > 0) G.flashT -= dt * 30;
     if (b.beam) b.beam.visible = !!p.gun.light && em > 0.9;
-  });
+  };
+  NET_HOOK.draw.push(pvDrawGun);
   NET_HOOK.kill.push(v => { if (v.gun) { disposeGun(v.gun.b); v.gun = null; } });
   const _getInP = getIn;
   getIn = function () { if (PV.down > 0) return; return _getInP(); };
@@ -12809,7 +13609,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
   stepFoot = function (dt) { _stepFootP(dt); pvStep(dt); };
   const _stepDriveP = stepDrive;
   stepDrive = function (dt) { _stepDriveP(dt); pvStep(dt); };
-  window.__guns.pv = { PV, pvHurt, pvDown, pvUp, peerHit, pvPlay };
+  window.__guns.pv = { PV, pvHurt, pvDown, pvUp, peerHit, pvPlay, pvDrawGun, fxInit, disposeGun };
   })();
   boot();
 })();
