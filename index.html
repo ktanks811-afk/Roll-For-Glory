@@ -9119,8 +9119,10 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   }
   function netMe() { S.uid = S.uid || nRnd(10); S.crewKey = S.crewKey || nRnd(24); return { uid: S.uid, tok: S.crewKey, name: nName(S.name, 'Racer') }; }
 
-  // guns and PvP (_guns.js) ride on these packets: extra hello and state fields, what comes in, and drawing on the views
-  const NET_HOOK = { hello: null, state: null, urgent: null, key: null, recv: null, draw: null, kill: null };
+  // other modules ride on these packets (guns and PvP in _guns.js, ride-along in _ride.js): each pushes its own
+  // extra hello and state fields, a reason to send now, a change key, what comes in, and drawing on the views
+  const NET_HOOK = { hello: [], state: [], urgent: [], key: [], recv: [], draw: [], kill: [] };
+  const netHooks = (k, ...a) => NET_HOOK[k].map(f => f(...a));
   const NET = { status: 'off', error: '', room: '', id: '', peers: new Map(), chat: [], tr: null, presence: null, sent: null, prev: null, seq: 0, sendT: 0, helloT: 0, helloReplyT: 0, group: null, autoTried: false, unread: 0 };
   const netOn = () => NET.status === 'on';
   function netRealCount() { return NET.peers.size; }
@@ -9171,7 +9173,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   function netHello(ask) {
     const id = netCarId(), look = myLook();
     // m is what a 2D player draws; m3 and lk are only for 3D players
-    netSend({ k: 'h', n: netMe().name, u: S.uid, m: TO_2D[id] || id || BUILT[0], m3: id, v: { paint: S.car ? S.car.color : '#7a1820' }, l: {}, t: 1, lk: look, hq: ask ? 1 : undefined, ...(NET_HOOK.hello ? NET_HOOK.hello() : null) });
+    netSend({ k: 'h', n: netMe().name, u: S.uid, m: TO_2D[id] || id || BUILT[0], m3: id, v: { paint: S.car ? S.car.color : '#7a1820' }, l: {}, t: 1, lk: look, hq: ask ? 1 : undefined, ...Object.assign({}, ...netHooks('hello')) });
   }
   function netSay(text) { const t = nText(text); if (!t || !netOn()) return; netSend({ k: 'c', n: netMe().name, x: t }); netChat(netMe().name, t, true); }
   function netChat(name, text, mine) { NET.chat.push({ name, text, mine, t: Date.now() }); if (NET.chat.length > 60) NET.chat.shift(); if (!mine) { toast(`💬 ${name}: ${text}`); if (!(PH.open && PH.app === 'online')) NET.unread++; } netRefresh(true); }
@@ -9204,7 +9206,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
       p.snaps.push({ ...p.st, t: now }); if (p.snaps.length > 24) p.snaps.splice(0, p.snaps.length - 24);
       if (p.fresh) { p.x = x; p.z = z; p.h = p.st.h; p.sp = p.st.v; p.fresh = false; }
     } else if (m.k === 'c') netChat(nName(m.n, p.name), nText(m.x));
-    if (NET_HOOK.recv) NET_HOOK.recv(p, m, now);
+    netHooks('recv', p, m, now);
   }
   function netDrop(id) { const p = NET.peers.get(id); if (!p) return; NET.peers.delete(id); if (p.view) netKillView(p.view); }
 
@@ -9229,17 +9231,17 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
     const moving = Math.abs(me.speed) > 0.3 || !me.inCar;
     if (NET.sendT <= 0) {
       const s = NET.sent, since = s ? now - s.t : 99;
-      let need = !s || s.c !== (me.inCar ? 1 : 0) || !!(NET_HOOK.urgent && NET_HOOK.urgent());
+      let need = !s || s.c !== (me.inCar ? 1 : 0) || netHooks('urgent').some(Boolean);
       if (!need) { if (since >= (moving ? N_KEEP : N_IDLE)) need = true; else { const g = nPredict(s, since); need = Math.hypot(g.x - me.x, g.z - me.z) > N_ERR_POS || Math.abs(nNorm(g.h - me.h)) > N_ERR_HEAD || Math.abs(g.v - me.speed) > N_ERR_SPD; } }
       if (need) {
         NET.sendT = 1 / (netRealCount() > 8 ? N_BUSY_HZ : N_MAX_HZ);
         const msg = { k: 's', q: ++NET.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: 0 };
-        if (NET_HOOK.state) Object.assign(msg, NET_HOOK.state());
+        Object.assign(msg, ...netHooks('state'));
         NET.sent = { ...msg, t: now }; netSend(msg);
       }
     }
     // car or look changed: tell everyone now instead of waiting for the next hello
-    const key = netCarId() + '|' + (S.car ? S.car.color : '') + '|' + JSON.stringify(myLook()) + (NET_HOOK.key ? NET_HOOK.key() : '');
+    const key = netCarId() + '|' + (S.car ? S.car.color : '') + '|' + JSON.stringify(myLook()) + netHooks('key').join('|');
     if (key !== NET.meKey) { NET.meKey = key; NET.helloT = 0; }
     if (NET.helloT <= 0) { NET.helloT = N_HELLO; netHello(); }
     let gone = false;
@@ -9261,7 +9263,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   }
 
   // ---------- other players on your map: their real car model, or them walking in their look ----------
-  function netKillView(v) { if (NET_HOOK.kill) NET_HOOK.kill(v); if (v.g.parent) v.g.parent.remove(v.g); if (v.slot) v.slot.userData.dead = true; if (v.P) PEOPLE.dispose(v.P); }
+  function netKillView(v) { netHooks('kill', v); if (v.g.parent) v.g.parent.remove(v.g); if (v.slot) v.slot.userData.dead = true; if (v.P) PEOPLE.dispose(v.P); }
   function netClearViews() { for (const p of NET.peers.values()) if (p.view) { netKillView(p.view); p.view = null; } if (NET.group) NET.group.clear(); }
   function netLookOf(p) {
     if (p.look) return { ...PEOPLE.GAME.DEFAULT, ...p.look };
@@ -9295,7 +9297,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
         }
       }
       if (v.label) { v.label.position.set(0, p.inCar ? 2.3 : 2.25, 0); const k = 0.026; v.label.scale.set(k * v.label.userData.aspect, k, 1); }
-      if (NET_HOOK.draw) NET_HOOK.draw(p, v, dt, now);
+      netHooks('draw', p, v, dt, now);
     }
   }
   // dots for them on the minimap
@@ -9460,6 +9462,187 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     document.head.append(st);
   }
   layApply();
+  // ---------- online: ride along in other players' cars, and carry them in yours ----------
+  // The 2D game's ride protocol (js/net/ride.js), so 2D and 3D players can ride with each other:
+  // { k: 'rq', t: 'ask' | 'offer' | 'yes' | 'no' | 'full' | 'cancel' | 'drop' | 'out', to, rid }.
+  // Walk up to someone's car and ask to hop in, or pull up next to someone on foot and offer them a ride.
+  // As a passenger your state packets carry rd (the driver's id) so everyone hides you, you sit in their car,
+  // the camera rides behind it, and you can climb out once it's about stopped. Up to 3 riders per car.
+  const RIDE_FOR = 20, SEATS = 3, REACH = 7, KEEP = 40, OUT_SPEED = 4;
+  const RIDE = { with: null, out: null, inbox: new Map(), near: null, el: null, key: '', keyT: false, padB: false, lastYaw: null };
+  const rideRid = () => Math.random().toString(36).slice(2, 10);
+  const rideMe = () => ({ x: foot.on ? foot.x : drv.x, z: foot.on ? foot.z : drv.z });
+  const inMyCar = () => driving && !foot.on && !inside;
+  const rideRiders = () => [...NET.peers.values()].filter(p => !p.fresh && p.ride === NET.id);
+  const rideDist = p => { const m = rideMe(); return Math.hypot(p.x - m.x, p.z - m.z); };
+  function rideSend(t, to, rid) { netSend({ k: 'rq', t, to, rid }); }
+  function cantRide() {
+    if (!netOn()) return 'You need to be online.';
+    if (!foot.on || inside) return 'Get out of your car first.';
+    if (RIDE.with) return `You're already riding with ${RIDE.with.name}.`;
+    return null;
+  }
+  function cantCarry() {
+    if (!netOn()) return 'You need to be online.';
+    if (!inMyCar()) return 'Get in your car first.';
+    if (rideRiders().length >= SEATS) return 'Your car is full.';
+    return null;
+  }
+  // ask them for a ride (they're driving) or offer them one (they're walking)
+  function rideRequest(p) {
+    if (!p || p.fresh) return;
+    const kind = p.inCar ? 'ask' : 'offer', why = kind === 'ask' ? cantRide() : cantCarry();
+    if (why) { toast(why, 'bad'); return; }
+    if (p.ride) { toast(`${p.name} is already riding with someone.`); return; }
+    if (rideDist(p) > KEEP) { toast(`Get closer to ${p.name} first.`); return; }
+    if (RIDE.out) rideSend('cancel', RIDE.out.to, RIDE.out.rid);
+    const rid = rideRid(); RIDE.out = { rid, to: p.id, name: p.name, kind };
+    rideSend(kind, p.id, rid);
+    setTimeout(() => { if (RIDE.out && RIDE.out.rid === rid) { RIDE.out = null; toast(`${p.name} never answered.`); rideUI(); } }, RIDE_FOR * 1000);
+    toast(kind === 'ask' ? `Asked ${p.name} for a ride.` : `Offered ${p.name} a ride.`, 'good'); rideUI();
+  }
+  // answer the newest request waiting on you
+  function rideAnswer(yes) {
+    let inv = null; for (const v of RIDE.inbox.values()) inv = v; if (!inv) return;
+    RIDE.inbox.delete(inv.rid);
+    const p = NET.peers.get(inv.from);
+    if (!yes) { rideSend('no', inv.from, inv.rid); rideUI(); return; }
+    if (!p) { toast(`${inv.name} left the server.`, 'bad'); rideUI(); return; }
+    if (inv.kind === 'ask') {
+      const why = cantCarry();
+      if (why) { rideSend(rideRiders().length >= SEATS ? 'full' : 'no', inv.from, inv.rid); toast(why, 'bad'); rideUI(); return; }
+      rideSend('yes', inv.from, inv.rid); toast(`Letting ${inv.name} in.`, 'good');
+    } else {
+      const why = cantRide();
+      if (why || !p.inCar || rideDist(p) > KEEP) { rideSend('no', inv.from, inv.rid); toast(why || `${inv.name} drove off.`, 'bad'); rideUI(); return; }
+      rideSend('yes', inv.from, inv.rid); rideBoard(p);
+    }
+    rideUI();
+  }
+  function rideBoard(p) {
+    const G = window.__guns; if (G && G.GUN.want) G.gunToggle();   // the gun goes away when you climb in
+    RIDE.with = { id: p.id, name: p.name }; RIDE.out = null; RIDE.lastYaw = null;
+    foot.target = null; if (foot.holder) foot.holder.visible = false;
+    document.body.classList.add('riding');
+    toast(`Riding with ${p.name}. You can get out once they stop.`, 'good'); rideUI();
+  }
+  // climb out on the passenger side; forced = they dropped you, parked or left
+  function rideGetOut(forced) {
+    const r = RIDE.with; if (!r) return;
+    const p = NET.peers.get(r.id);
+    if (!forced && p && Math.abs(p.sp) > OUT_SPEED) { toast(`Tell ${r.name} to slow down first.`); return; }
+    if (p) { const yaw = -p.h; foot.x = p.x + Math.cos(yaw) * 1.9; foot.z = p.z - Math.sin(yaw) * 1.9; foot.yaw = foot.camYaw = yaw; }
+    if (p || !forced) rideSend('out', r.id, 'out');
+    RIDE.with = null; if (foot.holder) { foot.holder.visible = true; foot.holder.position.set(foot.x, foot.holder.position.y, foot.z); foot.holder.rotation.y = foot.yaw; }
+    document.body.classList.remove('riding');
+    if (!forced) toast(`Got out of ${r.name}'s car.`); rideUI();
+  }
+  function rideDrop(p) { rideSend('drop', p.id, 'drop'); toast(`Dropping ${p.name} off.`); }
+  NET_HOOK.recv.push((p, m) => {
+    if (m.k !== 'rq' || m.to !== NET.id) return;
+    const rid = typeof m.rid === 'string' ? m.rid.slice(0, 12) : ''; if (!rid) return;
+    if (m.t === 'ask' || m.t === 'offer') {
+      if (RIDE.inbox.size >= 3) { rideSend('no', m.id, rid); return; }
+      const inv = { rid, from: m.id, name: p.name, kind: m.t }; RIDE.inbox.set(rid, inv);
+      setTimeout(() => { if (RIDE.inbox.delete(rid)) rideUI(); }, RIDE_FOR * 1000);
+      rideHonk(); toast(m.t === 'ask' ? `🚗 ${p.name} wants to ride with you.` : `🚗 ${p.name} is offering you a ride.`);
+    } else if (m.t === 'cancel') { const inv = RIDE.inbox.get(rid); if (inv && inv.from === m.id) RIDE.inbox.delete(rid); }
+    else if (m.t === 'drop') { if (RIDE.with && RIDE.with.id === m.id) { toast(`${p.name} dropped you off.`); rideGetOut(true); } }
+    else if (m.t === 'out') toast(`${p.name} got out.`);
+    else if (RIDE.out && RIDE.out.rid === rid && RIDE.out.to === m.id) {
+      const o = RIDE.out; RIDE.out = null;
+      if (m.t === 'yes') {
+        if (o.kind === 'offer') toast(`${o.name} hopped in.`, 'good');
+        else { const why = cantRide(); if (why || !p.inCar || rideDist(p) > KEEP) { toast(why || `${o.name} drove off.`, 'bad'); rideSend('out', o.to, 'out'); } else rideBoard(p); }
+      } else toast(m.t === 'full' ? `${o.name}'s car is full.` : o.kind === 'ask' ? `${o.name} said no.` : `${o.name} passed on the ride.`);
+    }
+    rideUI();
+  });
+  // while you ride you're in their car: their spot, their speed, rd = who's driving
+  NET_HOOK.state.push(() => {
+    const p = RIDE.with && NET.peers.get(RIDE.with.id);
+    return p ? { x: +p.x.toFixed(2), z: +p.z.toFixed(2), h: +p.h.toFixed(3), v: +p.sp.toFixed(2), r: 0, a: 0, c: 1, rd: RIDE.with.id } : {};
+  });
+  NET_HOOK.key.push(() => RIDE.with ? 'rd:' + RIDE.with.id : '');
+  NET_HOOK.urgent.push(() => !!RIDE.with !== !!(NET.sent && NET.sent.rd));
+  function rideHonk() { try { const c = audioCtx(); if (!c || c.state !== 'running') return; const t = c.currentTime, g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.08, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45); g.connect(c.destination); for (const f of [392, 494]) { const o = c.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(g); o.start(t); o.stop(t + 0.46); } } catch (e) {} }
+
+  // each frame: sit in their car, or find someone close enough to ask or offer
+  const _rcam = new THREE.Vector3(), _rlook = new THREE.Vector3();
+  function rideStep(dt) {
+    RIDE.near = null;
+    const r = RIDE.with;
+    if (r) {
+      const p = NET.peers.get(r.id);
+      if (!netOn() || !p) { toast(netOn() ? `Lost ${r.name}. You're back on foot.` : 'Offline. You\'re back on foot.'); rideGetOut(true); return; }
+      if (!p.inCar) { toast(`${r.name} parked and got out.`); rideGetOut(true); return; }
+      foot.x = p.x; foot.z = p.z; foot.target = null; if (foot.holder) { foot.holder.visible = false; foot.holder.position.x = p.x; foot.holder.position.z = p.z; }
+      // the camera rides behind their car; drag to look around, it swings back behind after a moment
+      const yaw = -p.h;
+      if (performance.now() - LOOK.dragAt > 1500) foot.camYaw += Math.atan2(Math.sin(yaw - foot.camYaw), Math.cos(yaw - foot.camYaw)) * Math.min(1, dt * 2.5);
+      const pt = clamp(LOOK.pitch, -0.1, 1.0), d = 6.8, cy = foot.camYaw;
+      _rlook.set(p.x, 1.3, p.z); _rcam.set(p.x + Math.sin(cy) * Math.cos(pt) * d, Math.max(0.6, 1.3 + Math.sin(pt) * d + 0.6), p.z + Math.cos(cy) * Math.cos(pt) * d);
+      camera.position.lerp(_rcam, Math.min(1, dt * 10)); camera.lookAt(_rlook);
+      rideUI(); return;
+    }
+    if (!netOn() || RIDE.out) { rideUI(); return; }
+    if (inMyCar() && Math.abs(drv.v) > 2) { rideUI(); return; }
+    if (!foot.on && !inMyCar()) { rideUI(); return; }
+    const me = rideMe(), carMe = inMyCar(); let bd = REACH;
+    for (const p of NET.peers.values()) {
+      if (p.fresh || p.ride || !p.st || p.inCar === carMe || p.dead) continue;
+      const d = Math.hypot(p.x - me.x, p.z - me.z); if (d < bd) { bd = d; RIDE.near = p; }
+    }
+    rideUI();
+  }
+  // ---------- the ride pill: what you can do right now ----------
+  function rideUI() {
+    if (!RIDE.el) {
+      const st = document.createElement('style');
+      st.textContent = `#ridepill{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 44px);z-index:30;display:flex;gap:8px;align-items:center;background:rgba(18,16,22,0.85);color:#f1ece4;border:1px solid rgba(127,209,255,0.5);border-radius:14px;padding:6px 8px 6px 12px;font:600 14px var(--body);max-width:92vw}
+#ridepill[hidden]{display:none}#ridepill span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#ridepill button{font:800 13px var(--body);letter-spacing:.03em;border-radius:10px;border:0;padding:7px 11px;background:#2a6fd1;color:#fff;cursor:pointer;white-space:nowrap}#ridepill button.no{background:#3a3244}
+body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,body.riding #em-btn,body.riding #prompt,body.riding #stick{display:none!important}`;
+      document.head.append(st);
+      RIDE.el = document.createElement('div'); RIDE.el.id = 'ridepill'; RIDE.el.hidden = true; document.body.append(RIDE.el);
+      RIDE.el.addEventListener('click', e => { const b = e.target.closest('button'); if (b && RIDE.act[b.dataset.a]) RIDE.act[b.dataset.a](); });
+      addEventListener('keydown', e => { if (e.code === 'KeyT' && !e.repeat && e.target.tagName !== 'INPUT') rideKey(); });
+    }
+    let html = '', act = {};
+    const esc2 = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
+    let inv = null; for (const v of RIDE.inbox.values()) inv = v;
+    if (RIDE.with) {
+      const p = NET.peers.get(RIDE.with.id), mph = p ? Math.round(Math.abs(p.sp) * 2.237) : 0;
+      html = `<span>🚗 Riding with <b>${esc2(RIDE.with.name)}</b> · ${mph} mph</span><button data-a="out">GET OUT</button>`; act.out = () => rideGetOut(false);
+    } else if (inv) {
+      html = `<span>🚗 ${esc2(inv.name)} ${inv.kind === 'ask' ? 'wants to ride with you' : 'is offering you a ride'}</span><button data-a="yes">${inv.kind === 'ask' ? 'LET IN' : 'HOP IN'}</button><button class="no" data-a="no">NO</button>`;
+      act.yes = () => rideAnswer(true); act.no = () => rideAnswer(false);
+    } else if (RIDE.out) {
+      html = `<span>${RIDE.out.kind === 'ask' ? `Asked ${esc2(RIDE.out.name)} for a ride…` : `Offered ${esc2(RIDE.out.name)} a ride…`}</span><button class="no" data-a="cancel">CANCEL</button>`;
+      act.cancel = () => { if (RIDE.out) rideSend('cancel', RIDE.out.to, RIDE.out.rid); RIDE.out = null; rideUI(); };
+    } else {
+      const riders = inMyCar() ? rideRiders() : [];
+      if (riders.length) { html += `<span>🚗 With you: ${riders.map(p => esc2(p.name)).join(', ')}</span>`; if (Math.abs(drv.v) < OUT_SPEED) { html += `<button class="no" data-a="drop">DROP OFF</button>`; act.drop = () => riders.forEach(rideDrop); } }
+      if (RIDE.near) { const n = RIDE.near; html += `<button data-a="req">${n.inCar ? `ASK ${esc2(n.name)} FOR A RIDE` : `OFFER ${esc2(n.name)} A RIDE`}</button>`; act.req = () => rideRequest(n); }
+    }
+    RIDE.act = act; RIDE.first = act.out || act.yes || act.req || act.drop || act.cancel || null;
+    if (html !== RIDE.key) { RIDE.key = html; RIDE.el.innerHTML = html; }
+    const show = !!html && worldOn; if (RIDE.el.hidden === show) RIDE.el.hidden = !show;
+  }
+  // T (or pad B on foot) does the main thing on the pill
+  function rideKey() { if (RIDE.first && !menuFn && !(PH && PH.open)) RIDE.first(); }
+  function ridePad() {
+    for (const p of (navigator.getGamepads ? navigator.getGamepads() : [])) { if (!p) continue; const b = !!(p.buttons[1] && p.buttons[1].pressed); if (b && !RIDE.padB && foot.on) rideKey(); RIDE.padB = b; }
+  }
+  const _stepFootR = stepFoot;
+  stepFoot = function (dt) { _stepFootR(dt); if (S) { ridePad(); rideStep(dt); } };
+  const _stepDriveR = stepDrive;
+  stepDrive = function (dt) { _stepDriveR(dt); if (S) rideStep(dt); };
+  // no getting in your own car, walking into places or stepping off while you're a passenger
+  const _getInR = getIn;
+  getIn = function () { if (RIDE.with) return; return _getInR(); };
+  const _pullInR = pullIn;
+  pullIn = function () { if (RIDE.with) return; return _pullInR(); };
+  window.__ride = { RIDE, rideRequest, rideAnswer, rideGetOut, rideStep };
 
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
@@ -11896,20 +12079,20 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     PV.out.push({ t: performance.now(), o: muz.clone(), p: hit.p.clone(), k: KCODE[hit.kind] || 0 }); if (PV.out.length > 24) PV.out.shift();
   }
   const gunOut = () => !!(foot.on && GUN.want && GUN.d > 0.5 && PV.down <= 0);
-  NET_HOOK.hello = () => { const g = eqGun(); return g ? { gn: { id: g.id, m: g.mag, sw: g.sw ? 1 : 0, o: g.optic ? 1 : 0, l: g.light ? 1 : 0, ls: g.laser ? 1 : 0, c: g.comp ? 1 : 0, b: g.brake ? 1 : 0, br: g.brace === false ? 0 : 1 } } : { gn: 0 }; };
-  NET_HOOK.key = () => gunKey(eqGun());
-  NET_HOOK.urgent = () => { const gd = gunOut() ? 1 : 0; return PV.out.length > 0 || gd !== PV.sentGd || (PV.down > 0) !== PV.sentDn || (gd && Math.abs(GUN.e - PV.sentGe) > 0.06); };
-  NET_HOOK.state = () => {
+  NET_HOOK.hello.push(() => { const g = eqGun(); return g ? { gn: { id: g.id, m: g.mag, sw: g.sw ? 1 : 0, o: g.optic ? 1 : 0, l: g.light ? 1 : 0, ls: g.laser ? 1 : 0, c: g.comp ? 1 : 0, b: g.brake ? 1 : 0, br: g.brace === false ? 0 : 1 } } : { gn: 0 }; });
+  NET_HOOK.key.push(() => gunKey(eqGun()));
+  NET_HOOK.urgent.push(() => { const gd = gunOut() ? 1 : 0; return PV.out.length > 0 || gd !== PV.sentGd || (PV.down > 0) !== PV.sentDn || (gd && Math.abs(GUN.e - PV.sentGe) > 0.06); });
+  NET_HOOK.state.push(() => {
     const o = { gd: gunOut() ? 1 : 0 }; if (o.gd) o.ge = +clamp(GUN.e, -1, 1).toFixed(2);
     if (PV.down > 0) o.dn = 1; PV.sentDn = PV.down > 0;   // down rides on every state packet too, in case the 'dead' packet is lost
     if (PV.out.length) { const t = performance.now(); o.sh = PV.out.splice(0, 12).map(s => [Math.round(s.t - t), r2(s.o.x), r2(s.o.y), r2(s.o.z), r2(s.p.x), r2(s.p.y), r2(s.p.z), s.k]); }
     PV.sentGd = o.gd; PV.sentGe = o.ge || 0; return o;
-  };
+  });
   function cleanGun(x) {
     if (!x || typeof x !== 'object' || !GUN_DEF[x.id]) return null; const D = GUN_DEF[x.id];
     return { id: x.id, mag: D.mags[x.m] ? x.m : D.std, sw: !!x.sw && D.pistol, optic: !!x.o, light: !!x.l, laser: !!x.ls, comp: !!x.c && D.pistol, brake: !!x.b && !D.pistol, brace: x.br !== 0 };
   }
-  NET_HOOK.recv = (p, m, now) => {
+  NET_HOOK.recv.push((p, m, now) => {
     if (m.k === 'h') { if ('gn' in m) p.gun = cleanGun(m.gn); }
     else if (m.k === 's') {
       p.gd = m.gd === 1; p.ge = nNum(m.ge, -1, 1, 0);
@@ -11929,7 +12112,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
         if (q.dead && !was && performance.now() - (PV.hitAt.get(q.id) || -1e9) < 4000) toast(`You dropped ${q.name}.`, 'good');
       }
     }
-  };
+  });
   // somebody else's shot plays out on your screen
   function pvPlay(s) {
     const p = s.p, v = p.view, gid = p.gun ? p.gun.id : 'g19', D = GUN_DEF[gid];
@@ -12008,7 +12191,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     const dn = PV.down > 0; if (dn !== pvEl.classList.contains('down')) pvEl.classList.toggle('down', dn);
   }
   // their gun on their model: on the hip or slung, up and aimed when they draw, kicking when they shoot
-  NET_HOOK.draw = (p, v, dt, now) => {
+  NET_HOOK.draw.push((p, v, dt, now) => {
     const P = v.P; if (!P) return;
     if (p.dead && now - (p.deadAt || 0) > 15) p.dead = false;   // missed their 'alive'
     const lying = !!p.dead && !p.inCar; P.wrap.rotation.x = lying ? -Math.PI / 2 : 0; P.wrap.position.y = lying ? 0.12 : 0;
@@ -12030,8 +12213,8 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     }
     b.flash.visible = G.flashT > 0; if (G.flashT > 0) G.flashT -= dt * 30;
     if (b.beam) b.beam.visible = !!p.gun.light && em > 0.9;
-  };
-  NET_HOOK.kill = v => { if (v.gun) { disposeGun(v.gun.b); v.gun = null; } };
+  });
+  NET_HOOK.kill.push(v => { if (v.gun) { disposeGun(v.gun.b); v.gun = null; } });
   const _getInP = getIn;
   getIn = function () { if (PV.down > 0) return; return _getInP(); };
   const _stepFootP = stepFoot;
