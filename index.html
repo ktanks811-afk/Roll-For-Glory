@@ -9112,6 +9112,8 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   }
   function netMe() { S.uid = S.uid || nRnd(10); S.crewKey = S.crewKey || nRnd(24); return { uid: S.uid, tok: S.crewKey, name: nName(S.name, 'Racer') }; }
 
+  // guns and PvP (_guns.js) ride on these packets: extra hello and state fields, what comes in, and drawing on the views
+  const NET_HOOK = { hello: null, state: null, urgent: null, key: null, recv: null, draw: null, kill: null };
   const NET = { status: 'off', error: '', room: '', id: '', peers: new Map(), chat: [], tr: null, presence: null, sent: null, prev: null, seq: 0, sendT: 0, helloT: 0, helloReplyT: 0, group: null, autoTried: false, unread: 0 };
   const netOn = () => NET.status === 'on';
   function netRealCount() { return NET.peers.size; }
@@ -9162,7 +9164,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   function netHello(ask) {
     const id = netCarId(), look = myLook();
     // m is what a 2D player draws; m3 and lk are only for 3D players
-    netSend({ k: 'h', n: netMe().name, u: S.uid, m: TO_2D[id] || id || BUILT[0], m3: id, v: { paint: S.car ? S.car.color : '#7a1820' }, l: {}, t: 1, lk: look, hq: ask ? 1 : undefined });
+    netSend({ k: 'h', n: netMe().name, u: S.uid, m: TO_2D[id] || id || BUILT[0], m3: id, v: { paint: S.car ? S.car.color : '#7a1820' }, l: {}, t: 1, lk: look, hq: ask ? 1 : undefined, ...(NET_HOOK.hello ? NET_HOOK.hello() : null) });
   }
   function netSay(text) { const t = nText(text); if (!t || !netOn()) return; netSend({ k: 'c', n: netMe().name, x: t }); netChat(netMe().name, t, true); }
   function netChat(name, text, mine) { NET.chat.push({ name, text, mine, t: Date.now() }); if (NET.chat.length > 60) NET.chat.shift(); if (!mine) { toast(`💬 ${name}: ${text}`); if (!(PH.open && PH.app === 'online')) NET.unread++; } netRefresh(true); }
@@ -9195,6 +9197,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
       p.snaps.push({ ...p.st, t: now }); if (p.snaps.length > 24) p.snaps.splice(0, p.snaps.length - 24);
       if (p.fresh) { p.x = x; p.z = z; p.h = p.st.h; p.sp = p.st.v; p.fresh = false; }
     } else if (m.k === 'c') netChat(nName(m.n, p.name), nText(m.x));
+    if (NET_HOOK.recv) NET_HOOK.recv(p, m, now);
   }
   function netDrop(id) { const p = NET.peers.get(id); if (!p) return; NET.peers.delete(id); if (p.view) netKillView(p.view); }
 
@@ -9219,16 +9222,17 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
     const moving = Math.abs(me.speed) > 0.3 || !me.inCar;
     if (NET.sendT <= 0) {
       const s = NET.sent, since = s ? now - s.t : 99;
-      let need = !s || s.c !== (me.inCar ? 1 : 0);
+      let need = !s || s.c !== (me.inCar ? 1 : 0) || !!(NET_HOOK.urgent && NET_HOOK.urgent());
       if (!need) { if (since >= (moving ? N_KEEP : N_IDLE)) need = true; else { const g = nPredict(s, since); need = Math.hypot(g.x - me.x, g.z - me.z) > N_ERR_POS || Math.abs(nNorm(g.h - me.h)) > N_ERR_HEAD || Math.abs(g.v - me.speed) > N_ERR_SPD; } }
       if (need) {
         NET.sendT = 1 / (netRealCount() > 8 ? N_BUSY_HZ : N_MAX_HZ);
         const msg = { k: 's', q: ++NET.seq, x: +me.x.toFixed(2), z: +me.z.toFixed(2), h: +me.h.toFixed(3), v: +me.speed.toFixed(2), r: moving ? +r.toFixed(3) : 0, a: moving ? +a.toFixed(2) : 0, c: me.inCar ? 1 : 0, f: 0 };
+        if (NET_HOOK.state) Object.assign(msg, NET_HOOK.state());
         NET.sent = { ...msg, t: now }; netSend(msg);
       }
     }
     // car or look changed: tell everyone now instead of waiting for the next hello
-    const key = netCarId() + '|' + (S.car ? S.car.color : '') + '|' + JSON.stringify(myLook());
+    const key = netCarId() + '|' + (S.car ? S.car.color : '') + '|' + JSON.stringify(myLook()) + (NET_HOOK.key ? NET_HOOK.key() : '');
     if (key !== NET.meKey) { NET.meKey = key; NET.helloT = 0; }
     if (NET.helloT <= 0) { NET.helloT = N_HELLO; netHello(); }
     let gone = false;
@@ -9250,7 +9254,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   }
 
   // ---------- other players on your map: their real car model, or them walking in their look ----------
-  function netKillView(v) { if (v.g.parent) v.g.parent.remove(v.g); if (v.slot) v.slot.userData.dead = true; if (v.P) PEOPLE.dispose(v.P); }
+  function netKillView(v) { if (NET_HOOK.kill) NET_HOOK.kill(v); if (v.g.parent) v.g.parent.remove(v.g); if (v.slot) v.slot.userData.dead = true; if (v.P) PEOPLE.dispose(v.P); }
   function netClearViews() { for (const p of NET.peers.values()) if (p.view) { netKillView(p.view); p.view = null; } if (NET.group) NET.group.clear(); }
   function netLookOf(p) {
     if (p.look) return { ...PEOPLE.GAME.DEFAULT, ...p.look };
@@ -9284,6 +9288,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
         }
       }
       if (v.label) { v.label.position.set(0, p.inCar ? 2.3 : 2.25, 0); const k = 0.026; v.label.scale.set(k * v.label.userData.aspect, k, 1); }
+      if (NET_HOOK.draw) NET_HOOK.draw(p, v, dt, now);
     }
   }
   // dots for them on the minimap
@@ -9354,7 +9359,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   PHONE_APPS.splice(PHONE_APPS.findIndex(a => a.id === 'settings'), 0, { id: 'online', name: 'Online', icon: '🌐', bg: 'linear-gradient(135deg,#1aa3ff,#5a2ad8)' });
   { const st = document.createElement('style'); st.textContent = '#netpill{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:30;background:rgba(18,16,22,0.78);color:#f1ece4;border:1px solid rgba(127,209,255,0.5);border-radius:999px;padding:5px 12px;font:600 13px var(--body);cursor:pointer}#netpill[hidden]{display:none}#netpill.error{border-color:#ff5a4e}body.phoning #netpill{display:none}'; document.head.append(st); }
   addEventListener('pagehide', () => { if (NET.tr) try { netSend({ k: 'bye' }); } catch (e) {} });
-  window.__net = { NET, netTick, netJoin, netLeave, netSay };
+  window.__net = { NET, NET_HOOK, netTick, netJoin, netLeave, netSay };
   // ---------- control layout: drag any on-screen control somewhere else and make it bigger or smaller ----------
   // Saved in this browser, one layout for sideways and one for upright. Uses the CSS translate/scale
   // properties so it stacks on top of each control's own position and transform.
@@ -10894,13 +10899,13 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     o.connect(g); g.connect(v.n); o.start(t); o.stop(t + dur + 0.02);
   }
   const SND = {
-    shot(id) {
-      if (!gac()) return; const v = voice(null), t = GA.c.currentTime;
+    shot(id, at) {
+      if (!gac()) return; const v = voice(at || null, 1, at ? 4 : 1), t = GA.c.currentTime + v.d;
       if (id === 'arp') { nz(v, t, 0.045, 'highpass', 3200, 2200, 1.0); nz(v, t, 0.38, 'lowpass', 6500, 420, 1.0); tn(v, t, 0.14, 'sine', 95, 36, 0.7); tn(v, t + 0.04, 0.02, 'square', 1900, 1200, 0.08); tn(v, t + 0.05, 0.14, 'sine', 720, 690, 0.035); }
       else if (id === 'g20') { nz(v, t, 0.035, 'highpass', 2500, 1800, 0.9); nz(v, t, 0.42, 'lowpass', 4600, 300, 1.0); tn(v, t, 0.2, 'sine', 105, 30, 1.0); tn(v, t + 0.035, 0.018, 'square', 2300, 1400, 0.08); }
       else { nz(v, t, 0.035, 'highpass', 2500, 1800, 0.9); nz(v, t, 0.32, 'lowpass', 5200, 380, 1.0); tn(v, t, 0.16, 'sine', 120, 38, 0.9); tn(v, t + 0.035, 0.018, 'square', 2300, 1400, 0.08); }
       // outside the shot slaps back off the buildings around you
-      const e = voice(null, 0.3); nz(e, t + 0.14 + Math.random() * 0.05, 0.5, 'lowpass', 1400, 260, 0.6); nz(e, t + 0.36 + Math.random() * 0.1, 0.7, 'lowpass', 900, 200, 0.3);
+      const e = voice(at || null, 0.3, at ? 4 : 1); nz(e, t + 0.14 + Math.random() * 0.05, 0.5, 'lowpass', 1400, 260, 0.6); nz(e, t + 0.36 + Math.random() * 0.1, 0.7, 'lowpass', 900, 200, 0.3);
     },
     click(f, vol) { if (!gac()) return; const v = voice(null), t = GA.c.currentTime; tn(v, t, 0.02, 'square', f, f * 0.7, vol); nz(v, t, 0.03, 'bandpass', 3000, 2000, vol * 1.5); },
     rustle() { if (!gac()) return; const v = voice(null), t = GA.c.currentTime; nz(v, t, 0.16, 'bandpass', 1500, 700, 0.25); tn(v, t + 0.12, 0.02, 'square', 1200, 800, 0.06); },
@@ -10995,7 +11000,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     if (!FX3.group) return; const g = 9.8;
     // bullets: a short bright streak racing to what it hits, then the hit
     const bp = FX3.bulLines.geometry.attributes.position, ba = bp.array;
-    for (let i = FX3.bullets.length - 1; i >= 0; i--) { const B = FX3.bullets[i]; B.t += B.speed * dt; if (B.t >= B.T) { FX3.bullets.splice(i, 1); landHit(B); } }
+    for (let i = FX3.bullets.length - 1; i >= 0; i--) { const B = FX3.bullets[i]; B.t += B.speed * dt; if (B.t >= B.T) { FX3.bullets.splice(i, 1); land(B); } }
     for (let i = 0; i < BUL_N; i++) {
       const B = FX3.bullets[i], o = i * 6;
       if (!B) { ba[o] = ba[o + 3] = -9999; ba[o + 1] = ba[o + 4] = -9999; ba[o + 2] = ba[o + 5] = -9999; continue; }
@@ -11100,6 +11105,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
         best.local = { x: _lo.x + _ld.x * r.t, y: O.y + D.y * r.t, z: _lo.z + _ld.z * r.t, h: tall ? 1.9 : 1.35 };
       }
     }
+    if (netOn() && NET.peers.size) peerHit(O, D, best, t0);
     best.p = new THREE.Vector3().copy(O).addScaledVector(D, best.t);
     return best;
   }
@@ -11109,12 +11115,15 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     const hit = castShot(GUN.cam, dir, D.range, GUN.camBack - 0.2);
     const muz = b.rig.localToWorld(_v().copy(b.muz)), d = _v().subVectors(hit.p, muz), T = d.length(); d.divideScalar(T || 1);
     FX3.bullets.push({ o: muz, d, t: 0, T, speed: D.speed, hit, D, gid: g.id });
-    if (FX3.bullets.length > BUL_N) landHit(FX3.bullets.shift());
+    if (FX3.bullets.length > BUL_N) land(FX3.bullets.shift());
+    pvShot(muz, hit, g.id);
   }
   // the bullet arrives: sparks, chips, dust, a hole and the sound of whatever it hit
+  const land = B => B.remote ? remoteLand(B) : landHit(B);
   function landHit(B) {
     const h = B.hit, p = h.p, n = h.n, D = B.D;
     if (!h.kind) return;
+    if (h.kind === 'peer' || h.kind === 'pcar') { peerLand(B); return; }
     const back = _v().copy(B.d).negate(), refl = _v().copy(B.d).addScaledVector(n, -2 * B.d.dot(n));
     if (h.kind === 'ground') {
       const road = !!streetAt(p.x, p.z);
@@ -11190,7 +11199,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     SND.click(800, 0.12); save(); gunHud();
   }
   function gunToggle() {
-    if (!foot.on || inside || creating) return;
+    if (!foot.on || inside || creating || PV.down > 0) return;
     const g = eqGun(); if (!g) { openPhone(); phoneApp('amazin'); return; }
     if (GUN.reload) return; GUN.want = !GUN.want; SND.rustle(); gunHud();
   }
@@ -11805,6 +11814,224 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
   const _stepDriveE = stepDrive;
   stepDrive = function (dt) { _stepDriveE(dt); if (EMO.rain.length) stepRain(dt); };
   window.__guns.emote = { EMO, EMOTES, emoStart, emoStop, emoMenu, makeFan, makeBrick };
+  // ---------- online: other players see you shoot, and you can shoot each other ----------
+  // Your gun and whether it's out ride on the hello and state packets (_net.js NET_HOOK). Each shot goes out with
+  // the next state packet (muzzle, where it landed, what it hit), so the server's message budget isn't blown by full auto;
+  // the other side plays it back on your model: flash, tracer, the hit and the sound from where you stand.
+  // Hits use the 2D game's PvP packet ({k:'pvp', t:'hit'}), so 2D and 3D players can shoot each other. The shooter
+  // decides the hit; the one hit takes the damage. 3D adds what was hit: pd is damage to you, cb/ce/ct to your car.
+  // At 0 health you go down for 8 seconds ('dead' / 'alive', like the 2D game) and get back up hurt.
+  const PV = { out: [], sched: [], hits: new Map(), hitAt: new Map(), flushT: 0, down: 0, by: '', at: { x: 0, z: 0 }, hurt: 0, toldT: 0, sentGd: 0, sentGe: 0, sentDn: false };
+  const PDMG = { g19: 24, g20: 30, arp: 34 };   // per bullet; a head shot is 2.2x
+  const PV_DOWN = 8, PV_UP_HEALTH = 35;
+  const KCODE = { ground: 1, wall: 2, car: 3, mycar: 3, pcar: 3, peer: 4 };
+  const r2 = v => Math.round(v * 100) / 100;
+  // other players as targets: on foot a body and a head, in a car the same two-box car as your own
+  function peerHit(O, D, best, t0) {
+    for (const p of NET.peers.values()) {
+      if (p.fresh || !p.st || p.ride || p.dead || !p.view || !p.view.g.visible) continue;
+      const dx = p.x - O.x, dz = p.z - O.z, rr = best.t + 4; if (dx * dx + dz * dz > rr * rr) continue;
+      if (p.inCar) {
+        const yaw = -p.h, cs = Math.cos(yaw), sn = Math.sin(yaw), ex = O.x - p.x, ez = O.z - p.z, body = carOf(p.car || BUILT[0]).body, tall = body === 'truck' || body === 'suv';
+        _lo.set(ex * cs - ez * sn, O.y, ex * sn + ez * cs); _ld.set(D.x * cs - D.z * sn, D.y, D.x * sn + D.z * cs);
+        const r = { t: best.t };
+        if (carBodyHit(_lo, _ld, 2.45, 1.0, tall ? 1.9 : 1.35, r) && r.t > t0) {
+          best.t = r.t; best.kind = 'pcar'; best.box = null; best.peer = p; const ln = [0, 0, 0]; ln[r.ax] = r.sg;
+          best.n.set(ln[0] * cs + ln[2] * sn, ln[1], -ln[0] * sn + ln[2] * cs);
+          best.local = { x: _lo.x + _ld.x * r.t, y: O.y + D.y * r.t, z: _lo.z + _ld.z * r.t, mid: /corvette_stingray_c8/.test(p.car) };
+        }
+      } else {
+        const gy = groundAt(p.x, p.z);
+        for (const [w, y0, y1, part] of [[0.25, 0, 1.5, 'body'], [0.14, 1.5, 1.86, 'head']])
+          if (slab(O, D, p.x - w, gy + y0, p.z - w, p.x + w, gy + y1, p.z + w, _sl) && _sl.t > t0 && _sl.t < best.t) { best.t = _sl.t; best.kind = 'peer'; best.box = null; best.peer = p; best.part = part; best.n.set(0, 0, 0).setComponent(_sl.ax, _sl.sg); }
+      }
+    }
+  }
+  function blood(p, dir) {
+    for (let i = 0; i < 10; i++) debris(p, _v().copy(dir).multiplyScalar(0.6 + Math.random() * 1.6).add(_t.set(_r() * 0.8, Math.random() * 1.2, _r() * 0.8)), 1.2, { r: 0.45, g: 0.02, b: 0.03 });
+    puff(p, 0x6a0a0c, 0.35, 0.45, 0.1);
+  }
+  // your bullet lands on another player or their car
+  function peerLand(B) {
+    const h = B.hit, p = h.p, peer = h.peer, D = B.D, dmg = PDMG[B.gid] || 24;
+    GUN.hitT = 0.14; if (!peer) return;
+    if (h.kind === 'peer') {
+      const head = h.part === 'head'; blood(p, B.d); SND.hit('dirt', p, 0);
+      pvAdd(peer, { pd: dmg * (head ? 2.2 : 1), hd: head ? 1 : 0 }); return;
+    }
+    const L = h.local, refl = _v().copy(B.d).addScaledVector(h.n, -2 * B.d.dot(h.n));
+    const glass = L.y > 0.98 && Math.abs(L.z) < 1.4, engine = L.y > 0.3 && L.y < 1.1 && (L.mid ? L.z > 0.4 && L.z < 1.8 : L.z < -1.2), tire = L.y < 0.62 && Math.abs(L.x) > 0.75 && Math.abs(Math.abs(L.z) - 1.45) < 0.38;
+    if (glass) {
+      for (let i = 0; i < 14; i++) debris(p, _v().copy(B.d).multiplyScalar(1 + Math.random() * 2).add(_t.set(_r() * 1.5, Math.random() * 1.5, _r() * 1.5)), 2.5, { r: 0.85, g: 0.95, b: 1, glass: true });
+      SND.hit('glass', p, 0); pvAdd(peer, { pd: dmg * 0.55 });   // through the window: the driver takes it
+    } else {
+      burstSparks(p, 16, refl, 7, true); SND.hit(tire ? 'tire' : engine ? 'engine' : 'metal', p, 0); if (engine) puff(p, 0xd0d4d8, 0.6, 0.8, 0.8);
+      pvAdd(peer, { cb: D.body, ce: engine ? D.engine : 0, ct: tire ? 1 : 0 });
+    }
+  }
+  function pvAdd(peer, o) {
+    const a = PV.hits.get(peer.id) || { pd: 0, cb: 0, ce: 0, ct: 0, hd: 0, peer };
+    for (const k in o) a[k] += o[k]; PV.hits.set(peer.id, a);
+  }
+  // hits go out a few times a second, added up per player
+  function pvFlush() {
+    if (!PV.hits.size) return; if (!netOn()) { PV.hits.clear(); return; }
+    for (const [id, a] of PV.hits) {
+      const pd = Math.round(Math.min(100, a.pd)); if (!a.peer.d3 && !pd) continue;   // 2D players only take hits on foot
+      netSend({ k: 'pvp', t: 'hit', to: id, d: Math.max(1, pd), pd, cb: Math.round(a.cb), ce: Math.round(a.ce), ct: a.ct, hd: a.hd, w: 'gun', x: +foot.x.toFixed(2), z: +foot.z.toFixed(2), h: +(-foot.yaw).toFixed(3) });
+      PV.hitAt.set(id, performance.now());
+    }
+    PV.hits.clear();
+  }
+  // your shot, queued for the next state packet
+  function pvShot(muz, hit, gid) {
+    if (!netOn()) return;
+    PV.out.push({ t: performance.now(), o: muz.clone(), p: hit.p.clone(), k: KCODE[hit.kind] || 0 }); if (PV.out.length > 24) PV.out.shift();
+  }
+  const gunOut = () => !!(foot.on && GUN.want && GUN.d > 0.5 && PV.down <= 0);
+  NET_HOOK.hello = () => { const g = eqGun(); return g ? { gn: { id: g.id, m: g.mag, sw: g.sw ? 1 : 0, o: g.optic ? 1 : 0, l: g.light ? 1 : 0, ls: g.laser ? 1 : 0, c: g.comp ? 1 : 0, b: g.brake ? 1 : 0, br: g.brace === false ? 0 : 1 } } : { gn: 0 }; };
+  NET_HOOK.key = () => gunKey(eqGun());
+  NET_HOOK.urgent = () => { const gd = gunOut() ? 1 : 0; return PV.out.length > 0 || gd !== PV.sentGd || (PV.down > 0) !== PV.sentDn || (gd && Math.abs(GUN.e - PV.sentGe) > 0.06); };
+  NET_HOOK.state = () => {
+    const o = { gd: gunOut() ? 1 : 0 }; if (o.gd) o.ge = +clamp(GUN.e, -1, 1).toFixed(2);
+    if (PV.down > 0) o.dn = 1; PV.sentDn = PV.down > 0;   // down rides on every state packet too, in case the 'dead' packet is lost
+    if (PV.out.length) { const t = performance.now(); o.sh = PV.out.splice(0, 12).map(s => [Math.round(s.t - t), r2(s.o.x), r2(s.o.y), r2(s.o.z), r2(s.p.x), r2(s.p.y), r2(s.p.z), s.k]); }
+    PV.sentGd = o.gd; PV.sentGe = o.ge || 0; return o;
+  };
+  function cleanGun(x) {
+    if (!x || typeof x !== 'object' || !GUN_DEF[x.id]) return null; const D = GUN_DEF[x.id];
+    return { id: x.id, mag: D.mags[x.m] ? x.m : D.std, sw: !!x.sw && D.pistol, optic: !!x.o, light: !!x.l, laser: !!x.ls, comp: !!x.c && D.pistol, brake: !!x.b && !D.pistol, brace: x.br !== 0 };
+  }
+  NET_HOOK.recv = (p, m, now) => {
+    if (m.k === 'h') { if ('gn' in m) p.gun = cleanGun(m.gn); }
+    else if (m.k === 's') {
+      p.gd = m.gd === 1; p.ge = nNum(m.ge, -1, 1, 0);
+      if (p.d3) { const dn = m.dn === 1; if (dn !== !!p.dead) { p.dead = dn; p.deadAt = now; } }
+      if (Array.isArray(m.sh)) for (const e of m.sh.slice(0, 16)) {
+        if (!Array.isArray(e) || e.length < 8 || !e.every(v => typeof v === 'number' && isFinite(v))) continue;
+        const o = _v().set(e[1], clamp(e[2], -2, 60), e[3]), h = _v().set(e[4], clamp(e[5], -2, 300), e[6]);
+        if (Math.hypot(o.x - p.st.x, o.z - p.st.z) > 30 || o.distanceTo(h) > 400) continue;
+        PV.sched.push({ at: now + p.interp + clamp(e[0], -1000, 0) / 1000, p, o, h, k: e[7] | 0 });
+      }
+      if (PV.sched.length > 48) PV.sched.splice(0, PV.sched.length - 48);
+    } else if (m.k === 'pvp') {
+      if (m.t === 'hit') { if (m.to === NET.id) pvHurt(p, m); }
+      else if ((m.t === 'dead' || m.t === 'alive') && (m.to === '*' || m.to === NET.id)) {
+        const q = NET.peers.get(String(m.target || '')); if (!q) return;
+        const was = q.dead; q.dead = m.t === 'dead'; q.deadAt = now;
+        if (q.dead && !was && performance.now() - (PV.hitAt.get(q.id) || -1e9) < 4000) toast(`You dropped ${q.name}.`, 'good');
+      }
+    }
+  };
+  // somebody else's shot plays out on your screen
+  function pvPlay(s) {
+    const p = s.p, v = p.view, gid = p.gun ? p.gun.id : 'g19', D = GUN_DEF[gid];
+    const mx = foot.on ? foot.x : drv.x, mz = foot.on ? foot.z : drv.z; if (Math.hypot(s.o.x - mx, s.o.z - mz) > 800) return;
+    let o = s.o;
+    if (v && v.gun && v.g.visible && v.gun.d > 0.8) { const b = v.gun.b; b.rig.updateMatrixWorld(true); const w = b.rig.localToWorld(_v().copy(b.muz)); if (w.distanceTo(s.o) < 3) o = w; v.gun.flashT = 1; v.gun.kick = Math.min(0.6, v.gun.kick + D.kick); b.flash.rotation.x = Math.random() * Math.PI; }
+    SND.shot(gid, o.clone());
+    const d = _v().subVectors(s.h, o), T = d.length(); if (T < 0.05) return; d.divideScalar(T);
+    FX3.bullets.push({ o, d, t: 0, T, speed: D.speed, hit: { p: s.h }, D, gid, remote: { k: s.k } });
+    if (FX3.bullets.length > BUL_N) land(FX3.bullets.shift());
+  }
+  function remoteLand(B) {
+    const k = B.remote.k, p = B.hit.p, back = _v().copy(B.d).negate();
+    if (k === 1) {
+      const road = !!streetAt(p.x, p.z), up = _v().set(0, 1, 0);
+      if (road) { burstSparks(p, 5, _v().copy(B.d).setY(Math.abs(B.d.y)), 5, false); puff(p, 0x9a958c, 0.6, 0.7, 0.4); } else { for (let i = 0; i < 9; i++) debris(p, _v().set(_r() * 1.2, 1.8 + Math.random() * 2.5, _r() * 1.2), 1.4, { r: 0.33, g: 0.25, b: 0.15 }); puff(p, 0x8a7350, 0.8, 0.9, 0.5); }
+      hole(p, up, false); SND.hit(road ? 'road' : 'dirt', p, 0);
+    } else if (k === 2) {
+      const n = back.setY(0).normalize(); burstSparks(p, 9, n, 6, false); puff(p, 0xb8b2a6, 0.7, 0.8, 0.3); hole(p, n, false); SND.hit('wall', p, 0);
+    } else if (k === 3) { burstSparks(p, 14, back, 7, true); SND.hit('metal', p, 0); }
+    else if (k === 4) { blood(p, B.d); SND.hit('dirt', p, 0); }
+  }
+  // you got hit
+  function pvHurt(p, m) {
+    if (!S || PV.down > 0 || inside) return;
+    const ax = nNum(m.x, -N_WR, N_WR), az = nNum(m.z, -N_WR, N_WR), mx = foot.on ? foot.x : drv.x, mz = foot.on ? foot.z : drv.z;
+    if (Math.hypot(p.x - ax, p.z - az) > 30 || Math.hypot(mx - ax, mz - az) > 450) return;
+    const incar = driving && !foot.on;
+    const pd = m.pd != null ? nNum(m.pd, 0, 100, 0) : incar ? 0 : nNum(m.d, 1, 100, 1);   // a 2D player can't hit you through the car
+    let carHit = false;
+    if (incar && S.car && m.pd != null) {
+      const c = S.car.cond, cb = nNum(m.cb, 0, 100, 0), ce = nNum(m.ce, 0, 100, 0), ct = nNum(m.ct, 0, 10, 0);
+      if (cb || ce || ct) carHit = true;
+      c.body = clamp100(c.body - cb); if (ct) c.tires = clamp100(c.tires - 30 * ct);
+      if (ce && c.engine > 0) { c.engine = clamp100(c.engine - ce); if (c.engine <= 0) { FOB.run = false; toast(`${p.name} shot your engine out. It won't start until a mechanic fixes it.`, 'bad'); } }
+    }
+    if (pd > 0) { S.health = clamp100(S.health - pd); PV.hurt = Math.min(0.85, PV.hurt + 0.3 + pd / 70); }
+    const t = performance.now();
+    if (t - PV.toldT > 1600 && S.health > 0) { PV.toldT = t; toast(pd > 0 ? `${p.name} hit you${m.hd ? ' in the head' : ''} (−${Math.round(pd)} health)` : `${p.name} is shooting your car`, 'bad'); }
+    if (pd > 0 || carHit) { save(); refreshStats(); }
+    if (S.health <= 0) pvDown(p.name);
+  }
+  function pvDown(name) {
+    PV.down = PV_DOWN; PV.by = name; S.health = 0;
+    if (driving && !foot.on && !inside) getOut();   // they drag out of the car and drop
+    gunHolsterNow(); PV.at.x = foot.x; PV.at.z = foot.z; foot.target = null;
+    netSend({ k: 'pvp', t: 'dead', target: NET.id, to: '*' });
+    toast(`${name} dropped you.`, 'bad'); save(); refreshStats();
+  }
+  function pvUp() {
+    PV.down = 0; if (foot.holder) foot.holder.rotation.x = 0;
+    S.health = Math.max(S.health, PV_UP_HEALTH); save(); refreshStats();
+    netSend({ k: 'pvp', t: 'alive', target: NET.id, to: '*' });
+    toast(`You're back up with ${PV_UP_HEALTH} health. Get patched up at the ER.`, 'bad');
+  }
+  // the screen goes red when you're hit, and says so while you're down
+  const pvEl = document.createElement('div'); pvEl.id = 'pv-hurt';
+  pvEl.innerHTML = '<div id="pv-down"><b>YOU GOT DROPPED</b><span></span></div>';
+  document.body.appendChild(pvEl);
+  { const st = document.createElement('style'); st.textContent = `#pv-hurt{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;background:radial-gradient(ellipse at center,rgba(150,0,0,0) 45%,rgba(170,0,0,0.75) 100%)}
+#pv-down{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);text-align:center;color:#fff;font:800 30px var(--body);letter-spacing:.04em;text-shadow:0 2px 12px #000;display:none}
+#pv-down span{display:block;font:600 15px var(--body);letter-spacing:0;margin-top:6px}#pv-hurt.down #pv-down{display:block}`; document.head.append(st); }
+  function pvStep(dt) {
+    PV.flushT -= dt; if (PV.flushT <= 0) { PV.flushT = 0.25; pvFlush(); }
+    if (PV.sched.length) {
+      fxInit(); const now = performance.now() / 1000;
+      for (let i = 0; i < PV.sched.length;) { const s = PV.sched[i]; if (s.at <= now) { PV.sched.splice(i, 1); if (NET.peers.get(s.p.id) === s.p) pvPlay(s); } else i++; }
+    }
+    if (PV.down > 0) {
+      PV.down -= dt;
+      if (foot.on && foot.holder) { foot.x = PV.at.x; foot.z = PV.at.z; foot.target = null; foot.holder.position.x = foot.x; foot.holder.position.z = foot.z; foot.holder.position.y += 0.12; foot.holder.rotation.x = -Math.PI / 2; }
+      PV.hurt = Math.max(PV.hurt, 0.7); pvEl.querySelector('span').textContent = `${PV.by} got you. Back up in ${Math.max(1, Math.ceil(PV.down))}…`;
+      if (PV.down <= 0) pvUp();
+    } else PV.hurt = Math.max(0, PV.hurt - dt * 1.4);
+    const op = PV.hurt.toFixed(2); if (pvEl.style.opacity !== op) pvEl.style.opacity = op;
+    const dn = PV.down > 0; if (dn !== pvEl.classList.contains('down')) pvEl.classList.toggle('down', dn);
+  }
+  // their gun on their model: on the hip or slung, up and aimed when they draw, kicking when they shoot
+  NET_HOOK.draw = (p, v, dt, now) => {
+    const P = v.P; if (!P) return;
+    if (p.dead && now - (p.deadAt || 0) > 15) p.dead = false;   // missed their 'alive'
+    const lying = !!p.dead && !p.inCar; P.wrap.rotation.x = lying ? -Math.PI / 2 : 0; P.wrap.position.y = lying ? 0.12 : 0;
+    const want = !p.inCar && p.gun ? gunKey(p.gun) : '';
+    if (v.gun && (v.gun.key !== want || v.gun.P !== P)) { disposeGun(v.gun.b); v.gun = null; }
+    if (!v.gun && want && P.wrap.visible) { const b = buildGun(p.gun); P.upper.add(b.rig); v.gun = { b, key: want, P, d: 0, flashT: 0, kick: 0 }; }
+    const G = v.gun; if (!G) return;
+    const b = G.b, D = b.D; untwistArms(P);
+    G.d += ((p.gd && !p.dead ? 1 : 0) - G.d) * Math.min(1, dt * 7); const em = smooth01(G.d);
+    poseAt(D.pistol ? POSE.pistolHip(D) : POSE.arpBack(D), PA); poseAt(D.pistol ? POSE.pistolAim(D) : POSE.arpAim(D), PB);
+    b.rig.position.lerpVectors(PA.p, PB.p, em); b.rig.quaternion.copy(PA.q).slerp(PB.q, em);
+    G.kick *= Math.exp(-dt * 11);
+    if (G.kick > 0.001 && em > 0.9) { if (D.pistol) { b.rig.quaternion.multiply(_q().setFromAxisAngle(_T.set(0, 0, 1), G.kick * 0.9)); b.rig.position.z -= G.kick * 0.05; } else b.rig.position.z -= G.kick * 0.18; }
+    b.rig.updateMatrix();
+    if (em > 0.02) {
+      P.upper.rotation.x = lerp(P.upper.rotation.x, -clamp(p.ge || 0, -0.75, 0.7) - G.kick * 0.12, em);
+      _T.set(D.grip[0], D.grip[1], D.grip[2]).applyMatrix4(b.rig.matrix); armIK(P, 0, _T, D.pistol ? POLE.pR : POLE.aR, em);
+      if (em > 0.55) { _T2.set(D.sup[0], D.sup[1], D.sup[2]).applyMatrix4(b.rig.matrix); armIK(P, 1, _T2, D.pistol ? POLE.pL : POLE.aL, smooth01((em - 0.55) / 0.45)); }
+    }
+    b.flash.visible = G.flashT > 0; if (G.flashT > 0) G.flashT -= dt * 30;
+    if (b.beam) b.beam.visible = !!p.gun.light && em > 0.9;
+  };
+  NET_HOOK.kill = v => { if (v.gun) { disposeGun(v.gun.b); v.gun = null; } };
+  const _getInP = getIn;
+  getIn = function () { if (PV.down > 0) return; return _getInP(); };
+  const _stepFootP = stepFoot;
+  stepFoot = function (dt) { _stepFootP(dt); pvStep(dt); };
+  const _stepDriveP = stepDrive;
+  stepDrive = function (dt) { _stepDriveP(dt); pvStep(dt); };
+  window.__guns.pv = { PV, pvHurt, pvDown, pvUp, peerHit, pvPlay };
   })();
   boot();
 })();
