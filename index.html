@@ -7320,7 +7320,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
     places() { return DATA.P; }, enter(id) { enterInterior(DATA.P.find(p => p.id === id || p.type === id)); }, use(name) { const st = IN.stations.find(s => s.name.startsWith(name)); if (st) { IN.pos.set(st.x, 0, st.z); IN.near = st; showPrompt(st); if (st.menu) openMenu(st.menu); } return IN.stations.map(s => s.name); }, click(i) { document.querySelectorAll('#menu [data-i]')[i].click(); }, get S() { return S; }, leave: () => leaveInterior(), card: () => [cardMode, cardPlace && cardPlace.name], showCard, getOut, getIn, foot, openCreator, CR, closeCreator, street: () => [STREET.key, CROWD.length, STREET.list.map(q => q.P.wrap.position.toArray().map(Math.round))], people: () => (IN.people || []).map(q => [q.kind, !!q.P]), openMenu, MENUS, get ME() { return ME; }, newCar, storeCar, takeOut, deliverCar, phoneApp, openPhone, hustlePay, sleep, get car() { return car; }, setPanels, RADIO, get IN() { return IN; },
   };
-  // ---------- guns (_guns.js): Glock 19, Glock 20 and the AR pistol from the 3D gun pages, the Amazin' app, shooting ----------
+  // ---------- guns (_guns.js): Glock 19, Glock 20 and the AR pistol from the 3D gun pages, the Amazin' app, shooting, money spreads and gun poses ----------
   (() => {
   // ---------- gun models: the same code as the 3D gun pages (1 unit = 10 cm, muzzle down +x, ejection port on +z) ----------
   const GUN_MODELS = {
@@ -8865,6 +8865,286 @@ body.g-armed #walkhint { display: none !important; }
   const _dressAvatar = dressAvatar;
   dressAvatar = function () { if (S && (!ME || JSON.stringify(myLook()) !== meKey)) { detachGun(); _dressAvatar(); syncGunModel(); return; } return _dressAvatar(); };
   window.__guns = { test: { newCar, deliverCar, solids, LOOK, groundAt, camera, getIn: () => getIn(), DCAM, drv }, get S() { return S; }, get ME() { return ME; }, foot, GUN, GUN_DEF, A3, eqGun, gunToggle, gunFire, gunReload, castShot, FX3, buildGun, gunThumb, azRender };
+  // ---------- poses: money spreads and gun poses ----------
+  // the cash in your hands is the cash on you (S.cash): $100 bills, $10,000 bands with the mustard strap.
+  // poses run after the walk pose and the gun code, put props in your upper body and pull your hands onto them with the arm IK.
+  const EMO = { id: null, t: 0, w: 0, stop: false, props: null, x: 0, z: 0, rain: [], rainG: null, flick: 0, menu: false, keyB: false, padU: false };
+  const BILL = {};
+  function billTex() {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 216; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 512, 216); g.addColorStop(0, '#d9e2cf'); g.addColorStop(0.5, '#c8d6be'); g.addColorStop(1, '#d4dccb'); x.fillStyle = g; x.fillRect(0, 0, 512, 216);
+    x.strokeStyle = 'rgba(70,95,70,0.18)'; x.lineWidth = 1; for (let i = -216; i < 512; i += 7) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 216, 216); x.stroke(); }
+    x.strokeStyle = '#4f6a52'; x.lineWidth = 6; x.strokeRect(10, 10, 492, 196); x.lineWidth = 2; x.strokeRect(20, 20, 472, 176);
+    x.fillStyle = '#3f6fb8'; x.fillRect(300, 10, 16, 196);   // the blue security ribbon
+    x.fillStyle = '#b9c4ae'; x.beginPath(); x.ellipse(200, 108, 62, 76, 0, 0, Math.PI * 2); x.fill(); x.strokeStyle = '#4f6a52'; x.lineWidth = 4; x.stroke();
+    x.fillStyle = '#5b6f5a'; x.beginPath(); x.arc(200, 92, 26, 0, Math.PI * 2); x.fill(); x.beginPath(); x.ellipse(200, 160, 44, 34, 0, Math.PI, 0); x.fill();
+    x.fillStyle = '#2f4a35'; x.font = '900 46px Arial, sans-serif'; x.textBaseline = 'middle';
+    x.textAlign = 'left'; x.fillText('100', 32, 52); x.fillText('100', 32, 166); x.textAlign = 'right'; x.fillText('100', 482, 52);
+    x.fillStyle = '#c08a2a'; x.font = '900 64px Arial, sans-serif'; x.fillText('100', 484, 160);
+    x.fillStyle = '#2f4a35'; x.font = '700 17px Georgia, serif'; x.textAlign = 'center'; x.fillText('MURDA WORTH RESERVE NOTE', 256, 30); x.fillText('ONE HUNDRED', 390, 108);
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; if ('encoding' in t) t.encoding = THREE.sRGBEncoding; return t;
+  }
+  function edgeTex() {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64; const x = c.getContext('2d');
+    for (let y = 0; y < 64; y++) { const k = 205 + Math.random() * 30; x.fillStyle = `rgb(${k - 10},${k},${k - 18})`; x.fillRect(0, y, 64, 1); }
+    const t = new THREE.CanvasTexture(c); if ('encoding' in t) t.encoding = THREE.sRGBEncoding; return t;
+  }
+  function billInit() {
+    if (BILL.geo) return;
+    BILL.tex = billTex();
+    BILL.mat = new THREE.MeshStandardMaterial({ map: BILL.tex, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
+    // a fanned bill: long side up, pinched 1.2 cm from the bottom end
+    BILL.geo = new THREE.PlaneGeometry(0.156, 0.066).rotateZ(Math.PI / 2).translate(0, 0.066, 0);
+    // a loose bill falling: centred
+    BILL.geoC = new THREE.PlaneGeometry(0.156, 0.066);
+    const edge = new THREE.MeshStandardMaterial({ map: edgeTex(), roughness: 0.9 }), top = new THREE.MeshStandardMaterial({ map: BILL.tex, roughness: 0.8 });
+    BILL.bandMats = [edge, edge, top, top, edge, edge];
+    BILL.strap = new THREE.MeshStandardMaterial({ color: 0xc99a2e, roughness: 0.6 });
+    BILL.rubber = new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 0.7 });
+  }
+  // a fan of n bills from one pinch point, opening across `spread` radians; faces +z
+  function makeFan(n) {
+    const g = new THREE.Group(), bills = [];
+    for (let i = 0; i < n; i++) { const m = new THREE.Mesh(BILL.geo, BILL.mat); m.position.z = i * 0.0009; m.castShadow = true; g.add(m); bills.push(m); }
+    g.userData = { bills, spread: clamp(0.5 + n * 0.04, 0.6, 2.7) };
+    return g;
+  }
+  function setFan(g, open) { const { bills, spread } = g.userData, n = bills.length; for (let i = 0; i < n; i++) bills[i].rotation.z = -(n > 1 ? i / (n - 1) - 0.5 : 0) * spread * open; }
+  // a brick of $10,000 bands (100 x $100, mustard strap), or a loose wad with a rubber band under $10k
+  function makeBrick(cash) {
+    const g = new THREE.Group(), bands = Math.min(8, Math.floor(cash / 10000));
+    if (bands >= 1) {
+      for (let i = 0; i < bands; i++) {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.156, 0.0115, 0.066), BILL.bandMats); b.position.y = i * 0.0118; b.rotation.y = (Math.random() - 0.5) * 0.06; b.castShadow = true; g.add(b);
+        const s = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.0121, 0.0675), BILL.strap); s.position.copy(b.position); s.rotation.y = b.rotation.y; g.add(s);
+      }
+      g.userData.h = bands * 0.0118;
+    } else {
+      const h = clamp(Math.floor(cash / 100) * 0.00012, 0.0015, 0.011), b = new THREE.Mesh(new THREE.BoxGeometry(0.156, h, 0.066), BILL.bandMats); b.castShadow = true; g.add(b);
+      const r = new THREE.Mesh(new THREE.BoxGeometry(0.006, h + 0.001, 0.0672), BILL.rubber); r.position.x = 0.035; g.add(r); g.userData.h = h;
+    }
+    return g;
+  }
+  const fanCount = cash => clamp(Math.floor(cash / 100), 0, 60);
+
+  // ---------- the pose list ----------
+  const qBasis = (X, up) => { const x = _v().copy(X).normalize(), y = _v().copy(up).addScaledVector(x, -_v().copy(up).dot(x)).normalize(), z = _v().crossVectors(x, y); return _q().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z)); };
+  const GP = {   // gun poses: [model point, where it goes in your upper body, rotation], hands, poles
+    side: { pistol: [(D) => D.grip, [-0.1, 0.41, 0.52], qBasis(new THREE.Vector3(0.05, -0.1, 1), new THREE.Vector3(1, 0, 0))], arp: [(D) => D.grip, [-0.16, 0.2, 0.26], qBasis(new THREE.Vector3(-0.08, -0.05, 1), new THREE.Vector3(1, 0, 0))] },
+    up: { pistol: [(D) => D.grip, [-0.17, 0.53, 0.14], qBasis(new THREE.Vector3(0, 1, 0.08), new THREE.Vector3(0, 0, -1))], arp: [(D) => D.grip, [-0.15, 0.3, 0.26], qBasis(new THREE.Vector3(0.05, 1, 0.12), new THREE.Vector3(0, 0, -1))] },
+    rest: { pistol: [(D) => D.grip, [-0.04, 0.31, 0.25], qBasis(new THREE.Vector3(0.62, 0.72, 0.1), new THREE.Vector3(0, 0.15, -1))], arp: [(D) => D.grip, [-0.19, 0.48, 0.12], qBasis(new THREE.Vector3(0, 0.75, -0.66), new THREE.Vector3(0, -0.66, -0.75))] },
+  };
+  const EMOTES = [
+    { id: 'spread', name: 'Spread', icon: '💸', cash: 1 },
+    { id: 'phone', name: 'Bands call', icon: '📞', cash: 1 },
+    { id: 'count', name: 'Count up', icon: '🤑', cash: 1 },
+    { id: 'rain', name: 'Make it rain', icon: '🌧️', cash: 1 },
+    { id: 'gside', name: 'Sideways', icon: '🔫', gun: 'side' },
+    { id: 'gup', name: 'Gun up', icon: '☝️', gun: 'up' },
+    { id: 'grest', name: 'Rest it', icon: '😤', gun: 'rest' },
+    { id: 'gflex', name: 'Money + gun', icon: '💰', gun: 'side', cash: 1, flex: 1 },
+  ];
+  const emoById = id => EMOTES.find(e => e.id === id);
+  function emoBlock(e) {
+    if (e.cash && (S.cash || 0) < 100) return 'No cash on you. Withdraw some at a bank.';
+    if (e.gun && !eqGun()) return "No gun. Get one on Amazin'.";
+    return '';
+  }
+
+  function emoStart(id) {
+    const e = emoById(id); if (!e || !ME || !foot.on || inside || creating) return;
+    const why = emoBlock(e); if (why) { toast(why, 'bad'); return; }
+    emoClear(); billInit(); gac();
+    if (GUN.want) { GUN.want = false; gunHud(); }
+    EMO.id = id; EMO.t = 0; EMO.w = 0; EMO.stop = false; EMO.x = foot.x; EMO.z = foot.z; EMO.flick = 0; foot.target = null;
+    EMO.props = new THREE.Group(); ME.upper.add(EMO.props);
+    const cash = S.cash || 0, P = EMO.P = {};
+    if (id === 'spread' || id === 'rain' || e.flex) {
+      const n = fanCount(cash), dbl = id === 'spread' && cash >= 20000;
+      P.fanL = makeFan(dbl ? Math.ceil(n / 2) + 10 : id === 'rain' ? Math.min(n, 30) : n); EMO.props.add(P.fanL);
+      if (dbl) { P.fanR = makeFan(Math.ceil(n / 2) + 10); EMO.props.add(P.fanR); }
+    }
+    if (id === 'phone' || id === 'count') { P.brick = makeBrick(cash); EMO.props.add(P.brick); }
+    if (id === 'count') { P.flip = new THREE.Mesh(BILL.geoC, BILL.mat); P.flip.castShadow = true; P.brick.add(P.flip); }
+    // turn to face the camera: it's a pose, it's for the picture
+    foot.yaw = Math.atan2(-(foot.cam.x - foot.x), -(foot.cam.z - foot.z));
+    toast(e.cash ? `${e.name}: ${money(cash)} on you` : e.name, 'good');
+    emoMenu(false); emoHud();
+  }
+  function emoStop() { if (EMO.id) EMO.stop = true; emoHud(); }
+  function emoClear() {
+    if (EMO.props) { if (EMO.props.parent) EMO.props.parent.remove(EMO.props); EMO.props.traverse(o => { if (o.isMesh && o.geometry !== BILL.geo && o.geometry !== BILL.geoC) o.geometry.dispose(); }); }
+    EMO.props = null; EMO.P = null; EMO.id = null; EMO.stop = false; EMO.w = 0;
+    if (ME) { untwistArms(ME); if (ME.head) ME.head.rotation.set(0, 0, 0); }
+    emoHud();
+  }
+
+  // ---------- sound ----------
+  const ESND = {
+    flick() { if (!gac()) return; const v = voice(null, 0.7), t = GA.c.currentTime; nz(v, t, 0.035, 'bandpass', 5200, 3000, 0.22); nz(v, t + 0.01, 0.05, 'highpass', 2600, 1800, 0.08); },
+    riffle(n) { if (!gac()) return; const v = voice(null, 0.7), t = GA.c.currentTime; for (let i = 0; i < n; i++) nz(v, t + i * 0.022, 0.03, 'bandpass', 4600 - i * 40, 2800, 0.12); },
+    toss() { if (!gac()) return; const v = voice(null, 0.7), t = GA.c.currentTime; nz(v, t, 0.22, 'bandpass', 2400, 900, 0.18); for (let i = 0; i < 3; i++) nz(v, t + 0.03 + i * 0.03, 0.03, 'bandpass', 5000, 3000, 0.1); },
+  };
+
+  // ---------- each frame ----------
+  const _eA = _v(), _eB = _v(), _eC = _v(), _eQ = _q(), _eW = _v();
+  const EPOLE = { r: new THREE.Vector3(-0.8, -1, -0.2), l: new THREE.Vector3(0.8, -1, -0.2), rOut: new THREE.Vector3(-0.55, -1, 0.25), lIn: new THREE.Vector3(0.6, -1, 0.35) };
+  function stepEmote(dt) {
+    if (!EMO.id) return;
+    if (!ME || !foot.on || inside || creating || GUN.want) { emoClear(); return; }
+    // walking off ends it
+    if (Math.hypot(foot.x - EMO.x, foot.z - EMO.z) > 0.04) EMO.stop = true;
+    EMO.t += dt; EMO.w = clamp(EMO.w + (EMO.stop ? -1 : 1) * dt / 0.3, 0, 1);
+    if (EMO.stop && EMO.w <= 0) { emoClear(); return; }
+    const e = emoById(EMO.id), t = EMO.t, w = smooth01(EMO.w), P = EMO.P, up = ME.upper;
+    untwistArms(ME);
+    up.rotation.x = lerp(up.rotation.x, -0.04, w); up.rotation.z *= 1 - w;
+    let hL = null, hR = null, pL = EPOLE.l, pR = EPOLE.r, wL = w, wR = w;
+    const bob = Math.sin(t * 2.4) * 0.008;
+    // the fan in your left hand (spread, rain, money + gun)
+    if (P.fanL) {
+      const open = EMO.id === 'rain' ? smooth01(t / 0.35) : smooth01((t - 0.25) / 0.75), raise = smooth01(t / 0.45);
+      const base = P.fanR ? _eA.set(0.17, 0.3 + 0.08 * raise + bob, 0.34) : _eA.set(0.1, 0.28 + 0.1 * raise + bob, 0.36);
+      P.fanL.position.copy(base).add(_eB.set(0.0, 0.02, 0.025)); P.fanL.rotation.set(-0.28, P.fanR ? -0.25 : -0.12, P.fanR ? 0.35 : 0.22);
+      setFan(P.fanL, open);
+      hL = base;
+      if (EMO.id === 'spread' && !P.fanR) {
+        // the right thumb swipes across the top of the fan as it opens, then drops back
+        const s = clamp((t - 0.2) / 0.85, 0, 1), sp = P.fanL.userData.spread, a = (0.5 - s) * sp + 0.22;
+        hR = _eC.set(P.fanL.position.x + Math.sin(a) * 0.1, P.fanL.position.y + Math.cos(a) * 0.1 - 0.03, P.fanL.position.z + 0.05);
+        wR = w * (t < 1.05 ? smooth01(t / 0.25) : 1 - smooth01((t - 1.05) / 0.35));
+        const k = Math.floor(s * 10); if (k > EMO.flick && s < 1) { EMO.flick = k; ESND.riffle(2); }
+      }
+    }
+    if (P.fanR) {
+      const open = smooth01((t - 0.25) / 0.75);
+      const base = _eC.set(-0.17, 0.3 + 0.08 * smooth01(t / 0.45) - bob, 0.34);
+      P.fanR.position.copy(base).add(_eB.set(0, 0.02, 0.025)); P.fanR.rotation.set(-0.28, 0.25, -0.35); setFan(P.fanR, open); hR = base;
+      if (t > 0.25 && t < 1.0 && Math.floor(t * 12) > EMO.flick) { EMO.flick = Math.floor(t * 12); ESND.riffle(2); }
+    }
+    if (EMO.id === 'rain') {
+      // the right hand peels bills off the fan and throws them up
+      const per = 0.55, ph = ((t - 0.35) % per + per) % per / per, go = t > 0.35;
+      const from = _eB.set(P.fanL.position.x - 0.04, P.fanL.position.y + 0.09, P.fanL.position.z + 0.04), to = _eW.set(-0.24, 0.66, 0.4);
+      const k = ph < 0.4 ? 0 : ph < 0.7 ? smooth01((ph - 0.4) / 0.3) : 1 - smooth01((ph - 0.7) / 0.3);
+      hR = _eC.lerpVectors(from, to, go ? k : 0); wR = w;
+      const cyc = Math.floor((t - 0.35) / per);
+      if (go && ph >= 0.62 && cyc >= EMO.flick && !EMO.stop) { EMO.flick = cyc + 1; rainThrow(); }
+    }
+    if (EMO.id === 'phone') {
+      // a brick of bands up to your ear like a phone
+      const r = smooth01(t / 0.5), b = P.brick;
+      b.position.set(-0.105, lerp(0.3, 0.665, r), lerp(0.25, 0.035, r)); b.rotation.set(0, Math.PI / 2, Math.PI / 2 - 0.12); b.translateY(-(b.userData.h || 0) / 2);
+      hR = _eC.set(-0.13, lerp(0.28, 0.62, r), lerp(0.28, 0.05, r)); pR = EPOLE.rOut; wL = 0;
+      if (ME.head) ME.head.rotation.set(0, 0, -0.14 * w * r);
+    }
+    if (EMO.id === 'count') {
+      // wad in the left hand, the right thumb flicks the top bill over and over
+      const b = P.brick, h = b.userData.h || 0.01;
+      b.position.set(0.06, 0.25 + bob * 0.5, 0.31); b.rotation.set(0.35, -0.5, 0.05);
+      const per = 0.2, f = (t % per) / per, fl = t > 0.4;
+      P.flip.position.set(0, h / 2 + 0.0008, 0); P.flip.rotation.set(-Math.PI / 2, 0, 0);
+      if (fl) { const a = f < 0.6 ? smooth01(f / 0.6) * 2.4 : 2.4 * (1 - smooth01((f - 0.6) / 0.4)); P.flip.position.x = 0.07 - Math.cos(a) * 0.07 + 0.0; P.flip.position.y = h / 2 + Math.sin(a) * 0.07 * 0.4; P.flip.rotation.z = -a * 0.25; P.flip.rotation.x = -Math.PI / 2 + a * 0.5; }
+      b.updateMatrix(); hL = _eA.set(0.06, 0.22, 0.31);
+      hR = _eC.set(0.0, 0.28 + (fl ? Math.sin(f * Math.PI * 2) * 0.012 : 0), 0.33); pR = EPOLE.r;
+      const k = Math.floor(t / per); if (fl && k > EMO.flick) { EMO.flick = k; ESND.flick(); }
+    }
+    // gun poses: your gun comes out of the holster or off the sling into the pose
+    if (e.gun && GUN.b) {
+      const b = GUN.b, D = b.D, kind = D.pistol ? 'pistol' : 'arp', def = GP[e.gun][kind];
+      const r = smooth01(t / 0.45) * w, mp = def[0](D);
+      poseAt([mp, def[1], def[2]], PB); poseAt(D.pistol ? POSE.pistolHip(D) : POSE.arpBack(D), PA);
+      b.rig.position.lerpVectors(PA.p, PB.p, r); b.rig.quaternion.copy(PA.q).slerp(PB.q, r);
+      b.rig.position.y += Math.sin(t * 2.2) * 0.006 * r; b.rig.updateMatrix();
+      const g = _eW.set(mp[0], mp[1], mp[2]).applyMatrix4(b.rig.matrix);
+      hR = _eC.copy(g); wR = w * smooth01(t / 0.2); pR = D.pistol ? POLE.pR : POLE.aR;
+      if (!D.pistol && !e.flex) { hL = _eA.set(D.sup[0], D.sup[1], D.sup[2]).applyMatrix4(b.rig.matrix); pL = POLE.aL; wL = w * smooth01((t - 0.2) / 0.25); }
+      else if (e.gun === 'rest' && D.pistol) { hL = _eA.set(-0.13, 0.26, 0.16); pL = EPOLE.lIn; wL = w * smooth01((t - 0.15) / 0.3); }
+      else if (!e.flex) wL = 0;
+      if (ME.head && e.gun === 'side') ME.head.rotation.set(0, 0, 0.12 * w);
+    }
+    if (hR && wR > 0.001) armIK(ME, 0, hR, pR, wR);
+    if (hL && wL > 0.001) armIK(ME, 1, hL, pL, wL);
+  }
+
+  // ---------- making it rain: real bills that flutter down and lie on the ground ----------
+  const _rH = _v(), _rF = _v();
+  function rainThrow() {
+    if (!ME || !FX3.group) return;
+    if (!EMO.rainG) { EMO.rainG = new THREE.Group(); FX3.group.add(EMO.rainG); }
+    ME.upper.updateMatrixWorld(true); const hand = ME.upper.localToWorld(_rH.set(-0.24, 0.7, 0.42)), fwd = _rF.set(0, 0, 1).transformDirection(ME.upper.matrixWorld);
+    const n = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      if (EMO.rain.length >= 160) { const o = EMO.rain.shift(); EMO.rainG.remove(o.m); }
+      const m = new THREE.Mesh(BILL.geoC, BILL.mat); m.position.copy(hand); m.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); m.castShadow = true; EMO.rainG.add(m);
+      const v = _v().copy(fwd).multiplyScalar(1.2 + Math.random() * 1.6).add(_v().set((Math.random() - 0.5) * 2.2, 2.6 + Math.random() * 1.8, (Math.random() - 0.5) * 2.2));
+      EMO.rain.push({ m, v, s: _v().set((Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9), ph: Math.random() * 6, rest: false, age: 0 });
+    }
+    ESND.toss();
+  }
+  function stepRain(dt) {
+    for (let i = EMO.rain.length - 1; i >= 0; i--) {
+      const b = EMO.rain[i]; b.age += dt;
+      if (b.age > 30) { EMO.rainG.remove(b.m); EMO.rain.splice(i, 1); continue; }
+      if (b.rest) continue;
+      // paper: heavy drag, a slow fall and a side to side flutter
+      b.v.y -= 9.8 * dt; const k = Math.exp(-dt * (b.v.y < 0 ? 4.5 : 1.4)); b.v.multiplyScalar(k); if (b.v.y < -1.1) b.v.y = -1.1;
+      b.ph += dt * 5; b.m.position.addScaledVector(b.v, dt); b.m.position.x += Math.sin(b.ph) * 0.6 * dt; b.m.position.z += Math.cos(b.ph * 0.8) * 0.5 * dt;
+      b.m.rotation.x += b.s.x * dt; b.m.rotation.y += b.s.y * dt; b.m.rotation.z += b.s.z * dt;
+      const gy = groundAt(b.m.position.x, b.m.position.z) + 0.003 + (i % 7) * 0.0004;
+      if (b.m.position.y <= gy && b.v.y < 0) { b.rest = true; b.m.position.y = gy; b.m.rotation.set(-Math.PI / 2, 0, Math.random() * 6); }
+    }
+  }
+
+  // ---------- the POSE button and menu ----------
+  const emoCSS = document.createElement('style');
+  emoCSS.textContent = `
+#em-btn { position: fixed; right: max(18px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 210px); width: 56px; height: 56px; border-radius: 50%; display: none; z-index: 7; font: 800 11px var(--body); letter-spacing: 0.05em; color: #fff; border: 2px solid rgba(255,214,90,0.55); background: rgba(24,20,30,0.55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+#em-btn.on { background: rgba(200,150,30,0.8); border-color: #ffd65a; }
+body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { display: block; }
+#em-menu { position: fixed; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 274px); width: min(300px, calc(100vw - 28px)); display: none; z-index: 8; background: rgba(18,16,24,0.9); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.14); border-radius: 16px; padding: 10px; color: #fff; font: 600 13px var(--body); user-select: none; -webkit-user-select: none; }
+#em-menu.open { display: block; }
+#em-menu h4 { margin: 4px 2px 6px; font: 800 12px var(--body); letter-spacing: 0.08em; color: #ffd65a; display: flex; justify-content: space-between; } #em-menu h4 span { color: rgba(255,255,255,0.7); font-weight: 700; letter-spacing: 0; }
+#em-menu .em-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 6px; }
+#em-menu button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border-radius: 12px; background: #23212b; border: 1px solid rgba(255,255,255,0.1); color: #fff; font: 700 11px var(--body); cursor: pointer; -webkit-tap-highlight-color: transparent; line-height: 1.1; }
+#em-menu button i { font-style: normal; font-size: 22px; } #em-menu button.off { opacity: 0.38; }
+#em-menu small { display: block; color: rgba(255,255,255,0.6); font: 500 11px var(--body); margin: 0 2px 4px; }
+@media (orientation: landscape) and (max-height: 500px) { #em-btn { bottom: calc(env(safe-area-inset-bottom, 0px) + 160px); } #em-menu { bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); right: 90px; } }
+`;
+  document.head.appendChild(emoCSS);
+  const emUI = document.createElement('div');
+  emUI.innerHTML = `<button id="em-btn" aria-label="Poses">POSE</button><div id="em-menu"></div>`;
+  while (emUI.firstChild) document.body.appendChild(emUI.firstChild);
+  function emoMenu(open) {
+    const m = gEl('em-menu'); EMO.menu = open == null ? !EMO.menu : open;
+    if (!EMO.menu) { m.classList.remove('open'); return; }
+    const cash = S.cash || 0, g = eqGun(), n = fanCount(cash), bands = Math.floor(cash / 10000);
+    const sz = cash < 100 ? 'Withdraw cash at a bank to spread it.' : `Fan of ${n} bills${cash >= 20000 ? ', one in each hand' : ''}${bands ? ` · ${Math.min(8, bands)} band${bands > 1 ? 's' : ''} to the ear` : ''}`;
+    const btn = e => `<button data-em="${e.id}" class="${emoBlock(e) ? 'off' : ''}"><i>${e.icon}</i>${e.name}</button>`;
+    m.innerHTML = `<h4>MONEY <span>${money(cash)} on you</span></h4><small>${sz}</small><div class="em-grid">${EMOTES.filter(e => e.cash && !e.gun).map(btn).join('')}</div>
+<h4>GUN <span>${g ? GUN_DEF[g.id].name : 'none'}</span></h4><div class="em-grid">${EMOTES.filter(e => e.gun).map(btn).join('')}</div>`;
+    m.querySelectorAll('[data-em]').forEach(el => el.onclick = () => emoStart(el.dataset.em));
+    m.classList.add('open');
+  }
+  function emoHud() { const b = gEl('em-btn'); if (!b) return; b.textContent = EMO.id && !EMO.stop ? 'STOP' : 'POSE'; b.classList.toggle('on', !!(EMO.id && !EMO.stop)); }
+  gEl('em-btn').onclick = () => { if (EMO.id && !EMO.stop) emoStop(); else emoMenu(); };
+
+  // ---------- hooks ----------
+  const _stepFootE = stepFoot;
+  stepFoot = function (dt) {
+    _stepFootE(dt);
+    if (foot.on && S) {
+      // B (or d-pad up on a pad) opens the poses; any move or menu closes them
+      const kb = !!keys.KeyB; if (kb && !EMO.keyB && !menuFn && !PH.open) { if (EMO.id && !EMO.stop) emoStop(); else emoMenu(); } EMO.keyB = kb;
+      for (const p of (navigator.getGamepads ? navigator.getGamepads() : [])) { if (!p) continue; const u = !!(p.buttons[12] && p.buttons[12].pressed); if (u && !EMO.padU && !menuFn) { if (EMO.id && !EMO.stop) emoStop(); else emoMenu(); } EMO.padU = u; }
+      stepEmote(dt);
+    } else if (EMO.id) emoClear();
+    if (EMO.menu && (!foot.on || inside || PH.open || menuFn || GUN.want)) emoMenu(false);
+    if (EMO.rain.length) stepRain(dt);
+  };
+  const _stepDriveE = stepDrive;
+  stepDrive = function (dt) { _stepDriveE(dt); if (EMO.rain.length) stepRain(dt); };
+  window.__guns.emote = { EMO, EMOTES, emoStart, emoStop, emoMenu, makeFan, makeBrick };
   })();
   boot();
 })();
