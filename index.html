@@ -1477,10 +1477,22 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   function carPerf() {
     const c = S.car, hp = carHp(c), kg = partsKg(c);
     let top = Math.min(95, 28 + hp * 0.075 + 2000 / kg * 2), acc = Math.min(dragPack(c) ? 30 : 22, 5 + hp / kg * 55);
-    const eng = c.cond.engine / 100, tr = c.cond.trans / 100;
+    const acc0 = acc, eng = c.cond.engine / 100, tr = c.cond.trans / 100, m = carOf(c.id);
     if (c.fuel <= 0) { top = 0; acc = 0; }
     top *= 0.55 + 0.45 * Math.min(eng, tr); acc *= 0.5 + 0.5 * eng;
-    return partsPerf(tuneMix(Object.assign({ top, acc, grip: 0.6 + c.cond.tires / 250 }, dragPerf(c)), c), c);
+    const P = partsPerf(tuneMix(Object.assign({ top, acc, grip: 0.6 + c.cond.tires / 250 }, dragPerf(c)), c), c);
+    // the drivetrain physics wants the real numbers: power at the wheels per kg (the tune, parts and a tired motor
+    // scale it the same way they scale acc), which wheels drive, how much weight sits on the back, and the tires
+    P.pw = hp * 634 / kg * (acc0 > 0 ? P.acc / acc0 : 0);
+    P.drive = m.drive || 'RWD'; P.ev = isEV(c);
+    P.wr0 = /c8|ferrari|lamborghini|mclaren|911|cayman|boxster|nsx|_r8|ford_gt|mid/.test(c.id) ? 0.6 : m.body === 'truck' ? 0.42 : m.body === 'suv' ? 0.46 : 0.47;
+    // fast cars leave the factory on wider, stickier rubber than a family car or a truck
+    P.tireK = m.body === 'truck' || m.body === 'suv' ? 0.9 : 1 + clamp((P.pw - 110) / 110, 0, 0.15);
+    // everyday cars from 2000 on leave the factory with launch torque management in 1st (an ECU tune takes it out)
+    P.tqm = (m.y || 2020) >= 2000 && P.pw < 130 && !(c.tparts || []).includes('ecu') ? 0.72 : 1;
+    P.cgL = m.body === 'truck' || m.body === 'suv' ? 0.28 : 0.21;
+    P.aero = m.body === 'truck' || m.body === 'suv' ? 1.5 : 1;
+    return P;
   }
 
   // ---------- menus: every system the place runs ----------
@@ -4568,12 +4580,17 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
 
   // ---------- car physics: real tire grip, so the back steps out, the tires spin, and you can hold a slide ----------
   // a two-axle (bicycle) model: each axle makes sideways grip from its slip angle on a curve that peaks and then
-  // falls off, the rear tires share their grip between pushing and holding (friction circle), so too much gas
+  // falls off, the driven tires share their grip between pushing and holding (friction circle), so too much gas
   // spins them and the back comes around. Gas + brake from a stop is a burnout. The handbrake locks the rears.
-  const G9 = 9.81, TIRE = { vx: 0, vz: 0, w: 0, ax: 0, ay: 0, wv: 0, spin: 0, slipR: 0, slipF: 0, delta: 0, smokeT: 0, marks: [null, null] };
+  const G9 = 9.81, TIRE = { vx: 0, vz: 0, w: 0, ax: 0, ay: 0, wv: 0, spin: 0, slipR: 0, slipF: 0, delta: 0, smokeT: 0, marks: [null, null], gA: 1, re: 0.12, lit: 0, shT: 0, thr: 0, axL: 0, shW: 0, drv: 'R' };
   // peaks near 7 degrees of slip, then a sliding tire holds less
   function tireCurve(a) { return Math.sin(1.6 * Math.atan(11 * a)); }
-  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = 0; TIRE.marks = [null, null]; }
+  // pushing: grip builds to its peak at about 12% wheelspin, then falls off as the tire spins faster (to about 3/4 lit up)
+  function tireLong(s) { const a = Math.abs(s); return Math.sign(s) * (a < 0.125 ? Math.sin(1.6 * Math.atan(12 * a)) : Math.max(0.76, 1 - (a - 0.125) * 0.16)); }
+  // the motor's torque across the rev range (r = revs / redline), scaled so its peak power is 1
+  const engTq = r => Math.max(0.3, 1 - 0.8 * (r - 0.55) * (r - 0.55)) / 0.838;
+  const TOPS = [0, 0, 0, 0, 0, 0];
+  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; }
   function carDims(m) {
     if (m && m.userData.wb == null) {
       const xs = m.userData.wheels.map(w => w.position.x), wb = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
@@ -4582,7 +4599,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
     return m ? m.userData.wb : 2.8;
   }
-  // one physics step; I = { gas, brake, steer, hb }. Moves drv.x/z/yaw and returns nothing; drv.v is forward speed
+  // one physics step; I = { gas, brake, steer, hb, gb }. Moves drv.x/z/yaw and returns nothing; drv.v is forward speed
+  // The drivetrain is real: the motor's power goes through the gear you're in (low gears push hard, tall ones less),
+  // and the driven tires can only hold their grip times the weight on them (more as the car squats onto them).
+  // Ask for more in any gear and they break loose: the wheels and the revs flare up, and a spinning tire holds less
+  // than a hooked one, so it stays lit until you lift, short shift or the car catches up.
   function physStep(I, P, h) {
     const sy = Math.sin(drv.yaw), cy = Math.cos(drv.yaw), fx = -sy, fz = -cy, lx = -cy, lz = sy;
     let u = TIRE.vx * fx + TIRE.vz * fz, vl = TIRE.vx * lx + TIRE.vz * lz, w = TIRE.w;
@@ -4596,44 +4617,96 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // spins into the countersteer when you loosen your grip), so your input steers relative to the slide
     const betaF = u > 1 ? Math.atan2(vl + a * w, u) : 0, cast = clamp((Math.abs(betaF) - 0.05) / 0.1, 0, 1) * betaF * 0.85;
     const lockK = P.steer || 1, delta = clamp(drv.steer * 0.62 * lockK / (1 + Math.abs(u) / 22) + cast, -0.7 * lockK, 0.7 * lockK); TIRE.delta = delta;
-    // ---- rear axle: the driven wheels ----
-    // the motor pulls hardest in the low gears, then the push falls off as the car goes faster
-    // a manual box (the player's stick): each gear tops out at the limiter, too tall a gear bogs, the shift cuts power
-    const gb = I.gb && I.gb.man && !I.gb.ev ? I.gb : null;
-    let gbK = 1;
-    if (gb) { const g = gb.g; if (g <= 0 || gb.cut > 0) gbK = 0; else { const r = Math.max(0, u) / gb.tops[g - 1]; gbK = r >= 1 ? 0 : g === 1 ? 1 : clamp(0.3 + (r - 0.22) / 0.25 * 0.7, 0.3, 1); } }
-    const taper = Math.max(0, 1 - Math.max(0, u) / Math.max(1, P.top)), gear = 1 / (1 + Math.max(0, u - 10) / 30), drive0 = P.acc * I.gas * taper * gear * dragLoss() * gbK;
-    const trac = (6 + grip * 6) * Nr * 2 * (1 + (P.launch || 0) * clamp(1 - Math.abs(u) / 30, 0, 1)) // how hard the rears can push before they break loose
-      * (P.tTrac || 1) * (1 + (P.tLaunch || 0) * clamp(1 - Math.abs(u) / 20, 0, 1)) * (1 - (P.open || 0) * Math.min(1, Math.abs(w) * 1.2)); // tune: camber, squat, tire psi, diff
+
+    // ---- the drivetrain ----
+    const D = P.drive === 'FWD' ? 'F' : P.drive === 'AWD' || P.drive === '4WD' ? 'A' : 'R'; TIRE.drv = D;
+    const ev = !!P.ev, gb = I.gb && I.gb.man && !I.gb.ev && !ev ? I.gb : null;
+    // power at the wheels per kg of car (older callers only know P.acc, so work it back from that)
+    const pw = P.pw != null ? P.pw : Math.max(0, (P.acc - 5) / 55) * 634;
+    // the gear: yours in a manual, the box's own in an automatic (it shifts on the wheel speed, so a spinning tire
+    // revs it out and it grabs the next gear like a real slushbox does)
+    let g, V;
+    if (ev) { g = 1; V = Math.max(5, P.top); }
+    else if (gb) { g = gb.g; V = g > 0 ? gb.tops[g - 1] : 0; }
+    else {
+      for (let i = 0; i < 6; i++) TOPS[i] = Math.max(4, P.top * GB_R[i]);
+      let ga = TIRE.gA || 1; const wsA = Math.max(0, TIRE.wv), up = I.gas > 0.85 ? 0.97 : 0.5 + 0.42 * I.gas, dn = 0.3 + 0.2 * I.gas;
+      // it shifts on the output speed (the wheels), waits a beat between shifts and won't kick down while the tires are lit
+      TIRE.shW = Math.max(0, (TIRE.shW || 0) - h);
+      if (ga < 6 && wsA > TOPS[ga - 1] * up && !(I.brake > 0.3 && ga >= 2)) { ga++; TIRE.shT = 0.16; TIRE.shW = 0.7; }
+      else if (ga > 1 && wsA < TOPS[ga - 2] * dn && !TIRE.shW && !TIRE.lit) { ga--; TIRE.shT = 0.08; TIRE.shW = 0.5; }
+      if (Math.abs(u) < 1 && wsA < 2) ga = 1;
+      TIRE.gA = g = ga; V = TOPS[ga - 1];
+    }
+    if (TIRE.shT > 0) TIRE.shT = Math.max(0, TIRE.shT - h);
+    // the motor takes a moment to come up on the throttle (and the car a moment to squat onto the rears)
+    const thr = TIRE.thr += (I.gas - TIRE.thr) * Math.min(1, h * (I.gas > TIRE.thr ? 5 : 14));
+    const cut = (gb && gb.cut > 0) || g <= 0, slipOK = !gb || g <= 2;
+    // push from the motor at a wheel speed: below the launch revs the clutch (manual) or the converter (automatic)
+    // slips so the motor can sit in its torque and dump it in; at the limiter it cuts
+    const engF = ws => {
+      if (cut || I.gas <= 0) return 0;
+      const r = Math.max(0, ws) / V;
+      if (ev) return pw / Math.max(ws, V * 0.3, 1);
+      // a manual launch is however high you rev it before you let the clutch out: rev it to the moon and the
+      // flywheel dumps into the tires; the automatic's converter stalls lower and multiplies a little
+      const held = slipOK ? (gb ? 0.2 + 0.55 * thr : 0.15 + 0.3 * thr) : 0, re = Math.max(r, held);
+      if (re >= 1) return 0;
+      const bog = (!slipOK && r < 0.25 ? 0.3 + 0.7 * r / 0.25 : 1) * (g === 1 && P.tqm < 1 ? P.tqm + (1 - P.tqm) * clamp(r / 0.6, 0, 1) : 1);
+      return pw / V * engTq(re) * bog * (1 + (gb ? 0.5 : 0.25) * clamp((re - r) / 0.5, 0, 1));
+    };
+    // what the driven tires can hold: their grip (tires, wear, the tune, drag radials off the line) times the weight on them
+    const wr = clamp((P.wr0 || 0.47) + clamp(TIRE.axL / G9 * (P.cgL || 0.21) * (P.xfer || 1), -0.2, 0.3) + (P.transfer || 0) * 0.35 * clamp(TIRE.axL / 12, 0, 1), 0.2, 0.85);
+    const muX = (0.55 + 0.6 * grip) * (P.tireK || 1) * (P.tTrac || 1) * (1 + (P.launch || 0) * clamp(1 - Math.abs(u) / 30, 0, 1)) * (1 + (P.tLaunch || 0) * clamp(1 - Math.abs(u) / 20, 0, 1)) * (1 - (P.open || 0) * Math.min(1, Math.abs(w) * 1.2));
+    const Fpk = muX * (D === 'R' ? wr : D === 'F' ? 1 - wr : 1) * G9;
+    const gasK = thr * dragLoss() * (TIRE.shT > 0 ? 0.35 : 1);
     // launch control holds the revs: right at the hook point it leaves clean, too low bogs, too high lights them up
-    const drive = P.lc && u < 12 && I.gas > 0.6 ? Math.min(drive0, trac * clamp(0.92 + (P.lc - (P.lcIdeal || 3900)) / 4000, 0.55, 1.35)) : drive0;
-    const burnout = I.gas > 0.3 && I.brake > 0.3 && Math.abs(u) < 3.5 && (!gb || gb.g > 0);
-    // a rear that is already sliding sideways has little grip left to push with, so gas in a slide keeps it lit
-    const slideR = clamp((Math.abs(Math.atan2(vl - b * w, Math.max(2.2, Math.abs(u)))) - 0.12) / 0.3, 0, 1);
-    const wantSpin = burnout || drive > trac * ((TIRE.spin > 0.5 ? 0.95 : 1.04) - 0.55 * slideR);
-    TIRE.spin += ((wantSpin ? 1 : 0) - TIRE.spin) * Math.min(1, h * (wantSpin ? 9 : 4));
-    let Fxr;
+    const lcCap = P.lc && u < 12 && I.gas > 0.6 ? Fpk * clamp(0.92 + (P.lc - (P.lcIdeal || 3900)) / 4000, 0.55, 1.35) : 1e9;
+    const push = ws => Math.min(lcCap, engF(ws) * gasK);
+    // the rotating mass behind the tires: the motor's flywheel counts for a lot in 1st, little in 6th
+    const J = ev ? 0.03 : g > 0 && !cut ? 0.014 + 0.16 * Math.pow(GB_R[0] / GB_R[g - 1], 2) : 0.014;
+    const burnout = D === 'R' && I.gas > 0.3 && I.brake > 0.3 && Math.abs(u) < 3.5 && g > 0 && !cut;
+    let Fx = 0, re = 0.12;
+    if (I.hb) { TIRE.lit = 0; TIRE.wv = D === 'F' ? u : 0; }
+    else if ((I.brake && !burnout) || (gb && g === -1) || (!gb && I.brake && !I.gas)) { TIRE.lit = 0; TIRE.wv = u; }
+    else if (I.gas > 0 || TIRE.lit) {
+      const den = Math.max(3, Math.abs(u));
+      if (!TIRE.lit && push(Math.max(u, 0)) > Fpk) { TIRE.lit = 1; TIRE.wv = Math.max(TIRE.wv, u, 0) + 0.4; }
+      if (TIRE.lit) {
+        // the wheel is its own body now: the motor spins it up, the road drags it back; a few small steps, it's light
+        let ws = TIRE.wv, sum = 0; const k = 4, hh = h / k;
+        for (let j = 0; j < k; j++) { const f = Fpk * tireLong((ws - u) / den); sum += f; ws += (push(ws) - f) / J * hh; if (ws < u) ws = u; }
+        TIRE.wv = ws; Fx = burnout ? 0 : sum / k;
+        if ((ws - u) / den < 0.15 && push(ws) <= Fpk && !burnout) TIRE.lit = 0;
+      } else { Fx = burnout ? 0 : push(Math.max(u, 0)); TIRE.wv = Math.max(0, u) * (1 + 0.04 * Fx / Math.max(1, Fpk)); }
+    } else TIRE.wv = u;
+    if (!ev && g > 0 && V > 0) re = Math.max(Math.max(0, TIRE.wv) / V, slipOK && I.gas > 0 && !cut ? (gb ? 0.2 + 0.55 * thr : 0.15 + 0.3 * thr) : 0.12);
+    TIRE.re = re; TIRE.spin += ((TIRE.lit ? 1 : 0) - TIRE.spin) * Math.min(1, h * (TIRE.lit ? 12 : 5));
+    const sR = TIRE.lit ? Math.abs(TIRE.wv - u) / Math.max(3, Math.abs(u)) : 0;
+    // what the driven tires have left for grip sideways: a hooked tire that's pushing hard has less, a spinning one little
+    const latD = TIRE.lit ? clamp(0.8 - 0.45 * Math.min(1, sR), 0.32, 0.8) : Math.sqrt(Math.max(0.12, 1 - Math.pow(Math.min(1, Fx / Math.max(1, Fpk)) * 0.8, 2)));
+    // ---- rear axle ----
+    let Fxr = 0;
     if (I.hb) Fxr = -Math.sign(u) * Math.min(Math.abs(u) / h, mu * Nr * 0.8);
     else if (I.brake && !burnout && u > 0.4) Fxr = -Math.min(u / h, 11 * (P.brakeK || 1) * I.brake * Nr * grip * 2 * (1 - (P.biasF || 0.5)));
     else if (I.brake && !burnout && !I.gas) Fxr = gb ? (u < -0.05 ? Math.min(-u / h, 9 * I.brake) : 0) : -7 * I.brake * (u > -14 ? 1 : 0); // reverse (in a manual you need R)
     else if (gb && gb.g === -1) Fxr = -7 * I.gas * (u > -14 ? 1 : 0);
-    else Fxr = TIRE.spin > 0.5 ? Math.min(drive, trac * 0.82) : Math.min(drive, trac);
-    if (burnout) Fxr = 0; // the front brakes hold it, the rears just spin
-    // what the rears have left for grip sideways
-    const used = I.hb ? 0.85 : clamp(Math.abs(Fxr) / Math.max(1, trac), 0, 1) * (TIRE.spin > 0.5 ? 1 : 0.85);
-    const latR = (I.hb ? 0.32 : TIRE.spin > 0.5 ? 0.42 : Math.sqrt(Math.max(0.12, 1 - used * used)));
+    else Fxr = D === 'R' ? Fx : D === 'A' ? Fx * 0.6 : 0;
+    const latR = I.hb ? 0.32 : D === 'F' ? 1 : D === 'A' ? 0.5 + 0.5 * latD : latD;
     const lonR = Math.max(2.2, Math.abs(u)), vlR = vl - b * w, alphaR = Math.atan2(vlR, lonR);
     const Fyr = -mu * 1.1 * (P.gripR || 1) * (0.5 + (Nr - 0.5) * 0.35) * tireCurve(alphaR) * latR; // a bit more grip out back keeps it stable until you provoke it
-    // ---- front axle: steers, and brakes ----
+    // ---- front axle: steers, and brakes (and pulls, in a front or all wheel drive car) ----
     const cd = Math.cos(delta), sd = Math.sin(delta), vlF = vl + a * w;
     const lonW = u * cd + vlF * sd, latW = -u * sd + vlF * cd, alphaF = Math.atan2(latW, Math.max(2.2, Math.abs(lonW)));
-    const FyW = -mu * (P.gripF || 1) * (1 - (P.spool || 0) * 0.12 * I.gas * clamp(1 - Math.abs(betaF) * 4, 0, 1)) * (0.5 + (Nf - 0.5) * 0.35) * tireCurve(alphaF);
+    const latF = D === 'F' ? latD : D === 'A' ? 0.6 + 0.4 * latD : 1;
+    const FyW = -mu * (P.gripF || 1) * latF * (1 - (P.spool || 0) * 0.12 * I.gas * clamp(1 - Math.abs(betaF) * 4, 0, 1)) * (0.5 + (Nf - 0.5) * 0.35) * tireCurve(alphaF);
     let FxW = 0;
     if (burnout) FxW = -u / h * 0.9;
     else if (I.brake && u > 0.4) FxW = -Math.min(u / h, 11 * (P.brakeK || 1) * I.brake * Nf * grip * 2 * (P.biasF || 0.5));
+    else if (!I.hb && !(I.brake && !I.gas) && !(gb && g === -1)) FxW = D === 'F' ? Fx : D === 'A' ? Fx * 0.4 : 0;
     const Fxf = FxW * cd - FyW * sd, Fyf = FxW * sd + FyW * cd;
-    // rolling and air drag, plus engine braking off the gas
-    const drag = Math.sign(u) * (0.35 + 0.0009 * u * u + (I.gas ? 0 : gb ? (gb.g > 0 ? 1.2 * (1 + 1.4 * (1 - gb.g / 6)) : 0.15) : 1.2)); // lower gears hold it back harder
+    // rolling and air drag, plus engine braking off the gas (lower gears hold it back harder)
+    const drag = Math.sign(u) * (0.15 + 0.00028 * (P.aero || 1) * u * u + (I.gas ? 0 : ev ? 0.6 : g > 0 && !cut ? 1.2 * (1 + 1.4 * (1 - g / 6)) : 0.15));
     let Ax = Fxr + Fxf - drag, Ay = Fyr + Fyf;
     let dw = (a * Fyf - b * Fyr) / k2;
     // in a parking lot, the car just follows its wheels (no tire model at walking pace)
@@ -4645,12 +4718,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // snap into a spin the moment you breathe on the gas (you can still spin it with full lock and full gas)
     const side = clamp((Math.abs(Math.atan2(vl, Math.max(1, Math.abs(u)))) - 0.3) / 0.5, 0, 1);
     w *= 1 - Math.min(1, h * (0.6 * (P.damp || 1) + side * 2.2 * (1 - 0.6 * Math.abs(drv.steer) * I.gas)));
-    // wheel speed (for the sound, the spinning rims and smoke)
-    const wvWant = I.hb ? 0 : TIRE.spin > 0.5 ? Math.max(u, 0) + 7 + 14 * I.gas * Math.min(1.6, P.acc / 12) : u;
-    TIRE.wv += (wvWant - TIRE.wv) * Math.min(1, h * (TIRE.spin > 0.5 ? 3 : 14));
-    TIRE.ax += ((Ax + vl * w) - TIRE.ax) * Math.min(1, h * 6); TIRE.ay += ((Ay) - TIRE.ay) * Math.min(1, h * 6);
-    TIRE.slipR = Math.max(Math.abs(vlR) * (spd > 2 ? 1 : 0), Math.abs(TIRE.wv - u));
-    TIRE.slipF = Math.abs(latW) * (spd > 3 ? 1 : 0);
+    TIRE.ax += ((Ax + vl * w) - TIRE.ax) * Math.min(1, h * 6); TIRE.axL += (Ax - TIRE.axL) * Math.min(1, h * 12); TIRE.ay += ((Ay) - TIRE.ay) * Math.min(1, h * 6);
+    // how hard each axle is sliding or spinning (for the smoke, the rubber and the squeal)
+    const spinD = Math.abs(TIRE.wv - u);
+    TIRE.slipR = Math.max(Math.abs(vlR) * (spd > 2 ? 1 : 0), D === 'F' ? 0 : spinD);
+    TIRE.slipF = Math.max(Math.abs(latW) * (spd > 3 ? 1 : 0), D === 'R' ? 0 : spinD);
     TIRE.vx = fx * u + lx * vl; TIRE.vz = fz * u + lz * vl; TIRE.w = w;
     drv.yaw += w * h; drv.v = u;
   }
@@ -4725,12 +4797,13 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     m.rotation.x += (pitch - m.rotation.x) * Math.min(1, dt * 7); m.rotation.z += (roll - m.rotation.z) * Math.min(1, dt * 7);
     // rims: the fronts roll with the road and steer, the rears turn at wheel speed
     const r = m.userData.r || 0.34;
-    for (const w of m.userData.wheels) { w.rotation.z -= (w.userData.front ? drv.v : TIRE.wv) * dt / r; if (w.userData.front) w.rotation.y = TIRE.delta; }
-    // rear tires: smoke when they spin or slide hard, black marks while they slide
-    const rears = m.userData.wheels.filter(w => !w.userData.front);
+    const dF = TIRE.drv !== 'R', dR = TIRE.drv !== 'F';
+    for (const w of m.userData.wheels) { w.rotation.z -= ((w.userData.front ? dF : dR) ? TIRE.wv : drv.v) * dt / r; if (w.userData.front) w.rotation.y = TIRE.delta; }
+    // the tires that spin or slide hard smoke and lay black marks (the rears, or the fronts in a front wheel drive)
+    const useF = TIRE.slipF > TIRE.slipR + 1, rears = m.userData.wheels.filter(w => !w.userData.front === !useF);
     rears.forEach((w, i) => {
       w.getWorldPosition(_wp);
-      const slip = TIRE.slipR, mark = slip > 3.2, smoke = slip > 5;
+      const slip = useF ? TIRE.slipF : TIRE.slipR, mark = slip > 3.2, smoke = slip > 5;
       if (mark) {
         const p = { x: _wp.x, z: _wp.z }, last = TIRE.marks[i], d = last ? Math.hypot(p.x - last.x, p.z - last.z) : 0;
         if (!last || d > 3) TIRE.marks[i] = p;
@@ -4742,7 +4815,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       }
     });
     // sliding chews up the tires
-    if (TIRE.slipR > 3) S.car.cond.tires = Math.max(0, S.car.cond.tires - dt * TIRE.slipR * 0.006);
+    if (Math.max(TIRE.slipR, TIRE.slipF) > 3) S.car.cond.tires = Math.max(0, S.car.cond.tires - dt * Math.max(TIRE.slipR, TIRE.slipF) * 0.006);
   }
 
   // ---------- forged rims: the Rim Shop catalog (10 lines x 10 designs, 12 finishes), from the shops page ----------
@@ -5227,20 +5300,18 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // what a setup does, from a quick straight-line run with the same tire numbers the physics uses
   function tuneRun(c, t) {
     const keep = c.tune; c.tune = t; const P = carPerf(); c.tune = keep;
-    let u = 0, x = 0, ax = 0, time = 0, t60 = 0, et = 0, trap = 0, spin = 0;
-    const grip = P.grip, h = 1 / 120;
-    while (time < 30 && (!et || !t60)) {
-      const shift = clamp(ax * 0.045 * (P.xfer || 1), -0.35, 0.35) + (P.transfer || 0) * 0.35 * clamp(ax / 12, 0, 1), Nr = 0.5 + shift * 0.5;
-      const taper = Math.max(0, 1 - u / Math.max(1, P.top)), gear = 1 / (1 + Math.max(0, u - 10) / 30);
-      let drive = P.acc * taper * gear;
-      const trac = (6 + grip * 6) * Nr * 2 * (1 + (P.launch || 0) * clamp(1 - u / 30, 0, 1)) * (P.tTrac || 1) * (1 + (P.tLaunch || 0) * clamp(1 - u / 20, 0, 1));
-      if (P.lc && u < 12) drive = Math.min(drive, trac * clamp(0.92 + (P.lc - P.lcIdeal) / 4000, 0.55, 1.35));
-      const a = drive > trac * 1.04 ? trac * 0.82 : Math.min(drive, trac); if (drive > trac * 1.04) spin += h;
-      ax += (a - ax) * Math.min(1, h * 6);
-      u += (a - 0.35 - 0.0009 * u * u) * h; x += u * h; time += h;
-      if (!t60 && u >= 26.82) t60 = time;
-      if (!et && x >= 402.3) { et = time; trap = u; }
-    }
+    // a full-throttle pull on the real tire and drivetrain physics, with the shared state swapped out and back
+    const saveT = Object.assign({}, TIRE), saveD = { yaw: drv.yaw, v: drv.v, steer: drv.steer }, saveW = WHEELIE.a;
+    physReset(); drv.yaw = 0; drv.v = 0; drv.steer = 0; WHEELIE.a = 0;
+    let x = 0, time = 0, t60 = 0, et = 0, trap = 0, spin = 0; const h = 1 / 120, I = { gas: 1, brake: 0, steer: 0, hb: 0 };
+    try {
+      while (time < 30 && (!et || !t60)) {
+        physStep(I, P, h); const u = Math.max(0, drv.v); TIRE.vx = 0; TIRE.vz = -u; TIRE.w = 0;
+        if (TIRE.lit) spin += h; x += u * h; time += h;
+        if (!t60 && u >= 26.82) t60 = time;
+        if (!et && x >= 402.3) { et = time; trap = u; }
+      }
+    } finally { Object.assign(TIRE, saveT); Object.assign(drv, saveD); WHEELIE.a = saveW; }
     return { t60, et, trap: trap * 2.237, top: P.top * 2.237, hp: Math.round(carHp(c) * tunePerf(Object.assign({}, c, { tune: t })).pow), spin, P };
   }
   // ---------- the tuning laptop: sliders for every knob, live numbers from a test run ----------
@@ -5314,7 +5385,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   function tunePose(m) {
     if (!m || !S.car) return; const T = tunePerf(S.car), U = m.userData;
     if (U.y0 == null) U.y0 = m.position.y;
-    m.position.y = U.y0 + (T.rideF + T.rideR) / 2;
+    const ride = (T.rideF + T.rideR) / 2; m.position.y = U.y0 + ride;
+    for (const w of U.wheels) { if (w.userData.y0 == null) w.userData.y0 = w.position.y; w.position.y = w.userData.y0 - ride; }
     return T;
   }
 
@@ -5811,7 +5883,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (!m || !m.parent) return; const s = m.parent, c = on && S.car, k = c && dragPack(c);
     let want = 0;
     if (k) { const P = carPerf(), hooked = TIRE.spin < 0.15 && TIRE.slipR < 2.5;
-      want = hooked ? Math.min(P.wcap, (P.transfer + Math.max(0, (P.xfer || 1) - 1) * 0.6) * 0.55 * clamp((TIRE.ax - 10) / 8, 0, 1) * clamp(1 - Math.abs(drv.v) / 24, 0, 1)) : 0; }
+      want = hooked ? Math.min(P.wcap, (P.transfer + Math.max(0, (P.xfer || 1) - 1) * 0.6) * 0.55 * clamp((TIRE.ax - 7) / 6, 0, 1) * clamp(1 - Math.abs(drv.v) / 24, 0, 1)) : 0; }
     WHEELIE.a += (want - WHEELIE.a) * Math.min(1, dt * (want > WHEELIE.a ? 5 : 2.6));
     if (WHEELIE.a > 0.07 && !WHEELIE.told) { WHEELIE.told = true; toast('WHEELIE · front end up', 'good'); }
     if (Math.abs(drv.v) < 1) WHEELIE.told = false;
@@ -5866,13 +5938,13 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const RACERS3D = [
     ['Lil Ray', 'Box Fresh', 'chevrolet_caprice_classic_box_chevy_1986', '#8a1c1c', 16.4, 0, 3],
     ['Dee', 'Soccer Mom', 'chevrolet_tahoe_2021', '#1c1c1e', 14.9, 0, 4],
-    ['Big Chuy', 'Northside', 'ford_f_150_regular_cab_2021', '#e8e8e8', 13.8, 5, 6],
+    ['Big Chuy', 'Northside', 'ford_f_150_regular_cab_2021', '#e8e8e8', 14.2, 5, 6],
     ['Tasha', 'Go Mango', 'dodge_charger_scat_pack_2015', '#ff7a1a', 12.5, 12, 8],
-    ['Smoke', 'Polk St', 'chevrolet_camaro_ss_2016', '#2a59c2', 11.8, 20, 10],
-    ['Bubba', 'Lifted', 'ram_1500_trx_2021', '#5a5f66', 11.3, 35, 14],
-    ['Kev', 'Mid Engine', 'chevrolet_corvette_stingray_c8_2020', '#c8161d', 11.0, 50, 18],
-    ['Mook', 'Stop Six', 'dodge_charger_srt_hellcat_widebody_2020', '#4a1e7a', 10.6, 75, 24],
-    ['Pooh', 'Slick Pack', 'dodge_charger_srt_hellcat_widebody_2020', '#0c0c0f', 10.1, 110, 32],
+    ['Smoke', 'Polk St', 'chevrolet_camaro_ss_2016', '#2a59c2', 12.3, 20, 10],
+    ['Bubba', 'Lifted', 'ram_1500_trx_2021', '#5a5f66', 12.4, 35, 14],
+    ['Kev', 'Mid Engine', 'chevrolet_corvette_stingray_c8_2020', '#c8161d', 11.3, 50, 18],
+    ['Mook', 'Stop Six', 'dodge_charger_srt_hellcat_widebody_2020', '#4a1e7a', 11.4, 75, 24],
+    ['Pooh', 'Slick Pack', 'dodge_charger_srt_hellcat_widebody_2020', '#0c0c0f', 10.8, 110, 32],
     ['Menscer Mike', 'Pro Mod', 'dodge_charger_srt_hellcat_widebody_2020', '#d8a93a', 9.6, 160, 45],
   ].map(([name, nick, id, color, et, need, rep], i) => ({ name, nick, id, color, et, need, rep, wager: 250 * (i + 1) }));
   const SPLITS = [[18.29, '60 ft'], [100.58, '330 ft'], [201.17, '1/8 mile'], [304.8, '1000 ft'], [402.34, '1/4 mile']];
@@ -6042,7 +6114,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   function perfOf(c) { const mine = S.car; S.car = c; try { return carPerf(); } finally { S.car = mine; } }
   function racerBlurb(r) { const c = racerCar(r), k = dragPack(c); return `${carHp(c)} hp${c.tparts && c.tparts.includes('e85') ? ' on E85' : c.tparts && c.tparts.includes('c16') ? ' on race gas' : ''}${k ? ` · ${k.brand} ${k.tire === 'slick' ? 'slicks' : 'radials'}` : ''}${c.rims ? ` · ${c.rims.dia}s` : ''}`; }
   // run one physics step as another car: swap the shared tire state in, step, swap it back out
-  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta'];
+  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'drv'];
   function physAs(st, I, P, h) {
     const mine = { yaw: drv.yaw, v: drv.v, steer: drv.steer, wa: WHEELIE.a };
     for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
@@ -6051,7 +6123,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     st.v = drv.v; for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
     Object.assign(drv, { yaw: mine.yaw, v: mine.v, steer: mine.steer }); WHEELIE.a = mine.wa;
   }
-  const rollingTire = v => { const t = {}; for (const k of TIRE_KEYS) t[k] = 0; t.vz = -v; t.wv = v; return t; };
+  const rollingTire = v => { const t = {}; for (const k of TIRE_KEYS) t[k] = 0; t.vz = -v; t.wv = v; t.gA = 1; t.re = 0.12; t.drv = 'R'; return t; };
   // a honk: two detuned horns for a quarter second
   function honk(len = 0.26) {
     const ac = audioCtx(); if (!ac) return; const t = ac.currentTime, g = ac.createGain(), f = ac.createBiquadFilter();
@@ -6261,13 +6333,13 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (GBX.cut > 0) GBX.cut = Math.max(0, GBX.cut - dt);
     const wv = Math.abs(TIRE.wv), u = drv.v, gas = I.gas || 0;
     // the gear an automatic would be in
-    let gA = 1; while (gA < 6 && wv > GBX.tops[gA - 1] * 0.93) gA++; GBX.gA = gA;
+    const gA = TIRE.gA || 1; GBX.gA = gA;
     let want;
     if (GBX.ev) want = 0.12 + 0.88 * Math.min(1, wv / Math.max(5, P.top));
-    else if (!GBX.man) want = Math.max(wv / GBX.tops[gA - 1], gA === 1 && wv < 6 ? 0.12 + 0.5 * gas : 0);
+    else if (!GBX.man) want = TIRE.re;
     else if (GBX.g === 0) want = 0.12 + 0.9 * gas;
     else if (GBX.g === -1) want = Math.abs(u) / (GBX.tops[0] * 0.8) + 0.25 * gas;
-    else { want = wv / GBX.tops[GBX.g - 1]; if (GBX.g === 1 && wv < GBX.tops[0] * 0.35) want = Math.max(want, 0.15 + 0.45 * gas); if (GBX.cut > 0) want = Math.max(want * 0.8, 0.12); }
+    else { want = TIRE.re; if (GBX.cut > 0) want = Math.max(want * 0.8, 0.12); }
     want = Math.max(0.12, want);
     if (want >= 1 && gas > 0.1) want = 1 - Math.random() * 0.05; // bouncing off the limiter
     GBX.rpm += (Math.min(1.12, want) - GBX.rpm) * Math.min(1, dt * 14);
@@ -6707,7 +6779,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       if (!v) { v = p.view = { g: new THREE.Group(), carKey: '', lookKey: '', slot: null, P: null, label: null, name: '' }; NET.group.add(v.g); }
       v.g.visible = true;
       const ck = p.car + '|' + p.paint;
-      if (p.car && v.carKey !== ck) { v.carKey = ck; if (v.slot) { v.slot.userData.dead = true; v.g.remove(v.slot); } v.model = null; v.slot = putCar(v.g, p.car, p.paint, m => { m.position.y = -0.12; v.model = m; try { applyMotor(m); } catch (e) {} }); }
+      if (p.car && v.carKey !== ck) { v.carKey = ck; if (v.slot) { v.slot.userData.dead = true; v.g.remove(v.slot); } v.model = null; v.slot = putCar(v.g, p.car, p.paint, m => { m.position.y = 0; v.model = m; try { applyMotor(m); } catch (e) {} }); }
       const L = netLookOf(p), lk = JSON.stringify(L);
       if (v.lookKey !== lk) { v.lookKey = lk; if (v.P) { v.g.remove(v.P.wrap); PEOPLE.dispose(v.P); } const P = PEOPLE.build(L, 1); P.wrap = new THREE.Group(); P.root.rotation.y = Math.PI; P.wrap.add(P.root); v.P = P; v.g.add(P.wrap); }
       if (v.name !== p.name) { v.name = p.name; if (v.label) { v.g.remove(v.label); v.label.material.map.dispose(); v.label.material.dispose(); } v.label = textSprite(p.name, 30, p.d3 ? '#7fd1ff' : '#ffd23f'); v.g.add(v.label); }
@@ -7010,7 +7082,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     const key = S.car ? S.car.id + '|' + S.car.color : '', U = car.userData; if (U.key === key) return; U.key = key;
     if (U.slot) { U.slot.userData.dead = true; car.remove(U.slot); U.slot = null; U.model = null; }
     if (!S.car) return;
-    const slot = U.slot = putCar(car, S.car.id, S.car.color, m => { m.position.y = -0.12; U.model = m; applyMotor(m); applyDrag(m, S.car); U.head.position.z = -m.userData.front + 0.2; });
+    const slot = U.slot = putCar(car, S.car.id, S.car.color, m => { m.position.y = 0; U.model = m; applyMotor(m); applyDrag(m, S.car); U.head.position.z = -m.userData.front + 0.2; });
     slot.name = 'model';
   }
   function nearestRoad(x, z) {
