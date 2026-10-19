@@ -1475,7 +1475,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   }
   // what the car can do right now
   function carPerf() {
-    const c = S.car, hp = carHp(c), kg = partsKg(c);
+    const c = S.car, X = partsSpec(c), hp = carHp(c) - X.nos, kg = partsKg(c);   // the nitrous shot only counts while you spray it
     let top = Math.min(95, 28 + hp * 0.075 + 2000 / kg * 2), acc = Math.min(dragPack(c) ? 30 : 22, 5 + hp / kg * 55);
     const acc0 = acc, eng = c.cond.engine / 100, tr = c.cond.trans / 100, m = carOf(c.id);
     if (c.fuel <= 0) { top = 0; acc = 0; }
@@ -1491,6 +1491,9 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     // everyday cars from 2000 on leave the factory with launch torque management in 1st (an ECU tune takes it out)
     P.tqm = (m.y || 2020) >= 2000 && P.pw < 130 && !(c.tparts || []).includes('ecu') ? 0.72 : 1;
     P.cgL = m.body === 'truck' || m.body === 'suv' ? 0.28 : 0.21;
+    // boost and spray: how much of the power waits on the turbo (bigger ones light later), the shot, and the progressive controller's ramp
+    const tn = tuneOf(c), prog = hasPart(c, 'prog');
+    P.turbo = turboShare(c); P.tSize = 1 + 0.15 * X.L('turbo'); P.nosHp = X.nos; P.kg = kg; P.nosStart = prog ? tn.nosStart / 100 : 1; P.nosRamp = prog ? tn.nosRamp : 0;
     P.aero = m.body === 'truck' || m.body === 'suv' ? 1.5 : 1;
     return P;
   }
@@ -1535,7 +1538,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     },
     engine(p) { if (!S.car) return noCar(p);
       const c = S.car, rate = p.rate || 1;
-      return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: [{ t: 'Parts counter', s: `Real brands, stages 1-4: internals, turbos, blowers, intake, exhaust, fuel, tunes, nitrous, trans and more · ${Object.keys(c.parts || {}).length} on your car`, btn: 'Open', act: () => { closeMenu(); openParts(p); } }].concat(motorRows(p)) };
+      return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: [{ t: 'Parts counter', s: `Real brands, stages 1-4: internals, turbos, blowers, intake, exhaust, fuel, tunes, nitrous, trans and more · ${Object.keys(c.parts || {}).length} on your car`, btn: 'Open', act: () => { closeMenu(); openParts(p); } }].concat(nosRefillRow(p), motorRows(p)) };
     },
     dyno(p) { if (!S.car) return noCar(p); const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
     paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: PAINTS.map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
@@ -4582,7 +4585,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // a two-axle (bicycle) model: each axle makes sideways grip from its slip angle on a curve that peaks and then
   // falls off, the driven tires share their grip between pushing and holding (friction circle), so too much gas
   // spins them and the back comes around. Gas + brake from a stop is a burnout. The handbrake locks the rears.
-  const G9 = 9.81, TIRE = { vx: 0, vz: 0, w: 0, ax: 0, ay: 0, wv: 0, spin: 0, slipR: 0, slipF: 0, delta: 0, smokeT: 0, marks: [null, null], gA: 1, re: 0.12, lit: 0, shT: 0, thr: 0, axL: 0, shW: 0, drv: 'R' };
+  const G9 = 9.81, TIRE = { vx: 0, vz: 0, w: 0, ax: 0, ay: 0, wv: 0, spin: 0, slipR: 0, slipF: 0, delta: 0, smokeT: 0, marks: [null, null], gA: 1, re: 0.12, lit: 0, shT: 0, thr: 0, axL: 0, shW: 0, boost: 0, nosK: 0, nosT: 0, drv: 'R' };
   // peaks near 7 degrees of slip, then a sliding tire holds less
   function tireCurve(a) { return Math.sin(1.6 * Math.atan(11 * a)); }
   // pushing: grip builds to its peak at about 12% wheelspin, then falls off as the tire spins faster (to about 3/4 lit up)
@@ -4590,7 +4593,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // the motor's torque across the rev range (r = revs / redline), scaled so its peak power is 1
   const engTq = r => Math.max(0.3, 1 - 0.8 * (r - 0.55) * (r - 0.55)) / 0.838;
   const TOPS = [0, 0, 0, 0, 0, 0];
-  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; }
+  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = TIRE.boost = TIRE.nosK = TIRE.nosT = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; }
   function carDims(m) {
     if (m && m.userData.wb == null) {
       const xs = m.userData.wheels.map(w => w.position.x), wb = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
@@ -4642,6 +4645,14 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // the motor takes a moment to come up on the throttle (and the car a moment to squat onto the rears)
     const thr = TIRE.thr += (I.gas - TIRE.thr) * Math.min(1, h * (I.gas > TIRE.thr ? 5 : 14));
     const cut = (gb && gb.cut > 0) || g <= 0, slipOK = !gb || g <= 2;
+    // a turbo builds boost with revs and throttle (anti-lag holds it up off the gas); until it does, the motor is down on power
+    if (P.turbo) { const want = Math.max(thr * clamp((TIRE.re - 0.25) / 0.4, 0, 1), I.als ? 0.92 : 0); TIRE.boost += (want - TIRE.boost) * Math.min(1, h * (want > TIRE.boost ? (0.4 + 1.3 * TIRE.re) / (P.tSize || 1) : 4)); }
+    const boostK = P.turbo ? 1 - P.turbo * (1 - TIRE.boost) : 1;
+    // nitrous sprays at wide open throttle, in gear, above the window switch; a progressive controller starts it low and ramps it in
+    const spray = !!I.nos && P.nosHp > 0 && thr > 0.7 && g > 0 && !cut && !ev && TIRE.re > 0.3, n0 = P.nosStart == null ? 1 : P.nosStart;
+    TIRE.nosT = spray ? TIRE.nosT + h : 0;
+    TIRE.nosK = spray ? Math.min(1, n0 + (1 - n0) * TIRE.nosT / Math.max(0.05, P.nosRamp || 0)) : 0;
+    const pwN = spray ? P.nosHp * 634 / (P.kg || 1600) * TIRE.nosK : 0;
     // push from the motor at a wheel speed: below the launch revs the clutch (manual) or the converter (automatic)
     // slips so the motor can sit in its torque and dump it in; at the limiter it cuts
     const engF = ws => {
@@ -4653,7 +4664,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const held = slipOK ? (gb ? 0.2 + 0.55 * thr : 0.15 + 0.3 * thr) : 0, re = Math.max(r, held);
       if (re >= 1) return 0;
       const bog = (!slipOK && r < 0.25 ? 0.3 + 0.7 * r / 0.25 : 1) * (g === 1 && P.tqm < 1 ? P.tqm + (1 - P.tqm) * clamp(r / 0.6, 0, 1) : 1);
-      return pw / V * engTq(re) * bog * (1 + (gb ? 0.5 : 0.25) * clamp((re - r) / 0.5, 0, 1));
+      return (pw * boostK * engTq(re) + pwN * 1.15) / V * bog * (1 + (gb ? 0.5 : 0.25) * clamp((re - r) / 0.5, 0, 1));
     };
     // what the driven tires can hold: their grip (tires, wear, the tune, drag radials off the line) times the weight on them
     const wr = clamp((P.wr0 || 0.47) + clamp(TIRE.axL / G9 * (P.cgL || 0.21) * (P.xfer || 1), -0.2, 0.3) + (P.transfer || 0) * 0.35 * clamp(TIRE.axL / 12, 0, 1), 0.2, 0.85);
@@ -5173,7 +5184,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // tunePerf(c) turns them into multipliers the physics reads (P.gripF, P.gripR, P.xfer, ...); at the stock numbers
   // every multiplier is exactly 1, so an untuned car drives the way it always did.
   const TUNE_DEF = { timing: 0, afr: 12.8, rev: 6500, lc: 0, fuel: '93', fd: 3.42, rhF: 0, rhR: 0, spF: 5, spR: 5, bF: 5, bR: 5, rF: 5, rR: 5, swF: 5, swR: 5,
-    camF: -1, camR: -0.5, toeF: 0, toeR: 0.1, diff: 'lsd', lock: 40, bias: 60, angle: 38, psiF: 32, psiR: 32 };
+    camF: -1, camR: -0.5, toeF: 0, toeR: 0.1, diff: 'lsd', lock: 40, bias: 60, angle: 38, psiF: 32, psiR: 32, nosStart: 100, nosRamp: 0 };
   const TUNE_PARTS = {
     ecu: { name: 'Handheld tuner', price: 650, blurb: 'Timing, air/fuel, rev limiter and launch control' },
     e85: { name: 'Flex fuel kit (E85)', price: 1200, blurb: 'Run E85: more timing before it knocks, burns more fuel' },
@@ -5185,6 +5196,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     diff: { name: 'Clutch-type LSD / spool', price: 1100, blurb: 'Open, limited slip (lock %) or a full spool' },
     bias: { name: 'Brake bias valve', price: 180, blurb: 'Move braking front to rear' },
     angle: { name: 'Steering angle kit', price: 850, blurb: 'Up to 68° of lock for drifting' },
+    prog: { name: 'Nitrous progressive controller', price: 650, blurb: 'Starts the shot low and ramps it in so the tires hook' },
   };
   // [key, label, min, max, step, part, unit, hint]
   const TUNE_KNOBS = {
@@ -5194,6 +5206,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       ['afr', 'Air / fuel (WOT)', 10.8, 14.6, 0.1, 'ecu', ':1', 'Best power near 12.6. Lean knocks, rich bogs'],
       ['rev', 'Rev limiter', 5500, 8500, 100, 'ecu', ' rpm', 'Higher pulls longer. Stock motors hate 7,200+'],
       ['lc', 'Launch control', 0, 6000, 100, 'ecu', ' rpm', '0 = off. Too low bogs, too high spins'],
+      ['nosStart', 'Nitrous start', 10, 100, 5, 'prog', '%', 'How much of the shot hits at first. Lower keeps it hooked'],
+      ['nosRamp', 'Nitrous ramp', 0, 4, 0.1, 'prog', ' s', 'Time to bring in the full shot. Longer = hooks, shorter = quicker'],
     ],
     Drivetrain: [
       ['fd', 'Final drive', 2.73, 4.56, 0.01, 'gears', '', 'Short gears launch hard, long gears run faster'],
@@ -6029,7 +6043,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // your car on the same physics as the street, in small steps
     if (T.st === 'run' || T.st === 'coast') {
       if (T.rt == null && gas > 0.3) T.rt = T.t - T.green;
-      const go = T.st === 'run' && T.rt != null, h = 1 / 240, n = Math.max(1, Math.round(dt / h)), Iin = { gas: go ? gas : 0, brake: T.st === 'coast' ? 1 : 0, steer: 0, hb: 0 };
+      const go = T.st === 'run' && T.rt != null, h = 1 / 240, n = Math.max(1, Math.round(dt / h)), Iin = nosInput({ gas: go ? gas : 0, brake: T.st === 'coast' ? 1 : 0, steer: 0, hb: 0 });
       for (let i = 0; i < n; i++) { physStep(Iin, P, dt / n); drv.v = Math.max(0, drv.v); T.s += drv.v * dt / n; if (go) { T.et += dt / n; if (TIRE.spin > 0.5 && T.s < 201) T.spinT += dt / n; T.maxW = Math.max(T.maxW, WHEELIE.a); }
         for (const [d, name] of SPLITS) if (go && T.split[name] == null && T.s >= d) T.split[name] = { t: T.et, v: drv.v }; }
       drv.gas = Iin.gas;
@@ -6114,7 +6128,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   function perfOf(c) { const mine = S.car; S.car = c; try { return carPerf(); } finally { S.car = mine; } }
   function racerBlurb(r) { const c = racerCar(r), k = dragPack(c); return `${carHp(c)} hp${c.tparts && c.tparts.includes('e85') ? ' on E85' : c.tparts && c.tparts.includes('c16') ? ' on race gas' : ''}${k ? ` · ${k.brand} ${k.tire === 'slick' ? 'slicks' : 'radials'}` : ''}${c.rims ? ` · ${c.rims.dia}s` : ''}`; }
   // run one physics step as another car: swap the shared tire state in, step, swap it back out
-  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'drv'];
+  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv'];
   function physAs(st, I, P, h) {
     const mine = { yaw: drv.yaw, v: drv.v, steer: drv.steer, wa: WHEELIE.a };
     for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
@@ -6237,7 +6251,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       if (T.t - T.go > 0.8 && T.st === 'run') T.q('msg').textContent = '';
       if (T.rt == null && gas > 0.3) T.rt = T.t - T.go;
       const since = T.t - T.go, h = 1 / 240, n = Math.max(1, Math.round(dt / h));
-      const mine = { gas: T.st === 'run' && T.rt != null ? gas : 0, brake: T.st === 'coast' ? 0.6 : 0, steer: 0, hb: 0 };
+      const mine = nosInput({ gas: T.st === 'run' && T.rt != null ? gas : 0, brake: T.st === 'coast' ? 0.6 : 0, steer: 0, hb: 0 });
       // the racer: reacts, then pedals it: a good driver feathers the gas when the tires light up
       const oSpin = T.ost.t.spin > 0.5, ogas = T.odone != null ? 0 : since < T.ort ? 0 : oSpin ? 1 - 0.45 * T.r.skill : 1;
       const theirs = { gas: ogas, brake: T.odone != null && T.done != null ? 0.6 : 0, steer: 0, hb: 0 };
@@ -6298,6 +6312,97 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       rows.push({ t: `${r.name} "${r.nick}" · ${carLabel(carOf(r.id))}`, s: locked ? `Needs ${r.need} rep` : `${racerBlurb(r)} · win +${r.rep} rep and ${money(r.wager * 2)}`, btn: locked ? 'Locked' : `Race ${money(r.wager)}`, off: locked, act: () => rollOpen(p, r, mode) }); }
     return { title: p.name, sub: `Rep ${S.rep} · you: ${carHp(S.car)} hp${dragPack(S.car) ? ' on a drag pack' : ''}${S.streetWins ? ` · ${S.streetWins} street wins` : ''}`, rows };
   };
+  // ---------- nitrous and anti-lag: buttons on the street, in roll races and at the strip ----------
+  // NOS: hold the button (or B) to spray the kit from the Parts counter. It only fires at wide open throttle above
+  // about 30% of the revs (a real window switch), it drains the bottle, and the full shot hits at once unless you
+  // run a progressive controller (tuning laptop), which starts it low and ramps it in so the tires can keep up.
+  // Anti-lag: turbo cars only. Tap it (or L) to arm: the turbo stays spooled off the gas and between shifts, so a
+  // roll race starts on boost instead of waiting for it. It pops and bangs, and the heat wears the motor.
+  const NOSI = { hold: false, als: false, hiss: null, popT: 0, told: 0, el: null };
+  const nosShot = c => (c && c.parts ? partsSpec(c).nos : 0) || 0;
+  const nosBottle = c => (c && c.nos != null ? c.nos : 1);
+  // how much of the motor's power waits on the turbo: a factory turbo, a bolt-on kit, or the old one-tap turbo upgrade
+  function turboShare(c) {
+    if (!c) return 0; const X = partsSpec(c), m = carOf(c.id);
+    if (X.asp === 'turbo') return m.asp === 'turbo' && !X.L('turbo') ? 0.3 : 0.4;
+    return c.mods && c.mods.turbo && !X.L('supercharger') ? 0.2 : 0;
+  }
+  const hasTurbo = c => turboShare(c) > 0;
+  // what goes into the physics input this frame for the player's car
+  function nosInput(I) {
+    const c = S.car; I.nos = NOSI.hold && nosShot(c) > 0 && nosBottle(c) > 0; I.als = NOSI.als && hasTurbo(c); return I;
+  }
+  // after the physics: drain the bottle, the sounds, wear, and the buttons
+  function stepNos(dt, on) {
+    const c = S.car, shot = nosShot(c), turbo = hasTurbo(c);
+    if (!turbo) NOSI.als = false;
+    const spraying = on && TIRE.nosK > 0.01;
+    if (spraying) {
+      c.nos = Math.max(0, nosBottle(c) - dt * TIRE.nosK * shot / 100 * 0.065);   // a 100 hp shot empties a full bottle in about 15 s
+      if (c.nos <= 0 && performance.now() - NOSI.told > 4000) { NOSI.told = performance.now(); toast('Bottle\'s empty. Refill it in the Engine bay at a shop.', 'bad'); }
+    }
+    nosHiss(spraying ? 0.35 + 0.65 * TIRE.nosK : 0);
+    // anti-lag: pops and flames off the gas, and the turbo cooks
+    if (on && NOSI.als) {
+      TIRE.boost += (0.92 - TIRE.boost) * Math.min(1, dt * 3);   // spooled while you cruise up to the honks too
+      c.cond.engine = Math.max(0, c.cond.engine - dt * 0.03);
+      if (drv.gas < 0.3 && (NOSI.popT -= dt) <= 0) {
+        NOSI.popT = 0.06 + Math.random() * 0.18; const ctx = audioCtx();
+        if (ctx && ctx.state === 'running') noisePop(ctx, ctx.currentTime, 700 + Math.random() * 900, 0.16 + Math.random() * 0.1, 0.09, ctx.destination);
+      }
+    }
+    nosButtons(on, shot, turbo);
+  }
+  function nosHiss(k) {
+    const ctx = audioCtx(); if (!ctx || ctx.state !== 'running') return;
+    if (!NOSI.hiss) {
+      if (!k) return;
+      const len = ctx.sampleRate, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3200;
+      const g = ctx.createGain(); g.gain.value = 0; src.connect(hp); hp.connect(g); g.connect(ctx.destination); src.start(); NOSI.hiss = g;
+    }
+    NOSI.hiss.gain.setTargetAtTime(k * 0.12, ctx.currentTime, 0.05);
+  }
+  // the two buttons: NOS (hold) shows the bottle, ANTI-LAG (tap) lights up when armed
+  function nosButtons(on, shot, turbo) {
+    if (!NOSI.el) {
+      const st = document.createElement('style');
+      st.textContent = `.nosbtn{position:fixed;z-index:21;right:max(18px,env(safe-area-inset-right,0px));width:74px;height:58px;border-radius:14px;border:2px solid #3a3244;background:rgba(18,16,22,.82);color:#f1ece4;font:700 15px "Barlow Condensed","Arial Narrow",sans-serif;line-height:1.05;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;display:none;padding:0}
+.nosbtn small{display:block;font-size:12px;font-weight:600;color:#a89fb2}
+#nosbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 196px);border-color:#2a6fd1}#nosbtn.on{background:#2a6fd1;color:#fff}#nosbtn.on small{color:#dfeaff}#nosbtn.empty{opacity:.5}
+#alsbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 262px);border-color:#e8651a}#alsbtn.on{background:#e8651a;color:#141014}#alsbtn.on small{color:#2a1608}
+body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #alsbtn{display:block}
+@media (orientation:portrait){#nosbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 330px)}#alsbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 396px)}}`;
+      document.head.append(st);
+      const nb = document.createElement('button'); nb.id = 'nosbtn'; nb.className = 'nosbtn'; nb.innerHTML = 'NOS<small>100%</small>';
+      const ab = document.createElement('button'); ab.id = 'alsbtn'; ab.className = 'nosbtn'; ab.innerHTML = 'ANTI-LAG<small>off</small>';
+      document.body.append(nb, ab); NOSI.el = { nb, ab };
+      const down = e => { e.preventDefault(); NOSI.hold = true; }, up = () => { NOSI.hold = false; };
+      nb.addEventListener('pointerdown', down); nb.addEventListener('pointerup', up); nb.addEventListener('pointercancel', up); nb.addEventListener('pointerleave', up);
+      nb.addEventListener('contextmenu', e => e.preventDefault());
+      ab.addEventListener('pointerdown', e => { e.preventDefault(); nosArm(); });
+      addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.code === 'KeyB') NOSI.hold = true; if (e.code === 'KeyL' && !e.repeat) nosArm(); });
+      addEventListener('keyup', e => { if (e.code === 'KeyB') NOSI.hold = false; });
+      // the roll race and the strip hide the street pad, so the buttons go in front of their screens too
+      st.textContent += 'body.roll-on .nosbtn,body.strip-on .nosbtn{z-index:26}';
+    }
+    const B = document.body.classList, c = S.car;
+    B.toggle('nos-ok', !!(on && shot > 0)); B.toggle('als-ok', !!(on && turbo));
+    if (on && shot > 0) { const b = Math.round(nosBottle(c) * 100); NOSI.el.nb.classList.toggle('on', TIRE.nosK > 0.01); NOSI.el.nb.classList.toggle('empty', b <= 0); NOSI.el.nb.lastChild.textContent = `${shot} hp · ${b}%`; }
+    if (on && turbo) { NOSI.el.ab.classList.toggle('on', NOSI.als); NOSI.el.ab.lastChild.textContent = NOSI.als ? 'armed' : 'off'; }
+  }
+  function nosArm() {
+    if (!hasTurbo(S.car)) { toast('Anti-lag needs a turbo. Bolt one on at the Parts counter.', 'bad'); return; }
+    NOSI.als = !NOSI.als; toast(NOSI.als ? 'Anti-lag armed: the turbo stays spooled. It cooks the motor, so turn it off on the street.' : 'Anti-lag off.', NOSI.als ? 'good' : '');
+  }
+  // refill at a shop's Engine bay: about $6 a pound, a full 10 lb bottle
+  function nosRefillRow(p) {
+    const c = S.car, shot = nosShot(c); if (!shot) return [];
+    const need = 1 - nosBottle(c), cost = Math.max(10, Math.round(need * 60 * (p.rate || 1) / 5) * 5);
+    return [{ t: 'Refill nitrous bottle', s: `${shot} hp shot · bottle ${Math.round(nosBottle(c) * 100)}% full`, btn: need < 0.01 ? 'Full' : money(cost), off: need < 0.01,
+      act: () => { if (spend(cost, 'Nitrous refill')) { c.nos = 1; save(); toast('Bottle full. 10 lb of nitrous.', 'good'); } } }];
+  }
 
   // ---------- the cockpit: a real gauge cluster (tach, speedo, odometer), gas and brake pedals, and a manual stick ----------
   // the gearbox: six forward gears and reverse on an H gate. In manual, each gear tops out at the rev limiter and a
@@ -6873,7 +6978,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const LAY_CTRLS = [
     ['radio', '#radio', 'Radio'], ['steer', '.pad .steer', 'Steering'], ['clus', '.pad .clus', 'Gauges'], ['side', '.pad .side', 'E-brake & Out'],
     ['shift', '#shifter', 'Shifter'], ['peds', '.pad .peds', 'Pedals'], ['stick', '#stick', 'Walk stick'], ['mini', '#mini', 'Minimap'],
-    ['phone', '#phonebtn', 'Phone'], ['car', '#carbtn', 'Car'], ['fob', '#fobbtn', 'Fob'], ['hud', '#hud', 'Speed & stats'], ['net', '#netpill', 'Online'],
+    ['phone', '#phonebtn', 'Phone'], ['car', '#carbtn', 'Car'], ['fob', '#fobbtn', 'Fob'], ['hud', '#hud', 'Speed & stats'], ['net', '#netpill', 'Online'], ['nos', '#nosbtn', 'NOS'], ['als', '#alsbtn', 'Anti-lag'],
   ];
   const LAY = { all: {}, on: false, sel: null, el: null };
   try { LAY.all = JSON.parse(localStorage.getItem(LAY_KEY) || '{}') || {}; } catch (e) { LAY.all = {}; }
@@ -7233,7 +7338,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     return { gas, brake, steer, hb };
   }
   function stepDrive(dt) {
-    const I = window.__drvIn ? window.__drvIn() : input(); drv.gas = I.gas || 0;
+    const I = nosInput(window.__drvIn ? window.__drvIn() : input()); drv.gas = I.gas || 0;
     const P = carPerf();
     // moved by something else (teleport, garage, getting back in): start from rest
     if (drv.px == null || Math.hypot(drv.x - drv.px, drv.z - drv.pz) > 0.01 || drv.v === 0 && drv.pv !== 0) { physReset(); drv.camYaw = drv.yaw; }
@@ -7407,6 +7512,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     netTick(dt);
+    stepNos(dt, (driving && !foot.on) || ROLL.on || STRIP.on);
     if ((frame & 15) === 0) syncCarModel();
     if (car) stepPanels(car.userData.model, dt); if (car && driving) stepCarAudio();
     { // in the car, or idling outside after a remote start from the key fob
