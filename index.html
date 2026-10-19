@@ -7451,10 +7451,12 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // ---------- the gun in your hands ----------
   const GUN = { b: null, key: '', holster: null, want: false, d: 0, camK: 0, anim: null, reload: null, kick: 0, trig: 0, held: false, next: 0, locked: false, flashT: 0,
     yaw: 0, e: 0, aimP: _v(), padY: false, padX: false, keyG: false, keyR: false, hitT: 0, told: {} };
+  // the walk and idle poses only set arm x/z and forearm x, so clear the twist the hands-on-gun IK leaves behind
+  function untwistArms(P) { if (!P) return; for (let i = 0; i < 2; i++) { P.arms[i].rotation.y = 0; if (P.fores) { P.fores[i].rotation.y = 0; P.fores[i].rotation.z = 0; } } }
   const armed = () => GUN.b && GUN.d > 0.98 && GUN.want;
   function gunHolsterNow() {
     GUN.want = false; GUN.d = 0; GUN.camK = 0; GUN.reload = null; GUN.anim = null; GUN.held = false; GUN.kick = 0;
-    if (GUN.b && ME) { const D = GUN.b.D; poseAt(D.pistol ? POSE.pistolHip(D) : POSE.arpBack(D), PA); GUN.b.rig.position.copy(PA.p); GUN.b.rig.quaternion.copy(PA.q); }
+    untwistArms(ME); if (GUN.b && ME) { const D = GUN.b.D; poseAt(D.pistol ? POSE.pistolHip(D) : POSE.arpBack(D), PA); GUN.b.rig.position.copy(PA.p); GUN.b.rig.quaternion.copy(PA.q); }
     gunHud();
   }
   function syncGunModel() {
@@ -7816,7 +7818,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     let padFire = false; const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) { if (!p) continue; const y = !!(p.buttons[3] && p.buttons[3].pressed), x = !!(p.buttons[2] && p.buttons[2].pressed); if (y && !GUN.padY && !menuFn) gunToggle(); if (x && !GUN.padX && !menuFn) gunReload(); GUN.padY = y; GUN.padX = x; if (p.buttons[5] && p.buttons[5].pressed) padFire = true; }
     const holdFire = GUN.held || padFire || (!!keys.KeyQ && !menuFn && !PH.open);
-    const D = b.D, upper = ME.upper;
+    const D = b.D, upper = ME.upper; untwistArms(ME);
     // draw and holster
     const was = GUN.d; GUN.d = clamp(GUN.d + (GUN.want ? 1 : -1) * dt / D.draw, 0, 1);
     if (was < 1 && GUN.d >= 1) SND.click(D.pistol ? 1100 : 900, 0.08);
