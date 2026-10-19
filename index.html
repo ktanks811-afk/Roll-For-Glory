@@ -4346,10 +4346,12 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       sc.className = 'ph-screen'; sc.innerHTML = phoneHead('Settings') + `<div class="ph-body ph-list">
         <button class="ph-row" data-s="far"><b>Camera</b><span>${drv.far ? 'Far' : 'Close'}</span></button>
         <button class="ph-row" data-s="labels"><b>Town names in the sky</b><span>${labelsOn ? 'On' : 'Off'}</span></button>
+        <button class="ph-row" data-s="layout"><b>Control layout</b><span>Move &amp; resize</span></button>
         <button class="ph-row" data-s="music"><b>Intro song</b><span>Play</span></button>
         <button class="ph-row warn" data-s="reset"><b>Start over</b><span>Wipes this save</span></button></div>`;
       sc.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
         const k = b.dataset.s;
+        if (k === 'layout') { closePhone(); layoutEdit(); return; }
         if (k === 'far') drv.far = !drv.far; else if (k === 'labels') labelsOn = !labelsOn; else if (k === 'music') { if (INTRO.on) introStop(); else introStart(); }
         else if (k === 'reset') { if (!b.classList.contains('sure')) { b.classList.add('sure'); b.querySelector('span').textContent = 'Tap again to wipe'; return; } try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); return; }
         phoneApp('settings');
@@ -6696,6 +6698,99 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   { const st = document.createElement('style'); st.textContent = '#netpill{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:30;background:rgba(18,16,22,0.78);color:#f1ece4;border:1px solid rgba(127,209,255,0.5);border-radius:999px;padding:5px 12px;font:600 13px var(--body);cursor:pointer}#netpill[hidden]{display:none}#netpill.error{border-color:#ff5a4e}body.phoning #netpill{display:none}'; document.head.append(st); }
   addEventListener('pagehide', () => { if (NET.tr) try { netSend({ k: 'bye' }); } catch (e) {} });
   window.__net = { NET, netTick, netJoin, netLeave, netSay };
+  // ---------- control layout: drag any on-screen control somewhere else and make it bigger or smaller ----------
+  // Saved in this browser, one layout for sideways and one for upright. Uses the CSS translate/scale
+  // properties so it stacks on top of each control's own position and transform.
+  const LAY_KEY = 'mw3d.layout.v1';
+  const LAY_CTRLS = [
+    ['radio', '#radio', 'Radio'], ['steer', '.pad .steer', 'Steering'], ['clus', '.pad .clus', 'Gauges'], ['side', '.pad .side', 'E-brake & Out'],
+    ['shift', '#shifter', 'Shifter'], ['peds', '.pad .peds', 'Pedals'], ['stick', '#stick', 'Walk stick'], ['mini', '#mini', 'Minimap'],
+    ['phone', '#phonebtn', 'Phone'], ['car', '#carbtn', 'Car'], ['fob', '#fobbtn', 'Fob'], ['hud', '#hud', 'Speed & stats'], ['net', '#netpill', 'Online'],
+  ];
+  const LAY = { all: {}, on: false, sel: null, el: null };
+  try { LAY.all = JSON.parse(localStorage.getItem(LAY_KEY) || '{}') || {}; } catch (e) { LAY.all = {}; }
+  const layKey = () => (innerWidth > innerHeight ? 'land' : 'port');
+  const layCur = () => (LAY.all[layKey()] = LAY.all[layKey()] || {});
+  function laySave() { try { localStorage.setItem(LAY_KEY, JSON.stringify(LAY.all)); } catch (e) {} }
+  function layApply() {
+    const L = LAY.all[layKey()] || {};
+    for (const [id, sel] of LAY_CTRLS) {
+      const el = document.querySelector(sel); if (!el) continue; const v = L[id];
+      el.style.translate = v && (v.x || v.y) ? `${Math.round(v.x)}px ${Math.round(v.y)}px` : '';
+      el.style.scale = v && v.s && v.s !== 1 ? String(v.s) : '';
+      if (v && v.s && v.s !== 1) el.style.transformOrigin = 'center'; else el.style.transformOrigin = '';
+    }
+  }
+  function layBoxes() {
+    if (!LAY.on) return;
+    const box = LAY.el.querySelector('.lay-boxes'); box.innerHTML = '';
+    for (const [id, sel, name] of LAY_CTRLS) {
+      const el = document.querySelector(sel); if (!el) continue; const r = el.getBoundingClientRect(); if (r.width < 4 || r.height < 4) continue;
+      const b = document.createElement('div'); b.className = 'lay-box' + (LAY.sel === id ? ' sel' : ''); b.dataset.id = id;
+      Object.assign(b.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+      b.innerHTML = `<span${r.top < 24 ? ' class="in"' : ''}>${name}</span>`; box.append(b);
+    }
+    const v = LAY.sel && layCur()[LAY.sel], s = v && v.s || 1, nm = LAY.sel ? LAY_CTRLS.find(c => c[0] === LAY.sel)[2] : '';
+    LAY.el.querySelector('.lay-name').textContent = LAY.sel ? `${nm} · ${Math.round(s * 100)}%` : 'Drag a control to move it. Tap one to resize it.';
+    LAY.el.querySelector('.lay-size').hidden = !LAY.sel;
+    LAY.el.querySelector('#lay-range').value = Math.round(s * 100);
+  }
+  function laySet(id, f) { const L = layCur(), v = L[id] = L[id] || { x: 0, y: 0, s: 1 }; f(v); v.s = clamp(v.s, 0.5, 2.2); layApply(); layBoxes(); laySave(); }
+  function layoutEdit() {
+    if (LAY.on) return; LAY.on = true; document.body.classList.add('lay-edit');
+    if (!LAY.el) {
+      const d = LAY.el = document.createElement('div'); d.id = 'lay';
+      d.innerHTML = `<div class="lay-boxes"></div><div class="lay-bar"><b class="lay-name"></b><div class="lay-size" hidden><button data-a="minus">−</button><input id="lay-range" type="range" min="50" max="220" step="5"><button data-a="plus">+</button><button data-a="one">Reset</button></div><div class="lay-btns"><button data-a="all">Reset all</button><button data-a="done" class="go">Done</button></div></div>`;
+      document.body.append(d);
+      const bar = d.querySelector('.lay-bar');
+      bar.addEventListener('pointerdown', e => e.stopPropagation());
+      bar.querySelector('#lay-range').oninput = e => { if (LAY.sel) laySet(LAY.sel, v => { v.s = e.target.value / 100; }); };
+      bar.onclick = e => {
+        const a = e.target.dataset.a; if (!a) return;
+        if (a === 'minus' && LAY.sel) laySet(LAY.sel, v => { v.s -= 0.1; });
+        else if (a === 'plus' && LAY.sel) laySet(LAY.sel, v => { v.s += 0.1; });
+        else if (a === 'one' && LAY.sel) { delete layCur()[LAY.sel]; laySave(); layApply(); layBoxes(); }
+        else if (a === 'all') { if (!e.target.classList.contains('sure')) { e.target.classList.add('sure'); e.target.textContent = 'Tap again'; return; } LAY.all[layKey()] = {}; laySave(); layApply(); LAY.sel = null; layBoxes(); e.target.classList.remove('sure'); e.target.textContent = 'Reset all'; }
+        else if (a === 'done') layoutDone();
+      };
+      // drag a box to move its control; two fingers on the screen pinch the picked one bigger or smaller
+      const pts = new Map(); let drag = null, pinch = null;
+      d.addEventListener('pointerdown', e => {
+        e.preventDefault(); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pts.size === 2 && LAY.sel) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: (layCur()[LAY.sel] || {}).s || 1 }; drag = null; return; }
+        const b = e.target.closest('.lay-box'); if (!b) { LAY.sel = null; layBoxes(); return; }
+        LAY.sel = b.dataset.id; const v = layCur()[LAY.sel] || {}; drag = { x0: e.clientX, y0: e.clientY, x: v.x || 0, y: v.y || 0, moved: false }; layBoxes();
+        try { d.setPointerCapture(e.pointerId); } catch (x) {}
+      });
+      d.addEventListener('pointermove', e => {
+        if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinch && pts.size >= 2) { const [a, b] = [...pts.values()]; const k = Math.hypot(a.x - b.x, a.y - b.y) / Math.max(20, pinch.d); laySet(LAY.sel, v => { v.s = Math.round(pinch.s * k * 20) / 20; }); return; }
+        if (!drag || !LAY.sel) return; const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+        if (Math.hypot(dx, dy) > 3) drag.moved = true;
+        if (drag.moved) laySet(LAY.sel, v => { v.x = drag.x + dx; v.y = drag.y + dy; });
+      });
+      const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) drag = null; };
+      d.addEventListener('pointerup', up); d.addEventListener('pointercancel', up);
+    }
+    LAY.el.hidden = false; LAY.sel = null; requestAnimationFrame(layBoxes);
+  }
+  function layoutDone() { LAY.on = false; document.body.classList.remove('lay-edit'); if (LAY.el) LAY.el.hidden = true; toast('Control layout saved.', 'good'); }
+  addEventListener('resize', () => { layApply(); if (LAY.on) setTimeout(layBoxes, 60); });
+  {
+    const st = document.createElement('style');
+    st.textContent = `#lay{position:fixed;inset:0;z-index:60;background:rgba(8,8,12,.28);touch-action:none}#lay[hidden]{display:none}
+.lay-box{position:fixed;border:2px dashed rgba(127,209,255,.85);border-radius:12px;background:rgba(127,209,255,.10);cursor:grab}
+.lay-box span.in{top:auto;bottom:-20px}.lay-box.sel{border-style:solid;border-color:#ffb636;background:rgba(255,182,54,.16)}
+.lay-box span{position:absolute;left:4px;top:-20px;font:700 12px var(--body);color:#fff;background:rgba(14,15,18,.85);padding:1px 6px;border-radius:6px;white-space:nowrap;pointer-events:none}
+.lay-bar{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;max-width:calc(100vw - 24px);background:rgba(14,15,18,.94);border:1px solid var(--line);border-radius:14px;padding:8px 12px;color:var(--fg);font:600 14px var(--body)}
+.lay-bar button{background:#2a2c33;color:var(--fg);border:1px solid var(--line);border-radius:10px;font:700 14px var(--body);padding:7px 12px;cursor:pointer}
+.lay-bar button.go{background:var(--accent);color:#121016}
+.lay-size,.lay-btns{display:flex;align-items:center;gap:6px}.lay-size[hidden]{display:none}
+#lay-range{width:120px}
+body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!important}body.lay-edit #stick,body.lay-edit #mini,body.lay-edit #phonebtn,body.lay-edit #carbtn,body.lay-edit #hud{display:block!important}body.lay-edit #phone{display:none!important}`;
+    document.head.append(st);
+  }
+  layApply();
 
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
