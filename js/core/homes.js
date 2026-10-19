@@ -247,6 +247,15 @@ export function heights(d) {
   return h;
 }
 
+// check a look from a save or another player
+// (a piece's style and colours from the 3D furniture, gfx3d/furn3d.js)
+export function cleanLook(l) {
+  if (!l || typeof l !== 'object') return undefined;
+  const c = {};
+  if (l.c && typeof l.c === 'object') for (const [k, v] of Object.entries(l.c).slice(0, 6)) if (/^[a-z]{2,8}$/.test(k) && /^#?[a-z0-9]{2,12}$/i.test(String(v))) c[k] = String(v);
+  return { s: Math.max(0, Math.min(2, l.s | 0)), c };
+}
+
 // Old saves and bad data: make it a valid design or null.
 export function sanitize(d) {
   if (!d || !Array.isArray(d.floors) || !d.floors.length) return null;
@@ -254,7 +263,7 @@ export function sanitize(d) {
   for (let fl = 0; fl < Math.min(MAX_FLOORS, d.floors.length); fl++) {
     const s = String(d.floors[fl] || '').slice(0, GW * GD).padEnd(GW * GD, '.');
     out.floors.push([...s].map(c => (ROOM_BY_ID[c] ? c : '.')).join(''));
-    out.furn.push((Array.isArray(d.furn?.[fl]) ? d.furn[fl] : []).filter(f => FURN_BY_ID[f?.id]).map(f => ({ id: f.id, x: f.x | 0, y: f.y | 0, r: (f.r | 0) % 4 })));
+    out.furn.push((Array.isArray(d.furn?.[fl]) ? d.furn[fl] : []).filter(f => FURN_BY_ID[f?.id]).map(f => { const o = { id: f.id, x: f.x | 0, y: f.y | 0, r: (f.r | 0) % 4 }, l = cleanLook(f.look); if (l) o.look = l; return o; }));
     const seen = new Set();
     out.walls.push((Array.isArray(d.walls?.[fl]) ? d.walls[fl] : []).slice(0, 600).filter(w => w && (w.o === 'h' || w.o === 'v') && WALL_BY_ID[w.k])
       .map(w => ({ o: w.o, x: w.x | 0, y: w.y | 0, k: w.k })).filter(w => { const key = w.o + w.x + ',' + w.y; if (seen.has(key)) return false; seen.add(key); return true; }));

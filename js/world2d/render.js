@@ -239,7 +239,7 @@ function drawProps(ctx, cam, items) {
       ctx.fillStyle = p.c; ctx.beginPath(); ctx.ellipse(cx, cy, 1.3 * z, 0.7 * z, p.a, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(cx + Math.cos(p.a) * 1.45 * z, cy + Math.sin(p.a) * 1.45 * z, 0.45 * z, 0, Math.PI * 2); ctx.fill();
     } else if (p.k === 'furn') {
-      if (z > 1.1) drawFurniture(ctx, p.id, x, y, w, h, p.fx, p.fz, z);
+      if (z > 1.1) drawFurniture(ctx, p.id, x, y, w, h, p.fx, p.fz, z, p.look, false);
     } else if (p.k === 'bale') {
       if (z > 0.9) { ctx.fillStyle = shadowFill(1); ctx.beginPath(); ctx.arc(cam.sx(p.x) + sun.dx * 1.5 * z, cam.sy(p.z) + sun.dz * 1.5 * z, p.r * z, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), p.r * z, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(90,70,20,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cam.sx(p.x), cam.sy(p.z), p.r * z * 0.55, 0, Math.PI * 2); ctx.stroke(); }
     } else if (p.k === 'towel') {

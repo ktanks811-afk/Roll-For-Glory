@@ -119,7 +119,7 @@ export function houseBlock(out, loc, design, F, u0, v0, opts = {}) {
     // which way it faces: r = 0 faces the street
     const dir = [[0, -1], [1, 0], [0, 1], [-1, 0]][f.r || 0];
     const fx = F.U.x * dir[0] + F.V.x * dir[1], fz = F.U.z * dir[0] + F.V.z * dir[1];
-    const p = { ...r, k: 'furn', id: f.id, c: Fd.c, accent: Fd.accent, fx, fz, loc: loc.id };
+    const p = { ...r, k: 'furn', id: f.id, c: Fd.c, accent: Fd.accent, fx, fz, look: f.look, loc: loc.id };
     props.push(p); all.push(p);
   }
 

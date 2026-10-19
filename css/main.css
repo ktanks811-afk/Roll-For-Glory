@@ -783,3 +783,10 @@ body.touch .hud-mini { width: calc(var(--u, 1px) * 146) !important; height: calc
 .eb-chips { flex-wrap: wrap; overflow: visible; }
 .eb-chips .chip { text-align: left; line-height: 1.15; }
 .eb-chips .chip small { display: block; font-weight: 600; color: var(--dim); font-size: 11px; }
+/* the builder's 3D furniture: the piece turning, its styles and colours */
+.bld-look { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.bld-look .section-title { margin: 0; }
+.bld-prev { width: 100%; height: 170px; display: block; border-radius: 8px; background: radial-gradient(ellipse at 50% 70%, #3a352e, #1c1a17 75%); }
+.bld-look .swatch { width: 26px; height: 26px; }
+.bld-lrow .row { gap: 6px; flex-wrap: wrap; margin-top: 3px; }
+.bld-styles { gap: 4px; flex-wrap: wrap; }

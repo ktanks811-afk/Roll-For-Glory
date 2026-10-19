@@ -16,6 +16,7 @@ import { audio } from '../core/audio.js';
 import { GW, GD, MAX_FLOORS, FLOOR_NAMES, ROOMS, ROOM_BY_ID, FURNITURE, FURN_BY_ID, FURN_CATS, WALLS, WALL_BY_ID, WALL_COLORS, ROOF_COLORS, ROOF_STYLES, PRESETS, PRESET_IDS } from '../data/homes.js';
 import * as H from '../core/homes.js';
 import { drawFurniture } from '../gfx2d/furniture.js';
+import { want3d, onFurn3d, furn3dReady, lookDef, fullLook, preview, onSprites, swatchCss } from '../gfx3d/furn3d.js';
 
 const SHORT_FLOORS = ['Ground', '2nd', '3rd', '4th', '5th'];
 
@@ -26,10 +27,12 @@ export function openBuilder(opts) {
     d: H.cloneDesign(opts.design || H.fromPreset('starter')),
     floor: 0, mode: 'rooms', room: 'L', furn: 'bed', cat: 'Bedroom', rot: 0, sel: null, wall: 'wall', line: null, fresh: -1,
     cur: { x: 0, y: 0 }, drag: null, move: null, hover: null, ts: 24,
+    looks: {},      // the style and colours picked for each kind of piece, for the next one placed
   };
+  want3d();
   while (st.d.furn.length < st.d.floors.length) st.d.furn.push([]);
   st.d.walls ??= []; while (st.d.walls.length < st.d.floors.length) st.d.walls.push([]);
-  let cv = null, g = null, tools = null, foot = null;
+  let cv = null, g = null, tools = null, foot = null, stopPrev = null;
 
   openPanel((root, h) => {
     root.innerHTML = `<div class="p-head"><h1>${esc(opts.title || 'Design your house')}<small>${esc(opts.sub || 'Cowtown Custom Builders')}</small></h1><button class="btn x" data-action="close">×</button></div>
@@ -139,7 +142,7 @@ export function openBuilder(opts) {
       const furn = (f, alpha = 1) => {
         const fp = H.footprint(f), [fx, fy] = dirs[f.r || 0];
         g.globalAlpha = alpha;
-        drawFurniture(g, f.id, f.x * ts, f.y * ts, fp.w * ts, fp.d * ts, fx, fy, ts / 2);
+        drawFurniture(g, f.id, f.x * ts, f.y * ts, fp.w * ts, fp.d * ts, fx, fy, ts / 2, f.look);
         g.globalAlpha = 1;
       };
       for (const f of (d.furn[fl] || []).filter(f => FURN_BY_ID[f.id].flat)) furn(f);
@@ -160,7 +163,7 @@ export function openBuilder(opts) {
       // where the next piece would go
       const at = st.hover || (document.activeElement === cv ? st.cur : null);
       if (at && st.mode === 'furn' && !st.move && !st.drag) {
-        const f = { id: st.furn, x: at.x, y: at.y, r: st.rot }, fp = H.footprint(f), ok = !H.canPlace(d, fl, f);
+        const f = { id: st.furn, x: at.x, y: at.y, r: st.rot, look: st.looks[st.furn] }, fp = H.footprint(f), ok = !H.canPlace(d, fl, f);
         if (!H.furnAt(d, fl, at.x, at.y)) { furn(f, 0.45); g.strokeStyle = ok ? 'rgba(44,255,122,.8)' : 'rgba(255,51,70,.8)'; g.lineWidth = 1.5; g.strokeRect(f.x * ts + 1, f.y * ts + 1, fp.w * ts - 2, fp.d * ts - 2); }
       }
       if (document.activeElement === cv && cv.classList.contains('pad-focus')) { g.strokeStyle = '#ffc21a'; g.lineWidth = 2.5; g.strokeRect(st.cur.x * ts + 1, st.cur.y * ts + 1, ts - 2, ts - 2); }
@@ -195,10 +198,10 @@ export function openBuilder(opts) {
           <button class="btn btn-sm bld-room ${st.room === '.' ? 'on' : ''}" data-action="room" data-id="."><span class="bld-sw" style="background:repeating-linear-gradient(45deg,#e0192e 0 3px,#222 3px 6px)"></span><span>🧹 Knock it down<small>half back</small></span></button></div>`;
       } else if (m === 'furn') {
         const sel = st.sel && FURN_BY_ID[st.sel.id];
-        body = `${sel ? `<div class="li"><div class="grow"><div class="t">${esc(sel.name)}</div><div class="s">Drag it to move it.</div></div><button class="btn btn-sm" data-action="turnsel">↻ Turn</button><button class="btn btn-sm btn-danger" data-action="delsel">Remove</button><button class="btn btn-sm" data-action="unsel">Done</button></div>` : ''}
+        body = `${sel ? `<div class="li"><div class="grow"><div class="t">${esc(sel.name)}</div><div class="s">Drag it to move it.</div></div><button class="btn btn-sm" data-action="turnsel">↻ Turn</button><button class="btn btn-sm btn-danger" data-action="delsel">Remove</button><button class="btn btn-sm" data-action="unsel">Done</button></div><div class="bld-look" data-look></div>` : ''}
           <div class="row bld-cats">${FURN_CATS.map(c => `<button class="btn btn-sm ${st.cat === c ? 'btn-primary' : ''}" data-action="cat" data-id="${c}">${c}</button>`).join('')}</div>
           <div class="bld-grid">${FURNITURE.filter(f => f.cat === st.cat).map(f => `<button class="btn btn-sm bld-item ${st.furn === f.id ? 'on' : ''}" data-action="furn" data-id="${f.id}"><canvas width="44" height="44" data-ico="${f.id}"></canvas><span>${esc(f.name)}<small>${fmtMoney(f.price)}${f.room ? ` · ${ROOM_BY_ID[f.room].name.toLowerCase()}` : ''}</small></span></button>`).join('')}</div>
-          <div class="row" style="margin-top:6px"><button class="btn btn-sm" data-action="rot">↻ Turn before placing</button><span class="small muted">Tap the plan to place it.</span></div>`;
+          <div class="row" style="margin-top:6px"><button class="btn btn-sm" data-action="rot">↻ Turn before placing</button><span class="small muted">Tap the plan to place it.</span></div>${sel ? '' : '<div class="bld-look" data-look></div>'}`;
       } else if (m === 'look') {
         body = `<div class="section-title">Siding</div><div class="row">${WALL_COLORS.map(c => `<button class="swatch ${st.d.wall === c ? 'on' : ''}" style="background:${c}" data-action="wall" data-c="${c}" aria-label="Siding ${c}"></button>`).join('')}</div>
           <div class="section-title">Roof</div><div class="row">${ROOF_COLORS.map(c => `<button class="swatch ${st.d.roof === c ? 'on' : ''}" style="background:${c}" data-action="roof" data-c="${c}" aria-label="Roof ${c}"></button>`).join('')}</div>
@@ -208,7 +211,7 @@ export function openBuilder(opts) {
           <div class="li"><div class="grow"><div class="t">Empty lot</div><div class="s">Start from nothing.</div></div><button class="btn btn-sm" data-action="blank">Clear</button></div></div>`;
       }
       tools.innerHTML = `<div class="tabs bld-tabs">${tabs.map(([id, label]) => `<button class="${m === id ? 'on' : ''}" data-action="mode" data-id="${id}">${label}</button>`).join('')}</div><div class="bld-body">${body}</div>`;
-      tools.querySelectorAll('[data-ico]').forEach(c => { const x = c.getContext('2d'), F = FURN_BY_ID[c.dataset.ico]; const s = 40 / Math.max(F.w, F.d); drawFurniture(x, F.id, 22 - F.w * s / 2, 22 - F.d * s / 2, F.w * s, F.d * s, 0, -1, s / 2); });
+      icons();
       bind(tools, {
         mode: dd => { st.mode = dd.id; st.sel = null; refresh(); },
         room: dd => { st.room = dd.id; refresh(); },
@@ -225,6 +228,29 @@ export function openBuilder(opts) {
         preset: dd => { st.d = H.fromPreset(dd.id); st.floor = 0; st.sel = null; refresh(); },
         blank: () => { st.d = H.blankDesign(); st.floor = 0; st.sel = null; refresh(); },
       });
+      renderLook();
+    };
+    const icons = () => tools.querySelectorAll('[data-ico]').forEach(c => { const x = c.getContext('2d'), F = FURN_BY_ID[c.dataset.ico]; const s = 40 / Math.max(F.w, F.d); x.clearRect(0, 0, 44, 44); drawFurniture(x, F.id, 22 - F.w * s / 2, 22 - F.d * s / 2, F.w * s, F.d * s, 0, -1, s / 2, st.looks[F.id]); });
+    // the 3D piece turning, with its styles and colours: the selected piece, or the next one you place
+    const renderLook = () => {
+      stopPrev?.(); stopPrev = null;
+      const el = tools.querySelector('[data-look]'); if (!el) return;
+      if (!furn3dReady()) { el.innerHTML = '<p class="small muted">Loading the 3D furniture…</p>'; onFurn3d(() => { if (el.isConnected) renderLook(); }); return; }
+      const id = st.sel ? st.sel.id : st.furn, D = lookDef(id); if (!D) { el.innerHTML = ''; return; }
+      const look = st.sel ? st.sel.look : st.looks[id], o = fullLook(id, look);
+      el.innerHTML = `<div class="section-title">${st.sel ? 'This one' : 'Next one you place'}: style and colors</div><canvas class="bld-prev" aria-label="${esc(FURN_BY_ID[id].name)} in 3D"></canvas>
+        <div class="row bld-styles">${D.styles.map((s, i) => `<button class="btn btn-sm ${o.style === i ? 'btn-primary' : ''}" data-action="lstyle" data-i="${i}">${esc(s)}</button>`).join('')}</div>
+        ${D.colors.map(([k, label, list]) => `<div class="bld-lrow"><div class="small muted">${esc(label)}: <b>${esc((list.find(([, v]) => v === o[k]) || [''])[0])}</b></div><div class="row">${list.map(([nm, v]) => `<button class="swatch ${o[k] === v ? 'on' : ''}" style="background:${swatchCss(v)}" data-action="lcol" data-k="${k}" data-v="${esc(v)}" title="${esc(nm)}" aria-label="${esc(label)}: ${esc(nm)}"></button>`).join('')}</div></div>`).join('')}`;
+      const pc = el.querySelector('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
+      pc.width = Math.max(200, el.clientWidth) * dpr; pc.height = 170 * dpr;
+      stopPrev = preview(pc, id, look);
+      const set = (s, k, v) => {
+        const cur = st.sel ? st.sel.look : st.looks[id], next = { s: s ?? cur?.s ?? 0, c: { ...(cur?.c || {}) } };
+        if (k) next.c[k] = v;
+        if (st.sel) st.sel.look = next; else st.looks[id] = next;
+        renderLook(); icons(); draw();
+      };
+      bind(el, { lstyle: dd => set(+dd.i), lcol: dd => set(null, dd.k, dd.v) });
     };
     const renderFoot = () => {
       const c = H.check(st.d), pr = opts.price ? opts.price(st.d) : null;
@@ -271,6 +297,7 @@ export function openBuilder(opts) {
       const r = H.place(st.d, st.floor, st.furn, t.x, t.y, st.rot);
       if (!r.ok) { toast(r.text, 'bad'); audio.error(); return; }
       audio.click(); st.sel = null;
+      if (st.looks[st.furn]) r.f.look = { ...st.looks[st.furn], c: { ...st.looks[st.furn].c } };
       if (r.opened != null && r.opened < MAX_FLOORS && H.roomTiles(st.d, r.opened) - r.landing === 0) { st.fresh = r.opened; toast(`Stairs are in. The ${FLOOR_NAMES[r.opened].toLowerCase()} is open: tap "${SHORT_FLOORS[r.opened]} floor" up top to start building up there.`, 'good'); }
       refresh();
     };
@@ -332,6 +359,7 @@ export function openBuilder(opts) {
     cv.addEventListener('click', e => { if (e.detail === 0) act(st.cur); });   // a pad press, not a tap
     cv.addEventListener('focus', draw); cv.addEventListener('blur', draw);
 
+    const offSprites = onSprites(() => { if (!cv.isConnected) { offSprites(); return; } draw(); if (st.mode === 'furn') icons(); });
     size(); refresh();
     // the panel slides in; measure again once it has settled
     setTimeout(() => { if (cv.isConnected) { size(); draw(); } }, 320);
