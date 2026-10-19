@@ -3,10 +3,13 @@
 // -y is the front of the piece: the foot of the bed, the seat of the couch.
 
 import { FURN_BY_ID } from '../data/homes.js';
+import { furnSprite, spriteMargin } from '../gfx3d/furn3d.js';
 
 // (x, y, w, h): the screen rectangle it fills. (fx, fy): which way the front
 // faces on screen (a unit vector). s: pixels per metre, for detail cut-offs.
-export function drawFurniture(ctx, id, x, y, w, h, fx, fy, s = 10) {
+// look: the piece's style and colours; once the 3D models have loaded it's
+// drawn from its 3D model (gfx3d/furn3d.js), until then from the flat art below.
+export function drawFurniture(ctx, id, x, y, w, h, fx, fy, s = 10, look, load = true) {
   const F = FURN_BY_ID[id];
   if (!F) return;
   const horiz = Math.abs(fx) > Math.abs(fy);
@@ -14,6 +17,13 @@ export function drawFurniture(ctx, id, x, y, w, h, fx, fy, s = 10) {
   ctx.save();
   ctx.translate(x + w / 2, y + h / 2);
   ctx.rotate(Math.atan2(fx, -fy));
+  const pic = furnSprite(id, look, load);
+  if (pic) {
+    const k = W / (F.w * 2), m = spriteMargin * k;   // screen pixels per metre
+    ctx.drawImage(pic, -W / 2 - m, -D / 2 - m, W + 2 * m, D + 2 * m);
+    ctx.restore();
+    return;
+  }
   const L = -W / 2, T = -D / 2;
   const box = (x0, y0, ww, hh, c) => { ctx.fillStyle = c; ctx.fillRect(L + x0 * W, T + y0 * D, ww * W, hh * D); };
   const dot = (cx, cy, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(L + cx * W, T + cy * D, Math.max(0.6, r * Math.min(W, D)), 0, Math.PI * 2); ctx.fill(); };

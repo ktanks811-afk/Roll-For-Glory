@@ -27,6 +27,7 @@ import { bots } from '../net/bots.js';
 import { RideAlong } from './rides.js';
 import { Ranch } from './ranch.js';
 import { inHouse } from './house.js';
+import { want3d } from '../gfx3d/furn3d.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W, inCityGrid } from '../data/world.js';
@@ -900,6 +901,7 @@ export class World {
     this.visiting = visit;
     if (home && home !== this.inHouse) this.ui.toast(`${home.loc.name.split(' (')[0]}: home. Press ${pad.inUse ? 'A' : 'E'} to sleep, save or change clothes.`, 'info');
     this.inHouse = home;
+    if (home || visit) want3d();   // the 3D furniture loads once you're inside a house
     if (home && !inside) best = home.loc;
     this.garageHint = inside || this.rides.riding ? '' : hint;
     if (inside) best = inside.loc;   // anywhere inside counts as being at the door
