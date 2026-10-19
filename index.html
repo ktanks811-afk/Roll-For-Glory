@@ -1769,15 +1769,15 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       if (E.swap) { E.swap.parent.remove(E.swap); E.swap = null; }
       E.swapKey = key;
       if (swap && E.box) {
-        // the crate motor's crank runs along z with the front (throttle body, intake) at -z; in the car the front is +x. Front of the motor to the front of the bay, sat on the bay floor
+        // the crate motor's crank runs along z with the front at +z (the transmission trails to -z); in the car the front is +x. Front of the motor to the front of the bay, sat on the bay floor
         const b = E.box, w = new THREE.Group(), g = new THREE.Group(), sb = swap.box;
         w.position.set((b[0][0] + b[1][0]) / 2, (b[0][1] + b[1][1]) / 2, (b[0][2] + b[1][2]) / 2);
         // shrink it to fit the bay (length, width, and height up to the hood with a little room for a blower to poke through)
-        // full size, unless the bay under the hood is smaller: the header collectors hang down near the ground,
+        // full size, unless the bay under the hood is smaller: the header collectors hang down near the ground, the transmission runs back under the firewall into the tunnel,
         // and only a blower pokes up through the hood
-        const B = m.userData.bay, floor = 0.05, len = sb[1][2] - sb[0][2], wid = sb[1][0] - sb[0][0], hi = sb[1][1] - sb[0][1];
-        const k = B ? Math.min(1, (b[1][0] - B.x0 - 0.05) / len, B.w * 0.92 / wid, (B.y - floor + (/"powKey":"(factory|whipple|magnuson|eforce|blower)/.test(key) ? 0.16 : 0)) / hi) : 1;
-        g.rotation.y = -Math.PI / 2; g.scale.setScalar(k); g.position.set(b[1][0] - w.position.x + sb[0][2] * k, (B ? floor : b[0][1]) - w.position.y - sb[0][1] * k, -(sb[0][0] + sb[1][0]) / 2 * k);
+        const B = m.userData.bay, floor = 0.02, len = sb[1][2] - sb[0][2], wid = sb[1][0] - sb[0][0], hi = sb[1][1] - sb[0][1];
+        const k = B ? Math.min(1, (b[1][0] - B.x0 + 0.25) / len, B.w * 0.92 / wid, (B.y - floor + (/"powKey":"(factory|whipple|magnuson|eforce|blower)/.test(key) ? 0.16 : 0)) / hi) : 1;
+        g.rotation.y = Math.PI / 2; g.scale.setScalar(k); g.position.set(b[1][0] - (B ? 0.22 : 0) - w.position.x - sb[1][2] * k, (B ? floor : b[0][1]) - w.position.y - sb[0][1] * k, (sb[0][0] + sb[1][0]) / 2 * k);
         w.userData.fit = { k, sb, b };
         for (const q of swap.parts) g.add(new THREE.Mesh(q.geo, q.mat));
         w.add(g); m.children[0].add(w); E.swap = w;
