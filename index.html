@@ -1709,6 +1709,13 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       for (const q of p.parts) { const m = new THREE.Mesh(q.geo, matOf(q.mat)); m.castShadow = !m.material.transparent; g.add(m); }
       panels[p.name] = { g, axis: p.axis, open: p.open, base: g.rotation[p.axis], t: 0, want: 0 };
     }
+    // the engine bay under the closed hood, for fitting a crate motor
+    let bay = null;
+    if (panels.hood) {
+      root.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(inner.matrixWorld).invert(), bb = new THREE.Box3();
+      panels.hood.g.traverse(o => { if (o.isMesh) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld))); } });
+      if (!bb.isEmpty()) bay = { x0: bb.min.x, x1: bb.max.x, w: bb.max.z - bb.min.z, y: bb.min.y };
+    }
     // the audio builds from each car's page: subs (and the lid amps), door speakers, and back seats that come out for a sub box
     const AU = { subs: {}, doors: {}, seats: null, kind: ['', ''] }, grp = (parent, parts) => { const g = new THREE.Group(); g.visible = false; for (const q of parts) g.add(new THREE.Mesh(q.geo, matOf(q.mat))); parent.add(g); return g; };
     if (T.audio) {
@@ -1721,7 +1728,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     for (const e of T.engines) { const [w, g] = mount(e.box); for (const q of e.parts) g.add(new THREE.Mesh(q.geo, matOf(q.mat))); w.visible = e.stock; motors[e.kind] = w; }
     const stockE = T.engines.find(e => e.stock) || T.engines[0];
     const ENG = { motors, kinds: T.engines.map(e => ({ kind: e.kind, label: e.label, stock: e.stock })), box: stockE ? stockE.box : null, kind: stockE ? stockE.kind : '', swap: null, swapKey: '', on: 0, rev: 0 };
-    root.userData = { eng: ENG, audio: AU, panels, wheels, paint: myPaint, len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
+    root.userData = { bay, eng: ENG, audio: AU, panels, wheels, paint: myPaint, len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
     return root;
   }
   // drop a car into any group; the model streams in, the slot is ready right away
@@ -1762,12 +1769,15 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       if (E.swap) { E.swap.parent.remove(E.swap); E.swap = null; }
       E.swapKey = key;
       if (swap && E.box) {
-        // the crate motor's crank runs along z with the front at +z; in the car the front is +x. Front of the motor to the front of the bay, sat on the bay floor
+        // the crate motor's crank runs along z with the front (throttle body, intake) at -z; in the car the front is +x. Front of the motor to the front of the bay, sat on the bay floor
         const b = E.box, w = new THREE.Group(), g = new THREE.Group(), sb = swap.box;
         w.position.set((b[0][0] + b[1][0]) / 2, (b[0][1] + b[1][1]) / 2, (b[0][2] + b[1][2]) / 2);
         // shrink it to fit the bay (length, width, and height up to the hood with a little room for a blower to poke through)
-        const k = Math.min(1, (b[1][0] - b[0][0]) / (sb[1][2] - sb[0][2]), (b[1][2] - b[0][2]) * 1.1 / (sb[1][0] - sb[0][0]), (b[1][1] - b[0][1]) * 1.25 / (sb[1][1] - sb[0][1]));
-        g.rotation.y = Math.PI / 2; g.scale.setScalar(k); g.position.set(b[1][0] - w.position.x - sb[1][2] * k, b[0][1] - w.position.y - sb[0][1] * k, (sb[0][0] + sb[1][0]) / 2 * k);
+        // full size, unless the bay under the hood is smaller: the header collectors hang down near the ground,
+        // and only a blower pokes up through the hood
+        const B = m.userData.bay, floor = 0.05, len = sb[1][2] - sb[0][2], wid = sb[1][0] - sb[0][0], hi = sb[1][1] - sb[0][1];
+        const k = B ? Math.min(1, (b[1][0] - B.x0 - 0.05) / len, B.w * 0.92 / wid, (B.y - floor + (/"powKey":"(factory|whipple|magnuson|eforce|blower)/.test(key) ? 0.16 : 0)) / hi) : 1;
+        g.rotation.y = -Math.PI / 2; g.scale.setScalar(k); g.position.set(b[1][0] - w.position.x + sb[0][2] * k, (B ? floor : b[0][1]) - w.position.y - sb[0][1] * k, -(sb[0][0] + sb[1][0]) / 2 * k);
         w.userData.fit = { k, sb, b };
         for (const q of swap.parts) g.add(new THREE.Mesh(q.geo, q.mat));
         w.add(g); m.children[0].add(w); E.swap = w;
