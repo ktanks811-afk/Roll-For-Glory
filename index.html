@@ -9281,7 +9281,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
       if (!v) { v = p.view = { g: new THREE.Group(), carKey: '', lookKey: '', slot: null, P: null, label: null, name: '' }; NET.group.add(v.g); }
       v.g.visible = true;
       const ck = p.car + '|' + p.paint;
-      if (p.car && v.carKey !== ck) { v.carKey = ck; if (v.slot) { v.slot.userData.dead = true; v.g.remove(v.slot); } v.model = null; v.slot = putCar(v.g, p.car, p.paint, m => { m.position.y = 0; v.model = m; try { applyMotor(m); } catch (e) {} }); }
+      if (p.car && v.carKey !== ck) { v.carKey = ck; if (v.slot) { v.slot.userData.dead = true; v.g.remove(v.slot); } v.model = null; v.slot = putCar(v.g, p.car, p.paint, m => { m.position.y = 0; v.model = m; try { applyMotor(m, p.build || {}); } catch (e) {} }); }
       const L = netLookOf(p), lk = JSON.stringify(L);
       if (v.lookKey !== lk) { v.lookKey = lk; if (v.P) { v.g.remove(v.P.wrap); PEOPLE.dispose(v.P); } const P = PEOPLE.build(L, 1); P.wrap = new THREE.Group(); P.root.rotation.y = Math.PI; P.wrap.add(P.root); v.P = P; v.g.add(P.wrap); }
       if (v.name !== p.name) { v.name = p.name; if (v.label) { v.g.remove(v.label); v.label.material.map.dispose(); v.label.material.dispose(); } v.label = textSprite(p.name, 30, p.d3 ? '#7fd1ff' : '#ffd23f'); v.g.add(v.label); }
@@ -9643,6 +9643,60 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   const _pullInR = pullIn;
   pullIn = function () { if (RIDE.with) return; return _pullInR(); };
   window.__ride = { RIDE, rideRequest, rideAnswer, rideGetOut, rideStep };
+  // ---------- other players see your build: rims, drag pack, factory motor and ride height ride on the hello ----------
+  // b3 is the 3D build; v also carries the 2D game's wheel fields so 2D players see rims close to yours (and theirs show here)
+  const RIM_STYLE2D = d => d.layers ? 'mesh' : d.line.key === 'ld' ? 'dish' : (d.sweep || 0) >= 0.5 ? 'turbine' : d.split || d.n >= 8 ? 'split' : d.n === 6 ? 'six' : 'five';
+  const STYLE3D = { five: 'ls1', six: 'ls4', split: 'ns1', mesh: 'rm1', dish: 'ld1', turbine: 'sb1' };
+  function myBuild() {
+    const c = S.car; if (!c) return null;
+    const b = {}, r = c.rims && FORGED.RIM(c.rims.id);
+    if (r) b.r = [c.rims.id, c.rims.fin, c.rims.dia];
+    if (c.drag && DRAG_PACKS.some(k => k.id === c.drag.pack)) { const d = c.drag; b.d = [d.pack, d.rim, d.front, d.fin, d.bead ? 1 : 0]; }
+    if (c.eng) b.e = c.eng;
+    try { const T = tunePerf(c), rh = (T.rideF + T.rideR) / 2; if (Math.abs(rh) > 0.004) b.h = Math.round(rh * 1000) / 1000; } catch (e) {}
+    return b;
+  }
+  function my2dWheels() {
+    const c = S.car; if (!c) return {};
+    if (c.drag && DRAG_PACKS.some(k => k.id === c.drag.pack)) return { wheels: 'dish', wheelColor: '#c0c4c8', wheelSize: '15' };
+    const r = c.rims && FORGED.RIM(c.rims.id); if (!r) return {};
+    return { wheels: RIM_STYLE2D(r), wheelColor: (RIM_FIN[c.rims.fin] || RIM_FIN.chrome)[1], wheelSize: String(c.rims.dia) };
+  }
+  NET_HOOK.hello.push(() => ({ v: { paint: S.car ? S.car.color : '#7a1820', ...my2dWheels() }, b3: myBuild() || 0 }));
+  NET_HOOK.key.push(() => JSON.stringify(myBuild()));
+  // what they sent, checked: only known rims, finishes, sizes and packs get through
+  const hex = s => parseInt(s.slice(1), 16), near = (a, b) => { const x = hex(a), y = hex(b); return Math.abs((x >> 16) - (y >> 16)) + Math.abs((x >> 8 & 255) - (y >> 8 & 255)) + Math.abs((x & 255) - (y & 255)); };
+  function cleanBuild(b) {
+    const o = {}; if (!b || typeof b !== 'object') return o;
+    if (Array.isArray(b.r) && FORGED.RIM(b.r[0]) && RIM_FIN[b.r[1]] && RIM_SIZES[b.r[2]]) o.rims = { id: b.r[0], fin: b.r[1], dia: +b.r[2] };
+    if (Array.isArray(b.d) && DRAG_PACKS.some(k => k.id === b.d[0])) o.drag = { pack: b.d[0], rim: String(b.d[1]), front: String(b.d[2]), fin: String(b.d[3]), bead: !!b.d[4] };
+    if (typeof b.e === 'string' && /^\w{1,32}$/.test(b.e)) o.eng = b.e;
+    if (typeof b.h === 'number' && isFinite(b.h)) o.rh = clamp(b.h, -0.2, 0.2);
+    return o;
+  }
+  function from2d(v) {
+    const o = {}; if (!v || typeof v !== 'object' || typeof v.wheels !== 'string' || !STYLE3D[v.wheels]) return o;
+    const col = typeof v.wheelColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.wheelColor) ? v.wheelColor : '#c0c4c8';
+    let fin = 'chrome', best = 1e9; for (const [k, [, sw]] of Object.entries(RIM_FIN)) { const d = near(col, sw); if (d < best) { best = d; fin = k; } }
+    const want = +v.wheelSize || 20, dia = Object.keys(RIM_SIZES).map(Number).reduce((a, s) => Math.abs(s - want) < Math.abs(a - want) ? s : a, 20);
+    o.rims = { id: STYLE3D[v.wheels], fin, dia }; return o;
+  }
+  NET_HOOK.recv.push((p, m) => {
+    if (m.k !== 'h') return;
+    p.build = m.b3 !== undefined ? cleanBuild(m.b3) : from2d(m.v);
+    p.buildKey = JSON.stringify(p.build);
+  });
+  // put it on their model once it's loaded, and again whenever they change it
+  function peerRide(m, rh) {
+    const U = m.userData; if (U.y0 == null) U.y0 = m.position.y;
+    m.position.y = U.y0 + rh;
+    for (const w of U.wheels || []) { if (w.userData.y0 == null) w.userData.y0 = w.position.y; w.position.y = w.userData.y0 - rh; }
+  }
+  NET_HOOK.draw.push((p, v) => {
+    const m = v.model; if (!m || (v.bm === m && v.bk === p.buildKey)) return;
+    v.bm = m; v.bk = p.buildKey; const b = p.build || {};
+    try { applyDrag(m, b); applyMotor(m, b); peerRide(m, b.rh || 0); } catch (e) { console.warn('peer build: ' + e.message); }
+  });
 
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
