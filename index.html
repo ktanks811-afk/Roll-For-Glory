@@ -7454,7 +7454,9 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // the walk and idle poses only set arm x/z and forearm x, so clear the twist the hands-on-gun IK leaves behind
   function untwistArms(P) { if (!P) return; for (let i = 0; i < 2; i++) { P.arms[i].rotation.y = 0; if (P.fores) { P.fores[i].rotation.y = 0; P.fores[i].rotation.z = 0; } } }
   const armed = () => GUN.b && GUN.d > 0.98 && GUN.want;
+  function laserOff() { if (FX3.laserLine) FX3.laserLine.visible = FX3.dot.visible = false; }
   function gunHolsterNow() {
+    laserOff();
     GUN.want = false; GUN.d = 0; GUN.camK = 0; GUN.reload = null; GUN.anim = null; GUN.held = false; GUN.kick = 0;
     untwistArms(ME); if (GUN.b && ME) { const D = GUN.b.D; poseAt(D.pistol ? POSE.pistolHip(D) : POSE.arpBack(D), PA); GUN.b.rig.position.copy(PA.p); GUN.b.rig.quaternion.copy(PA.q); }
     gunHud();
@@ -7812,7 +7814,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     syncGunModel();
     const b = GUN.b, g = eqGun(), bc = document.body.classList;
     const has = !!(b && foot.on && !inside && !creating); if (has !== bc.contains('g-has')) bc.toggle('g-has', has);
-    if (!b || !ME) { if (bc.contains('g-armed')) bc.remove('g-armed'); return; }
+    if (!b || !ME) { laserOff(); if (bc.contains('g-armed')) bc.remove('g-armed'); return; }
     { const g0 = eqGun(); if (g0) b.beam.visible = !!g0.light && GUN.d > 0.9; }   // the light only shines once the gun is out
     // keys and pad: G or Y draws, Q or RB fires, R or X reloads
     const kg = !!keys.KeyG, kr = !!keys.KeyR; if (kg && !GUN.keyG && !menuFn && !PH.open) gunToggle(); if (kr && !GUN.keyR && !menuFn) gunReload(); GUN.keyG = kg; GUN.keyR = kr;
@@ -8082,13 +8084,47 @@ body.g-armed #walkhint { display: none !important; }
     _stepFoot(dt); fxInit();
     const want = groundAt(foot.x, foot.z); foot.gy = Math.abs(want - gy) > 0.3 ? want : gy + (want - gy) * Math.min(1, dt * 18);   // a quick step up the curb, not a pop
     foot.holder.position.y = foot.gy + 0.015;   // the shoe soles hang 1.5 cm below the body origin
-    if (foot.on && S) stepGuns(dt);
+    if (foot.on && S) stepGuns(dt); else laserOff();
     stepFx(dt);
     if (foot.on && window.__gcam) { const [ox, oy, oz] = window.__gcam, h = foot.holder.rotation.y, c = Math.cos(h), sn = Math.sin(h); camera.position.set(foot.x + ox * c + oz * sn, oy, foot.z - ox * sn + oz * c); camera.lookAt(foot.x, window.__gcam[3] || 1.2, foot.z); }
   };
+  // ---------- look around from the car ----------
+  // drag anywhere off the pedals (or the right stick) to swing the chase camera round the car, like on foot.
+  // let go and it eases back behind you once you're moving.
+  const DCAM = { yaw: 0, pitch: 0, id: null, lx: 0, ly: 0, at: -1e9 };
+  const dcamOn = () => driving && !foot.on && !inside && !menuFn && !(PH && PH.open);
+  function bindDriveLook(el) {
+    el.addEventListener('pointerdown', e => { if (!dcamOn() || DCAM.id !== null) return; DCAM.id = e.pointerId; DCAM.lx = e.clientX; DCAM.ly = e.clientY; });
+    el.addEventListener('pointermove', e => {
+      if (e.pointerId !== DCAM.id || !dcamOn()) return;
+      const dx = e.clientX - DCAM.lx, dy = e.clientY - DCAM.ly; DCAM.lx = e.clientX; DCAM.ly = e.clientY;
+      DCAM.yaw -= dx * 0.0065; DCAM.pitch = clamp(DCAM.pitch + dy * 0.0045, -0.3, 0.9); DCAM.at = performance.now();
+    });
+    const up = e => { if (e.pointerId === DCAM.id) DCAM.id = null; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  }
+  bindDriveLook(renderer.domElement);
+  const _dL = new THREE.Vector3(), _dO = new THREE.Vector3(), _dT = new THREE.Vector3();
+  function driveLook(dt) {
+    if (!dcamOn()) { DCAM.yaw = DCAM.pitch = 0; DCAM.id = null; return; }
+    for (const p of (navigator.getGamepads ? navigator.getGamepads() : [])) {
+      if (!p) continue; const ax = p.axes[2] || 0, ay = p.axes[3] || 0;
+      if (Math.abs(ax) > 0.15 || Math.abs(ay) > 0.15) { DCAM.yaw -= ax * dt * 2.6; DCAM.pitch = clamp(DCAM.pitch + ay * dt * 1.6, -0.3, 0.9); DCAM.at = performance.now(); }
+    }
+    DCAM.yaw = Math.atan2(Math.sin(DCAM.yaw), Math.cos(DCAM.yaw));
+    const moving = Math.abs(drv.v) > 3;
+    if (DCAM.id === null && performance.now() - DCAM.at > 1500 && moving) { const k = 1 - Math.exp(-dt * 2.2); DCAM.yaw -= DCAM.yaw * k; DCAM.pitch -= DCAM.pitch * k; }
+    const off = Math.abs(DCAM.yaw) + Math.abs(DCAM.pitch); if (off < 0.002) return;
+    // swing the game's chase camera round the car by the look offset
+    _dL.set(drv.x, 1.4, drv.z); _dO.copy(camera.position).sub(_dL);
+    const r = _dO.length(), yaw0 = Math.atan2(_dO.x, _dO.z), p0 = Math.asin(clamp(_dO.y / r, -1, 1));
+    const yaw = yaw0 + DCAM.yaw, pt = clamp(p0 + DCAM.pitch, -0.05, 1.35);
+    camera.position.set(_dL.x + Math.sin(yaw) * Math.cos(pt) * r, Math.max(0.6, _dL.y + Math.sin(pt) * r), _dL.z + Math.cos(yaw) * Math.cos(pt) * r);
+    _dT.copy(drv.look).lerp(_dL, Math.min(1, off * 2)); camera.lookAt(_dT);
+  }
   const _stepDrive = stepDrive;
   stepDrive = function (dt) {
-    _stepDrive(dt); stepFx(dt);
+    _stepDrive(dt); laserOff(); driveLook(dt); stepFx(dt);   // the laser goes off with the gun when you get in
     if (S && S.car && S.car.cond.engine <= 0 && (frame % 300) === 1) toast('Engine is shot. Get it fixed at a mechanic.', 'bad');
   };
   const _carPerf = carPerf;
@@ -8103,7 +8139,7 @@ body.g-armed #walkhint { display: none !important; }
   enterInterior = function (p) { gunHolsterNow(); return _enterInterior(p); };
   const _dressAvatar = dressAvatar;
   dressAvatar = function () { if (S && (!ME || JSON.stringify(myLook()) !== meKey)) { detachGun(); _dressAvatar(); syncGunModel(); return; } return _dressAvatar(); };
-  window.__guns = { test: { newCar, deliverCar, solids, LOOK, groundAt, camera }, get S() { return S; }, get ME() { return ME; }, foot, GUN, GUN_DEF, A3, eqGun, gunToggle, gunFire, gunReload, castShot, FX3, buildGun, gunThumb, azRender };
+  window.__guns = { test: { newCar, deliverCar, solids, LOOK, groundAt, camera, getIn: () => getIn(), DCAM, drv }, get S() { return S; }, get ME() { return ME; }, foot, GUN, GUN_DEF, A3, eqGun, gunToggle, gunFire, gunReload, castShot, FX3, buildGun, gunThumb, azRender };
   })();
   boot();
 })();
