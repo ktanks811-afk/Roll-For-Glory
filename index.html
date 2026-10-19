@@ -1765,7 +1765,10 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
         // the crate motor's crank runs along z with the front at +z; in the car the front is +x. Front of the motor to the front of the bay, sat on the bay floor
         const b = E.box, w = new THREE.Group(), g = new THREE.Group(), sb = swap.box;
         w.position.set((b[0][0] + b[1][0]) / 2, (b[0][1] + b[1][1]) / 2, (b[0][2] + b[1][2]) / 2);
-        g.rotation.y = Math.PI / 2; g.position.set(b[1][0] - w.position.x - sb[1][2], b[0][1] - w.position.y - sb[0][1], (sb[0][0] + sb[1][0]) / 2);
+        // shrink it to fit the bay (length, width, and height up to the hood with a little room for a blower to poke through)
+        const k = Math.min(1, (b[1][0] - b[0][0]) / (sb[1][2] - sb[0][2]), (b[1][2] - b[0][2]) * 1.1 / (sb[1][0] - sb[0][0]), (b[1][1] - b[0][1]) * 1.25 / (sb[1][1] - sb[0][1]));
+        g.rotation.y = Math.PI / 2; g.scale.setScalar(k); g.position.set(b[1][0] - w.position.x - sb[1][2] * k, b[0][1] - w.position.y - sb[0][1] * k, (sb[0][0] + sb[1][0]) / 2 * k);
+        w.userData.fit = { k, sb, b };
         for (const q of swap.parts) g.add(new THREE.Mesh(q.geo, q.mat));
         w.add(g); m.children[0].add(w); E.swap = w;
       }
