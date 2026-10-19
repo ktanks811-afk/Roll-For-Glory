@@ -7813,6 +7813,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const b = GUN.b, g = eqGun(), bc = document.body.classList;
     const has = !!(b && foot.on && !inside && !creating); if (has !== bc.contains('g-has')) bc.toggle('g-has', has);
     if (!b || !ME) { if (bc.contains('g-armed')) bc.remove('g-armed'); return; }
+    { const g0 = eqGun(); if (g0) b.beam.visible = !!g0.light && GUN.d > 0.9; }   // the light only shines once the gun is out
     // keys and pad: G or Y draws, Q or RB fires, R or X reloads
     const kg = !!keys.KeyG, kr = !!keys.KeyR; if (kg && !GUN.keyG && !menuFn && !PH.open) gunToggle(); if (kr && !GUN.keyR && !menuFn) gunReload(); GUN.keyG = kg; GUN.keyR = kr;
     let padFire = false; const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -7902,7 +7903,6 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (GUN.hitT > 0) GUN.hitT -= dt;
     gunHudFrame();
     // test hook: look at yourself from a set angle
-    if (window.__gcam) { const [ox, oy, oz] = window.__gcam, h = foot.holder.rotation.y, c = Math.cos(h), sn = Math.sin(h); camera.position.set(foot.x + ox * c + oz * sn, oy, foot.z - ox * sn + oz * c); camera.lookAt(foot.x, window.__gcam[3] || 1.2, foot.z); }
   }
   const angDiff = (a, b) => { const d = a - b; return Math.atan2(Math.sin(d), Math.cos(d)); };
   const smooth01 = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
@@ -8049,12 +8049,42 @@ body.g-armed #walkhint { display: none !important; }
   // ---------- hooks into the game ----------
   const _phoneApp = phoneApp;
   phoneApp = function (id) { if (id === 'amazin') { PH.app = 'amazin'; A3(); azRender(); return; } return _phoneApp(id); };
+  // ---------- feet on the pavement ----------
+  // roads are drawn 12 cm up, sidewalks 10 cm, crossings 14 cm and lots 4-7 cm, but people stood at 0, so shoes sank in.
+  // groundAt gives the surface height under a spot so you (and the locals by the doors) stand on top of it.
+  const lots = new Grid(40);
+  const _addGround = addGround;
+  addGround = function (D) {
+    const L = D.L;
+    for (let i = 0; i < L.length; i += 5) { const k = D.lkinds[L[i + 4]]; if (k === 'pond') continue; const x0 = L[i], z0 = L[i + 1], x1 = x0 + L[i + 2], z1 = z0 + L[i + 3]; lots.add({ x0, z0, x1, z1, y: LOT_Y[k] || 0.05 }, x0, z0, x1, z1); }
+    return _addGround(D);
+  };
+  function groundAt(x, z) {
+    let y = 0, roads = 0; const seen = new Set();
+    for (const o of lots.at(x, z)) if (x >= o.x0 && x <= o.x1 && z >= o.z0 && z <= o.z1 && o.y > y) y = o.y;
+    for (const [qx, qz] of [[x, z], [x - 3, z], [x + 3, z], [x, z - 3], [x, z + 3]]) for (const e of streets.at(qx, qz)) {
+      if (seen.has(e)) continue; seen.add(e);
+      const horiz = Math.abs(e.bz - e.az) < 0.01, a = horiz ? x : z, a0 = horiz ? Math.min(e.ax, e.bx) : Math.min(e.az, e.bz), a1 = horiz ? Math.max(e.ax, e.bx) : Math.max(e.az, e.bz), d = Math.abs(horiz ? z - e.az : x - e.ax), hw = e.w / 2;
+      if (d <= hw && a >= a0 - 0.01 && a <= a1 + 0.01) { roads++; y = Math.max(y, 0.12); }
+      else if (e.kind === 'city' && d <= hw + 2.6 && a >= a0 - 2.6 && a <= a1 + 2.6) y = Math.max(y, 0.1);
+    }
+    return roads > 1 ? 0.14 : y;
+  }
+  const _stepStreet = stepStreet;
+  stepStreet = function (t) {
+    const key = STREET.key; _stepStreet(t);
+    if (STREET.key !== key) for (const q of STREET.list) { const w = q.P.wrap.position; w.y = groundAt(w.x, w.z) + 0.015; }
+  };
   const _stepFoot = stepFoot;
   stepFoot = function (dt) {
     if (GUN.want) { LOOK.dragAt = performance.now(); foot.target = null; }   // aiming: the camera stays where you point it, taps don't walk you off
+    const gy = foot.gy == null ? groundAt(foot.x, foot.z) : foot.gy;
     _stepFoot(dt); fxInit();
+    const want = groundAt(foot.x, foot.z); foot.gy = Math.abs(want - gy) > 0.3 ? want : gy + (want - gy) * Math.min(1, dt * 18);   // a quick step up the curb, not a pop
+    foot.holder.position.y = foot.gy + 0.015;   // the shoe soles hang 1.5 cm below the body origin
     if (foot.on && S) stepGuns(dt);
     stepFx(dt);
+    if (foot.on && window.__gcam) { const [ox, oy, oz] = window.__gcam, h = foot.holder.rotation.y, c = Math.cos(h), sn = Math.sin(h); camera.position.set(foot.x + ox * c + oz * sn, oy, foot.z - ox * sn + oz * c); camera.lookAt(foot.x, window.__gcam[3] || 1.2, foot.z); }
   };
   const _stepDrive = stepDrive;
   stepDrive = function (dt) {
@@ -8073,7 +8103,7 @@ body.g-armed #walkhint { display: none !important; }
   enterInterior = function (p) { gunHolsterNow(); return _enterInterior(p); };
   const _dressAvatar = dressAvatar;
   dressAvatar = function () { if (S && (!ME || JSON.stringify(myLook()) !== meKey)) { detachGun(); _dressAvatar(); syncGunModel(); return; } return _dressAvatar(); };
-  window.__guns = { test: { newCar, deliverCar, solids, LOOK }, get S() { return S; }, get ME() { return ME; }, foot, GUN, GUN_DEF, A3, eqGun, gunToggle, gunFire, gunReload, castShot, FX3, buildGun, gunThumb, azRender };
+  window.__guns = { test: { newCar, deliverCar, solids, LOOK, groundAt, camera }, get S() { return S; }, get ME() { return ME; }, foot, GUN, GUN_DEF, A3, eqGun, gunToggle, gunFire, gunReload, castShot, FX3, buildGun, gunThumb, azRender };
   })();
   boot();
 })();
