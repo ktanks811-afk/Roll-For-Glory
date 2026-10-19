@@ -4445,6 +4445,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
     // your car when you're walking
     if (foot.on && foot.park) { const q = to(foot.park.x, foot.park.z); x.fillStyle = '#7fd1ff'; x.fillRect(q[0] - 3 * dpr, q[1] - 4.5 * dpr, 6 * dpr, 9 * dpr); }
+    stepGps(); gpsMini(x, to, dpr);
     netMini(x, to, dpr, R, px, pz);
     x.restore();
     // pin: on the map, or an arrow on the rim pointing at it
@@ -4550,7 +4551,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (id === 'market') return marketApp(sc);
     if (id === 'hustle') return hustleApp(sc);
     if (id === 'online') return onlineApp(sc);
-    if (id === 'map') {
+    if (id === 'map') { closePhone(); openBigMap(); return; }
+    if (id === 'maplist') {
       sc.className = 'ph-screen ph-map'; sc.innerHTML = phoneHead('Map') + '<div class="ph-body" id="ph-mapbody"></div><div class="ph-pick" id="ph-pick" hidden></div>';
       const pp = $('panel-places'); pp.hidden = false; phoneEl('ph-mapbody').append(pp);
     } else if (id === 'clock') {
@@ -4579,12 +4581,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const d = Math.hypot(p.x - (foot.on ? foot.x : drv.x), p.z - (foot.on ? foot.z : drv.z)), mi = d / 1609, fare = Math.round(Math.max(25, mi * 18) / 5) * 5;
     box.innerHTML = `<b class="t">${typeLabel(p.type)}</b><h3>${esc(p.name)}</h3><p>${mi < 0.1 ? 'Right here' : mi.toFixed(1) + ' mi away'}</p><div class="row"><button class="btn go" id="ph-gps">Set GPS</button><button class="btn" id="ph-tp">Fast travel ${money(fare)}</button><button class="btn" id="ph-x">Close</button></div>`;
     phoneEl('ph-gps').onclick = () => { setPin(p.name, p.x, p.z); closePhone(); toast(`GPS set: ${p.name}`, 'good'); };
-    phoneEl('ph-tp').onclick = () => {
-      if (S.cash < fare) { toast('Not enough cash for the trip.', 'bad'); return; } S.cash -= fare; save(); refreshStats();
-      setPin(p.name, p.x, p.z); closePhone();
-      if (!S.car || foot.on && !foot.park) { spawnFoot(p.x, p.z); toast(`You took a Ryde to ${p.name}.`, 'good'); return; }
-      if (foot.on) getIn(); startDrive(p.x, p.z); toast(`You and your car are at ${p.name}.`, 'good');
-    };
+    phoneEl('ph-tp').onclick = () => fastTravel(p);
     phoneEl('ph-x').onclick = () => { box.hidden = true; };
   }
   function bindPhone() {
@@ -4683,6 +4680,365 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     save(); refreshStats(); closePhone();
     toast(first ? `${L.seller} dropped off your ${carLabel(carOf(c.id))}. It's parked right here.` : `Bought it. Your ${carLabel(carOf(c.id))} is in your garage.`, 'good');
   }
+  // ---------- big map: the whole world top-down (towns, roads, every place), tap a spot for GPS ----------
+  let MAPIMG = null; // the overview ground canvas, kept by makeGround
+  const PLACE_ICON = { home: '🏠', garage: '🅿', repair: '🔧', perf: '⚙', visual: '🎨', rims: '🛞', dealer: '🚘', usedlot: '🚙', gas: '⛽', corner: '🏪', food: '🍔', clothing: '👕', mall: '🛍', pawn: '💰', chop: '🪚', bank: '🏦', realty: '🔑', property: '🏡', land: '🌾', trap: '🏚', plug: '📦', dispensary: '🌿', growfarm: '🌱', police: '🚓', court: '⚖', hospital: '🏥', studio: '🎤', work: '💼', trailers: '🚛', carshow: '🏆', meet: '🏁', sprint: '🏁', roll: '🛣', drag: '🚦', airport: '✈', marina: '⚓', salebarn: '🐄', kennel: '🐕', hoghunt: '🐗', baypen: '🐗', expo: '🎪', rig: '🛢', landmark: '⭐' };
+  const MAP_FILTERS = [
+    ['all', 'All', null],
+    ['cars', 'Cars & shops', ['repair', 'perf', 'visual', 'rims', 'dealer', 'usedlot', 'garage', 'trailers', 'chop']],
+    ['food', 'Food & gas', ['food', 'corner', 'gas', 'mall', 'clothing']],
+    ['money', 'Money', ['bank', 'pawn', 'realty', 'work', 'studio', 'plug', 'trap', 'dispensary', 'growfarm']],
+    ['race', 'Races & meets', ['meet', 'sprint', 'roll', 'drag', 'carshow']],
+    ['homes', 'Homes & land', ['home', 'garage', 'property', 'land', 'rig']],
+    ['city', 'City', ['police', 'court', 'hospital', 'airport', 'marina', 'landmark', 'expo', 'salebarn', 'kennel', 'hoghunt', 'baypen']],
+  ];
+  const BM = { el: null, c: null, x: null, open: false, cx: 0, cz: 0, k: 0.3, w: 0, h: 0, dpr: 1, filter: 'all', sel: null, dirty: true, ptrs: new Map(), pinch: null, moved: 0, raf: 0, tick: 0, follow: true };
+  function bmCss() {
+    if (BM.css) return; BM.css = true;
+    const st = document.createElement('style');
+    st.textContent = `
+#bigmap { position: fixed; inset: 0; z-index: 32; background: #16181c; touch-action: none; }
+#bigmap[hidden] { display: none; }
+#bigmap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#bigmap .bm-top { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 10px); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#bigmap .bm-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; pointer-events: auto; padding-bottom: 2px; }
+#bigmap .bm-row::-webkit-scrollbar { display: none; }
+#bigmap .bm-b { flex: none; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; font: 700 15px var(--body); cursor: pointer; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+#bigmap .bm-b.on { background: var(--accent); color: #121016; border-color: var(--accent); }
+#bigmap .bm-b.x { font-size: 18px; padding: 5px 13px; }
+#bigmap .bm-title { font-family: var(--display); font-size: 18px; align-self: center; padding: 0 6px; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
+#bigmap .bm-side { position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); display: flex; flex-direction: column; gap: 8px; }
+#bigmap .bm-side button { width: 46px; height: 46px; border-radius: 12px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); font: 700 24px var(--body); cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+#bigmap .bm-where { position: absolute; left: max(12px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; font-weight: 700; font-size: 14px; color: var(--muted); max-width: 55%; }
+#bigmap .bm-card { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); width: min(420px, calc(100% - 140px)); background: #17181d; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 6px 22px rgba(0,0,0,0.55); }
+#bigmap .bm-card[hidden] { display: none; }
+#bigmap .bm-card .t { color: var(--accent); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; }
+#bigmap .bm-card h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 18px; }
+#bigmap .bm-card p { margin: 0; color: var(--muted); font-size: 15px; }
+#bigmap .bm-card .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+@media (max-width: 560px) { #bigmap .bm-card { width: calc(100% - 24px); bottom: calc(env(safe-area-inset-bottom, 0px) + 76px); } #bigmap .bm-where { display: none; } }
+@media (max-height: 500px) { #bigmap .bm-card { width: min(380px, calc(100% - 140px)); padding: 9px 12px; } #bigmap .bm-card h3 { font-size: 16px; } }
+#gps-next { position: absolute; left: 0; top: 100%; transform: translateY(30px); background: rgba(24,20,30,0.9); border: 1px solid #3d9bff; border-radius: 10px; padding: 3px 9px; font-size: 14px; font-weight: 700; white-space: nowrap; color: var(--fg); }
+#gps-next[hidden] { display: none; } #gps-next i { font-style: normal; color: #7fc0ff; margin-right: 4px; }`;
+    document.head.append(st);
+  }
+  function bmBuild() {
+    bmCss();
+    const el = BM.el = document.createElement('div'); el.id = 'bigmap'; el.hidden = true;
+    el.innerHTML = `<canvas></canvas>
+      <div class="bm-top">
+        <div class="bm-row"><button class="bm-b x" data-a="close" aria-label="Close map">✕</button><span class="bm-title">Map</span><button class="bm-b" data-a="list">🔎 Search</button>
+          ${[['me', '📍 Me'], ['fw', 'Fort Worth'], ['dal', 'Dallas'], ['tx', 'All Texas'], ['ga', 'Atlanta'], ['ca', 'LA'], ['fl', 'Miami'], ['co', 'Denver']].map(([k, l]) => `<button class="bm-b" data-go="${k}">${l}</button>`).join('')}</div>
+        <div class="bm-row">${MAP_FILTERS.map(f => `<button class="bm-b${f[0] === 'all' ? ' on' : ''}" data-f="${f[0]}">${f[1]}</button>`).join('')}</div>
+      </div>
+      <div class="bm-where"></div>
+      <div class="bm-side"><button data-z="1" aria-label="Zoom in">+</button><button data-z="-1" aria-label="Zoom out">−</button><button data-a="me" aria-label="Center on me">◎</button></div>
+      <div class="bm-card" hidden></div>`;
+    document.body.append(el);
+    BM.c = el.querySelector('canvas'); BM.x = BM.c.getContext('2d');
+    el.querySelector('[data-a="close"]').onclick = closeBigMap;
+    el.querySelector('[data-a="list"]').onclick = () => { closeBigMap(); openPhone(); phoneApp('maplist'); };
+    el.querySelector('[data-a="me"]').onclick = () => bmGo('me');
+    el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => bmGo(b.dataset.go));
+    el.querySelectorAll('[data-z]').forEach(b => b.onclick = () => bmZoom(+b.dataset.z > 0 ? 1.8 : 1 / 1.8, BM.w / 2, BM.h / 2));
+    el.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { BM.filter = b.dataset.f; el.querySelectorAll('[data-f]').forEach(o => o.classList.toggle('on', o === b)); bmDirty(); });
+    const c = BM.c;
+    c.addEventListener('pointerdown', e => { c.setPointerCapture(e.pointerId); BM.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (BM.ptrs.size === 1) BM.moved = 0; BM.pinch = null; });
+    c.addEventListener('pointermove', e => {
+      const p = BM.ptrs.get(e.pointerId); if (!p) return;
+      if (BM.ptrs.size === 1) { const dx = e.clientX - p.x, dy = e.clientY - p.y; BM.moved += Math.abs(dx) + Math.abs(dy); BM.cx -= dx / BM.k; BM.cz -= dy / BM.k; BM.follow = false; }
+      p.x = e.clientX; p.y = e.clientY;
+      if (BM.ptrs.size === 2) {
+        const [a, b] = [...BM.ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        if (BM.pinch) { bmZoom(d / BM.pinch.d, mx, my); BM.cx -= (mx - BM.pinch.mx) / BM.k; BM.cz -= (my - BM.pinch.my) / BM.k; }
+        BM.pinch = { d, mx, my }; BM.moved = 99; BM.follow = false;
+      }
+      bmDirty();
+    });
+    const up = e => { const had = BM.ptrs.delete(e.pointerId); if (had && BM.ptrs.size === 0 && BM.moved < 10) bmTap(e.clientX, e.clientY); if (BM.ptrs.size < 2) BM.pinch = null; };
+    c.addEventListener('pointerup', up); c.addEventListener('pointercancel', e => { BM.ptrs.delete(e.pointerId); BM.pinch = null; });
+    c.addEventListener('wheel', e => { e.preventDefault(); bmZoom(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
+    addEventListener('keydown', e => { if (!BM.open) return; if (e.code === 'Escape' || e.code === 'KeyM') { e.preventDefault(); e.stopPropagation(); closeBigMap(); } }, true);
+    addEventListener('keydown', e => { if (BM.open || e.target.tagName === 'INPUT' || creating || !worldOn || inside) return; if (e.code === 'KeyM') { e.preventDefault(); openBigMap(); } });
+    addEventListener('resize', () => { if (BM.open) bmDirty(); });
+  }
+  function meXZ() { return foot.on ? [foot.x, foot.z, foot.yaw] : [drv.x, drv.z, drv.yaw]; }
+  function openBigMap() {
+    if (!BM.el) bmBuild();
+    if (PH.open) closePhone();
+    BM.open = true; BM.el.hidden = false; BM.sel = null; BM.el.querySelector('.bm-card').hidden = true;
+    const [x, z] = meXZ(); BM.cx = x; BM.cz = z; BM.follow = true;
+    bmSize(); BM.k = Math.min(BM.w, BM.h) / 2600; bmDirty();
+    if (!BM.tick) BM.tick = setInterval(() => { if (!BM.open) return; if (BM.follow) { const [x, z] = meXZ(); BM.cx = x; BM.cz = z; } bmDirty(); }, 250);
+  }
+  function closeBigMap() { if (!BM.el) return; BM.open = false; BM.el.hidden = true; BM.ptrs.clear(); clearInterval(BM.tick); BM.tick = 0; }
+  function bmSize() { const r = BM.el.getBoundingClientRect(); BM.dpr = Math.min(2, devicePixelRatio || 1); BM.w = r.width; BM.h = r.height; const W = Math.round(BM.w * BM.dpr), H = Math.round(BM.h * BM.dpr); if (BM.c.width !== W || BM.c.height !== H) { BM.c.width = W; BM.c.height = H; } }
+  function bmDirty() { if (BM.raf || !BM.open) return; BM.raf = requestAnimationFrame(() => { BM.raf = 0; bmDraw(); }); }
+  function bmZoom(f, sx, sy) {
+    const kMin = Math.min(BM.w, BM.h) / 32000, kMax = 1.6, k2 = clamp(BM.k * f, kMin, kMax);
+    const wx = BM.cx + (sx - BM.w / 2) / BM.k, wz = BM.cz + (sy - BM.h / 2) / BM.k;
+    BM.k = k2; BM.cx = wx - (sx - BM.w / 2) / k2; BM.cz = wz - (sy - BM.h / 2) / k2; bmDirty();
+  }
+  function bmFit(x0, z0, x1, z1) { BM.cx = (x0 + x1) / 2; BM.cz = (z0 + z1) / 2; BM.k = Math.min(BM.w / (x1 - x0), (BM.h - 90) / (z1 - z0)); BM.follow = false; bmDirty(); }
+  function bmGo(k) {
+    if (k === 'me') { const [x, z] = meXZ(); BM.cx = x; BM.cz = z; BM.k = Math.max(BM.k, Math.min(BM.w, BM.h) / 2600); BM.follow = true; bmDirty(); return; }
+    if (k === 'fw') return bmFit(DOWNTOWN.x - 3800, DOWNTOWN.z - 3000, DOWNTOWN.x + 3800, DOWNTOWN.z + 3000);
+    if (k === 'dal') return bmFit(3200, -5200, 9000, 400);
+    if (k === 'tx') { const T = DATA.texas; return bmFit(T.x0, T.z0, T.x1, T.z1); }
+    const s = DATA.states.find(s => s.id === k); if (s) bmFit(s.rect.x0 - 100, s.rect.z0 - 100, s.rect.x1 + 100, s.rect.z1 + 100);
+  }
+  function bmShown(p) { if (BM.filter === 'all') return true; const f = MAP_FILTERS.find(f => f[0] === BM.filter); return f[2].includes(p.type); }
+  function bmDraw() {
+    if (!BM.open) return;
+    bmSize();
+    const x = BM.x, d = BM.dpr, W = BM.w, H = BM.h, k = BM.k, cx = BM.cx, cz = BM.cz;
+    const SX = v => (v - cx) * k + W / 2, SZ = v => (v - cz) * k + H / 2;
+    const vx0 = cx - W / 2 / k, vx1 = cx + W / 2 / k, vz0 = cz - H / 2 / k, vz1 = cz + H / 2 / k;
+    x.setTransform(d, 0, 0, d, 0, 0); x.fillStyle = '#16181c'; x.fillRect(0, 0, W, H);
+    // ground picture
+    if (MAPIMG) {
+      const iw = MAPIMG.width, ih = MAPIMG.height, sxk = iw / (WB.x1 - WB.x0), szk = ih / (WB.z1 - WB.z0);
+      const ax = Math.max(vx0, WB.x0), bx = Math.min(vx1, WB.x1), az = Math.max(vz0, WB.z0), bz = Math.min(vz1, WB.z1);
+      if (bx > ax && bz > az) { x.imageSmoothingEnabled = true; x.drawImage(MAPIMG, (ax - WB.x0) * sxk, (az - WB.z0) * szk, (bx - ax) * sxk, (bz - az) * szk, SX(ax), SZ(az), (bx - ax) * k, (bz - az) * k); }
+    }
+    x.fillStyle = `rgba(14,14,18,${k > 0.5 ? 0.15 : 0.3})`; x.fillRect(0, 0, W, H);
+    // roads: highways always, city streets once you're close enough to tell them apart
+    const E = DATA.E, kinds = DATA.ekinds, names = DATA.names; x.lineCap = 'round';
+    const pass = (want, color, minW, show) => {
+      if (!show) return; x.strokeStyle = color; x.beginPath();
+      for (let i = 0; i < E.length; i += 7) {
+        const kd = kinds[E[i + 5]]; if (want ? kd !== 'highway' : kd === 'highway') continue;
+        const ax = E[i], az = E[i + 1], bx = E[i + 2], bz = E[i + 3];
+        if (Math.max(ax, bx) < vx0 - 50 || Math.min(ax, bx) > vx1 + 50 || Math.max(az, bz) < vz0 - 50 || Math.min(az, bz) > vz1 + 50) continue;
+        x.moveTo(SX(ax), SZ(az)); x.lineTo(SX(bx), SZ(bz));
+      }
+      x.lineWidth = minW; x.stroke();
+    };
+    pass(false, k > 0.05 ? 'rgba(222,214,200,0.85)' : 'rgba(222,214,200,0.45)', Math.max(k > 0.05 ? 1.4 : 0.8, 12 * k), k > 0.012);
+    pass(true, '#e8a33c', Math.max(2, 20 * k), true);
+    // street names when zoomed in
+    const occ = [], free = (a, b, c, e) => { for (const o of occ) if (a < o[2] && c > o[0] && b < o[3] && e > o[1]) return false; occ.push([a, b, c, e]); return true; };
+    if (k > 0.55) {
+      x.font = `700 ${Math.round(clamp(10 * k + 6, 11, 15))}px "Barlow Condensed", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+      const seen = new Set();
+      for (let i = 0; i < E.length; i += 7) {
+        const nm = names[E[i + 6]]; if (!nm) continue;
+        const ax = SX(E[i]), az = SZ(E[i + 1]), bx = SX(E[i + 2]), bz = SZ(E[i + 3]), mx = (ax + bx) / 2, mz = (az + bz) / 2;
+        if (mx < 0 || mx > W || mz < 0 || mz > H) continue;
+        const L = Math.hypot(bx - ax, bz - az), tw = x.measureText(nm).width; if (L < tw + 30) continue;
+        const key = nm + Math.round(mx / 260) + ',' + Math.round(mz / 260); if (seen.has(key)) continue;
+        const vert = Math.abs(bz - az) > Math.abs(bx - ax), th = 8; if (!(vert ? free(mx - th, mz - tw / 2, mx + th, mz + tw / 2) : free(mx - tw / 2, mz - th, mx + tw / 2, mz + th))) continue; seen.add(key);
+        x.save(); x.translate(mx, mz); x.rotate(vert ? -Math.PI / 2 : 0);
+        x.lineWidth = 3; x.strokeStyle = 'rgba(14,14,18,0.85)'; x.strokeText(nm, 0, 0); x.fillStyle = '#e9e3d6'; x.fillText(nm, 0, 0); x.restore();
+      }
+    }
+    // GPS route
+    if (GPS.pts) {
+      x.strokeStyle = '#3d9bff'; x.lineWidth = Math.max(4, 8 * k); x.lineJoin = 'round'; x.beginPath();
+      const P = GPS.pts; x.moveTo(SX(P[GPS.at][0]), SZ(P[GPS.at][1])); for (let i = GPS.at + 1; i < P.length; i++) x.lineTo(SX(P[i][0]), SZ(P[i][1])); x.stroke();
+    }
+    // places
+    const big = k > 0.3;
+    BM.hits = [];
+    for (const p of DATA.P) {
+      if (RACE_TYPES.has(p.type) && !big) continue;
+      if (!bmShown(p)) continue;
+      const sx = SX(p.x), sz = SZ(p.z); if (sx < -20 || sx > W + 20 || sz < -20 || sz > H + 20) continue;
+      BM.hits.push([sx, sz, p]);
+      const col = p.color && p.color !== '#ffffff' ? p.color : '#ffd23f', sel = BM.sel === p;
+      if (big || sel) {
+        const r = sel ? 15 : 11; x.fillStyle = 'rgba(14,14,18,0.85)'; x.beginPath(); x.arc(sx, sz, r, 0, Math.PI * 2); x.fill(); x.lineWidth = sel ? 3 : 2; x.strokeStyle = sel ? '#ffb636' : col; x.stroke();
+        x.font = `${sel ? 16 : 12}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#fff'; x.fillText(PLACE_ICON[p.type] || '•', sx, sz + 1);
+      } else { x.fillStyle = col; x.beginPath(); x.arc(sx, sz, 3.2, 0, Math.PI * 2); x.fill(); x.lineWidth = 1; x.strokeStyle = 'rgba(0,0,0,0.7)'; x.stroke(); }
+    }
+    // town, city and lake names (big ones win the space)
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+    const label = (t, wx, wz, size, color) => {
+      const sx = SX(wx), sz = SZ(wz); if (sx < -200 || sx > W + 200 || sz < -40 || sz > H + 40) return;
+      x.font = `${size}px Bungee, Impact, sans-serif`; const tw = x.measureText(t).width;
+      if (!free(sx - tw / 2 - 4, sz - size / 2 - 3, sx + tw / 2 + 4, sz + size / 2 + 3)) return;
+      x.lineWidth = Math.max(3, size / 5); x.strokeStyle = 'rgba(10,10,12,0.9)'; x.strokeText(t, sx, sz); x.fillStyle = color; x.fillText(t, sx, sz);
+    };
+    const zs = clamp(Math.sqrt(k / 0.1), 0.7, 1.5);
+    for (const s of DATA.states) label(s.city.toUpperCase(), s.cx, s.cz, Math.round(20 * zs), '#ffd23f');
+    label('FORT WORTH', DOWNTOWN.x, DOWNTOWN.z, Math.round(20 * zs), '#ffd23f');
+    label('DALLAS', 5450, -1700, Math.round(20 * zs), '#ffd23f');
+    for (const l of DATA.labels) label(l[0], l[1], l[2], Math.round(14 * zs), /LAKE|AIRPORT/.test(l[0]) ? '#9fd4ff' : '#ffffff');
+    // place names when close
+    if (k > 0.5) {
+      x.font = '700 14px "Barlow Condensed", sans-serif'; x.textAlign = 'left';
+      for (const [sx, sz, p] of BM.hits) {
+        const tw = x.measureText(p.name).width; if (!free(sx + 13, sz - 8, sx + 17 + tw, sz + 8)) continue;
+        x.lineWidth = 3; x.strokeStyle = 'rgba(10,10,12,0.9)'; x.strokeText(p.name, sx + 15, sz); x.fillStyle = '#ffe9b0'; x.fillText(p.name, sx + 15, sz);
+      }
+    }
+    // pin
+    if (pin.visible) {
+      const sx = SX(pin.position.x), sz = SZ(pin.position.z);
+      x.fillStyle = '#ffb636'; x.strokeStyle = '#121016'; x.lineWidth = 2; x.beginPath(); x.moveTo(sx, sz); x.arc(sx, sz - 18, 9, Math.PI * 0.8, Math.PI * 2.2); x.closePath(); x.fill(); x.stroke();
+      x.fillStyle = '#121016'; x.beginPath(); x.arc(sx, sz - 18, 3.5, 0, Math.PI * 2); x.fill();
+    }
+    // your parked car, then you
+    if (foot.on && foot.park) { const sx = SX(foot.park.x), sz = SZ(foot.park.z); x.fillStyle = '#7fd1ff'; x.strokeStyle = '#121016'; x.lineWidth = 1.5; x.fillRect(sx - 4, sz - 6, 8, 12); x.strokeRect(sx - 4, sz - 6, 8, 12); }
+    const [mx, mz, yaw] = meXZ(), sx = SX(mx), sz = SZ(mz);
+    x.save(); x.translate(sx, sz); x.fillStyle = 'rgba(61,155,255,0.25)'; x.beginPath(); x.arc(0, 0, 20, 0, Math.PI * 2); x.fill();
+    x.rotate(-yaw); x.fillStyle = '#ffffff'; x.strokeStyle = '#121016'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, -11); x.lineTo(8, 8); x.lineTo(0, 4); x.lineTo(-8, 8); x.closePath(); x.fill(); x.stroke(); x.restore();
+    // scale bar
+    const mi = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10].find(m => m * 1609 * k > 70) || 10, bw = mi * 1609 * k;
+    x.fillStyle = 'rgba(14,14,18,0.7)'; x.fillRect(W - 76 - bw, H - 30 - (W < 560 ? 0 : 0), bw + 12, 22);
+    x.strokeStyle = '#f1ece4'; x.lineWidth = 2; x.beginPath(); x.moveTo(W - 70 - bw, H - 14); x.lineTo(W - 70, H - 14); x.stroke();
+    x.font = '700 12px "Barlow Condensed", sans-serif'; x.textAlign = 'center'; x.fillStyle = '#f1ece4'; x.fillText(mi + ' mi', W - 70 - bw / 2, H - 22);
+    const wh = BM.el.querySelector('.bm-where'), dn = districtAt(cx, cz), txt = (dn ? dn + ' · ' : '') + regionAt(cx, cz);
+    if (wh.textContent !== txt) wh.textContent = txt;
+  }
+  function bmTap(cx, cy) {
+    const r = BM.c.getBoundingClientRect(), px = cx - r.left, py = cy - r.top;
+    let best = null, bd = 22;
+    for (const [sx, sz, p] of BM.hits || []) { const dd = Math.hypot(sx - px, sz - py); if (dd < bd) { bd = dd; best = p; } }
+    if (best) { bmCard(best); return; }
+    const wx = BM.cx + (px - BM.w / 2) / BM.k, wz = BM.cz + (py - BM.h / 2) / BM.k, rd = nearestRoad(wx, wz);
+    if (rd && Math.hypot(rd.x - wx, rd.z - wz) < 24 / BM.k + 30) bmCard({ type: 'spot', name: rd.e.name || 'Dropped pin', x: rd.x, z: rd.z, drop: true });
+    else { BM.sel = null; BM.el.querySelector('.bm-card').hidden = true; bmDirty(); }
+  }
+  function travelFare(p) { const [x, z] = meXZ(), mi = Math.hypot(p.x - x, p.z - z) / 1609; return Math.round(Math.max(25, mi * 18) / 5) * 5; }
+  function fastTravel(p) {
+    const fare = travelFare(p);
+    if (S.cash < fare) { toast('Not enough cash for the trip.', 'bad'); return false; } S.cash -= fare; save(); refreshStats();
+    closePhone(); closeBigMap();
+    if (!S.car || foot.on && !foot.park) { spawnFoot(p.x, p.z); setPin(p.name, p.x, p.z); gpsClear(); toast(`You took a Ryde to ${p.name}.`, 'good'); return true; }
+    if (foot.on) getIn(); startDrive(p.x, p.z); setPin(p.name, p.x, p.z); gpsClear(); toast(`You and your car are at ${p.name}.`, 'good'); return true;
+  }
+  function bmCard(p) {
+    BM.sel = p; const box = BM.el.querySelector('.bm-card'); box.hidden = false;
+    const [x, z] = meXZ(), mi = Math.hypot(p.x - x, p.z - z) / 1609, info = p.drop ? ['Map spot', 'Drop a pin here and drive.'] : TYPE_INFO[p.type] || [typeLabel(p.type), ''];
+    box.innerHTML = `<b class="t">${esc(info[0])}</b><h3>${esc(p.name)}</h3><p>${mi < 0.1 ? 'Right here' : mi.toFixed(1) + ' mi away'} · ${esc((districtAt(p.x, p.z) || regionAt(p.x, p.z)))}${info[1] ? '<br>' + esc(info[1]) : ''}</p>
+      <div class="row"><button class="btn go" data-c="gps">Set GPS</button>${p.drop ? '' : `<button class="btn" data-c="tp">Fast travel ${money(travelFare(p))}</button>`}<button class="btn" data-c="x">Close</button></div>`;
+    box.querySelector('[data-c="gps"]').onclick = () => { setPin(p.name, p.x, p.z); closeBigMap(); toast(GPS.pts ? `GPS set: ${p.name} · ${(GPS.len / 1609).toFixed(1)} mi` : `GPS set: ${p.name}`, 'good'); };
+    const tp = box.querySelector('[data-c="tp"]'); if (tp) tp.onclick = () => fastTravel(p);
+    box.querySelector('[data-c="x"]').onclick = () => { BM.sel = null; box.hidden = true; bmDirty(); };
+    bmDirty();
+  }
+
+  // ---------- GPS: shortest drive along the real roads, drawn on the maps and on the street ----------
+  const GPS = { graph: null, pts: null, names: null, at: 0, len: 0, dest: null, t: 0, mesh: null, meshAt: -1, el: null };
+  function gpsGraph() {
+    if (GPS.graph) return GPS.graph;
+    const E = DATA.E, kinds = DATA.ekinds, names = DATA.names, K = (x, z) => Math.round(x * 2) * 1000003 + Math.round(z * 2);
+    const segs = [];
+    for (let i = 0; i < E.length; i += 7) segs.push({ ax: E[i], az: E[i + 1], bx: E[i + 2], bz: E[i + 3], kind: kinds[E[i + 5]], name: names[E[i + 6]] || '' });
+    // split roads where another road ends in their middle (T junctions)
+    const ends = new Map(), cut = segs.map(() => []), grid = new Grid(100);
+    segs.forEach((s, i) => grid.add(i, Math.min(s.ax, s.bx), Math.min(s.az, s.bz), Math.max(s.ax, s.bx), Math.max(s.az, s.bz)));
+    for (const s of segs) for (const [x, z] of [[s.ax, s.az], [s.bx, s.bz]]) ends.set(K(x, z), [x, z]);
+    for (const [x, z] of ends.values()) for (const i of grid.at(x, z)) {
+      const s = segs[i];
+      if (Math.abs(s.az - s.bz) < 0.01 && Math.abs(z - s.az) < 0.6 && x > Math.min(s.ax, s.bx) + 0.6 && x < Math.max(s.ax, s.bx) - 0.6) cut[i].push([x, s.az]);
+      else if (Math.abs(s.ax - s.bx) < 0.01 && Math.abs(x - s.ax) < 0.6 && z > Math.min(s.az, s.bz) + 0.6 && z < Math.max(s.az, s.bz) - 0.6) cut[i].push([s.ax, z]);
+    }
+    const id = new Map(), nx = [], nz = [], adj = [];
+    const node = (x, z) => { const k = K(x, z); let n = id.get(k); if (n === undefined) { n = nx.length; id.set(k, n); nx.push(x); nz.push(z); adj.push([]); } return n; };
+    const SPEED = { highway: 0.55, city: 1, desert: 0.8 };
+    segs.forEach((s, i) => {
+      const pts = [[s.ax, s.az], ...cut[i], [s.bx, s.bz]].sort((p, q) => Math.abs(s.ax - s.bx) > 0.01 ? (p[0] - q[0]) * Math.sign(s.bx - s.ax) : (p[1] - q[1]) * Math.sign(s.bz - s.az));
+      for (let j = 0; j + 1 < pts.length; j++) {
+        const a = node(pts[j][0], pts[j][1]), b = node(pts[j + 1][0], pts[j + 1][1]); if (a === b) continue;
+        const c = Math.hypot(nx[a] - nx[b], nz[a] - nz[b]) * (SPEED[s.kind] || 1);
+        adj[a].push([b, c, s.name]); adj[b].push([a, c, s.name]);
+      }
+    });
+    return GPS.graph = { nx, nz, adj, id, K };
+  }
+  // snap a spot to the nearest road: [nodeA, nodeB, x, z]
+  function gpsSnap(x, z) {
+    const r = nearestRoad(x, z); if (!r) return null; const g = gpsGraph(), e = r.e;
+    // find the graph piece of this road that holds the snapped point
+    const along = Math.abs(e.bz - e.az) < 0.01, hi = along ? Math.max(e.ax, e.bx) : Math.max(e.az, e.bz);
+    let a = g.id.get(g.K(e.ax, e.az)), b = g.id.get(g.K(e.bx, e.bz)); if (a === undefined || b === undefined) return null;
+    const v = along ? r.x : r.z, pos = n => along ? g.nx[n] : g.nz[n];
+    if (pos(a) > pos(b)) [a, b] = [b, a];
+    // walk from the low end toward the high end until the piece covers v
+    for (let guard = 0; guard < 200; guard++) {
+      const next = g.adj[a].find(([n]) => (along ? Math.abs(g.nz[n] - g.nz[a]) < 0.6 : Math.abs(g.nx[n] - g.nx[a]) < 0.6) && pos(n) > pos(a) + 0.1 && pos(n) <= hi + 0.6);
+      if (!next) break; if (pos(next[0]) >= v - 0.01) { b = next[0]; break; } a = next[0];
+    }
+    return { a, b, x: r.x, z: r.z, name: e.name || '' };
+  }
+  function gpsRoute(tx, tz) {
+    GPS.pts = null; GPS.at = 0; GPS.dest = [tx, tz]; GPS.meshAt = -1; gpsMesh();
+    if (!DATA) return;
+    const [sx, sz] = meXZ(); if (Math.hypot(tx - sx, tz - sz) < 60) { GPS.dest = null; return; }
+    const g = gpsGraph(), A = gpsSnap(sx, sz), B = gpsSnap(tx, tz); if (!A || !B) return;
+    const N = g.nx.length, S0 = N, T0 = N + 1, dist = new Float64Array(N + 2).fill(Infinity), prev = new Int32Array(N + 2).fill(-1), pname = new Array(N + 2), done = new Uint8Array(N + 2);
+    const X = n => n === S0 ? A.x : n === T0 ? B.x : g.nx[n], Z = n => n === S0 ? A.z : n === T0 ? B.z : g.nz[n];
+    const nb = n => { const out = n === S0 ? [[A.a, Math.hypot(A.x - g.nx[A.a], A.z - g.nz[A.a]), A.name], [A.b, Math.hypot(A.x - g.nx[A.b], A.z - g.nz[A.b]), A.name]] : n === T0 ? [] : g.adj[n].slice();
+      if (n === B.a || n === B.b) out.push([T0, Math.hypot(B.x - g.nx[n], B.z - g.nz[n]), B.name]);
+      if (n === S0 && ((A.a === B.a && A.b === B.b) || (A.a === B.b && A.b === B.a))) out.push([T0, Math.hypot(A.x - B.x, A.z - B.z), B.name]);
+      return out; };
+    // A* with a binary heap
+    const heap = [], push = (f, n) => { heap.push([f, n]); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = i * 2 + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+    const hh = n => Math.hypot(X(n) - B.x, Z(n) - B.z) * 0.55;
+    dist[S0] = 0; push(hh(S0), S0);
+    while (heap.length) {
+      const [, n] = pop(); if (done[n]) continue; done[n] = 1; if (n === T0) break;
+      for (const [m, c, nm] of nb(n)) { const d2 = dist[n] + c; if (d2 < dist[m]) { dist[m] = d2; prev[m] = n; pname[m] = nm; push(d2 + hh(m), m); } }
+    }
+    if (!done[T0]) return;
+    const pts = [], nms = []; for (let n = T0; n !== -1; n = prev[n]) { pts.push([X(n), Z(n)]); nms.push(pname[n] || ''); }
+    pts.reverse(); nms.reverse(); nms.shift(); // nms[i] = road from pts[i] to pts[i+1]
+    // merge straight runs on the same road
+    const P = [pts[0]], NM = []; for (let i = 1; i < pts.length; i++) {
+      const a = P[P.length - 1], b = pts[i], c = pts[i + 1];
+      if (c && nms[i - 1] === nms[i] && Math.abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])) < 1) continue;
+      P.push(b); NM.push(nms[i - 1]);
+    }
+    let len = 0; for (let i = 1; i < P.length; i++) len += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+    GPS.pts = P; GPS.names = NM; GPS.len = len; GPS.at = 0; gpsMesh();
+  }
+  function gpsClear() { GPS.pts = null; GPS.dest = null; gpsMesh(); if (GPS.el) GPS.el.hidden = true; }
+  // the blue line on the street, from where you are to the end
+  const GPS_MAT = new THREE.MeshBasicMaterial({ color: 0x3d9bff, side: THREE.DoubleSide, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  function gpsMesh() {
+    if (GPS.mesh) { scene.remove(GPS.mesh); GPS.mesh.geometry.dispose(); GPS.mesh = null; }
+    if (!GPS.pts) return; GPS.meshAt = GPS.at;
+    const P = GPS.pts, v = [], w = 1.6, y = 0.22;
+    for (let i = Math.max(0, GPS.at); i + 1 < P.length; i++) {
+      const [ax, az] = P[i], [bx, bz] = P[i + 1], L = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / L, uz = (bz - az) / L, px = -uz * w, pz = ux * w;
+      const a0 = [ax - ux * w + px, y, az - uz * w + pz], a1 = [ax - ux * w - px, y, az - uz * w - pz], b0 = [bx + ux * w + px, y, bz + uz * w + pz], b1 = [bx + ux * w - px, y, bz + uz * w - pz];
+      v.push(...a0, ...a1, ...b1, ...a0, ...b1, ...b0);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+    GPS.mesh = new THREE.Mesh(g, GPS_MAT); GPS.mesh.renderOrder = 3; GPS.mesh.frustumCulled = false; scene.add(GPS.mesh);
+  }
+  function segDist(px, pz, a, b) { const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1, t = clamp(((px - a[0]) * dx + (pz - a[1]) * dz) / L2, 0, 1); return Math.hypot(a[0] + dx * t - px, a[1] + dz * t - pz); }
+  // called with the minimap: follow progress, reroute when you go off, arrive
+  function stepGps() {
+    if (!GPS.dest) return;
+    const [x, z] = meXZ(), now = performance.now();
+    if (Math.hypot(GPS.dest[0] - x, GPS.dest[1] - z) < 28) { toast(`Arrived: ${(pinLabel && pinLabel.userData.name) || 'your spot'}`, 'good'); gpsClear(); pin.visible = false; if (pinLabel) pinLabel.visible = false; return; }
+    if (!GPS.pts) { if (now - GPS.t > 4000) { GPS.t = now; gpsRoute(GPS.dest[0], GPS.dest[1]); } return; }
+    const P = GPS.pts; let best = GPS.at, bd = 1e9;
+    for (let i = GPS.at; i < Math.min(P.length - 1, GPS.at + 6); i++) { const d = segDist(x, z, P[i], P[i + 1]); if (d < bd - 0.5) { bd = d; best = i; } }
+    GPS.at = best; if (GPS.at !== GPS.meshAt) gpsMesh();
+    if (bd > 45 && now - GPS.t > 2500) { GPS.t = now; gpsRoute(GPS.dest[0], GPS.dest[1]); return; }
+    // next turn hint under the minimap
+    if (!GPS.el) { GPS.el = document.createElement('div'); GPS.el.id = 'gps-next'; bmCss(); document.getElementById('mini').append(GPS.el); }
+    let left = Math.hypot(P[best + 1][0] - x, P[best + 1][1] - z); for (let i = best + 1; i + 1 < P.length; i++) left += Math.hypot(P[i + 1][0] - P[i][0], P[i + 1][1] - P[i][1]);
+    let txt;
+    if (best + 2 < P.length) {
+      const a = P[best], b = P[best + 1], c = P[best + 2], cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]), d = Math.hypot(b[0] - x, b[1] - z);
+      const turn = Math.abs(cr) < 1 ? '⬆' : cr > 0 ? '↱' : '↰', road = GPS.names[best + 1];
+      txt = `<i>${turn}</i>${d < 160 ? Math.round(d * 3.281 / 10) * 10 + ' ft' : (d / 1609).toFixed(1) + ' mi'}${road ? ' · ' + esc(road) : ''} · ${(left / 1609).toFixed(1)} mi`;
+    } else txt = `<i>🏁</i>${(left / 1609).toFixed(1)} mi to go`;
+    if (GPS.el.innerHTML !== txt) GPS.el.innerHTML = txt; GPS.el.hidden = false;
+  }
+  // the route on the minimap (to() maps world to minimap pixels)
+  function gpsMini(x, to, dpr) {
+    if (!GPS.pts) return; const P = GPS.pts;
+    x.strokeStyle = '#3d9bff'; x.lineWidth = 3.5 * dpr; x.lineJoin = 'round'; x.lineCap = 'round'; x.beginPath();
+    let q = to(...meXZ().slice(0, 2)); x.moveTo(q[0], q[1]); for (let i = GPS.at + 1; i < P.length; i++) { q = to(P[i][0], P[i][1]); x.lineTo(q[0], q[1]); } x.stroke();
+  }
+  window.__gps = GPS;
 
   // ---------- car physics: real tire grip, so the back steps out, the tires spin, and you can hold a slide ----------
   // a two-axle (bicycle) model: each axle makes sideways grip from its slip angle on a curve that peaks and then
@@ -7210,7 +7566,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     const water = new THREE.Mesh(toGeo(wa), MAT.water); water.receiveShadow = true; scene.add(water);
   }
   function makeGround(D) {
-    const tex = overviewTexture(D), W = WB.x1 - WB.x0, H = WB.z1 - WB.z0;
+    const tex = overviewTexture(D), W = WB.x1 - WB.x0, H = WB.z1 - WB.z0; MAPIMG = tex.image;
     const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.96, envMapIntensity: 0.3 });
     detailify(m, W / 22, H / 22);
     const g = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2), m);
@@ -7247,7 +7603,8 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
   function setPin(name, x, z) {
     pin.position.set(x, 0, z); pin.visible = true;
     if (pinLabel) { scene.remove(pinLabel); pinLabel.material.map.dispose(); }
-    pinLabel = textSprite(name.length > 34 ? name.slice(0, 32) + '…' : name, 32, '#ffd23f'); pinLabel.position.set(x, 150, z); pinLabel.userData.pin = true; scene.add(pinLabel);
+    pinLabel = textSprite(name.length > 34 ? name.slice(0, 32) + '…' : name, 32, '#ffd23f'); pinLabel.position.set(x, 150, z); pinLabel.userData.pin = true; pinLabel.userData.name = name; scene.add(pinLabel);
+    if (driving) gpsRoute(x, z); else gpsClear();
   }
 
   // ---------- time of day ----------
