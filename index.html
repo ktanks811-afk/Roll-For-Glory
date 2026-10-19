@@ -744,7 +744,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     if (LM.byB.has(i)) return;   // one of our banks or shops stands here (_landmarks.js)
     if (kind === 'parked') {
       solids.add({ x0, z0, x1, z1 }, x0, z0, x1, z1);
-      inst('near', 'car', cx, cz, [cx, 0.1, cz, w > d ? Math.PI / 2 : 0, Math.min(w, d), h, Math.max(w, d), hex]);
+      // car-sized ones become our real cars (_parked.js); big rigs and trailers keep a block
+      if (!parkSpot(cx, cz, w, d, h, hex, bi)) inst('near', 'car', cx, cz, [cx, 0.1, cz, w > d ? Math.PI / 2 : 0, Math.min(w, d), h, Math.max(w, d), hex]);
       return;
     }
     const layer = FAR_KINDS.has(kind) ? 'far' : NEAR_KINDS.has(kind) ? 'near' : 'mid';
@@ -1810,6 +1811,108 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     w.rotation.x = amp ? (Math.random() - 0.5) * amp * 2.5 + gas * 0.02 : 0; w.rotation.z = amp ? (Math.random() - 0.5) * amp : 0;
     if (w.userData.y0 === undefined) w.userData.y0 = w.position.y;
     w.position.y = w.userData.y0 + (amp ? (Math.random() - 0.5) * amp : 0);
+  }
+
+  // ---------- parked cars: every car on the map is one of the cars we built by hand ----------
+  // cars/parked.json holds each car's outside cut down for distance (lite, tiny); cars/<id>.ext.json is the full outside, loaded for cars close by
+  const PK = { spots: [], grid: new Map(), types: {}, data: null, cls: null, lastX: 1e9, lastZ: 0, lastY: 0, lastQ: new THREE.Quaternion(), dirty: true };
+  const PK_CELL = 100;
+  // what tends to be parked where: cars in normal spots, trucks and SUVs in the long ones
+  const PK_CARS = [['chevrolet_caprice_classic_box_chevy_1986', 4], ['dodge_charger_scat_pack_2015', 2], ['dodge_charger_srt_hellcat_widebody_2020', 1.5], ['chevrolet_camaro_ss_2016', 2], ['chevrolet_corvette_stingray_c8_2020', 1], ['chevrolet_tahoe_2021', 1.5], ['ford_f_150_regular_cab_2021', 1.5], ['ram_1500_trx_2021', 0.7]];
+  const PK_TRUCKS = [['ford_f_150_regular_cab_2021', 3], ['ram_1500_trx_2021', 2], ['chevrolet_tahoe_2021', 3]];
+  const pkPick = (L, h) => { const tot = L.reduce((s, x) => s + x[1], 0); let r = h * tot; for (const [id, w] of L) { if ((r -= w) < 0) return id; } return L[0][0]; };
+  // called by the world builder for each parked-car box; false means it isn't car shaped (a rig, a trailer) and keeps its block
+  function parkSpot(cx, cz, w, d, h, hex, bi) {
+    const lo = Math.min(w, d), hi = Math.max(w, d), along = w > d;
+    if (h > 1.8 || lo > 2.8) return false;
+    const n = hi < 6.6 ? 1 : Math.floor(hi / 5.2);   // a long strip is a row of cars nose to tail
+    for (let k = 0; k < n; k++) {
+      const off = n === 1 ? 0 : (k + 0.5) * hi / n - hi / 2, x = cx + (along ? off : 0), z = cz + (along ? 0 : off);
+      const hs = hash(bi * 13.7 + k * 3.1 + 1), id = pkPick(hi < 5 || n > 1 ? PK_CARS : PK_TRUCKS, hs);
+      // front faces -z at yaw 0; half of them parked the other way round
+      const yaw = (along ? Math.PI / 2 : 0) + (hash(bi * 5.3 + k) < 0.5 ? Math.PI : 0);
+      const s = { x, z, yaw, id, col: lin(hex) };
+      PK.spots.push(s);
+      const key = Math.floor(x / PK_CELL) * 100003 + Math.floor(z / PK_CELL); let l = PK.grid.get(key); if (!l) PK.grid.set(key, l = []); l.push(s);
+    }
+    return true;
+  }
+  function pkMats() {
+    const S = o => new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, flatShading: true }, o));
+    return { paint: S({ metalness: 0.35, roughness: 0.35 }), plain: S({ metalness: 0, roughness: 0.75, side: THREE.DoubleSide }), chrome: S({ metalness: 0.9, roughness: 0.25 }),
+      glass: S({ metalness: 0.3, roughness: 0.05, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }) };
+  }
+  const pkB64 = (s, T) => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new T(u.buffer); };
+  // one instanced mesh per look (paint, plain, chrome, glass) for each car at each level of detail
+  function pkLevel(G, cap, shadow) {
+    const L = [];
+    for (const k of ['paint', 'plain', 'chrome', 'glass']) {
+      if (!G[k]) continue;
+      const P = pkB64(G[k].p, Int16Array), pos = new Float32Array(P.length); for (let i = 0; i < P.length; i++) pos[i] = P[i] / 1000;
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(pkB64(G[k].c, Uint8Array), 3, true)); g.computeVertexNormals();
+      const im = new THREE.InstancedMesh(g, PK.cls[k], cap);
+      if (k === 'paint') im.setColorAt(0, new THREE.Color(1, 1, 1));   // makes the per-car paint buffer (sized by count, so before count goes to 0)
+      im.count = 0; im.frustumCulled = false; im.castShadow = shadow && k !== 'glass'; im.receiveShadow = k !== 'glass';
+      if (k === 'glass') im.renderOrder = 2;
+      scene.add(im); L.push(im);
+    }
+    return { list: L, n: 0, cap };
+  }
+  // how far each one reaches and how many of each can show at once (all cars together), so a packed lot can't sink the frame rate
+  const PK_R = phone ? { full: 40, lite: 150, tiny: 550, nFull: 8, nLite: 45, nTiny: 240 } : { full: 70, lite: 260, tiny: 1200, nFull: 16, nLite: 120, nTiny: 800 };
+  function loadParked() {
+    if (PK.data || PK.loading || !PK.spots.length) return; PK.loading = true;
+    fetch('cars/parked.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(J => {
+      PK.cls = pkMats();
+      for (const [id, c] of Object.entries(J.cars)) PK.types[id] = { lite: pkLevel(c.lite, PK_R.nLite, !phone), tiny: pkLevel(c.tiny, PK_R.nTiny, false), full: null, fullLoading: false };
+      PK.data = J; PK.dirty = true;
+    }).catch(e => { PK.loading = false; console.warn('parked cars: ' + e.message); });
+  }
+  function pkFull(id) {
+    const T = PK.types[id]; if (T.full || T.fullLoading) return; T.fullLoading = true;
+    fetch('cars/' + id + '.ext.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(J => { T.full = pkLevel(J.g, PK_R.nFull, true); PK.dirty = true; })
+      .catch(e => { T.fullLoading = false; console.warn('parked car ' + id + ': ' + e.message); });
+  }
+  const _pm = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pe = new THREE.Euler(), _pv = new THREE.Vector3(), _ps = new THREE.Vector3(1, 1, 1), _psph = new THREE.Sphere(new THREE.Vector3(), 3.6);
+  function pkPut(lvl, s) {
+    if (lvl.n >= lvl.cap) return false;
+    _pq.setFromEuler(_pe.set(0, s.yaw, 0)); _pm.compose(_pv.set(s.x, 0.02, s.z), _pq, _ps);
+    for (const im of lvl.list) { im.setMatrixAt(lvl.n, _pm); if (im.instanceColor) im.setColorAt(lvl.n, s.col); }
+    lvl.n++; return true;
+  }
+  // every few frames: the full car close by, the lite one further out, the tiny one far away, nothing past that or off screen
+  function stepParked(on) {
+    if (!PK.spots.length) return;
+    if (!PK.data) { loadParked(); return; }
+    const T = PK.types;
+    if (!on) { if (!PK.hidden) { for (const id in T) for (const lv of ['full', 'lite', 'tiny']) if (T[id][lv]) for (const im of T[id][lv].list) im.count = 0, im.visible = false; PK.hidden = true; PK.dirty = true; } return; }
+    PK.hidden = false;
+    const cp = camera.position, q = camera.quaternion, turn = Math.abs(q.x - PK.lastQ.x) + Math.abs(q.y - PK.lastQ.y) + Math.abs(q.z - PK.lastQ.z) + Math.abs(q.w - PK.lastQ.w);
+    if (!PK.dirty && Math.hypot(cp.x - PK.lastX, cp.z - PK.lastZ) < 3 && Math.abs(cp.y - PK.lastY) < 3 && turn < 0.03) return;
+    PK.dirty = false; PK.lastX = cp.x; PK.lastZ = cp.z; PK.lastY = cp.y; PK.lastQ = q.clone();
+    pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(pv);
+    const R = PK_R, near = [], up = cp.y * 0.6;
+    for (const id in T) for (const lv of ['full', 'lite', 'tiny']) if (T[id][lv]) T[id][lv].n = 0;
+    if (Math.abs(up) < R.tiny) {
+      const c = Math.ceil(R.tiny / PK_CELL), ci = Math.floor(cp.x / PK_CELL), cj = Math.floor(cp.z / PK_CELL);
+      for (let i = ci - c; i <= ci + c; i++) for (let j = cj - c; j <= cj + c; j++) {
+        const l = PK.grid.get(i * 100003 + j); if (!l) continue;
+        for (const s of l) {
+          const d = Math.hypot(s.x - cp.x, s.z - cp.z, up); if (d > R.tiny || !T[s.id]) continue;
+          _psph.center.set(s.x, 1, s.z); if (d > 8 && !frustum.intersectsSphere(_psph)) continue;
+          near.push([d, s]);
+        }
+      }
+      near.sort((a, b) => a[0] - b[0]);
+      let nf = 0, nl = 0, nt = 0;
+      for (const [d, s] of near) {
+        const t = T[s.id];
+        if (d < R.full && nf < R.nFull) { pkFull(s.id); if (t.full && pkPut(t.full, s)) { nf++; continue; } }
+        if (d < R.lite && nl < R.nLite && pkPut(t.lite, s)) { nl++; continue; }
+        if (nt < R.nTiny && pkPut(t.tiny, s)) nt++; else if (nf + nl + nt >= R.nFull + R.nLite + R.nTiny) break;
+      }
+    }
+    for (const id in T) for (const lv of ['full', 'lite', 'tiny']) { const L = T[id][lv]; if (!L) continue; for (const im of L.list) { im.count = L.n; im.visible = L.n > 0; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; } }
   }
   // ---------- people: the character builder from the characters page ----------
   const PEOPLE = (function () {
@@ -7533,6 +7636,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     if (driving) { if (foot.on) stepFoot(dt); else stepDrive(dt); } else { stepFly(dt); controls.update(); }
     if (driving && (frame & 1)) stepMini();
     if (!inside) stepHouses();
+    stepParked(true);
     const focus = driving ? (foot.on ? foot.holder.position : car.position) : controls.target, dist = driving ? (foot.on ? 14 : 30) : camera.position.distanceTo(controls.target);
     // fog and the sun's shadow box follow the zoom
     scene.fog.near = driving ? 700 : Math.max(1500, dist * 1.1); scene.fog.far = driving ? (phone ? 3200 : 4800) : Math.max(9000, dist * 4 + 8000);
@@ -7588,7 +7692,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = { GBX, gbShift, gbMode, drvS: () => drv,
-    ready: false, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, dragPerf, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, dragPerf, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
