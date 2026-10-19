@@ -5511,7 +5511,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       // inside walls: between two different rooms, a doorway in each run (world2d/house.js)
       const IW = 0.12;
       const inner = (axis, c, a0, a1, holes) => { wall(W, axis, c, a0 - IW / 2, a1 + IW / 2, y0f, FH, IW, M.paint, holes, { bottom: false, top: true }); solidRun(axis, c, a0 - IW / 2, a1 + IW / 2, IW, holes); };
-      const doorHole = m => [m - 0.45, m + 0.45, 0, 2.1];
+      const doorHole = m => [m - 0.65, m + 0.65, 0, 2.1];   // 1.3 m: wide enough to walk through without lining up dead centre
       runsOf(GW, GD, (y, x) => pairAt(room(x, y - 1), room(x, y), wallAt(d, 'h', x, y)), (y, a, b, dr) => inner('x', Z(y), X(a), X(b), [doorHole(X(dr) + TL / 2)]));
       runsOf(GD, GW, (x, y) => pairAt(room(x - 1, y), room(x, y), wallAt(d, 'v', x, y)), (x, a, b, dr) => inner('z', X(x), Z(a), Z(b), [doorHole(Z(dr) + TL / 2)]));
       for (const w of d.walls[0]) {
@@ -5592,7 +5592,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       wrap.position.set(X(f.x) + fp.w * TL / 2, BASE, Z(f.y) + fp.d * TL / 2);
       wrap.rotation.y = Math.PI - (f.r || 0) * Math.PI / 2;   // the models face +z; r = 0 faces the street (-z)
       const box = new THREE.Box3().setFromObject(g);
-      return { wrap, anim: built.anim || [], h: Math.max(0.1, box.max.y) };
+      // what you bump into: the model's own outline (turned and placed in the design frame), not the whole tile
+      const c = Math.cos(wrap.rotation.y), sn = Math.sin(wrap.rotation.y), cs = [[box.min.x, box.min.z], [box.max.x, box.min.z], [box.min.x, box.max.z], [box.max.x, box.max.z]].map(([x, z]) => [wrap.position.x + x * c + z * sn, wrap.position.z - x * sn + z * c]);
+      const xs = cs.map(q => q[0]), zs = cs.map(q => q[1]), m = 0.04;
+      const foot = isFinite(box.min.x) ? { x0: Math.min(...xs) + m, x1: Math.max(...xs) - m, z0: Math.min(...zs) + m, z1: Math.max(...zs) - m } : null;
+      return { wrap, anim: built.anim || [], h: Math.max(0.1, box.max.y), foot };
     }
     function disposeTree(o) { o.traverse(m => { if (m.geometry) m.geometry.dispose(); }); for (const m of o.userData.mats || []) m.dispose(); }
 
@@ -5660,7 +5664,10 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const p = H.p, used = new Set();
       for (const f of H.d.furn[0]) {
         const Fd = FURN_BY_ID[f.id], fp = footprint(f), pc = H.pieces.get(f), x0 = X(f.x), z0 = Z(f.y), x1 = x0 + fp.w * TL, z1 = z0 + fp.d * TL;
-        if (!Fd.flat) IN.solids.push(flip({ x0: x0 + 0.18, z0: z0 + 0.18, x1: x1 - 0.18, z1: z1 - 0.18, h: 0.9 }));   // low h: the camera looks over furniture, only walls pull it in
+        // the model's outline, kept inside its own tiles so an overhang never closes off a doorway
+        const pf = pc && pc.foot, ft = pf ? { x0: Math.max(pf.x0, x0 + 0.05), z0: Math.max(pf.z0, z0 + 0.05), x1: Math.min(pf.x1, x1 - 0.05), z1: Math.min(pf.z1, z1 - 0.05) } : { x0: x0 + 0.18, z0: z0 + 0.18, x1: x1 - 0.18, z1: z1 - 0.18 };
+        if (ft.x1 <= ft.x0 || ft.z1 <= ft.z0) Object.assign(ft, { x0: x0 + 0.18, z0: z0 + 0.18, x1: x1 - 0.18, z1: z1 - 0.18 });
+        if (!Fd.flat) IN.solids.push(flip(Object.assign({}, ft, { h: 0.9 })));   // low h: the camera looks over furniture, only walls pull it in
         const use = USE[f.id]; if (!use || (use !== 'Closet' && used.has(use)) || used.has(use + f.x + f.y)) continue;
         used.add(use); used.add(use + f.x + f.y);
         const [fx, fz] = DIRS[f.r || 0], cx = (x0 + x1) / 2 + fx * (fp.w * TL / 2 + 0.5), cz = (z0 + z1) / 2 + fz * (fp.d * TL / 2 + 0.5);
