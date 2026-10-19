@@ -5239,8 +5239,9 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       '.....BBHAA',
       '.....BBBBB',
     ]);
+    // the hall opens straight into the bedroom (a closed wall there left the bed behind the dresser, nothing could reach it)
     const WALLS = [{ o: 'h', x: 5, y: 4, k: 'wall' }, { o: 'h', x: 6, y: 4, k: 'wall' }, { o: 'h', x: 8, y: 4, k: 'wall' }, { o: 'h', x: 9, y: 4, k: 'wall' },
-      { o: 'v', x: 7, y: 4, k: 'wall' }, { o: 'v', x: 7, y: 5, k: 'wall' }, { o: 'h', x: 8, y: 6, k: 'wall' }, { o: 'h', x: 9, y: 6, k: 'wall' },
+      { o: 'h', x: 8, y: 6, k: 'wall' }, { o: 'h', x: 9, y: 6, k: 'wall' },
       { o: 'v', x: 5, y: 1, k: 'door' }];   // the side door into the garage
     const START_FURN = [F('chairs', 5, 0), F('grill', 9, 0), F('tv', 6, 1, 2), F('rug', 5, 2), F('couch', 5, 3),
       F('fridge', 9, 1, 3), F('stove', 9, 2, 3), F('counter', 9, 3, 3),
@@ -5683,6 +5684,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
 #decbtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 222px); width: 50px; height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 22px; display: none; z-index: 8; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.45); padding: 0; line-height: 1; }
 #decbtn small { display: block; font: 600 10px var(--body); margin-top: 3px; }
 body.indoors.at-home:not(.creating):not(.phoning):not(.decorating) #decbtn { display: block; }
+body.indoors.at-home .nosbtn { display: none !important; }   /* NOS / anti-lag stay in the car, not over Decorate */
 body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu, #mini) { display: none !important; }
 #deco { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: rgba(16,14,20,0.94); border-top: 1px solid var(--line); padding: 10px max(14px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 10px) max(14px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow: auto; font-family: var(--body); color: var(--fg); }
 #deco[hidden] { display: none; }
@@ -5869,7 +5871,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       anim(performance.now() / 1000);
     }
 
-    window.__home = { get foot() { return foot; }, LOOK, H, DECO, buy, tap: (x, z) => tap({ x, z }), confirmPlace, turn, sell, OUT, draw };
+    window.__home = { get foot() { return foot; }, get IN() { return IN; }, LOOK, H, DECO, buy, tap: (x, z) => tap({ x, z }), confirmPlace, turn, sell, OUT, draw };
     return { place, skipB, furnish, leave, anim, tap, stepDeco, bindUI, DECO, H, isHome: p => !!p && p.id === PLACE_ID, design, canPlace, rebuildOutside, OUT };
   })();
   // ---------- car button: open and close the doors, hood and trunk of your car ----------
