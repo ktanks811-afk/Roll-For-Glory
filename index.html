@@ -3821,7 +3821,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
   }
   const ownsGarage = p => p && (p.type === 'home' || S.garages.includes(p.id) || (S.props.includes(p.id) && HOME.isHome(p)));
-  function garageCap() { return HOME_BAYS + S.garages.reduce((t, id) => { const p = DATA.P.find(q => q.id === id); return t + (p ? p.bays : 0); }, 0); }
+  function garageCap() { return HOME_BAYS + S.garages.reduce((t, id) => { const p = DATA.P.find(q => q.id === id); return t + (p ? p.bays : 0); }, 0) + Object.entries(S.homes || {}).reduce((t, [id, h]) => t + (S.props.includes(id) && h ? Math.max(0, Math.min(30, h.garN | 0)) : 0), 0); }   // + the garages you built on your land
   function garageRoom() { return garageCap() - S.garage.length; }
   function fullGarageMsg() { toast(`Your garages are full (${S.garage.length}/${garageCap()}). Buy a garage to keep more cars.`, 'bad'); }
   // the parked car outside goes in, or a stored car comes out front
@@ -5312,6 +5312,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const X = tx => tx * TL - OX, Z = ty => ty * TL - OZ;   // design frame: tile x along the street, row y from the street (-z) back
     const GAR = { x0: 0, x1: 5, y0: 1, y1: 5 };              // the studio's garage, in tiles, beside the house
     const EMPTY = '.'.repeat(GW * GD);
+    const GAR_MAX = 30, GAR_CAR = 6500, GAR_BAY = 3.2, GAR_DEEP = 6.2, GAR_AISLE = 3;   // a garage you build on your land: up to 30 cars, $6,500 a spot
     const idx = (x, y) => y * GW + x;
     const inGrid = (x, y) => x >= 0 && y >= 0 && x < GW && y < GD;
     const isRoom = c => c !== '.' && c !== 'P';
@@ -5350,8 +5351,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const cleanFurn = list => (Array.isArray(list) ? list : []).filter(f => f && FURN_BY_ID[f.id]).map(f => { const o = { id: f.id, x: f.x | 0, y: f.y | 0, r: ((f.r | 0) % 4 + 4) % 4 }, l = cleanLook(f.look); if (l) o.look = l; return o; });
     const cleanWalls = list => (Array.isArray(list) ? list : []).filter(w => w && (w.o === 'h' || w.o === 'v') && WALL_BY_ID[w.k]).map(w => ({ o: w.o, x: w.x | 0, y: w.y | 0, k: w.k }));
     // the house at a place: its rooms (fixed for the studio and a bought house, yours on land), paint and furniture
-    function design(p) {
-      const k = kindOf(p), sv = (k === 'studio' ? S.home : homesSave()[p.id]) || {};
+    // sv: whose house this is. Yours from your save; someone else's (visiting, or theirs on your server) from the packet they sent
+    const FOREIGN = new Map();   // place id -> { sv, name, uid }: other players' homes on your server
+    function design(p, ov) {
+      const k = kindOf(p), fo = !ov && k !== 'studio' && !owns(p) && FOREIGN.get(p.id);
+      const sv = ov || (fo ? fo.sv : (k === 'studio' ? S.home : homesSave()[p.id])) || {};
       let d, base;
       if (k === 'studio') { d = { floors: [PLAN], walls: [STUDIO_WALLS], garage: true, wall: '#d9c9a8', roof: '#3a3330', roofStyle: 'shingle', skin: 'siding' }; base = [START_FURN]; }
       else if (k === 'property') {
@@ -5363,6 +5367,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         d = { floors: fl.length ? fl : [EMPTY], walls: [], wall: '#d9c9a8', roof: '#3a3330', roofStyle: 'shingle', skin: 'siding' };
         d.walls = d.floors.map((_, i) => cleanWalls(sv.walls && sv.walls[i]));
         base = [[]];
+        d.garN = Math.max(0, Math.min(GAR_MAX, sv.garN | 0));
       }
       Object.assign(d, { kind: k, id: p.id, name: p.name, furn: [] });
       if (hex(sv.wall)) d.wall = sv.wall; if (hex(sv.roof)) d.roof = sv.roof;
@@ -5375,12 +5380,19 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       return d;
     }
     const furnOut = list => list.map(f => Object.assign({ id: f.id, x: f.x, y: f.y, r: f.r || 0 }, f.look ? { look: f.look } : {}));
-    function keep(d) {
+    // a design as it's saved (and sent to other players)
+    function pack(d) {
       const paint = { wall: d.wall, roof: d.roof, roofStyle: d.roofStyle, skin: d.skin };
-      if (d.kind === 'studio') S.home = Object.assign(paint, { furn: furnOut(d.furn[0]) });
-      else homesSave()[d.id] = Object.assign(paint, { furn: d.furn.map(furnOut) }, d.kind === 'land' ? { floors: d.floors.slice(), walls: d.walls.map(w => w.map(q => ({ o: q.o, x: q.x, y: q.y, k: q.k }))) } : {});
-      save();
+      if (d.kind === 'studio') return Object.assign(paint, { furn: furnOut(d.furn[0]) });
+      return Object.assign(paint, { furn: d.furn.map(furnOut) }, d.kind === 'land' ? { floors: d.floors.slice(), walls: d.walls.map(w => w.map(q => ({ o: q.o, x: q.x, y: q.y, k: q.k }))), garN: d.garN | 0 } : {});
     }
+    function keep(d) {
+      if (H.visit) return;   // someone else's house: nothing of yours to save
+      if (d.kind === 'studio') S.home = pack(d); else homesSave()[d.id] = pack(d);
+      save();
+      for (const f of KEPT) try { f(d); } catch (e) {}
+    }
+    const KEPT = [];   // who wants to know your house changed (online: your guests)
     // the frame: a bought house and the studio centre on their own footprint; land centres on the whole grid so the
     // builder sees all of it. _hx/_hz is the front middle of the ground floor (where the street side of the house is).
     function frame(d) {
@@ -5510,7 +5522,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       d._dw = null;
       return d;
     }
-    const shellCost = d => { let n = 0; for (const f of d.floors) for (const c of f) if (c !== '.') n += (ROOM_BY_ID[c] && ROOM_BY_ID[c].price) || 0; for (const l of d.walls) for (const w of l) n += (WALL_BY_ID[w.k] && WALL_BY_ID[w.k].price) || 0; return n; };
+    const shellCost = d => { let n = (d.garN | 0) * GAR_CAR; for (const f of d.floors) for (const c of f) if (c !== '.') n += (ROOM_BY_ID[c] && ROOM_BY_ID[c].price) || 0; for (const l of d.walls) for (const w of l) n += (WALL_BY_ID[w.k] && WALL_BY_ID[w.k].price) || 0; return n; };
     const furnCost = d => d.furn.flat().reduce((t, f) => t + ((FURN_BY_ID[f.id] && FURN_BY_ID[f.id].price) || 0), 0);
     const counts = d => { const fs = d.furn.flat().map(f => FURN_BY_ID[f.id]); return { beds: fs.filter(F => F && F.bed).length, baths: fs.filter(F => F && F.toilet).length }; };
     const stories = d => d.floors.filter(f => [...f].some(isRoom)).length;
@@ -5549,6 +5561,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         brass: std({ color: '#c9a14a', metalness: 0.95, roughness: 0.3 }), black: std({ color: '#18191c', roughness: 0.6 }), rtu: std({ color: '#c8c8c4', roughness: 0.7, metalness: 0.3 }),
         lamp: std({ color: '#fff4e0', emissive: lin('#ffe2b0'), emissiveIntensity: 0.6, roughness: 0.6 }),
         gdoor: std({ color: '#f2f0ea', map: TX.garage, roughness: 0.55 }),
+        stripe: std({ color: '#e8d36a', roughness: 0.6 }),
         glassTint: std({ color: '#6e92ad', metalness: 0.4, roughness: 0.04, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }),
         win: std({ color: '#b8d4e4', metalness: 0.3, roughness: 0.04, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide, emissive: lin('#ffcf8a'), emissiveIntensity: 0 }),
       };
@@ -5641,6 +5654,16 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       return out;
     }
 
+    // your own garage on your land: rows of up to 10 bays to the left of the house, a roll-up door per two bays in
+    // front and a side door you walk in by (design frame)
+    function garBox(d) {
+      const n = d.garN | 0; if (!n) return null;
+      const cols = Math.min(n, 10), rows = Math.ceil(n / 10), w = cols * GAR_BAY + 0.8, dd = rows * (GAR_DEEP + GAR_AISLE) + 0.6;
+      const x1 = X(0) - 1.5, x0 = x1 - w, z0 = Z(0), z1 = z0 + dd, spots = [];
+      for (let i = 0; i < n; i++) { const r = (i / 10) | 0, c = i % 10; spots.push({ x: x0 + 0.4 + (c + 0.5) * GAR_BAY, z: z0 + 0.3 + r * (GAR_DEEP + GAR_AISLE) + GAR_AISLE + GAR_DEEP / 2 }); }
+      return { x0, x1, z0, z1, n, cols, rows, spots, door: z0 + 1.6 };
+    }
+
     // ---- the shell: every floor's slab, walls with windows and doors, the porch, roofs, the studio's garage.
     // Design frame, ground floor top at BASE, floor k at BASE + k * FH. Returns { group, floors: [group per floor],
     // solids: [per floor, relative to that floor: {x0,z0,x1,z1,h}], door: {x, z} | null, gar } (design frame)
@@ -5654,7 +5677,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const doorM = M.std({ color: style === 'flat' ? '#2a2a2e' : '#6a2a1a', roughness: 0.45 }), shutterM = M.std({ color: d.roof, roughness: 0.6 });
       const shutters = d.skin === 'siding' || d.skin === 'brick';
       const door = frontDoor(d);
-      let gar = null;
+      let gar = null, gar2 = null;
       for (let k = 0; k < d.floors.length; k++) {
         const L = new THREE.Group(), W = new THREE.Group(), sol = [], y0f = BASE + k * FH, well = stairwell(d, k);
         const room = (x, y) => tileAt(d, k, x, y);
@@ -5779,6 +5802,23 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
           B(L, gx1 - gx0 - 0.6, 0.06, gz0 - Z(0) + 3, M.concrete, (gx0 + gx1) / 2, 0, (gz0 + Z(0) - 3) / 2);
           gar = { x: (gx0 + gx1) / 2, z: (gz0 + gz1) / 2, m: gm, z0: gz0, z1: gz1 };
         }
+        const gb = !k && garBox(d);
+        if (gb) {
+          const cx = (gb.x0 + gb.x1) / 2, cz = (gb.z0 + gb.z1) / 2, w = gb.x1 - gb.x0, dd = gb.z1 - gb.z0, T = 0.2, top = !withRoof;
+          B(L, w, BASE, dd, M.concrete, cx, 0, cz);
+          B(L, w - 1, 0.06, 5, M.concrete, cx, 0, gb.z0 - 2.5);   // the apron out front
+          const gd = []; for (let c = 0; c < gb.cols; c += 2) { const two = gb.cols - c >= 2, m = gb.x0 + 0.4 + (c + (two ? 1 : 0.5)) * GAR_BAY, hw = two ? 2.9 : 1.35; gd.push([m - hw, m + hw, 0, 2.5, M.gdoor]); }
+          wall(W, 'x', gb.z0, gb.x0 - T / 2, gb.x1 + T / 2, y0f, FH, T, wallM, gd, { bottom: false, top });
+          wall(W, 'x', gb.z1, gb.x0 - T / 2, gb.x1 + T / 2, y0f, FH, T, wallM, [], { bottom: false, top });
+          wall(W, 'z', gb.x0, gb.z0, gb.z1, y0f, FH, T, wallM, [], { bottom: false, top });
+          wall(W, 'z', gb.x1, gb.z0, gb.z1, y0f, FH, T, wallM, [[gb.door - 0.6, gb.door + 0.6, 0, 2.2]], { bottom: false, top });
+          for (const q of gd) pv('x', gb.z0 - 0.14, (q[0] + q[1]) / 2, 0.3, 0.06, 2.62, 2.72, M.lamp);
+          sol.push({ x0: gb.x0 - T, x1: gb.x1 + T, z0: gb.z0 - T, z1: gb.z0 + T, h: FH }, { x0: gb.x0 - T, x1: gb.x1 + T, z0: gb.z1 - T, z1: gb.z1 + T, h: FH }, { x0: gb.x0 - T, x1: gb.x0 + T, z0: gb.z0, z1: gb.z1, h: FH });
+          solidRun('z', gb.x1, gb.z0, gb.z1, 2 * T, [[gb.door - 0.6, gb.door + 0.6, 0, 2.2]]);
+          // a painted line each side of every bay
+          for (const sp of gb.spots) for (const e of [-1, 1]) B(L, 0.1, 0.02, GAR_DEEP, M.stripe, sp.x + e * (GAR_BAY / 2 - 0.05), BASE, sp.z);
+          gar2 = gb;
+        }
         if (!k && door) {
           // front steps, and a walk out to the street
           const dx = X(door[0]) + TL / 2, fz = Z(d._bb ? Math.min(...[...Array(GW).keys()].map(x => { for (let y = 0; y < GD; y++) if (isFloor(room(x, y))) return y; return GD; })) : 0);
@@ -5816,12 +5856,13 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
           if (!big || (r.x1 - r.x0) * (r.y1 - r.y0) * (k + 1) > big.a) big = { a: (r.x1 - r.x0) * (r.y1 - r.y0) * (k + 1), r, k };
         }
         if (d.garage) roofOver(X(GAR.x0) - 0.2, X(GAR.x1), Z(GAR.y0) - 0.2, Z(GAR.y1) + 0.16, BASE + FH, { w: true, e: false });
+        if (gar2) { B(Rf, gar2.x1 - gar2.x0 + 0.4, 0.3, gar2.z1 - gar2.z0 + 0.4, roofM, (gar2.x0 + gar2.x1) / 2, BASE + FH, (gar2.z0 + gar2.z1) / 2); B(Rf, gar2.x1 - gar2.x0 + 0.5, 0.12, gar2.z1 - gar2.z0 + 0.5, M.trim, (gar2.x0 + gar2.x1) / 2, BASE + FH + 0.3, (gar2.z0 + gar2.z1) / 2); }
         if (style === 'flat' && big) B(Rf, 1.3, 0.9, 1.3, M.rtu, (X(big.r.x0) + X(big.r.x1)) / 2, BASE + (big.k + 1) * FH + 0.25, (Z(big.r.y0) + Z(big.r.y1)) / 2);
       }
       const floors = perFloor.map(f => { const g = new THREE.Group(); g.add(bake(f.L), bake(f.W)); out.add(g); return g; });
       if (withRoof) out.add(bake(Rf));
       out.userData.mats = [wallM, roofM, doorM, shutterM];
-      const res = { group: out, floors, solids: perFloor.map(f => f.sol), door: door ? { x: X(door[0]) + TL / 2, z: Z(door[1]) } : null, gar };
+      const res = { group: out, floors, solids: perFloor.map(f => f.sol), door: door ? { x: X(door[0]) + TL / 2, z: Z(door[1]) } : null, gar, gar2 };
       OX = a0X; OZ = a0Z;
       return res;
     }
@@ -5883,7 +5924,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       for (const o of OUTS.values()) makeProxy(o);
       const st = OUTS.get(STUDIO); if (st) buildOut(st);
     }
-    const hasHouse = o => kindOf(o.p) !== 'land' || (S.props.includes(o.p.id) && design(o.p)._built);
+    const hasHouse = o => kindOf(o.p) !== 'land' || ((S.props.includes(o.p.id) || FOREIGN.has(o.p.id)) && (design(o.p)._built || !!design(o.p).garN));
     function placeOf(o, d) {
       const c = Math.cos(o.ry), s = Math.sin(o.ry);
       const pos = [o.anchor[0] - (d._hx * c + d._hz * s), o.anchor[1] - (-d._hx * s + d._hz * c)];
@@ -5903,6 +5944,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         }
         for (let k = 0; k < d.floors.length; k++) for (const r of rects((x, y) => isRoom(tileAt(d, k, x, y)) && !isRoom(tileAt(d, k + 1, x, y)))) put(X(r.x0) - 0.3, Z(r.y0) - 0.3, X(r.x1) + 0.3, Z(r.y1) + 0.3, BASE + (k + 1) * FH, BASE + (k + 1) * FH + 0.9, lin(d.roof));
         if (d.garage) put(X(GAR.x0), Z(GAR.y0), X(GAR.x1), Z(GAR.y1), 0, BASE + FH, lin(d.wall));
+        const gb = garBox(d); if (gb) { put(gb.x0, gb.z0, gb.x1, gb.z1, 0, BASE + FH, lin(d.wall)); put(gb.x0 - 0.2, gb.z0 - 0.2, gb.x1 + 0.2, gb.z1 + 0.2, BASE + FH, BASE + FH + 0.3, lin(d.roof)); }
       });
       if (!parts.length) return;
       const geo = new THREE.BufferGeometry();
@@ -5918,6 +5960,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       withFrame(d, () => {
         const boxes = rects((x, y) => isRoom(tileAt(d, 0, x, y))).map(r => [X(r.x0) - WT, Z(r.y0) - WT, X(r.x1) + WT, Z(r.y1) + WT]);
         if (d.garage) boxes.push([X(GAR.x0) - 0.2, Z(GAR.y0) - 0.2, X(GAR.x1), Z(GAR.y1) + 0.2]);
+        const gb = garBox(d); if (gb) boxes.push([gb.x0 - 0.2, gb.z0 - 0.2, gb.x1 + 0.2, gb.z1 + 0.2]);
         for (const [ax, az, bx, bz] of boxes) {
           const a = pl.toWorld(ax, az), b = pl.toWorld(bx, bz), r = { x0: Math.min(a[0], b[0]), z0: Math.min(a[1], b[1]), x1: Math.max(a[0], b[0]), z1: Math.max(a[1], b[1]) };
           solids.add(r, r.x0, r.z0, r.x1, r.z1); o.rs.push(r);
@@ -5953,7 +5996,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
 
     // ---- inside: the house turned round so the street is behind you, the floor you're on at y = 0
-    const H = { on: false, p: null, d: null, kind: null, own: false, fl: 0, root: null, sh: null, furnG: [], pieces: new Map(), extra0: { solids: [], stations: [] }, ground: null, grid: null, start: null, flWalk: 0, posWalk: null };
+    let VISIT = null;   // { p, sv, name, uid }: the house you were let into
+    const H = { on: false, p: null, d: null, kind: null, own: false, visit: null, carsG: null, fl: 0, root: null, sh: null, furnG: [], pieces: new Map(), extra0: { solids: [], stations: [] }, ground: null, grid: null, start: null, flWalk: 0, posWalk: null };
     const flip = b => ({ x0: -b.x1, x1: -b.x0, z0: -b.z1, z1: -b.z0, h: b.h });   // design frame -> room
     const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
     const free = (x, z, r = 0.35) => Math.abs(x) < IN.W / 2 - r && Math.abs(z) < IN.D / 2 - r && !IN.solids.some(b => x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r);
@@ -5964,30 +6008,49 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       return [x, z];
     }
     function furnish(p) {
-      const d = design(p), k = d.kind; useFrame(d);
-      Object.assign(H, { on: true, p, d, kind: k, own: owns(p), fl: 0, sh: null, furnG: [], pieces: new Map(), extra0: { solids: [], stations: [] }, ground: null, grid: null });
+      const vis = VISIT && VISIT.p.id === p.id ? VISIT : null;
+      const d = design(p, vis ? vis.sv : null), k = d.kind; useFrame(d);
+      Object.assign(H, { on: true, p, d, kind: k, own: !vis && owns(p), visit: vis, fl: 0, sh: null, furnG: [], pieces: new Map(), extra0: { solids: [], stations: [] }, ground: null, grid: null, carsG: null });
       const root = new THREE.Group(); root.rotation.y = Math.PI; root.position.y = -BASE; IN.room.add(root); H.root = root;
       if (k === 'land') {
-        // your lot: grass round the whole grid you can build on
+        // your lot: grass all round where you can build
         const gm = new THREE.MeshStandardMaterial({ color: '#5d7a3a', roughness: 0.95 });
-        H.ground = new THREE.Mesh(new THREE.PlaneGeometry(GW * TL + 6, GD * TL + 6).rotateX(-Math.PI / 2), gm); H.ground.position.y = BASE - 0.02; H.ground.receiveShadow = true; H.ground.userData.mats = [gm]; root.add(H.ground);
+        H.ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 120).rotateX(-Math.PI / 2), gm); H.ground.position.y = BASE - 0.02; H.ground.receiveShadow = true; H.ground.userData.mats = [gm]; root.add(H.ground);
       }
-      buildInside();
-      const bb = d._bb;
-      IN.W = k === 'land' ? GW * TL + 4 : (bb.x1 - bb.x0) * TL + 3; IN.D = k === 'land' ? GD * TL + 5 : (bb.y1 - bb.y0) * TL + 4;
-      IN.solids = []; IN.stations = [];
-      if (k === 'studio') {
-        // the garage: your stored cars, nose in
-        const gx = -H.sh.gar.x, gz = -H.sh.gar.z;
-        bays(gx - 2.5, gz + 0.2, HOME_BAYS, 5, p);
-        station('Garage', gx, -H.sh.gar.z0 - 1.6, () => garageMenu(p), 2.2);
-        H.extra0 = { solids: IN.solids.slice(), stations: IN.stations.slice() };
-      }
+      buildInside(); bounds(); homeCars();
       goFloor(0);
       const dr = H.sh.door;
       H.start = dr ? freeNear(-dr.x + 1.4, -dr.z - 2.6) : [0, IN.D / 2 - 2];
-      if (k === 'land' && H.own && !d._built) setTimeout(() => { if (H.on && H.p === p && !DECO.on) { decoStart(); buildMode(); } }, 400);
+      if (k === 'land' && H.own && !d._built && !d.garN) setTimeout(() => { if (H.on && H.p === p && !DECO.on) { decoStart(); buildMode(); } }, 400);
       return H.start;
+    }
+    // how far you can walk: the house, or the whole lot and your garage on land
+    function bounds() {
+      const d = H.d, bb = d._bb, g = H.sh.gar2;
+      if (H.kind !== 'land') { IN.W = (bb.x1 - bb.x0) * TL + 3; IN.D = (bb.y1 - bb.y0) * TL + 4; return; }
+      IN.W = 2 * Math.max(GW * TL / 2 + 2, g ? -g.x0 + 2 : 0); IN.D = 2 * Math.max(GD * TL / 2 + 2.5, g ? g.z1 + 2 : 0);
+    }
+    // your stored cars in the garage bays (the studio's two, or the garage you built on your land)
+    function homeCars() {
+      if (H.carsG) { IN.room.remove(H.carsG); H.carsG.traverse(o => { if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); }); H.carsG = null; }
+      H.extra0 = { solids: [], stations: [] };
+      const p = H.p, sv = IN.solids, st = IN.stations, n0 = IN.room.children.length; IN.solids = []; IN.stations = [];
+      if (H.kind === 'studio') {
+        const gx = -H.sh.gar.x, gz = -H.sh.gar.z;
+        if (!H.visit) bays(gx - 2.5, gz + 0.2, HOME_BAYS, 5, p);
+        if (!H.visit) station('Garage', gx, -H.sh.gar.z0 - 1.6, () => garageMenu(p), 2.2);
+      } else if (H.sh.gar2) {
+        const g = H.sh.gar2;
+        if (!H.visit) g.spots.forEach((sp, i) => {
+          const c = S.garage[i]; if (!c) return;
+          roomCar(-sp.x, -sp.z, 0, c.color, 0, c.id, c);
+          station(carLabel(carOf(c.id)), -sp.x, -sp.z + 3.6, () => ({ title: carLabel(carOf(c.id)), sub: `${carHealth(c)}% · ${carHp(c)} hp`, rows: [{ t: 'Take it out', s: S.car ? 'Your car goes in this spot' : 'It gets parked out front', btn: 'Drive it', act: () => takeOut(S.garage.indexOf(c), p) }] }), 1.8);
+        });
+        if (H.own) station('Garage', -(g.x1 - 1.4), -g.door, () => garageMenu(p), 1.8);
+      }
+      H.extra0 = { solids: IN.solids, stations: IN.stations }; IN.solids = sv; IN.stations = st;
+      // the cars went straight into the room: keep them with the ground floor when you go upstairs
+      const add = IN.room.children.slice(n0); H.carsG = new THREE.Group(); for (const o of add) H.carsG.add(o); IN.room.add(H.carsG);
     }
     function addPiece(f, k) { const pc = pieceGroup(f); H.furnG[k].add(pc.wrap); H.pieces.set(f, pc); return pc; }
     function dropPiece(f) { const pc = H.pieces.get(f); if (!pc) return; if (pc.wrap.parent) pc.wrap.parent.remove(pc.wrap); disposeTree(pc.wrap); H.pieces.delete(f); }
@@ -6003,7 +6066,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // standing on floor k: the house drops so that floor is at y = 0, the floors above it go away
     function goFloor(k, x, z) {
       k = Math.max(0, Math.min(k, H.d.floors.length - 1));
-      H.fl = k; H.root.position.y = -BASE - k * FH;
+      H.fl = k; H.root.position.y = -BASE - k * FH; if (H.carsG) H.carsG.position.y = -k * FH;
       H.sh.floors.forEach((g, i) => { g.visible = i <= k; });
       H.furnG.forEach((g, i) => { g.visible = i <= k; });
       refresh();
@@ -6063,7 +6126,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       if (!k) {
         if (dr) station('Leave', -dr.x, -dr.z + 1.2, null, 1.4);
         if (H.kind === 'land') station('Leave', 0, IN.D / 2 - 1.2, null, 1.6);
-        if (H.kind === 'property' && dr) {
+        if (H.kind === 'property' && dr && !H.visit) {
           const [sx, sz] = freeNear(-dr.x - 1.6, -dr.z - 1.8);
           if (H.own) station('Garage', sx, sz, () => garageMenu(p), 1.6);
           else station('Buy this house', sx, sz, () => MENUS.buyProp(p), 1.8);
@@ -6081,6 +6144,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
     function leave() {
       if (DECO.on) decoEnd();
+      VISIT = null; H.visit = null; H.carsG = null;
       H.on = false; H.pieces = new Map(); H.root = null; H.sh = null; H.furnG = [];
       document.body.classList.remove('at-home');
     }
@@ -6092,7 +6156,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
     // a change to the house: rebuild it inside and out, save
     function rebuildAll() {
-      frame(H.d); buildInside(); goFloor(Math.min(H.fl, H.d.floors.length - 1)); keep(H.d); rebuildOutside(H.d.id);
+      frame(H.d); buildInside(); bounds(); homeCars(); goFloor(Math.min(H.fl, H.d.floors.length - 1)); keep(H.d); rebuildOutside(H.d.id);
       if (DECO.on && DECO.mode === 'build') showGrid();
     }
 
@@ -6320,6 +6384,14 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       if (ok) toast(`Built: ${summary(d)}.`, 'good');
       draw();
     }
+    // your garage: 1 to 30 spots (cars you've stored keep their spots, so it can't go smaller than what's in it)
+    const GAR_SIZES = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30];
+    function setGarage(n) {
+      const d = H.d, old = d.garN | 0; if (n === old) return;
+      if (n < old && S.garage.length > garageCap() - old + n) { toast(`You've got ${S.garage.length} cars stored. Take some out before making it smaller.`, 'bad'); return; }
+      if (shellEdit(() => { d.garN = n; return 1; }, n ? `${n}-car garage` : 'Garage')) toast(n ? `${n}-car garage built. Your cars park in it.` : 'Garage knocked down.', 'good');
+      draw();
+    }
     function setFloor(k) { clearMark(); clearPick(); clearGhost(); DECO.first = null; DECO.sel = null; if (DECO.mode !== 'build' && DECO.mode !== 'paint') DECO.mode = 'browse'; hideGrid(); goFloor(k); if (DECO.mode === 'build') showGrid(); draw(); }
 
     // what a colour choice looks like on its button (from gfx3d/furn3d.js)
@@ -6373,6 +6445,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
           + `<p class="dn keep${open ? '' : ' bad'}">${esc(tip)}</p>`
           + `<div class="dr"><span class="lb">Rooms</span>${ROOMS.filter(r => H.fl === 0 || r.id !== 'P').map(r => `<button class="it" data-tool="room" data-c="${r.id}" aria-pressed="${t.t === 'room' && t.c === r.id}"><span class="rm" style="background:${ROOM_SW[r.id] || '#888'}"></span>${esc(r.name)}<small>${money(r.price)}/tile</small></button>`).join('')}<button class="it" data-tool="erase" aria-pressed="${t.t === 'erase'}">Knock out<em>rooms</em></button></div>`
           + `<div class="dr"><span class="lb">Walls</span>${WALL_KINDS.map(w => `<button class="it" data-tool="wall" data-k="${w.id}" aria-pressed="${t.t === 'wall' && t.k === w.id}">${esc(w.name)}<small>${money(w.price)}</small></button>`).join('')}<button class="it" data-tool="unwall" aria-pressed="${t.t === 'unwall'}">Take out<em>walls</em></button></div>`
+          + (H.fl === 0 ? `<div class="dr"><span class="lb">Garage</span>${GAR_SIZES.map(n => `<button class="btn" data-gar="${n}" aria-pressed="${(d.garN | 0) === n}">${n ? n + (n === 1 ? ' car' : ' cars') : 'None'}</button>`).join('')}<span class="lb" style="min-width:0">${money(GAR_CAR)}/spot</span></div>` : '')
           + (H.fl === 0 ? `<div class="dr"><span class="lb">Plans</span>${PRESET_IDS.map(id => { const pr = PRESETS[id], c = pr.floors.reduce((n, f) => n + [...f].reduce((m, ch) => m + ((ROOM_BY_ID[ch] && ROOM_BY_ID[ch].price) || 0), 0), 0) + pr.furn.flat().reduce((n, f) => n + ((FURN_BY_ID[f.id] && FURN_BY_ID[f.id].price) || 0), 0); return `<button class="it" data-pre="${id}" aria-pressed="${DECO.preset === id}">${esc(DECO.preset === id ? 'Tap again to build' : (PRESET_NAME[id] || pr.name))}<small>${money(c)}</small><em>${pr.floors.length}-story, furnished</em></button>`; }).join('')}</div>` : '');
       }
       const top = ui.scrollTop; ui.innerHTML = h; ui.scrollTop = top;
@@ -6381,6 +6454,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       ui.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => setFloor(+b.dataset.fl));
       ui.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => { DECO.tool = { t: b.dataset.tool, c: b.dataset.c, k: b.dataset.k }; DECO.first = null; DECO.preset = null; clearPick(); draw(); });
       ui.querySelectorAll('[data-pre]').forEach(b => b.onclick = () => usePreset(b.dataset.pre));
+      ui.querySelectorAll('[data-gar]').forEach(b => b.onclick = () => setGarage(+b.dataset.gar));
       ui.querySelectorAll('[data-p]').forEach(b => b.onclick = () => repaint({ [b.dataset.p]: b.dataset.v }));
       ui.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { const f = DECO.mode === 'place' ? DECO.f : DECO.sel; f.look = Object.assign({ s: 0, c: {} }, f.look, { s: +b.dataset.st }); if (DECO.mode === 'place') showPlace(); else restyle(f); });
       ui.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { const f = DECO.mode === 'place' ? DECO.f : DECO.sel; f.look = Object.assign({ s: 0 }, f.look); f.look.c = Object.assign({}, f.look.c, { [b.dataset.ck]: b.dataset.cv }); if (DECO.mode === 'place') showPlace(); else restyle(f); });
@@ -6402,7 +6476,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     const _c = new THREE.Vector3();
     function stepDeco(dt) {
       const bb = H.d._bb, size = Math.max(1, Math.max((bb.x1 - bb.x0) * TL / 20, (bb.y1 - bb.y0) * TL / 14));
-      const asp = innerWidth / Math.max(1, innerHeight), dist = (asp < 0.8 ? 34 : asp < 1.3 ? 26 : innerHeight < 500 ? 25 : 22) * (H.kind === 'land' ? 1.35 : size), p = Math.max(0.55, Math.min(1.1, LOOK.pitch)), yaw = IN.camYaw || 0;
+      const asp = innerWidth / Math.max(1, innerHeight), dist = (asp < 0.8 ? 34 : asp < 1.3 ? 26 : innerHeight < 500 ? 25 : 22) * (H.kind === 'land' ? 1.35 * Math.max(1, IN.W / (GW * TL + 4) * 0.8) : size), p = Math.max(0.55, Math.min(1.1, LOOK.pitch)), yaw = IN.camYaw || 0;
       _c.set(Math.sin(yaw) * Math.cos(p) * dist, Math.sin(p) * dist, Math.cos(yaw) * Math.cos(p) * dist);
       IN.camPos.lerp(_c, 1 - Math.exp(-dt * 6)); IN.cam.position.copy(IN.camPos); IN.cam.lookAt(0, 0, 0);
       // the panel covers the bottom of the screen: lift the picture into the space above it
@@ -6411,9 +6485,11 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       anim(performance.now() / 1000);
     }
 
+    // let into someone else's house: their design, their name on it
+    function visit(p, sv, name, uid) { if (inside) leaveInterior(true); VISIT = { p, sv, name, uid }; enterInterior(p); toast(`At ${name}'s place.`, 'good'); }
     window.__home = { get foot() { return foot; }, get IN() { return IN; }, LOOK, H, DECO, buy, tap: (x, z) => tap({ x, z }), confirmPlace, turn, sell, OUTS, draw, design, decoStart, decoEnd, buildMode, usePreset, setFloor, goFloor, rebuildOutside, summary, kindOf,
-      tool: t => { DECO.tool = t; DECO.first = null; }, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
-    return { place, skipB, furnish, leave, anim, tap, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && (kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS };
+      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
+    return { place, skipB, furnish, leave, anim, tap, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns };
   })();
   // ---------- car button: open and close the doors, hood and trunk of your car ----------
   const backName = () => { const m = car && car.userData.model; const n = m && Object.keys(m.userData.panels).find(k => panelKind(k) === 'trunk'); return n === 'tailgate' ? 'Tailgate' : n === 'hatch' ? 'Hatch' : 'Trunk'; };
@@ -11028,6 +11104,195 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   stepStreet = function (t) { _hStepStreet.apply(this, arguments); const n = performance.now(), dt = Math.min(0.05, (n - (HOOD.last || n)) / 1000); HOOD.last = n; try { hoodTick(dt); } catch (er) { if (!HOOD.err) { HOOD.err = 1; console.error('hood', er); } } };
   window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire };
 
+  // ---------- your homes online: one owner per house on a server, inviting people over, knocking on doors ----------
+  // Deeds are the 2D game's (supabase/rfg_servers.sql, js/net/deeds.js): on a server, a house or lot a real player
+  // owns is gone for everybody else there. The same 'deed' packet as 2D tells everyone on the server at once.
+  // Inviting: the owner sends their house ('hd', the design as it's saved) to who they let in; that player walks
+  // around inside the real thing, and each of you sees the other in there ('hm' on the state packets).
+  const HN = { server: '', owners: new Map(), loadT: 0, loading: false, init: false, knock: null, views: new Map(), told: new Set(), entering: false, sentIn: null };
+  const hnPlace = id => DATA.P.find(q => q.id === id);
+  // ?net=local: the same deed rules kept in this browser, so two tabs can test them (like 2D's local deeds)
+  async function hnRpc(fn, a) {
+    if (!NET_LOCAL) return netRpc(fn, a);
+    let db; try { db = JSON.parse(localStorage.getItem('rfg-localdeeds3d') || '{}'); } catch (e) { db = {}; }
+    if (fn === 'rfg_deeds_get') return Object.entries(db).filter(([k]) => k.startsWith(a.p_server + ':')).map(([k, v]) => ({ prop: k.slice(a.p_server.length + 1), uid: v.uid, name: v.name }));
+    const k = NET.room + ':' + a.p_prop; if (!db[k]) { db[k] = { uid: a.p_uid, name: netMe().name }; localStorage.setItem('rfg-localdeeds3d', JSON.stringify(db)); }
+    return { ok: db[k].uid === a.p_uid, name: db[k].name };
+  }
+  const hnDeedable = p => !!p && (p.type === 'property' || p.type === 'land');
+  const hnPeerOf = uid => [...NET.peers.values()].find(q => q.uid === uid) || null;
+  // who owns this on your server, when it isn't you
+  function takenBy(id) { if (!netOn() || HN.server !== NET.room) return null; const o = HN.owners.get(id); return o && o.uid !== S.uid ? o : null; }
+  async function hnLoad() {
+    const room = NET.room; HN.loading = true; HN.loadT = performance.now() + 60000;
+    try {
+      const rows = await hnRpc('rfg_deeds_get', { p_server: room });
+      if (NET.room !== room) return;
+      const m = new Map((Array.isArray(rows) ? rows : []).filter(r => r && typeof r.prop === 'string').map(r => [r.prop, { uid: String(r.uid), name: nName(r.name) }]));
+      if (HN.server === room) for (const [k, v] of HN.owners) if (!m.has(k)) m.set(k, v);   // heard live since
+      HN.owners = m;
+    } catch (e) { console.warn('deeds', e.message); }
+    HN.server = room;
+    try { await hnClaimMine(); } finally { HN.loading = false; }
+  }
+  // the houses you already own go on your server's books; one somebody else got first goes back, money back
+  async function hnClaimMine() {
+    for (const id of S.props.slice()) {
+      const p = hnPlace(id); if (!hnDeedable(p) || !netOn()) continue;
+      const o = HN.owners.get(id);
+      if (o && o.uid === S.uid) continue;
+      if (o) { hnLose(p, o.name); continue; }
+      try {
+        const r = await hnRpc('rfg_deed_claim', { p_uid: netMe().uid, p_tok: S.crewKey, p_prop: id });
+        if (r && r.ok === false) hnLose(p, r.name || 'Another player');
+        else { HN.owners.set(id, { uid: S.uid, name: netMe().name }); netSend({ k: 'deed', p: id, n: netMe().name, u: S.uid }); }
+      } catch (e) { return; }   // registry down: try again on the next load
+    }
+  }
+  function hnLose(p, name) {
+    if (!S.props.includes(p.id)) return;
+    if (inside && IN.place && IN.place.id === p.id) leaveInterior();
+    S.props = S.props.filter(x => x !== p.id); earn(propPrice(p), `Refund: ${p.name}`);
+    toast(`${name} already owns ${p.name} on this server. You got your money back.`, 'bad');
+    HOME.rebuildOutside(p.id); save();
+  }
+  // buying: lock the deed first, then pay
+  async function hnBuy(p, pay) {
+    if (!netOn() || S.cash < propPrice(p) || !hnDeedable(p)) return pay();
+    try {
+      const r = await hnRpc('rfg_deed_claim', { p_uid: netMe().uid, p_tok: S.crewKey, p_prop: p.id });
+      if (r && r.ok === false) { HN.owners.set(p.id, { uid: '?', name: nName(r.name || 'Another player') }); toast(`${r.name || 'Another player'} just bought ${p.name}.`, 'bad'); if (menuFn) renderMenu(); return; }
+    } catch (e) { console.warn('deed claim', e.message); }
+    pay();
+    if (S.props.includes(p.id)) { HN.owners.set(p.id, { uid: S.uid, name: netMe().name }); netSend({ k: 'deed', p: p.id, n: netMe().name, u: S.uid }); hnSendHome(p.id); }
+    if (menuFn) renderMenu();
+  }
+  function hnWrap() {
+    const base = MENUS.buyProp;
+    MENUS.buyProp = p => {
+      const m = base(p), t = !S.props.includes(p.id) && takenBy(p.id);
+      if (t) return { title: p.name, sub: `${t.name}'s place`, rows: [{ t: `Owned by ${t.name}`, s: 'Somebody on your server owns this. It\'s not for sale.', btn: 'Taken', off: true }, knockRow(p, t)] };
+      const r0 = m.rows && m.rows[0];
+      if (r0 && r0.act && !S.props.includes(p.id)) { const a = r0.act; r0.act = () => { hnBuy(p, a); }; }
+      return m;
+    };
+    const baseL = MENUS.listings;
+    MENUS.listings = () => {
+      const m = baseL(); if (!netOn()) return m;
+      const byName = new Map(DATA.P.filter(q => q.type === 'property' || q.type === 'land').map(q => [q.name, q]));
+      m.rows = m.rows.filter(r => { const q = byName.get(r.t); return !(q && takenBy(q.id)); });
+      for (const r of m.rows) { const q = byName.get(r.t); if (q && r.act) { const a = r.act; r.act = () => { hnBuy(q, a); }; } }
+      return m;
+    };
+    // a house somebody else owns: you knock, you don't walk in
+    const enter0 = enterInterior;
+    enterInterior = p => { const t = p && !HN.entering && !S.props.includes(p.id) && takenBy(p.id); if (t) { openMenu(() => MENUS.buyProp(p)); return; } return enter0(p); };
+    HOME.KEPT.push(d => { if (d.kind !== 'studio') hnSendHome(d.id); else hnSendGuests(); });
+    css2();
+  }
+  function knockRow(p, t) {
+    const peer = hnPeerOf(t.uid);
+    return { t: 'Knock on the door', s: peer ? `${t.name} is on. They can let you in.` : `${t.name} isn't on right now`, btn: 'Knock', off: !peer || HOME.kindOf(p) === null, act: () => {
+      const q = hnPeerOf(t.uid); if (!q) return toast(`${t.name} isn't on right now.`, 'bad');
+      HN.knock = { p: p.id, to: q.id, t: performance.now() }; netSend({ k: 'hk', to: q.id, p: p.id, n: netMe().name }); closeMenu(); toast(`You knocked at ${t.name}'s. Waiting on them.`);
+    } };
+  }
+  // your house as it is, to one player (let in / invited) or to everybody (so they see it from the street)
+  function hnPack(id) { const p = id === 'eastgate_studio' ? hnPlace(id) : hnPlace(id); if (!p || !HOME.kindOf(p)) return null; const sv = HOME.pack(HOME.design(p)); return JSON.stringify(sv).length < 40000 ? sv : null; }
+  function hnSendHome(id, to, inv) { if (!netOn()) return; const sv = hnPack(id); if (sv) netSend({ k: 'hd', p: id, sv, n: netMe().name, u: S.uid, to: to || undefined, inv: inv ? 1 : undefined }); }
+  function hnSendGuests() { if (!HOME.H.on || HOME.H.visit) return; for (const q of NET.peers.values()) if (q.hm === S.uid + ':' + HOME.H.p.id) hnSendHome(HOME.H.p.id, q.id); }
+  function hnLetIn(q, id) { hnSendHome(id, q.id, 1); }
+  function hnVisit(p, sv, name, uid) { HN.entering = true; try { HOME.visit(p, sv, name, uid); } finally { HN.entering = false; } }
+
+  NET_HOOK.recv.push((p, m) => {
+    if (m.k === 'h' && typeof m.u === 'string' && /^\w{1,16}$/.test(m.u)) {
+      // someone new: show them your houses
+      if (!p.uid) { p.uid = m.u; setTimeout(() => { if (!netOn()) return; let n = 0; for (const id of S.props) { const q = hnPlace(id); if (q && HOME.kindOf(q) && n++ < 12) hnSendHome(id, p.id); } }, 400 + Math.random() * 800); }
+      p.uid = m.u;
+    }
+    if (m.k === 's') { const ok = typeof m.hm === 'string' && m.hm.length < 64; p.hm = ok ? m.hm : null; if (ok) { p.hf = nNum(m.hf, 0, 2, 0); p.hx = nNum(m.hx, -80, 80, 0); p.hz = nNum(m.hz, -80, 80, 0); p.hy = nNum(m.hy, -20, 20, 0); } }
+    if (m.k === 'deed' && typeof m.p === 'string' && typeof m.u === 'string') {
+      const mine = HN.owners.get(m.p);
+      if (!(mine && mine.uid === S.uid)) { HN.owners.set(m.p, { uid: m.u, name: nName(m.n) }); if (menuFn) renderMenu(); }
+    }
+    if (m.to && m.to !== NET.id) return;
+    const place = typeof m.p === 'string' ? hnPlace(m.p) : null;
+    if (m.k === 'hk' && place && (S.props.includes(place.id) || place.id === 'eastgate_studio')) {
+      const who = nName(m.n, p.name);
+      toast(`🚪 ${who} is knocking at ${place.name}`);
+      openMenu(() => ({ title: `${who} is at your door`, sub: place.name, rows: [
+        { t: 'Let them in', s: 'They walk around inside your house', btn: 'Open up', act: () => { hnLetIn(p, place.id); closeMenu(); toast(`Let ${who} in.`, 'good'); } },
+        { t: 'Not now', s: 'They get told you\'re busy', btn: 'No', act: () => { netSend({ k: 'hn', to: p.id, p: place.id }); closeMenu(); } }] }));
+    } else if (m.k === 'hn' && place) { HN.knock = null; toast(`${p.name} can't have company right now.`, 'bad'); }
+    else if (m.k === 'hd' && place && HOME.kindOf(place) && m.sv && typeof m.sv === 'object') {
+      const name = nName(m.n, p.name), uid = typeof m.u === 'string' ? m.u : p.uid;
+      // the street view of their house (not the studio: everybody has their own)
+      if (place.id !== 'eastgate_studio' && !S.props.includes(place.id)) {
+        const o = HN.owners.get(place.id);
+        if (!o || o.uid === uid) { if (!o && uid) HN.owners.set(place.id, { uid, name }); HOME.FOREIGN.set(place.id, { sv: m.sv, name, uid }); HOME.rebuildOutside(place.id); }
+      }
+      const H = HOME.H;
+      if (H.on && H.visit && H.p.id === place.id && H.visit.uid === uid) {
+        // they changed something while you're over: same spot, new house
+        const fl = H.fl, x = IN.pos.x, z = IN.pos.z; hnVisit(place, m.sv, name, uid); window.__home.goFloor(fl, x, z);
+      } else if (m.inv && HN.knock && HN.knock.p === place.id) { HN.knock = null; hnVisit(place, m.sv, name, uid); }
+      else if (m.inv) {
+        toast(`📨 ${name} invited you over`);
+        openMenu(() => ({ title: `${name} invited you over`, sub: place.name, rows: [
+          { t: 'Go over', s: 'You show up at their door and walk in', btn: 'Go', act: () => { closeMenu(); hnVisit(place, m.sv, name, uid); } },
+          { t: 'No thanks', s: '', btn: 'No', act: () => { netSend({ k: 'hn', to: p.id, p: place.id }); closeMenu(); } }] }));
+      }
+    }
+  });
+  // inside a house: where you are in there, for whoever else is in the same one
+  const hnIn = () => { const H = HOME.H; return H.on && H.p ? (H.visit ? H.visit.uid : S.uid) + ':' + H.p.id : ''; };
+  NET_HOOK.state.push(() => { const k = hnIn(); if (!k) return {}; HN.sentIn = { k, f: HOME.H.fl, x: IN.pos.x, z: IN.pos.z, y: IN.avatar ? IN.avatar.rotation.y : 0 }; return { hm: k, hf: HN.sentIn.f, hx: +IN.pos.x.toFixed(2), hz: +IN.pos.z.toFixed(2), hy: +HN.sentIn.y.toFixed(2) }; });
+  NET_HOOK.urgent.push(() => { const k = hnIn(), s = HN.sentIn; if (!k) { const was = !!s; HN.sentIn = null; return was; } return !s || s.k !== k || s.f !== HOME.H.fl || Math.hypot(s.x - IN.pos.x, s.z - IN.pos.z) > 0.25 || Math.abs((IN.avatar ? IN.avatar.rotation.y : 0) - s.y) > 0.35; });
+  NET_HOOK.draw.push((p, v) => { if (p.hm) v.g.visible = false; });   // they're indoors, not standing on the street
+  function hnDrawInside(dt) {
+    const k = hnIn(), now = performance.now() / 1000, want = new Set();
+    if (k && inside) for (const p of NET.peers.values()) if (p.hm === k && p.hf === HOME.H.fl) want.add(p.id);
+    for (const [id, v] of HN.views) if (!want.has(id)) { IN.scene.remove(v.wrap); PEOPLE.dispose(v.P); if (v.label) { v.label.material.map.dispose(); v.label.material.dispose(); } HN.views.delete(id); }
+    for (const id of want) {
+      const p = NET.peers.get(id); let v = HN.views.get(id);
+      if (!v) {
+        const P = PEOPLE.build(netLookOf(p), 1), wrap = new THREE.Group(); P.root.rotation.y = Math.PI; wrap.add(P.root);
+        const label = textSprite(p.name, 30, '#7fd1ff'); label.position.set(0, 2.25, 0); label.scale.set(0.026 * label.userData.aspect, 0.026, 1); wrap.add(label);
+        wrap.position.set(p.hx, 0, p.hz); IN.scene.add(wrap); v = { P, wrap, label, walk: 0 }; HN.views.set(id, v);
+      }
+      const dx = p.hx - v.wrap.position.x, dz = p.hz - v.wrap.position.z, d = Math.hypot(dx, dz), kk = Math.min(1, dt * 8);
+      if (d > 6) v.wrap.position.set(p.hx, 0, p.hz); else { v.wrap.position.x += dx * kk; v.wrap.position.z += dz * kk; }
+      v.wrap.rotation.y += nNorm(p.hy - v.wrap.rotation.y) * Math.min(1, dt * 10);
+      if (d > 0.05) { v.walk += dt * 2.5 * Math.PI * 2 / 1.55; animPerson(v.P, v.walk, 1, 0); } else idlePerson(v.P, now + id.charCodeAt(0));
+    }
+  }
+  // the 👋 button in your home: invite anyone on your server over
+  function css2() {
+    const st = document.createElement('style');
+    st.textContent = `#invbtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 284px); width: 50px; height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 22px; display: none; z-index: 8; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.45); padding: 0; line-height: 1; }
+#invbtn small { display: block; font: 600 10px var(--body); margin-top: 3px; }
+body.indoors.at-home.net-on:not(.creating):not(.phoning):not(.decorating) #invbtn { display: block; }
+@media (orientation: landscape) and (max-height: 500px) { #invbtn { top: calc(env(safe-area-inset-top, 0px) + 248px); width: 44px; height: 50px; font-size: 19px; } }`;
+    document.head.appendChild(st);
+    const b = document.createElement('button'); b.id = 'invbtn'; b.setAttribute('aria-label', 'Invite players over'); b.innerHTML = '👋<small>Invite</small>'; document.body.appendChild(b);
+    b.onclick = () => openMenu(inviteMenu);
+  }
+  function inviteMenu() {
+    const H = HOME.H; if (!H.on || !H.p) return { title: 'Invite', sub: '', rows: [] };
+    const here = S.uid + ':' + H.p.id, list = [...NET.peers.values()].filter(q => q.uid);
+    if (!list.length) return { title: 'Invite people over', sub: 'Nobody else is on your server right now', rows: [] };
+    return { title: 'Invite people over', sub: `${H.p.name} · they get a message and walk right in`, rows: list.map(q => ({ t: q.name, s: q.hm === here ? 'Here now' : q.d3 ? 'On the 3D game' : 'On the 2D game (can\'t come in yet)', btn: q.hm === here ? 'Here' : 'Invite', off: q.hm === here || !q.d3, act: () => { hnLetIn(q, H.p.id); toast(`Invited ${q.name}.`, 'good'); } })) };
+  }
+  function homeNetTick(dt) {
+    if (!S || !worldOn) return;
+    if (!HN.init) { HN.init = true; hnWrap(); }
+    document.body.classList.toggle('net-on', netOn());
+    if (!netOn()) { if (HN.views.size) hnDrawInside(dt); return; }
+    if (!HN.loading && (HN.server !== NET.room || performance.now() > HN.loadT)) hnLoad();
+    hnDrawInside(dt);
+  }
+  window.__hn = { HN, takenBy, hnLoad, inviteMenu, hnLetIn, tick: homeNetTick };
+
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
@@ -11475,7 +11740,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   function loop(now) {
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
-    netTick(dt); HOME.stepOut(dt);
+    netTick(dt); HOME.stepOut(dt); homeNetTick(dt);
     stepNos(dt, (driving && !foot.on) || ROLL.on || STRIP.on);
     if ((frame & 15) === 0) syncCarModel();
     if (car) stepPanels(car.userData.model, dt); if (car && driving) stepCarAudio();
