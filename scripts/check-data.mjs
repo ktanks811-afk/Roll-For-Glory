@@ -1807,6 +1807,18 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const ask = LB.askOf(s, a);
   if (!LB.signArtist(s, a.id, 'cheap', true).ok || LB.signed(s, a.id).cut !== LB.CHEAP_CUT || !(s.bank < 500000 - LD.LABEL_COST - ask * 0.3)) bad('cheap deal');
   if (LB.signArtist(s, 'dfw_ghost', 'standard', true).ok) bad('a star should not sign with a label that has no clout');
+  // the five-star artists, producers and studios Kimari asked for
+  const FIVE = ['Ebe Lil Ta', 'BANKROL$TOOKIE', 'Lil CJ Kasino', 'Go Yayo', 'AllStar Peezy', 'KO', 'Profit', 'KT5', 'SS Splurge', 'MurdaGang PB'];
+  for (const n of FIVE) {
+    const f = LD.ARTISTS.find(x => x.name === n);
+    if (!f || !f.featured || LB.stars(f.talent) !== 5) { bad('five-star artist missing: ' + n); continue; }
+    const d = LB.dealsFor(s, f);
+    if (LB.askOf(s, f) < 1000000 || d.standard.advance < 1000000 || d.cheap.advance < 1000000) bad(n + ' should want at least $1M to sign');
+    if (LB.hangName(f) === f.hood) bad(n + ' hangs out nowhere on the map');
+  }
+  if (L.known.some(id => LD.ARTIST_BY_ID[id].featured)) bad('five-star artists are not part of the starting six');
+  for (const n of ['OG Dom P', 'DirtyChold Rant', 'Beats N Da Corner']) if (!LD.PRODUCERS.some(p => p.name === n)) bad('producer missing: ' + n);
+  for (const n of ['Trap House Studios', 'The Kitchen', 'Inner Circle']) { const st = Object.values(LD.STUDIOS).find(x => x.name === n); if (!st || st.q >= 20) bad('studio missing or above VirL: ' + n); }
   // the studio: a single takes a day, then it drops and pays every morning
   const r = LB.bookSession(s, 'magnolia_sound', a.id, 'single');
   if (!r.ok || LB.bookSession(s, 'magnolia_sound', a.id, 'album').ok) bad('booking, and not twice at once');
