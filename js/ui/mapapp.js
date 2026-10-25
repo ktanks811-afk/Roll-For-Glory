@@ -4,7 +4,7 @@
 // You can also tap any empty spot to drop a pin and navigate to it, or hit
 // Teleport to skip the drive and land there with your car (core/travel.js).
 
-import { esc } from './dom.js';
+import { esc, toast } from './dom.js';
 import { tierOf } from '../core/state.js';
 import { LOCATIONS, LOC_BY_ID, districtAt } from '../data/world.js';
 import { TILE, tileCache } from '../world2d/mapTiles.js';
@@ -20,6 +20,7 @@ const STATE_LABELS = Object.fromEntries(Object.entries({
   co: [['HIGHLANDS', 2, 0.5], ['RINO', 6, 0.5], ['LODO', 2, 3], ['FIVE POINTS', 6, 3], ['CAPITOL HILL', 2.5, 6], ['CHERRY CREEK', 6.5, 6.5], ['FRONT RANGE', 4, -1.5], ['GROW FARMS', 15, 3], ['THE PLAINS', 19, 9]],
 }).map(([id, list]) => [id, [...list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK]), ...(STATE_MAP_LABELS[id] || [])]]));
 import { fmtMoney } from '../core/state.js';
+import { myPlaces, ensureNav, isFav, toggleFav } from '../core/nav.js';
 import { gpsRgba } from './gpsStyle.js';
 
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', bag: '🛍', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓', plane: '✈', boat: '⚓', gem: '💎', leaf: '🌿', bank: '🏦' };
@@ -97,6 +98,7 @@ export function renderMap(scr, ctx) {
         <div class="map-tools"><button data-z="1" aria-label="Zoom in">+</button><button data-z="-1" aria-label="Zoom out">−</button><button data-me aria-label="My location">◎</button><button data-fit aria-label="Show all places">▦</button></div>
         </div>
       <div class="map-side"><div class="map-card" data-card></div>
+      <div class="map-quick" data-quick></div>
       <input class="input" data-q placeholder="Search places…" value="${esc(st.q)}" autocomplete="off">
       <div class="map-chips">${CATS.map(c => `<button class="sr-chip ${st.cat === c.id ? 'on' : ''}" data-cat="${c.id}">${c.label}</button>`).join('')}</div>
       <div class="list" data-list></div></div></div>`;
@@ -256,12 +258,12 @@ export function renderMap(scr, ctx) {
     } else {
       const l = LOC_BY_ID[t.id], locked = l && l.tier && tier < l.tier;
       const m = selRoute ? selRoute.meters : 0;
-      card.innerHTML = `<div class="mc-name">${t.pin ? '📍 Dropped pin' : esc(shortName(t.name))}${locked ? ' <span class="tag tag-red">🔒 Tier ' + l.tier + '</span>' : ''}</div>
+      card.innerHTML = `<div class="mc-name">${t.pin ? `📍 ${esc(t.name || 'Dropped pin')}` : esc(shortName(t.name))}${locked ? ' <span class="tag tag-red">🔒 Tier ' + l.tier + '</span>' : ''}</div>
         <div class="mc-sub">${esc(districtAt(t.x, t.z))} · ${fmtDist(m)} by road · ${fmtEta(m)}</div>
         ${l ? `<div class="mc-what">${esc(l.weekend ? 'Weekend night meet, Friday and Saturday 9 PM to 3 AM: crews, the spotlight, burnouts and races set up from the lot.' : WHAT[l.type] || '')}${l.tier ? ` Needs rep tier ${l.tier}.` : ''}</div>` : ''}
         <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${active
           ? '<button class="btn btn-sm btn-primary" data-go>Start driving</button><button class="btn btn-sm" data-clear>Clear GPS</button>'
-          : '<button class="btn btn-sm btn-primary" data-gps>📍 Set GPS</button>'}${tele(t.x, t.z)}<button class="btn btn-sm" data-center>Center</button><button class="btn btn-sm" data-x>✕</button></div>`;
+          : '<button class="btn btn-sm btn-primary" data-gps>📍 Set GPS</button>'}${tele(t.x, t.z)}<button class="btn btn-sm" data-fav>${isFav(s, { id: t.id !== '_pin' ? t.id : null, x: t.x, z: t.z }) ? '★ Saved' : '☆ Save'}</button><button class="btn btn-sm" data-center>Center</button><button class="btn btn-sm" data-x>✕</button></div>`;
     }
     const q = sel => card.querySelector(sel);
     q('[data-job]')?.addEventListener('click', () => { select(jl, { center: true }); setGps(jl); });
@@ -269,16 +271,41 @@ export function renderMap(scr, ctx) {
     q('[data-go]')?.addEventListener('click', () => ctx.h.close());
     q('[data-tele]')?.addEventListener('click', () => {
       const to = t || s.gps, l = t && LOC_BY_ID[t.id];
-      const label = t ? (t.pin ? 'Dropped pin' : shortName(t.name)) : s.gps.label;
+      const label = t ? (t.pin ? t.name || 'Dropped pin' : shortName(t.name)) : s.gps.label;
       if (w.teleport(to.x, to.z, label, l ? l.id : null)) { st.sel = null; st.pin = null; ctx.h.close(); }
       else drawCard();
     });
     q('[data-clear]')?.addEventListener('click', () => { s.gps = null; if (w) w.gpsPath = null; select(st.sel); });
     q('[data-center]')?.addEventListener('click', () => { st.cx = t.x; st.cz = t.z; st.k = Math.max(st.k, 0.32); dirty = true; });
     q('[data-x]')?.addEventListener('click', () => select(null));
+    q('[data-fav]')?.addEventListener('click', () => {
+      const on = toggleFav(s, { id: t.id !== '_pin' ? t.id : null, label: t.pin ? (t.name !== 'Dropped pin' ? t.name : 'Saved pin') : shortName(t.name), x: t.x, z: t.z });
+      toast(on ? '★ Saved to your quick places' : 'Removed from your quick places', 'info');
+      drawCard(); drawQuick();
+    });
+  };
+  // Quick places across the top of the list: your car, home and properties,
+  // your saved places, then where you went last. One tap to see it, two to go.
+  const quick = () => {
+    const h = here(), loc = (x, z) => stateAt(x, z) === h, n = ensureNav(s);
+    const mine = myPlaces(s).filter(q => loc(q.x, q.z)).map(q => ({ ...q, grp: 'mine' }));
+    const fav = n.fav.filter(f => loc(f.x, f.z)).map(f => ({ key: 'f' + f.x + ',' + f.z, icon: '★', label: f.label, x: f.x, z: f.z, id: f.id, grp: 'fav' }));
+    const rec = n.recent.filter(r => loc(r.x, r.z) && !fav.some(f => Math.hypot(f.x - r.x, f.z - r.z) < 15)).map(r => ({ key: 'r' + r.x + ',' + r.z, icon: '🕘', label: r.label, x: r.x, z: r.z, id: r.id, grp: 'rec' }));
+    return [...mine, ...fav, ...rec];
+  };
+  let quickList = [];
+  const drawQuick = () => {
+    const el = scr.querySelector('[data-quick]');
+    quickList = quick();
+    el.innerHTML = quickList.length ? quickList.map((q, i) => `<button class="mq mq-${q.grp}" data-qi="${i}" title="${esc(q.sub || q.label)}"><span>${esc(q.icon)}</span>${esc(shortName(q.label))}</button>`).join('') : '<span class="small muted">☆ Save places from their card to get them here.</span>';
+    el.querySelectorAll('[data-qi]').forEach(b => b.onclick = () => {
+      const q = quickList[+b.dataset.qi], l = q.id && LOC_BY_ID[q.id];
+      if (l && places().includes(l)) select(l, { center: true });
+      else select({ id: '_pin', name: q.label, pin: true, x: q.x, z: q.z }, { center: true });
+    });
   };
   const setGps = t => {
-    const label = t.pin ? 'Dropped pin' : shortName(t.name);
+    const label = t.pin ? t.name || 'Dropped pin' : shortName(t.name);
     w?.setGps(t.x, t.z, label); w?.updateGps();       // route now, not next frame
     drawCard(); drawList(); dirty = true;
   };
@@ -366,7 +393,7 @@ export function renderMap(scr, ctx) {
   if (!st.k) { const p = me(); if (s.gps) fitAll([[p.x, p.z], [s.gps.x, s.gps.z]]); else fitAll(); }
   if (st.sel && st.sel.id !== '_pin') st.sel = LOC_BY_ID[st.sel.id] || null;
   selRoute = st.sel ? drive(st.sel.x, st.sel.z) : null;
-  drawCard(); drawList(); dirty = true;
+  drawCard(); drawList(); drawQuick(); dirty = true;
   const ro = new ResizeObserver(() => { if (cv.isConnected) { size(); dirty = true; } }); ro.observe(cv);
   const ro2 = new ResizeObserver(() => { if (!cv.isConnected) { ro2.disconnect(); return; } layout(); }); ro2.observe(scr);
   raf = requestAnimationFrame(loop);

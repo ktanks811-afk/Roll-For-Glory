@@ -13,6 +13,7 @@ import { saveGame } from '../core/save.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 const say = r => { toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) { audio.buy?.(); saveGame('auto', true); } else audio.error?.(); return r.ok; };
+const fiveStar = a => a.minAdvance ? '<span class="tag tag-yellow">5-Star</span> ' : '';
 const starRow = t => { const n = LB.stars(t); return '★'.repeat(Math.floor(n)) + (n % 1 ? '½' : '') + '<span class="muted">' + '☆'.repeat(5 - Math.ceil(n)) + '</span>'; };
 const pct = x => `${Math.round(x * 100)}%`;
 const near = (app, locId) => { const v = app?.world?.playerState?.(), l = LOC_BY_ID[locId]; return !!(v && l && Math.hypot(v.x - l.x, v.z - l.z) < LB.MEET_RANGE); };
@@ -133,9 +134,9 @@ function rosterTab(s, ready) {
 function sceneTab(s, app) {
   const L = s.label;
   const featured = Object.values(ARTIST_BY_ID).filter(a => a.featured).map(a => a.id);
-  const list = [...new Set([...L.known, ...featured])].map(id => ARTIST_BY_ID[id]).filter(a => a && !LB.signed(s, a.id)).sort((a, b) => !!LB.rivalOf(s, a.id) - !!LB.rivalOf(s, b.id));
+  const list = [...new Set([...L.known, ...featured])].map(id => ARTIST_BY_ID[id]).filter(a => a && !LB.signed(s, a.id)).sort((a, b) => (!!LB.rivalOf(s, a.id) - !!LB.rivalOf(s, b.id)) || (!!b.minAdvance - !!a.minAdvance));
   return `<p class="small muted">Your A&amp;R texts you when she hears about somebody. To sign an artist you have to go where they hang out and talk to them in person.</p>
-    <div class="list">${list.map(a => { const here = near(app, a.hang), need = LB.cloutNeeded(a); return `<div class="li click" data-action="view" data-id="${a.id}">${avatar(a)}<div class="grow"><div class="t">${esc(a.name)} <small class="muted">${esc(a.genre)} · ${esc(a.hood)}</small></div>
+    <div class="list">${list.map(a => { const here = near(app, a.hang), need = LB.cloutNeeded(a); return `<div class="li click" data-action="view" data-id="${a.id}">${avatar(a)}<div class="grow"><div class="t">${esc(a.name)} ${fiveStar(a)}<small class="muted">${esc(a.genre)} · ${esc(a.hood)}</small></div>
       <div class="s">${starRow(a.talent)} · ${LB.buzzOf(s, a.id).toLocaleString()} fans · ${LB.rivalOf(s, a.id) ? `<span class="bad">signed to ${esc(LB.rivalOf(s, a.id).name)}</span> · buyout ${fmtMoney(LB.buyoutOf(s, a))}` : `wants ${fmtMoney(LB.askOf(s, a))}`}${need > L.clout ? ` · <span class="bad">needs clout ${need}</span>` : ''}</div>
       <div class="s">${here ? '<b class="good">They\'re right here</b>' : `Hangs out at ${esc(LB.hangName(a))}`}</div></div><span class="muted">›</span></div>`; }).join('') || '<p class="muted">You\'ve signed everyone you know about. More names come in by text.</p>'}</div>`;
 }
@@ -143,7 +144,7 @@ function sceneTab(s, app) {
 function artistView(s, app, id) {
   const a = ARTIST_BY_ID[id], r = LB.signed(s, id), L = s.label;
   const back = `<button class="btn btn-sm" data-action="back">‹ Back</button>`;
-  let html = `${back}<div class="card" style="margin-top:8px"><div class="row" style="gap:12px;align-items:center">${avatar(a)}<div class="grow"><h3 style="margin:0">${esc(a.name)}</h3>
+  let html = `${back}<div class="card" style="margin-top:8px"><div class="row" style="gap:12px;align-items:center">${avatar(a)}<div class="grow"><h3 style="margin:0">${esc(a.name)} ${fiveStar(a)}</h3>
     <div class="small muted">${esc(a.real)} · ${esc(a.genre)} · ${esc(a.hood)}</div><div>${starRow(a.talent)}${r ? ` <small class="muted">talent ${a.talent}</small>` : ''}</div></div></div>
     <p>${esc(a.bio)}</p><div class="small">${LB.buzzOf(s, id).toLocaleString()} fans</div></div>`;
   if (r) {
@@ -169,6 +170,7 @@ function artistView(s, app, id) {
   }
   const why = LB.signBlock(s, id, near(app, a.hang)), deals = LB.dealsFor(s, a);
   html += `<div class="card"><h3>Sign ${esc(a.name)}</h3><p class="small">Hangs out at <b>${esc(LB.hangName(a))}</b>. <button class="btn btn-sm" data-action="gps" data-id="${a.hang}" data-label="${esc(a.name)} · ${esc(LB.hangName(a))}">📍 GPS</button></p>
+    ${a.minAdvance ? `<p class="small">⭐ Five-star artist: nobody signs them for less than a <b>${fmtMoney(a.minAdvance)}</b> sign-on bonus.</p>` : ''}
     ${why ? `<p class="small ${/in person/.test(why) ? 'muted' : 'bad'}">${esc(why)}</p>` : ''}
     <div class="row" style="gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" data-action="sign" data-id="${id}" data-deal="standard" ${why ? 'disabled' : ''}>Big advance · ${fmtMoney(deals.standard.advance)}<br><small>they keep ${pct(deals.standard.cut)}</small></button>

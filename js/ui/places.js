@@ -141,7 +141,7 @@ export function homeScreen(loc, app, s) {
     </div></div>`;
     bind(root, {
       close: () => h.close(),
-      garage: () => openGarage(app, { mode: 'home' }),
+      garage: () => openGarage(app, { mode: 'home', at: loc.id }),
       kennel: () => openKennel(app, { home: loc.id }),
       remodel: () => openRemodel(app, loc.id),
       biggarage: () => openBuild(app, loc.id),

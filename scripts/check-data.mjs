@@ -1821,6 +1821,18 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const ask = LB.askOf(s, a);
   if (!LB.signArtist(s, a.id, 'cheap', true).ok || LB.signed(s, a.id).cut !== LB.CHEAP_CUT || !(s.bank < 500000 - LD.LABEL_COST - ask * 0.3)) bad('cheap deal');
   if (LB.signArtist(s, 'dfw_ghost', 'standard', true).ok) bad('a star should not sign with a label that has no clout');
+  // the five-star artists, producers and studios Kimari asked for
+  const FIVE = ['Ebe Lil Ta', 'BANKROL$TOOKIE', 'Lil CJ Kasino', 'Go Yayo', 'AllStar Peezy', 'KO', 'Profit', 'KT5', 'SS Splurge', 'MurdaGang PB'];
+  for (const n of FIVE) {
+    const f = LD.ARTISTS.find(x => x.name === n);
+    if (!f || !f.featured || LB.stars(f.talent) !== 5) { bad('five-star artist missing: ' + n); continue; }
+    const d = LB.dealsFor(s, f);
+    if (LB.askOf(s, f) < 1000000 || d.standard.advance < 1000000 || d.cheap.advance < 1000000) bad(n + ' should want at least $1M to sign');
+    if (LB.hangName(f) === f.hood) bad(n + ' hangs out nowhere on the map');
+  }
+  if (L.known.some(id => LD.ARTIST_BY_ID[id].featured)) bad('five-star artists are not part of the starting six');
+  for (const n of ['OG Dom P', 'DirtyChold Rant', 'Beats N Da Corner']) if (!LD.PRODUCERS.some(p => p.name === n)) bad('producer missing: ' + n);
+  for (const n of ['Trap House Studios', 'The Kitchen', 'Inner Circle']) { const st = Object.values(LD.STUDIOS).find(x => x.name === n); if (!st || st.q >= 20) bad('studio missing or above VirL: ' + n); }
   // the studio: a single takes a day, then it drops and pays every morning
   const r = LB.bookSession(s, 'magnolia_sound', a.id, 'single');
   if (!r.ok || LB.bookSession(s, 'magnolia_sound', a.id, 'album').ok) bad('booking, and not twice at once');
@@ -2395,7 +2407,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const MALL = await import('../js/core/mall.js');
   const { CLOTHES, CLOTH_BY_ID } = await import('../js/data/shops.js');
   const map = buildMap();
-  const STYLES = { top: ['tee', 'hoodie', 'jacket'], bottom: ['jeans', 'cargo', 'track'], hat: ['cap', 'beanie'], shoes: ['kicks', 'boots'] };
+  const STYLES = { top: ['tee', 'hoodie', 'jacket', 'tank'], bottom: ['jeans', 'cargo', 'track'], hat: ['cap', 'beanie'], shoes: ['kicks', 'boots'] };
   if (MALLS.length < 8) bad(`only ${MALLS.length} malls`);
   for (const m of MALLS) {
     const l = LOCATIONS.find(x => x.id === m.id);
@@ -2532,11 +2544,104 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const old of ['short', 'buzz', 'long', 'curly', 'bun']) if (!L.HAIR_BY_ID[old]) bad(`old saves use hairstyle ${old}`);
   if (L.HAIRSTYLES.filter(h => h.group === 'black').length < 15 || L.HAIRSTYLES.filter(h => h.group === 'white').length < 15) bad('need plenty of Black and white hairstyles');
   if (!SH.SKIN_TONES.includes(SH.defaultLook().skin)) bad('default skin tone missing from the list');
+  // jewelry, piercings, ink and brands
+  if (new Set(L.EXTRAS.map(e => e.id)).size !== L.EXTRAS.length) bad('duplicate extra ids');
+  for (const e of L.EXTRAS) if (!L.EXTRA_GROUPS.some(g => g.id === e.group)) bad(`extra ${e.id} has no group`);
+  for (const id of ['plat_chain', 'plat_cuban', 'tennis', 'nose_stud', 'nose_ring', 'septum']) if (!L.EXTRA_BY_ID[id]) bad(`missing extra ${id}`);
+  if (!L.BROWS.some(b => b.id === 'sleek')) bad('sleek brows missing');
+  if (!L.hasTat({ tats: ['full'] }, 'sleeve_l') || L.hasTat({ tats: ['full'] }, 'face') || !L.hasTat({ tats: ['sleeve_r'] }, 'half_r')) bad('full body / sleeve ink rules');
+  for (const c of SH.CLOTHES) if (c.brand && !L.BRANDS[c.brand]) bad(`${c.id}: unknown brand ${c.brand}`);
+  if (SH.CLOTHES.filter(c => c.style === 'tank').length < 3) bad('need wife beaters');
+  if (Object.keys(L.BRANDS).some(b => SH.CLOTHES.filter(c => c.brand === b).length < 2)) bad('every brand should have a few pieces');
   for (const o of L.ORIGINS) {
     const s = createState({ name: 'O', age: 22, look: SH.defaultLook(), story: false });
     o.apply(s);
     if (s.cash < 0 || s.cash > 10000 || s.rep < 0 || s.dirty > s.cash) bad(`origin ${o.id} start: $${s.cash} rep ${s.rep} dirty ${s.dirty}`);
   }
+}
+// ---- phone apps on the go: garages, quick places, gossip, the sportsbook, friends ----
+{
+  const GR = await import('../js/core/garages.js');
+  const NAV = await import('../js/core/nav.js');
+  const GS = await import('../js/core/gossip.js');
+  const SB = await import('../js/core/sportsbook.js');
+  const FR = await import('../js/net/friends.js');
+  const s = createState({ name: 'Apps', age: 24, look: {}, story: false });
+  game.s = s;
+  const big = Object.keys(PROPERTIES).find(id => PROPERTIES[id].slots >= 4 && !PROPERTIES[id].land);
+  s.properties.push(big);
+  const ids = CARS.slice(0, 4).map(m => { const c = newCar(m.id, m.year || 2010); s.cars.push(c); return c.uid; });
+  s.activeCar = ids[0];
+  GR.settle(s);
+  const at = id => s.cars.find(c => c.uid === id).garage;
+  if (at(ids[1]) !== s.home || at(ids[2]) !== s.home || at(ids[3]) !== big) bad(`garages: home fills first, then the next ${ids.map(at)}`);
+  if (GR.whereIs(s, s.cars[0]).kind !== 'out') bad('the car you drive is out somewhere');
+  const q = GR.haulQuote(s, s.cars[1], big);
+  if (q.block || !(q.fee >= GR.HAUL_BASE)) bad('hauler quote ' + JSON.stringify(q));
+  if (!GR.haulQuote(s, s.cars[3], big).block) bad('hauling to where it already is should be blocked');
+  s.cash = 5000;
+  const hr = GR.haulCar(s, ids[1], big, (a, l) => spend(s, a, l));
+  if (!hr.ok || at(ids[1]) !== big || s.cash !== 5000 - q.fee) bad('hauler moves it and charges ' + JSON.stringify(hr));
+  GR.noteLeft(s, 100, 200, '2:00 AM');
+  if (GR.whereIs(s, s.cars[0]).kind !== 'left') bad('a car left in a chase shows as left at the scene');
+  GR.clearLeft(s);
+  s.cars[0].cond.body = 30; s.cars[0].fuel = 0.05;
+  if (GR.carStatus(s.cars[0]).filter(x => x.bad).length < 2) bad('car status flags body and fuel');
+  // quick places: your stuff first, favorites, recents
+  const mp = NAV.myPlaces(s);
+  if (mp[0].kind !== 'car' || !mp.some(x => x.kind === 'home') || !mp.some(x => x.id === big)) bad('my places: car, home, properties ' + JSON.stringify(mp.map(x => x.kind)));
+  const L0 = LOCATIONS[5], L1 = LOCATIONS[9];
+  NAV.noteRecent(s, { x: L0.x, z: L0.z, label: L0.name }); NAV.noteRecent(s, { x: L1.x, z: L1.z, label: L1.name }); NAV.noteRecent(s, { x: L0.x, z: L0.z, label: L0.name });
+  if (s.nav.recent.length !== 2 || s.nav.recent[0].id !== L0.id) bad('recents: newest first, no repeats ' + JSON.stringify(s.nav.recent));
+  if (!NAV.toggleFav(s, { id: L1.id, label: L1.name, x: L1.x, z: L1.z }) || !NAV.isFav(s, L1) || NAV.toggleFav(s, L1)) bad('favorites toggle');
+  // gossip
+  for (let i = 0; i < 40; i++) GS.rumorHour(s, (() => { let k = i * 7919; return () => ((k = (k * 16807) % 2147483647) / 2147483647); })());
+  const g = GS.ensureGossip(s);
+  if (g.items.length < 5 || !g.items.every(x => x.text && x.icon && x.kind)) bad('rumors come in ' + g.items.length);
+  if (g.items.some(x => /\{\w+\}/.test(x.text))) bad('unfilled gossip template');
+  GS.news(s, 'busted');
+  if (g.items[0].kind !== 'news') bad('news goes on top');
+  // sportsbook: deterministic, no ties, odds make sense, bets settle
+  let games = 0, homeW = 0;
+  for (let d = 1; d <= 28; d++) for (const gm of SB.gamesOn(d)) {
+    games++;
+    const po = SB.playOut(gm), po2 = SB.playOut(SB.gameById(gm.id));
+    if (po.h === po.a) bad('a tie in ' + gm.id);
+    if (po !== po2 && (po.h !== po2.h || po.a !== po2.a)) bad('game not deterministic ' + gm.id);
+    const fin = SB.scoreAt(gm, gm.end + 1);
+    if (fin.state !== 'final' || fin.h !== po.h || fin.a !== po.a) bad('final score mismatch ' + gm.id);
+    const mid = SB.scoreAt(gm, Math.round((gm.start + gm.end) / 2));
+    if (mid.h > po.h || mid.a > po.a) bad('live score past the final ' + gm.id);
+    const o = SB.odds(gm, gm.start - 10);
+    if (!(o.h > 1 && o.a > 1 && 1 / o.h + 1 / o.a > 1)) bad('odds need the vig ' + JSON.stringify(o));
+    if (po.h > po.a) homeW++;
+  }
+  if (games < 60 || homeW / games < 0.35 || homeW / games > 0.75) bad(`sportsbook: ${games} games, home won ${homeW}`);
+  const day = SB.gamesOn(s.time.day).length ? s.time.day : [2, 3, 4, 5, 6, 7].find(d => SB.gamesOn(d).length);
+  s.time.day = day; s.time.min = 60;
+  const gm = SB.gamesOn(day)[0];
+  s.cash = 2000;
+  const pb = SB.placeBet(s, gm.id, 'h', 500, 1, (a, l) => spend(s, a, l, { fromBank: false }));
+  if (!pb.ok || s.cash !== 1500) bad('place a bet ' + JSON.stringify(pb));
+  if (SB.placeBet(s, gm.id, 'h', 5000, 1, () => true).ok) bad('tier limit');
+  if (SB.settleBets(s, () => {}).length) bad('settled before the game ended');
+  s.time.day = Math.floor(gm.end / 1440) + 2;
+  let paid = 0;
+  const res = SB.settleBets(s, a => { paid += a; });
+  const won = SB.playOut(gm).h > SB.playOut(gm).a;
+  if (res.length !== 1 || res[0].won !== won || paid !== (won ? Math.round(500 * pb.bet.dec) : 0)) bad('settle ' + JSON.stringify(res.map(r => r.text)));
+  if (!SB.closedWhy(gm, SB.nowMin(s))) bad('betting on a final game');
+  if (!SB.ticker(s).length) bad('ticker is empty');
+  // friends: requests, accepts and texts land in the save
+  s.uid = 'abcdefgh23'; s.crewKey = 'x';
+  if (FR.parseFriendCode(FR.friendCode(s)) !== s.uid) bad('friend code round trip ' + FR.friendCode(s));
+  if (FR.receive(s, { from_uid: 'zzzzzzzz22', from_name: 'Dre', kind: 'req' }) !== 'req' || FR.requestsIn(s).length !== 1) bad('friend request in');
+  const msgs = s.messages.length;
+  if (FR.receive(s, { from_uid: 'zzzzzzzz22', from_name: 'Dre<b>', kind: 'text', body: 'pull up <script>' }) !== 'text' || s.messages.length !== msgs + 1 || /[<>]/.test(s.messages[0].text) || s.messages[0].from !== 'f:zzzzzzzz22') bad('friend text lands in Messages, cleaned');
+  FR.ensureFriends(s).list.push({ uid: 'yyyyyyyy33', name: 'Kay', st: 'out' });
+  if (FR.receive(s, { from_uid: 'yyyyyyyy33', from_name: 'Kay', kind: 'ok' }) !== 'ok' || FR.friendOf(s, 'yyyyyyyy33').st !== 'friend') bad('accepted request makes a friend');
+  if (FR.receive(s, { from_uid: s.uid, from_name: 'me', kind: 'text', body: 'hi' }) !== null) bad('a note from yourself is ignored');
+  game.s = null;
 }
 // ---- Hook & Haul tow truck: quotes, the damage report, repairs ----
 {

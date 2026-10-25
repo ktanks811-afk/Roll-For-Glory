@@ -49,9 +49,11 @@ export function addWest({ buildings, lots, trees, props }, { landmarkBlock, road
   for (let k = 0; k < 22; k++) {
     const x = R(WEST.x0 + 250, WEST.x1 - 250), z = R(WEST.z0 + 100, WEST.z1 - 100);
     if (Math.abs(z + 1350) < 160) { k--; continue; }
-    const roadHit = roads?.nearestOnRoad(x, z);
-    if (roadHit && roadHit.dist < Math.max(90, roadHit.edge.width / 2 + 18)) { k--; continue; }
-    buildings.push({ x, z, w: R(35, 100), d: R(35, 90), h: R(8, 24), color: ['#66513e','#705944','#574837'][k % 3], kind: 'rock' });
+    // measure from the rock's middle and allow for its size, so no corner reaches a road
+    const w = R(35, 100), d = R(35, 90);
+    const roadHit = roads?.nearestOnRoad(x + w / 2, z + d / 2);
+    if (roadHit && roadHit.dist < Math.max(90, roadHit.edge.width / 2 + Math.hypot(w, d) / 2 + 18)) { k--; continue; }
+    buildings.push({ x, z, w, d, h: R(8, 24), color: ['#66513e','#705944','#574837'][k % 3], kind: 'rock' });
   }
 
   // Lake Mineral Wells recreation area.

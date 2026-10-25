@@ -111,7 +111,7 @@ await step('weather sounds', async () => {
   if (!r.storm || !(r.storm.rain > 0.08 && r.storm.wind > 0.01 && r.storm.live > 0.5 && r.clear.rain < r.storm.rain / 2)) throw new Error('ambience off: ' + JSON.stringify(r));
 });
 await step('phone home', async () => { await key('KeyP'); await p.waitForTimeout(300); await snap('04-phone'); });
-for (const app of ['Messages', 'Contacts', 'Map', 'Bank', 'Throttle', 'Races', 'Ryde', 'Crew', 'My Cars', 'Journal']) {
+for (const app of ['Messages', 'Contacts', 'Map', 'Bank', 'Throttle', 'Taxi', 'Garage', 'Radio', 'Betting', 'Races', 'Crew', 'Journal']) {
   await step('app ' + app, async () => {
     await p.click(`.app:has-text("${app}")`);
     await p.waitForTimeout(200);
@@ -128,6 +128,8 @@ await step('throttle feed + rival texts', async () => {
     F.react(s, 'escaped', {}, { n: 2 });
   });
   await p.click('.app:has-text("Throttle")'); await p.waitForTimeout(250);
+  if (!(await p.locator('.tp-tabs button:has-text("Gossip").on').count())) throw new Error('Throttle should open on Gossip');
+  await p.click('.tp-tabs button:has-text("For you")'); await p.waitForTimeout(200);
   const n = await p.locator('.tpost').count();
   if (n < 3) throw new Error('feed shows ' + n + ' posts');
   await snap('07-throttle-feed');
@@ -308,6 +310,51 @@ await step('night + police chase', async () => {
   await p.keyboard.down('KeyW'); await p.waitForTimeout(3000); await p.keyboard.up('KeyW');
   await snap('10-night-chase');
   await p.evaluate(() => { window.__rfg.app.world.police.reset(window.__rfg.app.world); });
+});
+await step('phone apps on the go', async () => {
+  const open = (id, opts) => p.evaluate(async ([id, opts]) => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); const { openPhone } = await import('./js/ui/phone.js'); openPhone(id, window.__rfg.app, opts || {}); }, [id, opts]);
+  // gossip: rumors land, pop at the top and open the Gossip tab
+  await p.evaluate(async () => { const G = await import('./js/core/gossip.js'); const s = window.__rfg.game.s; for (let i = 0; i < 12; i++) G.rumorHour(s, () => (i * 0.07) % 0.44); });
+  await open('social');
+  if ((await p.locator('.gs-item').count()) < 3) throw new Error('gossip tab is empty');
+  await snap('07b-gossip');
+  // taxi: your car and your places come first
+  const wasIn = await p.evaluate(() => { const w = window.__rfg.app.world, was = w.inCar; w.inCar = false; return was; });
+  await open('ryde');
+  const first = await p.locator('.app-body .section-title').first().innerText();
+  if (!/your cars/i.test(first) || !(await p.locator('.app-body .list').first().locator('button[data-action="ride"]').count())) throw new Error('taxi does not list your places first');
+  await snap('07c-taxi');
+  await p.evaluate(was => { window.__rfg.app.world.inCar = was; }, wasIn);
+  // map: quick places, save one as a favorite
+  await open('map'); await p.waitForTimeout(300);
+  if (!(await p.locator('.map-quick .mq').count())) throw new Error('map has no quick places');
+  await p.click('.mapapp .li[data-loc="torque_temple"]'); await p.waitForTimeout(200);
+  await p.click('[data-fav]'); await p.waitForTimeout(150);
+  if (!(await p.locator('.map-quick .mq-fav').count())) throw new Error('saving a place did not add a quick chip');
+  await snap('07d-map-quick');
+  // garage app: your car + each garage
+  await open('garage');
+  if (!(await p.locator('.gcar').count()) || !(await p.locator('.garage-head').count())) throw new Error('garage app shows no cars or garages');
+  await snap('07e-garage-app');
+  // betting: ticker, place a bet
+  await open('book');
+  if (!(await p.locator('.liveticker .tk').count())) throw new Error('no live ticker');
+  const side = p.locator('.bk-side:not([disabled])').first();
+  if (await side.count()) {
+    await side.click(); await p.waitForTimeout(150);
+    const cash = await p.evaluate(() => window.__rfg.game.s.cash);
+    await p.click('[data-action="place"]'); await p.waitForTimeout(200);
+    const after = await p.evaluate(() => ({ cash: window.__rfg.game.s.cash, bets: window.__rfg.game.s.book.bets.length }));
+    if (after.bets < 1 || !(after.cash < cash)) throw new Error('bet did not go through ' + JSON.stringify(after));
+  }
+  await snap('07f-betting');
+  // radio + contacts (friends)
+  await open('radio');
+  if ((await p.locator('.radio-app .li').count()) < 5) throw new Error('radio lists no songs');
+  await open('contacts', { tab: 'add' });
+  if (!/^MW-/.test(await p.locator('[data-mycode]').innerText())) throw new Error('no friend code');
+  await snap('07g-add-friends');
+  await p.evaluate(async () => { const { closeAllPanels } = await import('./js/ui/dom.js'); closeAllPanels(); });
 });
 await step('garage', async () => {
   await p.evaluate(async () => { const { openGarage } = await import('./js/ui/garage.js'); openGarage(window.__rfg.app, { mode: 'home' }); });

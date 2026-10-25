@@ -49,6 +49,9 @@ import { initGameFeel } from './ui/gameFeel.js';
 import { online } from './net/online.js';
 import { profile } from './net/profile.js';
 import { pay } from './net/pay.js';
+import { friends, isFriendId, friendInfo } from './net/friends.js';
+import { initGossip, rumorHour, ensureGossip } from './core/gossip.js';
+import { settleBets } from './core/sportsbook.js';
 import { World, getMap } from './world2d/world.js';
 import { MenuBackdrop, showTitle, openPause } from './ui/menu.js';
 import { openPhone } from './ui/phone.js';
@@ -160,6 +163,7 @@ function hourly() {
   maybeChallenge(s);
   offerMission(s);
   feedHour(s);
+  rumorHour(s);   // Throttle Gossip: somebody heard something (core/gossip.js)
   // buyers message you about cars you have listed
   for (const ml of s.myListings) {
     const car = s.cars.find(c => c.uid === ml.carUid);
@@ -285,9 +289,23 @@ on('message', m => {
   if (!game.s) return;
   if (app.world?.downed) return;   // laid up at JPS: the texts wait in your phone (ui/hospital.js)
   audio.phone();
-  const who = m.from === 'marketplace' ? 'Marketplace' : m.from === 'partshub' ? 'PartsHub' : m.from === 'insurance' ? 'Insurance' : contactInfo(m.from).name;
-  hudPop(m.text, { kind: 'text', icon: '📱', title: who });
+  const who = isFriendId(m.from) ? friendInfo(game.s, m.from).name : m.from === 'marketplace' ? 'Marketplace' : m.from === 'partshub' ? 'PartsHub' : m.from === 'insurance' ? 'Insurance' : contactInfo(m.from).name;
+  hudPop(m.text, { kind: 'text', icon: isFriendId(m.from) ? '👤' : '📱', title: who, from: m.from });
 });
+
+// Throttle Gossip pops at the top while you play, at most one every 40 s,
+// unless it's turned off in the Gossip tab. Tap it to read the rest.
+let lastGossipPop = 0;
+on('gossip', g => {
+  if (!game.s || !ensureGossip(game.s).pops || !hudLive() || performance.now() - lastGossipPop < 40000) return;
+  lastGossipPop = performance.now();
+  app.hud.pop(g.text, { kind: 'info', icon: g.icon, title: 'Throttle Gossip', open: { app: 'social', tab: 'gossip' } });
+});
+// The sportsbook settles bets as games go final: the result pops (or toasts).
+setInterval(() => {
+  if (!game.s) return;
+  for (const r of settleBets(game.s, (a, l) => earn(game.s, a, l))) hudPop(r.text, { kind: r.won ? 'good' : 'bad', icon: '🎲', title: 'Cowtown Book', open: { app: 'book', tab: null } });
+}, 2000);
 
 setPanelListener(n => {
   input.setEnabled(true);
@@ -393,6 +411,8 @@ async function boot() {
     initFeed();
     initOrientation();
     pay.start();   // Cowtown Pay: money other players sent you
+    friends.start();   // texts and friend requests from real players
+    initGossip(game);
   } catch (e) {
     console.error(e);
     $('#boot-msg').textContent = 'Failed to start: ' + e.message;

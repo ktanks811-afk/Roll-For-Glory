@@ -812,6 +812,8 @@ export const audio = {
     return { tr: radioTrack(), pos: radio.el.currentTime || 0, sb, dr };
   },
   radioNext() { radioSkip(1); },
+  radioPick(i) { radioSkip(i - radioTrack()); },
+  radioTime() { return radio.el && !radio.el.paused ? { at: radio.el.currentTime || 0, len: radio.el.duration || 0 } : null; },
   radioPrev() { radioSkip(-1); },
   radioPower,
   radioState() { return { on: settings.radio !== false, playing: radio.playing, track: radioTrack(), title: STATIONS[radioTrack()].title, src: radio.el?.getAttribute('src') || '', gain: radio.gain?.gain.value ?? 0, mood: moodBus?.gain.value ?? 1, build: radio.build, pow: radio.pow, sub: radio.fx?.subG.gain.value ?? 0, rattle: radio.fx?.rattleAmt.gain.value ?? 0 }; },

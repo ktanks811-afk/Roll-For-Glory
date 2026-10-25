@@ -77,21 +77,82 @@ export const BROWS = [
   { id: 'thick', name: 'Thick' },
   { id: 'thin', name: 'Thin' },
   { id: 'slit', name: 'Eyebrow Slit' },
+  { id: 'sleek', name: 'Sleek Arch' },
+  { id: 'arched', name: 'High Arch' },
+  { id: 'laminated', name: 'Brushed Up' },
 ];
 
-// small things that ride on the portrait
-export const EXTRAS = [
-  { id: 'chain', name: 'Gold Chain' },
-  { id: 'cuban', name: 'Cuban Link' },
-  { id: 'grill', name: 'Gold Grill' },
-  { id: 'studs', name: 'Diamond Studs' },
-  { id: 'shades', name: 'Shades' },
-  { id: 'glasses', name: 'Glasses' },
-  { id: 'teardrop', name: 'Teardrop Tat' },
-  { id: 'neck_tat', name: 'Neck Tat' },
-  { id: 'freckles', name: 'Freckles' },
-  { id: 'durag', name: 'Durag' },
+// small things that ride on the portrait. group sorts them in the creator.
+// Only one of each `pick` group at a time (one pendant chain, one choker).
+export const EXTRA_GROUPS = [
+  { id: 'jewelry', name: 'Chains & grills' },
+  { id: 'pierce', name: 'Piercings' },
+  { id: 'face', name: 'Face' },
 ];
+export const EXTRAS = [
+  { id: 'chain', name: 'Gold Chain', group: 'jewelry', pick: 'pendant' },
+  { id: 'plat_chain', name: 'Platinum Chain', group: 'jewelry', pick: 'pendant' },
+  { id: 'cuban', name: 'Cuban Link', group: 'jewelry', pick: 'choker' },
+  { id: 'plat_cuban', name: 'Platinum Cuban', group: 'jewelry', pick: 'choker' },
+  { id: 'plat_rope', name: 'Platinum Rope', group: 'jewelry', pick: 'rope' },
+  { id: 'tennis', name: 'Iced Tennis Chain', group: 'jewelry', pick: 'rope' },
+  { id: 'grill', name: 'Gold Grill', group: 'jewelry', pick: 'grill' },
+  { id: 'plat_grill', name: 'Platinum Grill', group: 'jewelry', pick: 'grill' },
+  { id: 'studs', name: 'Diamond Studs', group: 'pierce' },
+  { id: 'nose_stud', name: 'Nose Stud', group: 'pierce' },
+  { id: 'nose_ring', name: 'Nose Ring', group: 'pierce' },
+  { id: 'septum', name: 'Septum Ring', group: 'pierce' },
+  { id: 'brow_ring', name: 'Eyebrow Ring', group: 'pierce' },
+  { id: 'lip_ring', name: 'Lip Ring', group: 'pierce' },
+  { id: 'shades', name: 'Shades', group: 'face', pick: 'eyes' },
+  { id: 'glasses', name: 'Glasses', group: 'face', pick: 'eyes' },
+  { id: 'teardrop', name: 'Teardrop Tat', group: 'face' },
+  { id: 'neck_tat', name: 'Neck Tat', group: 'face' },
+  { id: 'freckles', name: 'Freckles', group: 'face' },
+  { id: 'durag', name: 'Durag', group: 'face' },
+];
+export const EXTRA_BY_ID = Object.fromEntries(EXTRAS.map(e => [e.id, e]));
+// platinum pieces draw in white metal, the rest in gold
+export const PLATINUM = new Set(['plat_chain', 'plat_cuban', 'plat_rope', 'tennis', 'plat_grill']);
+
+// Ink. look.tats is a list of these; 'full' covers everything below the
+// neck. Each piece only shows where skin does: a wife beater shows both
+// sleeves and the top of a chest piece, a tee only the forearms.
+export const TATTOOS = [
+  { id: 'sleeve_r', name: 'Right Sleeve' },
+  { id: 'sleeve_l', name: 'Left Sleeve' },
+  { id: 'half_r', name: 'Right Half Sleeve' },
+  { id: 'half_l', name: 'Left Half Sleeve' },
+  { id: 'hands', name: 'Hand Tats' },
+  { id: 'chest', name: 'Chest Piece' },
+  { id: 'stomach', name: 'Stomach Script' },
+  { id: 'back', name: 'Back Piece' },
+  { id: 'legs', name: 'Leg Sleeves' },
+  { id: 'neck', name: 'Throat Piece' },
+  { id: 'face', name: 'Face Tats' },
+  { id: 'full', name: 'Full Body' },
+];
+export const INKS = [
+  { id: 'bw', name: 'Black & Grey' },
+  { id: 'color', name: 'Color' },
+];
+// 'full' gives every body piece (not the face)
+export function hasTat(look, id) {
+  const t = look?.tats;
+  return Array.isArray(t) && (t.includes(id) || (id !== 'face' && t.includes('full')) || (id === 'half_r' && t.includes('sleeve_r')) || (id === 'half_l' && t.includes('sleeve_l')));
+}
+
+// Made-up brands (no real trademarks). logo is how gfx2d/brand.js draws it.
+export const BRANDS = {
+  vortex: { name: 'Vortex', logo: 'vee' },
+  ascend: { name: 'Ascend', logo: 'wing' },
+  kronos: { name: 'Kronos', logo: 'bars' },
+  offlane: { name: 'Off Lane', logo: 'diag' },
+  maison: { name: 'Maison Noir', logo: 'mono' },
+  royale: { name: 'Royale', logo: 'crown' },
+  glitch: { name: 'Glitch Gang', logo: 'glitch' },
+  mws: { name: 'Murda Worth Supply', logo: 'star' },
+};
 
 // Where you came up. A small head start, different for each.
 export const ORIGINS = [
