@@ -49,7 +49,7 @@ export const CLOTH_BY_ID = Object.fromEntries(CLOTHES.map(c => [c.id, c]));
 
 export const FOOD = [
   { id: 'coffee', name: 'Black Coffee', price: 4, food: 0, energy: 15, desc: 'Keeps your reactions sharp.' },
-  { id: 'burger', name: 'Double Smash Burger', price: 12, food: 55, energy: 40, desc: "Lucky's classic." },
+  { id: 'burger', name: 'Double Smash Burger', price: 12, food: 55, energy: 40, desc: "Ol' South classic." },
   { id: 'plate', name: 'Midnight Plate (eggs, hash, steak)', price: 22, food: 85, energy: 70, desc: 'Fuel for a long night.' },
   { id: 'energy', name: 'Volt Energy Drink (to go)', price: 6, food: 0, energy: 0, item: 'energyDrinks', desc: 'Keep one in the car. Drink it from the meters on your screen.' },
 ];
