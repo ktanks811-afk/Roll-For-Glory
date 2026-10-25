@@ -212,6 +212,8 @@ label.field > span { display: block; font-size: 12px; color: var(--dim); text-tr
 /* top-middle strip: GPS, what you're on, then texts / GPS / job updates and the radio */
 .hud-top { position: absolute; left: 50%; top: max(8px, env(safe-area-inset-top, 0px)); transform: translateX(-50%); width: max-content; max-width: min(520px, calc(100vw - 2 * 240px)); min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
 .hud-top > * { max-width: 100%; }
+.hud-compass { width: 230px; height: 22px; flex: none; border-radius: 11px; background: linear-gradient(90deg, transparent, rgba(8,9,12,.5) 22%, rgba(8,9,12,.5) 78%, transparent); }
+.hud-compass[hidden] { display: none; }
 .hud-top .hidden { display: none !important; }
 .hud-pop { display: flex; align-items: center; gap: 10px; min-width: min(260px, 100%); background: rgba(12,13,17,.9); border: 1px solid rgba(255,255,255,.14); border-left: 4px solid var(--silver); padding: 6px 14px 6px 10px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .hud-pop.in { animation: hud-pop-in .32s cubic-bezier(.2,.9,.3,1.2); }

@@ -36,6 +36,7 @@ import { wx } from '../core/weather.js';
 import { GANGS } from '../data/gangs.js';
 import { ensureSocial, myHandle, markSeen, likePost, rivalsList, heatWord, rivalOptions, answerRival, HEATED_AT } from '../core/feed.js';
 import { renderJps } from './hospital.js';
+import { renderTow } from './towing.js';
 import * as OPP from '../core/opps.js';
 import { persona } from '../net/bots.js';
 import { pastDue } from '../core/health.js';
@@ -60,6 +61,7 @@ const APPS = [
   { id: 'turf', name: 'Turf', icon: '🚩', bg: '#7a1414' },
   { id: 'gang', name: 'Gang', icon: '✊', bg: '#4a1a6b' },
   { id: 'garage', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
+  { id: 'tow', name: 'Tow', icon: '🛻', bg: '#f0a020' },
   { id: 'boats', name: 'My Boats', icon: '🛥', bg: 'linear-gradient(135deg,#1bb8e8,#0b4c78)' },
   { id: 'luxe', name: 'Luxe', icon: '💎', bg: 'linear-gradient(135deg,#1a1a1d,#c9a45a)' },
   { id: 'inventory', name: 'Inventory', icon: '🎒', bg: '#b08a3e' },
@@ -143,6 +145,7 @@ RENDER.ocrew = renderOcrew;
 RENDER.turf = renderTurf;
 RENDER.gang = renderGang;
 RENDER.jps = renderJps;
+RENDER.tow = renderTow;
 
 // ---------------- messages ----------------
 // Conversations, one per sender, newest first. Open one to read the thread as
@@ -341,7 +344,7 @@ RENDER.bank = (scr, ctx) => {
     <div class="section-title">Roadside</div>
     <div class="li"><div class="grow"><div class="t">Gas delivery (2 gal)</div><div class="s">$45 — when you're stranded</div></div><button class="btn btn-sm" data-action="gas" ${car ? '' : 'disabled'}>Call</button></div>
     <div class="li"><div class="grow"><div class="t">Mobile mechanic</div><div class="s">${fmtMoney(MECHANIC_COST)} — ${car?.broken ? (BREAKDOWNS[car.broken].roadside ? `<b class="bad">${BREAKDOWNS[car.broken].name}.</b> Tops up the oil and gets it running` : `<b class="bad">${BREAKDOWNS[car.broken].name}.</b> Can't fix that on the side of the road. Tow it.`) : 'when your car breaks down'}</div></div><button class="btn btn-sm ${car?.broken && BREAKDOWNS[car.broken].roadside ? 'btn-primary' : ''}" data-action="mech" ${car?.broken && BREAKDOWNS[car.broken].roadside ? '' : 'disabled'}>Call</button></div>
-    <div class="li"><div class="grow"><div class="t">Tow to the nearest mechanic</div><div class="s">$185 flat rate</div></div><button class="btn btn-sm" data-action="tow" ${car ? '' : 'disabled'}>Call</button></div>
+    <div class="li"><div class="grow"><div class="t">🛻 Hook &amp; Haul tow truck</div><div class="s">Haul it to the shop you pick, get a damage report, then home</div></div><button class="btn btn-sm" data-action="tow" ${car ? '' : 'disabled'}>Call</button></div>
     <div class="section-title">Recent activity</div>
     <div class="list">${s.ledger.slice(0, 40).map(l => `<div class="li"><div class="grow"><div class="t">${esc(l.label)}</div><div class="s">Day ${l.day} · ${l.t}</div></div><b class="${l.amount > 0 ? 'good' : l.amount < 0 ? 'bad' : ''}">${l.amount ? (l.amount > 0 ? '+' : '') + fmtMoney(l.amount, true) : ''}</b></div>`).join('') || '<div class="empty">Nothing yet</div>'}</div>`;
   } else if (tab === 'send') {
@@ -488,15 +491,7 @@ RENDER.bank = (scr, ctx) => {
       roadsideFix(c); s.time.min += 30; ctx.app.world?.refreshCar();
       toast('Mechanic got it running. Get an oil change and a real repair soon.', 'good'); ctx.h.refresh();
     },
-    tow: () => {
-      if (!spend(s, 185, 'Tow truck')) return;
-      const w = ctx.app.world;
-      // the nearest mechanic
-      const here = w?.vehicle || { x: 0, z: 0 };
-      const l = LOCATIONS.filter(x => x.type === 'repair').sort((a, b) => Math.hypot(a.x - here.x, a.z - here.z) - Math.hypot(b.x - here.x, b.z - here.z))[0] || LOC_BY_ID.second_chance;
-      if (w?.vehicle) { w.vehicle.x = l.x; w.vehicle.z = l.z + 8; w.vehicle.vx = w.vehicle.vz = 0; w.inCar = false; w.foot.x = l.x + 3; w.foot.z = l.z; s.time.min += 40; }
-      toast(`Towed to ${l.name}`, 'good'); ctx.h.close();
-    },
+    tow: () => ctx.go('tow'),
   });
 };
 

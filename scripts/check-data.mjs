@@ -2536,5 +2536,26 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
     if (s.cash < 0 || s.cash > 10000 || s.rep < 0 || s.dirty > s.cash) bad(`origin ${o.id} start: $${s.cash} rep ${s.rep} dirty ${s.dirty}`);
   }
 }
+// ---- Hook & Haul tow truck: quotes, the damage report, repairs ----
+{
+  const TW = await import('../js/core/towing.js');
+  const q1 = TW.towQuote(1000), q9 = TW.towQuote(9000, 2000);
+  if (q1.fee < TW.TOW_HOOK || q9.fee <= q1.fee || q9.minutes <= q1.minutes) bad('tow quotes should grow with distance ' + JSON.stringify([q1, q9]));
+  const car = newCar(CARS[0].id);
+  if (TW.damageReport(car).items.length || !TW.damageReport(car).drivable) bad('a new car should have a clean report');
+  car.cond.body = 30; car.cond.tires = 80; car.engineBlown = true;
+  const r = TW.damageReport(car, { rate: 1 }), ri = TW.damageReport(car, { rate: 1, insured: true });
+  if (r.drivable) bad('a blown motor is not drivable');
+  const eng = r.items.find(i => i.k === 'engine');
+  if (!eng?.must || !eng.recommend || !r.items.find(i => i.k === 'body')?.recommend || r.items.find(i => i.k === 'tires')?.recommend) bad('report flags: ' + JSON.stringify(r.items));
+  if (Math.abs(ri.total - r.total * 0.3) > r.items.length * 2) bad(`insurance should pay 70%: ${ri.total} vs ${r.total}`);
+  TW.applyRepairs(car, ['engine', 'body']);
+  if (car.engineBlown || car.cond.body !== 100 || car.cond.tires !== 80 || !TW.damageReport(car).drivable) bad('repairs did not apply');
+  car.broken = 'trans'; car.cond.trans = 10;
+  if (TW.damageReport(car).drivable || !TW.damageReport(car).items.find(i => i.k === 'trans')?.must) bad('a dead transmission must be fixed to drive');
+  TW.applyRepairs(car, ['trans']);
+  if (car.broken) bad('fixing the transmission should clear the breakdown');
+  if (!TW.towBlock({}, {}) || TW.towBlock({}, { car }) || !TW.towBlock({}, { car: { ...car, impound: true } })) bad('towBlock');
+}
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);
