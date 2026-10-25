@@ -17,6 +17,7 @@ import { addBrazos } from './brazos.js';
 import { addStates } from './states.js';
 import { addMarinas } from './marinas.js';
 import { addMetro } from './metro.js';
+import { addTrailPark } from './trails.js';
 import { TEXAS } from '../data/metro.js';
 import { houseBlock } from './house.js';
 import { fromPreset } from '../core/homes.js';
@@ -215,7 +216,7 @@ export function buildMap() {
   for (const l of LOCATIONS) {
     if (l.block || (l.type !== 'roll' && l.type !== 'drag' && l.type !== 'sprint')) continue;
     let cx = l.x, cz = l.z, span = 22, horiz = false;
-    if (l.type === 'drag') { cx = 90; cz = l.z + 6; span = 46; }
+    if (l.type === 'drag') { cx = l.stripX ?? 90; cz = l.z + 6; span = l.stripX ? 30 : 46; }
     else {
       const r = roads.nearestOnRoad(l.x, l.z);
       if (r) { cx = r.x; cz = r.z; span = r.edge.width + 6; horiz = Math.abs(r.edge.dx) > 0.5; }
@@ -257,6 +258,8 @@ export function buildMap() {
   water.push(...metro.water);
   // marinas: clubhouses and lots on the shore (the docks are world2d/boats.js)
   addMarinas({ ...gout, props });
+  // Cross Timbers Trail Park off FM 2481: 4-wheeler trails (world2d/trails.js)
+  addTrailPark(gout);
 
   // ---------------- colliders ----------------
   const colliders = [];

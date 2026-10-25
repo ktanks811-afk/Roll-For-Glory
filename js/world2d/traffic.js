@@ -7,14 +7,16 @@ import { carSprite, dimsFor } from '../gfx2d/carSprite.js';
 import { signalState } from './render.js';
 import { ROAD_W, DALLAS, DENTON, inDallas, inDenton } from '../data/world.js';
 
-export const COMMON = CARS.filter(c => !c.market && c.msrp < 70000);
+export const COMMON = CARS.filter(c => !c.market && !c.ride && c.msrp < 70000);
+// a few street bikes in the mix (rider drawn by world.js); no quads on the road
+const BIKES = CARS.filter(c => c.ride === 'moto' && c.msrp < 35000);
 const COLORS = ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4', '#c8b98a', '#5a5d63', '#0d0d0d', '#4a5232', '#8c9196', '#e0e0e0'];
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
 export class TrafficCar {
   constructor(roads, edge, dir, s, lane, opts = {}) {
     this.roads = roads;
-    this.model = opts.model || pick(COMMON);
+    this.model = opts.model || (Math.random() < 0.04 ? pick(BIKES) : pick(COMMON));
     this.dims = dimsFor(this.model);
     this.color = opts.color || pick(COLORS);
     this.police = !!opts.police;

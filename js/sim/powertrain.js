@@ -63,7 +63,9 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}, visual = {}) 
   const tireHealth = tc >= 0.15 ? 1 : tc > 0.10 ? 0.75 + 0.25 * (tc - 0.10) / 0.05 : 0.35 + 0.4 * (tc / 0.10);
   const mu = model.grip * FX.tires.mu[L('tires')] * tireHealth;
 
-  const driveFrac = model.drive === 'AWD' ? 1
+  // a bike throws all its weight onto its fat back tire when it launches: it
+  // runs out of front end (wheelie) before it runs out of grip
+  const driveFrac = model.ride === 'moto' ? 1.15 : model.drive === 'AWD' ? 1
     : model.drive === 'RWD' ? (1 - model.wf) + 0.2 + 0.02 * L('suspension')
     : model.wf - 0.04;
 
@@ -102,8 +104,13 @@ export function buildSpec(model, parts = {}, cond = {}, tune = {}, visual = {}) 
   // weight-transfer factor beats the weight on the front tires. AWD front
   // tires pull the nose down, FWD can't wheelie at all.
   spec.launchGrip = FX.dragpack.launch[L('dragpack')];
-  const k = (model.drive === 'RWD' ? 0.38 : model.drive === 'AWD' ? 0.24 : 0) * (1 + FX.dragpack.transfer[L('dragpack')]) * tf.liftK;
+  // A bike is short and tall: the front comes up at about 1 g. Stock bikes
+  // have wheelie control that holds it to a few inches; a stage 2 ECU flash
+  // turns it off and the rider has to keep the front down.
+  const k = (model.ride === 'moto' ? 0.5 : model.drive === 'RWD' ? 0.38 : model.drive === 'AWD' ? 0.24 : 0) * (1 + FX.dragpack.transfer[L('dragpack')]) * tf.liftK;
   spec.wheelieF = k > 0 ? spec.mass * G * spec.wf / k : null;
+  spec.wheelieCtl = model.ride === 'moto' && L('ecu') < 2;
+  spec.ride = model.ride || null;
   spec.noseRate = tf.noseRate;
   // as the weight comes back the drag radials / slicks plant harder
   spec.plant = model.drive === 'FWD' ? 0 : FX.dragpack.transfer[L('dragpack')] * 1.2 * tf.liftK;
@@ -312,6 +319,7 @@ export function stepSim(spec, s, input, dt) {
   if (spec.barCap && lift0 * 4 > spec.barCap) fTrac *= 1 - clamp((lift0 * 4 - spec.barCap) * 0.25, 0, 0.3);
   // a perfect driver feathers the front end down when there are no bars to catch it
   if (input.perfect && spec.wheelieF && !spec.barCap && fDrive > spec.wheelieF * 1.04) fDrive = spec.wheelieF * 1.04;
+  if (spec.wheelieCtl && fDrive > spec.wheelieF * 1.05) fDrive = spec.wheelieF * 1.05;
   if (input.perfect && fDrive > fTrac * 1.03) fDrive = fTrac * 1.03;
   // traction control: cuts power the moment the driven wheels start to spin
   else if (spec.tc && !input.burnout && fDrive > fTrac * (1 + TC_SLIP[spec.tc])) fDrive = fTrac * (1 + TC_SLIP[spec.tc]);

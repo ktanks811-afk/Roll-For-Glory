@@ -18,9 +18,11 @@ export const MAKES = {
   mercedes: 'Mercedes-Benz', mini: 'MINI', mitsubishi: 'Mitsubishi', nissan: 'Nissan', pagani: 'Pagani', peterbilt: 'Peterbilt',
   pontiac: 'Pontiac', porsche: 'Porsche', ram: 'Ram', rivian: 'Rivian', rollsroyce: 'Rolls-Royce',
   scion: 'Scion', subaru: 'Subaru', tesla: 'Tesla', toyota: 'Toyota', volkswagen: 'Volkswagen', volvo: 'Volvo',
+  // powersports: bikes, trikes, the Slingshot and 4-wheelers
+  harley: 'Harley-Davidson', kawasaki: 'Kawasaki', yamaha: 'Yamaha', suzuki: 'Suzuki', ducati: 'Ducati', polaris: 'Polaris', canam: 'Can-Am',
 };
 
-export const CLASSES = ['Sedan', 'Tuner', 'JDM', 'Muscle', 'European', 'Truck', 'SUV', 'Exotic', 'Supercar'];
+export const CLASSES = ['Sedan', 'Tuner', 'JDM', 'Muscle', 'European', 'Truck', 'SUV', 'Exotic', 'Supercar', 'Bike', 'ATV'];
 
 const GEARS = {
   '4MT': [2.52, 1.88, 1.46, 1.0],
@@ -58,8 +60,19 @@ function transName(code) {
 const BODY_AERO = {
   hatch: [0.32, 2.1], sedan: [0.30, 2.25], coupe: [0.31, 2.05], muscle: [0.36, 2.2], truck: [0.45, 3.3],
   suv: [0.37, 2.9], exotic: [0.32, 2.0], super: [0.33, 1.95], wagon: [0.31, 2.3],
+  // rider included: a tucked sportbike is ~0.33 m² of CdA, a bagger or a quad a lot more
+  moto: [0.55, 0.62], trike: [0.75, 1.15], sling: [0.5, 1.5], atv: [0.95, 1.15],
 };
-export const WHEEL_R = { hatch: 0.31, sedan: 0.32, coupe: 0.32, muscle: 0.33, truck: 0.38, suv: 0.37, exotic: 0.34, super: 0.34, wagon: 0.32 };
+export const WHEEL_R = { hatch: 0.31, sedan: 0.32, coupe: 0.32, muscle: 0.33, truck: 0.38, suv: 0.37, exotic: 0.34, super: 0.34, wagon: 0.32, moto: 0.31, trike: 0.33, sling: 0.32, atv: 0.29 };
+
+// Not a car: what you ride. moto = two wheels; trike = one front, two rear
+// (Tri Glide); spyder = two front, one rear, ridden like a bike (Can-Am);
+// sling = two front, one rear, sat in like a car (Slingshot); atv = 4-wheeler.
+export const RIDES = { moto: 'Motorcycle', trike: 'Trike', spyder: 'Trike', sling: 'Slingshot', atv: '4-wheeler' };
+export const isRide = m => !!(m && m.ride);
+export const rideName = m => RIDES[m?.ride] || 'car';
+// on it, not in it: you see the rider, there are no doors, glass or trunk
+export const straddle = m => !!m?.ride && m.ride !== 'sling';
 
 const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
@@ -83,7 +96,7 @@ function C(make, model, trim, y0, y1, cls, msrp, hp, tq, kg, drive, asp, engine,
   const gTop = gears[gears.length - 1];
   const fd = +(redline * Math.PI / 30 * wheelR / (gTop * vmax * (asp === 'ev' ? 1.0 : 1.08))).toFixed(2);
   const modern = y1 >= 2015 ? 0.04 : y1 < 1990 ? -0.05 : 0;
-  const clsGrip = { Sedan: 0.88, Truck: 0.86, SUV: 0.88, Tuner: 0.96, JDM: 0.97, Muscle: 0.98, European: 1.0, Exotic: 1.05, Supercar: 1.08 }[cls];
+  const clsGrip = { Sedan: 0.88, Truck: 0.86, SUV: 0.88, Tuner: 0.96, JDM: 0.97, Muscle: 0.98, European: 1.0, Exotic: 1.05, Supercar: 1.08, Bike: 1.0, ATV: 0.86 }[cls];
   const peak = asp === 'ev' ? 0.33 : asp === 'turbo' ? 0.42 : asp === 'sc' ? 0.6 : 0.68;
   return {
     id: slug(`${make}_${model}_${trim}_${y0}`),
@@ -92,7 +105,7 @@ function C(make, model, trim, y0, y1, cls, msrp, hp, tq, kg, drive, asp, engine,
     redline, peakTqRpm: Math.round(redline * peak), body, color,
     wf: x.wf ?? (body === 'super' ? 0.42 : drive === 'FWD' ? 0.61 : drive === 'AWD' ? 0.57 : 0.53),
     cd, area, grip: x.grip ?? clsGrip + modern, lim: x.lim || null,
-    lastCall: !!x.lastCall, rig: !!x.rig,
+    lastCall: !!x.lastCall, rig: !!x.rig, ride: x.ride || null,
     rarity: msrp > 400000 || (x.market || 0) > 400000 ? 5 : msrp > 150000 || (x.market || 0) > 90000 ? 4 : msrp > 60000 || x.market ? 3 : msrp > 30000 ? 2 : 1,
   };
 }
@@ -321,6 +334,33 @@ export const CARS = [
   C('bugatti', 'Chiron', '', 2017, 2022, 'Supercar', 3000000, 1479, 1180, 1995, 'AWD', 'turbo', '8.0L Quad-Turbo W16', '7DCT', 6700, 'super', '#1b4fc4', { grip: 1.2, lim: 261 }),
   C('koenigsegg', 'Agera', 'RS', 2015, 2018, 'Supercar', 2500000, 1341, 1011, 1395, 'RWD', 'turbo', '5.0L TT V8', '7DCT', 8250, 'super', '#e8641a', { market: 6000000, grip: 1.2 }),
   C('koenigsegg', 'Jesko', 'Attack', 2022, 2025, 'Supercar', 3000000, 1600, 1106, 1420, 'RWD', 'turbo', '5.0L TT V8 (on E85)', '9DCT', 8500, 'super', '#f2f2f2', { grip: 1.25 }),
+
+  // ---------------- Bikes (Cowtown Powersports) ----------------
+  // kg is wet weight plus an 80 kg rider. Sportbikes are electronically held to 186 mph.
+  C('suzuki', 'Hayabusa', '', 2022, 2025, 'Bike', 19000, 188, 110, 344, 'RWD', 'na', '1340cc I4', '6MT', 11000, 'moto', '#c8c8c8', { ride: 'moto', lim: 186 }),
+  C('suzuki', 'GSX-R750', '', 2011, 2023, 'Bike', 12500, 148, 63, 270, 'RWD', 'na', '750cc I4', '6MT', 13500, 'moto', '#1b4fc4', { ride: 'moto' }),
+  C('kawasaki', 'Ninja H2', '', 2019, 2025, 'Bike', 33000, 228, 104, 318, 'RWD', 'sc', '998cc Supercharged I4', '6MT', 14000, 'moto', '#24262b', { ride: 'moto', lim: 200 }),
+  C('kawasaki', 'Ninja ZX-10R', '', 2021, 2025, 'Bike', 18000, 203, 84, 287, 'RWD', 'na', '998cc I4', '6MT', 14000, 'moto', '#1f8f3a', { ride: 'moto', lim: 186 }),
+  C('kawasaki', 'Ninja 500', '', 2024, 2025, 'Bike', 5300, 51, 31, 251, 'RWD', 'na', '451cc Parallel-Twin', '6MT', 10500, 'moto', '#1f8f3a', { ride: 'moto' }),
+  C('yamaha', 'YZF-R1', '', 2020, 2025, 'Bike', 18999, 197, 83, 281, 'RWD', 'na', '998cc Crossplane I4', '6MT', 14000, 'moto', '#1b4fc4', { ride: 'moto', lim: 186 }),
+  C('honda', 'CBR1000RR-R', 'Fireblade SP', 2022, 2025, 'Bike', 29000, 214, 83, 281, 'RWD', 'na', '999cc I4', '6MT', 14500, 'moto', '#c41b1b', { ride: 'moto', lim: 186 }),
+  C('ducati', 'Panigale V4', 'S', 2023, 2025, 'Bike', 31000, 214, 89, 275, 'RWD', 'na', '1103cc Desmosedici Stradale V4', '6MT', 15000, 'moto', '#c41b1b', { ride: 'moto', lim: 186 }),
+  C('bmw', 'S 1000 RR', '', 2023, 2025, 'Bike', 18000, 205, 83, 277, 'RWD', 'na', '999cc ShiftCam I4', '6MT', 14600, 'moto', '#f2f2f2', { ride: 'moto', lim: 186 }),
+  C('harley', 'Street Glide', '', 2024, 2025, 'Bike', 27000, 105, 130, 448, 'RWD', 'na', 'Milwaukee-Eight 117 V-Twin', '6MT', 5600, 'moto', '#0d0d0d', { ride: 'moto', cd: 0.82, lim: 118 }),
+  C('harley', 'Low Rider', 'ST', 2022, 2025, 'Bike', 21000, 103, 125, 407, 'RWD', 'na', 'Milwaukee-Eight 117 V-Twin', '6MT', 5600, 'moto', '#4a4f57', { ride: 'moto', cd: 0.78, lim: 118 }),
+  C('harley', 'Fat Boy', '114', 2018, 2025, 'Bike', 21500, 93, 114, 397, 'RWD', 'na', 'Milwaukee-Eight 114 V-Twin', '6MT', 5600, 'moto', '#9aa0a8', { ride: 'moto', cd: 0.85, lim: 112 }),
+  // ---------------- Trikes and the Slingshot ----------------
+  C('harley', 'Tri Glide', 'Ultra', 2020, 2025, 'Bike', 37000, 93, 122, 651, 'RWD', 'na', 'Milwaukee-Eight 114 V-Twin', '6MT', 5600, 'trike', '#7a1414', { ride: 'trike', lim: 110 }),
+  C('canam', 'Spyder', 'RT', 2020, 2025, 'Bike', 28000, 115, 96, 546, 'RWD', 'na', '1330cc Rotax I3', '6AT', 8500, 'trike', '#24262b', { ride: 'spyder', lim: 120 }),
+  C('canam', 'Ryker', '900', 2022, 2025, 'Bike', 11500, 82, 58, 365, 'RWD', 'na', '900cc Rotax I3', 'CVT', 8000, 'trike', '#e8c21a', { ride: 'spyder', lim: 100 }),
+  C('polaris', 'Slingshot', 'SL', 2020, 2025, 'Bike', 27000, 178, 120, 837, 'RWD', 'na', '2.0L Prostar I4', '5MT', 8500, 'sling', '#c41b1b', { ride: 'sling', lim: 125 }),
+  C('polaris', 'Slingshot', 'R', 2020, 2025, 'Bike', 34000, 203, 144, 837, 'RWD', 'na', '2.0L Prostar I4', '5MT', 8500, 'sling', '#e8641a', { ride: 'sling', lim: 130 }),
+  // ---------------- 4-wheelers (they keep their grip in the dirt) ----------------
+  C('honda', 'FourTrax Rancher', '', 2019, 2025, 'ATV', 6800, 22, 22, 370, 'AWD', 'na', '420cc Single', '5AT', 6500, 'atv', '#c41b1b', { ride: 'atv', lim: 45 }),
+  C('polaris', 'Sportsman', '570', 2021, 2025, 'ATV', 8000, 44, 35, 403, 'AWD', 'na', '567cc ProStar Single', 'CVT', 7000, 'atv', '#c41b1b', { ride: 'atv', lim: 60 }),
+  C('yamaha', 'Grizzly', 'EPS', 2020, 2025, 'ATV', 11000, 46, 40, 395, 'AWD', 'na', '686cc Single', 'CVT', 7000, 'atv', '#4a5232', { ride: 'atv', lim: 60 }),
+  C('yamaha', 'Raptor', '700R', 2016, 2025, 'ATV', 9500, 47, 43, 272, 'RWD', 'na', '686cc Single', '5MT', 8500, 'atv', '#1b4fc4', { ride: 'atv', lim: 75 }),
+  C('canam', 'Outlander', 'XT-P 1000R', 2022, 2025, 'ATV', 17000, 91, 69, 460, 'AWD', 'na', '976cc Rotax V-Twin', 'CVT', 8000, 'atv', '#e8c21a', { ride: 'atv', lim: 75 }),
 ];
 
 export const CAR_BY_ID = Object.fromEntries(CARS.map(c => [c.id, c]));

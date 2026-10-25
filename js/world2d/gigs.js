@@ -14,7 +14,7 @@ import { fmtMoney } from '../core/state.js';
 import * as G from '../core/gigs.js';
 
 const PICK_R = 10, DROP_R = 11, STOP = 1.6;
-const COMMON = CARS.filter(c => !c.market && c.msrp < 60000);
+const COMMON = CARS.filter(c => !c.market && !c.ride && c.msrp < 60000);
 const PAINT = ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4', '#c8b98a', '#5a5d63'];
 const TOPS = ['#1b4fc4', '#e8641a', '#2a2a3a', '#f2f2f2', '#7a1414', '#1f8f3a', '#a01aff', '#c8b98a'];
 const SKIN = ['#8d5a3b', '#c68e65', '#e0b48c', '#5a3622', '#f1c9a5'];

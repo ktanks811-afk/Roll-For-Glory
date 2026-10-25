@@ -4,7 +4,7 @@
 import { CARS, CAR_BY_ID } from '../js/data/cars.js';
 import { CATALOG, ITEM_BY_ID, fits } from '../js/data/catalog.js';
 import { RACERS } from '../js/data/npcs.js';
-import { LOCATIONS } from '../js/data/world.js';
+import { LOCATIONS, ROADS as ROADS_ } from '../js/data/world.js';
 import { STATES, STATE_IDS, stateAt, flightQuote, regionRect, cityRect } from '../js/data/states.js';
 import { generateListings } from '../js/data/market.js';
 import { buildSpec, metrics, launchCheck } from '../js/sim/powertrain.js';
@@ -54,8 +54,9 @@ for (const c of CARS) {
   if (ids.has(c.id)) bad(`duplicate car id ${c.id}`);
   ids.add(c.id);
   const m = metrics(buildSpec(c, {}, {}));
-  if (!m.quarter || m.quarter < 8 || m.quarter > 19) bad(`${c.id} quarter ${m.quarter}`);
-  if (!m.zero60 || m.zero60 < 1.8 || m.zero60 > (c.rig ? 20 : 12)) bad(`${c.id} 0-60 ${m.zero60}`);   // a big rig is allowed to be slow
+  const atv = c.ride === 'atv';   // a utility quad is slow, and the little Rancher tops out at 45
+  if (!m.quarter || m.quarter < 8 || m.quarter > (atv ? 25 : 19)) bad(`${c.id} quarter ${m.quarter}`);
+  if (atv && (c.lim || 99) < 60 ? m.zero60 != null && m.zero60 > 20 : !m.zero60 || m.zero60 < 1.8 || m.zero60 > (c.rig ? 20 : 12)) bad(`${c.id} 0-60 ${m.zero60}`);   // a big rig is allowed to be slow
   if (Math.abs(buildSpec(c, {}, {}).hp - c.hp) / c.hp > 0.03) bad(`${c.id} hp drifts from spec`);
 }
 for (const p of CATALOG) {
@@ -338,6 +339,15 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const c of CARS) {
     if (!hasShape(c.id)) { bad(`${c.id} has no design sheet in carShapes.js`); continue; }
     const sh = shapeOf(c), d = dimsOf(c);
+    if (c.ride) {
+      // bikes and quads have their own sizes; both axles sit inside the length
+      const [l0, l1, w0, w1] = { moto: [1.9, 2.6, 0.65, 1.0], trike: [2.3, 2.9, 1.3, 1.65], spyder: [2.3, 2.9, 1.3, 1.65], sling: [3.6, 4.0, 1.8, 2.05], atv: [1.75, 2.4, 1.1, 1.3] }[c.ride];
+      if (!(sh.L >= l0 && sh.L <= l1 && sh.W >= w0 && sh.W <= w1)) bad(`${c.id} odd size for a ${c.ride} ${sh.L}x${sh.W}`);
+      if (!(sh.fo > 0.15 && sh.ro > 0.15 && sh.fo + sh.WB < sh.L)) bad(`${c.id} axles off the ends (fo ${sh.fo.toFixed(2)}, ro ${sh.ro.toFixed(2)})`);
+      if ({ moto: 'K', trike: 'T', spyder: 'Y', sling: 'Y', atv: 'A' }[c.ride] !== sh.arch) bad(`${c.id} drawn as the wrong kind of ride (${sh.arch})`);
+      if (!(d.L === sh.L && d.W === sh.W)) bad(`${c.id} dimsOf mismatch`);
+      continue;
+    }
     if (c.rig ? !(sh.L > 6.5 && sh.L < 9.5 && sh.W < 2.7) : !(sh.L > 3.5 && sh.L < 6.1 && sh.W > 1.6 && sh.W < 2.25 && sh.H > 1.05 && sh.H < 2.1)) bad(`${c.id} odd size ${sh.L}x${sh.W}x${sh.H}`);
     if (!c.rig && !(sh.WB / sh.L > 0.5 && sh.WB / sh.L < 0.68)) bad(`${c.id} wheelbase ${sh.WB} of ${sh.L}`);
     if (!(sh.fo > sh.tr && sh.ro > sh.tr)) bad(`${c.id} wheels hang off the car (fo ${sh.fo.toFixed(2)}, ro ${sh.ro.toFixed(2)})`);
@@ -647,7 +657,11 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   if (!CATALOG.some(p => p.cat === 'dragpack' && fits(p, civic))) bad('no drag pack fits a Civic');
   if (CATALOG.some(p => p.cat === 'wheeliebar' && fits(p, civic))) bad('wheelie bars fit a front-drive car');
   if (!CATALOG.some(p => p.cat === 'wheeliebar' && fits(p, camaro))) bad('no wheelie bars fit a Camaro');
-  for (const c of CARS) if (launchCheck(buildSpec(c, {}, {})).maxPitch > 0) bad(`stock ${c.id} wheelies`);
+  for (const c of CARS) if (c.ride !== 'moto' && launchCheck(buildSpec(c, {}, {})).maxPitch > 0) bad(`stock ${c.id} wheelies`);
+  // a stock bike's wheelie control lets the front come up a few inches, no more;
+  // a stage 2 flash turns it off and a sportbike stands up
+  for (const c of CARS.filter(c => c.ride === 'moto')) if (launchCheck(buildSpec(c, {}, {})).maxPitch > 0.3) bad(`stock ${c.id} stands up past its wheelie control`);
+  if (!(launchCheck(buildSpec(CAR_BY_ID.suzuki_hayabusa_2022, { ecu: 2 }, {})).maxPitch > 0.5)) bad('a flashed Hayabusa with wheelie control off should loop it');
   const big = { turbo: 4, ecu: 3, fuel: 4, engine: 4, intercooler: 3 };
   const noPack = launchCheck(buildSpec(camaro, big, {}));
   const pack = launchCheck(buildSpec(camaro, { ...big, dragpack: 4 }, {}));
@@ -2649,6 +2663,59 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   TW.applyRepairs(car, ['trans']);
   if (car.broken) bad('fixing the transmission should clear the breakdown');
   if (!TW.towBlock({}, {}) || TW.towBlock({}, { car }) || !TW.towBlock({}, { car: { ...car, impound: true } })) bad('towBlock');
+}
+// ---- bikes, the trail park, Yellow Belly and the rental businesses ----
+{
+  const O = await import('../js/core/outfitters.js');
+  const TR = await import('../js/data/trails.js');
+  const { trailStrips } = await import('../js/world2d/trails.js');
+  const { soundProfile: sp } = await import('../js/sim/sound.js');
+  // the rides: a busa runs nines-to-tens, a quad is slow and stays out of the car lots and traffic
+  const busa = metrics(buildSpec(CAR_BY_ID.suzuki_hayabusa_2022, {}, {}));
+  if (!(busa.quarter > 9.4 && busa.quarter < 11.2 && busa.zero60 < 3.4)) bad(`Hayabusa runs ${busa.quarter} / ${busa.zero60}`);
+  if (sp(CAR_BY_ID.harley_street_glide_2024, {}).kind !== 'v2') bad('a Harley should sound like a V-twin');
+  if (sp(CAR_BY_ID.yamaha_yzf_r1_2020, {}).kind !== 'v4') bad('an R1 should sound like a crossplane');
+  if (CATALOG.some(p => p.cat === 'turbo' && fits(p, CAR_BY_ID.suzuki_hayabusa_2022))) bad('a car turbo kit fits a Hayabusa');
+  if (!CATALOG.some(p => p.cat === 'exhaust' && fits(p, CAR_BY_ID.harley_street_glide_2024))) bad('no pipes fit a Harley');
+  const ps = LOCATIONS.find(l => l.id === 'cowtown_powersports');
+  if (!ps?.rides || !CARS.filter(c => c.ride).every(c => ps.makes.includes(c.make))) bad('Cowtown Powersports must carry every ride');
+  const yb = LOCATIONS.find(l => l.id === 'yellowbelly');
+  if (!yb || yb.type !== 'drag' || !ROADS_[yb.road]) bad('Yellow Belly Drag Strip is missing');
+  // the trails sit inside the park, and no tree stands on a trail
+  const L0 = TR.TRAIL_LOT;
+  for (const t of TR.TRAILS) for (const [x, z] of t.corners) if (x < L0.x0 + 10 || x > L0.x1 - 10 || z < L0.z0 + 10 || z > L0.z1 - 10) bad(`${t.id} corner ${x},${z} is outside the park`);
+  {
+    const map = buildMap(), strips = trailStrips();
+    for (const tr of map.trees) for (const r of strips) if (tr.x + tr.r > r.x && tr.x - tr.r < r.x + r.w && tr.z + tr.r > r.z && tr.z - tr.r < r.z + r.d) { bad(`a tree at ${tr.x.toFixed(0)},${tr.z.toFixed(0)} stands on a trail`); break; }
+    for (const t of TR.TRAILS) for (let i = 1; i < t.corners.length; i++) { const [ax, az] = t.corners[i - 1], [bx, bz] = t.corners[i]; for (let k = 0; k <= 20; k++) { const x = ax + (bx - ax) * k / 20, z = az + (bz - az) * k / 20; if (collideCircle(map, x, z, 1.2)) { bad(`${t.id} is blocked at ${x.toFixed(0)},${z.toFixed(0)}`); k = 99; i = 99; } } }
+    if (!map.buildings.some(b => b.kind === 'gantry' && b.loc === 'yellowbelly')) bad('Yellow Belly has no start gantry');
+  }
+  // a rental dock: lease, skis, a hand; a sunny Saturday pays, a storm doesn't
+  const s = createState({ name: 'R', age: 25, look: {}, story: false });
+  s.cash = 0; s.bank = 500000;
+  if (O.openDock(s, 'marina_lewisville').ok !== true) bad('could not lease a dock');
+  for (let i = 0; i < 4; i++) O.buySki(s, 'marina_lewisville', 'spark_trixx');
+  O.setDock(s, 'marina_lewisville', { staff: 1 });
+  s.weather = 'clear'; s.time.day = 6;   // Saturday
+  const sat = O.dockDay(s, 'marina_lewisville', () => 0.5);
+  if (!(sat.hours > 20 && sat.net > 0)) bad(`a sunny Saturday dock should pay: ${JSON.stringify(sat)}`);
+  s.weather = 'storm';
+  const st = O.dockDay(s, 'marina_lewisville', () => 0.5);
+  if (st.hours !== 0 || st.net >= 0) bad('nobody rents a jet ski in a thunderstorm');
+  O.setDock(s, 'marina_lewisville', { staff: 0 }); s.weather = 'clear';
+  if (O.dockDay(s, 'marina_lewisville', () => 0.5).hours !== 0) bad('skis rent out with nobody on the dock');
+  // the park: buy, stock, staff, put on a trail ride
+  if (!O.buyPark(s).ok) bad('could not buy the park');
+  O.buyQuads(s, 10); O.buyHorses(s, 4); O.setPark(s, { guides: 3 });
+  s.time.day = 3;
+  const wk = O.parkDay(s, () => 0.5);
+  if (!(wk.quadRides > 0 && wk.horseRides > 0)) bad(`the park had no riders: ${JSON.stringify(wk)}`);
+  if (!O.bookTrailRide(s).ok || s.outfit.park.ride.day !== 6) bad('the trail ride should land on Saturday');
+  s.time.day = 6;
+  const rd = O.parkDay(s, () => 0.5);
+  if (!(rd.ride && rd.ride.heads > 100 && rd.net > 0) || s.outfit.park.ride) bad(`trail ride: ${JSON.stringify(rd)}`);
+  const bank0 = s.bank; O.outfitDay(s, () => 0.5);
+  if (s.bank === bank0) bad('the rental businesses never settle into the bank');
 }
 console.log(`${CARS.length} cars, ${CATALOG.length} products, ${new Set(CATALOG.map(p => p.brand)).size} brands, ${RACERS.length} racers — ${fails ? fails + ' problems' : 'all good'}`);
 process.exit(fails ? 1 : 0);

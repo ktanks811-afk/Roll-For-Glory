@@ -614,7 +614,13 @@ export const LABOR_RATE = 125;   // $/hour at a shop
 export const SALES_TAX = 0.0725;
 
 // Does a product fit this car?
+// What a bike shop can do for a bike, a trike, a Slingshot or a quad: pipes,
+// a flash, a shot of nitrous, rubber, brakes, suspension, a diet and paint.
+// No turbo kits built for cars, no body kits, no tint on a bike.
+const RIDE_OK = new Set(['exhaust', 'intake', 'ecu', 'fuel', 'nitrous', 'tires', 'brakes', 'suspension', 'weight', 'wheeliebar', 'paint', 'decal', 'neon', 'wheels']);
+
 export function fits(item, model) {
+  if (model.ride && (!RIDE_OK.has(item.cat) || item.makes || item.eng || item.asp || item.drive)) return false;
   if (item.makes && !item.makes.includes(model.make)) return false;
   if (item.eng && !item.eng.test(model.engine)) return false;
   if (item.asp && item.asp !== model.asp) return false;
@@ -628,6 +634,7 @@ export function fits(item, model) {
 
 export function fitNote(item, model) {
   if (fits(item, model)) return null;
+  if (model.ride) return RIDE_OK.has(item.cat) ? 'Made for cars, not this one' : 'Doesn\'t go on a bike or a quad';
   if (model.asp === 'ev' && ICE_ONLY.has(item.cat)) return 'Electric car — no engine to fit this to';
   if (item.makes && !item.makes.includes(model.make)) return 'Not made for this make';
   if (item.eng) return 'Wrong engine type';

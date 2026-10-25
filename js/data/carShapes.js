@@ -27,6 +27,12 @@ export const ARCH = {
   U: { xCowl: .30, xA: .46, xC: .83, xD: .985, hoodF: .58, hoodB: .67, belt: .62, deck: .70, tail: .60, nose: .50, fo: .20, tr: .37, noseW: .88, tailW: .94, doors: 4 },
   Q: { xCowl: .30, xA: .385, xC: .93, xD: .995, hoodF: .62, hoodB: .67, belt: .60, deck: .72, tail: .64, nose: .53, fo: .17, tr: .38, noseW: .9, tailW: .98, doors: 4 },
   P: { xCowl: .255, xA: .335, xC: .545, xD: .56, hoodF: .62, hoodB: .66, belt: .62, deck: .70, tail: .70, nose: .56, fo: .17, tr: .40, noseW: .9, tailW: .98, doors: 4 },
+  // Rides (gfx2d/rideArt.js draws these; the roofline fractions are unused):
+  // K motorcycle · T trike (one front, two rear) · Y two front, one rear (Spyder, Slingshot) · A 4-wheeler
+  K: { xCowl: .3, xA: .4, xC: .6, xD: .8, hoodF: .5, hoodB: .6, belt: .6, deck: .7, tail: .65, nose: .5, fo: .15, tr: .31, noseW: .5, tailW: .5, doors: 0 },
+  T: { xCowl: .3, xA: .4, xC: .6, xD: .8, hoodF: .5, hoodB: .6, belt: .6, deck: .7, tail: .65, nose: .5, fo: .14, tr: .33, noseW: .5, tailW: .9, doors: 0 },
+  Y: { xCowl: .3, xA: .4, xC: .6, xD: .8, hoodF: .5, hoodB: .6, belt: .6, deck: .7, tail: .65, nose: .5, fo: .13, tr: .32, noseW: .9, tailW: .5, doors: 0 },
+  A: { xCowl: .3, xA: .4, xC: .6, xD: .8, hoodF: .5, hoodB: .6, belt: .6, deck: .7, tail: .65, nose: .5, fo: .2, tr: .29, noseW: .9, tailW: .9, doors: 0 },
 };
 
 const T = {
@@ -241,6 +247,31 @@ const T = {
   bugatti_chiron_2017: ['X', 4.54, 2.04, 1.21, 2.71, { lights: 'quad', tl: 'bar', gills: true, wing: 'huge', xCowl: .31, xA: .46, xC: .66, xD: .93, deck: .66, hoodF: .52 }],
   koenigsegg_agera_rs_2015: ['X', 4.49, 2.05, 1.12, 2.66, { lights: 'slim', tl: 'slim', gills: true, wing: 'huge', xA: .48, xC: .62 }],
   koenigsegg_jesko_attack_2022: ['X', 4.60, 2.04, 1.21, 2.70, { lights: 'slim', tl: 'slim', gills: true, wing: 'huge', xA: .48, xC: .62 }],
+  // ---- Bikes. style: sport (full fairing), bagger (batwing + saddlebags), club (fairing, bags, no trunk), cruiser
+  suzuki_hayabusa_2022: ['K', 2.18, 0.74, 1.17, 1.48, { style: 'sport', busa: true }],
+  suzuki_gsx_r750_2011: ['K', 2.03, 0.71, 1.13, 1.39, { style: 'sport' }],
+  kawasaki_ninja_h2_2019: ['K', 2.09, 0.77, 1.13, 1.45, { style: 'sport', wings: true }],
+  kawasaki_ninja_zx_10r_2021: ['K', 2.09, 0.75, 1.15, 1.45, { style: 'sport', wings: true }],
+  kawasaki_ninja_500_2024: ['K', 1.99, 0.73, 1.12, 1.38, { style: 'sport' }],
+  yamaha_yzf_r1_2020: ['K', 2.06, 0.69, 1.17, 1.41, { style: 'sport' }],
+  honda_cbr1000rr_r_fireblade_sp_2022: ['K', 2.10, 0.75, 1.14, 1.46, { style: 'sport', wings: true }],
+  ducati_panigale_v4_s_2023: ['K', 2.11, 0.81, 1.12, 1.47, { style: 'sport', wings: true }],
+  bmw_s_1000_rr_2023: ['K', 2.07, 0.85, 1.21, 1.46, { style: 'sport', wings: true }],
+  harley_street_glide_2024: ['K', 2.43, 0.97, 1.33, 1.63, { style: 'bagger', fo: .17 }],
+  harley_low_rider_st_2022: ['K', 2.37, 0.92, 1.25, 1.61, { style: 'club', fo: .17 }],
+  harley_fat_boy_114_2018: ['K', 2.37, 0.94, 1.10, 1.67, { style: 'cruiser', fo: .16, tr: .33 }],
+  // ---- Trikes and the Slingshot
+  harley_tri_glide_ultra_2020: ['T', 2.67, 1.42, 1.43, 1.67, { style: 'bagger', fo: .15 }],
+  canam_spyder_rt_2020: ['Y', 2.83, 1.57, 1.50, 1.71, { style: 'touring' }],
+  canam_ryker_900_2022: ['Y', 2.35, 1.50, 1.07, 1.71, { style: 'sport' }],
+  polaris_slingshot_sl_2020: ['Y', 3.80, 1.97, 1.32, 2.68, { style: 'sling', tr: .31 }],
+  polaris_slingshot_r_2020: ['Y', 3.80, 1.97, 1.32, 2.68, { style: 'sling', tr: .31, wing: 'lip' }],
+  // ---- 4-wheelers
+  honda_fourtrax_rancher_2019: ['A', 2.04, 1.16, 1.15, 1.25, { style: 'utility', racks: true }],
+  polaris_sportsman_570_2021: ['A', 2.10, 1.22, 1.22, 1.28, { style: 'utility', racks: true }],
+  yamaha_grizzly_eps_2020: ['A', 2.07, 1.23, 1.25, 1.25, { style: 'utility', racks: true }],
+  yamaha_raptor_700r_2016: ['A', 1.85, 1.17, 1.14, 1.25, { style: 'sport' }],
+  canam_outlander_xt_p_1000r_2022: ['A', 2.30, 1.22, 1.30, 1.36, { style: 'utility', racks: true, fo: .19 }],
 };
 
 // Silhouette tweaks that tell look-alike archetypes apart (all the mid-engine

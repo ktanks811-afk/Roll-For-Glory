@@ -77,7 +77,7 @@ export function botsOn(server, t, reals = 0) {
 export const regulars = server => 5 + hash('reg', server) % 4;
 
 // ------------------------------------------------------------ who they are
-const CAR_POOL = CARS.filter(c => !c.rig && (!c.market || c.msrp < 150000) && c.msrp < 260000);
+const CAR_POOL = CARS.filter(c => !c.rig && !c.ride && (!c.market || c.msrp < 150000) && c.msrp < 260000);
 const STREET = CAR_POOL.filter(c => ['Muscle', 'Tuner', 'JDM', 'Sedan', 'Truck'].includes(c.cls) && c.msrp < 90000);
 const TINTS = ['none', 'light', 'medium', 'limo'];
 const SPOILERS = ['none', 'none', 'lip', 'duck', 'gt'];

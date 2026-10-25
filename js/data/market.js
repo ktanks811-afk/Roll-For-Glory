@@ -93,7 +93,8 @@ function weightFor(model) {
   const approx = model.market || model.msrp * Math.pow(0.87, age);
   return 1 / Math.pow(Math.max(2000, approx), 0.75);
 }
-const WEIGHTS = CARS.map(weightFor);
+// used bikes turn up now and then; nobody lists a quad on a car marketplace
+const WEIGHTS = CARS.map(c => c.ride ? (c.ride === 'moto' ? weightFor(c) * 0.35 : 0) : weightFor(c));
 const WSUM = WEIGHTS.reduce((a, b) => a + b, 0);
 function weightedCar() {
   let r = Math.random() * WSUM;
@@ -166,8 +167,8 @@ export function makeListing(model = weightedCar()) {
 export function generateListings(count = 30) {
   const out = [];
   // guarantee a handful of real beaters a broke new player can afford
-  const cheap = CARS.filter(c => !c.market && c.msrp < 30000 && c.years[1] < 2016);
-  const old = CARS.filter(c => !c.market && c.msrp < 30000 && c.years[1] < 2012);
+  const cheap = CARS.filter(c => !c.market && !c.ride && c.msrp < 30000 && c.years[1] < 2016);
+  const old = CARS.filter(c => !c.market && !c.ride && c.msrp < 30000 && c.years[1] < 2012);
   for (let i = 0, got = 0; got < 4 && i < 120; i++) {         // at least four that really cost under $4,500
     const l = makeListing(pick(old));
     if (l.price <= 4500) { out.push(l); got++; }
