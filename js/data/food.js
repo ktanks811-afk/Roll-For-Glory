@@ -20,7 +20,7 @@ export const FOOD_SPOTS = [
   P('taco_lancaster', 'El Rey del Taco (truck)', 'taco', 'W', 465, 200, 493, 244, { truck: true, sign: 'TACOS' }),
   P('taco_stopsix', 'Stop Six Taco Stop (truck)', 'taco', 'N', 1700, -291, 1744, -263, { truck: true, sign: 'TACOS' }),
   P('cowtown_diner', 'Cowtown Diner', 'diner', 'N', 40, -735, 110, -680, { sign: 'Cowtown Diner' }),
-  P('heights_bbq', 'Heights Smokehouse BBQ', 'bbq', 'S', -560, -70, -490, -15, { sign: 'Smokehouse BBQ' }),
+  P('heights_bbq', "Angelo's Barbecue", 'bbq', 'S', -560, -70, -490, -15, { sign: "Angelo's BBQ" }),
 ];
 
 // food: how much it fills you up. energy: how much it wakes you up.

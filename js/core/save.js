@@ -145,6 +145,7 @@ function migrate(s) {
 const DEFAULT_SETTINGS = {
   quality: 'medium', units: 'mph', transmission: 'auto', steerMode: 'arrows', camMode: 'top', view3d: 'flat', volume: 0.7, music: 0.5, ambience: 0.8, radio: true, radioTrack: 0,
   shake: true, pullups: true, showFps: false, miniMode: 0, touch: 'auto', invertCam: false, tutorialSeen: false,
+  gpsStyle: 'blue', streetNames: true, compass: true,
 };
 export const settings = { ...DEFAULT_SETTINGS, ...(read('settings') || {}) };
 export function saveSettings() { write('settings', settings); emit('settings', settings); }

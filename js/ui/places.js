@@ -26,7 +26,8 @@ import { openSlots } from './menu.js';
 import { audio } from '../core/audio.js';
 import { SUBS, DOORS, audioBuild } from '../data/carAudio.js';
 import { openEngineBuild } from './engineBuild.js';
-import { rebuildCost, resetEngineWarnings } from '../sim/engine.js';
+import { resetEngineWarnings } from '../sim/engine.js';
+import { repairCosts } from '../core/repairs.js';
 import { recordHtml } from './record.js';
 import { payableTotal, payFines, surrender, surrenderTotal, hasFelony } from '../core/warrants.js';
 import { openCourthouse, book } from './court.js';
@@ -427,21 +428,6 @@ function visual(loc, app, s) {
   });
 }
 
-function repairCosts(car, rate = 1) {
-  const m = modelOf(car);
-  const c = car.cond;
-  const lux = m.msrp;
-  const cost = {
-    body: (100 - c.body) / 100 * (900 + lux * 0.03),
-    lights: (100 - c.lights) / 100 * (300 + lux * 0.006),
-    tires: c.tires < 99 ? (100 - c.tires) / 100 * (500 + lux * 0.004) : 0,
-    engine: car.engineBlown ? rebuildCost(m) : (100 - c.engine) / 100 * (1800 + lux * 0.05),
-    trans: (100 - c.trans) / 100 * (1400 + lux * 0.035),
-  };
-  for (const k in cost) cost[k] = Math.round(cost[k] * rate / 5) * 5;
-  return cost;
-}
-
 function repair(loc, app, s) {
   openPanel((root, h) => {
     const car = activeCar(s);
@@ -544,7 +530,7 @@ function gas(loc, app, s) {
 }
 
 // Taco trucks, diners, the BBQ joint (data/food.js) and the original two
-// (Lucky's and the noodle bar, data/shops.js).
+// (Ol' South and Joe T.'s, data/shops.js).
 export function food(loc, app, s) {
   const menu = MENUS[loc.menu] || FOOD;
   const truck = !!loc.truck;
