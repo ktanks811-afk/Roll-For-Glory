@@ -363,13 +363,13 @@ export const LOCATIONS = [
   L('vega_kustoms', 'visual', 'Vega Kustoms', 3, 7, 'E', { color: '#d12a8a', icon: 'spray', contact: 'manny' }),
   L('second_chance', 'repair', 'Second Chance Collision', 7, 8, 'N', { color: '#1b4fc4', icon: 'repair', tagline: 'Body · mechanical · tires · we work with all insurers' }),
   // more mechanic shops (same repair counter, own prices: `rate`)
-  L('cowtown_tire', 'repair', 'Cowtown Tire & Lube', 4, 10, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.85, tagline: 'Tires, oil, brakes · cash price beats the dealer' }),
+  L('cowtown_tire', 'repair', 'Discount Tire & Lube', 4, 10, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.85, tagline: 'Tires, oil, brakes · cash price beats the dealer' }),
   L('northside_garage', 'repair', 'Northside Garage', 4, 1, 'S', { color: '#1b4fc4', icon: 'repair', rate: 0.95, tagline: 'Family shop since 1971 · trucks and classics' }),
-  L('gas_westbrook', 'gas', 'Volt & Petrol', 2, 4, 'E', { color: '#1f8f3a', icon: 'gas' }),
-  L('gas_harbor', 'gas', 'Gas-N-Go', 10, 8, 'W', { color: '#1f8f3a', icon: 'gas' }),
-  L('gas_south', 'gas', 'Volt & Petrol', 6, 10, 'N', { color: '#1f8f3a', icon: 'gas' }),
-  L('luckys', 'food', "Lucky's 24hr Diner", 6, 7, 'N', { color: '#e8c21a', icon: 'food' }),
-  L('noodle', 'food', 'Midnight Noodle Bar', 9, 3, 'S', { color: '#e8c21a', icon: 'food' }),
+  L('gas_westbrook', 'gas', 'QuikTrip', 2, 4, 'E', { color: '#1f8f3a', icon: 'gas' }),
+  L('gas_harbor', 'gas', '7-Eleven', 10, 8, 'W', { color: '#1f8f3a', icon: 'gas' }),
+  L('gas_south', 'gas', 'Valero', 6, 10, 'N', { color: '#1f8f3a', icon: 'gas' }),
+  L('luckys', 'food', "Ol' South Pancake House", 6, 7, 'N', { color: '#e8c21a', icon: 'food' }),
+  L('noodle', 'food', "Joe T. Garcia's", 9, 3, 'S', { color: '#e8c21a', icon: 'food', menu: 'taco' }),
   // corner stores: snacks, smokes and scratchers behind bulletproof glass
   L('corner_rosedale', 'corner', 'Rosedale Food Mart', 6, 9, 'N', { color: '#ff8a1a', icon: 'food' }),
   L('corner_northside', 'corner', 'Northside Quick Stop', 6, 2, 'S', { color: '#ff8a1a', icon: 'food' }),
@@ -462,12 +462,12 @@ export const LOCATIONS = [
   { id: 'mineral_wells_drag', type: 'roll', name: 'Mineral Wells Airport Run', x: -9000, z: -650, face: 0, color: '#ff1a2e', icon: 'flag', road: 'west_highway', tier: 3 },
   // ---------------- North Texas (world2d/north.js) ----------------
   // Alliance: the Heritage Trace exit off I-35W, a travel center and a diesel shop on the south frontage
-  { id: 'gas_alliance', type: 'gas', name: 'Speedway Travel Center', x: -130, z: HTRACE_Z + 14, face: 0, side: 'N', color: '#1f8f3a', icon: 'gas' },
+  { id: 'gas_alliance', type: 'gas', name: "Buc-ee's", x: -130, z: HTRACE_Z + 14, face: 0, side: 'N', color: '#1f8f3a', icon: 'gas' },
   { id: 'alliance_diesel', type: 'repair', name: 'Alliance Truck & Diesel', x: 190, z: HTRACE_Z + 14, face: 0, side: 'N', color: '#1b4fc4', icon: 'repair', rate: 0.95, tagline: 'Big rigs, trailers and pickups · off I-35W at Heritage Trace' },
   // the Texas Motor Speedway lot, on 114 by the pit road (the oval itself is open to drive)
   { id: 'tms_lot', type: 'meet', name: 'Texas Motor Speedway Lot', x: TMS_PIT_X + 60, z: TX114_Z - 14, face: Math.PI, side: 'S', color: '#ff1a2e', icon: 'meet', tier: 3 },
   // Roanoke: Oak St off 114
-  { id: 'roanoke_food', type: 'food', name: 'Oak Street Smokehouse', x: ROANOKE_X - 14, z: -4440, face: -Math.PI / 2, side: 'E', color: '#e8c21a', icon: 'food' },
+  { id: 'roanoke_food', type: 'food', name: "Babe's Chicken Dinner House", x: ROANOKE_X - 14, z: -4440, face: -Math.PI / 2, side: 'E', color: '#e8c21a', icon: 'food' },
   { id: 'roanoke_repair', type: 'repair', name: 'Roanoke Lube & Brake', x: ROANOKE_X + 14, z: -4360, face: Math.PI / 2, side: 'W', color: '#1b4fc4', icon: 'repair', rate: 0.85, tagline: 'Small-town shop on Oak St · oil, brakes and tires' },
   // Denton (block i,j on the Denton grid; I-35 is its west street line)
   N('denton_motor', 'repair', 'Denton Square Auto & Tire', 6, 4, 'N', { color: '#1b4fc4', icon: 'repair', rate: 0.9, tagline: 'A block off the Square · college-kid prices' }),

@@ -109,6 +109,6 @@ export function engineMessage(ev, spec) {
   return ev === 'stress' ? `⚠ Engine under stress${why ? `: ${why.text.split('.')[0]}.` : '.'} Fix: ${why?.fix || 'supporting mods'}.`
     : ev === 'warn' ? '⚠ Engine is knocking. Rod bearings are going. Stay off it or fix the build.'
     : ev === 'critical' ? '🔥 Engine is about to let go! Back off now.'
-    : ev === 'blown' ? '💥 You blew the motor. Call a tow (Bank → Roadside) to Second Chance Collision for a rebuild.'
+    : ev === 'blown' ? '💥 You blew the motor. Call a tow (Tow app on your phone) to a shop for a rebuild.'
     : '';
 }

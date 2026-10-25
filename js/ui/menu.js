@@ -25,6 +25,7 @@ import { profile } from '../net/profile.js';
 import { profileChip, showAccount } from './account.js';
 import { auth } from '../net/auth.js';
 import { startTutorial } from './tutorial.js';
+import { GPS_STYLES } from './gpsStyle.js';
 
 // ---------------- animated backdrop ----------------
 const HERO = [
@@ -285,6 +286,9 @@ export function openSettings(app) {
         <label class="field"><span>World sounds (rain, city, traffic) — ${Math.round(settings.ambience * 100)}%</span><input type="range" min="0" max="1" step="0.05" value="${settings.ambience}" data-range="ambience" class="input"></label>
         <label class="field"><span>World view</span>${opt('view3d', [['flat', 'Overhead'], ['tilt', 'Tilted 3D']])}</label>
         <label class="field"><span>Camera view (driving) — V</span>${opt('camMode', [['top', 'Top-down'], ['chase', 'Third person']])}</label>
+        <label class="field"><span>GPS route on the road</span>${opt('gpsStyle', GPS_STYLES)}</label>
+        <label class="field"><span>Street names on the road</span>${opt('streetNames', [[true, 'On'], [false, 'Off']])}</label>
+        <label class="field"><span>Compass at the top of the screen</span>${opt('compass', [[true, 'On'], [false, 'Off']])}</label>
         <label class="field"><span>Camera shake</span>${opt('shake', [[true, 'On'], [false, 'Off']])}</label>
         <label class="field"><span>Racers pulling up on you to race</span>${opt('pullups', [[true, 'On'], [false, 'Off']])}</label>
         <label class="field"><span>Touch controls</span>${opt('touch', [['auto', 'Auto'], ['on', 'Always'], ['off', 'Off']])}</label>

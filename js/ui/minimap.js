@@ -10,6 +10,7 @@
 import { LOCATIONS } from '../data/world.js';
 import { TILE, tileCache } from '../world2d/mapTiles.js';
 import { settings, saveSettings } from '../core/save.js';
+import { gpsRgba } from './gpsStyle.js';
 import { game } from '../core/state.js';
 import { online } from '../net/online.js';
 
@@ -88,11 +89,11 @@ export class MiniMap {
     const dark = w.darkness ? w.darkness() : 0;
     if (dark > 0.02) { g.fillStyle = `rgba(4,8,30,${dark * 0.3})`; g.fillRect(0, 0, S, S); }
 
-    // GPS route: dark casing, then the route in red
+    // GPS route: a soft dark casing, then the route in the GPS color (Settings)
     const gps = game.s.gps;
     if (w.gpsPath && gps) {
       g.lineCap = 'round'; g.lineJoin = 'round';
-      for (const [wd, col] of [[7, 'rgba(40,6,12,.9)'], [4, '#ff2a3a']]) { g.strokeStyle = col; g.lineWidth = wd; g.beginPath(); w.gpsPath.forEach(([x, z], k) => { const [a, b] = P(x, z); k ? g.lineTo(a, b) : g.moveTo(a, b); }); g.stroke(); }
+      for (const [wd, col] of [[7, 'rgba(6,10,20,.55)'], [4, gpsRgba(0.95)]]) { g.strokeStyle = col; g.lineWidth = wd; g.beginPath(); w.gpsPath.forEach(([x, z], k) => { const [a, b] = P(x, z); k ? g.lineTo(a, b) : g.moveTo(a, b); }); g.stroke(); }
     }
 
     // places (named when you're close and slow)
@@ -151,7 +152,7 @@ export class MiniMap {
       if (d <= lim) { this.flag(g, a, b); }
       else {
         const ang = Math.atan2(dy, dx), ex = S / 2 + Math.cos(ang) * lim, ey = S / 2 + Math.sin(ang) * lim;
-        g.save(); g.translate(ex, ey); g.rotate(ang); g.fillStyle = '#ff2a3a'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, -7); g.lineTo(-3, 0); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
+        g.save(); g.translate(ex, ey); g.rotate(ang); g.fillStyle = gpsRgba(1); g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, -7); g.lineTo(-3, 0); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
         const m = Math.hypot(gps.x - p.x, gps.z - p.z), label = m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m / 10) * 10 + ' m';
         g.font = '700 10px Rajdhani, sans-serif'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.9)'; const lx = S / 2 + Math.cos(ang) * (lim - 22), ly = S / 2 + Math.sin(ang) * (lim - 22); g.strokeText(label, lx, ly); g.fillStyle = '#fff'; g.fillText(label, lx, ly);
       }
