@@ -394,6 +394,9 @@ class Online {
     } else if (m.k === 'pay') {
       // Cowtown Pay: "check your mailbox" for whoever got paid (net/pay.js)
       if (typeof m.u === 'string' && m.u.length <= 16) this.emit('pay', { u: m.u });
+    } else if (m.k === 'dm') {
+      // a friend texted or friended somebody here: "check your mailbox" (net/friends.js)
+      if (typeof m.u === 'string' && m.u.length <= 16) this.emit('dm', { u: m.u });
     } else if (m.k === 'pv') {
       // head-to-head race invites (net/pvp.js); only the one it's for reads it
       if (m.to === this.id) this.emit('pvp', { ...m, from: m.id, peer: p });

@@ -35,12 +35,14 @@ import { stateAt, stateById, flightQuote, legalWeedAt } from '../data/states.js'
 import { LEGAL_OZ } from '../data/weed.js';
 import { CAR_BY_ID, carName } from '../data/cars.js';
 import { engineStress, engineMessage } from '../sim/engine.js';
-import { game, activeCar, carSpec, modelOf, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons } from '../core/state.js';
+import { game, activeCar, carSpec, modelOf, levels, tierOf, hourOf, isNight, spend, addRep, fmtMoney, carMpg, tankGallons, gameTimeStr } from '../core/state.js';
 import { input } from '../core/input.js';
 import { pad, rumble } from '../core/gamepad.js';
 import { esc } from '../ui/dom.js';
 import { audio } from '../core/audio.js';
 import { settings, saveGame } from '../core/save.js';
+import { noteRecent } from '../core/nav.js';
+import { noteLeft, clearLeft } from '../core/garages.js';
 import { gpsStyle, gpsRgba } from '../ui/gpsStyle.js';
 import { emit } from '../core/events.js';
 import { MPH } from '../sim/powertrain.js';
@@ -320,6 +322,9 @@ export class World {
     const hot = this.vehicle?.car?.hot, own = hot ? this.thefts.own?.vehicle : this.vehicle;
     s.pos = boat ? this.boats.shoreSpot() : { x: p.x, z: p.z, h: this.inCar ? this.vehicle.h : this.foot.h, inCar: this.inCar && !hot };
     if (own) s.carPos = { x: own.x, z: own.z, h: own.h };
+    // ran from your car in the middle of a chase: the Garage app remembers where it got left
+    if (this.inCar && !hot) clearLeft(s);
+    else if (own && !this.inCar && this.police.active && Math.hypot(own.x - p.x, own.z - p.z) > 30) noteLeft(s, own.x, own.z, gameTimeStr(s.time));
 
     this.saveT += dt;
     if (this.saveT > 45) { this.saveT = 0; saveGame('auto', true); }
@@ -1022,6 +1027,7 @@ export class World {
     }
     this.s.gps = { x, z, label };
     this.gpsT = 0;
+    if (!/^Your /.test(label)) noteRecent(this.s, { x, z, label });   // Map and Taxi show your recent places first (core/nav.js)
     this.ui.toast(`GPS set: ${label}`, 'info');
   }
 
@@ -1546,7 +1552,7 @@ export class World {
       inside, duck: this.paused ? 0.45 : 1, cars, rot: this.cam.rot, police: this.police.active,
     }, dt);
     // the car radio plays your songs while you ride, through your car's subs and speakers
-    audio.carRadio(inside === 'car' || !!boat, this.inCar && !this.rides.riding ? this.vehicle?.car : null);
+    audio.carRadio(inside === 'car' || !!boat || !!settings.earbuds, this.inCar && !this.rides.riding ? this.vehicle?.car : null);   // earbuds: the phone's Radio app plays on foot too
     // your radio goes out online, and you hear the closest player's radio (their subs thump from down the block)
     if (online.active) {
       const share = this.inCar && !this.rides.riding ? audio.radioShare() : null;

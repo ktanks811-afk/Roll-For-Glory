@@ -112,12 +112,15 @@ export class Hud {
     this.helpCtx = null;
     // toasts sit under the top strip, however tall it is right now
     if (typeof ResizeObserver === 'function') new ResizeObserver(([e]) => document.documentElement.style.setProperty('--hudtop', `${Math.round(e.target.getBoundingClientRect().bottom)}px`)).observe(this.q('top'));
-    // tap a text banner to read it in Messages
+    // tap a text banner to read it in Messages (or the app a banner points to: gossip, a bet)
     this.q('pop').addEventListener('pointerdown', async e => {
-      if (!this.popCur?.text) return;
+      const cur = this.popCur;
+      if (!cur?.text && !cur?.open) return;
       e.preventDefault();
       const { openPhone } = await import('./phone.js'); const { app } = await import('../main.js');
-      this.popCur.until = 0; openPhone('messages', app, { onClose: () => {} });
+      cur.until = 0;
+      if (cur.open) openPhone(cur.open.app, app, { tab: cur.open.tab, sub: cur.open.sub, onClose: () => {} });
+      else openPhone('messages', app, { sub: cur.from || null, onClose: () => {} });
     });
     this.q('online').addEventListener('pointerdown', async e => { e.preventDefault(); const { openOnline } = await import('./online.js'); const { app } = await import('../main.js'); openOnline(app); });
     this.q('needs').addEventListener('pointerdown', async e => { e.preventDefault(); const { openBag } = await import('./needs.js'); const { app } = await import('../main.js'); openBag(app); });
@@ -209,10 +212,10 @@ export class Hud {
 
   // Top-middle banner: one at a time, long enough to read, newest last.
   // kind: text (a phone text) · gps · job · good · bad · info
-  pop(body, { title = '', icon = '', kind = 'info' } = {}) {
+  pop(body, { title = '', icon = '', kind = 'info', open = null, from = null } = {}) {
     const q = this.pops, cur = this.popCur;
     if ((cur && cur.body === body && performance.now() < cur.until) || q.some(x => x.body === body)) return;
-    q.push({ body, title, icon, kind, text: kind === 'text' });
+    q.push({ body, title, icon, kind, text: kind === 'text', open, from });
     if (q.length > 4) q.splice(0, q.length - 4);
     this.renderPop();
   }
@@ -225,7 +228,7 @@ export class Hud {
     // a queue behind it: move along a little faster
     next.until = now + Math.min(7000, 2600 + words * 200) * (this.pops.length ? 0.7 : 1);
     this.popCur = next;
-    box.className = `hud-pop k-${next.kind}`;
+    box.className = `hud-pop k-${next.kind}${next.open || next.text ? ' tappable' : ''}`;
     box.innerHTML = `<span class="pop-ic">${esc(next.icon)}</span><div>${next.title ? `<small>${esc(next.title)}</small>` : ''}<p>${esc(next.body)}</p></div>`;
     void box.offsetWidth; box.classList.add('in');
   }
