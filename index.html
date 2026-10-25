@@ -11708,6 +11708,1287 @@ body.indoors.at-home.net-on:not(.creating):not(.phoning):not(.decorating) #invbt
   }
   window.__hn = { HN, takenBy, hnLoad, inviteMenu, hnLetIn, tick: homeNetTick };
 
+
+  // ---------- on the go: the 2D game's phone apps from 2026-10-25, rebuilt for 3D ----------
+  // Gossip pop-ups, Taxi + Map favorites/recents, the Garage app, Radio with earbuds, Cowtown Book with the
+  // LiveTicker, real friends (the 2D game's rfg_friends mailbox), the Hook & Haul tow truck, and the
+  // navigation extras (GPS line styles, the compass strip, street names painted on the road, real store names).
+  const GO = { pops: [], popT: 0, tick: 0, frBusy: false, frT: 0, bk: { tab: 'games', pick: null, stake: 100 }, tw: null, chat: null };
+  const goState = (x, z) => { const s = DATA.states.find(s => x >= s.rect.x0 && x <= s.rect.x1 && z >= s.rect.z0 && z <= s.rect.z1); return s ? s.id : 'tx'; };
+  const goPlace = id => DATA.P.find(p => p.id === id);
+  const goMi = m => (m / 1609).toFixed(1) + ' mi';
+  const goShort = n => String(n).replace(/\s*\(.*?\)\s*/g, ' ').trim();
+  const goHrs = m => m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}` : m + ' min';
+  function goCss() {
+    if (document.getElementById('go-css')) return;
+    const st = document.createElement('style'); st.id = 'go-css';
+    st.textContent = `
+#gopop { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 30px); transform: translate(-50%, calc(-100% - 60px)); visibility: hidden; width: min(92vw, 440px); z-index: 60; background: rgba(18,19,24,0.94); border: 1px solid #3a3d48; border-radius: 14px; padding: 9px 12px; display: flex; gap: 10px; align-items: center; color: var(--fg); font: 600 14px var(--body); box-shadow: 0 8px 22px rgba(0,0,0,0.45); transition: transform 0.35s ease, visibility 0.35s; cursor: pointer; }
+#gopop.on { transform: translate(-50%, 0); visibility: visible; } #gopop i { font-style: normal; font-size: 22px; } #gopop small { display: block; color: var(--accent); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+body.phoning #gopop, body.creating #gopop { display: none; }
+#gocompass { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 4px); width: min(46vw, 300px); height: 22px; z-index: 15; pointer-events: none; display: none; border-radius: 11px; background: rgba(10,10,14,0.35); }
+body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
+.go-badge { position: absolute; margin: -6px 0 0 44px; background: #e0483a; color: #fff; border-radius: 9px; font: 700 11px var(--body); padding: 1px 6px; }
+.ph-home .app { position: relative; }
+.go-sec { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin: 6px 2px 0; }
+.go-row { display: flex; gap: 10px; align-items: center; background: #17181d; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
+.go-row > div { flex: 1; min-width: 0; } .go-row b { display: block; font-size: 15px; } .go-row span { display: block; color: var(--muted); font-size: 13px; line-height: 1.25; }
+.go-row .ic { font-size: 22px; width: 28px; text-align: center; flex: 0 0 auto; } .go-row .btn { flex: 0 0 auto; padding: 6px 10px; font-size: 13px; }
+.go-row.on { border-color: var(--accent); } .go-row.click { cursor: pointer; } .go-good { color: #6fdc8c !important; } .go-bad { color: #ff6a5e !important; }
+.go-tabs { display: flex; gap: 6px; flex-wrap: wrap; } .go-tabs .btn { flex: 0 0 auto; }
+.liveticker { display: flex; align-items: stretch; background: #07080a; border-bottom: 1px solid var(--line); font: 700 12px var(--body); overflow: hidden; flex: 0 0 auto; }
+.liveticker > b { background: #e0483a; color: #fff; padding: 4px 7px; font-size: 9px; line-height: 1.1; display: flex; align-items: center; }
+.tk-track { overflow: hidden; flex: 1; position: relative; } .tk-run { display: inline-flex; white-space: nowrap; animation: tkrun var(--dur) linear infinite; padding: 6px 0; }
+.tk { margin-right: 22px; color: #c8ccd6; } .tk i { font-style: normal; background: #e0483a; color: #fff; border-radius: 4px; padding: 0 4px; margin-right: 5px; font-size: 10px; } .tk i.fin { background: #444a58; } .tk.mine { color: #ffd23f; }
+@keyframes tkrun { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.bk-game { background: #17181d; border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 5px; }
+.bk-top { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; } .bk-top .live { color: #ff5a4e; }
+.bk-side { display: flex; align-items: center; gap: 8px; background: #22242b; border: 1px solid #2e313a; border-radius: 9px; padding: 8px 10px; color: var(--fg); font: 600 15px var(--body); cursor: pointer; text-align: left; }
+.bk-side span { flex: 1; } .bk-side em { font-style: normal; color: #6fdc8c; } .bk-side.on { border-color: var(--accent); } .bk-side:disabled { opacity: 0.55; } .bk-score { font-size: 17px; }
+.bk-slip { border-top: 1px solid var(--line); padding-top: 6px; display: flex; flex-direction: column; gap: 6px; } .bk-slip .row { display: flex; gap: 5px; flex-wrap: wrap; }
+.bk-slip input, .go-in { flex: 1; min-width: 0; background: #0e0f12; border: 1px solid var(--line); border-radius: 9px; color: var(--fg); font: 600 15px var(--body); padding: 8px 10px; }
+.go-chat { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; } .go-chat p { margin: 0; max-width: 80%; padding: 7px 11px; border-radius: 16px; background: #26282f; font-size: 15px; align-self: flex-start; }
+.go-chat p.me { background: #2a7bff; align-self: flex-end; } .go-chat p.sys { background: none; color: var(--muted); font-size: 12px; align-self: center; text-align: center; }
+.go-send { display: flex; gap: 6px; position: sticky; bottom: 0; background: #0e0f12; padding: 6px 0; }
+.go-rep { display: grid; grid-template-columns: 1fr; gap: 6px; } .go-bar { height: 5px; background: #2a2c33; border-radius: 3px; overflow: hidden; margin-top: 4px; } .go-bar i { display: block; height: 100%; }
+.bm-quick { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; } .bm-quick .bm-b { white-space: nowrap; }`;
+    document.head.append(st);
+  }
+
+  // ---------- the top pop: news and texts slide down while you drive, tap one to open it ----------
+  function goPop(icon, from, text, open) {
+    goCss();
+    let el = document.getElementById('gopop');
+    if (!el) { el = document.createElement('div'); el.id = 'gopop'; document.body.append(el); el.onclick = () => { const o = el.dataset.open; el.classList.remove('on'); if (o) { openPhone(); phoneApp(o); } }; }
+    el.innerHTML = `<i>${esc(icon)}</i><div><small>${esc(from)}</small>${esc(text)}</div>`; el.dataset.open = open || '';
+    requestAnimationFrame(() => el.classList.add('on'));
+    clearTimeout(goPop.t); goPop.t = setTimeout(() => el.classList.remove('on'), 6500);
+  }
+
+  // ---------- Throttle Gossip: the city's news and rumors, short enough to read at a red light ----------
+  const GS_TRAP = ['Twelve sitting by {loc} with the radar gun. Slow down through {d}.', 'Unmarked Charger posted up near {loc}. {d} is hot right now.', 'DWI checkpoint going up by {loc} tonight. Go around {d}.', 'Two cruisers parked behind {loc}. They pulling everybody in {d}.'];
+  const GS_STREET = ['Heard somebody got a turbo Mustang doing roll races off {loc}. Bring cash.', 'Word is the Hellcat crowd is meeting by {loc} after dark.', 'Somebody left a whole parts car behind {loc}. Free to whoever gets there first, supposedly.', 'Taco truck by {loc} got the best al pastor in {d}. Trust.', 'Folks saying there\'s a car show popping up at {loc} this weekend.', 'Somebody\'s selling clean rims out the trunk by {loc}. Prices are crazy low.'];
+  const GS_CITY = ['Rumor is gas is going up again this week. Fill up now.', 'They saying the Stockyards are getting a new club. Opening soon.', 'Somebody on the east side got signed. Ask around.', 'Heard the feds been watching a couple trap houses on the south side.', 'Rent on the north side about to jump. Landlords talking.', 'Somebody saw a Lambo with paper tags on I-30. Who is that?'];
+  const GS_NEWS = {
+    busted: ['Police arrest a suspect after a robbery in {d}. Witnesses say they didn\'t see it coming.', 'FWPD makes an arrest in {d} after a call about a robbery.'],
+    escaped: ['Somebody hit a store in {d} and got clean away. Police are still looking.', 'Robbery in {d} tonight. "We\'ll find them," says FWPD.'],
+    bigWin: ['A {amt} street race went down in {d}. The whole east side is talking.'],
+    tow: ['Hook & Haul pulled another wreck off the road in {d}. Slow down out there.'],
+  };
+  function gossip() { const g = S.gossip || (S.gossip = {}); g.items = g.items || []; g.unseen = g.unseen || 0; if (g.pops == null) g.pops = true; return g; }
+  function addGossip(it) {
+    const g = gossip(); if (g.items.slice(0, 8).some(x => x.text === it.text)) return null;
+    const item = { id: 'gs' + Date.now().toString(36), day: S.day, at: Date.now(), ...it };
+    g.items.unshift(item); g.items.length = Math.min(g.items.length, 40); g.unseen++; save();
+    const now = Date.now();
+    if (g.pops && worldOn && now - GO.popT > 40000) { GO.popT = now; goPop(item.icon, item.kind === 'news' ? 'Throttle News' : 'Throttle Gossip', item.text, 'gossip'); }
+    return item;
+  }
+  function gsSpot(types) {
+    const [x, z] = meXZ(), st = goState(x, z), list = DATA.P.filter(p => types.includes(p.type) && goState(p.x, p.z) === st && Math.hypot(p.x - x, p.z - z) < 9000);
+    return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+  }
+  const gsFill = (t, p) => t.replace('{loc}', p ? goShort(p.name) : 'the gas station').replace('{d}', (p && districtAt(p.x, p.z)) || 'the city');
+  function gsNews(kind, vars) { const t = GS_NEWS[kind]; if (!t) return; const [x, z] = meXZ(); addGossip({ kind: 'news', icon: '📰', text: t[Math.floor(Math.random() * t.length)].replace('{d}', districtAt(x, z) || 'Fort Worth').replace('{amt}', (vars && vars.amt) || 'big money') }); }
+  // somebody heard something: one rumor (or none) every few minutes
+  function gsRumor() {
+    if (Math.random() > 0.45) return;
+    const r = Math.random();
+    if (r < 0.2) { const g = bkGames(bkDay()).filter(g => g.start > bkNow()).sort((a, b) => a.start - b.start)[0]; if (g) { const o = bkOdds(g, bkNow()), fav = o.h <= o.a ? g.home : g.away; addGossip({ kind: 'game', icon: BK_LEAGUES[g.lg].icon, text: `${g.away.name} at ${g.home.name}, ${bkClock(g.start)}. ${fav.name} ${bkAm(Math.min(o.h, o.a))}. Get your bets in.`, gid: g.id }); return; } }
+    if (r < 0.32 && S.hood && S.hood.opps && S.hood.opps.length) { const o = S.hood.opps[0]; addGossip({ kind: 'rumor', icon: '👀', text: `${o.name || 'Your opps'} been telling people they're looking for you. Watch yourself.` }); return; }
+    if (r < 0.6) { const p = gsSpot(['gas', 'food', 'corner', 'mall']); if (p) { addGossip({ kind: 'tip', icon: '🚓', text: gsFill(GS_TRAP[Math.floor(Math.random() * GS_TRAP.length)], p), loc: p.id }); return; } }
+    if (r < 0.88) { const p = gsSpot(['gas', 'food', 'corner', 'mall', 'meet', 'roll']); addGossip({ kind: 'rumor', icon: '🗣', text: gsFill(GS_STREET[Math.floor(Math.random() * GS_STREET.length)], p), loc: p && p.id }); return; }
+    addGossip({ kind: 'rumor', icon: '☕', text: GS_CITY[Math.floor(Math.random() * GS_CITY.length)] });
+  }
+  // big things you do make the news
+  const _goRob = rob;
+  rob = function (p, odds, lo, hi, what, heatUp) { const heat0 = S.heat, cash0 = S.cash; _goRob.apply(this, arguments); if (S.cash > cash0) { if (Math.random() < 0.5) gsNews('escaped'); } else if (S.heat > heat0) gsNews('busted'); };
+  function gossipApp(sc) {
+    const g = gossip(); g.unseen = 0; save(); PH.app = 'gossip'; sc.className = 'ph-screen';
+    const ago = t => { const m = Math.round((Date.now() - (t || Date.now())) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : 'Day ' + Math.max(1, S.day); };
+    sc.innerHTML = phoneHead('Throttle Gossip') + bkTickerHtml() + `<div class="ph-body">
+      <p class="mk-note">News and what people are saying around the city. New ones pop up at the top of the screen while you drive.</p>
+      <button class="go-row click${g.pops ? ' on' : ''}" data-a="pops"><span class="ic">🔔</span><div><b>Pop-ups</b><span>${g.pops ? 'On: new gossip slides down at the top' : 'Off: check the app yourself'}</span></div></button>
+      ${g.items.map(it => `<div class="go-row"><span class="ic">${esc(it.icon || '🗣')}</span><div><b style="font-weight:600;font-size:14px">${esc(it.text)}</b><span>${it.kind === 'news' ? 'News' : it.kind === 'tip' ? 'Tip' : it.kind === 'game' ? 'Sports' : 'Rumor'} · ${ago(it.at)}</span></div>${it.loc && goPlace(it.loc) ? `<button class="btn" data-gps="${esc(it.loc)}">📍 GPS</button>` : it.gid ? `<button class="btn" data-bet="1">Bet</button>` : ''}</div>`).join('') || '<p class="mk-note">Quiet right now. Drive around, people talk.</p>'}</div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    sc.querySelector('[data-a="pops"]').onclick = () => { g.pops = !g.pops; save(); gossipApp(sc); };
+    sc.querySelectorAll('[data-gps]').forEach(b => b.onclick = () => { const p = goPlace(b.dataset.gps); if (!p) return; setPin(p.name, p.x, p.z); closePhone(); toast(`GPS set: ${p.name}`, 'good'); });
+    sc.querySelectorAll('[data-bet]').forEach(b => b.onclick = () => phoneApp('book'));
+  }
+
+  // ---------- quick places: your car and properties, favorites and recents, for the Taxi and Map ----------
+  function goNav() { const n = S.nav || (S.nav = {}); n.fav = n.fav || []; n.recent = n.recent || []; return n; }
+  const goSame = (a, b) => (a.id && b.id ? a.id === b.id : Math.hypot(a.x - b.x, a.z - b.z) < 15);
+  const goEntry = t => { const p = t.id ? goPlace(t.id) : DATA.P.find(q => Math.abs(q.x - t.x) < 1 && Math.abs(q.z - t.z) < 1); return { ...(p ? { id: p.id } : {}), label: String(t.label || t.name || 'Pin').slice(0, 40), x: Math.round(t.x), z: Math.round(t.z) }; };
+  function noteRecent(t) { if (!t || !isFinite(t.x) || !isFinite(t.z) || /^Arrived/.test(t.name || '')) return; const n = goNav(), e = goEntry(t); n.recent = [e, ...n.recent.filter(r => !goSame(r, e))].slice(0, 6); save(); }
+  const isFav = t => goNav().fav.some(f => goSame(f, t));
+  function toggleFav(t) { const n = goNav(), e = goEntry(t), i = n.fav.findIndex(f => goSame(f, e)); if (i >= 0) { n.fav.splice(i, 1); save(); return false; } if (n.fav.length >= 8) n.fav.pop(); n.fav.unshift(e); save(); return true; }
+  const _goSetPin = setPin;
+  setPin = function (name, x, z) { _goSetPin.apply(this, arguments); noteRecent({ name, x, z }); };
+  // your car (where you left it), home, your properties and garages
+  function myPlaces() {
+    const out = [];
+    if (S.car && foot.on && foot.park) out.push({ key: 'car', icon: '🚗', label: 'Your ' + carOf(S.car.id).model, sub: 'Parked in ' + (districtAt(foot.park.x, foot.park.z) || regionAt(foot.park.x, foot.park.z)), x: foot.park.x, z: foot.park.z, car: true });
+    const home = DATA.P.find(p => p.type === 'home'); if (home) out.push({ key: 'home', icon: '🏠', label: goShort(home.name), sub: 'Home · ' + districtAt(home.x, home.z), x: home.x, z: home.z, id: home.id });
+    for (const id of new Set(S.props || [])) { const p = goPlace(id); if (p) out.push({ key: 'p:' + id, icon: p.type === 'land' ? '🌾' : '🏡', label: goShort(p.name), sub: (p.type === 'land' ? 'Your land · ' : 'Your house · ') + (districtAt(p.x, p.z) || regionAt(p.x, p.z)), x: p.x, z: p.z, id }); }
+    for (const id of S.garages || []) { const p = goPlace(id); if (p) out.push({ key: 'g:' + id, icon: '🅿', label: p.name, sub: `Your garage · ${p.bays} bays`, x: p.x, z: p.z, id }); }
+    return out;
+  }
+  const goAsPlace = q => q.id && goPlace(q.id) || { name: q.label, x: q.x, z: q.z, type: 'pin', drop: !q.id };
+  function goRows(list, ride) {
+    return list.map((q, i) => { const [x, z] = meXZ(), d = Math.hypot(q.x - x, q.z - z), fare = travelFare({ x: q.x, z: q.z });
+      return `<div class="go-row"><span class="ic">${esc(q.icon || '📍')}</span><div><b>${esc(q.label)}</b><span>${esc(q.sub || districtAt(q.x, q.z) || regionAt(q.x, q.z))} · ${d < 160 ? 'right here' : goMi(d)}</span></div><button class="btn" data-g="${i}">GPS</button>${ride && d >= 160 ? `<button class="btn go" data-r="${i}">${money(fare)}</button>` : ''}</div>`; }).join('');
+  }
+  // Taxi: a Ryde anywhere you go a lot; your car stays where you left it
+  function taxiApp(sc) {
+    PH.app = 'taxi'; sc.className = 'ph-screen';
+    const n = goNav(), mine = myPlaces(), fav = n.fav.map(f => ({ ...f, icon: '⭐' })), rec = n.recent.filter(r => !n.fav.some(f => goSame(f, r))).map(r => ({ ...r, icon: '🕘' }));
+    const all = [...mine, ...fav, ...rec];
+    sc.innerHTML = phoneHead('🚕 Ryde') + `<div class="ph-body">
+      <p class="mk-note">Get a ride to the places you go most. ${S.car ? 'Your car stays parked where you left it, and Your car is right at the top to get back to it.' : 'No car needed.'} Star places on the Map to keep them here.</p>
+      ${mine.length ? '<div class="go-sec">Your stuff</div>' + goRows(mine, true).replace(/data-(g|r)="(\d+)"/g, (m, k, i) => `data-${k}="${+i}"`) : ''}
+      ${fav.length ? '<div class="go-sec">Favorites</div>' + goRows(fav, true).replace(/data-(g|r)="(\d+)"/g, (m, k, i) => `data-${k}="${+i + mine.length}"`) : ''}
+      ${rec.length ? '<div class="go-sec">Recent</div>' + goRows(rec, true).replace(/data-(g|r)="(\d+)"/g, (m, k, i) => `data-${k}="${+i + mine.length + fav.length}"`) : ''}
+      <button class="go-row click" data-a="map"><span class="ic">🔎</span><div><b>Somewhere else</b><span>Search the whole map</span></div></button></div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    sc.querySelector('[data-a="map"]').onclick = () => { closePhone(); openBigMap(); };
+    sc.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { const q = all[+b.dataset.g]; setPin(q.label, q.x, q.z); closePhone(); toast(`GPS set: ${q.label}`, 'good'); });
+    sc.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { const q = all[+b.dataset.r]; taxiRide(q); });
+  }
+  function taxiRide(q) {
+    const fare = travelFare({ x: q.x, z: q.z });
+    if (inside) { toast('Walk outside first.', 'bad'); return; }
+    if (!spend(fare, 'Ryde to ' + q.label)) return;
+    closePhone(); closeBigMap();
+    // the ride drops you off on foot; your car stays put (Your car takes you back to it)
+    if (q.car && S.car && foot.on && foot.park) { foot.x = foot.park.x + 2.5; foot.z = foot.park.z; foot.holder.position.set(foot.x, 0, foot.z); drv.x = foot.x; drv.z = foot.z; toast('Your Ryde dropped you at your car.', 'good'); return; }
+    if (S.car && driving && !foot.on) getOut();
+    spawnFoot(q.x, q.z); if (S.car && foot.park) { car.position.set(foot.park.x, 0.12, foot.park.z); car.visible = true; }
+    setPin(q.label, q.x, q.z); gpsClear(); toast(`Your Ryde dropped you at ${q.label}.`, 'good');
+  }
+  // the big map: quick chips for your stuff, favorites and recents, and a ☆ on every place card
+  const _goOpenBigMap = openBigMap;
+  openBigMap = function () {
+    _goOpenBigMap.apply(this, arguments);
+    const top = BM.el.querySelector('.bm-top'); let row = top.querySelector('.bm-quick'); if (!row) { row = document.createElement('div'); row.className = 'bm-row bm-quick'; top.append(row); }
+    const n = goNav(), list = [...myPlaces(), ...n.fav.map(f => ({ ...f, icon: '⭐' })), ...n.recent.filter(r => !n.fav.some(f => goSame(f, r))).map(r => ({ ...r, icon: '🕘' }))].slice(0, 14);
+    row.innerHTML = list.map((q, i) => `<button class="bm-b" data-q="${i}">${esc(q.icon)} ${esc(q.label.length > 18 ? q.label.slice(0, 17) + '…' : q.label)}</button>`).join('');
+    row.hidden = !list.length;
+    row.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { const q = list[+b.dataset.q], p = goAsPlace(q); BM.cx = q.x; BM.cz = q.z; BM.follow = false; BM.k = Math.max(BM.k, Math.min(BM.w, BM.h) / 2600); bmCard(p); });
+  };
+  const _goBmCard = bmCard;
+  bmCard = function (p) {
+    _goBmCard.apply(this, arguments);
+    const row = BM.el.querySelector('.bm-card .row'); if (!row) return;
+    const b = document.createElement('button'); b.className = 'btn'; const lab = () => { b.textContent = isFav({ id: p.drop ? null : p.id, x: p.x, z: p.z }) ? '★ Saved' : '☆ Save'; };
+    lab(); b.onclick = () => { const on = toggleFav({ id: p.drop ? null : p.id, name: p.name, x: p.x, z: p.z }); lab(); toast(on ? `Saved ${p.name} to favorites.` : 'Taken off favorites.', 'good'); };
+    row.insertBefore(b, row.lastElementChild);
+  };
+
+  // ---------- Garage app: every car you own, where it is, and the yard brings one out to you ----------
+  function garageApp(sc) {
+    PH.app = 'cars'; sc.className = 'ph-screen';
+    const [x, z] = meXZ(), here = inside && IN.place && ownsGarage(IN.place) ? IN.place : null;
+    const spots = [DATA.P.find(p => p.type === 'home'), ...(S.garages || []).map(goPlace), ...(S.props || []).map(goPlace).filter(p => p && HOME.isHome(p))].filter(Boolean);
+    const near = spots.slice().sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))[0];
+    const fee = near ? Math.round((60 + Math.hypot(near.x - x, near.z - z) / 1000 * 6) / 5) * 5 : 0;
+    const out = S.car ? `<div class="go-row on"><span class="ic" style="color:${esc(S.car.color)}">●</span><div><b>${esc(carLabel(carOf(S.car.id)))}</b><span>${!foot.on && driving ? 'You\'re driving it' : foot.park ? 'Parked in ' + esc(districtAt(foot.park.x, foot.park.z) || regionAt(foot.park.x, foot.park.z)) : 'Out front'} · ${carHealth(S.car)}% · ${Math.round(S.car.fuel * 100)}% fuel</span></div>${foot.on && foot.park ? '<button class="btn" data-a="find">📍 Find it</button>' : ''}</div>` : '';
+    sc.innerHTML = phoneHead('Garage') + `<div class="ph-body">
+      <div class="hu-top"><div><small>Cars</small><b>${(S.car ? 1 : 0) + S.garage.length}</b></div><div><small>Spots used</small><b>${S.garage.length}/${garageCap()}</b></div><div><small>Garages</small><b>${spots.length}</b></div></div>
+      ${out ? '<div class="go-sec">Out with you</div>' + out : ''}
+      <div class="go-sec">Stored</div>
+      ${S.garage.map((c, i) => `<div class="go-row"><span class="ic" style="color:${esc(c.color)}">●</span><div><b>${esc(carLabel(carOf(c.id)))}</b><span>${carHealth(c)}% · ${carHp(c)} hp${here ? ' · in this garage' : ''}</span></div>${here ? `<button class="btn go" data-t="${i}">Drive it</button>` : `<button class="btn go" data-b="${i}" ${inside ? 'disabled' : ''}>Bring it here ${money(fee)}</button>`}</div>`).join('') || '<p class="mk-note">Nothing stored. Park a car at home or in a garage you own.</p>'}
+      <p class="mk-note">${here ? 'You\'re in your garage: pick what you drive.' : `Hook & Haul brings a stored car out to wherever you're standing. ${S.car ? 'The car you have out goes back in its spot.' : ''}`}</p>
+      ${spots.map(p => `<div class="go-row"><span class="ic">${p.type === 'home' ? '🏠' : '🅿'}</span><div><b>${esc(goShort(p.name))}</b><span>${goMi(Math.hypot(p.x - x, p.z - z))} away</span></div><button class="btn" data-gps="${esc(p.id)}">GPS</button></div>`).join('')}
+      <button class="go-row click" data-a="shop"><span class="ic">🏪</span><div><b>Buy another car</b><span>Marketplace</span></div></button></div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    const f = sc.querySelector('[data-a="find"]'); if (f) f.onclick = () => { setPin('Your car', foot.park.x, foot.park.z); closePhone(); toast('GPS set: your car', 'good'); };
+    sc.querySelector('[data-a="shop"]').onclick = () => phoneApp('market');
+    sc.querySelectorAll('[data-gps]').forEach(b => b.onclick = () => { const p = goPlace(b.dataset.gps); setPin(p.name, p.x, p.z); closePhone(); toast(`GPS set: ${p.name}`, 'good'); });
+    sc.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { closePhone(); takeOut(+b.dataset.t, here); });
+    sc.querySelectorAll('[data-b]').forEach(b => b.onclick = () => {
+      const i = +b.dataset.b; if (!S.garage[i]) return;
+      if (driving && !foot.on && Math.abs(drv.v) > 2) { toast('Pull over first.', 'bad'); return; }
+      if (!spend(fee, 'Hook & Haul: bring a car')) return;
+      if (driving && !foot.on) getOut();
+      if (!driving) spawnFoot(x, z);
+      const c = S.garage[i], had = S.car; S.garage.splice(i, 1); if (had) S.garage.push(had);
+      S.car = c; syncCarModel(); foot.park = null; deliverCar(); closePhone();
+      toast(`🛻 Hook & Haul dropped your ${carLabel(carOf(c.id))} next to you.${had ? ' Your other car went back in the garage.' : ''}`, 'good');
+    });
+  }
+
+  // ---------- Radio app: Kimari's songs anywhere, earbuds in when you're on foot ----------
+  const EAR = { el: null, src: '' };
+  function earStep() {
+    const r = radioSet(), incar = driving && !foot.on && !inside && !!S.car, want = !!S.earbuds && r.on && !incar && worldOn && !document.hidden && !creating;
+    if (!EAR.el && want) { EAR.el = new Audio(); EAR.el.volume = 0.7; EAR.el.onended = () => { radioSkip(1); }; }
+    if (!EAR.el) return;
+    const src = 'audio/radio/' + STATIONS[r.i][0] + '.m4a';
+    if (want && EAR.src !== src) { EAR.src = src; EAR.el.src = src; }
+    if (want && EAR.el.paused) { if (INTRO.on) introStop(); EAR.el.play().catch(() => {}); }
+    if (!want && !EAR.el.paused) EAR.el.pause();
+  }
+  const _goRadioStep = radioStep;
+  radioStep = function () { _goRadioStep.apply(this, arguments); earStep(); };
+  function radioApp(sc) {
+    PH.app = 'radio'; sc.className = 'ph-screen'; const r = radioSet();
+    sc.innerHTML = phoneHead('📻 Radio') + `<div class="ph-body">
+      <p class="mk-note">Our local artists, all day. It plays through the car when you're driving${S.earbuds ? ' and through your earbuds when you\'re walking' : ''}.</p>
+      <div class="go-tabs"><button class="btn${r.on ? ' go' : ''}" data-a="on">⏻ ${r.on ? 'On' : 'Off'}</button><button class="btn" data-a="prev">⏮</button><button class="btn" data-a="next">⏭</button><button class="btn${S.earbuds ? ' go' : ''}" data-a="ear">🎧 Earbuds ${S.earbuds ? 'in' : 'out'}</button></div>
+      ${STATIONS.map(([id, n], i) => `<button class="go-row click${r.on && r.i === i ? ' on' : ''}" data-i="${i}"><span class="ic">${r.on && r.i === i ? '🔊' : '🎵'}</span><div><b>${esc(n)}</b><span>Murda Worth Radio${r.on && r.i === i ? ' · playing now' : ''}</span></div></button>`).join('')}
+      ${RADIO.dead ? '<p class="mk-note go-bad">No signal here.</p>' : ''}</div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    sc.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { const a = b.dataset.a; if (a === 'on') radioPower(); else if (a === 'prev') radioSkip(-1); else if (a === 'next') radioSkip(1); else { S.earbuds = !S.earbuds; save(); radioStep(true); } radioApp(sc); });
+    sc.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { r.i = +b.dataset.i; r.on = true; RADIO.dead = false; if (RADIO.el) RADIO.el.currentTime = 0; if (EAR.el) EAR.el.currentTime = 0; save(); radioStep(true); radioApp(sc); });
+  }
+
+  // ---------- Cowtown Book: seeded games on a game clock (1 real second = 1 game minute, like the 2D game) ----------
+  const BK_LEAGUES = {
+    pfb: { name: 'Pro Football', short: 'FB', icon: '🏈', days: ['Thu', 'Sun', 'Mon'], slots: [720, 925, 1160], len: 195, per: 4, perName: 'Q', score: 'football', teams: [['Dallas', 'DAL', 82], ['Philadelphia', 'PHI', 86], ['New York', 'NYG', 70], ['Washington', 'WAS', 76], ['Houston', 'HOU', 80], ['Kansas City', 'KC', 90], ['San Francisco', 'SF', 87], ['Green Bay', 'GB', 81], ['Detroit', 'DET', 85], ['Baltimore', 'BAL', 88], ['Buffalo', 'BUF', 86], ['Miami', 'MIA', 77], ['Chicago', 'CHI', 72], ['Atlanta', 'ATL', 74], ['Los Angeles', 'LA', 79], ['Denver', 'DEN', 75], ['Las Vegas', 'LV', 68], ['New Orleans', 'NO', 71]] },
+    cfb: { name: 'College Football', short: 'CFB', icon: '🏟', days: ['Sat'], slots: [660, 870, 1110], len: 210, per: 4, perName: 'Q', score: 'football', teams: [['TCU', 'TCU', 78], ['Texas', 'TEX', 88], ['Texas A&M', 'TAMU', 82], ['Baylor', 'BAY', 74], ['Texas Tech', 'TTU', 76], ['SMU', 'SMU', 77], ['UNT', 'UNT', 66], ['Houston', 'UH', 69], ['Oklahoma', 'OU', 80], ['Alabama', 'BAMA', 87], ['Georgia', 'UGA', 89], ['LSU', 'LSU', 83], ['Ohio State', 'OSU', 90], ['Michigan', 'MICH', 84], ['Prairie View', 'PV', 62], ['Grambling', 'GRAM', 61], ['Jackson State', 'JSU', 64], ['Southern', 'SOU', 60]] },
+    hoops: { name: 'Pro Hoops', short: 'HOOPS', icon: '🏀', days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], slots: [1140, 1290], len: 150, per: 4, perName: 'Q', score: 'hoops', teams: [['Dallas', 'DAL', 84], ['San Antonio', 'SA', 78], ['Houston', 'HOU', 81], ['Oklahoma City', 'OKC', 90], ['Denver', 'DEN', 86], ['Boston', 'BOS', 89], ['New York', 'NY', 85], ['Milwaukee', 'MIL', 82], ['Los Angeles', 'LA', 80], ['Golden State', 'GS', 79], ['Phoenix', 'PHX', 76], ['Miami', 'MIA', 77], ['Memphis', 'MEM', 75], ['Atlanta', 'ATL', 73]] },
+    base: { name: 'Baseball', short: 'MLB', icon: '⚾', days: ['Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], slots: [785, 1145], len: 180, per: 9, perName: 'Inn ', score: 'baseball', teams: [['Texas', 'TEX', 80], ['Houston', 'HOU', 84], ['New York', 'NYY', 86], ['Los Angeles', 'LAD', 90], ['Atlanta', 'ATL', 85], ['Chicago', 'CHC', 76], ['Boston', 'BOS', 79], ['Philadelphia', 'PHI', 84], ['San Diego', 'SD', 81], ['Seattle', 'SEA', 78], ['St. Louis', 'STL', 74], ['Kansas City', 'KC', 75]] },
+    hockey: { name: 'Hockey', short: 'HKY', icon: '🏒', days: ['Tue', 'Thu', 'Sat', 'Sun'], slots: [1170], len: 160, per: 3, perName: 'P', score: 'hockey', teams: [['Dallas', 'DAL', 86], ['Colorado', 'COL', 85], ['Vegas', 'VGK', 83], ['Edmonton', 'EDM', 87], ['Boston', 'BOS', 80], ['Florida', 'FLA', 88], ['Tampa Bay', 'TB', 82], ['New York', 'NYR', 81], ['Winnipeg', 'WPG', 84], ['Chicago', 'CHI', 68]] },
+    fight: { name: 'Fight Night', short: 'FIGHT', icon: '🥊', days: ['Sat'], slots: [1320], len: 60, per: 5, perName: 'R', score: 'fight', teams: [['"Hands" Okafor', 'OKF', 84], ['Danny "Stop Six" Reyes', 'REY', 80], ['Marcus Bell', 'BELL', 82], ['"Big Tex" Holloway', 'HOL', 78], ['Andre "Truth" Sims', 'SIMS', 86], ['Kenji Mori', 'MORI', 81], ['Luis "El Toro" Vega', 'VEGA', 83], ['Tyrell Dukes', 'DUKE', 77]] },
+  };
+  const BK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], BK_VIG = 0.045, BK_CUTOFF = 0.85, BK_MAX = [0, 1000, 5000, 20000, 50000, 100000, 250000, 500000];
+  // the book's clock: everybody on every phone sees the same games (day 1 = a Monday)
+  const bkNow = () => Math.floor(Date.now() / 1000 - 1767571200);
+  const bkDay = () => Math.floor(bkNow() / 1440) + 1;
+  const bkTier = () => Math.max(1, Math.min(7, 1 + Math.floor((S.rep || 0) / 25)));
+  function bkHash(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function bkRng(seed) { let a = bkHash(seed); return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const BK_CARD = new Map(), BK_PLAY = new Map();
+  function bkGames(day) {
+    if (BK_CARD.has(day)) return BK_CARD.get(day);
+    const dn = BK_DAYS[(day - 1) % 7], out = [];
+    for (const lg in BK_LEAGUES) {
+      const L = BK_LEAGUES[lg]; if (!L.days.includes(dn)) continue;
+      const r = bkRng(`${lg}:${day}:card`), order = L.teams.map((t, i) => [r(), i]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+      L.slots.forEach((slot, k) => {
+        const h = L.teams[order[k * 2]], a = L.teams[order[k * 2 + 1]]; if (!h || !a) return;
+        const start = (day - 1) * 1440 + slot, p = 1 / (1 + Math.pow(10, -((h[2] + (lg === 'fight' ? 0 : 2.5)) - a[2]) / 14));
+        out.push({ id: `${day}:${lg}:${k}`, lg, home: { name: h[0], ab: h[1] }, away: { name: a[0], ab: a[1] }, start, end: start + L.len, p });
+      });
+    }
+    out.sort((a, b) => a.start - b.start); BK_CARD.set(day, out); return out;
+  }
+  const bkGame = id => { const d = +String(id).split(':')[0]; return d > 0 ? bkGames(d).find(g => g.id === id) || null : null; };
+  function bkPlay(g) {
+    if (BK_PLAY.has(g.id)) return BK_PLAY.get(g.id);
+    const r = bkRng(g.id + ':play'), L = BK_LEAGUES[g.lg], homeWins = r() < g.p, ev = [], add = (side, pts, at) => ev.push({ at, side, pts });
+    let out;
+    if (L.score === 'fight') { const ko = r() < 0.55, at = ko ? 0.15 + r() * 0.8 : 1; add(homeWins ? 'h' : 'a', 1, at); out = { h: homeWins ? 1 : 0, a: homeWins ? 0 : 1, events: ev, ko, round: ko ? Math.min(5, 1 + Math.floor(at * 5)) : 5 }; }
+    else {
+      const gen = () => { if (L.score === 'football') { const n = 3 + Math.floor(r() * 5); let t = 0; for (let i = 0; i < n; i++) t += r() < 0.62 ? 7 : 3; return t; } if (L.score === 'hoops') return 92 + Math.floor(r() * 36); if (L.score === 'baseball') return Math.floor(r() * r() * 9); return Math.floor(r() * r() * 6); };
+      let w = gen(), l = gen(); if (l >= w) w = l + (L.score === 'football' ? (r() < 0.5 ? 3 : 7) : L.score === 'hoops' ? 1 + Math.floor(r() * 12) : 1);
+      const h = homeWins ? w : l, a = homeWins ? l : w;
+      const chunks = (side, total) => { let left = total; while (left > 0) { const pts = L.score === 'football' ? (left % 7 === 0 || left >= 10 && r() < 0.62 ? Math.min(7, left) : Math.min(3, left)) : L.score === 'hoops' ? Math.min(left, 2 + Math.floor(r() * 9)) : 1; add(side, pts, 0.02 + r() * 0.96); left -= pts; } };
+      chunks('h', h); chunks('a', a); ev.sort((x, y) => x.at - y.at); out = { h, a, events: ev };
+    }
+    BK_PLAY.set(g.id, out); return out;
+  }
+  function bkScore(g, now) {
+    const L = BK_LEAGUES[g.lg], po = bkPlay(g);
+    if (now < g.start) return { state: 'pre', f: 0, h: 0, a: 0, label: '' };
+    let f = Math.min(1, (now - g.start) / (g.end - g.start)); if (L.score === 'fight' && po.ko && f >= po.events[0].at) f = 1;
+    let h = 0, a = 0; for (const e of po.events) if (e.at <= f) { if (e.side === 'h') h += e.pts; else a += e.pts; }
+    if (f >= 1) return { state: 'final', f: 1, h: po.h, a: po.a, label: L.score === 'fight' ? (po.ko ? `KO R${po.round}` : 'Decision') : 'Final' };
+    const per = Math.min(L.per, 1 + Math.floor(f * L.per));
+    return { state: 'live', f, h, a, label: L.score === 'baseball' ? `${(f * L.per) % 1 < 0.5 ? 'Top' : 'Bot'} ${per}` : `${L.perName}${per}` };
+  }
+  function bkLiveP(g, now) {
+    const sc = bkScore(g, now), L = BK_LEAGUES[g.lg];
+    if (sc.state === 'final') return sc.h > sc.a ? 1 : 0; if (sc.state === 'pre' || L.score === 'fight') return g.p;
+    const left = Math.max(0.02, 1 - sc.f), scale = { football: 14, hoops: 13, baseball: 3.2, hockey: 2.2 }[L.score] || 10;
+    return 1 / (1 + Math.exp(-(Math.log(g.p / (1 - g.p)) * Math.sqrt(left) + (sc.h - sc.a) / (scale * Math.sqrt(left)) * 1.7)));
+  }
+  const bkPrice = p => Math.round(100 / Math.min(0.97, Math.max(0.03, p * (1 + BK_VIG)))) / 100;
+  function bkOdds(g, now) { const p = bkLiveP(g, now); return { h: bkPrice(p), a: bkPrice(1 - p) }; }
+  const bkAm = d => d >= 2 ? `+${Math.round((d - 1) * 100)}` : `${-Math.round(100 / (d - 1))}`;
+  function bkClock(abs) { const day = Math.floor(abs / 1440) + 1, m = abs % 1440, h = Math.floor(m / 60), t = `${((h + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`, today = bkDay(); return day === today ? t : day === today + 1 ? `Tmrw ${t}` : `${BK_DAYS[(day - 1) % 7]} ${t}`; }
+  function bkClosed(g, now) { const sc = bkScore(g, now); if (sc.state === 'final') return 'That one\'s over.'; if (sc.state === 'live' && (sc.f >= BK_CUTOFF || BK_LEAGUES[g.lg].score === 'fight')) return 'Betting is closed on this one.'; return ''; }
+  function book() { const b = S.book || (S.book = {}); b.bets = b.bets || []; b.won = b.won || 0; b.lost = b.lost || 0; return b; }
+  function bkPlace(gid, pick, stake) {
+    const g = bkGame(gid), now = bkNow(); stake = Math.round(stake);
+    if (!g) return { ok: false, text: 'That game isn\'t on the board.' };
+    const why = bkClosed(g, now); if (why) return { ok: false, text: why };
+    if (!(stake >= 10)) return { ok: false, text: 'The minimum bet is $10.' };
+    const max = BK_MAX[bkTier()]; if (stake > max) return { ok: false, text: `Your limit is ${money(max)} a bet. More rep, bigger limit.` };
+    const side = pick === 'h' ? g.home : g.away, dec = bkOdds(g, now)[pick];
+    if (!spend(stake, `Bet: ${side.name} (${BK_LEAGUES[g.lg].short})`)) return { ok: false, text: '' };
+    const bet = { id: 'bet' + Date.now().toString(36), gid, pick, stake, dec, live: bkScore(g, now).state === 'live', at: Date.now() };
+    book().bets.unshift(bet); S.book.bets.length = Math.min(S.book.bets.length, 60); save();
+    return { ok: true, bet, text: `${money(stake)} on ${side.name} at ${bkAm(dec)}. Pays ${money(stake * dec)}.` };
+  }
+  function bkSettle() {
+    const b = book(), now = bkNow(); let any = false;
+    for (const bet of b.bets) {
+      if (bet.done) continue; const g = bkGame(bet.gid); if (!g) { bet.done = true; continue; }
+      const sc = bkScore(g, now); if (sc.state !== 'final') continue;
+      const won = (sc.h > sc.a) === (bet.pick === 'h'), side = bet.pick === 'h' ? g.home : g.away, other = bet.pick === 'h' ? g.away : g.home;
+      bet.done = true; bet.won = won; any = true;
+      if (won) { bet.paid = Math.round(bet.stake * bet.dec); b.won += bet.paid - bet.stake; earn(bet.paid, `Bet won: ${side.name}`); } else b.lost += bet.stake;
+      goPop(won ? '✅' : '❌', 'Cowtown Book', `${side.name} ${won ? 'beat' : 'lost to'} ${other.name} ${Math.max(sc.h, sc.a)}-${Math.min(sc.h, sc.a)}. ${won ? `You collect ${money(bet.paid)}.` : `You lose ${money(bet.stake)}.`}`, 'book');
+    }
+    if (any) save();
+  }
+  function bkTicker() {
+    const now = bkNow(), day = bkDay(), mine = new Set(book().bets.filter(b => !b.done).map(b => b.gid));
+    const items = [...bkGames(day - 1), ...bkGames(day), ...bkGames(day + 1)].filter(g => g.end > now - 240 && g.start < now + 1440).map(g => {
+      const sc = bkScore(g, now), o = bkOdds(g, now), fav = o.h <= o.a ? g.home : g.away;
+      return { icon: BK_LEAGUES[g.lg].icon, text: sc.state === 'pre' ? `${g.away.ab} @ ${g.home.ab} · ${bkClock(g.start)} · ${fav.ab} ${bkAm(Math.min(o.h, o.a))}` : `${g.away.ab} ${sc.a} – ${g.home.ab} ${sc.h} · ${sc.label}`, live: sc.state === 'live', final: sc.state === 'final', mine: mine.has(g.id), start: g.start };
+    });
+    const rank = x => (x.mine ? 0 : 3) + (x.live ? 0 : x.final ? 2 : 1);
+    return items.sort((a, b) => rank(a) - rank(b) || a.start - b.start).slice(0, 14);
+  }
+  function bkTickerHtml() {
+    const items = bkTicker(); if (!items.length) return '';
+    const row = items.map(x => `<span class="tk${x.mine ? ' mine' : ''}">${x.live ? '<i>LIVE</i>' : x.final ? '<i class="fin">FINAL</i>' : ''}${esc(x.icon)} ${esc(x.text)}</span>`).join('');
+    return `<div class="liveticker"><b>LIVE<br>TICKER</b><div class="tk-track"><div class="tk-run" style="--dur:${Math.max(18, items.length * 5)}s">${row}${row}</div></div></div>`;
+  }
+  function bookApp(sc) {
+    PH.app = 'book'; sc.className = 'ph-screen';
+    const st = GO.bk, b = book(), now = bkNow(), max = BK_MAX[bkTier()], open = b.bets.filter(x => !x.done);
+    const games = [...bkGames(bkDay()), ...bkGames(bkDay() + 1)].filter(g => bkScore(g, now).state !== 'final' || g.end > now - 180);
+    const ord = { live: 0, pre: 1, final: 2 }, list = (st.tab === 'live' ? games.filter(g => bkScore(g, now).state === 'live') : games).slice().sort((a, b) => ord[bkScore(a, now).state] - ord[bkScore(b, now).state] || a.start - b.start);
+    const gameHtml = g => {
+      const s2 = bkScore(g, now), o = bkOdds(g, now), why = bkClosed(g, now), L = BK_LEAGUES[g.lg], mine = open.filter(x => x.gid === g.id);
+      const side = (k, t) => `<button class="bk-side${st.pick && st.pick.gid === g.id && st.pick.side === k ? ' on' : ''}" data-pick="${g.id}|${k}" ${why ? 'disabled' : ''}><span>${esc(t.name)}</span>${s2.state !== 'pre' ? `<b class="bk-score">${k === 'h' ? s2.h : s2.a}</b>` : ''}<em>${why ? '—' : bkAm(o[k])}</em></button>`;
+      let slip = '';
+      if (st.pick && st.pick.gid === g.id) { const t = st.pick.side === 'h' ? g.home : g.away, dec = o[st.pick.side], stake = Math.min(st.stake, max);
+        slip = `<div class="bk-slip"><span class="mk-note">Bet on <b>${esc(t.name)}</b> at ${bkAm(dec)}${s2.state === 'live' ? ' (live)' : ''}</span><div class="row">${[50, 100, 500, 1000, 5000].filter(v => v <= max).map(v => `<button class="btn${stake === v ? ' go' : ''}" data-stake="${v}">${money(v)}</button>`).join('')}</div>
+          <div class="row"><input type="number" inputmode="numeric" min="10" max="${max}" value="${stake}" data-in><button class="btn go" data-a="place">Bet ${money(stake)} · pays ${money(stake * dec)}</button></div></div>`; }
+      return `<div class="bk-game"><div class="bk-top"><span>${L.icon} ${esc(L.name)}</span><span>${s2.state === 'pre' ? bkClock(g.start) : s2.state === 'live' ? `<b class="live">● LIVE</b> ${esc(s2.label)}` : esc(s2.label)}</span></div>${side('a', g.away)}${side('h', g.home)}
+        ${mine.length ? `<span class="mk-note">🎟 ${mine.map(x => `${money(x.stake)} on ${esc((x.pick === 'h' ? g.home : g.away).ab)} to win ${money(x.stake * x.dec)}`).join(' · ')}</span>` : ''}${slip}</div>`;
+    };
+    const betHtml = x => { const g = bkGame(x.gid); if (!g) return ''; const s2 = bkScore(g, now), t = x.pick === 'h' ? g.home : g.away;
+      return `<div class="go-row"><span class="ic">${BK_LEAGUES[g.lg].icon}</span><div><b>${money(x.stake)} on ${esc(t.name)}${x.live ? ' · live bet' : ''}</b><span>${esc(g.away.ab)} ${s2.a} – ${esc(g.home.ab)} ${s2.h} · ${s2.state === 'pre' ? bkClock(g.start) : esc(s2.label)} · at ${bkAm(x.dec)}</span></div>${x.done ? (x.won ? `<b class="go-good">+${money(x.paid)}</b>` : `<b class="go-bad">−${money(x.stake)}</b>`) : `<b>${money(x.stake * x.dec)}</b>`}</div>`; };
+    const body = st.tab === 'bets'
+      ? `<div class="hu-top"><div><small>Won</small><b class="go-good">${money(b.won)}</b></div><div><small>Lost</small><b class="go-bad">${money(b.lost)}</b></div><div><small>Open</small><b>${open.length}</b></div></div>${b.bets.slice(0, 30).map(betHtml).join('') || '<p class="mk-note">No bets yet.</p>'}`
+      : list.map(gameHtml).join('') || `<p class="mk-note">${st.tab === 'live' ? 'Nothing live right now. The ticker shows what\'s next.' : 'No games on the board.'}</p>`;
+    sc.innerHTML = phoneHead('Cowtown Book') + bkTickerHtml() + `<div class="ph-body">
+      <div class="go-tabs">${[['games', 'Games'], ['live', '● Live'], ['bets', `My bets${open.length ? ` (${open.length})` : ''}`]].map(([k, l]) => `<button class="btn${st.tab === k ? ' go' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>
+      <p class="mk-note">Cash bets, paid in cash when the game ends. Your limit is ${money(max)} a bet (Tier ${bkTier()}, more rep raises it). Live betting closes late in the game.</p>${body}</div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    sc.querySelectorAll('[data-tab]').forEach(e => e.onclick = () => { st.tab = e.dataset.tab; st.pick = null; bookApp(sc); });
+    sc.querySelectorAll('[data-pick]').forEach(e => e.onclick = () => { const [gid, side] = e.dataset.pick.split('|'); st.pick = st.pick && st.pick.gid === gid && st.pick.side === side ? null : { gid, side }; bookApp(sc); });
+    sc.querySelectorAll('[data-stake]').forEach(e => e.onclick = () => { st.stake = +e.dataset.stake; bookApp(sc); });
+    const inp = sc.querySelector('[data-in]'); if (inp) inp.oninput = () => { st.stake = Math.max(10, Math.round(+inp.value || 10)); };
+    const pl = sc.querySelector('[data-a="place"]'); if (pl) pl.onclick = () => { const r = bkPlace(st.pick.gid, st.pick.side, Math.min(st.stake, max)); if (r.text) toast(r.text, r.ok ? 'good' : 'bad'); if (r.ok) st.pick = null; bookApp(sc); };
+    GO.bkDrawn = bkNow();
+  }
+
+  // ---------- Friends: the real people you play with, the 2D game's mailbox (supabase/rfg_friends.sql) ----------
+  const frClean = n => String(n == null ? '' : n).replace(/[^\w .'\-]/g, '').trim().slice(0, 16) || 'Racer';
+  const frText = t => String(t == null ? '' : t).replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 240);
+  const frUid = u => (typeof u === 'string' && /^[a-z0-9]{6,16}$/.test(u) ? u : '');
+  const frCode = () => { netMe(); return 'MW-' + S.uid.toUpperCase().replace(/^(.{4})/, '$1-'); };
+  const frParse = t => { let c = String(t || '').toLowerCase().replace(/[^a-z0-9]/g, ''); if (c.length === 12 && c.startsWith('mw')) c = c.slice(2); return c.length >= 6 && c.length <= 16 ? c : null; };
+  function friends() { const f = S.friends || (S.friends = {}); f.list = f.list || []; f.dms = f.dms || {}; f.unseen = f.unseen || 0; return f; }
+  const frOf = uid => friends().list.find(f => f.uid === uid) || null;
+  function frNote(uid, text, mine, sys) { const d = friends().dms; (d[uid] = d[uid] || []).push({ t: text, mine: !!mine, sys: !!sys, at: Date.now() }); if (d[uid].length > 80) d[uid].splice(0, d[uid].length - 80); if (!mine) { friends().unseen++; const f = frOf(uid); if (f) f.unread = (f.unread || 0) + 1; } save(); }
+  // ?net=local keeps the mailbox in this browser, like the 2D game's same-browser copy
+  const FR_LOCAL = typeof NET_LOCAL !== 'undefined' && NET_LOCAL;
+  async function frRpc(fn, args) {
+    if (!FR_LOCAL) return netRpc(fn, args);
+    const K = 'rfg-localdms3d', d = (() => { try { return JSON.parse(localStorage.getItem(K) || '{"list":[],"who":{}}'); } catch (e) { return { list: [], who: {} }; } })();
+    d.who[args.p_uid || ''] = frClean(S.name);
+    let out = null;
+    if (fn === 'rfg_player_find') out = d.who[args.p_code] ? [{ uid: args.p_code, name: d.who[args.p_code], server: S.homeServer }] : [];
+    else if (fn === 'rfg_dm_send') { if (!d.who[args.p_to]) throw new Error('No player with that code'); d.list.push({ from_uid: args.p_uid, from_name: frClean(S.name), to_uid: args.p_to, kind: args.p_kind, body: args.p_body }); out = { ok: true, to: d.who[args.p_to] }; }
+    else if (fn === 'rfg_dm_inbox') { out = d.list.filter(x => x.to_uid === args.p_uid); d.list = d.list.filter(x => x.to_uid !== args.p_uid); }
+    localStorage.setItem(K, JSON.stringify(d)); return out;
+  }
+  async function frPost(to, kind, body) {
+    if (!S.homeServer) return { ok: false, text: 'Pick a home server in the Online app first. That puts you in the player registry so friends can find you.' };
+    try {
+      const me = netMe(); let r;
+      try { r = await frRpc('rfg_dm_send', { p_uid: me.uid, p_tok: me.tok, p_to: to, p_kind: kind, p_body: body || '' }); }
+      catch (e) { if (!/home server/i.test(e.message)) throw e; await netRpc('rfg_server_join', { p_uid: me.uid, p_tok: me.tok, p_name: me.name, p_server: S.homeServer, p_props: [] }); r = await frRpc('rfg_dm_send', { p_uid: me.uid, p_tok: me.tok, p_to: to, p_kind: kind, p_body: body || '' }); }
+      if (netOn()) netSend({ k: 'dm', u: to });
+      return { ok: true, to: frClean(r && r.to) };
+    } catch (e) { return { ok: false, text: e.message || 'Couldn\'t reach the server.' }; }
+  }
+  async function frAdd(p) {
+    const f = frOf(p.uid);
+    if (f && f.st === 'friend') return { ok: true, text: `${f.name} is already your friend.` };
+    if (f && f.st === 'in') return frAccept(p.uid);
+    const r = await frPost(p.uid, 'req'); if (!r.ok) return r;
+    if (!f) friends().list.push({ uid: p.uid, name: frClean(r.to || p.name), st: 'out', since: S.day }); save();
+    return { ok: true, text: `Friend request sent to ${frClean(r.to || p.name)}.` };
+  }
+  async function frAccept(uid) { const f = frOf(uid); if (!f) return { ok: false, text: 'That request is gone.' }; const r = await frPost(uid, 'ok'); if (!r.ok) return r; f.st = 'friend'; f.since = S.day; save(); return { ok: true, text: `You and ${f.name} are friends now.` }; }
+  function frRemove(uid) { const fr = friends(), f = frOf(uid); if (!f) return; fr.list.splice(fr.list.indexOf(f), 1); save(); frPost(uid, 'bye'); }
+  async function frSend(uid, body) {
+    body = frText(body); if (!body) return { ok: false, text: 'Type something first.' };
+    const f = frOf(uid); if (!f || f.st !== 'friend') return { ok: false, text: 'You can text friends once they add you back.' };
+    const r = await frPost(uid, 'text', body); if (!r.ok) return r; frNote(uid, body, true); return { ok: true };
+  }
+  function frReceive(n) {
+    const fr = friends(), uid = frUid(n.from_uid); if (!uid || uid === S.uid) return;
+    const name = frClean(n.from_name), body = frText(n.body); let f = frOf(uid); if (f) f.name = name;
+    if (n.kind === 'req') { if (f && f.st === 'friend') return; if (f && f.st === 'out') { f.st = 'friend'; frNote(uid, `${name} added you back. You're friends now.`, false, true); return; } if (!f) fr.list.push(f = { uid, name, st: 'in', since: S.day }); frNote(uid, `${name} wants to add you as a friend.`, false, true); goPop('👥', 'Friend request', `${name} wants to add you.`, 'friends'); }
+    else if (n.kind === 'ok') { if (!f) fr.list.push(f = { uid, name, st: 'friend', since: S.day }); else f.st = 'friend'; frNote(uid, `${name} accepted your friend request.`, false, true); goPop('👥', 'Friends', `${name} accepted your friend request.`, 'friends'); }
+    else if (n.kind === 'bye') { if (f) fr.list.splice(fr.list.indexOf(f), 1); }
+    else if (n.kind === 'text' && body) { if (!f) fr.list.push(f = { uid, name, st: 'in', since: S.day }); frNote(uid, body); if (!(PH.open && PH.app === 'friends' && GO.chat === uid)) goPop('💬', name, body, 'friends'); }
+    save();
+  }
+  async function frCheck() {
+    if (!S.homeServer || GO.frBusy || !S.uid || !S.crewKey) return; GO.frBusy = true;
+    try { const me = netMe(), got = await frRpc('rfg_dm_inbox', { p_uid: me.uid, p_tok: me.tok }); for (const n of Array.isArray(got) ? got : []) frReceive(n); if (got && got.length && PH.open && PH.app === 'friends') phoneApp('friends'); }
+    catch (e) { /* offline: try again next time */ } finally { GO.frBusy = false; }
+  }
+  NET_HOOK.recv.push((p, m) => { if (m.k === 'dm' && m.u === S.uid) frCheck(); });
+  function friendsApp(sc, chat) {
+    PH.app = 'friends'; sc.className = 'ph-screen'; const fr = friends(); GO.chat = chat || null;
+    if (chat) {
+      const f = frOf(chat), msgs = fr.dms[chat] || []; if (f) { fr.unseen = Math.max(0, fr.unseen - (f.unread || 0)); f.unread = 0; save(); }
+      sc.innerHTML = phoneHead(esc(f ? f.name : 'Player')) + `<div class="ph-body"><div class="go-chat">${msgs.map(m => `<p class="${m.sys ? 'sys' : m.mine ? 'me' : ''}">${esc(m.t)}</p>`).join('') || '<p class="sys">No texts yet. Say what\'s up.</p>'}</div>
+        ${f && f.st === 'in' ? '<button class="btn go" data-a="ok">Accept friend request</button>' : ''}${f && f.st === 'out' ? '<p class="mk-note">Waiting on them to add you back.</p>' : ''}
+        <div class="go-send"><input class="go-in" maxlength="240" placeholder="${f && f.st === 'friend' ? 'Text ' + esc(f.name) : 'Texts open once you\'re friends'}" ${f && f.st === 'friend' ? '' : 'disabled'}><button class="btn go" data-a="send" ${f && f.st === 'friend' ? '' : 'disabled'}>Send</button></div>
+        ${f ? '<button class="btn" data-a="rm">Remove friend</button>' : ''}</div>`;
+      sc.querySelector('.ph-back').onclick = () => friendsApp(sc);
+      const ch = sc.querySelector('.go-chat'); sc.scrollTop = sc.scrollHeight; void ch;
+      const inp = sc.querySelector('.go-in'), send = async () => { const r = await frSend(chat, inp.value); if (!r.ok) toast(r.text, 'bad'); else friendsApp(sc, chat); };
+      sc.querySelector('[data-a="send"]').onclick = send; inp.onkeydown = e => { if (e.key === 'Enter') send(); };
+      const ok = sc.querySelector('[data-a="ok"]'); if (ok) ok.onclick = async () => { const r = await frAccept(chat); toast(r.text, r.ok ? 'good' : 'bad'); friendsApp(sc, chat); };
+      const rm = sc.querySelector('[data-a="rm"]'); if (rm) rm.onclick = () => { if (!rm.classList.contains('sure')) { rm.classList.add('sure'); rm.textContent = 'Tap again to remove'; return; } frRemove(chat); friendsApp(sc); };
+      return;
+    }
+    const here = netOn() ? [...NET.peers.values()].filter(p => frUid(p.uid) && p.uid !== S.uid && !frOf(p.uid)).map(p => ({ uid: p.uid, name: frClean(p.name) })) : [];
+    const ins = fr.list.filter(f => f.st === 'in'), real = fr.list.filter(f => f.st === 'friend'), outs = fr.list.filter(f => f.st === 'out');
+    const row = (f, extra) => { const last = (fr.dms[f.uid] || []).slice(-1)[0]; return `<button class="go-row click" data-c="${f.uid}"><span class="ic">👤</span><div><b>${esc(f.name)}${f.unread ? ` <span class="go-bad">(${f.unread})</span>` : ''}</b><span>${extra || (last ? esc(last.t.slice(0, 50)) : 'Real player')}</span></div><span>›</span></button>`; };
+    sc.innerHTML = phoneHead('👥 Friends') + `<div class="ph-body">
+      <div class="go-row"><span class="ic">🪪</span><div><b>${esc(frCode())}</b><span>Your friend code. Players in the 2D or the 3D game can add you with it.</span></div></div>
+      ${S.homeServer ? '' : '<p class="mk-note go-bad">Pick a home server in the Online app first. That puts you in the player registry so friends can find you.</p>'}
+      <div class="go-send" style="position:static"><input class="go-in" placeholder="Add by code: MW-XXXX-XXXXXX" data-code><button class="btn go" data-a="find">Add</button></div>
+      ${ins.length ? '<div class="go-sec">Friend requests</div>' + ins.map(f => row(f, 'Wants to add you')).join('') : ''}
+      <div class="go-sec">Friends</div>${real.map(f => row(f)).join('') || '<p class="mk-note">No friends yet. Add somebody by their code, or whoever is online with you.</p>'}
+      ${outs.length ? '<div class="go-sec">Sent</div>' + outs.map(f => row(f, 'Waiting on them')).join('') : ''}
+      ${here.length ? '<div class="go-sec">Online with you</div>' + here.map(p => `<div class="go-row"><span class="ic">🌐</span><div><b>${esc(p.name)}</b><span>On your server right now</span></div><button class="btn go" data-add="${p.uid}">Add</button></div>`).join('') : ''}</div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    sc.querySelectorAll('[data-c]').forEach(b => b.onclick = () => friendsApp(sc, b.dataset.c));
+    sc.querySelectorAll('[data-add]').forEach(b => b.onclick = async () => { const p = here.find(q => q.uid === b.dataset.add); b.disabled = true; const r = await frAdd(p); toast(r.text, r.ok ? 'good' : 'bad'); friendsApp(sc); });
+    sc.querySelector('[data-a="find"]').onclick = async () => {
+      const c = frParse(sc.querySelector('[data-code]').value); if (!c) { toast('That doesn\'t look like a friend code.', 'bad'); return; }
+      if (c === S.uid) { toast('That\'s your own code.', 'bad'); return; }
+      let p = null; try { const r = await frRpc('rfg_player_find', { p_code: c }); p = (Array.isArray(r) ? r[0] : null) || null; } catch (e) {}
+      if (!p || !frUid(p.uid)) { toast('No player with that code.', 'bad'); return; }
+      const r = await frAdd({ uid: p.uid, name: p.name }); toast(r.text, r.ok ? 'good' : 'bad'); friendsApp(sc);
+    };
+    frCheck();
+  }
+
+  // ---------- Hook & Haul Towing: the truck hooks your car wherever it sits, you ride along to the shop ----------
+  const TOW_HOOK = 85, TOW_PER_KM = 6;
+  const twQuote = (m, pickup) => ({ fee: Math.round(TOW_HOOK + m / 1000 * TOW_PER_KM), minutes: Math.round(10 + (pickup || 0) / 1000 * 0.5 + m / 1000 * 1.4) });
+  const twSev = p => p >= 97 ? 'Good' : p >= 75 ? 'Worn' : p >= 45 ? 'Damaged' : p >= 15 ? 'Bad' : 'Wrecked';
+  const TW_LABOR = { body: 1.5, lights: 0.25, tires: 0.5, engine: 1.5, trans: 2, oil: 0.25, fuel: 0.1 };
+  function twCarSpot() { if (!S.car) return null; if (driving && !foot.on) return { x: drv.x, z: drv.z }; if (foot.on && foot.park) return { x: foot.park.x, z: foot.park.z }; return null; }
+  function twBlock() {
+    if (!S.car) return 'You don\'t have a car out to tow.';
+    if (!twCarSpot()) return 'Your car is put up in the garage.';
+    if (inside) return 'Walk outside first.';
+    if (ROLL.on || STRIP.on) return 'Finish the race first.';
+    if (typeof RIDE !== 'undefined' && RIDE.with) return 'You\'re riding with someone. Get out first.';
+    return '';
+  }
+  function twReport(c, rate) {
+    const costs = repairCosts(rate), items = Object.entries(costs).filter(([k, v]) => v > 0).map(([k, v]) => { const pct = Math.round(c.cond[k]); return { k, name: PART_NAMES[k], pct, note: twSev(pct), cost: v, must: k === 'engine' && pct < 12, rec: pct < 75, hours: TW_LABOR[k] }; });
+    if (c.oil < 99) items.push({ k: 'oil', name: 'Oil change', pct: Math.round(c.oil), note: c.oil < 20 ? 'Overdue' : c.oil < 45 ? 'Due soon' : 'Fine for now', cost: Math.round(79 * (rate || 1)), rec: c.oil < 45, hours: TW_LABOR.oil });
+    if (c.fuel < 0.15) items.push({ k: 'fuel', name: isEV(c) ? 'Charge it up' : 'Fill the tank', pct: Math.round(c.fuel * 100), note: c.fuel <= 0 ? 'Empty: won\'t run' : 'Almost empty', cost: Math.round((1 - c.fuel) * (isEV(c) ? 75 : tankGal(c)) * (G.gas[isEV(c) ? 'kwh' : 'regular'] || 3.2) * 1.15), must: c.fuel <= 0, rec: true, hours: TW_LABOR.fuel });
+    const drivable = c.fuel > 0 && c.cond.engine > 0;
+    return { items, drivable, total: items.reduce((a, it) => a + it.cost, 0) };
+  }
+  // the truck hauls you and the car to p; you hop out next to it
+  function twHaul(p, minutes) {
+    closePhone(); closeBigMap(); if (inside) leaveInterior(true);
+    if (foot.on && foot.park) getIn();
+    startDrive(p.x, p.z); getOut();
+    S.hunger = Math.max(0, S.hunger - minutes / 60 * 3); S.energy = Math.max(0, S.energy - minutes / 60 * 2); save(); refreshStats();
+  }
+  function towApp(sc) {
+    PH.app = 'tow'; sc.className = 'ph-screen';
+    const c = S.car, at = twCarSpot(), job = S.towJob, shop = job && goPlace(job.shop);
+    if (job && (!shop || !at || Math.hypot(at.x - shop.x, at.z - shop.z) > 90)) { S.towJob = null; GO.tw = null; save(); }
+    if (S.towJob && c) return towReport(sc, c, goPlace(S.towJob.shop));
+    const block = twBlock(), hq = goPlace('hook_haul');
+    const status = !c ? '' : c.fuel <= 0 ? '<span class="go-bad">Out of gas</span>' : c.cond.engine < 12 ? '<span class="go-bad">Won\'t run</span>' : Math.min(...Object.values(c.cond)) < 45 ? '<span class="go-bad">Banged up</span>' : 'Runs fine';
+    let shops = [];
+    if (!block) {
+      const st = goState(at.x, at.z), pick = hq && goState(hq.x, hq.z) === st ? Math.hypot(hq.x - at.x, hq.z - at.z) * 1.3 : 3000;
+      shops = DATA.P.filter(p => p.type === 'repair' && goState(p.x, p.z) === st).sort((a, b) => Math.hypot(a.x - at.x, a.z - at.z) - Math.hypot(b.x - at.x, b.z - at.z)).slice(0, 6)
+        .map(p => { const m = Math.hypot(p.x - at.x, p.z - at.z) * 1.3; return { p, m, q: twQuote(m, pick) }; });
+    }
+    const street = at && streetAt(at.x, at.z);
+    sc.innerHTML = phoneHead('🛻 Hook &amp; Haul') + `<div class="ph-body">
+      <p class="mk-note">24-hour towing out of the East Side. We hook it wherever it sits (broken down, wrecked, out of gas, or just left somewhere), haul it to the shop you pick, and you ride along. The shop writes up a damage report when it lands, and we can haul it home after.</p>
+      ${c ? `<div class="go-row"><span class="ic" style="color:${esc(c.color)}">🚗</span><div><b>${esc(carLabel(carOf(c.id)))}</b><span>${status}${at ? ` · ${street ? 'on ' + esc(street.name) + ', ' : ''}${esc(districtAt(at.x, at.z) || regionAt(at.x, at.z))}` : ''}</span></div></div>` : ''}
+      ${block ? `<p class="mk-note go-bad">${esc(block)}</p>` : `<div class="go-sec">Tow it to</div>${shops.map((o, i) => `<div class="go-row"><span class="ic">🔧</span><div><b>${esc(o.p.name)}</b><span>${goMi(o.m)} · ${goHrs(o.q.minutes)}${o.p.rate && o.p.rate < 0.97 ? ` · <span class="go-good">${Math.round((1 - o.p.rate) * 100)}% cheaper labor</span>` : o.p.rate > 1.03 ? ` · <span class="go-bad">${Math.round((o.p.rate - 1) * 100)}% pricier labor</span>` : ''}</span></div><button class="btn go" data-tow="${i}">${money(o.q.fee)}</button></div>`).join('') || '<p class="mk-note">No mechanic shops out here.</p>'}
+      <p class="mk-note">${money(TOW_HOOK)} to hook it, plus ${money(TOW_PER_KM)} a km.</p>`}</div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    sc.querySelectorAll('[data-tow]').forEach(b => b.onclick = () => {
+      const o = shops[+b.dataset.tow]; if (!spend(o.q.fee, `Hook & Haul tow to ${o.p.name}`)) return;
+      twHaul(o.p, o.q.minutes); S.towJob = { shop: o.p.id }; GO.tw = null; save();
+      toast(`🛻 Hook & Haul dropped your car at ${o.p.name} (${goHrs(o.q.minutes)}).`, 'good'); if (Math.random() < 0.3) gsNews('tow');
+      openPhone(); phoneApp('tow');
+    });
+  }
+  function towReport(sc, c, shop) {
+    const rep = twReport(c, shop.rate || 1);
+    if (!GO.tw) GO.tw = new Set(rep.items.filter(it => it.rec || it.must).map(it => it.k));
+    const sel = rep.items.filter(it => GO.tw.has(it.k)), cost = sel.reduce((a, it) => a + it.cost, 0), time = Math.round(sel.reduce((a, it) => a + it.hours, 0) * 60);
+    const homes = myPlaces().filter(q => !q.car && goState(q.x, q.z) === goState(shop.x, shop.z)).map(q => { const m = Math.hypot(q.x - shop.x, q.z - shop.z) * 1.3; return { q, m, t: twQuote(m) }; }).sort((a, b) => a.m - b.m);
+    const tone = p => p < 45 ? '#e0483a' : p < 75 ? '#e8b43a' : '#5ec26a';
+    sc.innerHTML = phoneHead('🛻 Hook &amp; Haul') + `<div class="ph-body">
+      <div class="go-row ${rep.drivable ? '' : 'on'}"><span class="ic">${rep.drivable ? '✅' : '⛔'}</span><div><b>${rep.drivable ? 'DRIVABLE' : 'NOT DRIVABLE'}</b><span>📋 Damage report from ${esc(shop.name)} on your ${esc(carLabel(carOf(c.id)))}. Tap a line to add it to or take it off the work order.</span></div></div>
+      ${rep.items.map(it => `<button class="go-row click${GO.tw.has(it.k) ? ' on' : ''}" data-k="${it.k}"><span class="ic">${GO.tw.has(it.k) ? '☑' : '☐'}</span><div><b>${esc(it.name)}${it.must ? ' <span class="go-bad">· needed to run</span>' : ''}</b><span>${esc(it.note)} · ${it.pct}%</span><div class="go-bar"><i style="width:${it.pct}%;background:${tone(it.pct)}"></i></div></div><b>${money(it.cost)}</b></button>`).join('') || '<p class="mk-note">Nothing wrong with it. They checked it over for free.</p>'}
+      ${rep.items.length ? `<button class="btn go" data-a="fix" ${sel.length ? '' : 'disabled'}>Fix ${sel.length === rep.items.length ? 'everything' : 'selected'} · ${money(cost)}${time ? ' · ' + goHrs(time) : ''}</button>` : ''}
+      <div class="go-sec">Then</div>
+      ${homes.map((o, i) => `<div class="go-row"><span class="ic">${esc(o.q.icon)}</span><div><b>Tow it to ${esc(o.q.label)}</b><span>${goMi(o.m)} · ${goHrs(o.t.minutes)} · you ride along</span></div><button class="btn" data-home="${i}">${money(o.t.fee)}</button></div>`).join('')}
+      <div class="go-row"><span class="ic">🔑</span><div><b>Drive it off the lot</b><span>${rep.drivable ? 'It\'s parked out front.' : 'It won\'t run yet. Fix what\'s needed first.'}</span></div><button class="btn" data-a="done" ${rep.drivable ? '' : 'disabled'}>Done</button></div>
+      <p class="mk-note">Walk away from the shop and the car stays parked here. You can also walk in for the full repair counter.</p></div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    sc.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; GO.tw.has(k) ? GO.tw.delete(k) : GO.tw.add(k); towReport(sc, c, shop); });
+    const fx = sc.querySelector('[data-a="fix"]'); if (fx) fx.onclick = () => {
+      if (!spend(cost, `${shop.name}: repairs (tow-in)`)) return;
+      for (const it of sel) { if (it.k === 'oil') c.oil = 100; else if (it.k === 'fuel') c.fuel = 1; else c.cond[it.k] = 100; }
+      S.hunger = Math.max(0, S.hunger - time / 60 * 3); GO.tw = null; save(); refreshStats();
+      toast(`Fixed in ${goHrs(time)}. ${twReport(c, 1).drivable ? 'It runs.' : 'It still won\'t run.'}`, 'good'); towReport(sc, c, shop);
+    };
+    sc.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { const o = homes[+b.dataset.home]; if (!spend(o.t.fee, `Hook & Haul tow to ${o.q.label}`)) return; S.towJob = null; GO.tw = null; twHaul(o.q, o.t.minutes); toast(`🛻 Your car is in the driveway at ${o.q.label}.`, 'good'); });
+    const dn = sc.querySelector('[data-a="done"]'); if (dn) dn.onclick = () => { S.towJob = null; GO.tw = null; save(); closePhone(); };
+  }
+
+  // ---------- navigation: GPS line styles, the compass strip, street names painted on the road ----------
+  const GPS_STYLES = { blue: 'See-through blue', red: 'Solid red', arrows: 'Blue arrows' };
+  const navSet = () => { const n = S.navSet || (S.navSet = {}); if (!n.gps) n.gps = 'blue'; if (n.compass == null) n.compass = true; if (n.streets == null) n.streets = true; return n; };
+  let GPS_ARROWS = null;
+  function gpsArrowTex() {
+    if (GPS_ARROWS) return GPS_ARROWS;
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64; const x = c.getContext('2d');
+    x.fillStyle = 'rgba(61,155,255,0.35)'; x.fillRect(0, 0, 64, 64);
+    x.fillStyle = 'rgba(235,245,255,0.95)'; x.beginPath(); x.moveTo(8, 40); x.lineTo(32, 14); x.lineTo(56, 40); x.lineTo(46, 40); x.lineTo(32, 25); x.lineTo(18, 40); x.closePath(); x.fill();
+    GPS_ARROWS = new THREE.CanvasTexture(c); GPS_ARROWS.wrapS = GPS_ARROWS.wrapT = THREE.RepeatWrapping; return GPS_ARROWS;
+  }
+  function gpsLook() {
+    const s = navSet().gps;
+    GPS_MAT.map = s === 'arrows' ? gpsArrowTex() : null;
+    GPS_MAT.color.set(s === 'red' ? 0xe0261a : s === 'arrows' ? 0xffffff : 0x3d9bff); GPS_MAT.opacity = s === 'red' ? 0.95 : s === 'arrows' ? 0.9 : 0.55; GPS_MAT.needsUpdate = true;
+  }
+  // the route ribbon, now with a texture coordinate along the road so the arrows run toward the turn
+  gpsMesh = function () {
+    if (GPS.mesh) { scene.remove(GPS.mesh); GPS.mesh.geometry.dispose(); GPS.mesh = null; }
+    if (!GPS.pts) return; GPS.meshAt = GPS.at; gpsLook();
+    const P = GPS.pts, v = [], uv = [], w = 1.6, y = 0.22; let run = 0;
+    for (let i = Math.max(0, GPS.at); i + 1 < P.length; i++) {
+      const [ax, az] = P[i], [bx, bz] = P[i + 1], L = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / L, uz = (bz - az) / L, px = -uz * w, pz = ux * w;
+      const a0 = [ax - ux * w + px, y, az - uz * w + pz], a1 = [ax - ux * w - px, y, az - uz * w - pz], b0 = [bx + ux * w + px, y, bz + uz * w + pz], b1 = [bx + ux * w - px, y, bz + uz * w - pz];
+      const u0 = -run / 4, u1 = -(run + L + 2 * w) / 4; run += L;
+      v.push(...a0, ...a1, ...b1, ...a0, ...b1, ...b0); uv.push(0, u0, 1, u0, 1, u1, 0, u0, 1, u1, 0, u1);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    GPS.mesh = new THREE.Mesh(g, GPS_MAT); GPS.mesh.renderOrder = 3; GPS.mesh.frustumCulled = false; scene.add(GPS.mesh);
+  };
+  gpsMini = function (x, to, dpr) {
+    if (!GPS.pts) return; const P = GPS.pts, s = navSet().gps;
+    x.strokeStyle = s === 'red' ? '#e0261a' : 'rgba(61,155,255,0.75)'; x.lineWidth = (s === 'red' ? 4 : 3.5) * dpr; x.lineJoin = 'round'; x.lineCap = 'round'; x.setLineDash(s === 'arrows' ? [6 * dpr, 5 * dpr] : []); x.beginPath();
+    let q = to(...meXZ().slice(0, 2)); x.moveTo(q[0], q[1]); for (let i = GPS.at + 1; i < P.length; i++) { q = to(P[i][0], P[i][1]); x.lineTo(q[0], q[1]); } x.stroke(); x.setLineDash([]);
+  };
+  // the compass strip across the top (the street you're on is already under the minimap)
+  const CMP = { c: null, x: null, last: '' };
+  function stepCompass() {
+    const on = navSet().compass && worldOn; document.body.classList.toggle('go-compass', !!on); if (!on || !driving || inside) return;
+    goCss();
+    if (!CMP.c) { CMP.c = document.createElement('canvas'); CMP.c.id = 'gocompass'; document.body.append(CMP.c); CMP.x = CMP.c.getContext('2d'); }
+    const yaw = foot.on ? foot.camYaw : drv.yaw;
+    let deg = Math.round(-yaw * 180 / Math.PI) % 360; if (deg < 0) deg += 360;
+    const key = String(deg);
+    if (key === CMP.last) return; CMP.last = key;
+    const r = CMP.c.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1), W = Math.round(r.width * dpr), H = Math.round(r.height * dpr);
+    if (!W) return; if (CMP.c.width !== W || CMP.c.height !== H) { CMP.c.width = W; CMP.c.height = H; }
+    const x = CMP.x, span = 120, ppd = W / span; x.clearRect(0, 0, W, H); x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (let d = Math.ceil((deg - span / 2) / 5) * 5; d <= deg + span / 2; d += 5) {
+      const sx = W / 2 + (d - deg) * ppd, n = ((d % 360) + 360) % 360, lab = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' }[n];
+      if (lab) { x.fillStyle = n === 0 ? '#ff5a4e' : '#fff'; x.font = `700 ${12 * dpr}px sans-serif`; x.fillText(lab, sx, H / 2); }
+      else { x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillRect(sx - dpr / 2, H * (n % 15 === 0 ? 0.3 : 0.4), dpr, H * (n % 15 === 0 ? 0.4 : 0.2)); }
+    }
+    x.fillStyle = '#ffd23f'; x.beginPath(); x.moveTo(W / 2 - 5 * dpr, 0); x.lineTo(W / 2 + 5 * dpr, 0); x.lineTo(W / 2, 5 * dpr); x.fill();
+  }
+  // street names painted on the road near you, in the outside lane, readable from the driver's seat
+  const SN = { group: null, tex: new Map(), at: [1e9, 1e9], on: false, rot: 0 };
+  function snTex(name) {
+    if (SN.tex.has(name)) return SN.tex.get(name);
+    const c = document.createElement('canvas'), x = c.getContext('2d'), f = 'bold 44px sans-serif'; x.font = f;
+    const w = Math.min(1024, Math.ceil(x.measureText(name.toUpperCase()).width) + 24); c.width = w; c.height = 64;
+    x.font = f; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = 'rgba(245,245,240,0.82)'; x.fillText(name.toUpperCase(), w / 2, 34);
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; const m = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const o = { m, aspect: w / 64 }; SN.tex.set(name, o); return o;
+  }
+  function stepStreetNames() {
+    const want = navSet().streets && driving && !inside && worldOn;
+    if (!want) { if (SN.group) SN.group.visible = false; return; }
+    const [x, z, yaw] = meXZ();
+    if (!SN.group) { SN.group = new THREE.Group(); scene.add(SN.group); }
+    SN.group.visible = true;
+    // the text faces the way you're heading, so flip each label when you turn around
+    const yawNow = foot.on ? foot.camYaw : yaw, flip = Math.round((((-yawNow) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / (Math.PI / 2)) % 4;
+    if (Math.hypot(x - SN.at[0], z - SN.at[1]) < 70 && flip === SN.rot) return;
+    SN.at = [x, z]; SN.rot = flip;
+    for (const m of SN.group.children) m.geometry.dispose(); SN.group.clear();
+    const seen = new Set();
+    for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) for (const e of streets.at(x + i * 80, z + j * 80)) {
+      if (!e.name || seen.has(e)) continue; seen.add(e);
+      const L = Math.hypot(e.bx - e.ax, e.bz - e.az); if (L < 40 || e.w < 7) continue;
+      const T = snTex(e.name), h = Math.min(3.2, e.w * 0.22), wd = h * T.aspect; if (wd > L * 0.8) continue;
+      const ux = (e.bx - e.ax) / L, uz = (e.bz - e.az) / L, fx = -Math.sin(yawNow), fz = -Math.cos(yawNow);
+      // the letters run along the road with their tops pointing away from you, so they read left to right
+      let nx = -uz, nz = ux; if (nx * fx + nz * fz < 0) { nx = -nx; nz = -nz; }
+      const th = Math.atan2(-nx, -nz);
+      for (let s = 30; s < L - 20; s += 140) {
+        const cx = e.ax + ux * s, cz = e.az + uz * s; if (Math.hypot(cx - x, cz - z) > 240) continue;
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(wd, h), T.m); m.rotation.order = 'YXZ'; m.rotation.x = -Math.PI / 2; m.rotation.y = th;
+        m.position.set(cx - nx * e.w * 0.22, 0.24, cz - nz * e.w * 0.22); m.renderOrder = 2; SN.group.add(m);
+      }
+    }
+  }
+
+  // ---------- the phone: new apps, a badge for unread news and texts, and the settings ----------
+  for (const [after, app] of [['map', { id: 'taxi', name: 'Ryde', icon: '🚕', bg: '#14161c' }], ['taxi', { id: 'tow', name: 'Tow', icon: '🛻', bg: 'linear-gradient(135deg,#f0a020,#a05a00)' }], ['hustle', { id: 'gossip', name: 'Gossip', icon: '🗣', bg: 'linear-gradient(135deg,#ff2d55,#8a1fd1)' }], ['gossip', { id: 'book', name: 'Betting', icon: '🎰', bg: 'linear-gradient(135deg,#1f8f3a,#0b4a1c)' }], ['book', { id: 'friends', name: 'Friends', icon: '👥', bg: '#2a7bff' }], ['friends', { id: 'radio', name: 'Radio', icon: '📻', bg: 'linear-gradient(135deg,#c8341e,#300)' }]]) {
+    const i = PHONE_APPS.findIndex(a => a.id === after); PHONE_APPS.splice(i < 0 ? PHONE_APPS.length - 1 : i + 1, 0, app);
+  }
+  { const g = PHONE_APPS.find(a => a.id === 'cars'); if (g) { g.name = 'Garage'; g.icon = '🅿'; } }
+  const _goPhoneHome = phoneHome;
+  phoneHome = function () {
+    _goPhoneHome.apply(this, arguments); goCss();
+    const badge = { gossip: gossip().unseen, friends: friends().unseen, book: book().bets.filter(b => !b.done).length };
+    for (const [id, n] of Object.entries(badge)) { const b = document.querySelector(`#ph-screen .app[data-id="${id}"]`); if (b && n) b.insertAdjacentHTML('afterbegin', `<span class="go-badge">${n > 99 ? '99+' : n}</span>`); }
+    const sc = phoneEl('ph-screen'), tk = bkTickerHtml(); if (tk && !sc.querySelector('.liveticker')) sc.insertAdjacentHTML('afterbegin', tk);
+  };
+  const _goPhoneApp = phoneApp;
+  phoneApp = function (id) {
+    const sc = phoneEl('ph-screen'); goCss(); GO.chat = null;
+    if (id === 'gossip') return gossipApp(sc);
+    if (id === 'taxi') return taxiApp(sc);
+    if (id === 'cars') return garageApp(sc);
+    if (id === 'radio') return radioApp(sc);
+    if (id === 'book') return bookApp(sc);
+    if (id === 'friends') return friendsApp(sc);
+    if (id === 'tow') return towApp(sc);
+    const r = _goPhoneApp.apply(this, arguments);
+    if (id === 'settings') {
+      const n = navSet(), list = sc.querySelector('.ph-list'); if (!list) return r;
+      list.insertAdjacentHTML('afterbegin', `<button class="ph-row" data-n="gps"><b>GPS line</b><span>${GPS_STYLES[n.gps]}</span></button><button class="ph-row" data-n="compass"><b>Compass strip</b><span>${n.compass ? 'On' : 'Off'}</span></button><button class="ph-row" data-n="streets"><b>Street names on the road</b><span>${n.streets ? 'On' : 'Off'}</span></button>`);
+      list.querySelectorAll('[data-n]').forEach(b => b.onclick = () => {
+        const k = b.dataset.n; if (k === 'gps') { const ks = Object.keys(GPS_STYLES); n.gps = ks[(ks.indexOf(n.gps) + 1) % ks.length]; gpsLook(); if (GPS.pts) gpsMesh(); } else n[k] = !n[k];
+        if (k === 'streets') SN.at = [1e9, 1e9]; CMP.last = ''; save(); phoneApp('settings');
+      });
+    }
+    return r;
+  };
+  // the Bank's roadside button and the rest of the game can open the tow truck too
+  MENUS.tow = () => { closeMenu(); openPhone(); phoneApp('tow'); return null; };
+
+  // ---------- every frame (cheap) and every second ----------
+  const _goStepStreet = stepStreet;
+  stepStreet = function (t) { _goStepStreet.apply(this, arguments); if ((frame & 7) === 3) { try { stepCompass(); stepStreetNames(); } catch (er) { if (!GO.err) { GO.err = 1; console.warn('go', er); } } } };
+  setInterval(() => {
+    if (!S || !worldOn) return; GO.tick++;
+    try {
+      bkSettle(); earStep();
+      if (GO.tick % 150 === 20) gsRumor();
+      if (GO.tick % 30 === 5) frCheck();
+      if (PH.open && PH.app === 'book' && !GO.bk.pick && bkNow() - (GO.bkDrawn || 0) >= 5) bookApp(phoneEl('ph-screen'));
+    } catch (er) { if (!GO.err2) { GO.err2 = 1; console.warn('go tick', er); } }
+  }, 1000);
+  window.__go = { GO, gossip, addGossip, gsRumor, gsNews, goNav, myPlaces, toggleFav, noteRecent, bkGames, bkNow, bkDay, bkScore, bkOdds, bkPlace, bkSettle, book, friends, frReceive, frCheck, frRpc, frCode, twReport, twBlock, towApp, navSet, stepStreetNames, SN, CMP, taxiRide, EAR };
+
+  // ---------- your record label: the 2D game's label, with the ten five-star artists (2D PRs #65, #77, #109) ----------
+  // Start a label at any studio, find artists where they hang out and sign them in person, cut records,
+  // drop them with promo, and the streams pay your bank every morning. Five-star artists skip the clout
+  // gate but never sign for less than $1M (their minimum plus $1 a fan), and they're listed first.
+  const LB_COST = 25000, LB_STREAM = 0.01, LB_MAX = 8, LB_STD = 0.2, LB_CHEAP = 0.4, LB_CHEAP_ADV = 0.35, LB_NEAR = 70;
+  const LB_STUDIOS = { virl_studios: [20, 2.5, '#1 studio in the game'], magnolia_sound: [0, 1], ellum_lab: [7, 1.6], trap_house_studios: [5, 1.25], the_kitchen: [9, 1.75], inner_circle: [12, 2.1], atl_studio: [14, 2.2], atl_peachtree: [17, 2.8], la_sunset: [16, 2.6], mia_studio: [13, 2] };
+  const LB_KINDS = { single: { name: 'Single', cost: 2500, days: 1, mult: 1, decay: 0.93 }, ep: { name: 'EP', cost: 9000, days: 2, mult: 2, decay: 0.94 }, mixtape: { name: 'Mixtape', cost: 16000, days: 3, mult: 2.8, decay: 0.945 }, album: { name: 'Album', cost: 45000, days: 6, mult: 5, decay: 0.955 } };
+  const LB_PROMO = [{ id: 'none', name: 'No promo', cost: 0, lift: 1, viral: 0 }, { id: 'street', name: 'Street team + flyers', cost: 4000, lift: 1.3, viral: 0.02 }, { id: 'playlist', name: 'Playlist push + Throttle ads', cost: 20000, lift: 1.8, viral: 0.05 }, { id: 'radio', name: 'Radio, billboards, a video', cost: 90000, lift: 2.7, viral: 0.1 }];
+  const LB_PRODUCERS = [{ id: 'og_dom_p', name: 'OG Dom P', genre: 'Trap / Southern', q: 8, rate: 1.15 }, { id: 'dirtychold_rant', name: 'DirtyChold Rant', genre: 'Trap / Melodic', q: 11, rate: 1.3 }, { id: 'beats_n_da_corner', name: 'Beats N Da Corner', genre: 'Street / Trap', q: 6, rate: 1 }];
+  const LA = (id, name, genre, hood, hang, talent, buzz, bio, x) => ({ id, name, genre, hood, hang, talent, buzz, bio, ...(x || {}) });
+  const LB_ARTISTS = [
+    LA('lil_six', 'Lil Six', 'Drill', 'Stop Six', 'plug', 58, 4200, 'Raps on the porch on Ramey Ave every night. The whole east side knows his hooks.'),
+    LA('ramey_rae', 'Ramey Rae', 'R&B', 'Stop Six', 'taco_stopsix', 71, 9000, 'Sang in the choir at Dunbar High. Now she sings over trap beats and the comments go crazy.'),
+    LA('poly_pooh', 'Poly Pooh', 'Trap', 'Polytechnic', 'corner_riverside', 46, 1500, 'Freestyles outside the Mini Mart for anybody with a phone out.'),
+    LA('como_kid', 'Como Kid', 'Rap', 'Como', 'corner_como', 52, 2600, 'Battle rapper from Como. Fast mouth, no filter.'),
+    LA('northside_nena', 'Nena del Norte', 'Tejano Trap', 'Northside', 'corner_northside', 63, 7500, 'Puts accordion samples under 808s. Big on the Northside and growing in Oak Cliff.'),
+    LA('stockyard_slim', 'Stockyard Slim', 'Country Rap', 'Stockyards', 'cowtown_diner', 55, 3800, 'Boots, a Cadillac and a banjo loop. Somehow it works.'),
+    LA('magnolia_mo', 'Magnolia Mo', 'Neo-Soul', 'Near Southside', 'taco_magnolia', 67, 5200, 'Plays the patio bars on Magnolia. Writes everything on napkins.'),
+    LA('berry_st_bandz', 'Berry St Bandz', 'Trap', 'Hillside', 'corner_rosedale', 49, 2100, 'Every song is about money he doesn\'t have yet.'),
+    LA('screwtape_tc', 'Screwtape TC', 'Chopped & Screwed', 'Eastside', 'gas_harbor', 60, 6100, 'Slows everything down to a crawl. The car scene plays him at every meet.'),
+    LA('kayla_cash', 'Kayla Cash', 'Pop Rap', 'Downtown', 'luckys', 74, 15000, 'Already has a viral clip. Every label in DFW has her number.'),
+    LA('heights_hollis', 'Hollis', 'Indie', 'Arlington Heights', 'heights_bbq', 41, 900, 'Sad guitar songs. Very good at them. Very sad.'),
+    LA('foundry_fiend', 'Foundry Fiend', 'Drill', 'Riverside', 'old_foundry', 64, 8300, 'Records voice notes in the warehouse between races. Scary pen.'),
+    LA('pier9_pharaoh', 'Pharaoh 9', 'Rap', 'Near Southside', 'pier9', 79, 26000, 'The car scene\'s favorite rapper. Shows up to the Pier 9 lot in a different whip every week.'),
+    LA('lanc_lexi', 'Lexi Lancaster', 'Reggaeton', 'East Lancaster', 'taco_lancaster', 57, 4400, 'Works the taco truck window and sings to the line.'),
+    LA('gran_plaza_g', 'G de la Plaza', 'Corridos Tumbados', 'Southside', 'gran_plaza', 69, 12000, 'Plays the weekend meet with a twelve-string and a crowd around him.'),
+    LA('ellum_eve', 'Eve Ellum', 'Alt R&B', 'Deep Ellum', 'corner_ellum', 76, 19000, 'Sold out the little rooms on Elm St. The big rooms are next.'),
+    LA('oakcliff_ocho', 'Ocho', 'Rap', 'Oak Cliff', 'gas_oakcliff', 66, 9800, 'Oak Cliff\'s pride. Raps in two languages, sometimes in one bar.'),
+    LA('south_dallas_dre', 'SD Dre', 'Trap', 'South Dallas', 'corner_grand', 62, 7000, 'Grand Ave legend. Two mixtapes on the street, zero distribution.'),
+    LA('uptown_ivy', 'Ivy', 'Pop', 'Uptown', 'ellum_meet', 72, 14000, 'Polished, camera-ready, has a stylist already. Wants a real budget.'),
+    LA('ellum_echo', 'Echo Park', 'Rock', 'Deep Ellum', 'gas_deep_ellum', 51, 3100, 'A three-piece that is somehow louder than a five-piece.'),
+    LA('arlington_ace', 'Ace of Arlington', 'Rap', 'Arlington', 'gas_arlington', 54, 3300, 'Raps about the stadium traffic. It\'s a whole genre now.'),
+    LA('big_d_duchess', 'Duchess', 'Rap', 'South Dallas', 'corner_grand', 85, 52000, 'The best rapper in Dallas and she knows it. She won\'t sign with a nobody.'),
+    LA('trinity_tre', 'Trinity Tre', 'Gospel Rap', 'West Dallas', 'gas_oakcliff', 59, 4800, 'His grandmother\'s church choir is on every hook.'),
+    LA('dfw_ghost', 'Ghost', 'Drill', 'Unknown', 'trap_stopsix', 91, 88000, 'Nobody has seen his face. Millions of plays. Word is he records in Stop Six.'),
+    // the five-star roster Kimari asked for
+    LA('ebe_lil_ta', 'Ebe Lil Ta', 'Rap', 'DFW', 'luckys', 100, 150000, 'A five-star artist with a million-dollar conversation before the first handshake.', { five: 1000000 }),
+    LA('bankrol_tookie', 'BANKROL$TOOKIE', 'Trap', 'DFW', 'corner_grand', 100, 180000, 'A five-star trap artist with a serious price tag and serious studio expectations.', { five: 1000000 }),
+    LA('lil_cj_kasino', 'Lil CJ Kasino', 'Rap', 'DFW', 'pier9', 100, 170000, 'A five-star name around the car scene. Signing him changes the label overnight.', { five: 1000000 }),
+    LA('go_yayo', 'Go Yayo', 'Rap', 'DFW', 'trap_stopsix', 100, 160000, 'A five-star street artist who expects a real budget and a real team.', { five: 1000000 }),
+    LA('allstar_peezy', 'AllStar Peezy', 'Rap', 'DFW', 'corner_riverside', 100, 145000, 'A five-star artist with a loyal following and expensive sessions.', { five: 1000000 }),
+    LA('ko', 'KO', 'Rap', 'DFW', 'ellum_meet', 100, 135000, 'A five-star artist with a sharp pen and no interest in small deals.', { five: 1000000 }),
+    LA('profit', 'Profit', 'Rap', 'DFW', 'gas_arlington', 100, 130000, 'A five-star artist who wants the label to prove it can move numbers.', { five: 1000000 }),
+    LA('kt5', 'KT5', 'Rap', 'DFW', 'magnolia_sound', 100, 125000, 'A five-star hometown artist focused on versatility, cars and big records.', { five: 1000000 }),
+    LA('ss_splurge', 'SS Splurge', 'Rap', 'DFW', 'gas_oakcliff', 100, 155000, 'A five-star Dallas artist with a heavy street presence and premium demand.', { five: 1000000 }),
+    LA('murdagang_pb', 'MurdaGang PB', 'Rap', 'DFW', 'kessler_lot', 100, 140000, 'A five-star crew-connected artist with a built-in audience.', { five: 1000000 }),
+  ];
+  const LB_BY = Object.fromEntries(LB_ARTISTS.map(a => [a.id, a]));
+  const LB_TA = ['Stop Six', 'Berry St', 'Cowtown', 'Trinity', 'Southside', 'Late Night', 'Murda Worth', 'Lancaster', 'Big D', 'Magnolia', 'Ramey Ave', 'Pier 9', 'Grand Ave', 'I-30', 'Loop 820', 'Northside', 'Oak Cliff', 'Elm St', 'Candy Paint', 'Paper', 'Twelve', 'Ghost'];
+  const LB_TB = ['Summer', 'Nights', 'Blues', 'Dreams', 'Anthem', 'Money', 'Prayer', 'Ride', 'Story', 'Shine', 'Pressure', 'Freestyle', 'Forever', 'Lullaby', 'Heat', 'Season', 'Gospel', 'Runs', 'Love', 'Diaries'];
+  const lbPick = a => a[Math.floor(Math.random() * a.length)];
+  function label() {
+    const L = S.label || (S.label = { name: null, clout: 0, known: [], roster: [], sessions: [], releases: [], earned: 0, streams: 0 });
+    if (!L.known.length) L.known = LB_ARTISTS.filter(a => !a.five && !lbClout(a)).sort(() => Math.random() - 0.5).slice(0, 6).map(a => a.id);
+    return L;
+  }
+  const lbSigned = id => label().roster.find(r => r.id === id) || null;
+  const lbClout = a => a.five ? 0 : Math.max(0, Math.round((a.talent - 66) * 3));
+  const lbBuzz = id => { const r = lbSigned(id); return r ? r.buzz : (label().scene || {})[id] || LB_BY[id].buzz; };
+  const lbAsk = a => a.five ? Math.round((a.five + lbBuzz(a.id)) / 1000) * 1000 : Math.round((Math.pow(a.talent, 3) / 45 + lbBuzz(a.id) * 0.4) / 100) * 100;
+  const lbDeals = a => { const ask = lbAsk(a); return { standard: { advance: ask, cut: LB_STD }, cheap: { advance: Math.max(a.five || 0, Math.round(ask * LB_CHEAP_ADV / 100) * 100), cut: LB_CHEAP } }; };
+  const lbStars = t => { const n = Math.round(Math.max(0.5, Math.min(5, t / 20)) * 2) / 2; return '★'.repeat(Math.floor(n)) + (n % 1 ? '½' : '') + '☆'.repeat(5 - Math.ceil(n)); };
+  const lbGrade = q => q >= 88 ? 'Classic' : q >= 78 ? 'Fire' : q >= 66 ? 'Solid' : q >= 52 ? 'Decent' : q >= 38 ? 'Mid' : 'Trash';
+  const lbStreams = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(Math.round(n));
+  const lbHang = a => goPlace(a.hang);
+  const lbNear = a => { const p = lbHang(a); if (!p) return false; if (inside) return IN.place && IN.place.id === p.id; const [x, z] = meXZ(); return Math.hypot(p.x - x, p.z - z) < LB_NEAR; };
+  const lbDayOne = (q, buzz, kind, lift) => Math.round(Math.pow(q / 50, 3) * 40000 * Math.pow(1 + buzz / 20000, 0.6) * LB_KINDS[kind].mult * (lift || 1));
+  function lbBlock(a, near) {
+    const L = label();
+    if (!L.name) return 'Start your label first (at any studio).';
+    if (lbSigned(a.id)) return `${a.name} is already on ${L.name}.`;
+    if (!L.known.includes(a.id) && !a.five) return 'You haven\'t heard of them yet.';
+    if (L.roster.length >= LB_MAX) return `Your roster is full (${LB_MAX}). Drop somebody first.`;
+    if (L.clout < lbClout(a)) return `${a.name} wants to see a label with a hit first (clout ${Math.floor(L.clout)} of ${lbClout(a)}).`;
+    if (!near) return `You have to meet ${a.name} in person.`;
+    return '';
+  }
+  function lbSign(id, deal) {
+    const a = LB_BY[id], why = lbBlock(a, lbNear(a)); if (why) return { ok: false, text: why };
+    const d = lbDeals(a)[deal];
+    if (S.cash + S.bank < d.advance) return { ok: false, text: `The advance is ${money(d.advance)}. You have ${money(S.cash + S.bank)} between cash and the bank.` };
+    // a million-dollar advance comes out of the bank once your pockets are empty
+    const fromBank = Math.max(0, d.advance - S.cash); S.bank -= fromBank; S.cash -= d.advance - fromBank; S.log.unshift(`-${money(d.advance)} ${a.name}: signing advance`);
+    const L = label(); if (!L.known.includes(id)) L.known.push(id);
+    L.roster.push({ id, cut: d.cut, advance: d.advance, buzz: lbBuzz(id), day: S.day });
+    save(); refreshStats();
+    if (a.five) addGossip({ kind: 'news', icon: '🎤', text: `${L.name} just signed ${a.name}. A seven-figure deal, people are saying.` });
+    return { ok: true, text: `${a.name} signed to ${L.name}. They keep ${Math.round(d.cut * 100)}% of the royalties.` };
+  }
+  function lbDrop(id) { const L = label(), r = lbSigned(id); if (!r) return; L.roster = L.roster.filter(x => x.id !== id); L.sessions = L.sessions.filter(x => x.artist !== id); (L.scene = L.scene || {})[id] = r.buzz; save(); }
+  function lbBook(studio, id, kind, prod) {
+    const L = label(), r = lbSigned(id), K = LB_KINDS[kind], st = LB_STUDIOS[studio] || [3, 1.2], P = LB_PRODUCERS.find(x => x.id === prod);
+    if (!r) return { ok: false, text: 'Sign them first.' };
+    if (L.sessions.some(x => x.artist === id && !x.done)) return { ok: false, text: `${LB_BY[id].name} is already in the studio.` };
+    const cost = Math.round(K.cost * st[1] * (P ? P.rate : 1)), sp = goPlace(studio);
+    if (!spend(cost, `${sp ? sp.name : 'Studio'}: ${K.name}`)) return { ok: false, text: '' };
+    const q = Math.round(Math.max(5, Math.min(99, LB_BY[id].talent * 0.82 + st[0] + (P ? P.q : 0) + (Math.random() * 24 - 10) + (kind === 'album' ? 3 : 0))));
+    L.sessions.push({ id: 'ses' + Date.now().toString(36), artist: id, kind, studio, ready: S.day + K.days, q, title: `${lbPick(LB_TA)} ${lbPick(LB_TB)}`, prod: P ? P.name : '' });
+    save(); return { ok: true, text: `${LB_BY[id].name} is in the booth${P ? ' with ' + P.name : ''}. The ${K.name.toLowerCase()} is done in ${K.days} day${K.days > 1 ? 's' : ''} (sleep to get there).` };
+  }
+  function lbRelease(sid, promo) {
+    const L = label(), ses = L.sessions.find(x => x.id === sid), P = LB_PROMO.find(x => x.id === promo);
+    if (!ses || ses.ready > S.day) return { ok: false, text: 'It\'s not finished yet.' };
+    if (P.cost && !spend(P.cost, `Promo: ${ses.title}`)) return { ok: false, text: '' };
+    const r = lbSigned(ses.artist), viral = Math.random() < 0.04 + P.viral + Math.max(0, ses.q - 70) / 200;
+    const first = Math.round(lbDayOne(ses.q, r ? r.buzz : lbBuzz(ses.artist), ses.kind, P.lift) * (viral ? 3 : 1));
+    L.sessions = L.sessions.filter(x => x !== ses);
+    L.releases.unshift({ artist: ses.artist, title: ses.title, kind: ses.kind, q: ses.q, day: S.day, viral, daily: first, total: 0, earned: 0, cut: r ? r.cut : LB_STD }); L.releases.length = Math.min(L.releases.length, 60);
+    save();
+    if (viral) addGossip({ kind: 'news', icon: '🔥', text: `"${ses.title}" by ${LB_BY[ses.artist].name} is going viral on Throttle.` });
+    return { ok: true, text: viral ? `"${ses.title}" went viral. ${lbStreams(first)} streams on day one.` : `"${ses.title}" is out. It should do about ${lbStreams(first)} streams tomorrow.` };
+  }
+  // every morning: streams pay the bank, new names come in by text, records finish in the studio
+  function labelDay() {
+    const L = S.label; if (!L || !L.name) return '';
+    let gross = 0, cut = 0, streams = 0;
+    for (const rel of L.releases) {
+      if (rel.daily < 200) continue;
+      const g = rel.daily * LB_STREAM, r = lbSigned(rel.artist), c = r ? r.cut : rel.cut;
+      rel.total += rel.daily; rel.earned += Math.round(g * (1 - c)); gross += g; cut += g * c; streams += rel.daily;
+      if (r) r.buzz = Math.round(Math.min(5e6, r.buzz + rel.daily * 0.015));
+      rel.daily = Math.round(rel.daily * LB_KINDS[rel.kind].decay);
+    }
+    let shows = 0; if (S.day % 7 === 5 || S.day % 7 === 6) for (const r of L.roster) if (r.buzz >= 3000) shows += Math.min(250000, 800 + r.buzz * 0.09) * 0.25;
+    const pay = Math.round(gross - cut + shows);
+    if (pay > 0) { S.bank += pay; L.earned += pay; }
+    L.streams += streams; L.clout = Math.min(1000, L.clout + streams / 250000 + (pay > 0 ? 0.2 : 0));
+    const texts = [];
+    if (Math.random() < 0.5) { const nx = LB_ARTISTS.filter(a => !a.five && !L.known.includes(a.id)).sort((a, b) => a.talent - b.talent)[0]; if (nx) { L.known.push(nx.id); const h = lbHang(nx); texts.push(`🎧 Your A&R: you need to hear ${nx.name} (${nx.genre}, ${nx.hood}). They hang out by ${h ? goShort(h.name) : 'the city'}.`); } }
+    for (const ses of L.sessions) if (!ses.told && ses.ready <= S.day) { ses.told = true; texts.push(`🎚 ${LB_BY[ses.artist].name}'s ${LB_KINDS[ses.kind].name.toLowerCase()} "${ses.title}" is mixed and mastered. It's ${lbGrade(ses.q).toLowerCase()}. Drop it from the Label app.`); }
+    if (texts.length) setTimeout(() => goPop('🎤', L.name, texts[0], 'label'), 3000);
+    L.inbox = [...texts, ...(L.inbox || [])].slice(0, 12);
+    return pay > 0 ? ` ${L.name} made ${money(pay)} (${lbStreams(streams)} streams).` : '';
+  }
+  const _lbSleep = sleep;
+  sleep = function (p) {
+    const L = S.label, before = S.bank; _lbSleep.apply(this, arguments);
+    const line = labelDay(); if (line) { save(); refreshStats(); toast(document.getElementById('toast').textContent + line, 'good'); }
+    void L; void before;
+  };
+  function labelApp(sc, tab, view) {
+    PH.app = 'label'; sc.className = 'ph-screen'; const L = label(); tab = tab || GO.lbTab || (L.name ? 'roster' : 'scene'); GO.lbTab = tab;
+    const head = phoneHead(L.name ? '🎤 ' + esc(L.name) : '🎤 Label');
+    if (view) return lbArtist(sc, view);
+    const tabs = `<div class="go-tabs">${[['roster', `Roster (${L.roster.length}/${LB_MAX})`], ['scene', 'Scene'], ['studio', 'Studio'], ['music', 'Releases']].map(([k, l]) => `<button class="btn${tab === k ? ' go' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
+    let body = '';
+    const aRow = (a, sub, extra) => `<button class="go-row click" data-v="${a.id}"><span class="ic">${a.five ? '⭐' : '🎤'}</span><div><b>${esc(a.name)} ${a.five ? '<span class="go-tag5">5-Star</span>' : ''}<small style="color:var(--muted);font-weight:500"> ${esc(a.genre)} · ${esc(a.hood)}</small></b><span>${sub}</span></div>${extra || '<span>›</span>'}</button>`;
+    if (!L.name) body = `<p class="mk-note">Start your own record label: the LLC, a logo and an office over the studio for ${money(LB_COST)}. Walk into any studio and use the vocal booth to start it. Then sign artists in person where they hang out, cut records, and the streams pay your bank every morning.</p>`;
+    if (tab === 'roster') body += L.roster.map(r => { const a = LB_BY[r.id]; return aRow(a, `${lbStars(a.talent)} · ${r.buzz.toLocaleString()} fans · keeps ${Math.round(r.cut * 100)}%`); }).join('') || (L.name ? '<p class="mk-note">Nobody signed yet. Check the Scene tab and go meet somebody.</p>' : '');
+    else if (tab === 'scene') {
+      const list = [...new Set([...L.known, ...LB_ARTISTS.filter(a => a.five).map(a => a.id)])].map(id => LB_BY[id]).filter(a => a && !lbSigned(a.id)).sort((a, b) => !!b.five - !!a.five || b.talent - a.talent);
+      body += `<p class="mk-note">Your A&amp;R texts you when she hears about somebody. To sign an artist you have to go where they hang out and talk to them in person.</p>` +
+        list.map(a => { const h = lbHang(a), need = lbClout(a); return aRow(a, `${lbStars(a.talent)} · ${lbBuzz(a.id).toLocaleString()} fans · wants ${money(lbAsk(a))}${need > L.clout ? ` · <span class="go-bad">needs clout ${need}</span>` : ''}<br>${lbNear(a) ? '<b class="go-good" style="display:inline;font-size:13px">They\'re right here</b>' : 'Hangs out at ' + esc(h ? goShort(h.name) : '?')}`); }).join('');
+    } else if (tab === 'studio') {
+      const ready = L.sessions.filter(x => x.ready <= S.day), cooking = L.sessions.filter(x => x.ready > S.day);
+      body += `<p class="mk-note">Book sessions in person at a studio (walk in, use the vocal booth). Finished records wait here until you drop them.</p>` +
+        ready.map(x => `<div class="go-row"><span class="ic">💿</span><div><b>"${esc(x.title)}" · ${esc(LB_BY[x.artist].name)}</b><span>${LB_KINDS[x.kind].name} · ${lbGrade(x.q)}${x.prod ? ' · prod. ' + esc(x.prod) : ''}</span><div class="go-tabs" style="margin-top:6px">${LB_PROMO.map(p => `<button class="btn${p.id === 'none' ? '' : ' go'}" data-rel="${x.id}|${p.id}">${p.cost ? esc(p.name.split(/[ ,+]/)[0]) + ' ' + money(p.cost) : 'Drop it'}</button>`).join('')}</div></div></div>`).join('') +
+        cooking.map(x => `<div class="go-row"><span class="ic">🎚</span><div><b>"${esc(x.title)}" · ${esc(LB_BY[x.artist].name)}</b><span>${LB_KINDS[x.kind].name} · ready on day ${x.ready} (today is ${S.day})</span></div></div>`).join('') || (L.name ? '<p class="mk-note">Nothing in the studio.</p>' : '');
+    } else body += `<div class="hu-top"><div><small>Clout</small><b>${Math.floor(L.clout)}</b></div><div><small>Streams</small><b>${lbStreams(L.streams)}</b></div><div><small>Earned</small><b>${money(L.earned)}</b></div></div>` +
+      (L.inbox || []).slice(0, 4).map(t => `<p class="mk-note">${esc(t)}</p>`).join('') +
+      L.releases.slice(0, 20).map(r => `<div class="go-row"><span class="ic">${r.viral ? '🔥' : '💿'}</span><div><b>"${esc(r.title)}" · ${esc(LB_BY[r.artist].name)}</b><span>${LB_KINDS[r.kind].name} · ${lbGrade(r.q)} · ${lbStreams(r.total)} streams · ${money(r.earned)} to you · ${lbStreams(r.daily)} a day now</span></div></div>`).join('');
+    sc.innerHTML = head + `<div class="ph-body">${tabs}${body}</div>`;
+    sc.querySelector('.ph-back').onclick = phoneHome;
+    sc.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => labelApp(sc, b.dataset.tab));
+    sc.querySelectorAll('[data-v]').forEach(b => b.onclick = () => labelApp(sc, tab, b.dataset.v));
+    sc.querySelectorAll('[data-rel]').forEach(b => b.onclick = () => { const [sid, pr] = b.dataset.rel.split('|'), r = lbRelease(sid, pr); if (r.text) toast(r.text, r.ok ? 'good' : 'bad'); labelApp(sc, 'studio'); });
+  }
+  function lbArtist(sc, id) {
+    const a = LB_BY[id], r = lbSigned(id), L = label(), h = lbHang(a), near = lbNear(a);
+    let html = `<div class="go-row"><span class="ic">${a.five ? '⭐' : '🎤'}</span><div><b>${esc(a.name)} ${a.five ? '<span class="go-tag5">5-Star</span>' : ''}</b><span>${esc(a.genre)} · ${esc(a.hood)} · ${lbStars(a.talent)}<br>${esc(a.bio)}<br>${lbBuzz(id).toLocaleString()} fans</span></div></div>`;
+    if (r) html += `<p class="mk-note">On ${esc(L.name)} since day ${r.day}. They keep ${Math.round(r.cut * 100)}% of royalties. Book them at a studio.</p><button class="btn" data-a="drop">Let them go</button>`;
+    else {
+      const why = lbBlock(a, near), d = lbDeals(a);
+      html += `<p class="mk-note">Hangs out at <b>${esc(h ? goShort(h.name) : '?')}</b>. ${near ? '<b class="go-good" style="display:inline">They\'re right here.</b>' : ''}</p>${h && !near ? '<button class="btn" data-a="gps">📍 GPS</button>' : ''}
+        ${a.five ? `<p class="mk-note">⭐ Five-star artist: nobody signs them for less than a <b>${money(a.five)}</b> sign-on bonus. Money is the only thing they care about; it can come out of your bank.</p>` : ''}
+        ${why ? `<p class="mk-note${/in person/.test(why) ? '' : ' go-bad'}">${esc(why)}</p>` : ''}
+        <button class="btn go" data-deal="standard" ${why ? 'disabled' : ''}>Big advance · ${money(d.standard.advance)} · they keep 20%</button>
+        <button class="btn" data-deal="cheap" ${why ? 'disabled' : ''}>Small advance · ${money(d.cheap.advance)} · they keep 40%</button>`;
+    }
+    sc.innerHTML = phoneHead(esc(a.name)) + `<div class="ph-body">${html}</div>`;
+    sc.querySelector('.ph-back').onclick = () => labelApp(sc);
+    const g = sc.querySelector('[data-a="gps"]'); if (g) g.onclick = () => { setPin(`${a.name} · ${goShort(h.name)}`, h.x, h.z); closePhone(); toast(`GPS set: ${a.name} hangs out at ${goShort(h.name)}`, 'good'); };
+    const dr = sc.querySelector('[data-a="drop"]'); if (dr) dr.onclick = () => { if (!dr.classList.contains('sure')) { dr.classList.add('sure'); dr.textContent = 'Tap again to drop them'; return; } lbDrop(id); labelApp(sc, 'roster'); };
+    sc.querySelectorAll('[data-deal]').forEach(b => b.onclick = () => { const res = lbSign(id, b.dataset.deal); toast(res.text, res.ok ? 'good' : 'bad'); if (res.ok) labelApp(sc, 'roster'); });
+  }
+  // the vocal booth at every studio: start the label, book your artists, or cut your own track like before
+  const _lbBooth = MENUS.booth;
+  MENUS.booth = function (p) {
+    const base = _lbBooth.apply(this, arguments), L = label(), id = p && p.id, st = LB_STUDIOS[id] || [3, 1.2], rows = [];
+    if (!L.name) rows.push({ t: 'Start your record label', s: 'The LLC, a logo and an office over the studio. Sign artists, cut records, collect streams.', btn: money(LB_COST), act: () => { if (!spend(LB_COST, 'Record label')) return; L.name = `${(S.name || 'Glitch').split(' ')[0]} Records`; L.founded = S.day; toast(`${L.name} is open for business. Open the Label app.`, 'good'); } });
+    else {
+      rows.push({ t: `${L.name}: the Label app`, s: `${L.roster.length} artists · clout ${Math.floor(L.clout)}`, btn: 'Open', act: () => { closeMenu(); openPhone(); phoneApp('label'); } });
+      const Q = GO.lbQ || (GO.lbQ = { kind: 'single', prod: '' });
+      rows.push({ t: 'Project', s: Object.values(LB_KINDS).map(k => k.name).join(' / '), btn: LB_KINDS[Q.kind].name, act: () => { const ks = Object.keys(LB_KINDS); Q.kind = ks[(ks.indexOf(Q.kind) + 1) % ks.length]; } });
+      rows.push({ t: 'Producer', s: Q.prod ? LB_PRODUCERS.find(x => x.id === Q.prod).genre : 'House engineer', btn: Q.prod ? LB_PRODUCERS.find(x => x.id === Q.prod).name : 'None', act: () => { const ids = ['', ...LB_PRODUCERS.map(x => x.id)]; Q.prod = ids[(ids.indexOf(Q.prod) + 1) % ids.length]; } });
+      for (const r of L.roster) { const a = LB_BY[r.id], busy = L.sessions.some(x => x.artist === r.id), P = LB_PRODUCERS.find(x => x.id === Q.prod), cost = Math.round(LB_KINDS[Q.kind].cost * st[1] * (P ? P.rate : 1));
+        rows.push({ t: `Book ${a.name}`, s: busy ? 'Already in the studio' : `${LB_KINDS[Q.kind].name} · ${lbStars(a.talent)}`, btn: busy ? 'Busy' : money(cost), off: busy, act: () => { const res = lbBook(id, r.id, Q.kind, Q.prod); if (res.text) toast(res.text, res.ok ? 'good' : 'bad'); } }); }
+    }
+    return { title: base.title + (LB_STUDIOS[id] && LB_STUDIOS[id][2] ? ' · ' + LB_STUDIOS[id][2] : ''), sub: base.sub, rows: [...rows, ...base.rows] };
+  };
+  // artists you're looking for say what's up when you pull up to their spot
+  let lbSeen = '';
+  setInterval(() => {
+    if (!S || !worldOn || !S.label || !S.label.name) return;
+    const L = S.label, a = LB_ARTISTS.find(a => (L.known.includes(a.id) || a.five) && !lbSigned(a.id) && lbNear(a));
+    const k = a ? a.id : ''; if (k && k !== lbSeen) goPop(a.five ? '⭐' : '🎤', a.name + ' is here', `${a.name} is hanging out right here. Open the Label app to talk business.`, 'label');
+    lbSeen = k;
+  }, 3000);
+  PHONE_APPS.splice(PHONE_APPS.findIndex(x => x.id === 'hustle') + 1, 0, { id: 'label', name: 'Label', icon: '🎤', bg: 'linear-gradient(135deg,#ffb800,#a8329e)' });
+  const _lbPhoneApp = phoneApp;
+  phoneApp = function (id) { if (id === 'label') { goCss(); return labelApp(phoneEl('ph-screen')); } return _lbPhoneApp.apply(this, arguments); };
+  { const st = document.createElement('style'); st.textContent = '.go-tag5 { display: inline-block; background: #ffd23f; color: #1a1300; border-radius: 6px; padding: 0 6px; font-size: 11px; font-weight: 800; vertical-align: 2px; }'; document.head.append(st); }
+  window.__label = { label, lbSign, lbBook, lbRelease, labelDay, lbAsk, lbDeals, LB_BY, lbNear };
+  // ---------- bikes, trikes, Slingshots and ATVs (_rides.js): Cowtown Powersports, riding them with you on the seat,
+  // Cross Timbers Trail Park (trail races against the locals, buy the park and run it) and Sea-Doo rental docks ----------
+  // The rides come from the 2D game's data/cars.js; each model is built by mk_rides.mjs and baked to cars/<id>.json
+  // like the cars. kind picks the seat and the rider's pose: sport bikes tuck, cruisers sit back, ATVs stand tall.
+  const RIDES = [
+    ['suzuki_hayabusa_2022', 'suzuki', 'Hayabusa', '', 2022, 19000, 188, 344, 'RWD', '1340cc I4', '#c8c8c8', 186, 11000, 'sport'],
+    ['suzuki_gsx_r750_2011', 'suzuki', 'GSX-R750', '', 2011, 12500, 148, 270, 'RWD', '750cc I4', '#1b4fc4', 165, 13500, 'sport'],
+    ['kawasaki_ninja_h2_2019', 'kawasaki', 'Ninja H2', '', 2019, 33000, 228, 318, 'RWD', '998cc Supercharged I4', '#24262b', 200, 14000, 'sport'],
+    ['kawasaki_ninja_zx_10r_2021', 'kawasaki', 'Ninja ZX-10R', '', 2021, 18000, 203, 287, 'RWD', '998cc I4', '#1f8f3a', 186, 14000, 'sport'],
+    ['kawasaki_ninja_500_2024', 'kawasaki', 'Ninja 500', '', 2024, 5300, 51, 251, 'RWD', '451cc Parallel-Twin', '#1f8f3a', 110, 10500, 'sport', 0.92],
+    ['yamaha_yzf_r1_2020', 'yamaha', 'YZF-R1', '', 2020, 18999, 197, 281, 'RWD', '998cc Crossplane I4', '#1b4fc4', 186, 14000, 'sport'],
+    ['honda_cbr1000rr_r_fireblade_sp_2022', 'honda', 'CBR1000RR-R', 'Fireblade SP', 2022, 29000, 214, 281, 'RWD', '999cc I4', '#c41b1b', 186, 14500, 'sport'],
+    ['ducati_panigale_v4_s_2023', 'ducati', 'Panigale V4', 'S', 2023, 31000, 214, 275, 'RWD', '1103cc Desmosedici Stradale V4', '#c41b1b', 186, 15000, 'sport'],
+    ['bmw_s_1000_rr_2023', 'bmw', 'S 1000 RR', '', 2023, 18000, 205, 277, 'RWD', '999cc ShiftCam I4', '#f2f2f2', 186, 14600, 'sport'],
+    ['harley_street_glide_2024', 'harley', 'Street Glide', '', 2024, 27000, 105, 448, 'RWD', 'Milwaukee-Eight 117 V-Twin', '#0d0d0d', 118, 5600, 'cruiser'],
+    ['harley_low_rider_st_2022', 'harley', 'Low Rider', 'ST', 2022, 21000, 103, 407, 'RWD', 'Milwaukee-Eight 117 V-Twin', '#4a4f57', 118, 5600, 'cruiser'],
+    ['harley_fat_boy_114_2018', 'harley', 'Fat Boy', '114', 2018, 21500, 93, 397, 'RWD', 'Milwaukee-Eight 114 V-Twin', '#9aa0a8', 112, 5600, 'cruiser'],
+    ['harley_tri_glide_ultra_2020', 'harley', 'Tri Glide', 'Ultra', 2020, 37000, 93, 651, 'RWD', 'Milwaukee-Eight 114 V-Twin', '#7a1414', 110, 5600, 'trike'],
+    ['canam_spyder_rt_2020', 'canam', 'Spyder', 'RT', 2020, 28000, 115, 546, 'RWD', '1330cc Rotax I3', '#24262b', 120, 8500, 'spyder'],
+    ['canam_ryker_900_2022', 'canam', 'Ryker', '900', 2022, 11500, 82, 365, 'RWD', '900cc Rotax I3', '#e8c21a', 100, 8000, 'spyder'],
+    ['polaris_slingshot_sl_2020', 'polaris', 'Slingshot', 'SL', 2020, 27000, 178, 837, 'RWD', '2.0L Prostar I4', '#c41b1b', 125, 8500, 'sling'],
+    ['polaris_slingshot_r_2020', 'polaris', 'Slingshot', 'R', 2020, 34000, 203, 837, 'RWD', '2.0L Prostar I4', '#e8641a', 130, 8500, 'sling'],
+    ['honda_fourtrax_rancher_2019', 'honda', 'FourTrax Rancher', '', 2019, 6800, 22, 370, 'AWD', '420cc Single', '#c41b1b', 45, 6500, 'atv'],
+    ['polaris_sportsman_570_2021', 'polaris', 'Sportsman', '570', 2021, 8000, 44, 403, 'AWD', '567cc ProStar Single', '#c41b1b', 60, 7000, 'atv'],
+    ['yamaha_grizzly_eps_2020', 'yamaha', 'Grizzly', 'EPS', 2020, 11000, 46, 395, 'AWD', '686cc Single', '#4a5232', 60, 7000, 'atv'],
+    ['yamaha_raptor_700r_2016', 'yamaha', 'Raptor', '700R', 2016, 9500, 47, 272, 'RWD', '686cc Single', '#1b4fc4', 75, 8500, 'atv'],
+    ['canam_outlander_xt_p_1000r_2022', 'canam', 'Outlander', 'XT-P 1000R', 2022, 17000, 91, 460, 'AWD', '976cc Rotax V-Twin', '#e8c21a', 75, 8000, 'atv'],
+  ].map(([id, make, model, trim, y, msrp, hp, kg, drive, engine, color, lim, redline, kind, k]) => ({
+    id, make, model, trim, y, msrp, hp, kg, drive, engine, color, lim, redline, kind, k: k || 1, market: null, asp: /Supercharged/.test(engine) ? 'sc' : 'na',
+    cls: kind === 'atv' ? 'ATV' : 'Bike', body: kind === 'atv' ? 'atv' : kind === 'sling' ? 'sling' : kind === 'sport' || kind === 'cruiser' ? 'moto' : 'trike', ride: kind }));
+  const RIDE_BY = Object.fromEntries(RIDES.map(r => [r.id, r]));
+  const RIDE_MAKES = { suzuki: 'Suzuki', kawasaki: 'Kawasaki', yamaha: 'Yamaha', honda: 'Honda', ducati: 'Ducati', bmw: 'BMW', harley: 'Harley-Davidson', canam: 'Can-Am', polaris: 'Polaris' };
+  const rideOf = c => c && RIDE_BY[c.id || c];
+  const isRide = c => !!rideOf(c);
+  const twoWheels = r => r && (r.kind === 'sport' || r.kind === 'cruiser');
+
+  // the rides join the car list, the save keeps them, peers on one show it
+  const _rdBuilt = builtCars;
+  builtCars = function (all) { const list = _rdBuilt.apply(this, arguments); Object.assign(G.makes, RIDE_MAKES); for (const r of RIDES) if (!list.some(c => c.id === r.id)) list.push(r); return list; };
+  const _rdKeep = keepBuilt;
+  keepBuilt = function (c) { return RIDE_BY[c.id] ? c : _rdKeep.apply(this, arguments); };
+  const _rdModel = model3d;
+  model3d = function (id, m3) { if (RIDE_BY[m3]) return m3; if (RIDE_BY[id]) return id; return _rdModel.apply(this, arguments); };
+  // Cowtown Powersports sells only rides; the car dealers sell only cars
+  const _rdDealer = dealerCars;
+  dealerCars = function (p) { if (p && p.rides) return G.cars.filter(c => RIDE_BY[c.id]); return _rdDealer.apply(this, arguments).filter(c => !RIDE_BY[c.id]); };
+  const _rdListings = mkListings;
+  mkListings = function () { const all = G.cars; G.cars = all.filter(c => !RIDE_BY[c.id]); try { return _rdListings.apply(this, arguments); } finally { G.cars = all; } };
+  // redline: the bikes rev
+  const _rdRed = gbRed;
+  gbRed = function (c) { const r = rideOf(c); return r ? r.redline : _rdRed.apply(this, arguments); };
+
+  // a ride runs out to its real top speed; in the trail park's dirt a car bogs down and a 4-wheeler keeps its bite
+  const TRAIL_LOT = { x0: -4925, z0: 2600, x1: -4200, z1: 3400 };
+  const inPark = (x, z, pad = 0) => x > TRAIL_LOT.x0 - pad && x < TRAIL_LOT.x1 + pad && z > TRAIL_LOT.z0 - pad && z < TRAIL_LOT.z1 + pad;
+  const _rdPerf = carPerf;
+  carPerf = function () {
+    const P = _rdPerf.apply(this, arguments), c = S.car, r = rideOf(c);
+    if (r) { P.top = Math.min(P.top * 1.6, r.lim / 2.237 * (P.top > 0 ? 1 : 0)); P.wr0 = r.kind === 'atv' ? 0.47 : 0.52; P.tireK = r.kind === 'atv' ? 0.95 : 1.05; P.tqm = 1; P.cgL = r.kind === 'sport' ? 0.3 : 0.24; }
+    if (c && c === S.car && driving && inPark(drv.x, drv.z)) {
+      if (!r) { P.top *= 0.42; P.acc *= 0.5; P.pw *= 0.5; }
+      else if (r.kind !== 'atv') { P.top *= 0.62; P.acc *= 0.7; P.pw *= 0.7; }
+    }
+    return P;
+  };
+  // shops that only fit a car: engine builds and swaps, forged rims, drag packs, car audio
+  const rideNo = (p, what) => ({ title: p && p.name || 'Shop', sub: 'Not for this one', rows: [{ t: `${what} is for cars and trucks`, s: `Your ${carLabel(carOf(S.car.id))} rides on its own setup. Paint it, tune it on the laptop, keep the tires fresh.`, btn: 'OK', act: () => closeMenu() }] });
+  for (const [k, what] of [['engine', 'Engine building'], ['rims', 'The rim shop'], ['drag', 'A drag pack'], ['audio', 'Car audio']]) {
+    const fn = MENUS[k]; if (!fn) continue;
+    MENUS[k] = function (p) { if (S.car && isRide(S.car)) return rideNo(p, what); return fn.apply(this, arguments); };
+  }
+
+  // ---------- you on the seat: your character rides it, and two-wheelers lean into the turns ----------
+  // seat: inner-model x forward, y up, z right (the bakes face +x); pose angles in degrees; arm out to the bars
+  const RD_SEATS = {
+    sport: { x: -0.27, y: 0.95, z: 0, hip: 72, knee: 104, lean: 0.62, sh: 74, el: 20, spread: 0.12 },
+    cruiser: { x: -0.24, y: 0.80, z: 0, hip: 80, knee: 52, lean: -0.06, sh: 70, el: 8, spread: 0.2 },
+    trike: { x: -0.24, y: 0.80, z: 0, hip: 80, knee: 52, lean: -0.06, sh: 70, el: 8, spread: 0.2 },
+    spyder: { x: -0.30, y: 1.00, z: 0, hip: 62, knee: 50, lean: 0.12, sh: 62, el: 14, spread: 0.18 },
+    sling: { x: -0.16, y: 0.50, z: -0.29, hip: 84, knee: 12, lean: -0.28, sh: 50, el: 34, spread: 0.04 },
+    atv: { x: -0.32, y: 0.97, z: 0, hip: 58, knee: 62, lean: 0.24, sh: 62, el: 20, spread: 0.2 },
+  };
+  function poseRider(P, r, steer) {
+    const s = RD_SEATS[r.kind] || RD_SEATS.sport, k = r.kind === 'sport' ? r.k : 1, Hs = P.root.scale.y || 1;
+    P.root.position.set(s.z * k, s.y * k + 0.07 - 0.85 * Hs, -s.x * k);
+    for (let i = 0; i < 2; i++) {
+      P.legs[i].rotation.set(-s.hip * DEG, 0, (i ? 1 : -1) * 0.08);
+      if (P.knees) { P.knees[i].rotation.x = s.knee * DEG; P.ankles[i].rotation.x = -0.25; }
+      // the bars turn with the steering: one hand pushes, the other pulls
+      const st = (i ? 1 : -1) * steer * 6;
+      P.arms[i].rotation.set(-(s.sh + st) * DEG, 0, (i ? 1 : -1) * s.spread);
+      if (P.fores) P.fores[i].rotation.x = -s.el * DEG;
+    }
+    P.upper.rotation.set(s.lean, steer * 0.08, 0);
+    if (P.head) P.head.rotation.set(-s.lean * 0.75, steer * 0.15, 0);
+  }
+  const RD = { lean: 0, yaw: null, on: false };
+  function rideFrame(dt) {
+    const r = rideOf(S && S.car), U = car && car.userData, m = U && U.model;
+    const want = !!(r && driving && !foot.on && !inside && m && !RIDE.with && !ROLL.on);
+    if (!want) { if (RD.on && ME && foot.on && ME.wrap.parent !== foot.holder) wearMe(foot.holder); RD.on = false; RD.yaw = null; return; }
+    if (!ME || ME.wrap.parent !== m) { wearMe(m); ME.wrap.position.set(0, 0, 0); ME.wrap.rotation.set(0, 0, 0); }
+    RD.on = true;
+    poseRider(ME, r, drv.steer || 0);
+    // lean: v²/r over g, from how fast the heading turns
+    const yaw = drv.yaw, dy = RD.yaw == null ? 0 : Math.atan2(Math.sin(yaw - RD.yaw), Math.cos(yaw - RD.yaw)); RD.yaw = yaw;
+    const rate = dt > 0 ? dy / dt : 0, target = twoWheels(r) ? clamp(Math.atan(drv.v * rate / 9.81), -0.72, 0.72) : clamp(-drv.v * rate * 0.004, -0.06, 0.06);
+    RD.lean += (target - RD.lean) * Math.min(1, dt * 6);
+    m.rotation.z = RD.lean;
+    // a bike is small: the chase cam sits closer and lower than for a car
+    if (!drv.far && !TR.cine) {
+      const cy = drv.camYaw == null ? drv.yaw : drv.camYaw, back = r.kind === 'sling' ? 8 : 6.6, up = r.kind === 'sling' ? 3.0 : 2.7;
+      if (!RD.cam) RD.cam = camera.position.clone();
+      RD.cam.lerp(v4.set(drv.x + Math.sin(cy) * back, up, drv.z + Math.cos(cy) * back), 1 - Math.exp(-dt * 6));
+      camera.position.copy(RD.cam); camera.lookAt(drv.x - Math.sin(cy) * 6, 1.25, drv.z - Math.cos(cy) * 6);
+    } else RD.cam = null;
+  }
+  const _rdStep = stepDrive;
+  stepDrive = function (dt) { _rdStep.apply(this, arguments); try { rideFrame(dt); trailFrame(dt); } catch (e) { console.warn('rides: ' + e.message); } };
+
+  // ---------- Cross Timbers Trail Park ----------
+  const TRAIL_OFFICE = { x: -4905, z: 2682, w: 26, d: 36 };
+  const TRAILS = [
+    { id: 'tr_creek', name: 'Creek Loop', kind: 'circuit', laps: 2, tier: 1, desc: 'Two laps round the creek bottom. Flat, fast, a little mud in the corners. Where everybody starts.',
+      corners: [[-4860, 2760], [-4620, 2760], [-4620, 2960], [-4860, 2960]] },
+    { id: 'tr_cedar', name: 'Cedar Ridge Run', kind: 'sprint', tier: 2, desc: 'Up through the cedar brakes, across the ridge and down the far fence line. Tight, blind, and long.',
+      corners: [[-4860, 2640], [-4420, 2640], [-4420, 2840], [-4260, 2840], [-4260, 3120], [-4540, 3120], [-4540, 3360], [-4860, 3360]] },
+    { id: 'tr_bog', name: 'Mud Bog Gauntlet', kind: 'circuit', laps: 2, tier: 3, desc: 'Two laps of switchbacks through the bottoms by the stock tank. Ninety-degree turns all the way round.',
+      corners: [[-4580, 2760], [-4480, 2760], [-4480, 2900], [-4340, 2900], [-4340, 3040], [-4480, 3040], [-4480, 3200], [-4580, 3200]] },
+  ];
+  const TRAIL_BY = Object.fromEntries(TRAILS.map(t => [t.id, t]));
+  // the locals: their 4-wheeler, how well they ride it, and the stake
+  const TRAIL_RIDERS = [
+    { id: 'tr_mudcat', name: 'Bubba Reyes', nick: 'Mudcat', skill: 0.55, tier: 1, model: 'polaris_sportsman_570_2021', paint: '#4a5232' },
+    { id: 'tr_dixie', name: 'Dixie Calhoun', nick: 'Dixie', skill: 0.7, tier: 2, model: 'yamaha_raptor_700r_2016', paint: '#1b4fc4' },
+    { id: 'tr_tank', name: 'Terrence "Tank" Mayfield', nick: 'Tank', skill: 0.75, tier: 2, model: 'canam_outlander_xt_p_1000r_2022', paint: '#e8c21a' },
+    { id: 'tr_coyote', name: 'Junior Whitlock', nick: 'Coyote', skill: 0.9, tier: 3, model: 'canam_outlander_xt_p_1000r_2022', paint: '#0d0d0d' },
+  ];
+  const TR_BET = [0, 500, 1500, 4000];
+  const TR_START_IN = 45;
+  // the ride as a line: start 45 m down the first leg, through every corner (each lap), back to the start for a circuit
+  function trailPath(t) {
+    const c = t.corners, [ax, az] = c[0], [bx, bz] = c[1], L0 = Math.hypot(bx - ax, bz - az), s = [ax + (bx - ax) * TR_START_IN / L0, az + (bz - az) * TR_START_IN / L0];
+    const pts = [s];
+    if (t.kind === 'circuit') { for (let l = 0; l < t.laps; l++) { for (let i = 1; i < c.length; i++) pts.push(c[i]); pts.push(c[0]); pts.push(s); } }
+    else for (let i = 1; i < c.length; i++) pts.push(c[i]);
+    let len = 0; const cum = [0]; for (let i = 1; i < pts.length; i++) { len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); cum.push(len); }
+    return { pts, cum, len };
+  }
+  // the park record: a pro on an Outlander, in our physics
+  const trailRecord = t => Math.round(trailPath(t).len / 24.6);
+  const trTier = () => S.rep >= 30 ? 3 : S.rep >= 10 ? 2 : 1;
+  const fmtT = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, '0')}`;
+  function pathAt(P, s) {
+    s = clamp(s, 0, P.len); let i = 1; while (i < P.cum.length - 1 && P.cum[i] < s) i++;
+    const a = P.pts[i - 1], b = P.pts[i], f = (s - P.cum[i - 1]) / Math.max(1e-6, P.cum[i] - P.cum[i - 1]);
+    return { x: a[0] + (b[0] - a[0]) * f, z: a[1] + (b[1] - a[1]) * f, yaw: Math.atan2(-(b[0] - a[0]), -(b[1] - a[1])) };
+  }
+  const TR = { on: null, el: null, rings: null };
+  function trCss() {
+    if (document.getElementById('trcss')) return;
+    const st = document.createElement('style'); st.id = 'trcss';
+    st.textContent = `#trhud{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%);z-index:22;display:flex;gap:6px;align-items:center;pointer-events:none;font-family:"Barlow Condensed","Arial Narrow",sans-serif;color:#f1ece4}
+      #trhud div{background:rgba(18,16,22,.82);border:1px solid #3a3244;border-radius:10px;padding:3px 10px;text-align:center;min-width:56px}#trhud b{display:block;font-size:21px;line-height:1.1}#trhud span{font-size:11px;letter-spacing:.08em;color:#a89fb2;text-transform:uppercase}
+      #trhud button{pointer-events:auto;background:rgba(18,16,22,.85);color:#f1ece4;border:1px solid #3a3244;border-radius:10px;padding:8px 10px;font:700 15px "Barlow Condensed",sans-serif}`;
+    document.head.append(st);
+  }
+  function trRings() {
+    if (TR.rings) return TR.rings;
+    const mk = (c, o) => { const g = new THREE.Group(), ring = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.28, 10, 40), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o })); ring.position.y = 3.2; g.add(ring);
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 40, 8, 1, true), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o * 0.35, depthWrite: false })); beam.position.y = 20; g.add(beam); g.visible = false; scene.add(g); return g; };
+    return (TR.rings = [mk(0xff8a1a, 0.95), mk(0xffd23a, 0.45)]);
+  }
+  function trailStart(t, rider) {
+    if (!S.car) { toast('You need something to ride.', 'bad'); return false; }
+    if (!driving || foot.on) { toast('Get on it first, then come back to the office.', 'bad'); return false; }
+    if (TR.on) { toast('You are already on a trail.', 'bad'); return false; }
+    if (t.tier > trTier()) { toast(`${t.name} opens at ${t.tier === 2 ? 10 : 30} rep.`, 'bad'); return false; }
+    const bet = rider ? TR_BET[rider.tier] : 0;
+    if (!spend(rider ? bet : 20, rider ? `Trail race bet vs ${rider.nick}` : 'Trail park day pass')) return false;
+    closeMenu(); showCard(null);
+    const P = trailPath(t), s0 = pathAt(P, 0);
+    // you line up on the start, the local next to you
+    const side = (yaw, d) => [Math.cos(yaw) * d, -Math.sin(yaw) * d];
+    const [lx, lz] = side(s0.yaw, -2.2); drv.x = s0.x + lx; drv.z = s0.z + lz; drv.yaw = s0.yaw; drv.v = 0; physReset();
+    const T = TR.on = { t, rider, bet, P, cp: 1, time: 0, go: false, count: 3.2, rec: trailRecord(t), done: false, sx: drv.x, sz: drv.z, syaw: drv.yaw, ghost: null, gs: 0, gv: 0, gT: null, off: 0 };
+    if (rider) {
+      const rm = RIDE_BY[rider.model], avg = rm.lim / 2.237 * (0.5 + 0.25 * rider.skill) * (0.97 + Math.random() * 0.06);
+      T.gAvg = avg; T.gTop = Math.min(rm.lim / 2.237, avg * 1.25);
+      const g = T.ghost = new THREE.Group(); scene.add(g);
+      const slot = putCar(g, rider.model, rider.paint, m => { m.position.y = 0; T.gm = m; const who = crowdPerson(TRAIL_RIDERS.indexOf(rider) + 3); if (who) { m.add(who.wrap); poseRider(who, rm, 0); } }); void slot;
+      const [rx, rz] = side(s0.yaw, 2.2); g.position.set(s0.x + rx, 0.12, s0.z + rz); g.rotation.y = s0.yaw; T.gOff = [rx, rz];
+    }
+    trCss();
+    if (!TR.el) { TR.el = document.createElement('div'); TR.el.id = 'trhud'; document.body.append(TR.el); }
+    TR.el.innerHTML = `<div><b data-k="t">0:00.00</b><span>time</span></div><div><b data-k="cp">1/${P.pts.length - 1}</b><span>gates</span></div>${rider ? `<div><b data-k="gap">—</b><span>vs ${esc(rider.nick)}</span></div>` : `<div><b>${fmtT(T.rec)}</b><span>record</span></div>`}<button data-k="quit">Quit</button>`;
+    TR.el.hidden = false; TR.el.querySelector('[data-k="quit"]').onclick = () => trailEnd('quit');
+    toast(rider ? `${rider.nick} pulls up next to you on a ${carLabel(carOf(rider.model))}. Three, two…` : `${t.name}: ride it clean. Follow the orange gates.`, 'good');
+    return true;
+  }
+  function trailFrame(dt) {
+    const T = TR.on; if (!T) return;
+    const q = k => TR.el.querySelector(`[data-k="${k}"]`), [nx, nz] = T.P.pts[T.cp] || T.P.pts[T.P.pts.length - 1];
+    // the countdown holds you on the line
+    if (!T.go) { T.count -= dt; drv.v = 0; drv.x = drv.px = T.sx; drv.z = drv.pz = T.sz; drv.yaw = T.syaw; physReset(); car.position.set(drv.x, 0.12, drv.z); car.rotation.y = drv.yaw; const c = Math.ceil(T.count); q('t').textContent = c > 0 ? String(c) : 'GO'; if (T.count <= 0) { T.go = true; honk(0.35); } else if (Math.ceil(T.count + dt) !== c) honk(0.18); }
+    else { T.clock = (T.clock || 0) + dt; if (!T.done) T.time += dt; }
+    // gates: the next one bright, the one after dim
+    const R = trRings(), place = (g, i) => { const p = T.P.pts[i]; if (!p) { g.visible = false; return; } const a = T.P.pts[i - 1] || p; g.visible = true; g.position.set(p[0], 0, p[1]); g.rotation.y = Math.atan2(p[0] - a[0], p[1] - a[1]); };
+    place(R[0], T.cp); place(R[1], T.cp + 1);
+    if (T.go && !T.done && Math.hypot(drv.x - nx, drv.z - nz) < 9) { T.cp++; tink(); if (T.cp >= T.P.pts.length) { T.done = true; T.pTime = T.time; } }
+    // the local rides the line: up to speed, a little slower into each corner
+    if (T.ghost) {
+      if (T.go && T.gT == null) {
+        const nextC = T.P.cum.find(c => c > T.gs + 0.5) ?? T.P.len, toC = nextC - T.gs, want = toC < 26 ? T.gAvg * 0.72 : T.gTop;
+        T.gv += clamp(want - T.gv, -9 * dt, 4.5 * dt); T.gs += T.gv * dt; if (T.gs >= T.P.len) { T.gT = T.clock; T.gs = T.P.len; }
+      }
+      const a = pathAt(T.P, T.gs), ahead = pathAt(T.P, T.gs + 6), k = clamp(T.gs / 40, 0, 1);
+      T.ghost.position.set(a.x + T.gOff[0] * (1 - k), 0.12, a.z + T.gOff[1] * (1 - k));
+      let dy = Math.atan2(-(ahead.x - a.x), -(ahead.z - a.z)) - T.ghost.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); if (T.gs < T.P.len - 1) T.ghost.rotation.y += dy * Math.min(1, dt * 6);
+      if (T.gm) spinWheels(T.gm, T.gv * dt);
+      const lead = (T.cp >= T.P.pts.length ? T.P.len : T.P.cum[T.cp - 1] + Math.max(0, T.P.cum[T.cp] - T.P.cum[T.cp - 1] - Math.hypot(drv.x - nx, drv.z - nz))) - T.gs;
+      q('gap').textContent = T.gT != null && !T.done ? 'Done' : Math.abs(lead) < 4 ? 'Even' : `${lead > 0 ? '+' : '−'}${Math.round(Math.abs(lead))} m`;
+    }
+    q('t').textContent = T.go ? fmtT(T.time) : q('t').textContent; q('cp').textContent = `${Math.min(T.cp, T.P.pts.length - 1)}/${T.P.pts.length - 1}`;
+    // riding off out of the park calls it off
+    T.off = inPark(drv.x, drv.z, 40) ? 0 : T.off + dt;
+    if (T.off > 2) return trailEnd('left');
+    if (T.done && (!T.rider || T.gT != null || T.clock - T.pTime > 0.5)) trailEnd('done');
+  }
+  function trailEnd(why) {
+    const T = TR.on; if (!T) return; TR.on = null; TR.el.hidden = true; for (const g of TR.rings || []) g.visible = false;
+    if (T.ghost) { scene.remove(T.ghost); T.ghost.traverse(o => { if (o.userData) o.userData.dead = true; }); }
+    const t = T.t, r = T.rider;
+    if (why !== 'done') { if (r) { earn(T.bet, 'Trail race called off: bet back'); } toast(why === 'left' ? `You rode out of the park. ${t.name} is off.` : `${t.name} called off.`, 'bad'); return; }
+    S.trailRecords = S.trailRecords || {}; const best = S.trailRecords[t.id];
+    if (!best || T.pTime < best) S.trailRecords[t.id] = Math.round(T.pTime * 100) / 100;
+    if (r) {
+      const won = T.gT == null || T.pTime < T.gT;
+      if (won) { earn(T.bet * 2, `Trail race: beat ${r.nick}`); S.rep += 3 * r.tier; toast(`You beat ${r.nick} on ${t.name} in ${fmtT(T.pTime)}. +${money(T.bet * 2)}, +${3 * r.tier} rep`, 'good'); }
+      else toast(`${r.nick} got you on ${t.name} by ${(T.pTime - T.gT).toFixed(2)}s. ${money(T.bet)} gone.`, 'bad');
+    } else {
+      const beat = T.pTime < T.rec, first = beat && !(best && best < T.rec);
+      if (first) { earn(1000 * t.tier, `Trail record: ${t.name}`); S.rep += 5 * t.tier; }
+      toast(`${t.name}: ${fmtT(T.pTime)}${beat ? ` · under the park record${first ? `! +${money(1000 * t.tier)}` : ''}` : ` (record ${fmtT(T.rec)})`}`, beat ? 'good' : '');
+    }
+    save(); refreshStats();
+  }
+  // a short ping for each gate
+  function tink() { const ac = audioCtx(); if (!ac) return; const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(880, t); o.frequency.linearRampToValueAtTime(1320, t + 0.08); g.gain.setValueAtTime(0.14, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25); o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + 0.26); }
+
+  // ---------- the rental businesses (the 2D game's core/outfitters.js): the trail park and Sea-Doo docks ----------
+  const PARK_PRICE = 240000, PARK_RESALE = 0.6, QUAD_PRICE = 8000, MAX_QUADS = 20, HORSE_PRICE = 3500, MAX_HORSES = 12, HORSE_FEED = 12, QUADS_PER_GUIDE = 5, GUIDE = 150, PARK_UPKEEP = 220;
+  const PARK_PRICES = { low: { quad: 60, horse: 45, pull: 1.25, name: 'Low ($60 quad · $45 horse)' }, fair: { quad: 85, horse: 55, pull: 1, name: 'Fair ($85 quad · $55 horse)' }, high: { quad: 120, horse: 75, pull: 0.7, name: 'High ($120 quad · $75 horse)' } };
+  const RIDE_COST = 8000, RIDE_GATE = 25, RIDE_VENDORS = 1800;
+  const DOCK_LEASE = 25000, DOCK_RENT = 120, MAX_SKIS = 12, SKIS_PER_HAND = 4, DOCK_HAND = 150, SKI_INSURE = 6, SKI_FUEL = 14;
+  const SKIS = [['spark_trixx', 'Sea-Doo Spark Trixx', 9800, 'Light, flicky and cheap. Wheelies off the wake.'], ['waverunner_fx', 'Yamaha WaveRunner FX Cruiser SVHO', 19800, 'Supercharged 1.8 L. Big seat, bigger top end.'],
+    ['rxpx_325', 'Sea-Doo RXP-X 325', 20500, 'The race ski. 325 hp and it corners like it\'s on rails.'], ['ultra_310lx', 'Kawasaki Jet Ski Ultra 310LX', 22300, 'Supercharged, Bluetooth speakers built in.']].map(([id, name, price, desc]) => ({ id, name, price, desc }));
+  const SKI_BY = Object.fromEntries(SKIS.map(k => [k.id, k]));
+  const SKI_PRICES = { low: { rate: 79, pull: 1.25, name: 'Low ($79/hr)' }, fair: { rate: 109, pull: 1, name: 'Fair ($109/hr)' }, high: { rate: 149, pull: 0.7, name: 'High ($149/hr)' } };
+  const LAKE_PULL = { marina_lewisville: 1.25, marina_harbor: 1.1, marina_eagle: 1, marina_granbury: 1, marina_pk: 0.9, marina_whitney: 0.8, marina_rayroberts: 0.7, marina_miami: 1.4 };
+  const outfit = () => { const o = S.outfit || (S.outfit = {}); o.docks = o.docks || {}; o.park = o.park || null; o.earned = o.earned || 0; return o; };
+  const weekend = () => ((S.day - 1) % 7 + 7) % 7 >= 4;   // day 1 is a Monday: Fri, Sat, Sun
+  const rdId = p => p + Math.random().toString(36).slice(2, 8);
+  const toBank = (v, what) => { v = Math.round(v); S.bank += v; S.log.unshift(`${v >= 0 ? '+' : '-'}${money(Math.abs(v))} ${what} (bank)`); S.log.length = Math.min(S.log.length, 30); };
+  const quadService = p => Math.round(p.quads.reduce((t, q) => t + (100 - q.cond) * QUAD_PRICE * 0.0018, 0) / 10) * 10;
+  const skiService = d => Math.round(d.skis.reduce((t, k) => t + (100 - k.cond) * SKI_BY[k.model].price * 0.0015, 0) / 10) * 10;
+  const condTxt = c => `${Math.round(c)}%`;
+  // the sky: the 3D game has no weather yet, so a dry day most days and a washout now and then
+  const dayWeather = () => { let h = S.day * 2654435761 % 1000; return h < 90 ? 'rain' : h < 120 ? 'storm' : h < 260 ? 'cloudy' : 'clear'; };
+  const weatherPull = w => w === 'storm' ? 0 : w === 'rain' ? 0.25 : w === 'cloudy' ? 0.85 : 1;
+
+  function parkDay(rng = Math.random) {
+    const p = outfit().park, P = PARK_PRICES[p.price] || PARK_PRICES.fair, w = dayWeather(), ready = p.quads.filter(q => q.cond > 30);
+    const pull = weatherPull(w) * P.pull * (0.7 + p.rep / 100) * (0.8 + rng() * 0.4), crowd = (weekend() ? 34 : 12) * pull;
+    const need = Math.ceil(ready.length / QUADS_PER_GUIDE) + (p.horses ? 1 : 0), staffed = need ? Math.min(1, p.guides / need) : 0;
+    const quadRides = Math.round(Math.min(crowd * 0.7, ready.length * 4) * staffed), horseRides = Math.round(Math.min(crowd * 0.35, p.horses * 3) * staffed);
+    let gross = quadRides * P.quad + horseRides * P.horse; const notes = [];
+    for (const q of ready) { const uses = quadRides / ready.length; q.cond = Math.max(0, q.cond - uses * (1.2 + rng() * 0.8)); if (uses > 0 && rng() < 0.006 * uses) { q.cond = Math.min(q.cond, 20); notes.push('a renter rolled a quad in the creek bottom'); } }
+    let ride = null;
+    if (p.ride && p.ride.day <= S.day) {
+      if (p.ride.day === S.day) { const heads = Math.round((150 + p.rep * 4.5) * (w === 'storm' ? 0.15 : w === 'rain' ? 0.45 : 1) * (0.8 + rng() * 0.4)); const take = heads * RIDE_GATE + RIDE_VENDORS; gross += take; p.rep = Math.min(100, p.rep + (heads > 300 ? 8 : heads > 150 ? 5 : 1)); ride = { heads, take }; }
+      p.ride = null;
+    }
+    const costs = p.guides * GUIDE + p.horses * HORSE_FEED + PARK_UPKEEP + p.quads.length * 5, net = Math.round(gross - costs);
+    p.rep = Math.max(5, Math.min(100, p.rep + (quadRides + horseRides > 20 ? 0.4 : -0.2)));
+    p.today = { quadRides, horseRides, gross: Math.round(gross), costs: Math.round(costs), net, ride, notes, w }; p.earned += net; return p.today;
+  }
+  function dockDay(id, rng = Math.random) {
+    const d = outfit().docks[id], P = SKI_PRICES[d.price] || SKI_PRICES.fair, ready = d.skis.filter(k => k.cond > 30), w = dayWeather();
+    const staffed = ready.length ? Math.min(1, d.staff / Math.max(1, Math.ceil(ready.length / SKIS_PER_HAND))) : 0, base = weekend() ? 7 : 4;
+    let hours = 0, gross = 0, fuel = 0; const wrecks = [];
+    for (const k of ready) {
+      const hh = Math.round(Math.max(0, Math.min(10, base * weatherPull(w) * P.pull * (LAKE_PULL[id] || 1) * staffed * (0.75 + rng() * 0.5))) * 2) / 2;
+      hours += hh; gross += hh * P.rate; fuel += hh * SKI_FUEL; k.cond = Math.max(0, k.cond - hh * (0.6 + rng() * 0.5));
+      if (hh > 0 && rng() < 0.012 * hh / 4) { k.cond = Math.min(k.cond, 25); wrecks.push(SKI_BY[k.model].name); }
+    }
+    const costs = DOCK_RENT + d.staff * DOCK_HAND + d.skis.length * SKI_INSURE + fuel, net = Math.round(gross - costs);
+    d.today = { hours, gross: Math.round(gross), costs: Math.round(costs), net, wrecks }; d.earned += net; return d.today;
+  }
+  // every morning: the docks and the park settle into your bank
+  function outfitDay() {
+    const o = outfit(), notes = []; let net = 0;
+    const ids = Object.keys(o.docks);
+    if (ids.length) { let hours = 0, dn = 0; const wrecks = []; for (const id of ids) { const t = dockDay(id); hours += t.hours; dn += t.net; wrecks.push(...t.wrecks); } net += dn; notes.push(`🌊 Sea-Doo rentals: ${hours} hours on the water, ${dn >= 0 ? 'made' : 'lost'} ${money(Math.abs(dn))}.${wrecks.length ? ` A renter beached a ${wrecks[0]}.` : ''}`); }
+    if (o.park) { const t = parkDay(); net += t.net; notes.push(t.ride ? `🤠 Trail ride at Cross Timbers: ${t.ride.heads} riders came out. The park ${t.net >= 0 ? 'made' : 'lost'} ${money(Math.abs(t.net))}.` : `🏁 Trail park: ${t.quadRides} quad rides, ${t.horseRides} horseback, ${t.net >= 0 ? 'made' : 'lost'} ${money(Math.abs(t.net))}.${t.notes.length ? ` (${t.notes[0]})` : ''}${t.w === 'rain' || t.w === 'storm' ? ' Rain kept people home.' : ''}`); }
+    if (net) toBank(net, 'Rental businesses: yesterday\'s take, less staff and upkeep');
+    o.earned += net; return { notes, net };
+  }
+  const _rdSleep = sleep;
+  sleep = function (p) {
+    _rdSleep.apply(this, arguments);
+    const o = S.outfit; if (!o || (!o.park && !Object.keys(o.docks || {}).length)) return;
+    const r = outfitDay(); save(); refreshStats();
+    if (r.notes.length) setTimeout(() => goPop(r.net >= 0 ? '💵' : '📉', 'Your businesses', r.notes.join(' '), ''), 3200);
+  };
+
+  // the trail park's menu: ride the trails, or buy the park and run it
+  TYPE_INFO.trailpark = ['Trail park', 'ATV trails against the clock or the locals. Buy the park and run it.'];
+  PLACE_ICON.trailpark = '🏁'; OUTDOOR.trailpark = 'trailpark';
+  const TPK = { tab: 'ride', trail: 0 };
+  MENUS.trailpark = function (p) {
+    const o = outfit(), pk = o.park, c = S.car, r = rideOf(c), tier = trTier(), rows = [];
+    rows.push({ t: TPK.tab === 'ride' ? 'Ride the trails' : pk ? 'Run the park' : 'Buy the park', s: 'Tap to switch', btn: TPK.tab === 'ride' ? (pk ? 'Run it' : 'Buy it') : 'Trails', act: () => { TPK.tab = TPK.tab === 'ride' ? 'run' : 'ride'; } });
+    if (TPK.tab === 'ride') {
+      const t = TRAILS[TPK.trail], best = (S.trailRecords || {})[t.id], locked = t.tier > tier;
+      rows.push({ t: `${t.name}${locked ? ` · needs ${t.tier === 2 ? 10 : 30} rep` : ''}`, s: `${t.desc} ${t.kind === 'circuit' ? `${t.laps} laps` : 'Point to point'} · record ${fmtT(trailRecord(t))}${best ? ` · your best ${fmtT(best)}` : ''} · tap for the next trail`, btn: 'Next trail', act: () => { TPK.trail = (TPK.trail + 1) % TRAILS.length; } });
+      rows.push({ t: c ? (r && r.kind === 'atv' ? `Your ${carOf(c.id).model} is built for this.` : r ? `A ${carOf(c.id).model} will do, but a 4-wheeler keeps its bite in the dirt.` : `Your ${carOf(c.id).model} is going to bog down out there.`) : 'Bring something to ride.', s: 'A 4-wheeler is best. Cowtown Powersports on the south side sells them.', btn: 'GPS', act: () => { const d = DATA.P.find(x => x.id === 'cowtown_powersports'); if (d) { setPin(d.name, d.x, d.z); toast('GPS set: Cowtown Powersports.', 'good'); } } });
+      rows.push({ t: 'Ride it against the clock', s: 'Day pass. Beat the park record the first time for a prize.', btn: money(20), off: !c || locked, act: () => trailStart(t, null) });
+      for (const rr of TRAIL_RIDERS.filter(x => x.tier <= t.tier)) rows.push({ t: `vs ${rr.nick} · ${rr.name}`, s: `${carLabel(carOf(rr.model))} · win ${money(TR_BET[rr.tier] * 2)}`, btn: `Bet ${money(TR_BET[rr.tier])}`, off: !c || locked, act: () => trailStart(t, rr) });
+    } else if (!pk) {
+      rows.push({ t: `Cross Timbers Trail Park · ${money(PARK_PRICE)}`, s: `725 acres of cedar and post oak, three marked trails, a stock tank, the office and the rental barn. Stock it with rental quads (${money(QUAD_PRICE)}) and trail horses (${money(HORSE_PRICE)}), hire guides, put on Saturday trail rides. Every morning yesterday's take lands in your bank.`,
+        btn: 'Buy the park', act: () => { if (spend(PARK_PRICE, 'Bought Cross Timbers Trail Park')) { o.park = { quads: [], horses: 0, price: 'fair', guides: 0, rep: 20, ride: null, today: null, earned: 0, since: S.day }; toast('Cross Timbers Trail Park is yours. Stock the rental barn and hire some guides.', 'good'); } } });
+    } else {
+      const t = pk.today, need = Math.ceil(pk.quads.filter(q => q.cond > 30).length / QUADS_PER_GUIDE) + (pk.horses ? 1 : 0);
+      rows.push({ t: `${pk.quads.length}/${MAX_QUADS} quads · ${pk.horses}/${MAX_HORSES} horses · ${pk.guides} guides${pk.guides < need ? ` (need ${need})` : ''}`, s: `Park rep ${Math.round(pk.rep)} · made ${money(pk.earned)} so far${t ? ` · yesterday ${t.quadRides} quad rides, ${t.horseRides} horseback${t.ride ? `, ${t.ride.heads} at the trail ride` : ''}: ${money(t.net)}` : ' · the first day settles when you sleep'}`, btn: 'OK', act: () => {} });
+      rows.push({ t: `Prices: ${PARK_PRICES[pk.price].name}`, s: 'Lower brings more riders, higher makes more a ride. Tap to switch.', btn: 'Switch', act: () => { const k = Object.keys(PARK_PRICES); pk.price = k[(k.indexOf(pk.price) + 1) % k.length]; } });
+      rows.push({ t: 'Buy a rental quad', s: 'Polaris Sportsman 570', btn: money(QUAD_PRICE), off: pk.quads.length >= MAX_QUADS, act: () => { if (spend(QUAD_PRICE, 'Trail park: rental quad')) pk.quads.push({ id: rdId('quad'), cond: 100 }); } });
+      rows.push({ t: 'Buy 5 rental quads', btn: money(QUAD_PRICE * 5), off: pk.quads.length > MAX_QUADS - 5, act: () => { if (spend(QUAD_PRICE * 5, 'Trail park: 5 rental quads')) for (let i = 0; i < 5; i++) pk.quads.push({ id: rdId('quad'), cond: 100 }); } });
+      rows.push({ t: 'Buy a trail horse', s: `${money(HORSE_FEED)} a day in feed`, btn: money(HORSE_PRICE), off: pk.horses >= MAX_HORSES, act: () => { if (spend(HORSE_PRICE, 'Trail park: trail horse')) pk.horses++; } });
+      rows.push({ t: 'Hire a guide', s: `${money(GUIDE)} a day · one per ${QUADS_PER_GUIDE} quads, plus one for the horses`, btn: 'Hire', off: pk.guides >= Math.ceil(MAX_QUADS / QUADS_PER_GUIDE) + 2, act: () => { pk.guides++; } });
+      rows.push({ t: 'Let a guide go', btn: 'Let go', off: !pk.guides, act: () => { pk.guides--; } });
+      const sc = quadService(pk); if (pk.quads.length) rows.push({ t: 'Service the quads', s: `Fleet: ${pk.quads.map(q => condTxt(q.cond)).join(' ')}`, btn: sc ? money(sc) : 'All good', off: !sc, act: () => { if (spend(sc, 'Trail park: quad service')) for (const q of pk.quads) q.cond = 100; } });
+      rows.push(pk.ride ? { t: `Trail ride on the books for day ${pk.ride.day}${pk.ride.day === S.day ? ' (today)' : ''}`, s: 'DJ on a flatbed, food trucks, trucks lined up down FM 2481.', btn: 'Booked', off: true, act: () => {} }
+        : { t: 'Book a Saturday trail ride', s: `${money(RIDE_COST)} to put on, ${money(RIDE_GATE)} a head at the gate plus the vendors. The bigger the park's name, the bigger the crowd.`, btn: money(RIDE_COST), act: () => { const toSat = (5 - ((S.day - 1) % 7) + 7) % 7; if (spend(RIDE_COST, 'Trail park: trail ride (DJ, vendors, security)')) { pk.ride = { day: S.day + toSat }; toast(toSat ? `Trail ride is on for Saturday (day ${pk.ride.day}).` : 'Trail ride is on for today.', 'good'); } } });
+      rows.push({ t: 'Sell the park', s: 'You get back 60% of the park, plus what the fleet and horses are worth.', btn: 'Sell', act: () => { const pay = Math.round(PARK_PRICE * PARK_RESALE + pk.quads.reduce((t, q) => t + QUAD_PRICE * 0.4 * (0.4 + 0.6 * q.cond / 100), 0) + pk.horses * HORSE_PRICE * 0.6); o.park = null; toBank(pay, 'Sold Cross Timbers Trail Park'); toast(`Sold for ${money(pay)}. It's in the bank.`, 'good'); TPK.tab = 'ride'; } });
+    }
+    return { title: p.name, sub: TPK.tab === 'ride' ? `FM 2481 · trails through the cedar · rep ${S.rep}` : pk ? 'Your park' : 'For sale', rows };
+  };
+
+  // the marina's dock office: the boats, and a Sea-Doo rental dock of your own
+  const _rdBoats = MENUS.boats;
+  MENUS.boats = function (p) {
+    const m = _rdBoats.apply(this, arguments); if (!p || !p.id || p.type !== 'marina') return m;
+    const o = outfit(), d = o.docks[p.id], rows = m.rows.slice();
+    if (!d) {
+      const pull = LAKE_PULL[p.id] || 1;
+      rows.push({ t: '🌊 Sea-Doo rentals: lease the dock', s: `Buy jet skis, hire dock hands and rent them out by the hour. Weekends and sunshine bring the crowds. ${pull >= 1.1 ? 'One of the busiest lakes around.' : pull < 0.9 ? 'A quiet lake, so expect fewer renters.' : 'A solid lake for it.'} ${money(DOCK_RENT)} a day to the marina.`, btn: money(DOCK_LEASE), act: () => { if (spend(DOCK_LEASE, `Sea-Doo rentals: dock lease at ${p.name}`)) { o.docks[p.id] = { skis: [], price: 'fair', staff: 0, today: null, earned: 0, opened: S.day }; toast('The rental dock is yours. Buy some skis and hire a dock hand.', 'good'); } } });
+      return { ...m, rows };
+    }
+    const t = d.today, need = Math.ceil(d.skis.filter(k => k.cond > 30).length / SKIS_PER_HAND);
+    rows.push({ t: `🌊 Your rental dock · ${d.skis.length}/${MAX_SKIS} skis · ${d.staff} dock hands${d.staff < need ? ` (need ${need})` : ''}`, s: `Made ${money(d.earned)} so far${t ? ` · yesterday ${t.hours} hours on the water: ${money(t.net)}${t.wrecks.length ? `. A renter beached a ${t.wrecks[0]}.` : ''}` : ' · the first day settles when you sleep'}`, btn: 'OK', act: () => {} });
+    rows.push({ t: `Rate: ${SKI_PRICES[d.price].name}`, s: 'Tap to switch', btn: 'Switch', act: () => { const k = Object.keys(SKI_PRICES); d.price = k[(k.indexOf(d.price) + 1) % k.length]; } });
+    for (const k of SKIS) rows.push({ t: `Buy a ${k.name}`, s: k.desc, btn: money(k.price), off: d.skis.length >= MAX_SKIS, act: () => { if (spend(k.price, `Sea-Doo rentals: ${k.name}`)) d.skis.push({ id: rdId('ski'), model: k.id, cond: 100 }); } });
+    rows.push({ t: 'Hire a dock hand', s: `${money(DOCK_HAND)} a day · one keeps ${SKIS_PER_HAND} skis moving`, btn: 'Hire', off: d.staff >= Math.ceil(MAX_SKIS / SKIS_PER_HAND), act: () => { d.staff++; } });
+    rows.push({ t: 'Let a dock hand go', btn: 'Let go', off: !d.staff, act: () => { d.staff--; } });
+    const sc = skiService(d); if (d.skis.length) rows.push({ t: 'Service the skis', s: d.skis.map(k => `${SKI_BY[k.model].name.split(' ').slice(-1)[0]} ${condTxt(k.cond)}`).join(' · '), btn: sc ? money(sc) : 'All good', off: !sc, act: () => { if (spend(sc, 'Sea-Doo rentals: service')) for (const k of d.skis) k.cond = 100; } });
+    rows.push({ t: 'Close the dock', s: 'The marina buys back part of the lease and the skis.', btn: 'Close', act: () => { let pay = Math.round(DOCK_LEASE * 0.4); for (const k of d.skis) pay += Math.round(SKI_BY[k.model].price * 0.45 * (0.4 + 0.6 * k.cond / 100)); delete o.docks[p.id]; toBank(pay, `Sea-Doo rentals: closed the ${p.name} dock`); toast(`Closed. ${money(pay)} back in the bank.`, 'good'); } });
+    return { ...m, sub: `${m.sub} · your rental dock`, rows };
+  };
+  window.__rides = { RIDES, TRAILS, trailStart: (i, r) => trailStart(TRAILS[i], r == null ? null : TRAIL_RIDERS[r]), TR, RD, outfitDay, parkDay, trailPath, trailRecord, perf: () => carPerf(), poseRider };
+
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
