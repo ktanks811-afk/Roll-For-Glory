@@ -2091,13 +2091,21 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const browW = look => (BROW_W[look.brows] || 0.0032) * (look.body === 'f' && look.brows !== 'thick' && look.brows !== 'laminated' ? 0.78 : 1);
   const browTaper = (look, v) => browArch(look) ? (v < 0.12 ? 0.7 + v * 2.5 : 1 - 0.8 * smooth(0.45, 1, v)) : (v < 0.15 ? 0.85 + v : 1 - 0.55 * smooth(0.5, 1, v));
   let JAW = 1;   // 1: a man's square jaw, 0: a woman's
+  /*REAL4*/
+  let FS = { nose: 1, nw: 1, lip: 1, cheek: 1, chin: 1, jaw: 1, brow: 1 };
+  // a face for a look: look.face (a seed the creator can reroll) or one taken from the look itself
+  function faceShape(look) {
+    let sd = look.face != null ? (+look.face % 2147483646) + 1 : [...(look.skin + look.eyes + (look.body || 'm') + look.brows)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 2147483646, 7) + 1;
+    const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647, v = (a, b) => lerp(a, b, (R() + R()) / 2);
+    return { nose: v(0.8, 1.22), nw: v(0.82, 1.3), lip: v(0.75, 1.35), cheek: v(0.5, 1.6), chin: v(0.55, 1.45), jaw: v(0.4, 1.5), brow: v(0.6, 1.4) };
+  }
   function headPoint(dx, dy, dz) {
     let x = dx * HX, y = dy * HY, z = dz * HZ;
     if (dy < 0) {
       const t = -dy;
       x *= 1 - 0.26 * t * t * (0.55 + 0.45 * Math.max(0, dz));      // jaw narrows to the chin
-      x *= 1 + JAW * 0.05 * Math.exp(-(((t - 0.62) / 0.16) ** 2)) * smooth(0.75, 0.1, Math.abs(dz));   // the jaw's corners
-      if (dz > 0) z += 0.019 * t * t * dz + 0.009 * Math.exp(-((x / 0.024) ** 2) - (((y + 0.1) / 0.017) ** 2));   // chin forward, and the chin itself
+      x *= 1 + (JAW + 0.4) / 1.4 * FS.jaw * 0.05 * Math.exp(-(((t - 0.62) / 0.16) ** 2)) * smooth(0.75, 0.1, Math.abs(dz));   // the jaw's corners
+      if (dz > 0) z += 0.019 * t * t * dz + 0.009 * FS.chin * Math.exp(-((x / 0.024) ** 2) - (((y + 0.1) / 0.017) ** 2));   // chin forward, and the chin itself
     }
     if (dz < 0) {
       z *= 1.08 + 0.05 * Math.max(0, dy);                               // fuller back of the skull
@@ -2109,16 +2117,16 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         const ex = x - s * EYE_X, ey = y - EYE_Y;
         z -= f * 0.0098 * Math.exp(-(ex * ex + ey * ey * 1.5) / 0.00026);
       }
-      z += f * 0.004 * Math.exp(-((y - 0.026) ** 2) / 0.00008) * smooth(0.06, 0.0, Math.abs(x) - 0.01);   // brow ridge
-      x *= 1 + f * 0.05 * Math.exp(-((y + 0.012) ** 2) / 0.0005);     // cheekbones
+      z += f * 0.004 * FS.brow * Math.exp(-((y - 0.026) ** 2) / 0.00008) * smooth(0.06, 0.0, Math.abs(x) - 0.01);   // brow ridge
+      x *= 1 + f * 0.05 * FS.cheek * Math.exp(-((y + 0.012) ** 2) / 0.0005);     // cheekbones
       // nose: bridge rising to the tip, wings either side
       const ny = clamp((0.016 - y) / 0.04, 0, 1.25);
       const ridge = (ny <= 1 ? 0.004 + 0.017 * ny * ny : 0.021 * Math.max(0, 1 - (ny - 1) * 4.2)) * smooth(0.03, 0.01, y);
-      z += f * ridge * Math.exp(-((x / (0.0065 + 0.0055 * Math.min(1, ny))) ** 2));
-      z += f * 0.0065 * Math.exp(-(((Math.abs(x) - 0.0105) / 0.0065) ** 2) - (((y + 0.022) / 0.0065) ** 2));
+      z += f * ridge * FS.nose * Math.exp(-((x / ((0.0065 + 0.0055 * Math.min(1, ny)) * lerp(1, FS.nw, Math.min(1, ny)))) ** 2));
+      z += f * 0.0065 * Math.exp(-(((Math.abs(x) - 0.0105 * FS.nw) / (0.0065 * FS.nw)) ** 2) - (((y + 0.022) / 0.0065) ** 2));
       // lips
-      z += f * 0.0036 * Math.exp(-((x / 0.021) ** 4) - (((y + 0.045) / 0.0055) ** 2));
-      z += f * 0.0043 * Math.exp(-((x / 0.019) ** 4) - (((y + 0.057) / 0.0062) ** 2));
+      z += f * 0.0036 * FS.lip * Math.exp(-((x / 0.021) ** 4) - (((y + 0.045) / 0.0055) ** 2));
+      z += f * 0.0043 * FS.lip * Math.exp(-((x / 0.019) ** 4) - (((y + 0.057) / 0.0062) ** 2));
       z -= f * 0.0022 * Math.exp(-((x / 0.012) ** 2) - (((y + 0.073) / 0.006) ** 2));   // the dip under the lower lip
       z -= f * 0.0018 * Math.exp(-((x / 0.022) ** 4) - (((y + 0.0508) / 0.0016) ** 2));
     }
@@ -2274,7 +2282,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         r *= lerp(1, lipT[0], k); g *= lerp(1, lipT[1], k); b *= lerp(1, lipT[2], k);
         const line = Math.exp(-((p[0] / 0.022) ** 6) - (((p[1] + 0.0508) / 0.0011) ** 2)) * (look.extras.includes('grill') || look.extras.includes('plat_grill') ? 1 : 0.75);
         r *= 1 - 0.75 * line; g *= 1 - 0.78 * line; b *= 1 - 0.78 * line;
-        const nos = Math.exp(-(((Math.abs(p[0]) - 0.0064) / 0.0027) ** 2) - (((p[1] + 0.0308) / 0.0016) ** 2));
+        const nos = Math.exp(-(((Math.abs(p[0]) - 0.0064 * FS.nw) / 0.0027) ** 2) - (((p[1] + 0.0308) / 0.0016) ** 2));
         r *= 1 - 0.7 * nos; g *= 1 - 0.75 * nos; b *= 1 - 0.75 * nos;
       }
       const f = fade ? fade(d, p) : 0;
@@ -2912,7 +2920,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       hair: R() < 0.8 ? pick(GAME.HAIR_COLORS.slice(0, 9)) : pick(GAME.HAIR_COLORS), eyes: pick(GAME.EYE_COLORS), brows: pick(GAME.BROWS).id,
       facialHair: !fem && R() < 0.5 ? pick(GAME.FACIAL_HAIR).id : 'none', build: Math.floor(R() * 3), height: Math.floor(R() * 3), extras: [],
       top: wear('top').id, bottom: wear('bottom').id, shoes: wear('shoes').id, hat: R() < (fem ? 0.12 : 0.3) ? wear('hat').id : 'no_hat', mask: 'no_mask',
-      bag: fem && R() < 0.75 ? wear('bag').id : 'no_bag',
+      bag: fem && R() < 0.75 ? wear('bag').id : 'no_bag', face: Math.floor(R() * 1e6),
     };
     if (fem && R() < 0.6) L.brows = pick(['sleek', 'arched', 'sleek', 'thin']);
     L.tats = R() < 0.3 ? pick([['sleeve_r'], ['sleeve_l', 'sleeve_r'], ['half_r', 'chest'], ['full'], ['hands', 'neck'], ['sleeve_r', 'legs']]) : []; L.ink = R() < 0.25 ? 'color' : 'bw';
@@ -3062,7 +3070,52 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     rib: ctex(64, 64, (x, w, h) => { for (let i = 0; i < w; i += 4) { x.fillStyle = '#f4f4f4'; x.fillRect(i, 0, 2, h); x.fillStyle = '#c8c8c8'; x.fillRect(i + 2, 0, 2, h); } }),
   };
   CT.knit.repeat.set(6, 8); CT.cotton.repeat.set(6, 8); CT.leather.repeat.set(4, 5); CT.denim.repeat.set(3, 4); CT.canvas.repeat.set(4, 5); CT.rib.repeat.set(24, 2);
-  const clothMat = (hex, tex, o = {}) => new THREE.MeshStandardMaterial({ color: col(hex), map: CT[tex], roughness: o.r ?? 0.85, metalness: o.m ?? 0, envMapIntensity: o.env ?? 0.5, side: THREE.DoubleSide });
+  const FOLD_V = `attribute vec4 bpos;\nvarying vec4 vB;\n`, FOLD_F = `varying vec4 vB;
+uniform float uFold;
+float fh_(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float fn_(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(fh_(i), fh_(i + vec2(1, 0)), f.x), mix(fh_(i + vec2(0, 1)), fh_(i + vec2(1, 1)), f.x), f.y); }
+float crease(float x) { float c = 0.5 + 0.5 * cos(x); return c * c; }
+float foldH(vec4 b) {
+  float y = b.y, h = 0.0, r = b.w;
+  if (r < 0.5) return 0.0;
+  if (r < 1.5) {   // torso
+    float a = atan(b.x, b.z);
+    h += exp(-pow((y - 0.93) / 0.055, 2.0)) * crease(y * 150.0 + fn_(vec2(a * 4.0, y * 12.0)) * 11.0) * 0.6 * fn_(vec2(a * 5.0, 3.0));
+    float ax = abs(b.x), m = smoothstep(0.06, 0.13, ax) * smoothstep(1.14, 1.22, y) * smoothstep(1.4, 1.32, y);
+    h += m * crease((y + ax * 1.15) * 160.0 + fn_(vec2(ax * 40.0, y * 25.0)) * 5.0) * 0.55;
+  } else if (r < 2.5) {   // sleeves
+    float a = atan(b.x - sign(b.x) * 0.19, b.z), front = 0.45 + 0.55 * max(0.0, cos(a));
+    h += exp(-pow((y - 1.125) / 0.05, 2.0)) * front * crease(y * 170.0 + fn_(vec2(a * 2.5, y * 20.0)) * 6.0);
+    h += smoothstep(0.95, 0.88, y) * crease(y * 180.0 + fn_(vec2(a * 3.0, y * 30.0)) * 6.0) * 0.8;
+    h += smoothstep(1.3, 1.36, y) * smoothstep(1.42, 1.36, y) * crease(a * 7.0 + y * 40.0) * 0.4;
+  } else {   // legs and hips
+    float lx = b.x - sign(b.x) * 0.09, a = atan(lx, b.z), back = max(0.0, -cos(a)), front = max(0.0, cos(a));
+    h += exp(-pow((y - 0.5) / 0.055, 2.0)) * (0.35 + 0.9 * back) * crease(y * 165.0 + fn_(vec2(a * 3.0, y * 25.0)) * 7.0);
+    h += smoothstep(0.26, 0.11, y) * smoothstep(0.06, 0.1, y) * crease(y * 120.0 + fn_(vec2(a * 2.0, y * 12.0)) * 9.0) * 1.1;
+    h += smoothstep(0.7, 0.76, y) * smoothstep(0.88, 0.8, y) * front * smoothstep(0.03, 0.08, abs(b.x)) * crease((y + abs(b.x) * 0.9) * 190.0 + fn_(vec2(b.x * 60.0, y * 30.0)) * 3.0) * 0.7;
+    h += exp(-pow((y - 0.93) / 0.04, 2.0)) * crease(y * 150.0 + fn_(vec2(a * 3.0, y * 9.0)) * 6.0) * 0.5;
+  }
+  return h;
+}
+uniform mat3 normalMatrix;
+`;
+  function foldShader(sh) {
+    sh.uniforms.uFold = { value: this.userData.fold || 0 };
+    sh.vertexShader = FOLD_V + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvB = bpos;');
+    sh.fragmentShader = FOLD_F + sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+  float fd_ = length(vViewPosition);
+  if (uFold > 0.0 && fd_ < 14.0) {
+    // the slope of the folds where this pixel sits on the body, tilting the normal across them
+    const float E = 0.0025;
+    float fh = foldH(vB);
+    vec3 g = vec3(foldH(vB + vec4(E, 0, 0, 0)) - foldH(vB - vec4(E, 0, 0, 0)), foldH(vB + vec4(0, E, 0, 0)) - foldH(vB - vec4(0, E, 0, 0)), foldH(vB + vec4(0, 0, E, 0)) - foldH(vB - vec4(0, 0, E, 0))) / (2.0 * E);
+    vec3 gv = normalMatrix * g * faceDirection;
+    float k = 0.0022 * uFold * smoothstep(14.0, 5.0, fd_);
+    normal = normalize(normal - k * (gv - dot(gv, normal) * normal));
+    diffuseColor.rgb *= 1.0 - 0.12 * uFold * fh * smoothstep(14.0, 5.0, fd_);
+  }`);
+  }
+  const clothMat = (hex, tex, o = {}) => { const m = new THREE.MeshStandardMaterial({ color: col(hex), map: CT[tex], roughness: o.r ?? 0.85, metalness: o.m ?? 0, envMapIntensity: o.env ?? 0.5, side: THREE.DoubleSide }); m.extensions = { derivatives: true }; m.onBeforeCompile = foldShader; m.userData.cloth = true; return m; };
   // a stripe down one side (track pants, racing sleeves)
   function stripeTex(u, hex) {
     const t = ctex(256, 16, (x, w, h) => { x.fillStyle = '#ffffff'; x.fillRect(0, 0, w, h); x.fillStyle = hex; x.fillRect(u * w - 6, 0, 12, h); });
@@ -3331,7 +3384,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     return gridGeo(nu, nv, (u, v) => at(u, lerp(y0, cut(-Math.PI + 2 * Math.PI * u), v)), (u, v) => [u, v * 0.5]);
   }
   function buildPerson(look) {
-    FEM = look.body === 'f'; JAW = FEM ? 0 : 1;
+    FEM = look.body === 'f'; JAW = FEM ? 0 : 1; FS = faceShape(look);
     const W = BUILD_W[+look.build] ?? 1, Hs = (HEIGHTS[+look.height] ?? 1) * (FEM ? 0.95 : 1), Wl = Math.pow(W, 0.75) * (FEM ? 0.9 : 1);
     skinMat.color.copy(col(look.skin)); headMat.color.copy(col(look.skin)); neckMat.color.copy(col(look.skin));
     const sk3 = hex3(look.skin), lum = sk3[0] * 0.3 + sk3[1] * 0.59 + sk3[2] * 0.11, sheen = smooth(0.75, 0.15, lum);
@@ -3341,7 +3394,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const upper = new THREE.Group(); upper.position.set(0, 0.95, 0); root.add(upper);   // sways from the hips
     const U = (y) => y - 0.95;
     const top = CLOTH[look.top] || CLOTH.hoodie_black, bot = CLOTH[look.bottom] || CLOTH.jeans_blue, shoe = CLOTH[look.shoes] || CLOTH.kicks_white;
-    const lids = [];
+    const lids = []; let sleeveMatOf = null;
 
     // --- the top
     const ts = top.style;
@@ -3471,7 +3524,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // --- arms (each swings from the shoulder)
     const arms = [], fores = [];
     const sleeveLong = ts !== 'tee' && ts !== 'crop' && ts !== 'tank';
-    const sleeveMat = /varsity/.test(top.id) ? clothMat('#e9e2cf', 'leather', { r: 0.55 }) : tm;
+    const sleeveMat = /varsity/.test(top.id) ? clothMat('#e9e2cf', 'leather', { r: 0.55 }) : tm; sleeveMatOf = sleeveMat;
     for (const s of [-1, 1]) {
       const arm = new THREE.Group(); arm.position.set(s * (FEM ? 0.152 : 0.168) * W, U(1.405), -0.004); upper.add(arm); arms.push(arm);
       const el = [s * 0.03, -0.285, -0.008], wr = [s * 0.042, -0.545, 0.024];
@@ -3605,6 +3658,19 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       }
       if (shoe.brand && !heels) { const lg = logoMesh(shoe.brand, shoe.color, 0.04); if (lg) { lg.position.set(s * 0.0505, boots ? 0.08 : 0.052, 0.02); lg.rotation.y = s * Math.PI / 2; foot.add(lg); } }
     }
+    const FOLD_TOP = { hoodie: 1.15, jacket: 0.75, tee: 0.7, crop: 0.5, tank: 0.15 }, FOLD_BOT = { jeans: 1.1, cargo: 1.25, track: 0.95, leggings: 0.3, skirt: 0.1 };
+    tm.userData.fold = /leather|racing|silver|puffer/.test(top.id) ? 0.35 : FOLD_TOP[ts] ?? 0.8; if (sleeveMatOf) sleeveMatOf.userData.fold = tm.userData.fold;
+    bm.userData.fold = FOLD_BOT[bs] ?? 0.9; rib.userData.fold = 0.3;
+    root.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(root.matrixWorld).invert(), M = new THREE.Matrix4(), v = new THREE.Vector3();
+    const regionOf = o => { for (; o; o = o.parent) { if (arms.includes(o)) return 2; if (legs.includes(o)) return 3; if (o === upper) return 1; if (o === root) return 3; } return 0; };
+    root.traverse(o => {
+      if (!o.isMesh || !o.material.userData || !o.material.userData.cloth) return;
+      const p = o.geometry.attributes.position, b = new Float32Array(p.count * 4), w = o.material.userData.fold ? regionOf(o) : 0;
+      M.multiplyMatrices(inv, o.matrixWorld);
+      for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(M); b[i * 4] = v.x; b[i * 4 + 1] = v.y; b[i * 4 + 2] = v.z; b[i * 4 + 3] = w; }
+      o.geometry.setAttribute('bpos', new THREE.BufferAttribute(b, 4));
+    });
     return { root, upper, head, arms, lids, legs, knees, ankles, fores };
   }
 
