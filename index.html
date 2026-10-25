@@ -2032,7 +2032,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const Z = _fw.clone().addScaledVector(Y, -_fw.dot(Y)).normalize(), X = new THREE.Vector3().crossVectors(Y, Z);
     const rings = [], p0 = prof(0), p1 = prof(1);
     if (!open) for (let k = 0; k < 4; k++) { const ang = (1 - k / 4) * Math.PI / 2, c = Math.cos(ang); rings.push({ y: -Math.sin(ang) * p0.r * 0.9, rx: c * p0.r + 1e-4, rz: (c * p0.r + 1e-4) * (p0.sq || 1), zo: p0.zo || 0, xo: p0.xo || 0 }); }
-    for (let k = 0; k <= nv; k++) { const t = k / nv, p = prof(t); rings.push({ y: t * L, rx: p.r, rz: p.r * (p.sq || 1), zo: p.zo || 0, xo: p.xo || 0 }); }
+    for (let k = 0; k <= nv; k++) { const t = k / nv, p = prof(t); rings.push({ y: t * L, rx: p.r, rz: p.r * (p.sq || 1), zo: p.zo || 0, xo: p.xo || 0, n: p.n || 2 }); }
     if (!open) for (let k = 1; k <= 4; k++) { const ang = k / 4 * Math.PI / 2, c = Math.cos(ang); rings.push({ y: L + Math.sin(ang) * p1.r * 0.9, rx: c * p1.r + 1e-4, rz: (c * p1.r + 1e-4) * (p1.sq || 1), zo: p1.zo || 0, xo: p1.xo || 0 }); }
     const g = ringSurf(rings, nu, 1);
     g.applyMatrix4(new THREE.Matrix4().makeBasis(X, Y, Z));
@@ -3253,7 +3253,40 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const BUILD_W = [0.9, 1, 1.13], HEIGHTS = [0.95, 1, 1.05];
   let FEM = false;
   // relaxed fingers, curling in toward the body (s = side, hp = palm centre)
-  function fingers(s, hp) {
+/*REAL3*/
+  const FINGERS = [[0.025, 0.077, 0.0094, 0.95], [0.0085, 0.085, 0.0097, 1], [-0.0085, 0.08, 0.0092, 1.08], [-0.0235, 0.064, 0.0081, 1.2]];   // z, length, radius, curl
+  function fingerChain(s, hp, [zo, L, r, c]) {
+    const kn = hp[1] - 0.043 + 0.004 * Math.abs(zo) / 0.025;   // knuckles: the middle finger's sits lowest
+    let p = new THREE.Vector3(hp[0] - s * 0.003, kn, hp[2] + zo), ang = 0;
+    const segs = [], pts = [[p.x, p.y, p.z]];
+    [[0.45, 0.2], [0.3, 0.42], [0.25, 0.26]].forEach(([f, bend], k) => {
+      ang += bend * c;
+      const d = new THREE.Vector3(-s * Math.sin(ang), -Math.cos(ang), zo * 0.9 * (k + 1) * 0.12).normalize(), q = p.clone().addScaledVector(d, L * f);
+      const r0 = r * (1 - 0.1 * k), r1 = r * (0.9 - 0.1 * k) * (k === 2 ? 0.95 : 1);
+      segs.push({ a: [p.x, p.y, p.z], b: [q.x, q.y, q.z], r0, r1 });
+      p = q; pts.push([p.x, p.y, p.z]);
+    });
+    return { r, pts, segs };
+  }
+  // the old shape: { r, pts } per finger, pts ending at the tip (nails sit there)
+  function fingers(s, hp) { return FINGERS.map(F => fingerChain(s, hp, F)); }
+  function handGeos(s, hp, wr) {
+    const out = [];
+    // palm: wrist to knuckles, a flat rounded box, thicker at the heel and the thumb's pad
+    const a = [wr[0] + s * 0.001, wr[1] - 0.002, wr[2] + 0.001], b = [hp[0] - s * 0.003, hp[1] - 0.04, hp[2]];
+    out.push(limbP(a, b, t => ({ r: 0.0138 + 0.0025 * Math.sin(Math.PI * Math.min(1, t * 1.3)) - 0.001 * t, sq: lerp(1.95, 2.95, smooth(0, 0.55, t)), n: lerp(2.3, 3, t), xo: -s * 0.0035 * Math.sin(Math.PI * t), zo: 0.003 * (1 - t) }), false, 24, 10));
+    for (const F of fingers(s, hp)) for (const g of F.segs) out.push(limbP(g.a, g.b, t => ({ r: lerp(g.r0, g.r1, t) * (1 + 0.06 * Math.exp(-((t / 0.12) ** 2)) + 0.05 * Math.exp(-(((t - 1) / 0.12) ** 2))), sq: 1.06 }), false, 12, 4));
+    // thumb: a fleshy base out of the palm's front, then two bones resting by the index finger
+    const T = [[hp[0] - s * 0.008, wr[1] - 0.014, wr[2] + 0.013], [-s * 0.42, -0.8, 0.42, 0.042, 0.0136, 0.0116], [-s * 0.5, -0.84, 0.12, 0.031, 0.011, 0.01], [-s * 0.42, -0.9, -0.06, 0.026, 0.01, 0.0087]];
+    let p = new THREE.Vector3(...T[0]);
+    for (let k = 1; k < T.length; k++) {
+      const [dx, dy, dz, L, r0, r1] = T[k], q = p.clone().addScaledVector(new THREE.Vector3(dx, dy, dz).normalize(), L);
+      out.push(limbP([p.x, p.y, p.z], [q.x, q.y, q.z], t => ({ r: lerp(r0, r1, t) * (k === 1 ? 1 + 0.15 * Math.sin(Math.PI * t) : 1), sq: k === 1 ? 1.15 : 1.04 }), false, 12, 5));
+      p = q;
+    }
+    return out;
+  }
+  function fingersOld(s, hp) {
     return [[0.021, 0.068, 0.0086], [0.0068, 0.074, 0.0089], [-0.0075, 0.07, 0.0084], [-0.021, 0.057, 0.0074]].map(([zo, L, r]) => {
       const b = [hp[0] + s * 0.002, hp[1] - 0.03, hp[2] + zo * 0.9], c = 1 + 0.3 * (1 - Math.abs(zo) / 0.022);
       return { r, pts: [b, [b[0] - s * 0.006 * c, b[1] - L * 0.4, b[2] + zo * 0.06], [b[0] - s * 0.02 * c, b[1] - L * 0.7, b[2] + zo * 0.1], [b[0] - s * 0.036 * c, b[1] - L * 0.82, b[2] + zo * 0.12]] };
@@ -3447,9 +3480,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const skinG = [limbP([0, -0.014, 0], el, UPARM(ra, re), false, 22)], handG = [limbP(el, wr, FOREARM(re * 0.96, rw), false, 22)];
       // hand: palm, curled fingers, thumb
       const hp = [wr[0] + s * 0.004, wr[1] - 0.052, wr[2] + 0.004];
-      handG.push(ellipsoid([hp[0], hp[1] + 0.006, hp[2]], [0.0175, 0.046, 0.04], 18));
-      for (const F of fingers(s, hp)) handG.push(strand(F.pts, v => F.r * (1 - 0.2 * v), 8, 8));
-      handG.push(strand([[hp[0] - s * 0.004, hp[1] + 0.03, hp[2] + 0.03], [hp[0] - s * 0.012, hp[1] - 0.005, hp[2] + 0.044], [hp[0] - s * 0.022, hp[1] - 0.032, hp[2] + 0.04]], v => 0.0115 * (1 - 0.25 * v), 8, 8));
+      handG.push(...handGeos(s, hp, wr));
       const r = s > 0, upInk = hasTat(look, r ? 'half_r' : 'half_l'), loInk = hasTat(look, r ? 'sleeve_r' : 'sleeve_l'), hInk = hasTat(look, 'hands');
       if (loInk || hInk) {   // forearm (and hand) ink: the forearm tube gets its own mesh
         const foreG = handG.shift();
@@ -3510,7 +3541,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (look.extras.includes('nails')) {
       const nm = new THREE.MeshStandardMaterial({ color: col(look.bag && bag && bag.style !== 'none' ? bag.color : '#d63a7a'), roughness: 0.15, metalness: 0.1, envMapIntensity: 1.4 });
       arms.forEach((arm, i) => { const s = i ? 1 : -1, wr = [s * 0.042, -0.545, 0.024], hp = [wr[0] + s * 0.004, wr[1] - 0.052, wr[2] + 0.004], g = [];
-        for (const F of fingers(s, hp)) { const q = F.pts[F.pts.length - 1], q2 = F.pts[F.pts.length - 2]; g.push(ellipsoid([lerp(q2[0], q[0], 0.75) + s * 0.004, lerp(q2[1], q[1], 0.75), q[2]], [0.003, 0.0075, 0.0058], 8)); }
+        for (const F of fingers(s, hp)) { const q = F.pts[F.pts.length - 1], q2 = F.pts[F.pts.length - 2]; const d = new THREE.Vector3(q[0] - q2[0], q[1] - q2[1], q[2] - q2[2]).normalize(), nx = new THREE.Vector3(s, 0, 0).addScaledVector(d, -s * d.x).normalize(), c = [lerp(q2[0], q[0], 0.62) + nx.x * F.r * 0.62, lerp(q2[1], q[1], 0.62) + nx.y * F.r * 0.62, lerp(q2[2], q[2], 0.62)], e = ellipsoid([0, 0, 0], [0.0025, 0.0082, 0.0058], 8); e.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), d))); e.translate(...c); g.push(e); }
         fores[i].add(mesh(mergeGeos(g.map(prep)).translate(-s * 0.03, 0.285, 0.008), nm, false)); });
     }
 
@@ -3688,10 +3719,18 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (P.head) { P.head.rotation.y = -P.upper.rotation.y * 0.8; P.head.rotation.x = -P.upper.rotation.x * 0.6; }
   }
   function idlePerson(P, t) {
-    P.legs[0].rotation.x = P.legs[1].rotation.x = 0; P.arms[0].rotation.x = P.arms[1].rotation.x = Math.sin(t * 1.3) * 0.03; P.arms[0].rotation.z = -0.06; P.arms[1].rotation.z = 0.06;
-    if (P.knees) for (let i = 0; i < 2; i++) { P.knees[i].rotation.x = 0.04; P.ankles[i].rotation.x = -0.02; P.fores[i].rotation.x = -0.18 - Math.sin(t * 1.3 + i) * 0.03; }
-    P.root.position.set(0, 0, 0); P.upper.rotation.set(Math.sin(t * 1.1) * 0.006, 0, Math.sin(t * 0.9) * 0.012);
-    if (P.head) P.head.rotation.set(0, 0, 0);
+    const w = Math.sin(t * 0.42) * 0.8 + Math.sin(t * 0.17) * 0.2, br = Math.sin(t * 1.55);   // weight shift (-1 left .. 1 right), breath
+    const Hs = P.root.scale.y || 1;
+    P.arms[0].rotation.x = P.arms[1].rotation.x = 0.03 + br * 0.012; P.arms[0].rotation.z = -0.1 - 0.015 * br; P.arms[1].rotation.z = 0.1 + 0.015 * br;
+    if (P.knees) for (let i = 0; i < 2; i++) {
+      const rest = i ? Math.max(0, -w) : Math.max(0, w);   // the leg without the weight relaxes and bends
+      P.legs[i].rotation.x = -0.05 * rest;
+      P.knees[i].rotation.x = 0.03 + 0.13 * rest; P.ankles[i].rotation.x = -0.02 - 0.07 * rest;
+      P.fores[i].rotation.x = -0.22 - br * 0.02 - Math.sin(t * 0.7 + i * 2) * 0.03;
+    } else P.legs[0].rotation.x = P.legs[1].rotation.x = 0;
+    P.root.position.set(w * 0.016 * Hs, -0.004 * Math.abs(w) * Hs, 0);
+    P.upper.rotation.set(0.01 + br * 0.006, Math.sin(t * 0.23) * 0.03, -w * 0.025);
+    if (P.head) { const look = Math.sin(t * 0.29) * 0.22 + Math.sin(t * 0.11 + 1) * 0.16; P.head.rotation.set(Math.sin(t * 0.19) * 0.05 - 0.02, look * 0.7, w * 0.03); }
   }
 
   // other people: a small pool of random locals (lower detail), cloned in as staff and customers
