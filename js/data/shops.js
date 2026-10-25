@@ -8,6 +8,9 @@ export const CLOTHES = [
   { id: 'hoodie_black', slot: 'top', style: 'hoodie', color: '#1a1a1a', name: 'Black Hoodie', price: 0 },
   { id: 'tee_white', slot: 'top', style: 'tee', color: '#e8e8e8', name: 'White Tee', price: 25 },
   { id: 'tee_red', slot: 'top', style: 'tee', color: '#b51818', name: 'Red Tee', price: 25 },
+  { id: 'tank_white', slot: 'top', style: 'tank', color: '#f2f2f2', name: 'White Wife Beater', price: 12 },
+  { id: 'tank_black', slot: 'top', style: 'tank', color: '#151515', name: 'Black Wife Beater', price: 12 },
+  { id: 'tank_grey', slot: 'top', style: 'tank', color: '#9a9ca2', name: 'Heather Grey Wife Beater', price: 12 },
   { id: 'hoodie_grey', slot: 'top', style: 'hoodie', color: '#6d7078', name: 'Heather Hoodie', price: 60 },
   { id: 'bomber_olive', slot: 'top', style: 'jacket', color: '#4a5232', name: 'Olive Bomber', price: 140 },
   { id: 'racing_jacket', slot: 'top', style: 'jacket', color: '#c41b1b', name: 'Leather Racing Jacket', price: 420, tier: 2 },
@@ -27,12 +30,12 @@ export const CLOTHES = [
   // Riverside Army Surplus: blackout gear. `conceal` is how much of your face
   // a mask hides (core/disguise.js). Vortex is a made-up brand.
   { id: 'no_mask', slot: 'mask', style: 'none', color: '#000000', name: 'No Mask', price: 0 },
-  { id: 'skimask_black', slot: 'mask', style: 'skimask', color: '#0c0c0d', name: 'Vortex Black Ski Mask', price: 35, conceal: 0.55, shop: 'surplus' },
+  { id: 'skimask_black', slot: 'mask', style: 'skimask', color: '#0c0c0d', name: 'Vortex Black Ski Mask', price: 35, conceal: 0.55, shop: 'surplus', brand: 'vortex' },
   { id: 'bandana_black', slot: 'mask', style: 'bandana', color: '#141414', name: 'Black Bandana (over the face)', price: 12, conceal: 0.3, shop: 'surplus' },
-  { id: 'fleece_black', slot: 'top', style: 'hoodie', color: '#0f0f10', name: 'Vortex Black Tech Fleece Hoodie', price: 120, shop: 'surplus' },
-  { id: 'joggers_black', slot: 'bottom', style: 'track', color: '#101011', name: 'Vortex Black Tech Fleece Joggers', price: 95, shop: 'surplus' },
+  { id: 'fleece_black', slot: 'top', style: 'hoodie', color: '#0f0f10', name: 'Vortex Black Tech Fleece Hoodie', price: 120, shop: 'surplus', brand: 'vortex' },
+  { id: 'joggers_black', slot: 'bottom', style: 'track', color: '#101011', name: 'Vortex Black Tech Fleece Joggers', price: 95, shop: 'surplus', brand: 'vortex' },
   { id: 'cargo_black', slot: 'bottom', style: 'cargo', color: '#18181a', name: 'Black Work Cargos', price: 60, shop: 'surplus' },
-  { id: 'kicks_blackout', slot: 'shoes', style: 'kicks', color: '#121212', name: 'Vortex Triple-Black Runners', price: 110, shop: 'surplus' },
+  { id: 'kicks_blackout', slot: 'shoes', style: 'kicks', color: '#121212', name: 'Vortex Triple-Black Runners', price: 110, shop: 'surplus', brand: 'vortex' },
   { id: 'boots_tactical', slot: 'shoes', style: 'boots', color: '#141414', name: 'Black Tactical Boots', price: 140, shop: 'surplus' },
   { id: 'beanie_black', slot: 'hat', style: 'beanie', color: '#121212', name: 'Black Watch Cap', price: 20, shop: 'surplus' },
   // the mall stores (data/malls.js)
@@ -58,6 +61,6 @@ export const HAIR_COLORS = ['#111111', '#2a1a10', '#3b2414', '#6b4423', '#8a5a2b
 export const HAIR_STYLES = HAIRSTYLES.map(h => h.id);
 
 export function defaultLook() {
-  return { skin: '#c68e65', hair: HAIR_COLORS[0], hairStyle: 'short', build: 1, eyes: '#2a1a10', brows: 'natural', facialHair: 'none', extras: [],
+  return { skin: '#c68e65', hair: HAIR_COLORS[0], hairStyle: 'short', build: 1, eyes: '#2a1a10', brows: 'natural', facialHair: 'none', extras: [], tats: [], ink: 'bw',
     top: 'hoodie_black', bottom: 'jeans_blue', hat: 'no_hat', shoes: 'kicks_white', mask: 'no_mask' };
 }
