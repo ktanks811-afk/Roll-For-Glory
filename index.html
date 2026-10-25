@@ -13001,6 +13001,1084 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
   };
   window.__rides = { RIDES, TRAILS, trailStart: (i, r) => trailStart(TRAILS[i], r == null ? null : TRAIL_RIDERS[r]), TR, RD, outfitDay, parkDay, trailPath, trailRecord, perf: () => carPerf(), poseRider };
 
+  // ==== boats+water (begin) ====
+  (() => {
+  // ---------- water (_water.js): rolling waves, real reflections, shoreline foam, wakes and spray ----------
+  // The same wave train runs on the GPU (shaders) and here (waterY), so boats ride the exact surface you see.
+  // Lakes and rivers are the map's water rects: flat quads with per-pixel waves far away, plus a fine
+  // displaced patch of real waves that follows you. Shore distance comes from each piece's edges, with
+  // the edges that touch other water left open so joins between rects don't grow foam.
+  const WV = [[18, 0.30, 0.35, 0.0], [11.5, 0.19, -0.55, 1.7], [6.8, 0.11, 1.15, 4.1], [3.9, 0.06, -1.35, 2.3]].map(([L, a, d, ph]) => {
+    const k = Math.PI * 2 / L; return { k, a, dx: Math.cos(d), dz: Math.sin(d), w: Math.sqrt(9.81 * k), ph };
+  });
+  const WAMP = { sea: 0.85, lake: 0.55, river: 0.22, pond: 0.06 };
+  const WTR = { dbg: {}, pieces: [], grid: null, near: [], t: 0, flat: null, patch: null, R: phone ? 150 : 200, pc: { x: 0, z: 0, on: false, amp: 0.5 }, mats: [], last: 0 };
+  function waveH(x, z, t, amp) { let h = 0; for (const w of WV) h += w.a * Math.sin(w.k * (w.dx * x + w.dz * z) - w.w * t + w.ph); return h * amp; }
+  function waveSlope(x, z, t, amp, out) { let sx = 0, sz = 0; for (const w of WV) { const c = w.a * w.k * Math.cos(w.k * (w.dx * x + w.dz * z) - w.w * t + w.ph); sx += c * w.dx; sz += c * w.dz; } out[0] = sx * amp; out[1] = sz * amp; return out; }
+  const f5 = v => v.toFixed(5);
+  const WV_GLSL = `uniform float uTime;\nvec3 wv(vec2 p, float amp) { vec3 r = vec3(0.0); float ph;\n` + WV.map(w => ` ph = ${f5(w.k)} * dot(vec2(${f5(w.dx)}, ${f5(w.dz)}), p) - ${f5(w.w)} * uTime + ${f5(w.ph)}; r += vec3(${f5(w.a)} * sin(ph), vec2(${f5(w.a * w.k * w.dx)}, ${f5(w.a * w.k * w.dz)}) * cos(ph));\n`).join('') + ` return r * amp; }\n`;
+  const WN = 16;    // pieces the patch knows about
+  const WU = {
+    uTime: { value: 0 }, uNorm: { value: null }, uFoamT: { value: null }, uRefl: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 },
+    uDeep: { value: new THREE.Color() }, uSkyTop: { value: new THREE.Color() }, uSkyHor: { value: new THREE.Color() }, uShallow: { value: new THREE.Color() }, uFoamCol: { value: new THREE.Color() }, uPatchC: { value: new THREE.Vector3(0, 0, 0) }, uPatchOn: { value: 0 }, uPAmp: { value: 0.5 },
+    uRaw: { value: Array.from({ length: WN }, () => new THREE.Vector4(0, 0, -1, -1)) }, uAdj: { value: Array.from({ length: WN }, () => new THREE.Vector4()) }, uN: { value: 0 },
+  };
+  const WCOL = { day: ['#0b2e3e', '#2f7d82', '#eef4f2'], sunset: ['#0e2433', '#3a6a70', '#f4e2d0'], night: ['#020a12', '#0a2228', '#9aa6b0'] };
+  const WSKY = { day: [0x4f86c8, 0xd8e8f4], sunset: [0x5a4a7a, 0xf0a070], night: [0x05070e, 0x1a2234] };
+  function waterColors(n) { const c = WCOL[n] || WCOL.day, k = WSKY[n] || WSKY.day; WU.uSkyTop.value.set(k[0]); WU.uSkyHor.value.set(k[1]); WU.uDeep.value.copy(lin(c[0])); WU.uShallow.value.copy(lin(c[1])); WU.uFoamCol.value.copy(lin(c[2])); }
+  // shore distance for a point in the patch: the pieces near it, raw bounds for "is it water" and open-edged bounds for the shore
+  const SHORE_GLSL = `uniform vec4 uRaw[${WN}]; uniform vec4 uAdj[${WN}]; uniform int uN;
+float shoreAt(vec2 p) { float s = -1.0; for (int i = 0; i < ${WN}; i++) { if (i >= uN) break; vec4 r = uRaw[i];
+  if (p.x >= r.x && p.x <= r.z && p.y >= r.y && p.y <= r.w) { vec4 a = uAdj[i]; s = max(s, min(min(p.x - a.x, a.z - p.x), min(p.y - a.y, a.w - p.y))); } } return s; }\n`;
+  function waterMat(kind) {
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.06, metalness: 0, envMapIntensity: 1 });
+    Object.assign(m.defines, kind === 'patch' ? { WPATCH: '' } : { WFLAT: '' });
+    if (kind === 'patch') { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
+    m.onBeforeCompile = sh => {
+      Object.assign(sh.uniforms, WU);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', `#include <common>\n${WV_GLSL}${kind === 'patch' ? SHORE_GLSL : ''}uniform vec3 uPatchC; uniform float uPAmp;\nvarying vec3 vWPos; varying vec4 vShr; varying float vAmp;\n#ifdef WFLAT\nattribute vec4 shr; attribute float wamp;\n#endif`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+  vec3 wp0 = (modelMatrix * vec4(transformed, 1.0)).xyz;
+#ifdef WPATCH
+  float sh0 = shoreAt(wp0.xz);
+  float pf = smoothstep(uPatchC.z, uPatchC.z * 0.6, length(wp0.xz - uPatchC.xy)) * smoothstep(0.0, 12.0, sh0);
+  // lifted by the deepest trough so the land under the lake never shows through
+  transformed.y += wv(wp0.xz, uPAmp * pf).x + uPAmp * pf * 0.68;
+  vShr = vec4(sh0); vAmp = uPAmp;
+#else
+  vShr = shr; vAmp = wamp;
+#endif
+  vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `#include <common>\n${WV_GLSL}${kind === 'patch' ? SHORE_GLSL : ''}uniform sampler2D uNorm; uniform sampler2D uFoamT; uniform sampler2D uRefl; uniform mat4 uReflMat; uniform float uReflOn;
+uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uFoamCol; uniform vec3 uSkyTop; uniform vec3 uSkyHor; uniform vec3 uPatchC; uniform float uPatchOn; uniform float uPAmp;
+varying vec3 vWPos; varying vec4 vShr; varying float vAmp;`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+#ifdef WPATCH
+  float shore = shoreAt(vWPos.xz); if (shore < 0.0) discard;
+  float pfade = smoothstep(uPatchC.z, uPatchC.z * 0.6, length(vWPos.xz - uPatchC.xy));
+#else
+  if (uPatchOn > 0.5 && length(vWPos.xz - uPatchC.xy) < uPatchC.z * 0.995) discard;
+  float shore = min(min(vWPos.x - vShr.x, vShr.z - vWPos.x), min(vWPos.z - vShr.y, vShr.w - vWPos.z));
+  float pfade = 0.0;
+#endif
+  float wdist = length(vWPos - cameraPosition);
+  float amp = vAmp * smoothstep(0.0, 12.0, shore);
+  // the big waves: real slopes in the patch, fading to a calmer look far away so they don't sparkle
+  vec3 W = wv(vWPos.xz, amp * (1.0 - smoothstep(350.0, 1800.0, wdist)));
+  float near = 1.0 / (1.0 + wdist * 0.006);
+  vec2 q1 = vWPos.xz / 9.0 + vec2(uTime * 0.031, uTime * 0.019), q2 = vWPos.xz / 3.3 + vec2(-uTime * 0.047, uTime * 0.029), q3 = vWPos.xz / 47.0 + vec2(uTime * 0.007, -uTime * 0.009);
+  vec2 n1 = texture2D(uNorm, q1).xy * 2.0 - 1.0, n2 = texture2D(uNorm, q2).xy * 2.0 - 1.0, n3 = texture2D(uNorm, q3).xy * 2.0 - 1.0;
+  vec2 slope = W.yz + (n1 * 0.12 + n2 * 0.055 * near + n3 * 0.08) * (0.35 + vAmp * 0.9);
+  // churned water in the shallows and on the crests
+  float fn = texture2D(uFoamT, vWPos.xz / 7.0 + vec2(uTime * 0.013, -uTime * 0.009)).r, fn2 = texture2D(uFoamT, vWPos.xz / 2.9 - vec2(uTime * 0.021, uTime * 0.017)).r;
+  float band = 1.0 - smoothstep(0.0, 3.5 + vAmp * 5.0, shore);
+  float lap = 0.5 + 0.5 * sin(shore * 1.4 - uTime * 1.7 + fn * 4.0);
+  float foam = band * smoothstep(0.35, 0.75, fn * 0.6 + fn2 * 0.4 + band * 0.45 * lap);
+  float crest = clamp(W.x / max(amp, 0.02) * 0.6 + 0.5, 0.0, 1.0);
+  foam += smoothstep(0.78, 0.98, crest) * smoothstep(0.55, 0.95, vAmp) * smoothstep(0.5, 0.8, fn2) * 0.8;
+  foam = clamp(foam, 0.0, 1.0);
+  vec3 wn = normalize(vec3(-slope.x * (1.0 - foam * 0.6), 1.0, -slope.y * (1.0 - foam * 0.6)));
+  // body colour: green-blue shallows near the bank, deep blue out in the middle, lighter where a crest lets light through
+  float deepK = smoothstep(2.0, 55.0, shore);
+  vec3 body = mix(uShallow, uDeep, deepK) * (0.9 + 0.35 * crest * crest);
+  diffuseColor.rgb = mix(body, uFoamCol, foam);`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+  roughnessFactor = mix(mix(0.045, 0.16, smoothstep(40.0, 900.0, wdist)), 0.75, foam);`)
+        .replace('#include <normal_fragment_maps>', `normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);`)
+        .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+  // the sky in the water: a smooth gradient (the env map has a hard horizon that turns waves into white blotches)
+  vec3 rv = reflect(normalize(vWPos - cameraPosition), wn);
+  radiance = mix(uSkyHor, uSkyTop, pow(clamp(abs(rv.y), 0.0, 1.0), 0.55)) * mix(0.72, 1.0, smoothstep(-0.12, 0.04, rv.y)) * 0.78;
+  if (uReflOn > 0.5) {
+    vec4 rc = uReflMat * vec4(vWPos, 1.0);
+    vec2 ruv = rc.xy / rc.w + wn.xz * (0.05 + 0.04 * near);
+    float re = smoothstep(0.0, 0.05, ruv.x) * smoothstep(1.0, 0.95, ruv.x) * smoothstep(0.0, 0.05, ruv.y) * smoothstep(1.0, 0.95, ruv.y);
+    radiance = mix(radiance, texture2D(uRefl, clamp(ruv, 0.002, 0.998)).rgb, re * (1.0 - foam) * (1.0 - smoothstep(900.0, 2500.0, wdist)));
+  }`);
+    };
+    m.customProgramCacheKey = () => 'mwwater-' + kind;
+    WTR.mats.push(m); return m;
+  }
+  function foamTexture() {
+    // tileable cell noise: soft blobs that read as foam and bubbles
+    return ctex(256, 256, (x, w, h) => {
+      const img = x.createImageData(w, h), pts = [];
+      for (let i = 0; i < 70; i++) pts.push([rnd() * w, rnd() * h, 6 + rnd() * 22]);
+      for (let y = 0; y < h; y++) for (let X = 0; X < w; X++) {
+        let v = 0;
+        for (const [px, py, r] of pts) { let dx = Math.abs(X - px), dy = Math.abs(y - py); dx = Math.min(dx, w - dx); dy = Math.min(dy, h - dy); const d = Math.hypot(dx, dy) / r; if (d < 1) v = Math.max(v, (1 - d * d)); }
+        v = v * 0.75 + 0.25 * (0.5 + 0.5 * Math.sin(X * 0.21 + Math.sin(y * 0.13) * 2) * Math.sin(y * 0.17 + Math.sin(X * 0.11) * 2));
+        const i = (y * w + X) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(clamp(v, 0, 1) * 255); img.data[i + 3] = 255;
+      }
+      x.putImageData(img, 0, 0);
+    }, false);
+  }
+
+  // ---------- the pieces: each water rect cut where another one touches it, every edge marked shore or open ----------
+  function waterPieces() {
+    const R = WATER.map(w => ({ x0: w.x, z0: w.z, x1: w.x + w.w, z1: w.z + w.d, y: w.y, amp: w.y > 0.05 ? WAMP.pond : WAMP[w.kind] || WAMP.lake, kind: w.y > 0.05 ? 'pond' : w.kind || 'lake' }));
+    const wet = (x, z) => R.some(r => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1);
+    const out = [];
+    for (const a of R) {
+      const xs = new Set([a.x0, a.x1]), zs = new Set([a.z0, a.z1]);
+      for (const b of R) {
+        if (b === a) continue;
+        const touchX = b.x0 <= a.x1 + 1 && b.x1 >= a.x0 - 1, touchZ = b.z0 <= a.z1 + 1 && b.z1 >= a.z0 - 1;
+        if (!touchX || !touchZ) continue;
+        for (const v of [b.x0, b.x1]) if (v > a.x0 + 1 && v < a.x1 - 1) xs.add(v);
+        for (const v of [b.z0, b.z1]) if (v > a.z0 + 1 && v < a.z1 - 1) zs.add(v);
+      }
+      const X = [...xs].sort((p, q) => p - q), Z = [...zs].sort((p, q) => p - q);
+      for (let i = 0; i + 1 < X.length; i++) for (let j = 0; j + 1 < Z.length; j++) {
+        const p = { x0: X[i], x1: X[i + 1], z0: Z[j], z1: Z[j + 1], y: a.y, amp: a.amp, kind: a.kind }, mx = (p.x0 + p.x1) / 2, mz = (p.z0 + p.z1) / 2, F = 4000;
+        // an edge with water on the other side isn't a shore: push it far away
+        p.ax0 = wet(p.x0 - 0.6, mz) ? p.x0 - F : p.x0; p.ax1 = wet(p.x1 + 0.6, mz) ? p.x1 + F : p.x1;
+        p.az0 = wet(mx, p.z0 - 0.6) ? p.z0 - F : p.z0; p.az1 = wet(mx, p.z1 + 0.6) ? p.z1 + F : p.z1;
+        out.push(p);
+      }
+    }
+    return out;
+  }
+  function buildWater() {
+    WTR.pieces = waterPieces(); WTR.grid = new Grid(250);
+    for (const p of WTR.pieces) WTR.grid.add(p, p.x0, p.z0, p.x1, p.z1);
+    WU.uNorm.value = TEX.waterN; WU.uFoamT.value = foamTexture(); waterColors(timeName);
+    const P = [], N = [], S4 = [], A = [], I = [];
+    for (const p of WTR.pieces) {
+      const b = P.length / 3;
+      for (const [x, z] of [[p.x0, p.z0], [p.x0, p.z1], [p.x1, p.z1], [p.x1, p.z0]]) { P.push(x, p.y, z); N.push(0, 1, 0); S4.push(p.ax0, p.az0, p.ax1, p.az1); A.push(p.amp); }
+      I.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+    g.setAttribute('shr', new THREE.Float32BufferAttribute(S4, 4)); g.setAttribute('wamp', new THREE.Float32BufferAttribute(A, 1)); g.setIndex(I);
+    WTR.flat = new THREE.Mesh(g, waterMat('flat')); WTR.flat.receiveShadow = true; WTR.flat.frustumCulled = false; scene.add(WTR.flat);
+    // the patch: rings that get finer toward the middle, so the boat sits in real geometry
+    const NR = phone ? 44 : 60, NA = phone ? 64 : 96, pp = [0, 0, 0], pn = [0, 1, 0], pi = [];
+    for (let i = 1; i <= NR; i++) { const r = Math.pow(i / NR, 1.75); for (let j = 0; j < NA; j++) { const a = j / NA * Math.PI * 2; pp.push(Math.cos(a) * r, 0, Math.sin(a) * r); pn.push(0, 1, 0); } }
+    for (let j = 0; j < NA; j++) pi.push(0, 1 + (j + 1) % NA, 1 + j);
+    for (let i = 1; i < NR; i++) for (let j = 0; j < NA; j++) { const a = 1 + (i - 1) * NA + j, b = 1 + (i - 1) * NA + (j + 1) % NA, c = 1 + i * NA + j, d = 1 + i * NA + (j + 1) % NA; pi.push(a, b, d, a, d, c); }
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(pp, 3)); pg.setAttribute('normal', new THREE.Float32BufferAttribute(pn, 3)); pg.setIndex(pi);
+    WTR.patch = new THREE.Mesh(pg, waterMat('patch')); WTR.patch.receiveShadow = true; WTR.patch.frustumCulled = false; WTR.patch.visible = false; scene.add(WTR.patch);
+    WTR.patch.scale.set(WTR.R, 1, WTR.R);
+    buildWakes(); buildSpray();
+  }
+  // the map's water, swapped for ours once the world is assembled
+  const _wFinalize = finalize;
+  finalize = function () {
+    _wFinalize.apply(this, arguments);
+    for (const o of scene.children.slice()) if (o.isMesh && o.material === MAT.water) { scene.remove(o); o.geometry.dispose(); }
+    // the ground planes go down first without depth: their giant triangles lose depth precision and were hiding lakes
+    for (const o of scene.children) if (o.isMesh && o.geometry.type === 'PlaneGeometry' && o.position.y <= 0 && o.geometry.parameters.width > 5000) { o.material.depthWrite = false; o.renderOrder = -5; }
+    try { buildWater(); } catch (e) { console.warn('water: ' + e.message); }
+  };
+  const _wSetTime = setTime;
+  setTime = function (n) { _wSetTime.apply(this, arguments); waterColors(n); };
+  // which piece a point is on, and how far it is from the bank
+  function waterAt(x, z) { for (const p of WTR.grid ? WTR.grid.at(x, z) : []) if (x >= p.x0 && x <= p.x1 && z >= p.z0 && z <= p.z1) return p; return null; }
+  function shoreDist(x, z) { let s = -1; for (const p of WTR.grid ? WTR.grid.at(x, z) : []) if (x >= p.x0 && x <= p.x1 && z >= p.z0 && z <= p.z1) s = Math.max(s, Math.min(x - p.ax0, p.ax1 - x, z - p.az0, p.az1 - z)); return s; }
+  // the surface height right where you are: the patch's waves (or flat water past it)
+  function waterY(x, z) {
+    const p = waterAt(x, z); if (!p) return 0.03;
+    const pc = WTR.pc; if (!pc.on) return p.y;
+    const pf = smooth(WTR.R, WTR.R * 0.6, Math.hypot(x - pc.x, z - pc.z)) * smooth(0, 12, shoreDist(x, z));
+    return p.y + (pf > 0 ? waveH(x, z, WU.uTime.value, pc.amp * pf) + pc.amp * pf * 0.68 : 0);
+  }
+  const _wsl = [0, 0];
+  function waterSlope(x, z) {
+    const pc = WTR.pc; if (!pc.on) { _wsl[0] = _wsl[1] = 0; return _wsl; }
+    const pf = smooth(WTR.R, WTR.R * 0.6, Math.hypot(x - pc.x, z - pc.z)) * smooth(0, 12, shoreDist(x, z));
+    return waveSlope(x, z, WU.uTime.value, pc.amp * pf, _wsl);
+  }
+  // the patch follows the boat (or you, or the car) when there's water close by
+  function patchFrame(fx, fz) {
+    const pc = WTR.pc, low = camera.position.y < 140, near = low && (waterAt(fx, fz) || WTR.pieces.some(p => fx > p.x0 - WTR.R && fx < p.x1 + WTR.R && fz > p.z0 - WTR.R && fz < p.z1 + WTR.R));
+    pc.on = !!near; WU.uPatchOn.value = pc.on ? 1 : 0; WTR.patch.visible = pc.on; if (!pc.on) return;
+    const sx = Math.round(fx * 2) / 2, sz = Math.round(fz * 2) / 2;
+    pc.x = sx; pc.z = sz; WTR.patch.position.set(sx, 0, sz); WU.uPatchC.value.set(sx, sz, WTR.R);
+    if (!WTR.lastK || Math.hypot(sx - WTR.lastK[0], sz - WTR.lastK[1]) > 25) {
+      WTR.lastK = [sx, sz];
+      const list = WTR.pieces.filter(p => sx > p.x0 - WTR.R - 30 && sx < p.x1 + WTR.R + 30 && sz > p.z0 - WTR.R - 30 && sz < p.z1 + WTR.R + 30)
+        .sort((a, b) => Math.hypot(clamp(sx, a.x0, a.x1) - sx, clamp(sz, a.z0, a.z1) - sz) - Math.hypot(clamp(sx, b.x0, b.x1) - sx, clamp(sz, b.z0, b.z1) - sz)).slice(0, WN);
+      list.forEach((p, i) => { WU.uRaw.value[i].set(p.x0, p.z0, p.x1, p.z1); WU.uAdj.value[i].set(p.ax0, p.az0, p.ax1, p.az1); });
+      WU.uN.value = list.length; WTR.patch.position.y = list.length ? list[0].y : 0.03;
+      const under = waterAt(sx, sz) || list[0]; pc.amp = under ? under.amp : 0.5; WU.uPAmp.value = pc.amp;
+      WTR.near = list;
+    }
+  }
+
+  // ---------- reflections: the world mirrored in the water, rendered small and only when water is close ----------
+  const RF = { rt: null, cam: new THREE.PerspectiveCamera(), n: 0, w: 0, h: 0, plane: new THREE.Plane(), clip: new THREE.Vector4(), q: new THREE.Vector4(), v: new THREE.Vector3(), t: new THREE.Vector3(), u: new THREE.Vector3(), r: new THREE.Matrix4() };
+  function reflFrame() {
+    const c = camera.position, y = WTR.pc.on ? WTR.patch.position.y : 0.03;
+    let want = c.y < 420 && c.y > y + 0.2;
+    if (want && !WTR.pc.on) { want = false; for (const p of WTR.grid.at(c.x, c.z).concat(WTR.near)) { if (Math.hypot(clamp(c.x, p.x0, p.x1) - c.x, clamp(c.z, p.z0, p.z1) - c.z) < 700) { want = true; break; } } if (!want) want = WTR.pieces.some(p => Math.hypot(clamp(c.x, p.x0, p.x1) - c.x, clamp(c.z, p.z0, p.z1) - c.z) < 700); }
+    if (WTR.dbg && WTR.dbg.noRefl) want = false;
+    WU.uReflOn.value = want ? 1 : 0; if (!want) return;
+    if (phone && (RF.n++ & 1)) return;        // every other frame on a phone
+    const sz = renderer.getDrawingBufferSize(RF.t), k = phone ? 0.34 : 0.5, w = Math.max(64, Math.round(sz.x * k)), h = Math.max(64, Math.round(sz.y * k));
+    if (!RF.rt) RF.rt = new THREE.WebGLRenderTarget(w, h, { type: renderer.capabilities.isWebGL2 ? THREE.HalfFloatType : THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
+    if (RF.w !== w || RF.h !== h) { RF.rt.setSize(w, h); RF.w = w; RF.h = h; }
+    WU.uRefl.value = RF.rt.texture;
+    // mirror the camera about the water plane (from three's Reflector)
+    const cam = RF.cam; camera.updateMatrixWorld();
+    RF.r.extractRotation(camera.matrixWorld);
+    RF.v.set(c.x, 2 * y - c.y, c.z);
+    RF.t.set(0, 0, -1).applyMatrix4(RF.r).add(c); RF.t.y = 2 * y - RF.t.y;
+    RF.u.set(0, 1, 0).applyMatrix4(RF.r); RF.u.y = -RF.u.y;
+    cam.position.copy(RF.v); cam.up.copy(RF.u); cam.lookAt(RF.t); cam.far = camera.far; cam.near = camera.near; cam.updateMatrixWorld();
+    cam.projectionMatrix.copy(camera.projectionMatrix);
+    WU.uReflMat.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
+    // oblique near plane: nothing under the water ends up in the reflection
+    RF.plane.set(RF.u.set(0, 1, 0), -y).applyMatrix4(cam.matrixWorldInverse);
+    const P = cam.projectionMatrix.elements, cl = RF.clip.set(RF.plane.normal.x, RF.plane.normal.y, RF.plane.normal.z, RF.plane.constant), q = RF.q;
+    q.x = (Math.sign(cl.x) + P[8]) / P[0]; q.y = (Math.sign(cl.y) + P[9]) / P[5]; q.z = -1; q.w = (1 + P[10]) / P[14];
+    cl.multiplyScalar(2 / cl.dot(q)); P[2] = cl.x; P[6] = cl.y; P[10] = cl.z + 1 - 0.003; P[14] = cl.w;
+    const hide = [WTR.flat, WTR.patch, WK.mesh, SP.pts, pin, pinLabel].filter(Boolean), was = hide.map(o => o.visible);
+    hide.forEach(o => { o.visible = false; });
+    const nearOff = []; if (phone) for (const b of buckets.values()) if (b.layer === 'near' && b.group && b.group.visible) { b.group.visible = false; nearOff.push(b.group); }
+    const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+    const prev = renderer.getRenderTarget(); renderer.setRenderTarget(RF.rt); renderer.state.buffers.depth.setMask(true); renderer.clear(); renderer.render(scene, cam); renderer.setRenderTarget(prev);
+    renderer.shadowMap.autoUpdate = au; hide.forEach((o, i) => { o.visible = was[i]; }); nearOff.forEach(g => { g.visible = true; });
+  }
+
+  // ---------- wakes: the V that spreads behind a moving hull (19.5° Kelvin arms) and the churned prop wash ----------
+  const WK = { list: [], mesh: null, max: phone ? 1800 : 3000 };
+  function buildWakes() {
+    const g = new THREE.BufferGeometry(), n = WK.max;
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('wuv', new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    const idx = []; for (let i = 0; i + 3 < n; i += 2) idx.push(i, i + 1, i + 3, i, i + 3, i + 2); g.setIndex(idx); g.setDrawRange(0, 0);
+    const m = new THREE.ShaderMaterial({
+      uniforms: Object.assign({ uFoamT: WU.uFoamT, uLit: { value: new THREE.Color(1, 1, 1) } }, THREE.UniformsLib.fog), fog: true, transparent: true, depthWrite: false,
+      vertexShader: `#include <common>\nattribute vec3 wuv; varying vec3 vW; varying vec2 vP;\n#include <fog_pars_vertex>\n#include <logdepthbuf_pars_vertex>\nvoid main() { vW = wuv; vP = position.xz; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mvPosition;\n#include <logdepthbuf_vertex>\n#include <fog_vertex>\n}`,
+      fragmentShader: `uniform sampler2D uFoamT; uniform vec3 uLit; varying vec3 vW; varying vec2 vP;\n#include <common>\n#include <fog_pars_fragment>\n#include <logdepthbuf_pars_fragment>\nvoid main() {\n#include <logdepthbuf_fragment>\n float f = texture2D(uFoamT, vP / 3.1).r * 0.6 + texture2D(uFoamT, vP / 1.3 + 0.37).r * 0.4; float e = 1.0 - vW.x * vW.x; float a = vW.z * e * smoothstep(0.32 - vW.z * 0.25, 0.75, f + e * 0.25);\n gl_FragColor = vec4(uLit * 0.92, clamp(a, 0.0, 0.95));\n#include <fog_fragment>\n}`,
+    });
+    WK.mesh = new THREE.Mesh(g, m); WK.mesh.frustumCulled = false; WK.mesh.renderOrder = 2; scene.add(WK.mesh);
+  }
+  // a boat drops a sample behind its stern every so often; the arms are drawn from those samples as they age
+  function wakeEmitter(o) { const e = { pts: [], t: 0, ...o }; WK.list.push(e); return e; }
+  function wakePush(e, x, z, hx, hz, v, dt) {
+    e.t += dt; const gap = clamp(0.12 + e.hw * 0.02, 0.1, 0.5);
+    if (e.t < gap && e.pts.length) { const p = e.pts[e.pts.length - 1]; p.x = x; p.z = z; p.hx = hx; p.hz = hz; p.v = v; return; }
+    e.t = 0; e.pts.push({ x, z, hx, hz, v, a: 0 }); if (e.pts.length > 70) e.pts.shift();
+  }
+  function wakeFrame(dt) {
+    const g = WK.mesh.geometry, P = g.attributes.position.array, U = g.attributes.wuv.array; let n = 0;
+    const lit = timeName === 'night' ? 0.28 : timeName === 'sunset' ? 0.8 : 1.05; WK.mesh.material.uniforms.uLit.value.setRGB(lit, lit, lit * 1.02);
+    const strip = (pts, fn, life) => {
+      if (pts.length < 2 || n + pts.length * 2 > WK.max - 2) return;
+      // a break in the strip: repeat the last vertex pair of the previous strip so the joining quads have no area
+      if (n) { for (let k = 0; k < 2; k++) { P[n * 3] = P[(n - 2) * 3]; P[n * 3 + 1] = P[(n - 2) * 3 + 1]; P[n * 3 + 2] = P[(n - 2) * 3 + 2]; U[n * 3 + 2] = 0; n++; } }
+      let first = true;
+      for (const p of pts) {
+        const o = fn(p); if (!o) continue;
+        const [cx, cz, hw, al, rx, rz] = o, y = waterY(cx, cz) + 0.05;
+        if (first && n) { for (let k = 0; k < 2; k++) { P[n * 3] = cx; P[n * 3 + 1] = y; P[n * 3 + 2] = cz; U[n * 3 + 2] = 0; n++; } first = false; }
+        P[n * 3] = cx - rx * hw; P[n * 3 + 1] = y; P[n * 3 + 2] = cz - rz * hw; U[n * 3] = -1; U[n * 3 + 1] = 0; U[n * 3 + 2] = al; n++;
+        P[n * 3] = cx + rx * hw; P[n * 3 + 1] = y; P[n * 3 + 2] = cz + rz * hw; U[n * 3] = 1; U[n * 3 + 1] = 0; U[n * 3 + 2] = al; n++;
+      }
+    };
+    for (const e of WK.list) {
+      for (const p of e.pts) p.a += dt;
+      while (e.pts.length && e.pts[0].a > e.life) e.pts.shift();
+      if (e.dead && !e.pts.length) continue;
+      const tw = 0.354, hw = e.hw;
+      // the two arms of the V
+      for (const side of [-1, 1]) strip(e.pts, p => {
+        const v = clamp(p.v, 0, 30), s = v * p.a, rx = -p.hz, rz = p.hx, off = hw * 0.85 + s * tw * Math.min(1, v / 6 + 0.25);
+        const al = Math.pow(1 - p.a / e.life, 1.6) * smooth(0.6, 5, v) * e.k;
+        return [p.x + rx * off * side, p.z + rz * off * side, 0.35 + hw * 0.18 + p.a * (0.22 + v * 0.02), al, -p.hx, -p.hz];
+      });
+      // the prop wash down the middle
+      strip(e.pts, p => {
+        const v = clamp(p.v, 0, 30), al = Math.pow(Math.max(0, 1 - p.a / (e.life * 0.55)), 1.3) * smooth(0.4, 3, v) * e.k;
+        return al > 0.01 ? [p.x, p.z, hw * 0.55 + p.a * 0.55, al, -p.hz, p.hx] : null;
+      });
+    }
+    WK.list = WK.list.filter(e => !(e.dead && !e.pts.length));
+    g.attributes.position.needsUpdate = g.attributes.wuv.needsUpdate = true;
+    g.setDrawRange(0, Math.max(0, (n - 2) / 2 * 6));
+  }
+
+  // ---------- spray: the bow throwing water off the chop, the jet ski's rooster tail, slams ----------
+  const SP = { n: phone ? 220 : 360, pts: null, p: null, v: null, life: null, size: null, i: 0 };
+  function buildSpray() {
+    const n = SP.n, g = new THREE.BufferGeometry();
+    SP.p = new Float32Array(n * 3); SP.v = new Float32Array(n * 3); SP.life = new Float32Array(n); SP.size = new Float32Array(n);
+    for (let i = 0; i < n; i++) SP.p[i * 3 + 1] = -999;
+    g.setAttribute('position', new THREE.BufferAttribute(SP.p, 3).setUsage(THREE.DynamicDrawUsage)); g.setAttribute('psize', new THREE.BufferAttribute(SP.size, 1).setUsage(THREE.DynamicDrawUsage));
+    const m = new THREE.ShaderMaterial({
+      uniforms: Object.assign({ uScale: { value: 400 }, uLit: { value: new THREE.Color(1, 1, 1) } }, THREE.UniformsLib.fog), fog: true, transparent: true, depthWrite: false,
+      vertexShader: `#include <common>\nattribute float psize; varying float vA;\n#include <fog_pars_vertex>\n#include <logdepthbuf_pars_vertex>\nuniform float uScale;\nvoid main() { vA = clamp(psize, 0.0, 1.0); vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mvPosition; gl_PointSize = psize > 0.0 ? (0.25 + psize * 0.9) * uScale / -mvPosition.z : 0.0;\n#include <logdepthbuf_vertex>\n#include <fog_vertex>\n}`,
+      fragmentShader: `uniform vec3 uLit; varying float vA;\n#include <common>\n#include <fog_pars_fragment>\n#include <logdepthbuf_pars_fragment>\nvoid main() {\n#include <logdepthbuf_fragment>\n vec2 c = gl_PointCoord - 0.5; float d = dot(c, c) * 4.0; if (d > 1.0) discard; gl_FragColor = vec4(uLit, (1.0 - d) * (1.0 - d) * 0.55 * vA);\n#include <fog_fragment>\n}`,
+    });
+    SP.pts = new THREE.Points(g, m); SP.pts.frustumCulled = false; SP.pts.renderOrder = 3; scene.add(SP.pts);
+  }
+  function spray(x, y, z, vx, vy, vz, life, size) {
+    const i = SP.i = (SP.i + 1) % SP.n;
+    SP.p[i * 3] = x; SP.p[i * 3 + 1] = y; SP.p[i * 3 + 2] = z; SP.v[i * 3] = vx; SP.v[i * 3 + 1] = vy; SP.v[i * 3 + 2] = vz; SP.life[i] = life; SP.size[i] = size;
+  }
+  function sprayFrame(dt) {
+    const p = SP.p, v = SP.v; let any = false;
+    for (let i = 0; i < SP.n; i++) {
+      if (SP.life[i] <= 0) { if (SP.size[i] !== 0) { SP.size[i] = 0; any = true; } continue; }
+      any = true; SP.life[i] -= dt; v[i * 3 + 1] -= 9.81 * dt; const drag = Math.exp(-dt * 1.2); v[i * 3] *= drag; v[i * 3 + 2] *= drag;
+      p[i * 3] += v[i * 3] * dt; p[i * 3 + 1] += v[i * 3 + 1] * dt; p[i * 3 + 2] += v[i * 3 + 2] * dt;
+      SP.size[i] = Math.max(0.001, SP.size[i] + dt * 0.5) * (SP.life[i] > 0 ? 1 : 0);
+      if (p[i * 3 + 1] < 0.0 && v[i * 3 + 1] < 0) SP.life[i] = 0;
+    }
+    if (any) { SP.pts.geometry.attributes.position.needsUpdate = SP.pts.geometry.attributes.psize.needsUpdate = true; }
+    const h = renderer.getDrawingBufferSize(RF.t).y; SP.pts.material.uniforms.uScale.value = h / (2 * Math.tan(camera.fov * Math.PI / 360));
+    const lit = timeName === 'night' ? 0.3 : timeName === 'sunset' ? 0.85 : 1; SP.pts.material.uniforms.uLit.value.setRGB(lit, lit, lit);
+  }
+
+  // ---------- every frame, once the camera is set ----------
+  function waterFrame(dt) {
+    if (!WTR.flat) return;
+    WU.uTime.value = (performance.now() / 1000) % 7200;
+    const fx = typeof BOAT !== 'undefined' && BOAT.on ? BOAT.b.x : driving ? drv.x : controls.target.x, fz = typeof BOAT !== 'undefined' && BOAT.on ? BOAT.b.z : driving ? drv.z : controls.target.z;
+    patchFrame(fx, fz);
+    if (typeof boatsFrame === 'function') boatsFrame(dt);
+    wakeFrame(dt); sprayFrame(dt);
+    reflFrame();
+  }
+  const _wStepStreet = stepStreet;
+  stepStreet = function (t) {
+    _wStepStreet.apply(this, arguments);
+    const n = performance.now(), dt = Math.min(0.05, (n - (WTR.last || n)) / 1000); WTR.last = n;
+    try { waterFrame(dt); } catch (e) { if (!WTR.err) { WTR.err = 1; console.error('water', e); } }
+  };
+  // ---------- boats (_boats.js): the 2D game's 16 boats and 8 marinas in 3D, docks, and driving them on the water ----------
+  // Data is the 2D game's js/data/boats.js. Hulls are built here from each boat's length and beam (no stock models).
+  // Physics: thrust against hull drag with the displacement hump, planing, buoyancy from the waves under the hull
+  // (heave, pitch and roll springs), banking, sideslip, jet-ski steering that needs throttle. Boats only go on water.
+  const BT = (id, kind, make, model, price, L, W, top, x) => ({ id, kind, make, model, name: `${make} ${model}`, price, L, W, top, ...x });
+  const BOATS = [
+    BT('spark_trixx', 'pwc', 'Sea-Doo', 'Spark Trixx', 9800, 3.1, 1.2, 22, { accel: 7, turn: 2.6, seats: 3, desc: 'Light, flicky and cheap. Wheelies off the wake.' }),
+    BT('waverunner_fx', 'pwc', 'Yamaha', 'WaveRunner FX Cruiser SVHO', 19800, 3.6, 1.3, 30, { accel: 8, turn: 2.3, seats: 3, desc: 'Supercharged 1.8 L. Big seat, bigger top end.' }),
+    BT('rxpx_325', 'pwc', 'Sea-Doo', 'RXP-X 325', 20500, 3.4, 1.3, 31.5, { accel: 9, turn: 2.6, seats: 2, desc: 'The race ski. 325 hp and it corners like it\'s on rails.' }),
+    BT('ultra_310lx', 'pwc', 'Kawasaki', 'Jet Ski Ultra 310LX', 22300, 3.6, 1.2, 30.5, { accel: 8.5, turn: 2.2, seats: 3, desc: 'Supercharged, Bluetooth speakers built in.' }),
+    BT('nitro_z21', 'bass', 'Nitro', 'Z21 Pro', 68000, 6.4, 2.4, 31, { accel: 5.5, turn: 1.7, seats: 3, desc: 'Metal flake bass boat with a 250 Mercury. Low and loud.' }),
+    BT('bennington_25qx', 'pontoon', 'Bennington', '25 QX Sport', 115000, 7.6, 2.6, 22, { accel: 3.6, turn: 1.3, seats: 14, desc: 'Tritoon party barge. Twin 350s on the back. The lake\'s living room.' }),
+    BT('mastercraft_x24', 'wake', 'MasterCraft', 'X24', 265000, 7.3, 2.6, 18, { accel: 4.5, turn: 1.5, seats: 16, desc: 'Surf wake on demand, tower speakers, ballast for days.' }),
+    BT('whaler_280', 'console', 'Boston Whaler', '280 Outrage', 420000, 8.5, 2.9, 22.5, { accel: 4.6, turn: 1.5, seats: 10, desc: 'Unsinkable center console. Twin Verados.' }),
+    BT('cigarette_42', 'gofast', 'Cigarette', '42 Nighthawk', 1350000, 12.8, 2.6, 46, { accel: 6.5, turn: 1.2, seats: 6, desc: 'Quad 450R Mercurys. 100 mph on flat water. Miami Vice energy.' }),
+    BT('searay_370', 'cruiser', 'Sea Ray', 'Sundancer 370', 760000, 11.6, 3.6, 18, { accel: 3.2, turn: 1.0, seats: 12, desc: 'Cabin, galley, sunpad up front. Weekend on the lake.' }),
+    BT('azimut_60', 'yacht', 'Azimut', '60 Flybridge', 2900000, 18.5, 4.9, 16.5, { accel: 2.2, turn: 0.75, seats: 20, decks: 2, desc: 'Italian flybridge. Three cabins, a crew cabin, a hot tub fits up top.' }),
+    BT('manhattan_68', 'yacht', 'Sunseeker', 'Manhattan 68', 4600000, 21, 5.2, 15.5, { accel: 2.0, turn: 0.7, seats: 24, decks: 2, desc: 'British flybridge. Beach club at the stern, four cabins.' }),
+    BT('riva_88', 'yacht', 'Riva', '88 Florida', 9800000, 27, 6.2, 20.5, { accel: 2.3, turn: 0.65, seats: 30, decks: 2, desc: 'Fast Italian sport yacht. Pure jewelry on the water.' }),
+    BT('benetti_oasis', 'superyacht', 'Benetti', 'Oasis 40M', 28000000, 40, 8.5, 8.5, { accel: 1.1, turn: 0.4, seats: 60, decks: 3, desc: 'Fold-down terraces and a pool at the stern. 40 meters of party.' }),
+    BT('feadship_75', 'superyacht', 'Feadship', '75 m Custom', 135000000, 75, 12.5, 9.5, { accel: 0.8, turn: 0.28, seats: 120, decks: 4, desc: 'Dutch-built custom. Helipad, spa, cinema, the works.' }),
+    BT('lurssen_110', 'superyacht', 'Lürssen', '110 m Gigayacht', 340000000, 110, 18, 11, { accel: 0.65, turn: 0.2, seats: 200, decks: 5, desc: 'The biggest thing on the water. Two helipads, a submarine bay. Billionaire stuff.' }),
+  ];
+  const BOAT_BY = Object.fromEntries(BOATS.map(b => [b.id, b]));
+  const BKIND = { pwc: 'Jet ski', bass: 'Bass boat', pontoon: 'Pontoon', wake: 'Wake boat', console: 'Center console', gofast: 'Go-fast', cruiser: 'Cruiser', yacht: 'Yacht', superyacht: 'Superyacht' };
+  const bigBoat = d => d.L >= 24;
+  const MARINAS = [
+    { id: 'marina_harbor', x: 996, z: 880, to: 'E', deep: true, area: 'Fort Worth Harbor' },
+    { id: 'marina_lewisville', x: 2436, z: -5420, to: 'E', deep: true, area: 'Lake Lewisville' },
+    { id: 'marina_eagle', x: -3050, z: -3966, to: 'N', area: 'Eagle Mountain Lake' },
+    { id: 'marina_granbury', x: -6114, z: 1290, to: 'E', area: 'Lake Granbury' },
+    { id: 'marina_whitney', x: 2814, z: 8560, to: 'W', area: 'Lake Whitney' },
+    { id: 'marina_pk', x: -9186, z: -4740, to: 'W', area: 'Possum Kingdom Lake' },
+    { id: 'marina_rayroberts', x: 1186, z: -9600, to: 'E', area: 'Lake Ray Roberts' },
+    { id: 'marina_miami', x: 15506, z: 3540, to: 'E', deep: true, area: 'Biscayne Bay' },
+  ];
+  const BDIR = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+  const HULLS = [['#f4f4f2', 'Arctic White'], ['#0d0d10', 'Gloss Black'], ['#1a2a4a', 'Navy'], ['#2a6bd1', 'Royal Blue'], ['#21b8d8', 'Miami Teal'], ['#c41b1b', 'Ferrari Red'], ['#ff6a00', 'Safety Orange'], ['#e8c21a', 'Yellow'],
+    ['#2cbf5a', 'Lime'], ['#6a1ab8', 'Purple'], ['#ff3aa8', 'Hot Pink'], ['#9aa0a8', 'Gunmetal'], ['#c9a45a', 'Champagne Gold'], ['#5a3a22', 'Mahogany'], ['#3a4a2a', 'Olive'], ['#7a1414', 'Burgundy']];
+  const BLOOKS = [['#f4f4f2', '#1a2a4a'], ['#f4f4f2', '#c41b1b'], ['#0d0d10', '#c9a45a'], ['#2a6bd1', '#f4f4f2'], ['#c41b1b', '#0d0d10'], ['#21b8d8', '#f4f4f2'], ['#e8c21a', '#0d0d10']];
+  function boatLook(d) { const white = !['gofast', 'bass'].includes(d.kind); return { hull: white ? '#f4f4f2' : d.kind === 'gofast' ? '#0d0d10' : '#c41b1b', stripe: d.kind === 'pwc' ? '#21b8d8' : '#1a2a4a' }; }
+  const mph = ms => Math.round(ms * 2.237);
+  const feet = m => Math.round(m * 3.281);
+
+  // the docks: same layout as the 2D game (u runs out over the water from the shore, v across)
+  function marinaLayout(m) {
+    const [dx, dz] = BDIR[m.to], sx = m.x + dx * 14, sz = m.z + dz * 14, PW = 4;
+    const P = m.deep ? 150 : 90, T = m.deep ? 150 : 70;
+    const at = (u, v) => ({ x: sx + dx * u - dz * v, z: sz + dz * u + dx * v });
+    const rect = (u0, v0, u1, v1) => { const a = at(u0, v0), b = at(u1, v1); return { x0: Math.min(a.x, b.x), z0: Math.min(a.z, b.z), x1: Math.max(a.x, b.x), z1: Math.max(a.z, b.z) }; };
+    const out = Math.atan2(-dx, -dz);    // yaw that points out over the water
+    const piers = [rect(-14, -PW / 2, P, PW / 2), rect(P, -T / 2, P + 5, T / 2)], slips = [];
+    for (let u = 16; u < P - 14; u += 16) for (const side of [-1, 1]) { piers.push(rect(u - 0.75, side * PW / 2, u + 0.75, side * 14)); slips.push({ ...at(u + 8, side * 9), yaw: out + (side > 0 ? -Math.PI / 2 : Math.PI / 2) }); }
+    return { m, dx, dz, sx, sz, P, T, at, out, piers, slips, area: rect(-20, -T / 2 - 40, P + 60, T / 2 + 40),
+      launch: d => ({ ...at(P + 5 + (m.deep ? 24 : 10) + d.L / 2 + Math.max(0, d.W - 4), 0), yaw: out }),
+      // tied alongside the T-head's outer face, nose across
+      berth: (d, k) => { const v = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.min(T / 2, d.L * 0.55 + 4); return { ...at(P + 5 + d.W / 2 + 1.5, d.L > T * 0.7 ? 0 : v), yaw: out - Math.PI / 2 }; },
+      lamps: [at(0, 0), at(P / 2, 0), at(P, -T / 2 + 4), at(P, T / 2 - 4), at(P, 0)] };
+  }
+  const MAR = { list: [], by: {} };
+
+  // ---------- building a boat: a lofted V hull from stations, then the deck and what sits on it ----------
+  const BMAT = {};
+  function boatMats() {
+    if (BMAT.body) return BMAT;
+    BMAT.body = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 1.1 });
+    BMAT.glass = new THREE.MeshStandardMaterial({ color: lin('#1a252f'), roughness: 0.04, metalness: 0.6, envMapIntensity: 1.6, side: THREE.DoubleSide, transparent: true, opacity: 0.86 });
+    BMAT.metal = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.18, metalness: 1, envMapIntensity: 1.3 });
+    BMAT.lite = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+    return BMAT;
+  }
+  const U0 = [0, 0], GW = new THREE.Color(1, 1, 1);
+  const T3 = (a, P, Q, R, c) => tri(a, P, Q, R, U0, U0, U0, c);
+  const Q4 = (a, P0, P1, P2, P3, c) => { T3(a, P0, P1, P2, c); T3(a, P0, P2, P3, c); };
+  function box3(a, x0, y0, z0, x1, y1, z1, c) {
+    const p = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
+    for (const f of [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]]) Q4(a, p[f[0]], p[f[1]], p[f[2]], p[f[3]], c);
+  }
+  // a square tube between two points (rails, poles, towers)
+  function bar(a, P, Q, r, c) {
+    const d = [Q[0] - P[0], Q[1] - P[1], Q[2] - P[2]], L = Math.hypot(...d) || 1, n = d.map(v => v / L);
+    let u = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    const s = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]], sl = Math.hypot(...s); s[0] /= sl; s[1] /= sl; s[2] /= sl;
+    u = [s[1] * n[2] - s[2] * n[1], s[2] * n[0] - s[0] * n[2], s[0] * n[1] - s[1] * n[0]];
+    const ring = k => { const a0 = k * Math.PI / 2 + Math.PI / 4; return [Math.cos(a0) * r, Math.sin(a0) * r]; };
+    for (let k = 0; k < 4; k++) {
+      const [a1, b1] = ring(k), [a2, b2] = ring(k + 1), o1 = [s[0] * a1 + u[0] * b1, s[1] * a1 + u[1] * b1, s[2] * a1 + u[2] * b1], o2 = [s[0] * a2 + u[0] * b2, s[1] * a2 + u[1] * b2, s[2] * a2 + u[2] * b2];
+      Q4(a, [P[0] + o1[0], P[1] + o1[1], P[2] + o1[2]], [P[0] + o2[0], P[1] + o2[1], P[2] + o2[2]], [Q[0] + o2[0], Q[1] + o2[1], Q[2] + o2[2]], [Q[0] + o1[0], Q[1] + o1[1], Q[2] + o1[2]], c);
+    }
+  }
+  // a round tube along z (pontoon logs, seat bolsters)
+  function tubeZ(a, cx, cy, r, z0, z1, c, n = 12, nose = 0) {
+    for (let k = 0; k < n; k++) {
+      const t0 = k / n * Math.PI * 2, t1 = (k + 1) / n * Math.PI * 2, A = [cx + Math.cos(t0) * r, cy + Math.sin(t0) * r], B = [cx + Math.cos(t1) * r, cy + Math.sin(t1) * r];
+      Q4(a, [A[0], A[1], z0], [B[0], B[1], z0], [B[0], B[1], z1], [A[0], A[1], z1], c);
+      if (nose) T3(a, [A[0], A[1], z0], [cx, cy + r * 0.25, z0 - nose], [B[0], B[1], z0], c); else T3(a, [A[0], A[1], z0], [cx, cy, z0], [B[0], B[1], z0], c);
+      T3(a, [A[0], A[1], z1], [B[0], B[1], z1], [cx, cy, z1], c);
+    }
+  }
+  function hullSpec(d) {
+    const k = d.kind, L = d.L, W = d.W;
+    const free = k === 'pwc' ? 0.42 : k === 'bass' ? 0.55 : k === 'gofast' ? 0.85 : k === 'superyacht' ? Math.min(4.2, L * 0.05 + 1.4) : k === 'yacht' ? L * 0.06 + 0.55 : W * 0.33 + 0.2;
+    const draft = k === 'pwc' ? 0.24 : k === 'bass' ? 0.3 : k === 'superyacht' ? L * 0.045 : k === 'yacht' ? L * 0.05 : W * 0.2;
+    return { L, W, free, draft, dead: k === 'gofast' ? 0.42 : k === 'bass' ? 0.22 : k === 'superyacht' ? 0.26 : 0.36, rise: free * (k === 'bass' ? 0.12 : k === 'gofast' ? 0.2 : k === 'superyacht' ? 0.35 : 0.42),
+      sharp: k === 'bass' ? 0.6 : k === 'gofast' ? 1.05 : 0.82, stern: k === 'gofast' ? 0.86 : 0.94, yacht: k === 'yacht' || k === 'superyacht' };
+  }
+  function hullAt(H, s) {
+    const hw = H.W / 2 * (s < 0.5 ? H.stern + (1 - H.stern) * Math.sin(s / 0.5 * Math.PI / 2) : Math.pow(Math.cos((s - 0.5) / 0.5 * Math.PI / 2), H.sharp));
+    const sh = H.free + H.rise * Math.pow(s, 2.5);
+    const ky = s < 0.72 ? -H.draft * (1 - 0.15 * s) : lerp(-H.draft * 0.89, sh * 0.55, Math.pow((s - 0.72) / 0.28, 1.6));
+    return { hw: Math.max(0, hw), sh, ky, z: H.L / 2 - s * H.L };
+  }
+  // the hull as one smooth indexed mesh: bands (bottom, boot stripe, topsides, hull windows) get their own vertex rows
+  function hullGeo(d, look) {
+    const H = hullSpec(d), NS = 22, P = [], C = [], I = [];
+    const bottom = lin(H.yacht ? '#1d2836' : d.kind === 'bass' || d.kind === 'gofast' ? look.hull : '#e8e8e4', H.yacht || d.kind === 'bass' || d.kind === 'gofast' ? 1 : 0.92), hull = lin(look.hull), stripe = lin(look.stripe), win = lin('#141b22');
+    const b0 = 0.03, b1 = b0 + (H.yacht ? Math.min(0.5, d.L * 0.012) : 0.1), w0 = H.yacht ? H.free * 0.42 : b1, w1 = H.yacht ? H.free * 0.6 : b1;
+    const sec = s => {
+      const h = hullAt(H, s), dead = H.dead + (0.78 - H.dead) * s * s, cx = h.hw * 0.82, cy = Math.min(h.sh - 0.12, h.ky + cx * Math.tan(dead)), ry = Math.min(h.sh - 0.1, cy + 0.015 * H.W);
+      const top = y => { const t = clamp((y - ry) / Math.max(0.01, h.sh - ry), 0, 1); return [lerp(h.hw * 0.9, h.hw, Math.sqrt(t)), y]; };
+      const ys = [b0, b1, w0, w1].map(y => Math.max(ry, Math.min(h.sh, y)));
+      return { z: h.z, pts: [[0, h.ky], [cx, cy], [h.hw * 0.9, ry], top(ys[0]), top(ys[1]), top(ys[2]), top(ys[3]), [h.hw, h.sh]] };
+    };
+    const secs = []; for (let i = 0; i <= NS; i++) secs.push(sec(Math.pow(i / NS, 0.92)));
+    const segCol = [bottom, bottom, bottom, stripe, hull, win, hull];
+    for (let j = 0; j < 7; j++) for (const side of [1, -1]) {
+      const base = P.length / 3, c = segCol[j];
+      for (const sc of secs) for (const q of [sc.pts[j], sc.pts[j + 1]]) { P.push(q[0] * side, q[1], sc.z); C.push(c.r, c.g, c.b); }
+      for (let i = 0; i < NS; i++) { const a = base + i * 2, b = a + 2; if (side > 0) I.push(a, b, b + 1, a, b + 1, a + 1); else I.push(a, a + 1, b + 1, a, b + 1, b); }
+    }
+    // transom: each band straight across the stern
+    const st = secs[0];
+    for (let j = 0; j < 7; j++) { const base = P.length / 3, c = segCol[j] === win ? hull : segCol[j], a = st.pts[j], b = st.pts[j + 1]; for (const q of [[a[0], a[1]], [b[0], b[1]], [-b[0], b[1]], [-a[0], a[1]]]) { P.push(q[0], q[1], st.z); C.push(c.r, c.g, c.b); } I.push(base, base + 1, base + 2, base, base + 2, base + 3); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3)); g.setIndex(I); g.computeVertexNormals();
+    return { g, H, secs };
+  }
+  // deck: flush deck at the sheer, with an open cockpit well between s0 and s1 for the small boats
+  function deckInto(a, H, s0, s1, well, deckC, floorC, wallC) {
+    const N = 22, g = Math.min(0.14, H.W * 0.06);
+    for (let i = 0; i < N; i++) {
+      const sa = i / N, sb = (i + 1) / N, A = hullAt(H, sa), B = hullAt(H, sb), inA = well && sa >= s0 && sb <= s1;
+      if (!inA) { Q4(a, [A.hw, A.sh, A.z], [B.hw, B.sh, B.z], [0, B.sh + H.W * 0.012, B.z], [0, A.sh + H.W * 0.012, A.z], deckC); Q4(a, [0, A.sh + H.W * 0.012, A.z], [0, B.sh + H.W * 0.012, B.z], [-B.hw, B.sh, B.z], [-A.hw, A.sh, A.z], deckC); continue; }
+      const fa = A.sh - well, fb = B.sh - well;
+      for (const s of [1, -1]) {
+        Q4(a, [s * A.hw, A.sh, A.z], [s * B.hw, B.sh, B.z], [s * (B.hw - g), B.sh, B.z], [s * (A.hw - g), A.sh, A.z], deckC);         // gunwale cap
+        Q4(a, [s * (A.hw - g), A.sh, A.z], [s * (B.hw - g), B.sh, B.z], [s * (B.hw - g), fb, B.z], [s * (A.hw - g), fa, A.z], wallC);  // inner wall
+      }
+      Q4(a, [A.hw - g, fa, A.z], [B.hw - g, fb, B.z], [-(B.hw - g), fb, B.z], [-(A.hw - g), fa, A.z], floorC);
+    }
+    for (const s of [s0, s1]) { const h = hullAt(H, s); Q4(a, [h.hw - g, h.sh - well, h.z], [h.hw - g, h.sh, h.z], [-(h.hw - g), h.sh, h.z], [-(h.hw - g), h.sh - well, h.z], wallC); }
+  }
+  // a cabin, wheelhouse or deck house: footprint follows the hull, swept front, glass band, roof
+  function house(a, ag, H, s0, s1, y0, h, inset, rake, wallC, roofC, opt = {}) {
+    const N = 10, R = [];
+    for (let i = 0; i <= N; i++) { const s = lerp(s0, s1, i / N), q = hullAt(H, s), t = i / N; R.push([Math.max(0.2, (q.hw - inset) * (1 - 0.42 * t * t * (opt.sweep === undefined ? 1 : opt.sweep))), q.z]); }
+    const ring = R.map(p => [p[0], p[1]]).concat(R.slice().reverse().map(p => [-p[0], p[1]]));
+    const fz = R[N][1], top = (k, ry) => ring.map(([x, z]) => { const f = clamp((z - fz) / (R[0][1] - fz), 0, 1); return [x * (1 - k * 0.12), z + (1 - f) * rake * ry]; });
+    const g0 = y0 + h * (opt.wall === undefined ? 0.42 : opt.wall), g1 = y0 + h * 0.9;
+    loft(a, ring, y0, top(0.3, (g0 - y0) / h), g0, wallC);
+    loft(ag, top(0.3, (g0 - y0) / h), g0, top(0.8, (g1 - y0) / h), g1, wallC);
+    loft(a, top(0.8, (g1 - y0) / h), g1, top(1, 1), y0 + h, wallC);
+    const roof = top(1, 1); cap(a, roof, y0 + h, roofC);
+    if (opt.lip) { const lip = roof.map(([x, z]) => [x * 1.05 + Math.sign(x) * opt.lip, z + (z > (R[0][1] + fz) / 2 ? opt.lip : -opt.lip * 0.4)]); loft(a, lip, y0 + h, lip, y0 + h + 0.12, roofC); cap(a, lip, y0 + h + 0.12, roofC); }
+    return { ring: roof, top: y0 + h + (opt.lip ? 0.12 : 0) };
+  }
+  function outboard(a, am, x, z, sh, n, col) {
+    const c = lin(col), ch = lin('#c9ccd2');
+    box3(a, x - 0.24, sh - 0.15, z + 0.05, x + 0.24, sh + 0.62, z + 0.72, c); box3(a, x - 0.2, sh + 0.62, z + 0.12, x + 0.2, sh + 0.72, z + 0.62, c);
+    box3(a, x - 0.09, -0.55, z + 0.2, x + 0.09, sh - 0.15, z + 0.5, c); box3(a, x - 0.13, -0.62, z + 0.08, x + 0.13, -0.48, z + 0.55, c);
+    box3(am, x - 0.03, -0.75, z + 0.22, x + 0.03, -0.45, z + 0.3, ch);
+  }
+  function seat(a, x, y, z, w, d, c, back = 0.55) { box3(a, x - w / 2, y, z - d / 2, x + w / 2, y + 0.16, z + d / 2, c); if (back) box3(a, x - w / 2, y + 0.16, z + d / 2 - 0.12, x + w / 2, y + 0.16 + back, z + d / 2, c); }
+  function windshield(ag, am, H, s, hgt, back, frame) {
+    const h = hullAt(H, s), n = 10, pts = [];
+    for (let i = 0; i <= n; i++) { const x = (i / n * 2 - 1) * h.hw * 0.86, k = 1 - Math.pow(x / (h.hw * 0.86 || 1), 2); pts.push([x, h.z - k * h.hw * 0.4]); }
+    for (let i = 0; i < n; i++) { const p = pts[i], q = pts[i + 1]; Q4(ag, [p[0], h.sh, p[1]], [q[0], h.sh, q[1]], [q[0] * 0.92, h.sh + hgt, q[1] + back], [p[0] * 0.92, h.sh + hgt, p[1] + back], GW); }
+    if (frame) for (let i = 0; i < n; i++) { const p = pts[i], q = pts[i + 1]; bar(am, [p[0] * 0.92, h.sh + hgt, p[1] + back], [q[0] * 0.92, h.sh + hgt, q[1] + back], 0.02, frame); }
+  }
+  // returns the group plus where the driver sits, and the sample points for the water
+  function boatModel(d, look) {
+    boatMats();
+    const k = d.kind, A = new Acc(), AG = new Acc(), AM = new Acc(), AL = new Acc(), grp = new THREE.Group();
+    const white = lin('#f2f2ee'), deckC = lin(k === 'bass' ? '#3a3c42' : k === 'pwc' ? look.stripe : k === 'gofast' ? '#202226' : '#b07a45'), floor = lin(k === 'bass' ? '#33353a' : k === 'pwc' ? '#2a2c30' : '#e6e6e0'),
+      uph = lin(k === 'gofast' ? '#c41b1b' : k === 'bass' ? '#8a8d94' : '#f4f0e6'), dark = lin('#1b1c20'), chrome = lin('#d8dde3'), hullC = lin(look.hull), stripe = lin(look.stripe), canvas = lin('#2a2c34');
+    let H, seatAt = { x: 0, y: 1, z: 0, pose: 'sit' }, hullMesh = null;
+    if (k === 'pontoon') {
+      H = { L: d.L, W: d.W, free: 0.82, draft: 0.3, yacht: false };
+      const r = 0.34, y = 0.04, zf = -d.L / 2 + 0.7, zb = d.L / 2 - 0.25, dy = y + r + 0.08;
+      for (const x of [-0.92, 0, 0.92]) { tubeZ(AM, x, y, r, zf, zb, lin('#c8ccd2'), 14, 0.75); }
+      box3(A, -d.W / 2, dy, -d.L / 2 + 0.3, d.W / 2, dy + 0.12, d.L / 2, dark);
+      box3(A, -d.W / 2 + 0.05, dy + 0.12, -d.L / 2 + 0.35, d.W / 2 - 0.05, dy + 0.14, d.L / 2 - 0.05, lin('#5a5c62'));
+      const fy = dy + 0.14, fh = 0.82;
+      for (const s of [-1, 1]) { box3(A, s * d.W / 2 - 0.04, fy, -d.L / 2 + 1.2, s * d.W / 2 + 0.02, fy + fh, d.L / 2 - 1.0, hullC); box3(A, s * d.W / 2 - 0.05, fy + fh * 0.35, -d.L / 2 + 1.2, s * d.W / 2 + 0.03, fy + fh * 0.5, d.L / 2 - 1.0, stripe); }
+      box3(A, -d.W / 2 + 0.1, fy, -d.L / 2 + 1.2, -0.45, fy + fh, -d.L / 2 + 1.26, hullC); box3(A, 0.45, fy, -d.L / 2 + 1.2, d.W / 2 - 0.1, fy + fh, -d.L / 2 + 1.26, hullC);
+      for (const s of [-1, 1]) seat(A, s * (d.W / 2 - 0.42), fy, -0.3, 0.6, d.L * 0.45, uph, 0.5);
+      seat(A, 0, fy, d.L / 2 - 1.6, d.W - 0.6, 0.6, uph, 0.6);
+      box3(A, 0.35, fy, -d.L / 2 + 1.7, 1.05, fy + 0.95, -d.L / 2 + 2.3, white); windshield(AG, AM, { L: d.L, W: d.W, free: fy + 0.95, draft: 0, rise: 0, dead: 0, sharp: 1, stern: 1 }, 0.62, 0, 0, null);
+      const bz0 = -d.L / 2 + 1.6, bz1 = d.L / 2 - 1.4, by = fy + 2.0;
+      for (const s of [-1, 1]) for (const z of [bz0, bz1]) bar(AM, [s * (d.W / 2 - 0.08), fy + fh, z], [s * (d.W / 2 - 0.25), by, z], 0.025, chrome);
+      box3(A, -d.W / 2 + 0.2, by, bz0 - 0.2, d.W / 2 - 0.2, by + 0.06, bz1 + 0.2, canvas);
+      for (const x of [-0.55, 0.55]) outboard(A, AM, x, d.L / 2 - 0.1, dy + 0.1, 1, '#ece9e2');
+      seatAt = { x: 0.7, y: fy + 0.45, z: -d.L / 2 + 2.9, pose: 'sit' };
+    } else {
+      const hg = hullGeo(d, look); H = hg.H; hullMesh = new THREE.Mesh(hg.g, BMAT.body); hullMesh.castShadow = true; grp.add(hullMesh);
+      const at = s => hullAt(H, s);
+      if (k === 'pwc') {
+        deckInto(A, H, 0, 0, 0, deckC, floor, deckC);
+        const h0 = at(0.12), h1 = at(0.6), sy = h0.sh;
+        // seat: long padded saddle, hood with the bars in front of it
+        box3(A, -0.2, sy, h1.z + 0.1, 0.2, sy + 0.3, h0.z - 0.1, lin('#18191c')); box3(A, -0.17, sy + 0.3, h1.z + 0.16, 0.17, sy + 0.36, h0.z - 0.16, lin('#24252a'));
+        const hood = []; for (let i = 0; i < 12; i++) { const t = i / 12 * Math.PI * 2; hood.push([Math.cos(t) * 0.33, at(0.75).z + Math.sin(t) * d.L * 0.2]); }
+        loft(A, hood, at(0.75).sh, scaleRing(hood, 0.55), at(0.75).sh + 0.28, hullC); cap(A, scaleRing(hood, 0.55), at(0.75).sh + 0.28, hullC);
+        const bz = at(0.62).z, by = sy + 0.62; bar(A, [0, sy + 0.3, bz + 0.05], [0, by, bz], 0.04, dark); bar(A, [-0.36, by, bz], [0.36, by, bz], 0.022, dark);
+        box3(A, -0.42, by - 0.035, bz - 0.035, -0.3, by + 0.035, bz + 0.035, lin('#2a2a2a')); box3(A, 0.3, by - 0.035, bz - 0.035, 0.42, by + 0.035, bz + 0.035, lin('#2a2a2a'));
+        box3(AG, -0.2, by - 0.05, bz - 0.25, 0.2, by + 0.12, bz - 0.12, GW);
+        box3(AM, -0.1, -0.05, d.L / 2 - 0.05, 0.1, 0.12, d.L / 2 + 0.15, lin('#8a8e94'));
+        seatAt = { x: 0, y: sy + 0.33, z: (h0.z + h1.z) / 2 + 0.05, pose: 'straddle' };
+      } else if (k === 'bass') {
+        deckInto(A, H, 0.1, 0.6, 0.32, lin('#3a3c42'), floor, lin('#4a4c52'));
+        const c = at(0.48); box3(A, 0.28, c.sh - 0.32, c.z - 0.3, 0.95, c.sh + 0.35, c.z + 0.25, hullC); windshield(AG, AM, { ...H, W: 1.4, free: c.sh + 0.35 }, 0.48, 0.25, 0.15, null);
+        seat(A, 0.6, c.sh - 0.32, c.z + 0.75, 0.5, 0.5, uph, 0.4); seat(A, -0.5, c.sh - 0.32, c.z + 0.75, 0.5, 0.5, uph, 0.4);
+        box3(AM, -0.05, at(0.92).sh, at(0.92).z - 0.2, 0.05, at(0.92).sh + 0.35, at(0.92).z + 0.2, lin('#2a2a2a'));    // trolling motor
+        outboard(A, AM, 0, d.L / 2 - 0.05, at(0).sh, 1, '#0d0d10');
+        seatAt = { x: 0.6, y: c.sh - 0.32 + 0.16, z: c.z + 0.75, pose: 'sit' };
+      } else if (k === 'wake' || k === 'console' || k === 'gofast') {
+        const s0 = k === 'gofast' ? 0.16 : 0.07, s1 = k === 'gofast' ? 0.45 : k === 'wake' ? 0.84 : 0.86, well = k === 'gofast' ? 0.55 : 0.62;
+        deckInto(A, H, s0, s1, well, deckC, floor, lin(k === 'gofast' ? '#202226' : '#e8e4da'));
+        if (k === 'wake') {
+          const w = at(0.56); windshield(AG, AM, H, 0.56, 0.42, 0.3, chrome);
+          box3(A, 0.35, w.sh - well, w.z + 0.25, 1.05, w.sh + 0.05, w.z + 0.85, white);
+          seat(A, 0.7, w.sh - well, w.z + 1.4, 0.55, 0.5, uph, 0.5);
+          for (const s of [-1, 1]) seat(A, s * (H.W / 2 - 0.45), at(0.3).sh - well, at(0.3).z, 0.42, d.L * 0.25, uph, 0.45);
+          seat(A, 0, at(0.12).sh - well, at(0.12).z, H.W - 0.6, 0.5, uph, 0.5);
+          // the tower: legs from the gunwales, a roof bar with speakers
+          const tz = at(0.42).z, ty = at(0.42).sh + 1.85, hw = at(0.42).hw - 0.12;
+          for (const s of [-1, 1]) { bar(AM, [s * hw, at(0.42).sh, tz + 0.5], [s * 0.55, ty, tz], 0.04, chrome); bar(AM, [s * hw, at(0.42).sh, tz - 0.5], [s * 0.55, ty, tz], 0.04, chrome); box3(A, s * 0.55 - 0.13, ty - 0.35, tz - 0.14, s * 0.55 + 0.13, ty - 0.06, tz + 0.14, dark); }
+          bar(AM, [-0.55, ty, tz], [0.55, ty, tz], 0.045, chrome);
+          box3(AM, -0.05, -0.55, d.L / 2 - 1.2, 0.05, -0.2, d.L / 2 - 0.9, chrome);
+          seatAt = { x: 0.7, y: w.sh - well + 0.16, z: w.z + 1.4, pose: 'sit' };
+        } else if (k === 'console') {
+          const c = at(0.45); box3(A, -0.45, c.sh - well, c.z - 0.45, 0.45, c.sh + 0.55, c.z + 0.45, white); windshield(AG, AM, { ...H, W: 1.1, free: c.sh + 0.55 }, 0.45, 0.3, 0.12, null);
+          seat(A, 0, c.sh - well, c.z + 1.05, 1.2, 0.55, uph, 0.6);
+          const ty = c.sh + 1.65; for (const x of [-0.5, 0.5]) for (const z of [c.z - 0.35, c.z + 1.4]) bar(AM, [x, c.sh - well, z], [x, ty, z], 0.035, chrome);
+          box3(A, -0.85, ty, c.z - 0.7, 0.85, ty + 0.1, c.z + 1.75, white); box3(AM, -0.05, ty + 0.1, c.z + 0.3, 0.05, ty + 0.5, c.z + 0.4, chrome);
+          seat(A, 0, at(0.78).sh - well, at(0.78).z, 0.9, 0.9, uph, 0);
+          for (const x of [-0.38, 0.38]) outboard(A, AM, x, d.L / 2 - 0.05, at(0).sh, 1, '#f2f2ee');
+          seatAt = { x: 0, y: c.sh - well, z: c.z + 0.75, pose: 'stand' };
+        } else {
+          const c = at(0.4); windshield(AG, AM, { ...H, W: H.W * 0.95 }, 0.42, 0.28, 0.35, null);
+          for (const x of [-0.42, 0.42]) seat(A, x, c.sh - well, c.z + 0.9, 0.6, 0.6, uph, 0.55); seat(A, 0, c.sh - well, at(0.2).z, H.W - 0.5, 0.6, uph, 0.55);
+          box3(A, -H.W / 2 + 0.2, at(0.08).sh, at(0.12).z, H.W / 2 - 0.2, at(0.08).sh + 0.08, at(0.02).z, lin('#202226'));
+          for (const x of [-0.75, -0.25, 0.25, 0.75]) outboard(A, AM, x, d.L / 2 - 0.05, at(0).sh, 1, '#0d0d10');
+          seatAt = { x: 0.42, y: c.sh - well + 0.16, z: c.z + 0.9, pose: 'sit' };
+        }
+      } else if (k === 'cruiser') {
+        deckInto(A, H, 0.05, 0.38, 0.5, deckC, floor, white);
+        const hs = house(A, AG, H, 0.36, 0.8, at(0.5).sh - 0.1, 1.3, 0.28, 1.6, white, white, { wall: 0.35, lip: 0.08 });
+        const hy = at(0.4).sh + 1.25, z0 = at(0.4).z, z1 = at(0.18).z;
+        for (const s of [-1, 1]) for (const z of [z0 + 0.2, z1]) bar(AM, [s * (at(0.3).hw - 0.2), at(0.3).sh, z], [s * (at(0.3).hw - 0.2), hy, z], 0.03, chrome);
+        box3(A, -at(0.3).hw + 0.1, hy, z0 - 0.2, at(0.3).hw - 0.1, hy + 0.1, z1 - 0.2, white);
+        seat(A, 0.65, at(0.38).sh - 0.5, z0 + 0.7, 0.55, 0.55, uph, 0.55); seat(A, 0, at(0.1).sh - 0.5, at(0.1).z, H.W - 0.7, 0.55, uph, 0.5);
+        box3(A, -H.W / 2 + 0.25, 0.25, d.L / 2, H.W / 2 - 0.25, 0.32, d.L / 2 + 0.9, lin('#b07a45'));
+        seatAt = { x: 0.65, y: at(0.38).sh - 0.5 + 0.16, z: z0 + 0.7, pose: 'sit' };
+        void hs;
+      } else {
+        // yachts and superyachts: flush deck, stacked deck houses, swim platform, arch and mast
+        deckInto(A, H, 0, 0, 0, deckC, floor, white);
+        const decks = k === 'superyacht' ? d.decks : 2, dh = k === 'superyacht' ? 3.1 : 2.3;
+        let y = at(0.4).sh, ring = null, topY = y, topS = 0.5;
+        for (let i = 0; i < decks; i++) {
+          const top = i === decks - 1, s0 = 0.1 + i * (k === 'superyacht' ? 0.05 : 0.08), s1 = (k === 'superyacht' ? 0.74 : 0.72) - i * (k === 'superyacht' ? 0.07 : 0.12);
+          if (top) { topY = y; topS = s1; }
+          const hh = top && k === 'yacht' ? 1.15 : dh, inset = (k === 'superyacht' ? 0.6 : 0.4) + i * (k === 'superyacht' ? 0.55 : 0.35);
+          const r = house(A, AG, H, s0, s1, y, hh, inset, top ? 0.7 : 1.2, white, i === decks - 1 ? lin('#e4e4e0') : white, { wall: top && k === 'yacht' ? 0.6 : 0.28, lip: 0.35 });
+          if (top && k === 'yacht') {
+            // flybridge: open top deck with a hardtop on poles
+            const hy = r.top + 1.9, zA = at(s1 - 0.02).z, zB = at(s0 + 0.06).z, hw = at((s0 + s1) / 2).hw - inset - 0.3;
+            for (const s of [-1, 1]) for (const z of [zA, zB]) bar(AM, [s * hw, r.top, z], [s * hw * 0.92, hy, z], 0.05, chrome);
+            box3(A, -hw - 0.2, hy, zA - 0.4, hw + 0.2, hy + 0.12, zB + 0.4, white);
+            seatAt = { x: 0.5, y: r.top + 0.02, z: zA + 0.9, pose: 'stand' };
+          }
+          ring = r; y = r.top;
+        }
+        if (k === 'superyacht') {
+          const mz = at(0.5).z; bar(AM, [0, y, mz], [0, y + 6 + d.L * 0.04, mz + 1], 0.12, white); box3(A, -2.2, y + 4, mz - 0.4, 2.2, y + 4.3, mz + 0.4, white);
+          for (const x of [-1.4, 1.4]) { const dm = []; for (let i = 0; i < 10; i++) { const t = i / 10 * Math.PI * 2; dm.push([x + Math.cos(t) * 0.55, mz + Math.sin(t) * 0.55]); } loft(A, dm, y + 4.3, scaleRing(dm, 0.2), y + 5.2, white); }
+          if (d.L > 60) { const hz = at(0.86).z, hr = Math.min(at(0.86).hw * 0.85, 9), hy = at(0.86).sh + 0.05, ring2 = circ(0, hz, hr, hr, 24); cap(A, ring2, hy + 0.02, lin('#2a2e36')); const hc = lin('#f2f2ee'); box3(A, -hr * 0.35, hy + 0.03, hz - hr * 0.5, -hr * 0.22, hy + 0.05, hz + hr * 0.5, hc); box3(A, hr * 0.22, hy + 0.03, hz - hr * 0.5, hr * 0.35, hy + 0.05, hz + hr * 0.5, hc); box3(A, -hr * 0.22, hy + 0.03, hz - hr * 0.07, hr * 0.22, hy + 0.05, hz + hr * 0.07, hc); }
+          if (d.id === 'benetti_oasis') box3(A, -2.2, at(0.05).sh + 0.02, at(0.12).z, 2.2, at(0.05).sh + 0.04, at(0.03).z, lin('#29c4e8'));
+          seatAt = { x: 0, y: topY + 0.02, z: at(topS).z + 1.6, pose: 'stand' };
+        }
+        box3(A, -H.W / 2 + 0.2, 0.25, d.L / 2, H.W / 2 - 0.2, 0.36, d.L / 2 + Math.min(3, d.L * 0.06), lin('#b07a45'));
+        // bow rail
+        const rh = 0.85; for (let i = 0; i < 9; i++) { const s = 0.62 + i * 0.045, q = at(s), q2 = at(Math.min(0.995, s + 0.045)); for (const sd of [-1, 1]) { bar(AM, [sd * (q.hw - 0.1), q.sh + rh, q.z], [sd * (q2.hw - 0.1), q2.sh + rh, q2.z], 0.025, chrome); bar(AM, [sd * (q.hw - 0.1), q.sh, q.z], [sd * (q.hw - 0.1), q.sh + rh, q.z], 0.02, chrome); } }
+      }
+      // nav lights: red to port, green to starboard
+      const nb = at(0.88); box3(AL, -nb.hw - 0.02, nb.sh + 0.02, nb.z - 0.08, -nb.hw + 0.06, nb.sh + 0.1, nb.z + 0.08, lin('#ff2a2a', 2)); box3(AL, nb.hw - 0.06, nb.sh + 0.02, nb.z - 0.08, nb.hw + 0.02, nb.sh + 0.1, nb.z + 0.08, lin('#2aff6a', 2));
+    }
+    for (const [acc, m] of [[A, BMAT.body], [AG, BMAT.glass], [AM, BMAT.metal], [AL, BMAT.lite]]) {
+      if (!acc.p.length) continue;
+      const mesh = new THREE.Mesh(toGeo(acc), m); mesh.castShadow = acc !== AL && acc !== AG; grp.add(mesh);
+    }
+    const seatG = new THREE.Group(); seatG.position.set(seatAt.x, seatAt.y, seatAt.z); grp.add(seatG);
+    return { grp, seat: seatG, pose: seatAt.pose, H, hull: hullMesh };
+  }
+
+  // ---------- the marinas in 3D: piers on pilings, lamps, a fuel dock sign, other people's boats in the slips ----------
+  const FILLER = BOATS.filter(b => b.L <= 13);
+  function buildMarinas() {
+    for (const m of MARINAS) {
+      const p = DATA.P.find(q => q.id === m.id); if (!p) continue;
+      const L = marinaLayout(m); L.p = p; L.name = p.name; MAR.list.push(L); MAR.by[m.id] = L;
+      const a = new Acc(), wood = lin('#8a6a4a'), wood2 = lin('#6a5038'), pile = lin('#4a3a2c'), y = 0.9;
+      for (const r of L.piers) {
+        box3(a, r.x0, y - 0.25, r.z0, r.x1, y, r.z1, wood);
+        const lx = r.x1 - r.x0, lz = r.z1 - r.z0, along = lx > lz;
+        for (let t = 0; t <= (along ? lx : lz) + 0.01; t += 4) for (const e of [0, 1]) {
+          const px = along ? r.x0 + Math.min(t, lx) : e ? r.x1 - 0.15 : r.x0 + 0.15, pz = along ? (e ? r.z1 - 0.15 : r.z0 + 0.15) : r.z0 + Math.min(t, lz);
+          box3(a, px - 0.14, -1.2, pz - 0.14, px + 0.14, y + 0.35, pz + 0.14, pile);
+        }
+        for (let t = 0; t < (along ? lx : lz); t += 2.2) { const px = along ? r.x0 + t : r.x0, pz = along ? r.z0 : r.z0 + t; box3(a, along ? px : r.x0, y + 0.001, along ? r.z0 : pz, along ? px + 0.05 : r.x1, y + 0.004, along ? r.z1 : pz + 0.05, wood2); }
+      }
+      for (const q of L.lamps) { box3(a, q.x - 0.08, y, q.z - 0.08, q.x + 0.08, y + 4.2, q.z + 0.08, lin('#3a3c40')); box3(a, q.x - 0.25, y + 4.2, q.z - 0.25, q.x + 0.25, y + 4.45, q.z + 0.25, lin('#e8e2c8', 1.6)); }
+      // the fuel dock sign at the end of the main pier
+      const fs = L.at(L.P - 6, 3); box3(a, fs.x - 0.06, y, fs.z - 0.06, fs.x + 0.06, y + 2.4, fs.z + 0.06, lin('#3a3c40')); box3(a, fs.x - 0.7, y + 2.0, fs.z - 0.7, fs.x + 0.7, y + 2.8, fs.z + 0.7, lin('#d8261a'));
+      const g = toGeo(a), mesh = new THREE.Mesh(g, MAT.plain); mesh.castShadow = mesh.receiveShadow = true; scene.add(mesh); L.mesh = mesh;
+      // pier rects block boats, and you can walk on them
+      L.solid = L.piers.map(r => ({ x0: r.x0 - 0.3, z0: r.z0 - 0.3, x1: r.x1 + 0.3, z1: r.z1 + 0.3 }));
+      L.walk = L.piers;
+      // the same boats every visit
+      let sd = m.id.length * 7919 + Math.round(L.sx); const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+      L.fill = L.slips.map(() => R() < 0.6 ? { d: FILLER[Math.floor(R() * FILLER.length)], look: BLOOKS[Math.floor(R() * BLOOKS.length)] } : null);
+    }
+  }
+  // moored boats are built when you come close and dropped when you leave
+  function marinaBoats(L, near) {
+    if (!near) { if (L.boats) { scene.remove(L.boats); L.boats.traverse(o => { if (o.geometry) o.geometry.dispose(); }); L.boats = null; L.key = ''; } return; }
+    const mine = (S.fleet || []).filter(r => r.marina === L.m.id && !(BOAT.on && BOAT.rec === r));
+    const key = mine.map(r => r.uid + r.hull + r.stripe).join();
+    if (L.boats && L.key === key) return;
+    if (L.boats) marinaBoats(L, false);
+    L.key = key; L.boats = new THREE.Group(); scene.add(L.boats);
+    L.fill.forEach((f, i) => { if (!f) return; const s = L.slips[i], b = boatModel(f.d, { hull: f.look[0], stripe: f.look[1] }); b.grp.position.set(s.x, 0.03, s.z); b.grp.rotation.y = s.yaw; L.boats.add(b.grp); });
+    mine.forEach((r, k) => { const d = BOAT_BY[r.id], s = d.L <= 13 && k < 4 ? L.at(L.P - 6 - k * 9, (k % 2 ? 1 : -1) * 7) : L.berth(d, k), b = boatModel(d, r); b.grp.position.set(s.x, 0.03, s.z); b.grp.rotation.y = s.yaw === undefined ? L.out - Math.PI / 2 : s.yaw; L.boats.add(b.grp); });
+  }
+
+  // ---------- where boats can go ----------
+  function boatWet(x, z) {
+    const p = waterAt(x, z); if (!p || p.kind === 'pond') return false;
+    for (const L of MAR.list) if (x > L.area.x0 && x < L.area.x1 && z > L.area.z0 && z < L.area.z1) for (const r of L.solid) if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) return false;
+    for (const b of solids.at(x, z)) if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) return false;
+    for (const e of streets.at(x, z)) { const w = e.w / 2 + 1; if (x > Math.min(e.ax, e.bx) - w && x < Math.max(e.ax, e.bx) + w && z > Math.min(e.az, e.bz) - w && z < Math.max(e.az, e.bz) + w) return false; }
+    return true;
+  }
+  function onPier(x, z) { for (const L of MAR.list) if (x > L.area.x0 && x < L.area.x1 && z > L.area.z0 && z < L.area.z1) for (const r of L.walk) if (x > r.x0 - 0.2 && x < r.x1 + 0.2 && z > r.z0 - 0.2 && z < r.z1 + 0.2) return L; return null; }
+
+  // ---------- the physics ----------
+  const BOAT = { on: false, b: null, rec: null, thr: 0, lever: 0, padT: false, npc: [], t: 0, near: null, horn: 0 };
+  const G9 = 9.81;
+  function boatSpec(d) {
+    const H = hullSpec(d), Lw = d.L * 0.9, plane = !(d.kind === 'superyacht');
+    const top = d.top, acc = d.accel;
+    const hump = u => { const fn = u / Math.sqrt(G9 * Lw); return (1 + (plane ? 1.6 : 0.6) * Math.exp(-Math.pow((fn - 0.5) / 0.22, 2))) * (plane ? 1 - 0.38 * smooth(0.75, 1.35, fn) : 1); };
+    const lin0 = 0.05 * acc / top, c = (0.68 * acc - lin0 * top) / (top * top * hump(top));
+    return { d, H, top, acc, turn: d.turn, Lw, plane, hump, c, lin0, fnOf: u => u / Math.sqrt(G9 * Lw),
+      // how stiff the hull is in the water: big hulls move slowly
+      kHeave: Math.pow(2 * Math.PI / (0.9 + Math.sqrt(d.L) * 0.32), 2), kPitch: Math.pow(2 * Math.PI / (1.0 + Math.sqrt(d.L) * 0.42), 2), kRoll: Math.pow(2 * Math.PI / (1.2 + Math.sqrt(d.W) * 0.9), 2),
+      pwc: d.kind === 'pwc', rise: d.kind === 'pwc' ? 0.1 : d.kind === 'gofast' ? 0.16 : d.kind === 'pontoon' ? 0.06 : 0.12 };
+  }
+  function newBoatState(d, x, z, yaw) { return { d, sp: boatSpec(d), x, z, yaw, u: 0, v: 0, r: 0, y: 0.03, vy: 0, pitch: 0, vp: 0, roll: 0, vr: 0, air: 0, steer: 0, slam: 0, model: null, wake: null, rpm: 0, plane: 0 }; }
+    function boatPhys(b, thr, steer, dt) {
+    const sp = b.sp, d = b.d; b.thr = thr;
+    // thrust against drag; reverse is weaker; props lose bite at speed
+    const T = thr >= 0 ? thr * sp.acc * (1 - 0.32 * clamp(b.u / sp.top, 0, 1.2)) : thr * sp.acc * 0.42;
+    const au = Math.abs(b.u), turnDrag = 1 + 0.6 * Math.abs(b.steer) * smooth(2, 10, au);
+    const D = Math.sign(b.u) * (sp.c * b.u * b.u * sp.hump(au) * turnDrag + sp.lin0 * au) * (b.air > 0 ? 0.15 : 1);
+    b.u += (T - D) * dt;
+    if (b.u < -sp.top * 0.22) b.u = -sp.top * 0.22;
+    // steering: a jet ski steers with its jet (no throttle, almost no steering); a rudder or outboard needs water moving past it
+    b.steer = lerp(b.steer, steer, 1 - Math.exp(-dt * (sp.pwc ? 9 : 4)));
+    const flow = sp.pwc ? clamp(Math.max(thr, 0) * 0.9 + au / sp.top * 0.5, 0.08, 1) : clamp(au / (sp.top * 0.28) + Math.abs(thr) * 0.25, 0, 1);
+    const want = b.steer * sp.turn * flow * (b.u < -0.3 ? -0.7 : 1) * (b.air > 0 ? 0.1 : 1);
+    b.r += (want - b.r) * (1 - Math.exp(-dt * (d.L > 30 ? 0.6 : d.L > 12 ? 1.5 : sp.pwc ? 6 : 3)));
+    b.yaw += b.r * dt;
+    // the stern slides out in a turn, the hull's grip pulls it back
+    b.v += -b.r * b.u * (sp.pwc ? 0.2 : 0.12) * dt;
+    b.v *= Math.exp(-dt * (sp.pwc ? 1.6 : d.L > 20 ? 0.8 : 1.3) * (b.air > 0 ? 0.1 : 1));
+    const sn = Math.sin(b.yaw), cs = Math.cos(b.yaw), fx = -sn, fz = -cs, rx = cs, rz = -sn;
+    const vx = fx * b.u + rx * b.v, vz = fz * b.u + rz * b.v;
+    // the water: never off it; slide along the bank and stop the part of the motion going into it
+    const hl = d.L * 0.47, hw = d.W * 0.47, pts = [[0, -hl], [-hw, hl * 0.9], [hw, hl * 0.9], [-hw, -hl * 0.35], [hw, -hl * 0.35]];
+    const dry = (x, z, yaw) => { const s = Math.sin(yaw), c = Math.cos(yaw); for (const [px, pz] of pts) { const wx = x + c * px + s * pz, wz = z - s * px + c * pz; if (!boatWet(wx, wz)) return true; } return false; };
+    let nx = b.x + vx * dt, nz = b.z + vz * dt, hit = 0;
+    if (dry(nx, nz, b.yaw)) {
+      hit = Math.hypot(vx, vz);
+      if (!dry(nx, b.z, b.yaw)) nz = b.z; else if (!dry(b.x, nz, b.yaw)) nx = b.x; else { nx = b.x; nz = b.z; }
+      if (dry(nx, nz, b.yaw)) { b.yaw -= b.r * dt; nx = b.x; nz = b.z; }
+      const mx = nx - b.x, mz = nz - b.z, ml = Math.hypot(mx, mz) / Math.max(dt, 1e-3);
+      b.u = (mx * fx + mz * fz) / Math.max(dt, 1e-3) * 0.5; b.v = (mx * rx + mz * rz) / Math.max(dt, 1e-3) * 0.5; b.r *= 0.3; void ml;
+    }
+    b.x = nx; b.z = nz;
+    // floating: heave, pitch and roll chase the water under the hull
+    const bow = waterY(b.x + fx * hl, b.z + fz * hl), stern = waterY(b.x - fx * hl * 0.9, b.z - fz * hl * 0.9), port = waterY(b.x - rx * hw, b.z - rz * hw), stbd = waterY(b.x + rx * hw, b.z + rz * hw), mid = waterY(b.x, b.z);
+    const fn = sp.fnOf(au); b.plane = sp.plane ? smooth(0.85, 1.4, fn) : 0;
+    const lift = sp.rise * b.plane * (1 + 0.3 * smooth(sp.top * 0.6, sp.top, au));
+    const surf = (bow + stern + port + stbd + mid * 2) / 6, yT = surf + lift;
+    if (b.air > 0 || b.y > yT + 0.18 && b.vy > 0.4) {
+      // off a wake or a crest: you fly until the hull meets the water again
+      b.air += dt; b.vy -= G9 * dt; b.y += b.vy * dt; b.vp -= b.vp * dt * 0.5; b.pitch += b.vp * dt;
+      if (b.y <= yT) { b.slam = clamp(-b.vy / 4, 0, 1.5); b.air = 0; b.y = yT; b.vy *= -0.15; b.vp -= b.slam * 0.6; }
+    } else {
+      const ay = clamp(sp.kHeave * (yT - b.y) - 2 * 0.55 * Math.sqrt(sp.kHeave) * b.vy, -G9 * 1.5, G9 * 3);
+      b.vy += ay * dt; b.y += b.vy * dt;
+    }
+    // bow up as it climbs onto the hump, levels off on plane; squats under hard throttle
+    const climb = sp.plane ? Math.exp(-Math.pow((fn - 0.65) / 0.33, 2)) * (0.1 + 0.05 * (d.L < 8)) * clamp(thr + 0.3, 0, 1) : 0.015 * clamp(fn / 0.4, 0, 1);
+    const pT = Math.atan2(bow - stern, hl * 1.9) + climb + b.plane * 0.035 - (d.L > 30 ? 0 : 0.01 * clamp(-T, 0, 3));
+    const rT = Math.atan2(stbd - port, hw * 2) + (sp.pwc ? -0.55 : d.L > 20 ? 0.03 : -0.32) * clamp(b.r * au * 0.04, -1, 1) * (sp.plane ? 0.3 + b.plane : 1);
+    if (!b.air) { b.vp += (sp.kPitch * (pT - b.pitch) - 2 * 0.45 * Math.sqrt(sp.kPitch) * b.vp) * dt; b.pitch += b.vp * dt; }
+    b.vr += (sp.kRoll * (rT - b.roll) - 2 * 0.35 * Math.sqrt(sp.kRoll) * b.vr) * dt; b.roll += b.vr * dt;
+    b.pitch = clamp(b.pitch, -0.35, 0.45); b.roll = clamp(b.roll, -0.6, 0.6);
+    b.rpm = clamp(Math.abs(thr) * 0.75 + au / sp.top * 0.35, 0, 1.05);
+    return { hit, vx, vz, fx, fz, rx, rz, hl, hw };
+  }
+  function placeBoat(b) { const g = b.model.grp; g.position.set(b.x, b.y, b.z); g.rotation.set(b.pitch, b.yaw, b.roll, 'YXZ'); }
+  // wake and spray for any boat
+  function boatFx(b, o, dt) {
+    const sp = b.sp, au = Math.abs(b.u);
+    if (!b.wake) b.wake = wakeEmitter({ hw: b.d.W / 2, life: clamp(4 + b.d.L * 0.25, 5, 16), k: b.d.L > 30 ? 0.9 : 1 });
+    const sx = b.x - o.fx * o.hl * 0.95, sz = b.z - o.fz * o.hl * 0.95;
+    wakePush(b.wake, sx, sz, o.fx, o.fz, au * (b.u >= 0 ? 1 : 0.4) + Math.abs(b.v) * 0.5, dt);
+    if (b.air > 0) return;
+    // bow spray off the chop, scaled by speed; a jet ski throws a rooster tail
+    const n = Math.min(4, Math.floor((au / 6) * (phone ? 1.2 : 2) * dt * 30 + Math.random()));
+    for (let i = 0; i < n && au > 3; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1, bx = b.x + o.fx * o.hl * (0.35 - b.plane * 0.25) + o.rx * side * b.d.W * 0.45, bz = b.z + o.fz * o.hl * (0.35 - b.plane * 0.25) + o.rz * side * b.d.W * 0.45;
+      const out = 1.5 + au * 0.12; spray(bx, waterY(bx, bz) + 0.1, bz, o.rx * side * out + o.fx * au * 0.3, 1 + au * 0.08 + Math.random() * 1.5, o.rz * side * out + o.fz * au * 0.3, 0.6 + Math.random() * 0.5, 0.25 + b.d.W * 0.06);
+    }
+    if (sp.pwc && b.thr > 0.3 && au > 4) { for (let i = 0; i < 2; i++) spray(sx, waterY(sx, sz) + 0.2, sz, -o.fx * (au * 0.4 + 3) + (Math.random() - 0.5), 2.5 + Math.random() * 2.5 + au * 0.08, -o.fz * (au * 0.4 + 3) + (Math.random() - 0.5), 0.9 + Math.random() * 0.4, 0.4); }
+    if (b.slam > 0.15) { const k = Math.round(10 + b.slam * 25); for (let i = 0; i < k; i++) { const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 3.5 * b.slam; spray(b.x + Math.cos(a) * b.d.W * 0.5, b.y + 0.1, b.z + Math.sin(a) * b.d.W * 0.5, Math.cos(a) * s, 1.5 + Math.random() * 3 * b.slam, Math.sin(a) * s, 0.7 + Math.random() * 0.5, 0.45); } }
+    b.slam = 0;
+  }
+
+  // ---------- sound: the motor (outboard, jet ski triple, or big diesels), the water rushing by, slaps and the horn ----------
+  const BSND = { on: false };
+  function bsStart(d) {
+    const ac = audioCtx(); if (!ac) return; try { if (ac.state === 'suspended') ac.resume(); } catch (e) {}
+    const out = ac.createGain(); out.gain.value = 0; out.connect(ac.destination);
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 1.1; lp.connect(out);
+    const o1 = ac.createOscillator(), o2 = ac.createOscillator(), g2 = ac.createGain(); o1.type = 'sawtooth'; o2.type = 'square'; g2.gain.value = 0.35; o1.connect(lp); o2.connect(g2); g2.connect(lp);
+    const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), ch = nb.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+    const ns = ac.createBufferSource(); ns.buffer = nb; ns.loop = true; const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 0.6; const ng = ac.createGain(); ng.gain.value = 0; ns.connect(bp); bp.connect(ng); ng.connect(ac.destination);
+    o1.start(); o2.start(); ns.start();
+    const big = d.L > 15, pwc = d.kind === 'pwc';
+    Object.assign(BSND, { on: true, ac, out, lp, o1, o2, ns, ng, bp, nb, base: pwc ? 38 : big ? 26 : 34, span: pwc ? 4.8 : big ? 2.2 : 5.2, cut: pwc ? 900 : big ? 340 : 700, vol: pwc ? 0.16 : big ? 0.2 : 0.18 });
+  }
+  function bsFrame(b) {
+    if (!BSND.on) return; const t = BSND.ac.currentTime, r = b.rpm, f = BSND.base * (1 + r * BSND.span) * (1 + (b.air > 0 ? 0.12 : 0));
+    BSND.o1.frequency.setTargetAtTime(f, t, 0.08); BSND.o2.frequency.setTargetAtTime(f * 0.5, t, 0.08); BSND.lp.frequency.setTargetAtTime(BSND.cut * (0.6 + r * 1.6), t, 0.1);
+    BSND.out.gain.setTargetAtTime(BSND.vol * (0.45 + r * 0.55), t, 0.1);
+    const sp = Math.abs(b.u) / b.sp.top; BSND.ng.gain.setTargetAtTime(b.air > 0 ? 0 : 0.03 + sp * 0.12, t, 0.15); BSND.bp.frequency.setTargetAtTime(400 + sp * 1400, t, 0.2);
+  }
+  function bsSlap(k) {
+    if (!BSND.on) return; const ac = BSND.ac, s = ac.createBufferSource(), g = ac.createGain(), lp = ac.createBiquadFilter(); s.buffer = BSND.nb; lp.type = 'lowpass'; lp.frequency.value = 260 + k * 300;
+    s.connect(lp); lp.connect(g); g.connect(ac.destination); const t = ac.currentTime; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25 + k * 0.35, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35); s.start(t, Math.random()); s.stop(t + 0.4);
+  }
+  function bsHorn(d) {
+    const ac = audioCtx(); if (!ac) return; const t = ac.currentTime, g = ac.createGain(), lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = d.L > 15 ? 600 : 1800; lp.connect(g); g.connect(ac.destination);
+    for (const f of d.L > 15 ? [92, 138] : [330, 415]) { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(lp); o.start(t); o.stop(t + (d.L > 15 ? 1.6 : 0.8)); }
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.04); g.gain.setValueAtTime(0.22, t + (d.L > 15 ? 1.4 : 0.65)); g.gain.exponentialRampToValueAtTime(0.0001, t + (d.L > 15 ? 1.6 : 0.8));
+  }
+  function bsStop() { if (!BSND.on) return; BSND.on = false; try { const t = BSND.ac.currentTime; BSND.out.gain.setTargetAtTime(0, t, 0.1); BSND.ng.gain.setTargetAtTime(0, t, 0.1); const o = [BSND.o1, BSND.o2, BSND.ns]; setTimeout(() => o.forEach(x => { try { x.stop(); } catch (e) {} }), 400); } catch (e) {} }
+
+  // ---------- you at the helm ----------
+  function poseHelm(P, pose, steer, t) {
+    const Hs = P.root.scale.y || 1;
+    if (pose === 'stand') { idlePerson(P, t); P.root.position.set(0, 0, 0); for (let i = 0; i < 2; i++) { P.arms[i].rotation.set(-(48 + (i ? 1 : -1) * steer * 8) * DEG, 0, (i ? 1 : -1) * 0.18); if (P.fores) P.fores[i].rotation.x = -40 * DEG; } P.upper.rotation.set(0.05, steer * 0.1, 0); return; }
+    const S2 = pose === 'straddle' ? { hip: 68, knee: 100, lean: 0.38, sh: 62, el: 26, spread: 0.26, legOut: 0.22 } : { hip: 86, knee: 88, lean: 0.04, sh: 44, el: 46, spread: 0.18, legOut: 0.08 };
+    P.root.position.set(0, 0.07 - 0.85 * Hs, 0);
+    for (let i = 0; i < 2; i++) {
+      P.legs[i].rotation.set(-S2.hip * DEG, 0, (i ? 1 : -1) * S2.legOut);
+      if (P.knees) { P.knees[i].rotation.x = S2.knee * DEG; P.ankles[i].rotation.x = -0.2; }
+      const st = (i ? 1 : -1) * steer * 7; P.arms[i].rotation.set(-(S2.sh + st) * DEG, 0, (i ? 1 : -1) * S2.spread); if (P.fores) P.fores[i].rotation.x = -S2.el * DEG;
+    }
+    P.upper.rotation.set(S2.lean, steer * 0.12, 0); if (P.head) P.head.rotation.set(-S2.lean * 0.7, steer * 0.2, 0);
+  }
+
+  // ---------- going out and coming back ----------
+  function fleet() { if (!S.fleet) { S.fleet = []; const OLD = { 'Bass boat': 'nitro_z21', 'Wake boat': 'mastercraft_x24', '48 ft yacht': 'azimut_60' }; for (const n of S.boats || []) if (OLD[n]) S.fleet.push(newRec(OLD[n], 'marina_harbor')); syncNames(); } return S.fleet; }
+  function newRec(id, marina) { const d = BOAT_BY[id]; return { uid: 'b' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), id, marina, ...boatLook(d) }; }
+  function syncNames() { S.boats = (S.fleet || []).map(r => BOAT_BY[r.id].name); }
+  function payAny(v, what) { v = Math.round(v); if (S.cash + S.bank < v) { toast(`Not enough for ${what}: ${money(v)}. You have ${money(S.cash)} cash and ${money(S.bank)} in the bank.`, 'bad'); return false; } const c = Math.min(S.cash, v); S.cash -= c; S.bank -= v - c; S.log.unshift(`-${money(v)} ${what}`); S.log.length = Math.min(S.log.length, 30); save(); refreshStats(); return true; }
+  function takeOut(rec) {
+    const L = MAR.by[rec.marina], d = BOAT_BY[rec.id]; if (!L || !d) return;
+    if (BOAT.on) { toast('You\'re already out on the water.'); return; }
+    if (typeof HOOD !== 'undefined' && HOOD.ride || typeof RIDE !== 'undefined' && RIDE.with) { toast('Not while you\'re riding with somebody.'); return; }
+    closeMenu(); if (PH.open) closePhone(); if (inside) leaveInterior(true);
+    if (!driving || !foot.on) { if (driving && !foot.on) getOut(); else spawnFoot(L.m.x, L.m.z); }
+    const p = L.launch(d), b = newBoatState(d, p.x, p.z, p.yaw);
+    b.model = boatModel(d, rec); scene.add(b.model.grp); b.y = waterY(p.x, p.z); placeBoat(b);
+    BOAT.on = true; BOAT.b = b; BOAT.rec = rec; BOAT.lever = 0; BOAT.thr = 0; BOAT.from = rec.marina;
+    S.boatTrip = { uid: rec.uid, from: rec.marina }; save();
+    wearMe(b.model.seat); ME.wrap.position.set(0, 0, 0); ME.wrap.rotation.set(0, 0, 0); ME.wrap.visible = true;
+    foot.target = null; foot.camYaw = b.yaw; LOOK.pitch = 0.22; BOAT.cam = null; showCard(null); showPrompt(null);
+    document.body.classList.add('boating'); bindBoatUI(); $('bt-hud').hidden = false; bsStart(d);
+    toast(`🚤 ${d.name} is off the dock. Throttle is on the right.`, 'good');
+  }
+  function endTrip(L, how) {
+    const b = BOAT.b, rec = BOAT.rec; if (!BOAT.on) return;
+    BOAT.on = false; BOAT.b = null; BOAT.rec = null; rec.marina = L.m.id; delete S.boatTrip;
+    if (b.wake) b.wake.dead = true; scene.remove(b.model.grp); b.model.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    bsStop(); document.body.classList.remove('boating'); $('bt-hud').hidden = true;
+    wearMe(foot.holder); ME.wrap.position.set(0, 0, 0); ME.wrap.rotation.set(0, 0, 0);
+    // step off onto the shore by the dock office
+    const [dx, dz] = BDIR[L.m.to]; foot.x = L.m.x + dx * 4; foot.z = L.m.z + dz * 4; foot.yaw = foot.camYaw = Math.atan2(dx, dz); foot.target = null;
+    foot.holder.position.set(foot.x, 0, foot.z); foot.holder.rotation.y = foot.yaw; drv.x = foot.x; drv.z = foot.z;
+    foot.cam.set(foot.x + Math.sin(foot.camYaw) * 4.6, 2.2, foot.z + Math.cos(foot.camYaw) * 4.6); foot.look.set(foot.x, 1.35, foot.z); foot.pkey = '';
+    if (L.boats) L.key = '';
+    save(); refreshStats();
+    toast(how === 'tow' ? `🛟 Towed back to ${L.name}.` : `⚓ Tied up at ${L.name}.`, 'good');
+  }
+  function nearMarina(x, z, R) { let best = null, bd = R; for (const L of MAR.list) { const c = L.at(L.P / 2, 0), dd = Math.hypot(x - c.x, z - c.z) - L.P / 2; if (dd < bd) { bd = dd; best = L; } } return best; }
+
+  // ---------- the boat controls: steer buttons, a throttle lever that stays where you leave it, horn, dock, tow ----------
+  let btBound = false;
+  const BH = { l: false, r: false };
+  function bindBoatUI() {
+    if (btBound) return; btBound = true;
+    const el = document.createElement('div'); el.id = 'bt-hud'; el.hidden = true;
+    el.innerHTML = `<style>
+#bt-hud{position:fixed;inset:0;pointer-events:none;z-index:8;font-family:'Barlow Condensed',system-ui,sans-serif}
+body.boating :is(#stick,#walkhint,#prompt,#g-pad,#g-cross,#em-btn,#carbtn,#fobbtn,#garbtn,#pad,#card,#boatbtn){display:none!important}
+#bt-spd{position:absolute;left:50%;transform:translateX(-50%);bottom:max(14px,env(safe-area-inset-bottom));background:rgba(14,16,22,.62);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:6px 14px;color:#fff;text-align:center;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);min-width:120px}
+#bt-spd b{font-size:34px;line-height:1;font-weight:800}#bt-spd small{font-size:12px;opacity:.7;margin-left:3px}#bt-spd span{display:block;font-size:12px;opacity:.75}
+#bt-spd i{display:block;height:5px;border-radius:3px;background:rgba(255,255,255,.15);margin-top:4px;overflow:hidden}#bt-spd i u{display:block;height:100%;background:linear-gradient(90deg,#21b8d8,#ffd23f,#ff5a3a);width:0}
+#bt-steer{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:max(18px,env(safe-area-inset-bottom));display:flex;gap:12px;pointer-events:auto}
+#bt-steer button,#bt-btns button{pointer-events:auto;border:1px solid rgba(255,255,255,.22);background:rgba(20,22,30,.6);color:#fff;border-radius:16px;font:700 26px system-ui;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);touch-action:none;user-select:none;-webkit-user-select:none}
+#bt-steer button{width:78px;height:78px}#bt-steer button.hold{background:rgba(33,184,216,.6)}
+#bt-thr{position:absolute;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));width:76px;height:200px;pointer-events:auto;touch-action:none;border-radius:18px;background:rgba(20,22,30,.6);border:1px solid rgba(255,255,255,.22);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+#bt-thr .tk{position:absolute;left:50%;top:14px;bottom:14px;width:8px;margin-left:-4px;border-radius:4px;background:linear-gradient(#5ec26a,#3a3c42 50%,#e0483a)}
+#bt-thr .nt{position:absolute;left:12px;right:12px;top:50%;height:2px;background:rgba(255,255,255,.5)}
+#bt-thr .lb{position:absolute;right:6px;font:700 10px system-ui;color:rgba(255,255,255,.7)}#bt-thr .lf{top:6px}#bt-thr .ln{top:calc(50% - 15px)}#bt-thr .lr{bottom:6px}
+#bt-knob{position:absolute;left:50%;width:54px;height:26px;margin:-13px 0 0 -27px;border-radius:9px;background:linear-gradient(#e8eaee,#9aa0a8);box-shadow:0 2px 6px rgba(0,0,0,.5);top:50%}
+#bt-btns{position:absolute;right:calc(max(18px,env(safe-area-inset-right)) + 88px);bottom:max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+#bt-btns button{font-size:15px;padding:9px 12px;border-radius:12px;white-space:nowrap}#bt-btns #bt-dock{background:rgba(33,184,216,.85);font-size:17px}
+#boatbtn{position:fixed;right:max(14px,env(safe-area-inset-right));top:28%;z-index:7;border:1px solid rgba(255,255,255,.22);background:rgba(27,184,232,.8);color:#fff;border-radius:14px;padding:10px 12px;font:700 15px system-ui;display:none}
+body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{display:block}
+@media (orientation:landscape) and (max-height:500px){#bt-thr{height:160px;width:70px}#bt-steer button{width:66px;height:66px}#bt-spd b{font-size:28px}}
+</style>
+<div id="bt-spd"><b id="bt-mph">0</b><small>MPH</small><span id="bt-kn">0 knots</span><i><u id="bt-rpm"></u></i></div>
+<div id="bt-steer"><button id="bt-l" aria-label="Steer left">◀</button><button id="bt-r" aria-label="Steer right">▶</button></div>
+<div id="bt-btns"><button id="bt-dock" hidden>⚓ Dock</button><button id="bt-horn">📯 Horn</button><button id="bt-cam">🎥 Cam</button><button id="bt-tow">🛟 Tow back</button></div>
+<div id="bt-thr" aria-label="Throttle"><div class="tk"></div><div class="nt"></div><span class="lb lf">FWD</span><span class="lb ln">N</span><span class="lb lr">REV</span><div id="bt-knob"></div></div>`;
+    document.body.append(el);
+    for (const [id, k] of [['bt-l', 'l'], ['bt-r', 'r']]) {
+      const b = $(id), on = e => { e.preventDefault(); BH[k] = true; b.classList.add('hold'); }, off = () => { BH[k] = false; b.classList.remove('hold'); };
+      b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
+    }
+    const th = $('bt-thr'); let tid = null;
+    const set = e => { const r = th.getBoundingClientRect(), t = clamp((e.clientY - r.top - 14) / (r.height - 28), 0, 1); let v = 1 - t * 2; if (Math.abs(v) < 0.07) v = 0; BOAT.lever = v; BOAT.padT = false; };
+    th.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); tid = e.pointerId; th.setPointerCapture(tid); set(e); });
+    th.addEventListener('pointermove', e => { if (e.pointerId === tid) set(e); });
+    th.addEventListener('pointerup', () => { tid = null; }); th.addEventListener('pointercancel', () => { tid = null; });
+    $('bt-horn').onclick = () => { if (BOAT.b) bsHorn(BOAT.b.d); };
+    $('bt-cam').onclick = () => { drv.far = !drv.far; };
+    $('bt-dock').onclick = () => { if (BOAT.near) endTrip(BOAT.near, 'dock'); };
+    $('bt-tow').onclick = () => { const L = MAR.by[BOAT.from]; if (!L || !BOAT.b) return; const near = nearMarina(BOAT.b.x, BOAT.b.z, 120); if (near) { endTrip(near, 'dock'); return; } const fee = Math.round(150 + BOAT.b.d.L * 25); if (payAny(fee, 'Marina tow')) endTrip(L, 'tow'); };
+    for (const e of [th, $('bt-steer'), $('bt-btns')]) e.addEventListener('pointerdown', ev => ev.stopPropagation());
+    const bb = document.createElement('button'); bb.id = 'boatbtn'; bb.textContent = '🚤 Boats'; bb.onclick = () => { const L = nearMarina(foot.x, foot.z, 90); if (L) openMenu(() => dockMenu(L.p)); }; document.body.append(bb);
+  }
+  function boatInput(dt) {
+    let st = (BH.l ? 1 : 0) - (BH.r ? 1 : 0);
+    if (keys.ArrowLeft || keys.KeyA) st += 1; if (keys.ArrowRight || keys.KeyD) st -= 1;
+    if (keys.ArrowUp || keys.KeyW) { BOAT.lever = Math.min(1, BOAT.lever + dt * 0.9); BOAT.padT = false; }
+    if (keys.ArrowDown || keys.KeyS) { BOAT.lever = Math.max(-1, BOAT.lever - dt * 0.9); BOAT.padT = false; }
+    if (keys.Space) BOAT.lever = 0;
+    let thr = BOAT.lever;
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) {
+      if (!p) continue; const ax = p.axes[0] || 0; if (Math.abs(ax) > 0.15) st = -ax;
+      const rt = p.buttons[7] ? p.buttons[7].value : 0, lt = p.buttons[6] ? p.buttons[6].value : 0;
+      if (rt > 0.05 || lt > 0.05) { thr = rt - lt; BOAT.padT = true; BOAT.lever = thr; } else if (BOAT.padT) { thr = 0; BOAT.lever = 0; }
+      if (Math.abs(p.axes[2] || 0) > 0.15 || Math.abs(p.axes[3] || 0) > 0.15) turnCam(-(p.axes[2] || 0) * dt * 2.6, (p.axes[3] || 0) * dt * 1.6);
+      const y = p.buttons[3] && p.buttons[3].pressed; if (y && !BOAT.padY && BOAT.b) bsHorn(BOAT.b.d); BOAT.padY = y;
+      const a = p.buttons[0] && p.buttons[0].pressed; if (a && !BOAT.padA && BOAT.near) endTrip(BOAT.near, 'dock'); BOAT.padA = a;
+    }
+    BOAT.thr = thr; return clamp(st, -1, 1);
+  }
+  let btUi = 0;
+  function boatHud(b) {
+    if ((btUi++ & 3) !== 0) return;
+    const ms = Math.hypot(b.u, b.v), kn = $('bt-kn');
+    $('bt-mph').textContent = mph(ms);
+    kn.textContent = `${Math.round(ms * 1.944)} knots${b.plane > 0.6 ? ' · on plane' : b.sp.plane && b.u > 2 && b.plane < 0.3 && BOAT.thr > 0.2 ? ' · plowing' : ''}`;
+    kn.style.color = b.plane > 0.6 ? '#7fe3ff' : '';
+    $('bt-rpm').style.width = Math.round(b.rpm * 95) + '%';
+    $('bt-knob').style.top = `calc(14px + ${((1 - BOAT.lever) / 2 * 100).toFixed(1)}% - ${((1 - BOAT.lever) / 2 * 28).toFixed(1)}px)`;
+    const dk = $('bt-dock'), can = !!BOAT.near; if (dk.hidden === can) dk.hidden = !can;
+  }
+  function boatStep(dt) {
+    const b = BOAT.b; if (!b) return;
+    const steer = boatInput(dt), o = boatPhys(b, BOAT.thr, steer, dt);
+    placeBoat(b); boatFx(b, o, dt); bsFrame(b);
+    if (o.hit > 3 && performance.now() - (BOAT.bumpAt || 0) > 1200) { BOAT.bumpAt = performance.now(); bsSlap(1); toast(o.hit > 9 ? 'Ran it aground. Back off the bank.' : 'Bumped the bank.', 'bad'); }
+    if (ME) { poseHelm(ME, b.model.pose, b.steer, performance.now() / 1000); ME.wrap.visible = true; }
+    // your spot follows the boat (the minimap, other players, the GPS)
+    foot.x = b.x; foot.z = b.z; foot.yaw = b.yaw; drv.x = b.x; drv.z = b.z;
+    const L = nearMarina(b.x, b.z, 70); BOAT.near = L && Math.abs(b.u) < 3.5 ? L : null;
+    // chase cam sized to the boat; drag to look around, it swings back behind after a moment
+    const d = b.d, back = (drv.far ? 1.8 : 1) * clamp(d.L * 1.15 + 4.5, 6.8, 150), up = (drv.far ? 1.8 : 1) * clamp(d.L * 0.32 + 1.9, 2.5, 48);
+    let dc = b.yaw - foot.camYaw; dc = Math.atan2(Math.sin(dc), Math.cos(dc));
+    if (performance.now() - LOOK.dragAt > 1500) foot.camYaw += dc * Math.min(1, dt * 2.2);
+    const p = clamp(LOOK.pitch, -0.1, 1.0), cy = foot.camYaw, ch = Math.cos(p * 0.6);
+    v4.set(b.x + Math.sin(cy) * back * ch, Math.max(b.y + 1.2, b.y + up * (0.55 + p)), b.z + Math.cos(cy) * back * ch);
+    if (!BOAT.cam) BOAT.cam = v4.clone(); BOAT.cam.lerp(v4, 1 - Math.exp(-dt * 5));
+    const wy = waterY(BOAT.cam.x, BOAT.cam.z); if (BOAT.cam.y < wy + 0.8) BOAT.cam.y = wy + 0.8;
+    camera.position.copy(BOAT.cam); camera.lookAt(b.x - Math.sin(cy) * d.L * 0.6, b.y + clamp(d.L * 0.08, 1.0, 9), b.z - Math.cos(cy) * d.L * 0.6);
+    boatHud(b);
+    if ((frame & 7) === 0) { const p2 = waterAt(b.x, b.z), lk = DATA.lakes && DATA.lakes.find(l => b.x >= l.x0 && b.x <= l.x1 && b.z >= l.z0 && b.z <= l.z1); streetEl.textContent = lk ? lk.name : p2 && p2.kind === 'river' ? 'Trinity River' : nearMarina(b.x, b.z, 2000) ? nearMarina(b.x, b.z, 2000).m.area : districtAt(b.x, b.z); }
+  }
+
+  // ---------- boats other people are running on the lake ----------
+  function npcFrame(dt, fx, fz) {
+    const want = phone ? 2 : 3;
+    BOAT.npc = BOAT.npc.filter(n => { const far = Math.hypot(n.b.x - fx, n.b.z - fz) > 1600; if (far) { scene.remove(n.b.model.grp); n.b.model.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); if (n.b.wake) n.b.wake.dead = true; } return !far; });
+    if (BOAT.npc.length < want && (frame % 60) === 0) {
+      const big = WTR.pieces.filter(p => p.kind !== 'pond' && (p.x1 - p.x0) > 150 && (p.z1 - p.z0) > 150 && Math.hypot(clamp(fx, p.x0, p.x1) - fx, clamp(fz, p.z0, p.z1) - fz) < 900);
+      if (big.length) {
+        const p = big[Math.floor(Math.random() * big.length)], x = lerp(p.x0 + 40, p.x1 - 40, Math.random()), z = lerp(p.z0 + 40, p.z1 - 40, Math.random());
+        if (boatWet(x, z) && Math.hypot(x - fx, z - fz) > 120) {
+          const d = FILLER[Math.floor(Math.random() * FILLER.length)], lk = BLOOKS[Math.floor(Math.random() * BLOOKS.length)], b = newBoatState(d, x, z, Math.random() * 6.28);
+          b.model = boatModel(d, { hull: lk[0], stripe: lk[1] }); scene.add(b.model.grp); b.y = waterY(x, z);
+          BOAT.npc.push({ b, p, tx: x, tz: z, thr: 0.35 + Math.random() * 0.5, t: 0 });
+        }
+      }
+    }
+    for (const n of BOAT.npc) {
+      const b = n.b; n.t -= dt;
+      if (n.t <= 0 || Math.hypot(n.tx - b.x, n.tz - b.z) < 30) { n.t = 20 + Math.random() * 30; n.tx = lerp(n.p.x0 + 35, n.p.x1 - 35, Math.random()); n.tz = lerp(n.p.z0 + 35, n.p.z1 - 35, Math.random()); }
+      let want = Math.atan2(-(n.tx - b.x), -(n.tz - b.z));
+      if (BOAT.on) { const dx = b.x - BOAT.b.x, dz = b.z - BOAT.b.z, dd = Math.hypot(dx, dz); if (dd < 40 + BOAT.b.d.L) want = Math.atan2(-dx, -dz) + Math.PI; }
+      let dy = want - b.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      const ahead = boatWet(b.x - Math.sin(b.yaw) * (b.d.L + 25), b.z - Math.cos(b.yaw) * (b.d.L + 25));
+      if (!ahead) { dy = 1.5; n.t = Math.min(n.t, 2); }
+      const o = boatPhys(b, ahead ? n.thr : 0.15, clamp(dy * 1.5, -1, 1), dt); placeBoat(b); boatFx(b, o, dt);
+    }
+  }
+
+  // ---------- each frame (from the water's frame) ----------
+  let mbT = 0;
+  function boatsFrame(dt) {
+    if (!MAR.list.length) return;
+    const fx = BOAT.on ? BOAT.b.x : driving ? drv.x : controls.target.x, fz = BOAT.on ? BOAT.b.z : driving ? drv.z : controls.target.z;
+    if ((mbT -= dt) <= 0) { mbT = 0.5; for (const L of MAR.list) marinaBoats(L, Math.hypot(L.sx - fx, L.sz - fz) < 900 && camera.position.y < 900); }
+    if (driving) npcFrame(dt, fx, fz);
+    // on foot by a marina: the Boats button
+    const nb = driving && foot.on && !BOAT.on && !inside && nearMarina(foot.x, foot.z, 90); document.body.classList.toggle('near-boats', !!nb);
+  }
+  // walking: water is not a floor, but the piers are
+  const _bStepFoot = stepFoot;
+  stepFoot = function (dt) {
+    if (BOAT.on && S) { boatStep(dt); return; }
+    const px = foot.x, pz = foot.z;
+    _bStepFoot.apply(this, arguments);
+    if (!S || !foot.on || !WTR.grid) return;
+    const L = onPier(foot.x, foot.z);
+    if (!L && waterAt(foot.x, foot.z)) { foot.x = px; foot.z = pz; foot.target = null; foot.holder.position.set(px, 0, pz); drv.x = px; drv.z = pz; }
+    const dy = L ? 0.9 : 0; foot.holder.position.y = dy;
+    if (dy) { camera.position.y += dy; camera.lookAt(foot.look.x, foot.look.y + dy, foot.look.z); }
+  };
+  // things that would pull you off the boat end the trip first
+  const _bGetIn = getIn; getIn = function () { if (BOAT.on) return; return _bGetIn.apply(this, arguments); };
+  const _bPullIn = pullIn; pullIn = function () { if (BOAT.on) return; return _bPullIn.apply(this, arguments); };
+  const _bGetOut = getOut; getOut = function () { if (BOAT.on) return; return _bGetOut.apply(this, arguments); };
+  const _bStartDrive = startDrive;
+  startDrive = function () { if (BOAT.on) { const L = MAR.by[BOAT.from]; if (L) endTrip(L, 'tow'); } return _bStartDrive.apply(this, arguments); };
+  const _bEnterWorld = enterWorld;
+  enterWorld = function () {
+    _bEnterWorld.apply(this, arguments);
+    fleet(); if (!S.boatTrip) return;
+    const L = MAR.by[S.boatTrip.from]; delete S.boatTrip; save();
+    if (L) { const [dx, dz] = BDIR[L.m.to]; spawnFoot(L.m.x + dx * 4, L.m.z + dz * 4, Math.atan2(dx, dz)); }
+  };
+  const _bFinalize = finalize;
+  finalize = function () { _bFinalize.apply(this, arguments); try { buildMarinas(); } catch (e) { console.warn('marinas: ' + e.message); } };
+
+  // ---------- the dock office: buy, take out, bring a boat over, paint, sell ----------
+  function dockMenu(p) {
+    const L = MAR.by[p.id], F = fleet(); if (!L) return { title: p.name, sub: '', rows: [] };
+    const here = F.filter(r => r.marina === L.m.id), away = F.filter(r => r.marina !== L.m.id), rows = [];
+    for (const r of here) {
+      const d = BOAT_BY[r.id], ci = HULLS.findIndex(h => h[0] === r.hull);
+      rows.push({ t: `🚤 Take out the ${d.name}`, s: `${BKIND[d.kind]} · ${feet(d.L)} ft · tops out at ${mph(d.top)} mph`, sw: r.hull, btn: 'Take out', act: () => takeOut(r) });
+      rows.push({ t: `↳ Paint: ${HULLS[ci < 0 ? 0 : ci][1]}`, s: 'Next color in the book', btn: money(Math.round(d.L * d.W * 45)), act: () => { if (payAny(Math.round(d.L * d.W * 45), 'Boat paint')) { const n = HULLS[(ci + 1) % HULLS.length]; r.hull = n[0]; toast(`Painted ${n[1]}.`, 'good'); } } });
+      rows.push({ t: `↳ Sell the ${d.name}`, s: 'The broker pays 70%', btn: '+' + money(d.price * 0.7), act: () => { S.fleet = S.fleet.filter(x => x !== r); syncNames(); earn(d.price * 0.7, 'Sold the ' + d.name); } });
+    }
+    for (const r of away) {
+      const d = BOAT_BY[r.id], from = MAR.by[r.marina], fee = Math.round(400 + d.L * 60), ok = !bigBoat(d) || L.m.deep;
+      rows.push({ t: `Bring the ${d.name} here`, s: ok ? `It's at ${from ? from.name : 'another marina'}. A delivery captain runs it over.` : 'Too big for this marina. Superyachts need deep water.', sw: r.hull, btn: ok ? money(fee) : 'No room', off: !ok, act: () => { if (payAny(fee, 'Boat delivery')) { r.marina = L.m.id; toast(`The ${d.name} is tied up here now.`, 'good'); } } });
+    }
+    for (const d of BOATS) {
+      const ok = !bigBoat(d) || L.m.deep;
+      rows.push({ t: `${d.name}`, s: `${BKIND[d.kind]} · ${feet(d.L)} ft · ${mph(d.top)} mph · ${d.seats} aboard. ${d.desc}${ok ? '' : ' Needs a deep-water marina (Trinity Harbor, Lewisville, Bayside).'}`, btn: ok ? money(d.price) : 'Deep water', off: !ok,
+        act: () => { if (payAny(d.price, d.name)) { F.push(newRec(d.id, L.m.id)); syncNames(); toast(`The ${d.name} is yours. Take it out from here.`, 'good'); } } });
+    }
+    return { title: 'Dock office', sub: `${L.name} · ${here.length} of your boats here`, rows };
+  }
+  const _bBoats = MENUS.boats;
+  MENUS.boats = function (p) {
+    const m = _bBoats.apply(this, arguments); if (!p || p.type !== 'marina') return m;
+    const mine = dockMenu(p), OLD = ['Bass boat', 'Wake boat', '48 ft yacht'];
+    return { ...m, title: mine.title, sub: mine.sub, rows: mine.rows.concat(m.rows.filter(r => !OLD.includes(r.t))) };
+  };
+  // the phone: where your boats are
+  PHONE_APPS.splice(Math.max(0, PHONE_APPS.findIndex(a => a.id === 'cars') + 1), 0, { id: 'boats', name: 'Boats', icon: '🚤', bg: 'linear-gradient(135deg,#1bb8e8,#0a4a8a)' });
+  const _bPhoneApp = phoneApp;
+  phoneApp = function (id) {
+    if (id !== 'boats') return _bPhoneApp.apply(this, arguments);
+    closePhone();
+    openMenu(() => {
+      const F = fleet(), near = foot.on && nearMarina(foot.x, foot.z, 90);
+      const rows = F.map(r => { const d = BOAT_BY[r.id], L = MAR.by[r.marina], here = near && near === L; return { t: d.name, s: BOAT.rec === r ? 'Out on the water with you' : `${BKIND[d.kind]} · at ${L ? L.name : '?'}`, sw: r.hull, btn: BOAT.rec === r ? 'Driving' : here ? 'Take out' : 'GPS', off: BOAT.rec === r, act: () => { if (here) takeOut(r); else if (L) { setPin(L.name, L.p.x, L.p.z); toast(`GPS set to ${L.name}.`); closeMenu(); } } }; });
+      if (!F.length) rows.push({ t: 'No boats yet', s: 'Every marina\'s dock office sells jet skis to gigayachts.', btn: 'Nearest marina', act: () => { const at = foot.on ? foot : drv, L = MAR.list.slice().sort((a, b) => Math.hypot(a.m.x - at.x, a.m.z - at.z) - Math.hypot(b.m.x - at.x, b.m.z - at.z))[0]; if (L) { setPin(L.name, L.p.x, L.p.z); closeMenu(); } } });
+      return { title: 'Boats', sub: `${F.length} boat${F.length === 1 ? '' : 's'}`, rows };
+    });
+  };
+  window.__boats = { scene, camera, BOAT_BY, BOAT, BOATS, MAR, takeOut, endTrip, boatModel, fleet, waterY, WTR, WU, RF, newRec, dockMenu, boatWet };
+  })();
+  // ==== boats+water (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
