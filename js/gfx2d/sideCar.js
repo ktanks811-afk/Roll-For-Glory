@@ -15,6 +15,7 @@ import { shapeOf } from '../data/carShapes.js';
 import { hex, rgb, mix, lighten, darken, poly, fillPoly, drawWheel, wheelArch, archLip, drawEngineBay, drawSideMustang, lowerBody } from './sideMustang.js';
 import { rideDrop } from '../sim/tuning.js';
 import { artOf, paintedArt } from './carArt.js';
+import { drawSideRide } from './rideArt.js';
 
 export const hasSideView = () => true;
 export const SW = 1320, SH = 528;             // canvas pixels (HD)
@@ -483,6 +484,7 @@ function engineBay(g, geo, v, lv) {
 // opts: { model, visual, levels, tune, cond, showEngine, layers }
 export function drawSideCar(canvas, opts) {
   const model = opts.model;
+  if (model?.ride) return drawSideRide(canvas, opts, { SW, SH, REF_W, GROUND, K });
   if (model && MUSTANG_ART.has(model.id)) return drawSideMustang(canvas, opts);
   if (model && artOf(model.id)) return drawSideArt(canvas, opts, artOf(model.id));
   const v = opts.visual || {}, lv = opts.levels || {};

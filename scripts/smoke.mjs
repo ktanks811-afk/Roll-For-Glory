@@ -2625,7 +2625,7 @@ await step('every car draws (side view + overhead)', async () => {
         const c = document.createElement('canvas'); drawSideCar(c, { model: m, visual: v, levels: {}, cond: {} });
         const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let solid = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) solid++;
         const sp = carSprite(m, v, {}, null); const sd = sp.canvas.getContext('2d').getImageData(0, 0, sp.canvas.width, sp.canvas.height).data; let ss = 0; for (let i = 3; i < sd.length; i += 4) if (sd[i] > 200) ss++;
-        if (solid < 30000 || ss < 1500) bad.push(m.id + ' side ' + solid + ' top ' + ss);
+        if (solid < 30000 || ss < (m.ride ? 600 : 1500)) bad.push(m.id + ' side ' + solid + ' top ' + ss);
         sig.add(Math.round(solid / 500) + ':' + sp.canvas.width + 'x' + sp.canvas.height); n++;
       } catch (e) { bad.push(m.id + ': ' + e.message); }
     }

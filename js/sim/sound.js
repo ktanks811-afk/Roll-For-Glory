@@ -71,6 +71,12 @@ const KINDS = {
   w12:     { n: 12, slope: 1.00, leak: { 4: 0.12 },           grit: 0.25, label: 'W12' },
   w16:     { n: 16, slope: 1.05, leak: { 8: 0.10 },           grit: 0.25, label: 'W16' },
   rotary:  { n: 4,  slope: 0.42, leak: { 2: 0.25 },           grit: 0.80, label: 'rotary' },
+  // bikes and quads: the Harley 45° V-twin fires at 315°/405°, the "potato" sound;
+  // a crossplane R1 or a Ducati V4 fires unevenly like a little MotoGP bike
+  single:  { n: 1,  slope: 1.10, leak: {},                    grit: 0.45, label: 'single' },
+  i2:      { n: 2,  slope: 1.00, leak: { 1: 0.35, 3: 0.12 },  grit: 0.35, label: 'parallel twin' },
+  v2:      { n: 2,  slope: 1.15, leak: { 1: 0.75, 3: 0.45 },  grit: 0.45, label: 'V-twin' },
+  v4:      { n: 4,  slope: 0.80, leak: { 1: 0.22, 2: 0.40, 3: 0.20 }, grit: 0.40, label: 'V4 / crossplane' },
   ev:      { n: 0,  slope: 1,    leak: {},                    grit: 0,    label: 'electric' },
 };
 
@@ -80,7 +86,12 @@ const FLAT_PLANE_V8 = m => /Flat-Plane/i.test(m.engine) || (/V8/.test(m.engine) 
 export function engineKind(m) {
   const e = m.engine || '';
   if (m.asp === 'ev' || /Electric/i.test(e)) return 'ev';
+  if (/Rotax I3/.test(e)) return 'i3';
   if (/Rotary/i.test(e)) return 'rotary';
+  if (/V-Twin/i.test(e)) return 'v2';
+  if (/Parallel-Twin/i.test(e)) return 'i2';
+  if (/Single/.test(e)) return 'single';
+  if (/V4|Crossplane I4/.test(e)) return 'v4';
   if (/W16/.test(e)) return 'w16';
   if (/W12/.test(e)) return 'w12';
   if (/V12/.test(e)) return 'v12';

@@ -32,7 +32,7 @@ export class StreetRaces {
     const st = raceStart(ev);
     const [ux, uz] = st.dir, rx = -uz, rz = ux;          // right of the direction of travel
     const road = w.map.roads.nearestOnRoad(st.x, st.z)?.edge;
-    const lanes = road?.lanes || [2, 6];
+    const lanes = ev.lanes || road?.lanes || [2, 6];   // a dirt trail brings its own (no road under it)
     const myLat = lanes[0], rivalLat = lanes.length > 1 ? lanes[1] : -lanes[0];
     const grid = { x: st.x + rx * myLat, z: st.z + rz * myLat, h: st.h };
     const r = this.race = {

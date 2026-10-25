@@ -356,6 +356,9 @@ export const LOCATIONS = [
     makes: ['toyota', 'lexus', 'honda', 'acura', 'nissan', 'infiniti', 'mazda', 'subaru', 'mitsubishi', 'hyundai', 'kia', 'genesis', 'scion'] }),
   L('eurohaus', 'dealer', 'EuroHaus Motors (BMW · Mercedes · Audi · VW · Porsche)', 4, 4, 'S', { color: '#f2f2f2', icon: 'car',
     makes: ['bmw', 'mercedes', 'audi', 'volkswagen', 'porsche', 'volvo', 'mini', 'jaguar', 'landrover', 'alfaromeo'] }),
+  // bikes, trikes, the Slingshot and 4-wheelers (data/cars.js `ride`); the car lots don't carry them
+  L('cowtown_powersports', 'dealer', 'Cowtown Powersports (Harley · Kawasaki · Yamaha · Suzuki · Ducati · Polaris · Can-Am)', 8, 4, 'S', { color: '#ff8a1a', icon: 'car', rides: true,
+    makes: ['harley', 'kawasaki', 'yamaha', 'suzuki', 'ducati', 'polaris', 'canam', 'honda', 'bmw'] }),
   L('volt_row', 'dealer', 'Volt Row EV Center (Tesla · Rivian · Lucid)', 3, 4, 'S', { color: '#13b3c4', icon: 'car', makes: ['tesla', 'rivian', 'lucid'] }),
   L('halo_exotics', 'dealer', 'Halo Exotics (Ferrari · Lamborghini · McLaren · Aston Martin · Bentley)', 5, 2, 'S', { color: '#e8c21a', icon: 'car',
     makes: ['ferrari', 'lamborghini', 'mclaren', 'astonmartin', 'bentley', 'rollsroyce', 'maserati', 'lotus', 'bugatti', 'koenigsegg', 'pagani'] }),
@@ -414,6 +417,11 @@ export const LOCATIONS = [
   // on the lawn in front of the pink granite courthouse (block 5,4; scenery draws the building)
   { id: 'courthouse', type: 'court', name: 'Tarrant County Courthouse', x: -75, z: -163, face: 0, color: '#c9a68a', icon: 'court' },
   { id: 'ironline', type: 'drag', name: 'Ironline Dragway', x: 34, z: 1260, face: Math.PI / 2, color: '#ff1a2e', icon: 'flag' },
+  // 4-wheeler trails off FM 2481 south of Granbury (data/trails.js, ui/trails.js)
+  { id: 'trail_park', type: 'trailpark', name: 'Cross Timbers Trail Park', x: -4912, z: 2700, face: -Math.PI / 2, side: 'W', color: '#ff8a1a', icon: 'flag',
+    lot: { x0: -4925, z0: 2600, x1: -4200, z1: 3400 }, blurb: 'Trails through the cedar off FM 2481. Ride the loops against the clock or the locals, or buy the park and run it.' },
+  // Grand Prairie's strip: the east column of the town grid (data/metro.js marks it, world2d/metro.js draws it)
+  { id: 'yellowbelly', type: 'drag', name: 'Yellow Belly Drag Strip', x: 6800, z: 868, face: 0, color: '#ffd23a', icon: 'flag', road: 'yellowbelly', stripX: 6800 },
   { id: 'glory_onramp', type: 'roll', name: 'Loop 820 On-Ramp', x: 12, z: -1180, face: Math.PI, color: '#ff1a2e', icon: 'flag', road: 'highway' },
   { id: 'ironside_start', type: 'roll', name: 'East Lancaster Runs', x: 312, z: 650, face: 0, color: '#ff1a2e', icon: 'flag', road: 'industrial' },
   { id: 'dustline_start', type: 'roll', name: 'Chisholm Trail Pkwy', x: 12, z: 1120, face: 0, color: '#ff1a2e', icon: 'flag', road: 'desert', tier: 2 },
@@ -634,6 +642,7 @@ export const ROADS = {
   desert:     { name: 'Chisholm Trail Pkwy', theme: 'desert', lanes: 2, traffic: 0.12, tier: 2, heat: 0.3, desc: 'Two-lane desert straight. Nothing out here but heat haze.' },
   mountain:   { name: 'Lake Worth Pass Straight', theme: 'mountain', lanes: 2, traffic: 0.2, tier: 4, heat: 0.4, desc: 'The one straight piece of the pass. Pine trees and a long drop.' },
   strip:      { name: 'Ironline Dragway', theme: 'strip', lanes: 2, traffic: 0, tier: 1, heat: 0, desc: 'Sanctioned strip. Prepped surface, real timing.' },
+  yellowbelly: { name: 'Yellow Belly Drag Strip', theme: 'strip', lanes: 2, traffic: 0, tier: 1, heat: 0, desc: 'Grand Prairie\'s old-school quarter mile. Street cars and bikes, grudge nights, real timing.' },
 };
 
 export const ROLL_SPEEDS = [30, 40, 50, 60, 70];

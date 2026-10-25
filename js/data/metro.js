@@ -64,7 +64,7 @@ export const TOWNS = [
     ['Belt Line Rd', 'Carrier Pkwy', 'Great Southwest Pkwy', 'Duncan Perry Rd', 'Robinson Rd', 'Main St', 'Cedar Ridge Dr', 'Hampton Rd', 'Westmoreland Rd'],
     ['Jefferson St', 'Main St', 'Marshall Dr', 'Wheatland Rd', 'Camp Wisdom Rd', 'Danieldale Rd', 'Wintergreen Rd', 'Pleasant Run Rd', 'I-20 Frontage'],
     [[0, 7, 0, 3, 'Grand Prairie', 'mix'], [0, 7, 4, 7, 'Duncanville', 'res']],
-    { marks: [[1, 2, 1, 2, 'racetrack', 'LONE STAR PARK'], [5, 5, 2, 2, 'ind', null]] }),
+    { marks: [[1, 2, 1, 2, 'racetrack', 'LONE STAR PARK'], [5, 5, 2, 2, 'ind', null], [7, 7, 3, 5, 'dragstrip', 'YELLOW BELLY DRAG STRIP']] }),
   T('mansfield', 'Mansfield', 4200, 2100, 8, 6,
     ['Matlock Rd', 'Holland Rd', 'Walnut Creek Dr', 'Main St', 'Broad St', 'Wisteria St', 'Mitchell Rd', 'Day Miar Rd', 'Lone Star Rd'],
     ['Debbie Ln', 'Heritage Pkwy', 'Broad St', 'Mansfield Hwy', 'Main St', 'Country Club Dr', 'US-287 Frontage'],

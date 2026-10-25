@@ -24,6 +24,7 @@ import { settleHighPoint } from './core/hdtrials.js';
 import { labelDay } from './core/label.js';
 import { drugsDay } from './core/drugs.js';
 import { weedDay } from './core/weed.js';
+import { outfitDay } from './core/outfitters.js';
 import { traffickDay } from './core/traffick.js';
 import { fedsDay } from './core/bank.js';
 import { creditDay, insurancePremium } from './core/credit.js';
@@ -206,6 +207,8 @@ function newDay() {
   for (const t of lb.texts) sendMessage(s, 'ar', t);
   // Colorado: grow farms grow, dispensaries sell, the profit lands in the bank (core/weed.js)
   for (const n of weedDay(s).notes) toast(n, 'good');
+  // Sea-Doo rental docks and the trail park settle up (core/outfitters.js)
+  for (const n of outfitDay(s).notes) toast(n, 'good');
   // loads headed to Texas land or get taken; the DEA case cools off or closes in (core/traffick.js)
   for (const n of traffickDay(s).notes) toast(n, n.startsWith('🚔') ? 'bad' : 'good');
   // trap houses: workers sell, the heat cools off, SWAT hits a house you weren't at

@@ -29,6 +29,10 @@ import { Ranch } from './ranch.js';
 import { inHouse } from './house.js';
 import { want3d } from '../gfx3d/furn3d.js';
 import { carSprite, drawCar, drawCarPitched, dimsFor, DIMS } from '../gfx2d/carSprite.js';
+import { drawRider } from '../gfx2d/rideArt.js';
+
+const RIDER_TOPS = ['#111317', '#24262b', '#7a1414', '#f2f2f2', '#1b4fc4', '#3a2a1e'];
+const pickRiderTop = c => RIDER_TOPS[Math.abs(Math.round((c.x || 0) * 7 + (c.z || 0) * 3)) % RIDER_TOPS.length];
 import { drawPerson } from '../gfx2d/person.js';
 import { LOCATIONS, LOC_BY_ID, districtAt, HWY_Z, DESERT_Z, ROAD_W, inCityGrid } from '../data/world.js';
 import { stateAt, stateById, flightQuote, legalWeedAt } from '../data/states.js';
@@ -537,7 +541,9 @@ export class World {
     const onRoad = this.map.roads.onRoad(v.x, v.z);
     const paved = onRoad || (Math.abs(v.x) < 985 && Math.abs(v.z) < 985) || inCityGrid(v.x, v.z) || onBackroad(v.x, v.z, 6) || (v.x > 20 && v.x < 180 && v.z > 1150 && v.z < 1960);
     const sand = !paved && v.z > DESERT_Z;
-    let grip = paved ? 1 : sand ? 0.62 : 0.72;
+    // a 4-wheeler is built for the dirt: knobbies keep their bite and nothing bogs it down
+    const dirt = v.model.ride === 'atv';
+    let grip = paved ? 1 : dirt ? (sand ? 0.9 : 0.96) : sand ? 0.62 : 0.72;
     grip *= wx(s).grip;
     const noFuel = car.fuel <= 0.0005 || !!car.engineBlown || !!car.broken;   // a blown motor or a breakdown makes no power either
     // a trailer behind the truck: less pull, more drag (more with a car on it)
@@ -549,7 +555,7 @@ export class World {
       auto: settings.transmission === 'auto',
       // gas + brake with no 2-step fitted = burnout (with one it's launch-control hold, handled below)
       burnout: !(v.spec.twoStep >= 1),
-    }, { grip, drag: (paved ? 0 : sand ? 2.2 : 1.6) + tow * 0.9, noFuel });
+    }, { grip, drag: (paved || dirt ? 0 : sand ? 2.2 : 1.6) + tow * 0.9, noFuel });
     if (v.shifted) { v.shifted = false; audio.shift(); }
     if (input.pressed('horn')) { audio.horn(); online.honk(); }
     // gas + brake while stopped: rev it. With a 2-step it holds the launch rpm
@@ -1229,7 +1235,7 @@ export class World {
     for (const c of cars) {
       if (c.x < v.x0 || c.x > v.x1 || c.z < v.z0 || c.z > v.z1) continue;
       this.drawShadow(ctx, c.x, c.z, c.h, c.dims);
-      this.upright(ctx, c.x, c.z, () => drawCar(ctx, c.sprite, cam.sx(c.x), cam.sy(c.z), c.h, cam.zoom));
+      this.upright(ctx, c.x, c.z, () => { drawCar(ctx, c.sprite, cam.sx(c.x), cam.sy(c.z), c.h, cam.zoom); if (c.model?.ride) drawRider(ctx, cam.sx(c.x), cam.sy(c.z), c.h, cam.zoom, c.model, c.riderLook || (c.riderLook = { top: pickRiderTop(c) })); });
     }
     // the trailer behind your truck (or parked out with it), under the cars
     this.trailers.draw(ctx, cam);
@@ -1237,9 +1243,13 @@ export class World {
     if (this.vehicle) {
       const pv = this.vehicle;
       this.drawShadow(ctx, pv.x, pv.z, pv.h, pv.dims);
-      if (cam.tilt && (this.chaseT || 0) > 0.3) this.drawRearFace(ctx, pv);
+      if (cam.tilt && (this.chaseT || 0) > 0.3 && !pv.model.ride) this.drawRearFace(ctx, pv);
       const bh = this.inCar ? this.bassHit || 0 : 0, jx = bh ? (Math.random() - 0.5) * bh * 0.09 * cam.zoom : 0, jy = bh ? (Math.random() - 0.5) * bh * 0.09 * cam.zoom : 0;   // rocking to the subs
-      this.upright(ctx, pv.x, pv.z, () => drawCarPitched(ctx, this.carSpriteImg, cam.sx(pv.x) + jx, cam.sy(pv.z) + jy, pv.h, cam.zoom * (1 + bh * 0.012), pv.sim.pitch, pv.dims.L, !!pv.spec.barH));
+      this.upright(ctx, pv.x, pv.z, () => {
+        drawCarPitched(ctx, this.carSpriteImg, cam.sx(pv.x) + jx, cam.sy(pv.z) + jy, pv.h, cam.zoom * (1 + bh * 0.012), pv.sim.pitch, pv.dims.L, !!pv.spec.barH);
+        // on a bike, a trike, a quad or in the Slingshot you can see yourself riding it
+        if (pv.model.ride && this.inCar) drawRider(ctx, cam.sx(pv.x) + jx, cam.sy(pv.z) + jy, pv.h, cam.zoom, pv.model, this.s.player.look, { lean: Math.max(-1, Math.min(1, pv.steer * 2.2)) * Math.min(1, pv.speed / 12) });
+      });
       if (pv.sim.nosOn && this.inCar) {
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
         const bx = pv.x - Math.sin(pv.h) * (pv.dims.L / 2 + 0.6), bz = pv.z + Math.cos(pv.h) * (pv.dims.L / 2 + 0.6);

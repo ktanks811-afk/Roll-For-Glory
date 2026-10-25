@@ -248,6 +248,18 @@ export function addMetro(out, { landmarkBlock, roads }) {
         sign({ x: x0 + 40, z: z1 - 66, w: W - 80, d: 14, h: 14, color: '#5a5f69', kind: 'stands' });
         return;
       }
+      case 'dragstrip': {
+        // a quarter mile running north from the start line at the south end,
+        // grandstands down the east side, the tower by the line, pits on the west
+        lots.push({ x: x0, z: z0, w: W, d: D, kind: 'yard' });
+        const sx = x0 + 22, sw = 26;
+        lots.push({ x: sx, z: z0 + 6, w: sw, d: D - 12, kind: 'strip' });
+        lots.push({ x: x0 + 2, z: z0 + 30, w: 18, d: D - 120, kind: 'parking' });
+        sign({ x: sx + sw + 8, z: z0 + 60, w: 18, d: D - 160, h: 9, color: '#5a5f69', kind: 'stands' }, '#ffd23a');
+        buildings.push({ x: sx + sw + 6, z: z1 - 70, w: 16, d: 14, h: 15, color: '#3a3f4a', kind: 'tower' });
+        lots.push({ x: sx + sw + 4, z: z1 - 50, w: W - sw - 26, d: 46, kind: 'parking' });
+        return;
+      }
       case 'airfield': {
         lots.push({ x: x0, z: z0, w: W, d: D, kind: 'yard' });
         const horiz = W >= D;

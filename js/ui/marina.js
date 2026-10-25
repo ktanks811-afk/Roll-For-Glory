@@ -9,6 +9,7 @@ import { ensureBoats, fleet, defOf, boatName, canBerth, buyBoat, sellBoat, resal
 import { drawBoatSide } from '../gfx2d/boatArt.js';
 import { saveGame } from '../core/save.js';
 import { audio } from '../core/audio.js';
+import { dockTab, dockHandlers } from './outfitters.js';
 
 const head = (title, sub = '') => `<div class="p-head"><h1>${esc(title)}${sub ? `<small>${sub}</small>` : ''}</h1><button class="btn x" data-action="close">×</button></div>`;
 const mph = ms => Math.round(ms * 2.237);
@@ -33,10 +34,11 @@ export function openMarina(loc, app, tab0) {
   let tab = tab0 || (fleet(s).some(b => b.marina === m.id) ? 'mine' : 'dealer');
   openPanel((root, h) => {
     const here = fleet(s).filter(b => b.marina === m.id), away = fleet(s).filter(b => b.marina !== m.id);
-    const tabs = [['dealer', 'Boat dealer'], ['mine', `My boats${fleet(s).length ? ` (${fleet(s).length})` : ''}`]];
+    const tabs = [['dealer', 'Boat dealer'], ['mine', `My boats${fleet(s).length ? ` (${fleet(s).length})` : ''}`], ['rentals', '🌊 Sea-Doo rentals']];
     const sub = `${m.area} · ${m.deep ? 'deep water, takes superyachts' : 'boats up to 80 ft'}`;
     let body = '';
-    if (tab === 'dealer') {
+    if (tab === 'rentals') body = dockTab(s, m.id);
+    else if (tab === 'dealer') {
       body = `<p class="muted small">${esc(m.blurb)} Boats you buy here keep their slip here. Haul them to another marina any time.</p>
       ${['pwc', 'small', 'yacht', 'superyacht'].map(grp => {
         const list = BOATS.filter(d => grp === 'pwc' ? d.kind === 'pwc' : grp === 'small' ? !['pwc', 'yacht', 'superyacht'].includes(d.kind) : d.kind === grp);
@@ -75,6 +77,7 @@ export function openMarina(loc, app, tab0) {
     requestAnimationFrame(() => paintThumbs(root, id => { const b = fleet(s).find(x => x.uid === id); return b ? [defOf(b), b.custom] : [BOAT_BY_ID[id], defaultCustom(BOAT_BY_ID[id])]; }));
     const byUid = d => fleet(s).find(b => b.uid === d.uid);
     bind(root, {
+      ...dockHandlers(s, m.id, () => h.refresh()),
       close: () => h.close(),
       tab: d => { tab = d.id; h.refresh(); },
       buy: async d => {

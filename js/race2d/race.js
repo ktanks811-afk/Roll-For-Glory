@@ -134,7 +134,7 @@ export class Race {
 
   spawnTraffic(y) {
     const th = this.theme;
-    const pool = CARS.filter(c => !c.market && c.msrp < 60000);
+    const pool = CARS.filter(c => !c.market && !c.ride && c.msrp < 60000);
     const m = pool[Math.floor(Math.random() * pool.length)];
     const lane = Math.floor(Math.random() * th.lanes);
     this.traffic.push({ model: m, dims: dimsFor(m), sprite: carSprite(m, { paint: ['#9aa0a8', '#24262b', '#f2f2f2', '#3d4452', '#7a1414', '#1b4fc4'][Math.floor(Math.random() * 6)] }, {}), lane, x: this.laneX(lane), y, v: 24 + Math.random() * 6, targetLane: lane });

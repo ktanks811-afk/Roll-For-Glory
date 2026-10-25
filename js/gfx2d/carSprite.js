@@ -8,6 +8,7 @@
 import { CALIPER_COLORS } from '../data/parts.js';
 import { shapeOf, dimsOf } from '../data/carShapes.js';
 import { artOf, paintedArt } from './carArt.js';
+import { rideSprite } from './rideArt.js';
 
 export const SPRITE_PX = 24; // pixels per metre in the cached sprite (HD)
 
@@ -110,6 +111,7 @@ export function spriteKey(style, v, lv, cond) {
 // style: a car model (preferred) or a body class string.
 // v: visual object, lv: performance stage levels, cond: condition (for damage)
 export function carSprite(style, v = {}, lv = {}, cond = null, opts = {}) {
+  if (style && typeof style === 'object' && style.ride) return rideSprite(style, v, cond);
   const art = style && typeof style === 'object' ? artOf(style.id) : null;
   const key = spriteKey(style, v, lv, cond) + (opts.police ? (opts.swat ? 'S' : 'P') : '') + (opts.taxi ? 'T' : '') + (art ? 'A' : '');
   if (cache.has(key)) return cache.get(key);

@@ -87,6 +87,7 @@ const HANDLERS = {
   dispensary: (loc, app) => import('./weed.js').then(m => m.openDispensary(loc, app)),
   growfarm: (loc, app) => import('./weed.js').then(m => m.openGrowFarm(loc, app)),
   marina: (loc, app) => import('./marina.js').then(m => m.openMarina(loc, app)),
+  trailpark: (loc, app) => import('./outfitters.js').then(m => m.openTrailPark(loc, app)),
   mall: (loc, app) => import('./mall.js').then(m => m.openMall(loc, app)),
   kennel: (loc, app) => openKennel(app, { shop: true, tab: 'buy' }),
   studio: (loc, app) => openLabel(app, { studio: loc.id }),
@@ -220,9 +221,9 @@ export function wardrobe(app, s, shop = null) {
 function dealer(loc, app, s) {
   const tab = { v: 'new' };
   openPanel((root, h) => {
-    const newCars = CARS.filter(c => loc.makes.includes(c.make) && soldNew(c));
+    const newCars = CARS.filter(c => loc.makes.includes(c.make) && !!c.ride === !!loc.rides && soldNew(c));
     const cpo = s.dealerStock?.[loc.id]?.day === s.time.day ? s.dealerStock[loc.id].list : (() => {
-      const pool = CARS.filter(c => loc.makes.includes(c.make));
+      const pool = CARS.filter(c => loc.makes.includes(c.make) && !!c.ride === !!loc.rides);
       const list = Array.from({ length: Math.min(8, pool.length) }, () => {
         const l = makeListing(pool[Math.floor(Math.random() * pool.length)]);
         for (const k in l.cond) l.cond[k] = Math.max(l.cond[k], 80);
@@ -344,7 +345,7 @@ async function fenceGoods(loc, app, s) {
 function usedlot(loc, app, s) {
   openPanel((root, h) => {
     if (!s.rustyStock || s.rustyStock.day !== s.time.day) {
-      const cheap = CARS.filter(c => !c.market && c.msrp < 45000 && c.years[1] < 2020);
+      const cheap = CARS.filter(c => !c.market && !c.ride && c.msrp < 45000 && c.years[1] < 2020);
       // Sal always keeps one black box Chevy on the front row
       const box = CAR_BY_ID.chevrolet_caprice_classic_box_chevy_1986;
       const picks = [...(box ? [box] : []), ...Array.from({ length: box ? 8 : 9 }, () => cheap[Math.floor(Math.random() * cheap.length)])];
