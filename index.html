@@ -2000,14 +2000,16 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     for (let k = 0; k < rings.length - 1; k++) for (let s = 0; s < sub; s++) {
       const t = s / sub, p0 = rings[Math.max(0, k - 1)], p1 = rings[k], p2 = rings[k + 1], p3 = rings[Math.min(rings.length - 1, k + 2)];
       const cr = key => { const a = p0[key] || 0, b = p1[key] || 0, c = p2[key] || 0, d = p3[key] || 0; return 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t); };
-      R.push({ y: cr('y'), rx: cr('rx'), rz: cr('rz'), zo: cr('zo'), xo: cr('xo') });
+      const cn = () => { const a = p0.n || 2, b = p1.n || 2, c = p2.n || 2, d = p3.n || 2; return 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t); };
+      R.push({ y: cr('y'), rx: cr('rx'), rz: cr('rz'), zo: cr('zo'), xo: cr('xo'), n: cn() });
     }
-    R.push({ zo: 0, xo: 0, ...rings[rings.length - 1] });
+    R.push({ zo: 0, xo: 0, n: 2, ...rings[rings.length - 1] });
     let len = 0; const L = [0];
     for (let k = 1; k < R.length; k++) { len += Math.abs(R[k].y - R[k - 1].y) + Math.abs(R[k].rx - R[k - 1].rx) * 0.5; L.push(len); }
     return gridGeo(nu, R.length - 1, (u, v) => {
-      const r = R[Math.round(v * (R.length - 1))], a = a0 + (a1 - a0) * u;
-      return [Math.sin(a) * r.rx + (r.xo || 0), r.y, Math.cos(a) * r.rz + (r.zo || 0)];
+      const r = R[Math.round(v * (R.length - 1))], a = a0 + (a1 - a0) * u, e = 2 / (r.n || 2);
+      const sa = Math.sin(a), ca = Math.cos(a);
+      return [Math.sign(sa) * Math.abs(sa) ** e * r.rx + (r.xo || 0), r.y, Math.sign(ca) * Math.abs(ca) ** e * r.rz + (r.zo || 0)];
     }, (u, v) => [u, L[Math.round(v * (R.length - 1))]], true);
   }
   // a capsule-ish limb from a to b, radius ra -> rb (optionally an open tube)
@@ -2023,6 +2025,27 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     g.translate(A.x, A.y, A.z);
     return weldNormals(g);
   }
+/*REAL2*/
+  const _fw = new THREE.Vector3(0, 0, 1);
+  function limbP(a, b, prof, open, nu = 22, nv = 14) {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), Y = B.clone().sub(A), L = Y.length(); Y.normalize();
+    const Z = _fw.clone().addScaledVector(Y, -_fw.dot(Y)).normalize(), X = new THREE.Vector3().crossVectors(Y, Z);
+    const rings = [], p0 = prof(0), p1 = prof(1);
+    if (!open) for (let k = 0; k < 4; k++) { const ang = (1 - k / 4) * Math.PI / 2, c = Math.cos(ang); rings.push({ y: -Math.sin(ang) * p0.r * 0.9, rx: c * p0.r + 1e-4, rz: (c * p0.r + 1e-4) * (p0.sq || 1), zo: p0.zo || 0, xo: p0.xo || 0 }); }
+    for (let k = 0; k <= nv; k++) { const t = k / nv, p = prof(t); rings.push({ y: t * L, rx: p.r, rz: p.r * (p.sq || 1), zo: p.zo || 0, xo: p.xo || 0 }); }
+    if (!open) for (let k = 1; k <= 4; k++) { const ang = k / 4 * Math.PI / 2, c = Math.cos(ang); rings.push({ y: L + Math.sin(ang) * p1.r * 0.9, rx: c * p1.r + 1e-4, rz: (c * p1.r + 1e-4) * (p1.sq || 1), zo: p1.zo || 0, xo: p1.xo || 0 }); }
+    const g = ringSurf(rings, nu, 1);
+    g.applyMatrix4(new THREE.Matrix4().makeBasis(X, Y, Z));
+    g.translate(A.x, A.y, A.z);
+    return weldNormals(g);
+  }
+  const bump = (t, c, w) => Math.exp(-(((t - c) / w) ** 2));
+  // muscle shapes (radii in metres before the build scale). m: how much of the
+  // muscle shows (1 bare skin, less under cloth); add: cloth thickness
+  const THIGH = (ra, rb, m = 1, add = 0) => t => ({ r: lerp(ra, rb, Math.pow(t, 1.25)) + m * (0.006 * bump(t, 0.45, 0.25) - 0.004 * bump(t, 0.92, 0.1)) + add + (1 - m) * 0.004, sq: 0.94 + 0.04 * t, zo: m * 0.006 * bump(t, 0.55, 0.25) });
+  const SHIN = (ra, rb, m = 1, add = 0) => t => ({ r: lerp(ra, rb, Math.pow(t, 0.8)) + m * (0.008 * bump(t, 0.3, 0.17) - 0.003 * bump(t, 0.02, 0.06)) + add + (1 - m) * 0.007, sq: 1 - 0.04 * m * bump(t, 0.3, 0.2), zo: -m * 0.008 * bump(t, 0.3, 0.18) + 0.003 * bump(t, 0.05, 0.08) });
+  const UPARM = (ra, rb, m = 1, add = 0) => t => ({ r: lerp(ra, rb, t) + m * (0.004 * bump(t, 0.12, 0.14) + 0.003 * bump(t, 0.55, 0.2)) + add + (1 - m) * 0.005, sq: 1.04 - 0.08 * t, zo: m * 0.003 * bump(t, 0.55, 0.2) });
+  const FOREARM = (ra, rb, m = 1, add = 0) => t => ({ r: lerp(ra, rb, Math.pow(t, 0.9)) + m * 0.005 * bump(t, 0.22, 0.2) + add + (1 - m) * 0.004, sq: lerp(1, 1.22, smooth(0.4, 1, t)), xo: 0 });
   function mergeGeos(list) {
     let n = 0, ni = 0; for (const g of list) { n += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
     const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2), idx = new Uint32Array(ni);
@@ -2067,12 +2090,14 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   }
   const browW = look => (BROW_W[look.brows] || 0.0032) * (look.body === 'f' && look.brows !== 'thick' && look.brows !== 'laminated' ? 0.78 : 1);
   const browTaper = (look, v) => browArch(look) ? (v < 0.12 ? 0.7 + v * 2.5 : 1 - 0.8 * smooth(0.45, 1, v)) : (v < 0.15 ? 0.85 + v : 1 - 0.55 * smooth(0.5, 1, v));
+  let JAW = 1;   // 1: a man's square jaw, 0: a woman's
   function headPoint(dx, dy, dz) {
     let x = dx * HX, y = dy * HY, z = dz * HZ;
     if (dy < 0) {
       const t = -dy;
       x *= 1 - 0.26 * t * t * (0.55 + 0.45 * Math.max(0, dz));      // jaw narrows to the chin
-      if (dz > 0) z += 0.014 * t * t * dz;                              // chin forward
+      x *= 1 + JAW * 0.05 * Math.exp(-(((t - 0.62) / 0.16) ** 2)) * smooth(0.75, 0.1, Math.abs(dz));   // the jaw's corners
+      if (dz > 0) z += 0.019 * t * t * dz + 0.009 * Math.exp(-((x / 0.024) ** 2) - (((y + 0.1) / 0.017) ** 2));   // chin forward, and the chin itself
     }
     if (dz < 0) {
       z *= 1.08 + 0.05 * Math.max(0, dy);                               // fuller back of the skull
@@ -2082,7 +2107,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const f = smooth(0.3, 0.8, dz);
       for (const s of [-1, 1]) {                                        // eye sockets
         const ex = x - s * EYE_X, ey = y - EYE_Y;
-        z -= f * 0.0085 * Math.exp(-(ex * ex + ey * ey * 1.5) / 0.00026);
+        z -= f * 0.0098 * Math.exp(-(ex * ex + ey * ey * 1.5) / 0.00026);
       }
       z += f * 0.004 * Math.exp(-((y - 0.026) ** 2) / 0.00008) * smooth(0.06, 0.0, Math.abs(x) - 0.01);   // brow ridge
       x *= 1 + f * 0.05 * Math.exp(-((y + 0.012) ** 2) / 0.0005);     // cheekbones
@@ -2092,8 +2117,9 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       z += f * ridge * Math.exp(-((x / (0.0065 + 0.0055 * Math.min(1, ny))) ** 2));
       z += f * 0.0065 * Math.exp(-(((Math.abs(x) - 0.0105) / 0.0065) ** 2) - (((y + 0.022) / 0.0065) ** 2));
       // lips
-      z += f * 0.0055 * Math.exp(-((x / 0.021) ** 4) - (((y + 0.045) / 0.0055) ** 2));
-      z += f * 0.0065 * Math.exp(-((x / 0.019) ** 4) - (((y + 0.057) / 0.0062) ** 2));
+      z += f * 0.0036 * Math.exp(-((x / 0.021) ** 4) - (((y + 0.045) / 0.0055) ** 2));
+      z += f * 0.0043 * Math.exp(-((x / 0.019) ** 4) - (((y + 0.057) / 0.0062) ** 2));
+      z -= f * 0.0022 * Math.exp(-((x / 0.012) ** 2) - (((y + 0.073) / 0.006) ** 2));   // the dip under the lower lip
       z -= f * 0.0018 * Math.exp(-((x / 0.022) ** 4) - (((y + 0.0508) / 0.0016) ** 2));
     }
     return [x, y, z];
@@ -2102,11 +2128,22 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   let HN = 150, HV = 120;
   // a shell: off(d, p) gives the push-out in metres (<= 0 hides it)
   function shellGeo(off, nu = HN, nv = HV, v0 = 0, v1 = 1) {
-    return gridGeo(nu, nv, (u, v) => {
-      const d = dirOf(u, v0 + (v1 - v0) * v), p = headPoint(d[0], d[1], d[2]);
-      const o = Math.max(-0.003, off(d, p));
-      return [p[0] + d[0] * o, p[1] + d[1] * o, p[2] + d[2] * o];
-    }, (u, v) => [u, 1 - (v0 + (v1 - v0) * v)]);
+    const at = (u, v) => { const d = dirOf(u, v0 + (v1 - v0) * v), p = headPoint(d[0], d[1], d[2]); return { d, p, o: off(d, p) }; };
+    const S = [], W = nu + 1; let neg = false, pos = false;
+    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) { const q = at(i / nu, j / nv); S.push(q); if (q.o > 0) pos = true; else neg = true; }
+    const out = S.map(q => { const o = Math.max(-0.003, q.o); return [q.p[0] + q.d[0] * o, q.p[1] + q.d[1] * o, q.p[2] + q.d[2] * o]; });
+    if (neg && pos) for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+      const q = S[j * W + i]; if (q.o > 0) continue;
+      let best = 2, bu = 0, bv = 0;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ii = i + di, jj = j + dj; if (ii < 0 || ii > nu || jj < 0 || jj > nv || S[jj * W + ii].o <= 0) continue;
+        let lo = 0, hi = 1;   // bisect for the zero between this vertex and its covered neighbour
+        for (let k = 0; k < 7; k++) { const m = (lo + hi) / 2; if (at((i + di * m) / nu, (j + dj * m) / nv).o > 0) hi = m; else lo = m; }
+        if (hi < best) { best = hi; bu = (i + di * hi) / nu; bv = (j + dj * hi) / nv; }
+      }
+      if (best <= 1) { const e = at(bu, bv); out[j * W + i] = [e.p[0] - e.d[0] * 0.0003, e.p[1] - e.d[1] * 0.0003, e.p[2] - e.d[2] * 0.0003]; }
+    }
+    return gridGeo(nu, nv, (u, v) => out[Math.round(v * nv) * W + Math.round(u * nu)], (u, v) => [u, 1 - (v0 + (v1 - v0) * v)]);
   }
   // point on the face at (x, y), front side
   function surf(x, y) {
@@ -2233,11 +2270,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       g -= warm; b -= warm * 1.2;
       if (p[2] > 0.05) {
         const lip = Math.max(Math.exp(-((p[0] / 0.021) ** 4) - (((p[1] + 0.0455) / 0.0052) ** 2)), Math.exp(-((p[0] / 0.019) ** 4) - (((p[1] + 0.057) / 0.006) ** 2)));
-        const k = smooth(0.3, 0.75, lip) * 0.48;
+        const k = smooth(0.3, 0.75, lip) * 0.3;
         r *= lerp(1, lipT[0], k); g *= lerp(1, lipT[1], k); b *= lerp(1, lipT[2], k);
         const line = Math.exp(-((p[0] / 0.022) ** 6) - (((p[1] + 0.0508) / 0.0011) ** 2)) * (look.extras.includes('grill') || look.extras.includes('plat_grill') ? 1 : 0.75);
         r *= 1 - 0.75 * line; g *= 1 - 0.78 * line; b *= 1 - 0.78 * line;
-        const nos = Math.exp(-(((Math.abs(p[0]) - 0.0062) / 0.0032) ** 2) - (((p[1] + 0.0305) / 0.0022) ** 2));
+        const nos = Math.exp(-(((Math.abs(p[0]) - 0.0064) / 0.0027) ** 2) - (((p[1] + 0.0308) / 0.0016) ** 2));
         r *= 1 - 0.7 * nos; g *= 1 - 0.75 * nos; b *= 1 - 0.75 * nos;
       }
       const f = fade ? fade(d, p) : 0;
@@ -2907,7 +2944,17 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
     x.putImageData(img, 0, 0);
   }, false);
-  const headMat = new THREE.MeshStandardMaterial({ map: headTex, roughnessMap: roughTex, roughness: 0.6, metalness: 0, envMapIntensity: 0.5 });
+  const poreTex = ctex(512, 512, (x, W, H) => {
+    const img = x.createImageData(W, H), a = img.data;
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+      let v = 0.5 + 0.18 * (vnoise(i * 0.09, j * 0.09, 1) - 0.5) + 0.12 * (vnoise(i * 0.35, j * 0.35, 5) - 0.5);
+      if (hash(i * 12.9 + j * 78.2) > 0.93) v -= 0.22;    // pores
+      const o = (j * W + i) * 4; a[o] = a[o + 1] = a[o + 2] = clamp(v, 0, 1) * 255; a[o + 3] = 255;
+    }
+    x.putImageData(img, 0, 0);
+  }, false);
+  skinMat.bumpMap = poreTex; skinMat.bumpScale = 0.0005; poreTex.repeat.set(3, 3);
+  const headMat = new THREE.MeshStandardMaterial({ map: headTex, bumpMap: poreTex, bumpScale: 0.0005, roughnessMap: roughTex, roughness: 0.6, metalness: 0, envMapIntensity: 0.5 });
   const neckMat = new THREE.MeshStandardMaterial({ map: neckTex, roughness: 0.56, metalness: 0, envMapIntensity: 0.45 });
   neckTex.repeat.set(1, 4.6); neckTex.wrapS = neckTex.wrapT = THREE.RepeatWrapping;
   const lipMat = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0 });
@@ -3033,15 +3080,15 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // eyes
     irisMat.color.copy(col(look.eyes));
     for (const s of [-1, 1]) {
-      const p = surf(s * EYE_X, EYE_Y), c = [s * EYE_X, EYE_Y, p[2] - 0.005];
-      const eye = new THREE.Group(); eye.position.set(...c); eye.rotation.y = s * 0.06; g.add(eye);
+      const p = surf(s * EYE_X, EYE_Y), c = [s * EYE_X, EYE_Y, p[2] - 0.0068];
+      const eye = new THREE.Group(); eye.position.set(...c); eye.rotation.y = s * 0.06; eye.scale.set(1.1, 1, 1); g.add(eye);
       eye.add(mesh(new THREE.SphereGeometry(0.0115, 24, 16), scleraMat, false));
-      const iris = new THREE.SphereGeometry(0.01158, 24, 8, 0, Math.PI * 2, 0, 0.62); iris.rotateX(Math.PI / 2); eye.add(mesh(iris, irisMat, false));
-      const pup = new THREE.SphereGeometry(0.01164, 16, 4, 0, Math.PI * 2, 0, 0.26); pup.rotateX(Math.PI / 2); eye.add(mesh(pup, pupilMat, false));
+      const iris = new THREE.SphereGeometry(0.01158, 24, 8, 0, Math.PI * 2, 0, 0.55); iris.rotateX(Math.PI / 2); iris.scale(1 / 1.1, 1, 1); eye.add(mesh(iris, irisMat, false));
+      const pup = new THREE.SphereGeometry(0.01164, 16, 4, 0, Math.PI * 2, 0, 0.21); pup.rotateX(Math.PI / 2); pup.scale(1 / 1.1, 1, 1); eye.add(mesh(pup, pupilMat, false));
       if (!hideAll) {
-        const up = new THREE.SphereGeometry(0.0124, 24, 12, 0, Math.PI * 2, 0, 1.25); const lid = mesh(up, lidMat, false); lid.rotation.x = -0.04; eye.add(lid); lids.push(lid);
-        { const ll = new THREE.TorusGeometry(0.0124 * Math.sin(1.25), 0.00055, 4, 18, Math.PI * 1.1); ll.rotateX(Math.PI / 2); ll.rotateY(-Math.PI * 0.05); ll.translate(0, 0.0124 * Math.cos(1.25), 0); lid.add(mesh(ll, lashMat, false)); }
-        const lo = new THREE.SphereGeometry(0.0122, 24, 8, 0, Math.PI * 2, Math.PI - 0.95, 0.95); const ll = mesh(lo, lidMat, false); ll.rotation.x = -0.08; eye.add(ll);
+        const up = new THREE.SphereGeometry(0.0124, 24, 12, 0, Math.PI * 2, 0, 1.28); const lid = mesh(up, lidMat, false); lid.rotation.x = -0.04; eye.add(lid); lids.push(lid);
+        { const ll = new THREE.TorusGeometry(0.0124 * Math.sin(1.28), 0.00055, 4, 18, Math.PI * 1.1); ll.rotateX(Math.PI / 2); ll.rotateY(-Math.PI * 0.05); ll.translate(0, 0.0124 * Math.cos(1.28), 0); lid.add(mesh(ll, lashMat, false)); }
+        const lo = new THREE.SphereGeometry(0.0122, 24, 8, 0, Math.PI * 2, Math.PI - 1.0, 1.0); const ll = mesh(lo, lidMat, false); ll.rotation.x = -0.08; eye.add(ll);
         if (look.extras.includes('lashes')) { const la = mesh(lashGeo(s), lashMat, false); la.rotation.x = -0.04; eye.add(la); }
       }
     }
@@ -3055,8 +3102,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // ears
     const earG = [], inG = [];
     for (const s of [-1, 1]) {
-      earG.push(ellipsoid([s * (HX - 0.001), -0.004, -0.012], [0.0105, 0.029, 0.018], 18, [0, s * -0.35, s * 0.05]));
-      inG.push(ellipsoid([s * (HX + 0.0045), -0.002, -0.009], [0.0045, 0.019, 0.011], 14, [0, s * -0.35, 0]));
+      const eo = [s * (HX - 0.001), -0.004, -0.012], em = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0, s * -0.35, s * 0.05));
+      earG.push(ellipsoid(eo, [0.0072, 0.028, 0.0172], 18, [0, s * -0.35, s * 0.05]));
+      const rim = []; for (let k = 0; k <= 10; k++) { const f = -0.28 * Math.PI + 1.22 * Math.PI * k / 10, q = new THREE.Vector3(s * 0.0046, 0.0262 * Math.cos(f), -0.0158 * Math.sin(f)).applyMatrix4(em); rim.push([q.x + eo[0], q.y + eo[1], q.z + eo[2]]); }
+      earG.push(strand(rim, v => 0.0026 * (1 + 0.5 * smooth(0.75, 1, v)) * smooth(0, 0.08, v) + 0.0004, 6, 20));
+      inG.push(ellipsoid([s * (HX + 0.0032), -0.004, -0.011], [0.0028, 0.015, 0.0085], 14, [0, s * -0.35, 0]));
     }
     g.add(mesh(mergeGeos(earG.map(prep)), skinMat));
     g.add(mesh(mergeGeos(inG.map(prep)), innerMat, false));
@@ -3123,12 +3173,23 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // Hats, masks and the durag: shells too.
   // ---------------------------------------------------------------------
   const capLine = (d, front, side, back) => { const A = angA(d); return A < 90 ? lerp(front, side, smooth(10, 90, A)) : lerp(side, back, smooth(90, 170, A)); };
+  // a head shell cut cleanly at height h(A) (A: 0 front .. 180 back); T(d) thickness above it
+  function cutShell(T, h, nu = 96, nv = 48, hem = 0.004) {
+    return gridGeo(nu, nv, (u, v) => {
+      const th = -Math.PI + 2 * Math.PI * u, A = Math.abs(th) / DEG, ve = Math.acos(clamp(h(A), -1, 1)) / Math.PI;
+      const last = v >= 1, vv = last ? ve : ve * Math.min(1, v * nv / (nv - 1)) * 0.995;
+      const d = dirOf(u, vv), p = headPoint(d[0], d[1], d[2]);
+      const o = last ? -0.0015 : T(d) + (v * nv >= nv - 1.5 ? hem * 0.3 : 0);
+      return [p[0] + d[0] * o, p[1] + d[1] * o, p[2] + d[2] * o];
+    }, (u, v) => [u, 1 - v]);
+  }
+  const capH = (front, side, back) => A => A < 90 ? lerp(front, side, smooth(10, 90, A)) : lerp(side, back, smooth(90, 170, A));
   function buildHeadwear(look, g, hairUnder) {
     const hat = CLOTH[look.hat], mask = CLOTH[look.mask];
     const extra = hairUnder ? 0.008 : 0;
     if (hat && hat.style === 'cap') {
       const m = clothMat(hat.color, 'cotton', { r: 0.8 });
-      const crown = shellGeo(d => { const h = capLine(d, 0.54, 0.26, -0.02); return d[1] > h ? 0.014 + extra + 0.006 * smooth(h, h + 0.3, d[1]) : -0.003; }, 96, 60, 0, 0.62);
+      const ch = capH(0.54, 0.26, -0.02), crown = cutShell(d => { const h = ch(angA(d)); return 0.014 + extra + 0.006 * smooth(h, h + 0.3, d[1]); }, ch, 96, 44);
       const sh = new THREE.Shape(); sh.moveTo(-0.082, 0); sh.bezierCurveTo(-0.08, 0.06, -0.035, 0.085, 0, 0.088); sh.bezierCurveTo(0.035, 0.085, 0.08, 0.06, 0.082, 0); sh.bezierCurveTo(0.04, 0.012, -0.04, 0.012, -0.082, 0);
       const brim = new THREE.ExtrudeGeometry(sh, { depth: 0.005, bevelEnabled: true, bevelSize: 0.002, bevelThickness: 0.002, bevelSegments: 2, curveSegments: 20 });
       brim.rotateX(Math.PI / 2); const fp = surf(0, 0.066); brim.rotateX(-0.22); brim.translate(0, 0.064 + extra, fp[2] - 0.004);
@@ -3136,11 +3197,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       g.add(mesh(mergeGeos([crown, brim, btn].map(prep)), m));
     } else if (hat && hat.style === 'beanie') {
       const m = clothMat(hat.color, 'rib', { r: 0.95 }); m.map = CT.rib;
-      const crown = shellGeo(d => { const h = capLine(d, 0.5, 0.16, -0.22); return d[1] > h ? 0.017 + extra + 0.008 * smooth(h + 0.24, h + 0.2, d[1]) : -0.003; }, 96, 66, 0, 0.72);
+      const bh = capH(0.5, 0.16, -0.22), crown = cutShell(d => { const h = bh(angA(d)); return 0.017 + extra + 0.008 * smooth(h + 0.24, h + 0.2, d[1]); }, bh, 96, 50, 0.006);
       g.add(mesh(crown, m));
     } else if (look.extras.includes('durag')) {
       const m = new THREE.MeshStandardMaterial({ color: col('#121216'), roughness: 0.28, metalness: 0.2, envMapIntensity: 1.2, side: THREE.DoubleSide });
-      const crown = shellGeo(d => { const h = capLine(d, 0.6, 0.2, -0.3); return d[1] > h ? 0.008 + extra : -0.003; }, 96, 70, 0, 0.75);
+      const crown = cutShell(() => 0.008 + extra, capH(0.6, 0.2, -0.3), 96, 50, 0.002);
       const tails = [];
       for (const s of [-1, 1]) tails.push(gridGeo(4, 16, (u, v) => { const w = 0.02 + 0.006 * v; return [s * 0.012 + (u - 0.5) * w + s * v * 0.015, -0.05 - v * 0.24, -HZ * 1.13 - 0.012 - 0.03 * Math.sin(v * 2.2) + u * 0.002]; }));
       g.add(mesh(mergeGeos([crown, ...tails].map(prep)), m));
@@ -3199,9 +3260,9 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     });
   }
   function topRings(W, inflate, hem) {
-    const R = [[0.86, 0.158, 0.105, 0], [0.93, 0.163, 0.106, 0], [1.02, 0.15, 0.098, 0.003], [1.13, 0.157, 0.104, 0.008], [1.25, 0.17, 0.112, 0.014], [1.35, 0.176, 0.106, 0.01], [1.42, 0.16, 0.092, 0], [1.47, 0.098, 0.072, -0.008], [1.49, 0.064, 0.058, -0.008]];
+    const R = [[0.86, 0.158, 0.105, 0, 2.2], [0.93, 0.163, 0.106, 0, 2.2], [1.02, 0.15, 0.098, 0.003, 2.1], [1.13, 0.155, 0.102, 0.008, 2.3], [1.25, 0.166, 0.108, 0.012, 2.4], [1.35, 0.172, 0.102, 0.008, 2.4], [1.42, 0.16, 0.09, -0.002, 2.2], [1.452, 0.138, 0.08, -0.006, 2.1], [1.475, 0.096, 0.07, -0.008, 2], [1.49, 0.065, 0.058, -0.008, 2]];
     const out = [];
-    for (const [y, rx, rz, zo] of R) {
+    for (const [y, rx, rz, zo, n] of R) {
       if (y < hem) continue;
       const k = y < 1.2 ? lerp(1, W, 0.8) : W;
       let fx = 1, fz = 1, fo = 0;
@@ -3209,15 +3270,40 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         const waist = Math.exp(-(((y - 1.06) / 0.07) ** 2)), bust = Math.exp(-(((y - 1.26) / 0.06) ** 2)), hip = Math.exp(-(((y - 0.88) / 0.06) ** 2));
         fx = (1 - 0.11 * smooth(1.3, 1.42, y)) * (1 - 0.15 * waist) * (1 + 0.08 * hip) * (1 - 0.06 * bust); fz = 1 - 0.07 * waist + 0.1 * bust; fo = 0.005 * bust;
       }
-      out.push({ y, rx: rx * k * fx + inflate, rz: rz * lerp(1, W, 0.6) * fz + inflate * 0.9, zo: zo + fo });
+      out.push({ y, rx: rx * k * fx + inflate, rz: rz * lerp(1, W, 0.6) * fz + inflate * 0.9, zo: zo + fo, n: FEM ? lerp(n, 2, 0.5) : n });
     }
-    out.unshift({ y: hem, rx: out[0].rx, rz: out[0].rz, zo: out[0].zo });
+    out.unshift({ y: hem, rx: out[0].rx, rz: out[0].rz, zo: out[0].zo, n: out[0].n });
     return out;
   }
+  // a point on a ring list at height y, through the same curve ringSurf draws
+  function ringLerp(R, y) {
+    let k = 0; while (k < R.length - 2 && y > R[k + 1].y) k++;
+    const p0 = R[Math.max(0, k - 1)], p1 = R[k], p2 = R[k + 1], p3 = R[Math.min(R.length - 1, k + 2)], t = clamp((y - p1.y) / (p2.y - p1.y || 1), 0, 1);
+    const cr = (key, dv) => { const a = p0[key] ?? dv, b = p1[key] ?? dv, c = p2[key] ?? dv, d = p3[key] ?? dv; return 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t); };
+    return { rx: cr('rx', 0), rz: cr('rz', 0), zo: cr('zo', 0), n: cr('n', 2) };
+  }
+  function tankGeo(R, fem, edge) {
+    const sa = fem ? [0.38, 0.58] : [0.42, 0.66], top = R[R.length - 1].y - 0.004, y0 = R[0].y, nu = 128, nv = 36;
+    const band = x => smooth(sa[0] - 0.035, sa[0] + 0.005, x) * smooth(sa[1] + 0.035, sa[1] - 0.005, x);
+    const cut = a => {
+      const A = Math.abs(a), B = Math.PI - A, st = Math.max(band(A), band(B));
+      let base;
+      if (A <= sa[1]) base = lerp(fem ? 1.315 : 1.335, 1.405, smooth(0, sa[0], A) ** 1.5);
+      else if (B <= sa[1]) base = lerp(1.385, 1.42, smooth(0, sa[0], B));
+      else { const w = (A - sa[1]) / (Math.PI - 2 * sa[1]); base = lerp(lerp(1.405, 1.42, w), fem ? 1.23 : 1.21, Math.sin(Math.PI * w) ** 0.55); }
+      return lerp(base, top, st);
+    };
+    const at = (u, y, out = 0) => { const a = -Math.PI + 2 * Math.PI * u, r = ringLerp(R, y), e = 2 / r.n, sa_ = Math.sin(a), ca = Math.cos(a); return [Math.sign(sa_) * Math.abs(sa_) ** e * (r.rx + out), y - 0.95, Math.sign(ca) * Math.abs(ca) ** e * (r.rz + out) + r.zo]; };
+    if (edge) { const pts = []; for (let i = 0; i <= nu; i++) { const u = i / nu; pts.push(at(u, cut(-Math.PI + 2 * Math.PI * u) - 0.001, 0.0012)); } return strand(pts, () => 0.0028, 5, nu * 2, 0.55, new THREE.Vector3(0, 1, 0)); }
+    return gridGeo(nu, nv, (u, v) => at(u, lerp(y0, cut(-Math.PI + 2 * Math.PI * u), v)), (u, v) => [u, v * 0.5]);
+  }
   function buildPerson(look) {
-    FEM = look.body === 'f';
+    FEM = look.body === 'f'; JAW = FEM ? 0 : 1;
     const W = BUILD_W[+look.build] ?? 1, Hs = (HEIGHTS[+look.height] ?? 1) * (FEM ? 0.95 : 1), Wl = Math.pow(W, 0.75) * (FEM ? 0.9 : 1);
     skinMat.color.copy(col(look.skin)); headMat.color.copy(col(look.skin)); neckMat.color.copy(col(look.skin));
+    const sk3 = hex3(look.skin), lum = sk3[0] * 0.3 + sk3[1] * 0.59 + sk3[2] * 0.11, sheen = smooth(0.75, 0.15, lum);
+    for (const m of [skinMat, neckMat]) { m.roughness = lerp(0.56, 0.44, sheen); m.envMapIntensity = lerp(0.45, 0.85, sheen); }
+    headMat.envMapIntensity = lerp(0.5, 0.95, sheen);
     const root = new THREE.Group(); root.scale.setScalar(Hs);
     const upper = new THREE.Group(); upper.position.set(0, 0.95, 0); root.add(upper);   // sways from the hips
     const U = (y) => y - 0.95;
@@ -3232,7 +3318,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const hem = ts === 'hoodie' ? 0.85 : ts === 'jacket' ? 0.86 : ts === 'crop' ? 1.1 : 0.87;
     const TANK_TOP = 1.3;
     const tankCut = rs => { if (ts !== 'tank') return rs; const lo = rs.filter(r => r.y < TANK_TOP), hi = rs.find(r => r.y >= TANK_TOP), a = lo[lo.length - 1], t = (TANK_TOP - a.y) / (hi.y - a.y); return [...lo, { y: TANK_TOP, rx: lerp(a.rx, hi.rx, t), rz: lerp(a.rz, hi.rz, t), zo: lerp(a.zo || 0, hi.zo || 0, t) }]; };
-    const torsoG = [ringSurf(tankCut(topRings(W, inflate, hem)).map(r => ({ ...r, y: U(r.y) })), 48, 4)];
+    const torsoG = [ts === 'tank' ? tankGeo(topRings(W, inflate, hem), FEM) : ringSurf(tankCut(topRings(W, inflate, hem)).map(r => ({ ...r, y: U(r.y) })), 48, 4)];
     const ribG = [];
     if (ts !== 'tee' && ts !== 'tank') { const rr = topRings(W, inflate + 0.003, hem)[0]; ribG.push(ringSurf([{ y: U(hem - 0.004), rx: rr.rx - 0.004, rz: rr.rz - 0.004 }, { y: U(hem + 0.05), rx: rr.rx, rz: rr.rz }], 48, 1)); }
     // collar
@@ -3241,11 +3327,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       ribG.push(ringSurf([{ y: U(1.47), rx: neckTop.rx + 0.006, rz: neckTop.rz + 0.004, zo: -0.008 }, { y: U(1.53), rx: neckTop.rx + 0.002, rz: neckTop.rz + 0.002, zo: -0.012 }], 40, 1, -Math.PI + 0.25, Math.PI - 0.25));
     } else if (ts === 'tank') {
       // a binding round the top edge and the arm holes, two straps over the shoulders
-      const tr = tankCut(topRings(W, inflate, hem)).slice(-1)[0], c = new THREE.TorusGeometry(1, 0.003, 6, 48); c.rotateX(Math.PI / 2); c.scale(tr.rx, 1, tr.rz); c.translate(0, U(TANK_TOP), tr.zo || 0); ribG.push(c);
-      // straps: bands of the shirt surface itself, front and back, up over the shoulders
-      const sr = topRings(W, inflate, hem).filter(r => r.y >= TANK_TOP - 0.02).map(r => ({ ...r, y: U(r.y) }));
-      const sa = FEM ? [0.38, 0.58] : [0.42, 0.66];
-      for (const sd of [-1, 1]) for (const [a0, a1] of [sa, [Math.PI - sa[1], Math.PI - sa[0]]]) torsoG.push(sd > 0 ? ringSurf(sr, 6, 4, a0, a1) : ringSurf(sr, 6, 4, -a1, -a0));
+      ribG.push(tankGeo(topRings(W, inflate, hem), FEM, true));
     } else {
       const c = new THREE.TorusGeometry(1, 0.0065, 8, 40); c.rotateX(Math.PI / 2); c.scale(neckTop.rx - 0.004, 1, neckTop.rz - 0.004); c.translate(0, U(1.49), -0.008); ribG.push(c);
     }
@@ -3277,7 +3359,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     };
     if (FEM) for (const T of ts === 'tank' ? torsoG : [torsoG[0]]) bustOn(T, inflate);
     if (ts === 'tank') {   // bare chest, shoulders and back above the tank, with any ink
-      const sk = ringSurf(topRings(W, 0, hem).filter(r => r.y >= 1.24).map(r => ({ ...r, y: U(r.y) })), 48, 4);
+      const sk = ringSurf(topRings(W, 0, hem).filter(r => r.y >= 1.13).map(r => ({ ...r, y: U(r.y) })), 48, 4);
       if (FEM) bustOn(sk, 0);
       upper.add(mesh(sk, torsoInkMat(look, 0.3)));
     }
@@ -3292,7 +3374,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (whiteG.length || metalG.length) upper.add(mesh(mergeGeos([...whiteG, ...metalG].map(prep)), new THREE.MeshStandardMaterial({ color: 0xc8c8cc, metalness: 0.9, roughness: 0.3 }), false));
 
     // --- neck and head
-    upper.add(mesh(limb([0, U(1.4), -0.008], [0, U(1.62), 0.006], 0.063 * lerp(1, W, 0.5) * (FEM ? 0.92 : 1), 0.046 * lerp(1, W, 0.3) * (FEM ? 0.9 : 1), true, 0.92, 28), neckMat));
+    { const n0 = 0.068 * lerp(1, W, 0.5) * (FEM ? 0.88 : 1), n1 = 0.054 * lerp(1, W, 0.3) * (FEM ? 0.86 : 1);
+      upper.add(mesh(limbP([0, U(1.4), -0.008], [0, U(1.62), 0.006], t => ({ r: lerp(n0, n1, smooth(0, 0.55, t)) + (FEM ? 0 : 0.002 * bump(t, 0.5, 0.15)), sq: 0.9 + 0.04 * t, zo: -0.004 * (1 - t) }), true, 28, 10), neckMat)); }
     const head = new THREE.Group(); head.position.set(0, U(1.648 - (FEM ? 0.016 : 0.01)), 0.014); head.scale.setScalar(1.08); upper.add(head);
     const mask = CLOTH[look.mask], hat = CLOTH[look.hat];
     const skimask = mask?.style === 'skimask', bandana = mask?.style === 'bandana';
@@ -3302,7 +3385,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const fh = FACIAL[look.facialHair];
     paintHead(look, skimask ? null : hair.fade, fh && fh.paint && !skimask && !bandana ? (d, p) => fh.paint(p) : null);
     paintNeck(look);
-    headMat.roughness = hair.shine ? 0.46 : 0.6;
+    headMat.roughness = (hair.shine ? 0.46 : 0.6) - 0.12 * sheen;
     head.add(mesh(shellGeo(() => 0), headMat));
     buildFace(look, head, skimask || bandana, skimask, lids);
     if (!skimask && !bandana) buildFacialHair(look, head);
@@ -3312,7 +3395,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // --- chains sit on the chest
     const neckR = topRings(W, inflate, hem).slice(-2)[0];
     const TR = topRings(W, inflate, hem);
-    const ringAt = y => { for (let k = 1; k < TR.length; k++) if (y <= TR[k].y) { const a = TR[k - 1], b = TR[k], t = (y - a.y) / (b.y - a.y); return { rx: lerp(a.rx, b.rx, t), rz: lerp(a.rz, b.rz, t), zo: lerp(a.zo || 0, b.zo || 0, t) }; } return TR[TR.length - 1]; };
+    const ringAt = y => { for (let k = 1; k < TR.length; k++) if (y <= TR[k].y) { const a = TR[k - 1], b = TR[k], t = (y - a.y) / (b.y - a.y); return { rx: lerp(a.rx, b.rx, t), rz: lerp(a.rz, b.rz, t), zo: lerp(a.zo || 0, b.zo || 0, t), n: lerp(a.n || 2, b.n || 2, t) }; } return TR[TR.length - 1]; };
+    const seZ = (xr, n) => Math.pow(Math.max(0, 1 - Math.pow(Math.min(1, Math.abs(xr)), n || 2)), 1 / (n || 2));
     const chestZ = y => { const r = ringAt(y); return r.rz + r.zo; }, chestX = y => ringAt(y).rx;
     // chain(drop, n, link): drop is how far down the chest the front hangs
     const chainLinks = (drop, n, mk) => {
@@ -3320,7 +3404,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       for (let i = 0; i < n; i++) {
         const a = i / n * Math.PI * 2, x = Math.sin(a) * rx, zc = Math.cos(a), z = zc * rz - 0.004 + inflate * 0.3;
         const y = U(1.47) - drop * smooth(0, 1, zc) * (zc > 0 ? zc : 0) - 0.012 * (1 - Math.abs(zc));
-        const zz = Math.max(z + 0.004, zc > 0 ? chestZ(y + 0.95) * Math.sqrt(Math.max(0, 1 - (x / (chestX(y + 0.95) + 0.001)) ** 2)) + 0.005 : -1);
+        const ry = ringAt(y + 0.95), zz = Math.max(z + 0.004, zc > 0 ? ry.rz * seZ(x / (ry.rx + 0.001), ry.n) + ry.zo + 0.005 : -1);
         const l = mk(i, a); l.translate(x, y, zz); links.push(l);
       }
       return links;
@@ -3348,7 +3432,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (top.brand) {
       const big = ts === 'hoodie' || ts === 'tee' || ts === 'crop', ly = big ? (FEM ? 1.19 : 1.27) : 1.26, lx = big ? 0 : 0.06 * W;
       const lg = logoMesh(top.brand, top.color, big ? 0.085 : 0.042);
-      if (lg) { const r = ringAt(ly), cz = Math.sqrt(Math.max(0, 1 - (lx / (r.rx + 0.001)) ** 2)); lg.position.set(lx, U(ly), (r.rz * cz + r.zo) + 0.0035 + (FEM && big ? 0.02 : 0)); lg.rotation.y = Math.asin(clamp(lx / (r.rx + 0.001), -1, 1)) * 0.8; upper.add(lg); }
+      if (lg) { const r = ringAt(ly), cz = seZ(lx / (r.rx + 0.001), r.n); lg.position.set(lx, U(ly), (r.rz * cz + r.zo) + 0.0035 + (FEM && big ? 0.02 : 0)); lg.rotation.y = Math.asin(clamp(lx / (r.rx + 0.001), -1, 1)) * 0.8; upper.add(lg); }
     }
 
     // --- arms (each swings from the shoulder)
@@ -3360,7 +3444,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const el = [s * 0.03, -0.285, -0.008], wr = [s * 0.042, -0.545, 0.024];
       const fore = new THREE.Group(); fore.position.set(...el); arm.add(fore); fores.push(fore); const toF = g => g.translate(-el[0], -el[1], -el[2]);
       const ra = 0.046 * Wl, re = 0.036 * Wl, rw = 0.027 * Wl;
-      const skinG = [limb([0, -0.014, 0], el, ra, re, false, 1, 22)], handG = [limb(el, wr, re * 0.96, rw, false, 0.9, 22)];
+      const skinG = [limbP([0, -0.014, 0], el, UPARM(ra, re), false, 22)], handG = [limbP(el, wr, FOREARM(re * 0.96, rw), false, 22)];
       // hand: palm, curled fingers, thumb
       const hp = [wr[0] + s * 0.004, wr[1] - 0.052, wr[2] + 0.004];
       handG.push(ellipsoid([hp[0], hp[1] + 0.006, hp[2]], [0.0175, 0.046, 0.04], 18));
@@ -3375,17 +3459,18 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       fore.add(mesh(mergeGeos(handG.map(prep).map(toF)), skinMat));
       arm.add(mesh(mergeGeos(skinG.map(prep)), upInk ? inkMat(look, r ? 11 : 23) : skinMat));
       const inf = ts === 'jacket' ? 0.017 : ts === 'hoodie' ? 0.014 : 0.012;
-      const fg = [], sg = ts === 'tank' ? [] : [ellipsoid([s * -0.006, -0.002, 0], [ra + inf * (sleeveLong ? 1 : 0.7) + 0.0015, 0.043 * Wl + inf * 0.3, (ra + inf * (sleeveLong ? 1 : 0.7)) * 0.98], 22)];
+      const capR = (sleeveLong ? UPARM(ra, re, 0.45, inf)(0) : UPARM(ra, re, 0.6, inf * 0.7)(0)).r + 0.0015;
+      const fg = [], sg = ts === 'tank' ? [] : [ellipsoid([s * -0.006, -0.002, 0], [capR, 0.041 * Wl + inf * 0.3, capR * 0.98], 22)];
       if (sleeveLong) {
-        sg.push(limb([0, 0.004, 0], el, ra + inf, re + inf, true, 1, 22));
-        fg.push(limb(el, [wr[0] - s * 0.002, wr[1] + 0.03, wr[2] - 0.002], re + inf, rw + inf, true, 0.92, 22));
+        sg.push(limbP([0, 0.004, 0], el, UPARM(ra, re, 0.45, inf), true, 22));
+        fg.push(limbP(el, [wr[0] - s * 0.002, wr[1] + 0.03, wr[2] - 0.002], FOREARM(re, rw, 0.35, inf + 0.003), true, 22));
         fg.push(new THREE.SphereGeometry(re + inf, 22, 12).translate(...el));
       } else if (ts === 'tank') {
         // a bare shoulder cap where the sleeve would be
-        arm.add(mesh(ellipsoid([s * -0.006, -0.002, 0], [ra + 0.0035, 0.043 * Wl, ra * 0.98], 22), upInk ? inkMat(look, r ? 13 : 27) : skinMat));
+        arm.add(mesh(ellipsoid([s * -0.006, -0.002, 0], [ra + 0.0045, 0.042 * Wl, ra * 0.98 + 0.002], 22), upInk ? inkMat(look, r ? 13 : 27) : skinMat));
       } else {
         const mid = el.map(v => v * 0.46);
-        sg.push(limb([0, 0.004, 0], mid, ra + inf * 0.7, lerp(ra, re, 0.46) + inf * 0.6 + 0.002, true, 1, 22));
+        sg.push(limbP([0, 0.004, 0], mid, t => { const q = UPARM(ra, re, 0.6, inf * 0.7)(t * 0.46); return { ...q, r: q.r + 0.002 * t }; }, true, 22, 8));
       }
       if (sg.length) arm.add(mesh(mergeGeos(sg.map(prep)), sleeveMat));
       if (fg.length) fore.add(mesh(mergeGeos(fg.map(prep).map(toF)), sleeveMat));
@@ -3397,8 +3482,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const bag = CLOTH[look.bag];
     if (bag && bag.style !== 'none') {
       const bmat = clothMat(bag.color, 'leather', { r: 0.38, env: 1.0 }), strapMat = clothMat(shadeHex(bag.color, -0.25), 'leather', { r: 0.45 });
-      const TB = topRings(W, inflate, 0.86), ringB = y => { for (let k = 1; k < TB.length; k++) if (y <= TB[k].y) { const a = TB[k - 1], b = TB[k], t = clamp((y - a.y) / (b.y - a.y), 0, 1); return { rx: lerp(a.rx, b.rx, t), rz: lerp(a.rz, b.rz, t), zo: lerp(a.zo || 0, b.zo || 0, t) }; } return TB[TB.length - 1]; };
-      const frontAt = (x, y) => { const r = ringB(y), cx = Math.min(0.98, Math.abs(x) / (r.rx + 0.001)); return (r.rz + r.zo) * Math.sqrt(1 - cx * cx) + 0.008; };
+      const TB = topRings(W, inflate, 0.86), ringB = y => { for (let k = 1; k < TB.length; k++) if (y <= TB[k].y) { const a = TB[k - 1], b = TB[k], t = clamp((y - a.y) / (b.y - a.y), 0, 1); return { rx: lerp(a.rx, b.rx, t), rz: lerp(a.rz, b.rz, t), zo: lerp(a.zo || 0, b.zo || 0, t), n: lerp(a.n || 2, b.n || 2, t) }; } return TB[TB.length - 1]; };
+      const frontAt = (x, y) => { const r = ringB(y), cx = Math.min(0.98, Math.abs(x) / (r.rx + 0.001)); return (r.rz + r.zo) * seZ(cx, r.n) + 0.008; };
       if (bag.style === 'shoulder' || bag.style === 'crossbody') {
         const cross = bag.style === 'crossbody', bx = 0.12 * W * (FEM ? 1.05 : 1), by = 0.97, pts = [];
         const sx = cross ? -0.1 * W : 0.11 * W;
@@ -3439,10 +3524,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const legs = [];
     for (const s of [-1, 1]) {
       const hip = [s * 0.084 * lerp(1, W, 0.7) * hipK, 0.85, 0], kn = [s * 0.092 * lerp(1, W, 0.5), 0.5, 0.012], an = [s * 0.096, 0.095, -0.004];
-      const g1 = limb(hip, kn, 0.074 * Wl + loose, 0.056 * Wl + loose, false, 1, 26), g2 = limb(kn, an, 0.056 * Wl + loose, 0.047 + (bs === 'track' ? -0.002 : loose), true, 1, 26);
+      const mus = bs === 'skirt' ? 1 : bs === 'leggings' ? 0.85 : bs === 'jeans' ? 0.4 : bs === 'track' ? 0.3 : 0.2, bare = bs === 'skirt';
+      const g1 = limbP(hip, kn, THIGH(0.074 * Wl + loose, 0.054 * Wl + loose, mus), false, 26), g2 = limbP(kn, an, SHIN(0.054 * Wl + loose, bare ? 0.034 : 0.047 + (bs === 'track' ? -0.002 : loose), mus), true, 26);
       g2.attributes.uv.array.forEach((v, i, a) => { if (i % 2 === 0 && s > 0) a[i] = v + 0.5; });
       g1.attributes.uv.array.forEach((v, i, a) => { if (i % 2 === 0 && s > 0) a[i] = v + 0.5; });
-      legGs[s < 0 ? 0 : 1].push(g1); shinGs[s < 0 ? 0 : 1].push(g2, new THREE.SphereGeometry(0.056 * Wl + loose, 22, 12).translate(...kn)); joints[s < 0 ? 0 : 1] = { kn, an };
+      legGs[s < 0 ? 0 : 1].push(g1); shinGs[s < 0 ? 0 : 1].push(g2, new THREE.SphereGeometry(0.0515 * Wl + loose, 22, 12).translate(...kn)); joints[s < 0 ? 0 : 1] = { kn, an };
       if (bs === 'cargo') extraBot.push(new THREE.BoxGeometry(0.022, 0.09, 0.07).translate(s * (0.088 + 0.062 * Wl + loose + 0.006), 0.66, 0.008));
     }
     if (bs === 'skirt') { const k = lerp(1, W, 0.8) * hipK; root.add(mesh(ringSurf([{ y: 1.0, rx: 0.142 * k, rz: 0.092 }, { y: 0.88, rx: 0.162 * k, rz: 0.108 }, { y: 0.76, rx: 0.18 * k, rz: 0.124 }, { y: 0.66, rx: 0.196 * k, rz: 0.136 }], 48, 3), bm)); }
