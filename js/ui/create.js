@@ -3,7 +3,7 @@
 import { openPanel, closeAllPanels, bind, esc, toast } from './dom.js';
 import { drawPortrait } from '../gfx2d/person.js';
 import { SKIN_TONES, HAIR_COLORS, defaultLook, CLOTHES } from '../data/shops.js';
-import { HAIRSTYLES, HAIR_GROUPS, HAIR_BY_ID, FACIAL_HAIR, EYE_COLORS, BROWS, EXTRAS, ORIGINS, ORIGIN_BY_ID } from '../data/looks.js';
+import { HAIRSTYLES, HAIR_GROUPS, HAIR_BY_ID, FACIAL_HAIR, EYE_COLORS, BROWS, EXTRAS, EXTRA_GROUPS, EXTRA_BY_ID, TATTOOS, INKS, ORIGINS, ORIGIN_BY_ID } from '../data/looks.js';
 import { game, createState } from '../core/state.js';
 import { beginStory } from '../core/story.js';
 import { generateListings } from '../data/market.js';
@@ -11,7 +11,7 @@ import { saveGame, SLOTS, slotInfo } from '../core/save.js';
 import { maybeStartTutorial } from './tutorial.js';
 import { enterWorld } from '../main.js';
 
-const STARTER_TOPS = ['hoodie_black', 'tee_white', 'tee_red', 'hoodie_grey'];
+const STARTER_TOPS = ['hoodie_black', 'tee_white', 'tee_red', 'hoodie_grey', 'tank_white', 'tank_black'];
 const STARTER_BOTTOMS = ['jeans_blue', 'jeans_black', 'track_black', 'cargo_tan'];
 const STARTER_HATS = ['no_hat', 'cap_black', 'cap_red', 'beanie_grey'];
 const BUILDS = ['Slim', 'Average', 'Broad'];
@@ -54,7 +54,13 @@ function lookTabs(look, tab) {
   }
   if (tab === 'extras') {
     const ex = look.extras || [];
-    return `<p class="muted small">Pick as many as you want.</p><div class="opts">${EXTRAS.map(e => `<button class="${ex.includes(e.id) ? 'on' : ''}" data-action="extra" data-v="${e.id}">${esc(e.name)}</button>`).join('')}</div>`;
+    return `<p class="muted small">Pick as many as you want. Stack a choker, a rope and a pendant.</p>${EXTRA_GROUPS.map(g => `<div class="section-title">${esc(g.name)}</div><div class="opts">${EXTRAS.filter(e => e.group === g.id).map(e => `<button class="${ex.includes(e.id) ? 'on' : ''}" data-action="extra" data-v="${e.id}">${esc(e.name)}</button>`).join('')}</div>`).join('')}`;
+  }
+  if (tab === 'ink') {
+    const t = look.tats || [];
+    return `<p class="muted small">Ink shows wherever skin does: throw on a wife beater to show off sleeves and a chest piece.</p>
+      <label class="field"><span>Ink</span>${named('ink', INKS)}</label>
+      <div class="opts">${TATTOOS.map(x => `<button class="${t.includes(x.id) ? 'on' : ''}" data-action="tat" data-v="${x.id}">${esc(x.name)}</button>`).join('')}</div>`;
   }
   if (tab === 'fit') {
     const cloth = id => CLOTHES.find(c => c.id === id)?.name || id;
@@ -73,8 +79,10 @@ function randomLook(look, withClothes) {
   look.eyes = pick(EYE_COLORS);
   look.brows = pick(BROWS).id;
   look.facialHair = Math.random() < 0.5 ? 'none' : pick(FACIAL_HAIR).id;
-  look.extras = EXTRAS.filter(() => Math.random() < 0.15).map(e => e.id);
-  if (look.extras.includes('shades') && look.extras.includes('glasses')) look.extras = look.extras.filter(e => e !== 'glasses');
+  const picked = new Set();
+  look.extras = EXTRAS.filter(e => Math.random() < 0.12 && !(e.pick && picked.has(e.pick)) && (picked.add(e.pick), true)).map(e => e.id);
+  look.tats = Math.random() < 0.35 ? TATTOOS.filter(() => Math.random() < 0.2).map(t => t.id) : [];
+  look.ink = Math.random() < 0.3 ? 'color' : 'bw';
   if (withClothes) { look.build = String(Math.floor(Math.random() * 3)); look.top = pick(STARTER_TOPS); look.bottom = pick(STARTER_BOTTOMS); look.hat = pick(STARTER_HATS); }
 }
 
@@ -86,10 +94,16 @@ function editorHandlers(look, st, h) {
       if (ex.has(d.v)) ex.delete(d.v);
       else {
         ex.add(d.v);
-        if (d.v === 'shades') ex.delete('glasses'); if (d.v === 'glasses') ex.delete('shades');
-        if (d.v === 'chain') ex.delete('cuban'); if (d.v === 'cuban') ex.delete('chain');
+        // one of each kind: one pendant, one choker, one grill, shades or glasses
+        const pick = EXTRA_BY_ID[d.v]?.pick;
+        if (pick) for (const e of EXTRAS) if (e.pick === pick && e.id !== d.v) ex.delete(e.id);
       }
       look.extras = [...ex]; h.refresh();
+    },
+    tat: d => {
+      const t = new Set(look.tats || []);
+      if (t.has(d.v)) t.delete(d.v); else t.add(d.v);
+      look.tats = [...t]; h.refresh();
     },
     tab: d => { st.tab = d.v; st.scroll = 0; h.refresh(); },
   };
@@ -126,9 +140,9 @@ export function openCreate(app) {
           <label class="field"><span>Mode</span><div class="opts">
             <button class="${data.story ? 'on' : ''}" data-action="mode" data-v="1">Story Mode</button>
             <button class="${!data.story ? 'on' : ''}" data-action="mode" data-v="0">Free Roam</button></div></label>
-          <p class="small muted">Use the tabs up top for hair, face, extras and your fit, or hit Randomize.</p>`;
+          <p class="small muted">Use the tabs up top for hair, face, extras, ink and your fit, or hit Randomize.</p>`;
     root.innerHTML = `<div class="p-head"><h1>New Career<small>Who's about to take over Fort Worth?</small></h1><button class="btn x" data-action="close">×</button></div>
-      ${tabBar([['you', 'You'], ['hair', 'Hair'], ['face', 'Face'], ['extras', 'Extras'], ['fit', 'Fit']], st.tab)}
+      ${tabBar([['you', 'You'], ['hair', 'Hair'], ['face', 'Face'], ['extras', 'Extras'], ['ink', 'Ink'], ['fit', 'Fit']], st.tab)}
       <div class="p-body"><div class="create">
         <div><canvas width="300" height="300" data-portrait></canvas>
           <div class="row create-tools"><button class="btn btn-sm" data-action="random">🎲 Randomize</button></div>
@@ -152,7 +166,7 @@ export function openCreate(app) {
         if (!name) { toast('Pick a name first', 'bad'); if (st.tab !== 'you') { st.tab = 'you'; h.refresh(); } root.querySelector('[data-name]')?.focus(); return; }
         if (!(data.age >= 18 && data.age <= 70)) { toast('Age must be 18-70', 'bad'); return; }
         const veteran = SLOTS.some(sl => slotInfo(sl));   // already had careers on this profile: no tour unasked
-        const s = createState({ name, age: data.age, look: { ...look, extras: [...(look.extras || [])], build: +look.build }, story: data.story });
+        const s = createState({ name, age: data.age, look: { ...look, extras: [...(look.extras || [])], tats: [...(look.tats || [])], build: +look.build }, story: data.story });
         s.player.origin = data.origin;
         ORIGIN_BY_ID[data.origin]?.apply(s);
         s.player.outfits = [...new Set(['hoodie_black', 'jeans_blue', 'no_hat', 'kicks_white', look.top, look.bottom, look.hat])];
@@ -176,7 +190,7 @@ export function openMirror(s) {
   const st = { tab: 'hair', scroll: 0 };
   openPanel((root, h) => {
     root.innerHTML = `<div class="p-head"><h1>Mirror<small>Fresh cut, new look. On the house.</small></h1><button class="btn x" data-action="close">×</button></div>
-      ${tabBar([['hair', 'Hair'], ['face', 'Face'], ['extras', 'Extras']], st.tab)}
+      ${tabBar([['hair', 'Hair'], ['face', 'Face'], ['extras', 'Extras'], ['ink', 'Ink']], st.tab)}
       <div class="p-body"><div class="create">
         <div><canvas width="300" height="300" data-portrait></canvas>
           <p class="muted small"><b>${esc(HAIR_BY_ID[look.hairStyle]?.name || '')}</b></p></div>

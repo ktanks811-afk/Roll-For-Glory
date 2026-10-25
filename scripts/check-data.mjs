@@ -2381,7 +2381,7 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   const MALL = await import('../js/core/mall.js');
   const { CLOTHES, CLOTH_BY_ID } = await import('../js/data/shops.js');
   const map = buildMap();
-  const STYLES = { top: ['tee', 'hoodie', 'jacket'], bottom: ['jeans', 'cargo', 'track'], hat: ['cap', 'beanie'], shoes: ['kicks', 'boots'] };
+  const STYLES = { top: ['tee', 'hoodie', 'jacket', 'tank'], bottom: ['jeans', 'cargo', 'track'], hat: ['cap', 'beanie'], shoes: ['kicks', 'boots'] };
   if (MALLS.length < 8) bad(`only ${MALLS.length} malls`);
   for (const m of MALLS) {
     const l = LOCATIONS.find(x => x.id === m.id);
@@ -2518,6 +2518,15 @@ if (!CATALOG.some(p => p.cat === 'twostep' && fits(p, mustang))) bad('no 2-step 
   for (const old of ['short', 'buzz', 'long', 'curly', 'bun']) if (!L.HAIR_BY_ID[old]) bad(`old saves use hairstyle ${old}`);
   if (L.HAIRSTYLES.filter(h => h.group === 'black').length < 15 || L.HAIRSTYLES.filter(h => h.group === 'white').length < 15) bad('need plenty of Black and white hairstyles');
   if (!SH.SKIN_TONES.includes(SH.defaultLook().skin)) bad('default skin tone missing from the list');
+  // jewelry, piercings, ink and brands
+  if (new Set(L.EXTRAS.map(e => e.id)).size !== L.EXTRAS.length) bad('duplicate extra ids');
+  for (const e of L.EXTRAS) if (!L.EXTRA_GROUPS.some(g => g.id === e.group)) bad(`extra ${e.id} has no group`);
+  for (const id of ['plat_chain', 'plat_cuban', 'tennis', 'nose_stud', 'nose_ring', 'septum']) if (!L.EXTRA_BY_ID[id]) bad(`missing extra ${id}`);
+  if (!L.BROWS.some(b => b.id === 'sleek')) bad('sleek brows missing');
+  if (!L.hasTat({ tats: ['full'] }, 'sleeve_l') || L.hasTat({ tats: ['full'] }, 'face') || !L.hasTat({ tats: ['sleeve_r'] }, 'half_r')) bad('full body / sleeve ink rules');
+  for (const c of SH.CLOTHES) if (c.brand && !L.BRANDS[c.brand]) bad(`${c.id}: unknown brand ${c.brand}`);
+  if (SH.CLOTHES.filter(c => c.style === 'tank').length < 3) bad('need wife beaters');
+  if (Object.keys(L.BRANDS).some(b => SH.CLOTHES.filter(c => c.brand === b).length < 2)) bad('every brand should have a few pieces');
   for (const o of L.ORIGINS) {
     const s = createState({ name: 'O', age: 22, look: SH.defaultLook(), story: false });
     o.apply(s);

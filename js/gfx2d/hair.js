@@ -2,7 +2,7 @@
 // mirror) and the top-down walker. Portrait space is 300x300 scaled by k:
 // head centred at (cx, 66k), 30k wide and 36k tall, hairline near y 42k.
 
-import { HAIR_BY_ID } from '../data/looks.js';
+import { HAIR_BY_ID, PLATINUM } from '../data/looks.js';
 
 export function shade(hex, f) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
@@ -247,12 +247,23 @@ export function drawFace(ctx, cx, k, look) {
   }
   // brows
   const brow = look.brows || 'natural';
-  const bh = brow === 'thick' ? 4 : brow === 'thin' ? 1.6 : 2.6;
   ctx.fillStyle = shade(hair === '#9a9a9a' ? '#555' : hair, -0.15);
-  for (const s of [-1, 1]) {
-    ctx.beginPath(); ctx.moveTo(X(s * 4), Y(56)); ctx.lineTo(X(s * 17), Y(54.5)); ctx.lineTo(X(s * 17), Y(54.5 + bh)); ctx.lineTo(X(s * 4), Y(56 + bh)); ctx.closePath(); ctx.fill();
+  if (brow === 'sleek' || brow === 'arched' || brow === 'laminated') {
+    // shaped brows: thin tail, crisp arch (high for 'arched'), brushed-up fronts
+    const lift = brow === 'arched' ? 4 : brow === 'sleek' ? 3 : 1.5, thick = brow === 'laminated' ? 3.4 : brow === 'arched' ? 2.2 : 1.7;
+    for (const s of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(X(s * 4), Y(56.5));
+      ctx.quadraticCurveTo(X(s * 9), Y(55 - lift), X(s * 13), Y(54.5 - lift)); ctx.quadraticCurveTo(X(s * 16.5), Y(54.5 - lift * 0.6), X(s * 19), Y(56));
+      ctx.quadraticCurveTo(X(s * 16), Y(55.2 - lift * 0.4 + thick * 0.35), X(s * 13), Y(54.5 - lift + thick * 0.75)); ctx.quadraticCurveTo(X(s * 8), Y(55.5 - lift + thick), X(s * 4), Y(56.5 + thick));
+      ctx.closePath(); ctx.fill();
+      if (brow === 'laminated') { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = R(0.6); for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(X(s * (5 + i * 1.6)), Y(57 + thick * 0.4)); ctx.lineTo(X(s * (5.4 + i * 1.6)), Y(54.4 - lift * 0.4)); ctx.stroke(); } }
+    }
+  } else {
+    const bh = brow === 'thick' ? 4 : brow === 'thin' ? 1.6 : 2.6;
+    for (const s of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(X(s * 4), Y(56)); ctx.lineTo(X(s * 17), Y(54.5)); ctx.lineTo(X(s * 17), Y(54.5 + bh)); ctx.lineTo(X(s * 4), Y(56 + bh)); ctx.closePath(); ctx.fill();
+    }
   }
-  if (brow === 'slit') { ctx.fillStyle = skin; ctx.fillRect(X(-12), Y(53), R(1.6), R(7)); }
   // nose
   ctx.fillStyle = shade(skin, -0.18); ctx.fillRect(X(-3), Y(72), R(6), R(3));
   // facial hair, then the mouth on top
@@ -271,10 +282,11 @@ export function drawFace(ctx, cx, k, look) {
     stache();
     if (fh === 'long_beard') { ctx.beginPath(); ctx.moveTo(X(-22), Y(94)); ctx.quadraticCurveTo(X(-16), Y(126), X(0), Y(136)); ctx.quadraticCurveTo(X(16), Y(126), X(22), Y(94)); ctx.closePath(); ctx.fill(); }
   }
-  // mouth (gold with a grill)
-  if (hasExtra(look, 'grill')) {
-    ctx.fillStyle = '#e2b437'; ctx.fillRect(X(-9), Y(83.5), R(18), R(4.5));
-    ctx.fillStyle = 'rgba(120,80,0,0.6)'; for (let x = -6; x <= 6; x += 4) ctx.fillRect(X(x), Y(83.5), R(0.8), R(4.5));
+  // mouth (gold or platinum with a grill)
+  if (hasExtra(look, 'grill') || hasExtra(look, 'plat_grill')) {
+    const plat = !hasExtra(look, 'grill');
+    ctx.fillStyle = plat ? '#e4e8ee' : '#e2b437'; ctx.fillRect(X(-9), Y(83.5), R(18), R(4.5));
+    ctx.fillStyle = plat ? 'rgba(70,80,96,0.6)' : 'rgba(120,80,0,0.6)'; for (let x = -6; x <= 6; x += 4) ctx.fillRect(X(x), Y(83.5), R(0.8), R(4.5));
     ctx.fillStyle = '#fff'; ctx.fillRect(X(-4), Y(84), R(1.4), R(1.4));
   } else { ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(X(-8), Y(84), R(16), R(3)); }
   if (hasExtra(look, 'freckles')) { ctx.fillStyle = shade(skin, -0.3); for (let i = 0; i < 14; i++) { const s = i % 2 ? 1 : -1; ctx.fillRect(X(s * (8 + rnd(i) * 12)), Y(70 + rnd(i + 5) * 8), R(1.4), R(1.4)); } }
@@ -288,15 +300,42 @@ export function drawExtras(ctx, cx, k, look, { hatOn, masked, topColor }) {
     ctx.strokeStyle = 'rgba(20,24,40,0.75)'; ctx.lineWidth = R(1.2);
     ctx.beginPath(); ctx.moveTo(X(-8), Y(98)); ctx.quadraticCurveTo(X(0), Y(94), X(8), Y(98)); ctx.moveTo(X(-6), Y(104)); ctx.lineTo(X(6), Y(104)); ctx.moveTo(X(0), Y(96)); ctx.lineTo(X(0), Y(110)); ctx.stroke();
   }
-  if (hasExtra(look, 'chain') || hasExtra(look, 'cuban')) {
-    const cuban = hasExtra(look, 'cuban');
-    ctx.strokeStyle = '#e2b437'; ctx.lineWidth = R(cuban ? 4.5 : 2);
-    ctx.beginPath(); ctx.moveTo(X(-16), Y(110)); ctx.quadraticCurveTo(X(0), Y(cuban ? 132 : 148), X(16), Y(110)); ctx.stroke();
-    if (cuban) { ctx.strokeStyle = 'rgba(120,80,0,0.6)'; ctx.lineWidth = R(0.8); for (let i = 0; i < 9; i++) { const t = i / 8, x = -16 + 32 * t, y = 110 + 44 * t * (1 - t); ctx.beginPath(); ctx.moveTo(X(x - 1.5), Y(y - 2)); ctx.lineTo(X(x + 1.5), Y(y + 2)); ctx.stroke(); } }
-    else { ctx.fillStyle = '#e2b437'; ctx.beginPath(); ctx.arc(X(0), Y(134), R(6), 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#9fe6ff'; ctx.beginPath(); ctx.arc(X(0), Y(134), R(2.6), 0, Math.PI * 2); ctx.fill(); }
+  // chains: gold or platinum. A rope and a tennis chain sit between the
+  // choker (Cuban) and the long pendant chain, so all three can stack.
+  const metal = id => PLATINUM.has(id) ? ['#e6e9ee', 'rgba(70,80,96,0.6)'] : ['#e2b437', 'rgba(120,80,0,0.6)'];
+  const drape = (drop, lw, c) => { ctx.strokeStyle = c; ctx.lineWidth = R(lw); ctx.beginPath(); ctx.moveTo(X(-16), Y(110)); ctx.quadraticCurveTo(X(0), Y(drop), X(16), Y(110)); ctx.stroke(); };
+  const pend = ['chain', 'plat_chain'].find(id => hasExtra(look, id));
+  if (pend) {
+    const [m] = metal(pend);
+    drape(148, 2, m);
+    ctx.fillStyle = m; ctx.beginPath(); ctx.arc(X(0), Y(134), R(6), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#9fe6ff'; ctx.beginPath(); ctx.arc(X(0), Y(134), R(2.6), 0, Math.PI * 2); ctx.fill();
+  }
+  const rope = ['plat_rope', 'tennis'].find(id => hasExtra(look, id));
+  if (rope === 'plat_rope') {
+    drape(140, 3, '#e6e9ee');
+    ctx.strokeStyle = 'rgba(70,80,96,0.55)'; ctx.lineWidth = R(0.7);
+    for (let i = 0; i < 14; i++) { const t = i / 13, x = -16 + 32 * t, y = 110 + 60 * t * (1 - t); ctx.beginPath(); ctx.moveTo(X(x - 1.2), Y(y - 1.4)); ctx.lineTo(X(x + 1.2), Y(y + 1.4)); ctx.stroke(); }
+  } else if (rope === 'tennis') {
+    drape(140, 1.4, '#d8dde4');
+    for (let i = 0; i <= 18; i++) { const t = i / 18, x = -16 + 32 * t, y = 110 + 60 * t * (1 - t); ctx.fillStyle = i % 3 ? '#f4fbff' : '#bfe9ff'; ctx.beginPath(); ctx.arc(X(x), Y(y), R(1.5), 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#fff'; for (const t of [0.3, 0.62]) { const x = -16 + 32 * t, y = 110 + 60 * t * (1 - t); ctx.fillRect(X(x - 2.4), Y(y - 0.3), R(4.8), R(0.6)); ctx.fillRect(X(x - 0.3), Y(y - 2.4), R(0.6), R(4.8)); }
+  }
+  const chok = ['cuban', 'plat_cuban'].find(id => hasExtra(look, id));
+  if (chok) {
+    const [m, d] = metal(chok);
+    drape(132, 4.5, m);
+    ctx.strokeStyle = d; ctx.lineWidth = R(0.8); for (let i = 0; i < 9; i++) { const t = i / 8, x = -16 + 32 * t, y = 110 + 44 * t * (1 - t); ctx.beginPath(); ctx.moveTo(X(x - 1.5), Y(y - 2)); ctx.lineTo(X(x + 1.5), Y(y + 2)); ctx.stroke(); }
   }
   if (masked) return;
   if (hasExtra(look, 'studs')) { ctx.fillStyle = '#dff6ff'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(X(s * 31), Y(75), R(2.3), 0, Math.PI * 2); ctx.fill(); } }
+  // face piercings, in white metal
+  const ring = (x, y, r, a0, a1) => { ctx.strokeStyle = '#e6e9ee'; ctx.lineWidth = R(1.1); ctx.beginPath(); ctx.arc(X(x), Y(y), R(r), a0, a1); ctx.stroke(); };
+  if (hasExtra(look, 'nose_stud')) { ctx.fillStyle = '#f4fbff'; ctx.beginPath(); ctx.arc(X(-4.6), Y(72.6), R(1.3), 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillRect(X(-5), Y(72), R(0.6), R(0.6)); }
+  if (hasExtra(look, 'nose_ring')) ring(4.4, 74, 2.4, -0.3, Math.PI * 1.15);
+  if (hasExtra(look, 'septum')) { ring(0, 75.6, 2.6, 0.1, Math.PI - 0.1); ctx.fillStyle = '#e6e9ee'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(X(s * 2.6), Y(76), R(0.9), 0, Math.PI * 2); ctx.fill(); } }
+  if (hasExtra(look, 'brow_ring')) ring(16, 56, 2.4, Math.PI * 0.2, Math.PI * 1.3);
+  if (hasExtra(look, 'lip_ring')) ring(-5, 88.4, 2.2, -0.2, Math.PI + 0.2);
   if (hasExtra(look, 'shades')) {
     ctx.fillStyle = '#0d0d10';
     for (const s of [-1, 1]) { ctx.beginPath(); ctx.roundRect(X(s * 11 - 9), Y(57), R(18), R(11), R(3)); ctx.fill(); }
