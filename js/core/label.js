@@ -24,7 +24,7 @@ export const STANDARD_CUT = 0.2, CHEAP_CUT = 0.4, CHEAP_ADVANCE = 0.35;
 export function ensureLabel(s) {
   s.label ??= { name: null, founded: null, clout: 0, known: [], roster: [], sessions: [], releases: [], earned: 0, streams: 0, log: [] };
   const L = s.label;
-  if (!L.known.length) L.known = ARTISTS.filter(a => !cloutNeeded(a)).sort(() => Math.random() - 0.5).slice(0, KNOWN_AT_START).map(a => a.id);
+  if (!L.known.length) L.known = ARTISTS.filter(a => !a.featured && !cloutNeeded(a)).sort(() => Math.random() - 0.5).slice(0, KNOWN_AT_START).map(a => a.id);
   L.newcomers ??= []; L.rivalOf ??= {}; L.rv ??= {}; L.recouped ??= 0;
   L.ss ??= { wk: weekOf(s.time.day), cur: {}, hist: [] };
   for (const a of L.newcomers) ARTIST_BY_ID[a.id] = a;
@@ -52,10 +52,13 @@ export function startLabel(s, name) {
 
 // ---------------------------------------------------------------- scouting + signing
 // Clout the label needs before this artist takes the meeting.
-export const cloutNeeded = a => Math.max(0, Math.round((a.talent - 66) * 3));
+// Five-star artists (`minAdvance`) only care about the money, so they skip the clout gate.
+export const cloutNeeded = a => a.minAdvance ? 0 : Math.max(0, Math.round((a.talent - 66) * 3));
 // What they want up front, now (their fans grow while they wait).
+// A five-star artist never takes less than their minimum, and every fan on top of it costs $1.
 export function askOf(s, a) {
   const buzz = buzzOf(s, a.id);
+  if (a.minAdvance) return Math.round((a.minAdvance + buzz) / 1000) * 1000;
   return Math.round((Math.pow(a.talent, 3) / 45 + buzz * 0.4) / 100) * 100;
 }
 export const buzzOf = (s, id) => signed(s, id)?.buzz ?? s.label?.scene?.[id]?.buzz ?? ARTIST_BY_ID[id]?.buzz ?? 0;
@@ -66,7 +69,7 @@ export function dealsFor(s, a) {
   if (rv) return { buyout: { advance: buyoutOf(s, a), cut: STANDARD_CUT } };
   return {
     standard: { advance: ask, cut: STANDARD_CUT },
-    cheap: { advance: Math.round(ask * CHEAP_ADVANCE / 100) * 100, cut: CHEAP_CUT },
+    cheap: { advance: Math.max(a.minAdvance || 0, Math.round(ask * CHEAP_ADVANCE / 100) * 100), cut: CHEAP_CUT },
   };
 }
 // What it takes to buy an artist out of a rival's contract: their ask plus what the rival paid.
