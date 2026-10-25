@@ -21,6 +21,7 @@ const STATE_LABELS = Object.fromEntries(Object.entries({
 }).map(([id, list]) => [id, [...list.map(([t, i, j]) => [t, STATES[id].cx + i * STATE_BLOCK, STATES[id].cz + j * STATE_BLOCK]), ...(STATE_MAP_LABELS[id] || [])]]));
 import { fmtMoney } from '../core/state.js';
 import { myPlaces, ensureNav, isFav, toggleFav } from '../core/nav.js';
+import { gpsRgba } from './gpsStyle.js';
 
 const ICON = { home: '⌂', car: '◆', wrench: '⚙', spray: '✦', repair: '✚', gas: '⛽', food: '☕', shirt: '◇', bag: '🛍', key: '⌘', shield: '★', cross: '✚', tow: '$', oil: '◉', meet: '●', flag: '⚑', trophy: '♛', dog: '🐾', hog: '🐗', mic: '🎤', arena: '🏟', school: '🎓', plane: '✈', boat: '⚓', gem: '💎', leaf: '🌿', bank: '🏦' };
 const CATS = [
@@ -159,7 +160,7 @@ export function renderMap(scr, ctx) {
     const line = (path, wd, col, dash) => { g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash(dash || []); g.strokeStyle = col; g.lineWidth = wd; g.beginPath(); path.forEach(([x, z], i) => { const [a, b] = toScreen(x, z); i ? g.lineTo(a, b) : g.moveTo(a, b); }); g.stroke(); g.setLineDash([]); };
     if (selRoute && !(s.gps && st.sel && s.gps.x === st.sel.x && s.gps.z === st.sel.z)) { line(selRoute.path, 5, 'rgba(0,0,0,.6)'); line(selRoute.path, 3, 'rgba(255,255,255,.9)', [7, 6]); }
     if (w.gpsPath && s.gps) {
-      line(w.gpsPath, 8, 'rgba(40,6,12,.9)'); line(w.gpsPath, 5, '#ff2a3a');
+      line(w.gpsPath, 8, 'rgba(6,10,20,.6)'); line(w.gpsPath, 5, gpsRgba(0.95));
       // little chevrons along the route show which way to go
       g.fillStyle = '#fff'; let acc = 0;
       for (let i = 1; i < w.gpsPath.length; i++) {

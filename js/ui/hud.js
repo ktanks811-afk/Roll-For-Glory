@@ -88,6 +88,7 @@ export class Hud {
         <div class="hud-weapon hidden" data-weapon></div>
       </div>
       <div class="hud-top" data-top>
+        <canvas class="hud-compass" data-compass aria-label="Compass"></canvas>
         <div class="hud-radio" data-radio></div>
         <div class="hud-nav hidden" data-nav><svg viewBox="0 0 24 24" data-navicon></svg><div><b data-navdist></b><small data-navstreet></small></div></div>
         <div class="hud-objective hidden" data-obj></div>
@@ -232,9 +233,44 @@ export class Hud {
     void box.offsetWidth; box.classList.add('in');
   }
 
+  // Compass strip at the top middle: the way you're facing or driving, with
+  // N/E/S/W and the in-betweens sliding past a fixed notch (Settings → Compass).
+  drawCompass(facing) {
+    const cv = this.q('compass');
+    const on = settings.compass !== false;
+    if (cv.hidden === on) cv.hidden = !on;
+    if (!on) return;
+    const deg = ((((facing || 0) * 180 / Math.PI) % 360) + 360) % 360;
+    if (this.cmpDeg != null && Math.abs(deg - this.cmpDeg) < 0.4) return;
+    this.cmpDeg = deg;
+    const W = 230, H = 22, dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+    const g = cv.getContext('2d'), span = 150, px = W / span;   // 150° across the strip
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let b = Math.ceil((deg - span / 2) / 15) * 15; b <= deg + span / 2; b += 15) {
+      const x = W / 2 + (b - deg) * px, k = ((b % 360) + 360) % 360, edge = 1 - Math.min(1, Math.abs(x - W / 2) / (W / 2)) ** 3;
+      g.globalAlpha = 0.35 + 0.65 * edge;
+      if (k % 45 === 0) {
+        const name = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][k / 45], main = k % 90 === 0;
+        g.font = `700 ${main ? 15 : 12}px Rajdhani, sans-serif`;
+        g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.8)'; g.strokeText(name, x, 11.5);
+        g.fillStyle = k === 0 ? '#ff4a5a' : '#fff'; g.fillText(name, x, 11.5);
+      } else {
+        g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect(x - 0.75, 7, 1.5, 8);
+      }
+    }
+    g.globalAlpha = 1;
+    // the notch: straight ahead
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(W / 2 - 5, 0); g.lineTo(W / 2 + 5, 0); g.lineTo(W / 2, 5); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(W / 2 - 5, H); g.lineTo(W / 2 + 5, H); g.lineTo(W / 2, H - 5); g.closePath(); g.fill();
+    cv.title = `${Math.round(deg) % 360}°`;
+  }
+
   update(w) {
     const now = performance.now();
     this.minimap.draw(w, w.playerState());
+    this.drawCompass(w.playerState().h);
     this.renderHotbar();   // every frame, so it turns smoothly (it only redraws when something changed)
     if (now - this.last < 66) return;
     this.last = now;

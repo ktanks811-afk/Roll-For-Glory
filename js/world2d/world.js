@@ -4,7 +4,7 @@
 import { buildMap, collideCircle, onBackroad } from './map.js';
 import { luxPerks } from '../core/luxury.js';
 import { Boats } from './boats.js';
-import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState, drawPoles, shadeHex } from './render.js';
+import { Camera, buildStreetLights, drawGround, drawWater, drawLots, drawRoads, drawStreetNames, drawSkids, drawBuildings, drawTrees, drawTunnel, drawLighting, drawRain, drawSpray, renderOverview, signalState, drawPoles, shadeHex } from './render.js';
 import { sun, setSun, shadowFill } from '../gfx2d/sun.js';
 
 const TILT_C = 0.78;   // tilted view: how much the ground is squashed top to bottom (cos of the view angle)
@@ -43,6 +43,7 @@ import { audio } from '../core/audio.js';
 import { settings, saveGame } from '../core/save.js';
 import { noteRecent } from '../core/nav.js';
 import { noteLeft, clearLeft } from '../core/garages.js';
+import { gpsStyle, gpsRgba } from '../ui/gpsStyle.js';
 import { emit } from '../core/events.js';
 import { MPH } from '../sim/powertrain.js';
 import { RevLimiter, launchRpmSetting } from '../sim/twostep.js';
@@ -1091,6 +1092,41 @@ export class World {
     return true;
   }
 
+  // ---------------------------------------------------------------- tow truck
+  // Hook & Haul (core/towing.js, ui/towing.js): the truck hauls your car to
+  // `spot` ({x, z, h}) and you ride along, so you end up on foot beside it.
+  // `minutes` of game time pass on the way.
+  towCar(spot, minutes, label) {
+    const s = this.s, v = this.vehicle;
+    if (!v) return false;
+    if (this.inCar) { this.inCar = false; input.setContext('foot'); if (this.engine) { this.engine.stop(); this.engine = null; } }
+    v.x = spot.x; v.z = spot.z; v.h = spot.h;
+    v.vx = v.vz = 0; v.rev = 0; v.steer = v.steerIn = 0; v.yawRate = 0; v.sim.v = 0; v.skid = 0;
+    s.carPos = { x: v.x, z: v.z, h: v.h };
+    const rx = Math.cos(v.h), rz = Math.sin(v.h);
+    this.foot.x = v.x - rx * (v.dims.W / 2 + 1.2); this.foot.z = v.z - rz * (v.dims.W / 2 + 1.2); this.foot.h = v.h;
+    this.cam.x = this.foot.x; this.cam.z = this.foot.z;
+    this.skids.length = 0; this.smoke.length = 0;
+    this.traffic.cars = [];
+    this.pullups.remove();
+    this.passTime(minutes);
+    if (s.gps && Math.hypot(s.gps.x - v.x, s.gps.z - v.z) < 30) { s.gps = null; this.gpsPath = null; }
+    this.warpT = 0.9;
+    s.stats.tows = (s.stats.tows || 0) + 1;
+    emit('tow', { to: label });
+    saveGame('auto', true);
+    return true;
+  }
+  // Move the clock on in half-hour steps so hourly and daily events still fire.
+  passTime(minutes) { for (let left = minutes; left > 0; left -= 30) this.advanceClock(Math.min(30, left)); }
+  // A spot to leave a car at a place: your driveway if it's one of yours, else the curb out front.
+  dropSpot(loc) {
+    const g = this.map.garages.find(o => o.id === loc.id);
+    if (g) return { x: g.park.x, z: g.park.z, h: g.park.h };
+    const road = this.map.roads.nearestOnRoad(loc.x, loc.z);
+    return road ? curbSpot(road, loc.x, loc.z) : { x: loc.x, z: loc.z, h: 0 };
+  }
+
   // ---------------------------------------------------------------- flights
   // From an airport to another state's (ui/flights.js is the counter). Your
   // car rides cargo when you're in it or standing by it at the terminal; on
@@ -1171,6 +1207,7 @@ export class World {
     const items = this.map.drawGrid.query(vb.x0, vb.z0, vb.x1, vb.z1);
     drawLots(ctx, cam, items);
     drawRoads(ctx, cam, this.map, this.signalT);
+    if (settings.streetNames !== false) drawStreetNames(ctx, cam, this.map);
     drawSkids(ctx, cam, this.skids);
     if (isWet(s)) { ctx.fillStyle = `rgba(40,60,90,${0.12 * wx(s).rain})`; ctx.fillRect(0, 0, cam.w, cam.h); }
 
@@ -1354,7 +1391,7 @@ export class World {
         const a = Math.atan2(gy - H / 2, gx - W / 2);
         const r = Math.min(W, H) / 2 - 40;
         ctx.save(); ctx.translate(W / 2 + Math.cos(a) * r, H / 2 + Math.sin(a) * r); ctx.rotate(a);
-        ctx.fillStyle = '#ff2a3a'; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -9); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = gpsRgba(0.9); ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -9); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
         ctx.restore();
       }
     }
@@ -1362,13 +1399,16 @@ export class World {
     this.pullups.drawOverlay(ctx, W, H);
   }
 
-  // The GPS route painted on the road: a dark casing, a bright red ribbon
-  // and white chevrons flowing toward the destination, plus a pulsing ring
-  // on the destination itself. `glow` redraws it additively after the night
-  // lighting so it stays readable in the dark.
+  // The GPS route painted on the road: a see-through ribbon (Settings → GPS
+  // route picks the color) with chevrons flowing toward the destination,
+  // plus a pulsing ring on the destination itself. It's thin and faint on
+  // purpose so the lanes and oncoming cars still show through. `glow`
+  // redraws it additively after the night lighting so it stays readable in
+  // the dark.
   drawGpsRoute(ctx, cam, alpha, glow = false) {
     const full = this.gpsPath, g = this.s.gps;
     if (!full || !g || alpha <= 0.01) return;
+    const st = gpsStyle();
     // start the line where you are now, not where the route was last worked out
     const { i: k, t: kt, d: off, p } = this.gpsProgress();
     const [ax0, az0] = full[k - 1], [bx0, bz0] = full[k];
@@ -1380,14 +1420,14 @@ export class World {
     if (glow) ctx.globalCompositeOperation = 'lighter';
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     const line = () => { ctx.beginPath(); path.forEach(([x, zz], i) => i ? ctx.lineTo(cam.sx(x), cam.sy(zz)) : ctx.moveTo(cam.sx(x), cam.sy(zz))); ctx.stroke(); };
-    if (!glow) { ctx.strokeStyle = 'rgba(30,0,6,0.55)'; ctx.lineWidth = Math.max(9, 4.2 * z); line(); }
-    ctx.strokeStyle = glow ? 'rgba(255,40,60,0.55)' : 'rgba(255,42,58,0.82)'; ctx.lineWidth = Math.max(5, 2.6 * z); line();
+    if (!glow && st.casing) { ctx.strokeStyle = `rgba(30,0,6,${st.casing})`; ctx.lineWidth = Math.max(9, (st.width + 1.6) * z); line(); }
+    if (st.line) { ctx.strokeStyle = gpsRgba(glow ? st.line * 0.7 : st.line); ctx.lineWidth = Math.max(4, st.width * z); line(); }
     // chevrons every 7 m, sliding along the route (spaced from the
     // destination end, so they don't jump when the route is refreshed)
     let len = 0;
     for (let i = 1; i < path.length; i++) len += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
     const gap = 7, cs = Math.max(4, 0.95 * z);
-    ctx.strokeStyle = glow ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.92)'; ctx.lineWidth = Math.max(2, 0.42 * z);
+    ctx.strokeStyle = `rgba(255,255,255,${glow ? st.chev * 0.55 : st.chev})`; ctx.lineWidth = Math.max(2, 0.36 * z);
     let along = (((len - this.t * 9) % gap) + gap) % gap;
     for (let i = 1; i < path.length; i++) {
       const [ax, az] = path[i - 1], [bx, bz] = path[i], L = Math.hypot(bx - ax, bz - az);
@@ -1408,9 +1448,9 @@ export class World {
     }
     // destination ring
     const gx = cam.sx(g.x), gy = cam.sy(g.z), pulse = (this.t * 0.8) % 1;
-    ctx.strokeStyle = `rgba(255,42,58,${(1 - pulse) * 0.9})`; ctx.lineWidth = Math.max(3, 0.5 * z);
+    ctx.strokeStyle = gpsRgba((1 - pulse) * 0.9); ctx.lineWidth = Math.max(3, 0.5 * z);
     ctx.beginPath(); ctx.arc(gx, gy, (3 + pulse * 6) * z, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,42,58,0.35)'; ctx.beginPath(); ctx.arc(gx, gy, 3 * z, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = gpsRgba(0.35); ctx.beginPath(); ctx.arc(gx, gy, 3 * z, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 

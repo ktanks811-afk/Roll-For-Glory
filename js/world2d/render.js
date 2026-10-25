@@ -346,6 +346,43 @@ export function drawRoads(ctx, cam, map, signalT) {
   }
 }
 
+// Street names painted on the asphalt, Google Maps style: one in each
+// outside lane, a third and two thirds of the way along a block, turned so
+// they read the right way up on screen whichever way the camera points.
+// Long roads (highways, farm roads) repeat every 260 m.
+export function drawStreetNames(ctx, cam, map) {
+  const z = cam.zoom;
+  if (z < 1.1) return;
+  const v = cam.view(10);
+  const near = map.roads.edgesIn ? map.roads.edgesIn(v.x0, v.z0, v.x1, v.z1) : map.roads.edges;
+  const size = Math.max(10, Math.min(2.4 * z, 26));
+  ctx.save();
+  ctx.font = `700 ${size}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(240,240,232,0.5)';
+  const seen = new Set();
+  for (const e of near) {
+    if (!e.name || e.track || e.len < 60) continue;
+    const ang = Math.atan2(e.dz, e.dx);
+    // flip so the text never reads upside down (the world layer is turned by cam.rot)
+    const up = Math.cos(ang + cam.rot) >= 0 ? ang : ang + Math.PI;
+    const lanes = e.lanes || [2];
+    const off = lanes[Math.min(1, lanes.length - 1)];
+    const label = e.name.toUpperCase();
+    const n = Math.max(1, Math.round(e.len / 260));
+    for (let k = 0; k < n; k++) {
+      for (const [side, f] of [[1, 1 / 3], [-1, 2 / 3]]) {
+        const d = e.len * (k + f) / n;
+        const x = e.ax + e.dx * d - e.dz * off * side, zz = e.az + e.dz * d + e.dx * off * side;
+        if (x < v.x0 || x > v.x1 || zz < v.z0 || zz > v.z1) continue;
+        const key = `${Math.round(x / 4)},${Math.round(zz / 4)}`;   // two halves of a split road can share a spot
+        if (seen.has(key)) continue; seen.add(key);
+        ctx.save(); ctx.translate(cam.sx(x), cam.sy(zz)); ctx.rotate(up); ctx.fillText(label, 0, 0); ctx.restore();
+      }
+    }
+  }
+  ctx.restore();
+}
+
 // Each intersection cycles N-S green / E-W green with a short yellow.
 export function signalState(node, t) {
   const cycle = 34;
