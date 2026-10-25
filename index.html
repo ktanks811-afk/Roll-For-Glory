@@ -159,7 +159,8 @@ body.walking:not(.creating) #stick { display: block; }
 body.creating > .top, body.creating > .dock, body.creating #hud, body.creating #pad, body.creating #card, body.creating #prompt, body.creating #walkhint, body.creating #menu { display: none !important; }
 #cr-dock { gap: 8px; background: linear-gradient(to top, var(--bg) 70%, rgba(18,16,22,0)); }
 #cr-dock .panel { justify-content: flex-start; min-height: 0; }
-#cr-tabs { grid-template-columns: repeat(5, 1fr); }
+#cr-tabs { grid-template-columns: repeat(6, 1fr); }
+#cr-tabs .tab { letter-spacing: 0.02em; }
 .sw { width: 30px; height: 30px; padding: 0; border-radius: 8px; border: 2px solid var(--line); cursor: pointer; flex: none; }
 .sw[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--bg) inset; }
 .sw:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
@@ -174,7 +175,7 @@ body.creating > .top, body.creating > .dock, body.creating #hud, body.creating #
 @media (orientation: landscape) and (max-height: 560px) {
   #cr-dock { top: 0; left: auto; right: 0; width: min(48vw, 440px); flex-direction: column; justify-content: flex-end; align-items: stretch; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); padding-left: 14px; background: linear-gradient(to left, var(--bg) 80%, rgba(18,16,22,0)); }
   #cr-dock > .panel { flex: 0 1 auto; overflow-y: auto; }
-  #cr-tabs { width: 100%; grid-template-columns: repeat(5, 1fr); border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 4px; }
+  #cr-tabs { width: 100%; grid-template-columns: repeat(6, 1fr); border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 4px; }
   .list { max-height: 46vh; }
   #cr-go { padding: 8px 12px; }
 }
@@ -358,7 +359,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       <div class="row scroll" id="cr-fsub"></div>
       <div class="row list" id="cr-fopt"></div>
     </div>
-    <div class="panel" id="cr-p-extras" hidden><div class="row list" id="cr-extras"></div></div>
+    <div class="panel" id="cr-p-extras" hidden><div class="row scroll" id="cr-xsub"></div><div class="row list" id="cr-extras"></div></div>
+    <div class="panel" id="cr-p-ink" hidden><div class="row scroll" id="cr-ink"></div><div class="row list" id="cr-tats"></div></div>
     <div class="panel" id="cr-p-fit" hidden>
       <div class="row scroll" id="cr-csub"></div>
       <div class="row list" id="cr-copt"></div>
@@ -368,6 +370,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       <button class="tab" data-tab="hair" aria-selected="false">Hair</button>
       <button class="tab" data-tab="face" aria-selected="false">Face</button>
       <button class="tab" data-tab="extras" aria-selected="false">Extras</button>
+      <button class="tab" data-tab="ink" aria-selected="false">Ink</button>
       <button class="tab" data-tab="fit" aria-selected="false">Fit</button>
     </div>
     <button class="btn" id="cr-go">Start in Murda Worth</button>
@@ -1587,13 +1590,14 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       if (cat === 'brows') return { title: 'Brows', sub, rows: [back, ...pickRows('brows', GM.BROWS, o => o.name)] };
       if (cat === 'build') return { title: 'Build', sub, rows: [back, ...pickRows('build', [0, 1, 2], v => BUILDS[v])] };
       if (cat === 'height') return { title: 'Height', sub, rows: [back, ...pickRows('height', [0, 1, 2], v => HEIGHTS[v])] };
-      if (cat === 'extras') return { title: 'Extras', sub: 'Chains, grills, shades, lashes, gloss, nails', rows: [back, ...GM.EXTRAS.map(o => { const ex = cur('extras') || [], on = ex.includes(o.id); return { t: o.name, btn: on ? 'Take off' : 'Put on', act: () => set('extras', on ? ex.filter(x => x !== o.id) : [...ex, o.id]) }; })] };
+      if (cat === 'ink') return { title: 'Ink', sub: 'Shows wherever skin does. Throw on a wife beater.', rows: [back, ...pickRows('ink', GM.INKS, o => o.name), ...GM.TATTOOS.map(o => { const t = cur('tats') || [], on = t.includes(o.id); return { t: o.name, btn: on ? 'Cover up' : 'Get it', act: () => set('tats', on ? t.filter(x => x !== o.id) : [...t, o.id]) }; })] };
+      if (cat === 'extras') return { title: 'Extras', sub: 'Platinum and gold chains, grills, piercings, shades, lashes, gloss, nails', rows: [back, ...GM.EXTRAS.map(o => { const ex = cur('extras') || [], on = ex.includes(o.id); return { t: o.name, btn: on ? 'Take off' : 'Put on', act: () => set('extras', on ? ex.filter(x => x !== o.id) : [...ex, o.id]) }; })] };
       const nm = (list, v) => { const o = list.find(o => (o.id ?? o) === v); return o ? o.name : ''; };
       const row = (t, s, k, sw) => ({ t, s, sw, btn: 'Change', act: () => openMenu(() => MENUS.look(p, k)) });
       return { title: 'Your look', sub: 'Your character in the game', rows: [
         row('Body', cur('body') === 'f' ? 'Woman' : 'Man', 'body'), row('Skin tone', '', 'skin', cur('skin')), row('Hairstyle', nm(GM.HAIRSTYLES, cur('hairStyle')), 'hairStyle'), row('Hair color', '', 'hair', cur('hair')),
         row('Facial hair', nm(GM.FACIAL_HAIR, cur('facialHair')), 'facialHair'), row('Eyes', '', 'eyes', cur('eyes')), row('Brows', nm(GM.BROWS, cur('brows')), 'brows'),
-        row('Extras', (cur('extras') || []).map(id => nm(GM.EXTRAS, id)).join(', ') || 'None', 'extras'), row('Build', BUILDS[cur('build')], 'build'), row('Height', HEIGHTS[cur('height')], 'height'),
+        row('Extras', (cur('extras') || []).map(id => nm(GM.EXTRAS, id)).join(', ') || 'None', 'extras'), row('Ink', (cur('tats') || []).map(id => nm(GM.TATTOOS, id)).join(', ') || 'None', 'ink'), row('Build', BUILDS[cur('build')], 'build'), row('Height', HEIGHTS[cur('height')], 'height'),
         { t: 'Your clothes', s: 'Wear what you own', btn: 'Closet', act: () => openMenu(() => MENUS.mirror(p)) },
       ] };
     },
@@ -1917,7 +1921,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   }
   // ---------- people: the character builder from the characters page ----------
   const PEOPLE = (function () {
-const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#c68e65","#b07650","#9c6644","#845334","#6b4429","#55341f","#3f2a1a","#2c1d12"],"HAIR_COLORS":["#111111","#2a1a10","#3b2414","#6b4423","#8a5a2b","#b07b3e","#c9953f","#d9c27a","#ece2b8","#a33a17","#c2531d","#9a9a9a","#e8e8e8","#b51818","#e05aa0","#7b3fc4","#2a6bd1","#1fa3a3","#2f9a4a"],"DEFAULT":{"skin":"#c68e65","hair":"#111111","hairStyle":"short","build":1,"eyes":"#2a1a10","brows":"natural","facialHair":"none","extras":[],"top":"hoodie_black","bottom":"jeans_blue","hat":"no_hat","shoes":"kicks_white","mask":"no_mask"},"CLOTHES":[{"id":"hoodie_black","slot":"top","style":"hoodie","color":"#1a1a1a","name":"Black Hoodie","price":0},{"id":"tee_white","slot":"top","style":"tee","color":"#e8e8e8","name":"White Tee","price":25},{"id":"tee_red","slot":"top","style":"tee","color":"#b51818","name":"Red Tee","price":25},{"id":"hoodie_grey","slot":"top","style":"hoodie","color":"#6d7078","name":"Heather Hoodie","price":60},{"id":"bomber_olive","slot":"top","style":"jacket","color":"#4a5232","name":"Olive Bomber","price":140},{"id":"racing_jacket","slot":"top","style":"jacket","color":"#c41b1b","name":"Leather Racing Jacket","price":420},{"id":"varsity_crew","slot":"top","style":"jacket","color":"#0b1f4d","name":"Crew Varsity Jacket","price":260},{"id":"silver_jacket","slot":"top","style":"jacket","color":"#b8bcc4","name":"Silver Tech Shell","price":900},{"id":"jeans_blue","slot":"bottom","style":"jeans","color":"#2c3e66","name":"Blue Jeans","price":0},{"id":"jeans_black","slot":"bottom","style":"jeans","color":"#151515","name":"Black Denim","price":70},{"id":"cargo_tan","slot":"bottom","style":"cargo","color":"#7d6b4c","name":"Tan Cargos","price":65},{"id":"track_black","slot":"bottom","style":"track","color":"#202020","name":"Track Pants","price":55},{"id":"cap_black","slot":"hat","style":"cap","color":"#111111","name":"Black Cap","price":30},{"id":"cap_red","slot":"hat","style":"cap","color":"#b51818","name":"Red Cap","price":30},{"id":"beanie_grey","slot":"hat","style":"beanie","color":"#5b5f66","name":"Grey Beanie","price":25},{"id":"no_hat","slot":"hat","style":"none","color":"#000000","name":"No Hat","price":0},{"id":"kicks_white","slot":"shoes","style":"kicks","color":"#f0f0f0","name":"White Kicks","price":90},{"id":"kicks_red","slot":"shoes","style":"kicks","color":"#c41b1b","name":"Red Racers","price":120},{"id":"boots_black","slot":"shoes","style":"boots","color":"#1a1a1a","name":"Black Boots","price":110},{"id":"no_mask","slot":"mask","style":"none","color":"#000000","name":"No Mask","price":0},{"id":"skimask_black","slot":"mask","style":"skimask","color":"#0c0c0d","name":"Vortex Black Ski Mask","price":35,"shop":"surplus"},{"id":"bandana_black","slot":"mask","style":"bandana","color":"#141414","name":"Black Bandana (over the face)","price":12,"shop":"surplus"},{"id":"fleece_black","slot":"top","style":"hoodie","color":"#0f0f10","name":"Vortex Black Tech Fleece Hoodie","price":120,"shop":"surplus"},{"id":"joggers_black","slot":"bottom","style":"track","color":"#101011","name":"Vortex Black Tech Fleece Joggers","price":95,"shop":"surplus"},{"id":"cargo_black","slot":"bottom","style":"cargo","color":"#18181a","name":"Black Work Cargos","price":60,"shop":"surplus"},{"id":"kicks_blackout","slot":"shoes","style":"kicks","color":"#121212","name":"Vortex Triple-Black Runners","price":110,"shop":"surplus"},{"id":"boots_tactical","slot":"shoes","style":"boots","color":"#141414","name":"Black Tactical Boots","price":140,"shop":"surplus"},{"id":"beanie_black","slot":"hat","style":"beanie","color":"#121212","name":"Black Watch Cap","price":20,"shop":"surplus"},{"id":"mk_jordan_bred","slot":"shoes","style":"kicks","color":"#b51818","name":"Retro 11 \"Bred\" High-tops","price":230,"shop":"kicks"},{"id":"mk_af1_white","slot":"shoes","style":"kicks","color":"#f4f4f4","name":"Triple-White Low Tops","price":115,"shop":"kicks"},{"id":"mk_foams","slot":"shoes","style":"kicks","color":"#2a2f3a","name":"Onyx Foam Runners","price":180,"shop":"kicks"},{"id":"mk_dunk_panda","slot":"shoes","style":"kicks","color":"#d8d8d8","name":"\"Panda\" Low Skates","price":140,"shop":"kicks"},{"id":"mk_uni_blue","slot":"shoes","style":"kicks","color":"#5fa8e8","name":"University Blue 4s","price":260,"shop":"kicks"},{"id":"mk_slides","slot":"shoes","style":"kicks","color":"#151515","name":"Black Slides and Socks","price":65,"shop":"kicks"},{"id":"mh_hoodie_box","slot":"top","style":"hoodie","color":"#c41b1b","name":"Red Box-Logo Hoodie","price":190,"shop":"hype"},{"id":"mh_hoodie_cream","slot":"top","style":"hoodie","color":"#e8dcc0","name":"Cream Essentials Hoodie","price":110,"shop":"hype"},{"id":"mh_tee_graphic","slot":"top","style":"tee","color":"#2a2a2a","name":"Vintage Rap Tee","price":55,"shop":"hype"},{"id":"mh_tee_purple","slot":"top","style":"tee","color":"#6a2ac4","name":"Purple Puff-Print Tee","price":60,"shop":"hype"},{"id":"mh_puffer","slot":"top","style":"jacket","color":"#141414","name":"Black Puffer Jacket","price":320,"shop":"hype"},{"id":"mh_track_green","slot":"bottom","style":"track","color":"#1f5a32","name":"Green Nylon Track Pants","price":85,"shop":"hype"},{"id":"mh_fitted","slot":"hat","style":"cap","color":"#0b1f4d","name":"Navy Fitted Cap","price":45,"shop":"hype"},{"id":"mh_beanie_orange","slot":"hat","style":"beanie","color":"#e8641a","name":"Safety Orange Beanie","price":30,"shop":"hype"},{"id":"md_stacked","slot":"bottom","style":"jeans","color":"#1e2a44","name":"Stacked Flare Jeans","price":150,"shop":"denim"},{"id":"md_ripped","slot":"bottom","style":"jeans","color":"#5a7aa8","name":"Light-Wash Ripped Jeans","price":95,"shop":"denim"},{"id":"md_grey","slot":"bottom","style":"jeans","color":"#55585e","name":"Washed Grey Denim","price":90,"shop":"denim"},{"id":"md_trucker","slot":"top","style":"jacket","color":"#3a5580","name":"Denim Trucker Jacket","price":130,"shop":"denim"},{"id":"md_carpenter","slot":"bottom","style":"cargo","color":"#a07a44","name":"Duck Canvas Carpenter Pants","price":85,"shop":"denim"},{"id":"mw_pearlsnap","slot":"top","style":"jacket","color":"#7a2a2a","name":"Pearl-Snap Western Shirt","price":70,"shop":"western"},{"id":"mw_wranglers","slot":"bottom","style":"jeans","color":"#24324f","name":"Starched Wranglers","price":55,"shop":"western"},{"id":"mw_ropers","slot":"shoes","style":"boots","color":"#6a4423","name":"Brown Roper Boots","price":180,"shop":"western"},{"id":"mw_gator","slot":"shoes","style":"boots","color":"#3a2a1a","name":"Caiman Belly Boots","price":650,"shop":"western"},{"id":"mw_cap_ranch","slot":"hat","style":"cap","color":"#5a4a2a","name":"Feed Store Cap","price":25,"shop":"western"},{"id":"mw_carhartt","slot":"top","style":"jacket","color":"#8a6a2a","name":"Duck Chore Coat","price":140,"shop":"western"},{"id":"mj_dallas_star","slot":"top","style":"tee","color":"#0b1f4d","name":"Dallas Star Jersey (Navy)","price":130,"shop":"jersey"},{"id":"mj_dallas_white","slot":"top","style":"tee","color":"#eef0f4","name":"Dallas Star Jersey (White)","price":130,"shop":"jersey"},{"id":"mj_mavs","slot":"top","style":"tee","color":"#0a5ac4","name":"Dallas Hoops Jersey (Blue)","price":120,"shop":"jersey"},{"id":"mj_rangers","slot":"top","style":"tee","color":"#c41b2a","name":"Arlington Baseball Jersey (Red)","price":110,"shop":"jersey"},{"id":"mj_cap_star","slot":"hat","style":"cap","color":"#9aa0aa","name":"Silver Star Snapback","price":38,"shop":"jersey"},{"id":"mm_mexico","slot":"top","style":"tee","color":"#1a7a3a","name":"Mexico Fútbol Jersey (Green)","price":45,"shop":"mercado"},{"id":"mm_mexico_blk","slot":"top","style":"tee","color":"#121212","name":"Mexico Fútbol Jersey (Black)","price":45,"shop":"mercado"},{"id":"mm_botas","slot":"shoes","style":"boots","color":"#2a1810","name":"Pointy Botas Vaqueras","price":120,"shop":"mercado"},{"id":"mm_tejana","slot":"hat","style":"cap","color":"#d9c8a0","name":"Straw Gorra","price":18,"shop":"mercado"},{"id":"mm_track","slot":"bottom","style":"track","color":"#1a3a7a","name":"Club Track Pants","price":35,"shop":"mercado"},{"id":"mx_monogram","slot":"top","style":"hoodie","color":"#3a2a1a","name":"Monogram Hoodie","price":1450,"shop":"designer"},{"id":"mx_leather","slot":"top","style":"jacket","color":"#0c0c0c","name":"Black Lambskin Biker","price":4800,"shop":"designer"},{"id":"mx_tee_logo","slot":"top","style":"tee","color":"#f2f2f2","name":"Logo Tape Tee","price":620,"shop":"designer"},{"id":"mx_cargo","slot":"bottom","style":"cargo","color":"#202020","name":"Nylon Designer Cargos","price":1200,"shop":"designer"},{"id":"mx_runners","slot":"shoes","style":"kicks","color":"#e8e8e8","name":"Chunky Designer Runners","price":1100,"shop":"designer"},{"id":"mx_redbottoms","slot":"shoes","style":"boots","color":"#0e0e0e","name":"Red-Bottom Spike Boots","price":1650,"shop":"designer"},{"id":"mx_bucket","slot":"hat","style":"beanie","color":"#5a4a3a","name":"Monogram Bucket Hat","price":690,"shop":"designer"}],"HAIR_GROUPS":[{"id":"black","name":"Coils, braids & locs"},{"id":"white","name":"Straight & wavy"},{"id":"any","name":"Everybody"}],"HAIRSTYLES":[{"id":"waves","name":"360 Waves","group":"black"},{"id":"caesar","name":"Low Caesar","group":"black"},{"id":"taper","name":"Taper & Sponge Curls","group":"black"},{"id":"curly","name":"Curly Top","group":"black"},{"id":"short_afro","name":"Short Fro","group":"black"},{"id":"afro","name":"Big Afro","group":"black"},{"id":"high_top","name":"High Top Fade","group":"black"},{"id":"frohawk","name":"Frohawk","group":"black"},{"id":"twists","name":"Two-Strand Twists","group":"black"},{"id":"cornrows","name":"Cornrows","group":"black"},{"id":"braids_back","name":"Feed-In Braids","group":"black"},{"id":"box_braids","name":"Box Braids","group":"black"},{"id":"fulani","name":"Fulani Braids","group":"black"},{"id":"locs","name":"Locs","group":"black"},{"id":"loc_updo","name":"Locs Tied Up","group":"black"},{"id":"freeform","name":"Freeform Dreads","group":"black"},{"id":"bantu","name":"Bantu Knots","group":"black"},{"id":"puff","name":"Afro Puff","group":"black"},{"id":"puffs","name":"Two Puffs","group":"black"},{"id":"silk_press","name":"Silk Press","group":"black"},{"id":"short","name":"Short & Neat","group":"white"},{"id":"crew","name":"Crew Cut","group":"white"},{"id":"side_part","name":"Side Part","group":"white"},{"id":"slick","name":"Slicked Back","group":"white"},{"id":"pompadour","name":"Pompadour","group":"white"},{"id":"spiky","name":"Spiky","group":"white"},{"id":"undercut","name":"Undercut","group":"white"},{"id":"french_crop","name":"French Crop","group":"white"},{"id":"curtains","name":"Curtains","group":"white"},{"id":"flow","name":"Surfer Flow","group":"white"},{"id":"mullet","name":"Mullet","group":"white"},{"id":"shag","name":"Shag","group":"white"},{"id":"long","name":"Long Straight","group":"white"},{"id":"ponytail","name":"Ponytail","group":"white"},{"id":"bob","name":"Bob","group":"white"},{"id":"pixie","name":"Pixie Cut","group":"white"},{"id":"cowboy","name":"Cowboy Flow","group":"white"},{"id":"buzz","name":"Buzz Cut","group":"any"},{"id":"bun","name":"Top Knot","group":"any"},{"id":"mohawk","name":"Mohawk","group":"any"},{"id":"bald","name":"Bald","group":"any"}],"FACIAL_HAIR":[{"id":"none","name":"Clean"},{"id":"stubble","name":"Stubble"},{"id":"mustache","name":"Mustache"},{"id":"goatee","name":"Goatee"},{"id":"chinstrap","name":"Chin Strap"},{"id":"beard","name":"Full Beard"},{"id":"long_beard","name":"Long Beard"}],"EYE_COLORS":["#2a1a10","#4a2c17","#6b4a24","#7a6a2e","#3f7a4a","#3d6fa8","#7d8a94"],"BROWS":[{"id":"natural","name":"Natural"},{"id":"thick","name":"Thick"},{"id":"thin","name":"Thin"},{"id":"slit","name":"Eyebrow Slit"}],"EXTRAS":[{"id":"chain","name":"Gold Chain"},{"id":"cuban","name":"Cuban Link"},{"id":"grill","name":"Gold Grill"},{"id":"studs","name":"Diamond Studs"},{"id":"shades","name":"Shades"},{"id":"glasses","name":"Glasses"},{"id":"teardrop","name":"Teardrop Tat"},{"id":"neck_tat","name":"Neck Tat"},{"id":"freckles","name":"Freckles"},{"id":"durag","name":"Durag"}],"ORIGINS":[{"id":"fresh","name":"Fresh Start","blurb":"New in town with a clean slate. $4,500 cash."},{"id":"stopsix","name":"Stop Six Raised","blurb":"The east side knows your name. +60 REP, +80 followers."},{"id":"hustler","name":"Hustler","blurb":"Came up with a little paper. +$2,500 cash, but $2,000 of it is dirty."},{"id":"working","name":"Working Man","blurb":"Years on the line at the plant. +$4,000 clean in the bank."},{"id":"influencer","name":"Influencer","blurb":"Big following, small wallet. +900 followers, $1,500 less cash."},{"id":"gearhead","name":"Gearhead","blurb":"Grew up under a hood on the Northside. +40 REP, +$1,000 cash."}]};
+const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#c68e65","#b07650","#9c6644","#845334","#6b4429","#55341f","#3f2a1a","#2c1d12"],"HAIR_COLORS":["#111111","#2a1a10","#3b2414","#6b4423","#8a5a2b","#b07b3e","#c9953f","#d9c27a","#ece2b8","#a33a17","#c2531d","#9a9a9a","#e8e8e8","#b51818","#e05aa0","#7b3fc4","#2a6bd1","#1fa3a3","#2f9a4a"],"DEFAULT":{"skin":"#c68e65","hair":"#111111","hairStyle":"short","build":1,"eyes":"#2a1a10","brows":"natural","facialHair":"none","extras":[],"top":"hoodie_black","bottom":"jeans_blue","hat":"no_hat","shoes":"kicks_white","mask":"no_mask","tats":[],"ink":"bw"},"CLOTHES":[{"id":"hoodie_black","slot":"top","style":"hoodie","color":"#1a1a1a","name":"Black Hoodie","price":0},{"id":"tee_white","slot":"top","style":"tee","color":"#e8e8e8","name":"White Tee","price":25},{"id":"tee_red","slot":"top","style":"tee","color":"#b51818","name":"Red Tee","price":25},{"id":"tank_white","slot":"top","style":"tank","color":"#f2f2f2","name":"White Wife Beater","price":12},{"id":"tank_black","slot":"top","style":"tank","color":"#151515","name":"Black Wife Beater","price":12},{"id":"tank_grey","slot":"top","style":"tank","color":"#9a9ca2","name":"Heather Grey Wife Beater","price":12},{"id":"hoodie_grey","slot":"top","style":"hoodie","color":"#6d7078","name":"Heather Hoodie","price":60},{"id":"bomber_olive","slot":"top","style":"jacket","color":"#4a5232","name":"Olive Bomber","price":140},{"id":"racing_jacket","slot":"top","style":"jacket","color":"#c41b1b","name":"Leather Racing Jacket","price":420},{"id":"varsity_crew","slot":"top","style":"jacket","color":"#0b1f4d","name":"Crew Varsity Jacket","price":260},{"id":"silver_jacket","slot":"top","style":"jacket","color":"#b8bcc4","name":"Silver Tech Shell","price":900},{"id":"jeans_blue","slot":"bottom","style":"jeans","color":"#2c3e66","name":"Blue Jeans","price":0},{"id":"jeans_black","slot":"bottom","style":"jeans","color":"#151515","name":"Black Denim","price":70},{"id":"cargo_tan","slot":"bottom","style":"cargo","color":"#7d6b4c","name":"Tan Cargos","price":65},{"id":"track_black","slot":"bottom","style":"track","color":"#202020","name":"Track Pants","price":55},{"id":"cap_black","slot":"hat","style":"cap","color":"#111111","name":"Black Cap","price":30},{"id":"cap_red","slot":"hat","style":"cap","color":"#b51818","name":"Red Cap","price":30},{"id":"beanie_grey","slot":"hat","style":"beanie","color":"#5b5f66","name":"Grey Beanie","price":25},{"id":"no_hat","slot":"hat","style":"none","color":"#000000","name":"No Hat","price":0},{"id":"kicks_white","slot":"shoes","style":"kicks","color":"#f0f0f0","name":"White Kicks","price":90},{"id":"kicks_red","slot":"shoes","style":"kicks","color":"#c41b1b","name":"Red Racers","price":120},{"id":"boots_black","slot":"shoes","style":"boots","color":"#1a1a1a","name":"Black Boots","price":110},{"id":"no_mask","slot":"mask","style":"none","color":"#000000","name":"No Mask","price":0},{"id":"skimask_black","slot":"mask","style":"skimask","color":"#0c0c0d","name":"Vortex Black Ski Mask","price":35,"shop":"surplus","brand":"vortex"},{"id":"bandana_black","slot":"mask","style":"bandana","color":"#141414","name":"Black Bandana (over the face)","price":12,"shop":"surplus"},{"id":"fleece_black","slot":"top","style":"hoodie","color":"#0f0f10","name":"Vortex Black Tech Fleece Hoodie","price":120,"shop":"surplus","brand":"vortex"},{"id":"joggers_black","slot":"bottom","style":"track","color":"#101011","name":"Vortex Black Tech Fleece Joggers","price":95,"shop":"surplus","brand":"vortex"},{"id":"cargo_black","slot":"bottom","style":"cargo","color":"#18181a","name":"Black Work Cargos","price":60,"shop":"surplus"},{"id":"kicks_blackout","slot":"shoes","style":"kicks","color":"#121212","name":"Vortex Triple-Black Runners","price":110,"shop":"surplus","brand":"vortex"},{"id":"boots_tactical","slot":"shoes","style":"boots","color":"#141414","name":"Black Tactical Boots","price":140,"shop":"surplus"},{"id":"beanie_black","slot":"hat","style":"beanie","color":"#121212","name":"Black Watch Cap","price":20,"shop":"surplus"},{"id":"mk_jordan_bred","slot":"shoes","style":"kicks","color":"#b51818","name":"Ascend Retro 11 \"Bred\"","price":230,"shop":"kicks","brand":"ascend"},{"id":"mk_af1_white","slot":"shoes","style":"kicks","color":"#f4f4f4","name":"Vortex Air 1 Low \"Triple White\"","price":115,"shop":"kicks","brand":"vortex"},{"id":"mk_foams","slot":"shoes","style":"kicks","color":"#2a2f3a","name":"Onyx Foam Runners","price":180,"shop":"kicks"},{"id":"mk_dunk_panda","slot":"shoes","style":"kicks","color":"#d8d8d8","name":"Vortex Skate Low \"Panda\"","price":140,"shop":"kicks","brand":"vortex"},{"id":"mk_uni_blue","slot":"shoes","style":"kicks","color":"#5fa8e8","name":"Ascend Retro 4 \"University Blue\"","price":260,"shop":"kicks","brand":"ascend"},{"id":"mk_slides","slot":"shoes","style":"kicks","color":"#151515","name":"Black Slides and Socks","price":65,"shop":"kicks"},{"id":"mk_vx_cushion","slot":"shoes","style":"kicks","color":"#6a6e74","name":"Vortex Air Cushion 95 \"Neon\"","price":185,"shop":"kicks","brand":"vortex"},{"id":"mk_vx_black","slot":"shoes","style":"kicks","color":"#141414","name":"Vortex Air 1 Low \"Triple Black\"","price":120,"shop":"kicks","brand":"vortex"},{"id":"mk_as_military","slot":"shoes","style":"kicks","color":"#e8e8e8","name":"Ascend Retro 4 \"Military Black\"","price":215,"shop":"kicks","brand":"ascend"},{"id":"mk_as_chicago","slot":"shoes","style":"kicks","color":"#c41b1b","name":"Ascend Retro 1 High \"Chicago\"","price":180,"shop":"kicks","brand":"ascend"},{"id":"mk_as_concord","slot":"shoes","style":"kicks","color":"#f6f6f6","name":"Ascend Retro 11 \"Concord\"","price":240,"shop":"kicks","brand":"ascend"},{"id":"mk_kr_boost","slot":"shoes","style":"kicks","color":"#151515","name":"Kronos Boost Runner \"Core Black\"","price":190,"shop":"kicks","brand":"kronos"},{"id":"mk_kr_shell","slot":"shoes","style":"kicks","color":"#f0f0f0","name":"Kronos Shell Toes","price":100,"shop":"kicks","brand":"kronos"},{"id":"mk_ol_low","slot":"shoes","style":"kicks","color":"#ebe6da","name":"Off Lane Low \"Arrow\"","price":480,"shop":"kicks","brand":"offlane"},{"id":"mh_hoodie_box","slot":"top","style":"hoodie","color":"#c41b1b","name":"Red Box-Logo Hoodie","price":190,"shop":"hype"},{"id":"mh_hoodie_cream","slot":"top","style":"hoodie","color":"#e8dcc0","name":"Cream Essentials Hoodie","price":110,"shop":"hype"},{"id":"mh_tee_graphic","slot":"top","style":"tee","color":"#2a2a2a","name":"Vintage Rap Tee","price":55,"shop":"hype"},{"id":"mh_tee_purple","slot":"top","style":"tee","color":"#6a2ac4","name":"Purple Puff-Print Tee","price":60,"shop":"hype"},{"id":"mh_puffer","slot":"top","style":"jacket","color":"#141414","name":"Black Puffer Jacket","price":320,"shop":"hype"},{"id":"mh_track_green","slot":"bottom","style":"track","color":"#1f5a32","name":"Green Nylon Track Pants","price":85,"shop":"hype"},{"id":"mh_fitted","slot":"hat","style":"cap","color":"#0b1f4d","name":"Navy Fitted Cap","price":45,"shop":"hype"},{"id":"mh_beanie_orange","slot":"hat","style":"beanie","color":"#e8641a","name":"Safety Orange Beanie","price":30,"shop":"hype"},{"id":"mh_vx_fleece","slot":"top","style":"hoodie","color":"#7a7e86","name":"Vortex Tech Fleece Hoodie (Grey)","price":130,"shop":"hype","brand":"vortex"},{"id":"mh_vx_joggers","slot":"bottom","style":"track","color":"#7a7e86","name":"Vortex Tech Fleece Joggers (Grey)","price":110,"shop":"hype","brand":"vortex"},{"id":"mh_vx_tank","slot":"top","style":"tank","color":"#121212","name":"Vortex Training Tank","price":35,"shop":"hype","brand":"vortex"},{"id":"mh_kr_jacket","slot":"top","style":"jacket","color":"#121212","name":"Kronos Firebird Track Jacket","price":95,"shop":"hype","brand":"kronos"},{"id":"mh_kr_pants","slot":"bottom","style":"track","color":"#121212","name":"Kronos Three-Bar Track Pants","price":80,"shop":"hype","brand":"kronos"},{"id":"mh_ol_hoodie","slot":"top","style":"hoodie","color":"#121212","name":"Off Lane Arrow Hoodie","price":650,"shop":"hype","brand":"offlane"},{"id":"mh_ol_tee","slot":"top","style":"tee","color":"#f2f2f2","name":"Off Lane Diagonal Tee","price":380,"shop":"hype","brand":"offlane"},{"id":"mh_gg_hoodie","slot":"top","style":"hoodie","color":"#6a2ac4","name":"Glitch Gang \"BUILD. PLAY. GLITCH.\" Hoodie","price":85,"shop":"hype","brand":"glitch"},{"id":"mh_gg_tee","slot":"top","style":"tee","color":"#121212","name":"Glitch Gang Logo Tee","price":40,"shop":"hype","brand":"glitch"},{"id":"mh_mws_tee","slot":"top","style":"tee","color":"#f2f2f2","name":"Murda Worth Supply Lone Star Tee","price":35,"shop":"hype","brand":"mws"},{"id":"mh_mws_tank","slot":"top","style":"tank","color":"#f2f2f2","name":"Murda Worth Supply Wife Beater","price":25,"shop":"hype","brand":"mws"},{"id":"mh_mws_cap","slot":"hat","style":"cap","color":"#121212","name":"Murda Worth Supply Snapback","price":40,"shop":"hype","brand":"mws"},{"id":"md_stacked","slot":"bottom","style":"jeans","color":"#1e2a44","name":"Stacked Flare Jeans","price":150,"shop":"denim"},{"id":"md_ripped","slot":"bottom","style":"jeans","color":"#5a7aa8","name":"Light-Wash Ripped Jeans","price":95,"shop":"denim"},{"id":"md_grey","slot":"bottom","style":"jeans","color":"#55585e","name":"Washed Grey Denim","price":90,"shop":"denim"},{"id":"md_trucker","slot":"top","style":"jacket","color":"#3a5580","name":"Denim Trucker Jacket","price":130,"shop":"denim"},{"id":"md_carpenter","slot":"bottom","style":"cargo","color":"#a07a44","name":"Duck Canvas Carpenter Pants","price":85,"shop":"denim"},{"id":"mw_pearlsnap","slot":"top","style":"jacket","color":"#7a2a2a","name":"Pearl-Snap Western Shirt","price":70,"shop":"western"},{"id":"mw_wranglers","slot":"bottom","style":"jeans","color":"#24324f","name":"Starched Wranglers","price":55,"shop":"western"},{"id":"mw_ropers","slot":"shoes","style":"boots","color":"#6a4423","name":"Brown Roper Boots","price":180,"shop":"western"},{"id":"mw_gator","slot":"shoes","style":"boots","color":"#3a2a1a","name":"Caiman Belly Boots","price":650,"shop":"western"},{"id":"mw_cap_ranch","slot":"hat","style":"cap","color":"#5a4a2a","name":"Feed Store Cap","price":25,"shop":"western"},{"id":"mw_carhartt","slot":"top","style":"jacket","color":"#8a6a2a","name":"Duck Chore Coat","price":140,"shop":"western"},{"id":"mj_dallas_star","slot":"top","style":"tee","color":"#0b1f4d","name":"Dallas Star Jersey (Navy)","price":130,"shop":"jersey"},{"id":"mj_dallas_white","slot":"top","style":"tee","color":"#eef0f4","name":"Dallas Star Jersey (White)","price":130,"shop":"jersey"},{"id":"mj_mavs","slot":"top","style":"tee","color":"#0a5ac4","name":"Dallas Hoops Jersey (Blue)","price":120,"shop":"jersey"},{"id":"mj_rangers","slot":"top","style":"tee","color":"#c41b2a","name":"Arlington Baseball Jersey (Red)","price":110,"shop":"jersey"},{"id":"mj_cap_star","slot":"hat","style":"cap","color":"#9aa0aa","name":"Silver Star Snapback","price":38,"shop":"jersey"},{"id":"mm_mexico","slot":"top","style":"tee","color":"#1a7a3a","name":"Mexico Fútbol Jersey (Green)","price":45,"shop":"mercado"},{"id":"mm_mexico_blk","slot":"top","style":"tee","color":"#121212","name":"Mexico Fútbol Jersey (Black)","price":45,"shop":"mercado"},{"id":"mm_botas","slot":"shoes","style":"boots","color":"#2a1810","name":"Pointy Botas Vaqueras","price":120,"shop":"mercado"},{"id":"mm_tejana","slot":"hat","style":"cap","color":"#d9c8a0","name":"Straw Gorra","price":18,"shop":"mercado"},{"id":"mm_track","slot":"bottom","style":"track","color":"#1a3a7a","name":"Club Track Pants","price":35,"shop":"mercado"},{"id":"mx_monogram","slot":"top","style":"hoodie","color":"#3a2a1a","name":"Monogram Hoodie","price":1450,"shop":"designer","brand":"maison"},{"id":"mx_leather","slot":"top","style":"jacket","color":"#0c0c0c","name":"Black Lambskin Biker","price":4800,"shop":"designer","brand":"maison"},{"id":"mx_tee_logo","slot":"top","style":"tee","color":"#f2f2f2","name":"Logo Tape Tee","price":620,"shop":"designer","brand":"maison"},{"id":"mx_cargo","slot":"bottom","style":"cargo","color":"#202020","name":"Nylon Designer Cargos","price":1200,"shop":"designer","brand":"maison"},{"id":"mx_runners","slot":"shoes","style":"kicks","color":"#e8e8e8","name":"Chunky Designer Runners","price":1100,"shop":"designer","brand":"maison"},{"id":"mx_redbottoms","slot":"shoes","style":"boots","color":"#0e0e0e","name":"Royale Red-Bottom Spike Boots","price":1650,"shop":"designer","brand":"royale"},{"id":"mx_bucket","slot":"hat","style":"beanie","color":"#5a4a3a","name":"Monogram Bucket Hat","price":690,"shop":"designer","brand":"maison"},{"id":"mx_mono_tee","slot":"top","style":"tee","color":"#3a2a1a","name":"Maison Noir Monogram Tee","price":750,"shop":"designer","brand":"maison"},{"id":"mx_tank","slot":"top","style":"tank","color":"#121212","name":"Maison Noir Ribbed Tank","price":480,"shop":"designer","brand":"maison"},{"id":"mx_mono_kicks","slot":"shoes","style":"kicks","color":"#5a4a3a","name":"Maison Noir Monogram Sneakers","price":1250,"shop":"designer","brand":"maison"},{"id":"mx_ry_hoodie","slot":"top","style":"hoodie","color":"#121212","name":"Royale Gold Crown Hoodie","price":1100,"shop":"designer","brand":"royale"},{"id":"mx_ry_hightop","slot":"shoes","style":"kicks","color":"#121212","name":"Royale Red-Bottom High-Tops","price":1450,"shop":"designer","brand":"royale"}],"HAIR_GROUPS":[{"id":"black","name":"Coils, braids & locs"},{"id":"white","name":"Straight & wavy"},{"id":"any","name":"Everybody"}],"HAIRSTYLES":[{"id":"waves","name":"360 Waves","group":"black"},{"id":"caesar","name":"Low Caesar","group":"black"},{"id":"taper","name":"Taper & Sponge Curls","group":"black"},{"id":"curly","name":"Curly Top","group":"black"},{"id":"short_afro","name":"Short Fro","group":"black"},{"id":"afro","name":"Big Afro","group":"black"},{"id":"high_top","name":"High Top Fade","group":"black"},{"id":"frohawk","name":"Frohawk","group":"black"},{"id":"twists","name":"Two-Strand Twists","group":"black"},{"id":"cornrows","name":"Cornrows","group":"black"},{"id":"braids_back","name":"Feed-In Braids","group":"black"},{"id":"box_braids","name":"Box Braids","group":"black"},{"id":"fulani","name":"Fulani Braids","group":"black"},{"id":"locs","name":"Locs","group":"black"},{"id":"loc_updo","name":"Locs Tied Up","group":"black"},{"id":"freeform","name":"Freeform Dreads","group":"black"},{"id":"bantu","name":"Bantu Knots","group":"black"},{"id":"puff","name":"Afro Puff","group":"black"},{"id":"puffs","name":"Two Puffs","group":"black"},{"id":"silk_press","name":"Silk Press","group":"black"},{"id":"short","name":"Short & Neat","group":"white"},{"id":"crew","name":"Crew Cut","group":"white"},{"id":"side_part","name":"Side Part","group":"white"},{"id":"slick","name":"Slicked Back","group":"white"},{"id":"pompadour","name":"Pompadour","group":"white"},{"id":"spiky","name":"Spiky","group":"white"},{"id":"undercut","name":"Undercut","group":"white"},{"id":"french_crop","name":"French Crop","group":"white"},{"id":"curtains","name":"Curtains","group":"white"},{"id":"flow","name":"Surfer Flow","group":"white"},{"id":"mullet","name":"Mullet","group":"white"},{"id":"shag","name":"Shag","group":"white"},{"id":"long","name":"Long Straight","group":"white"},{"id":"ponytail","name":"Ponytail","group":"white"},{"id":"bob","name":"Bob","group":"white"},{"id":"pixie","name":"Pixie Cut","group":"white"},{"id":"cowboy","name":"Cowboy Flow","group":"white"},{"id":"buzz","name":"Buzz Cut","group":"any"},{"id":"bun","name":"Top Knot","group":"any"},{"id":"mohawk","name":"Mohawk","group":"any"},{"id":"bald","name":"Bald","group":"any"}],"FACIAL_HAIR":[{"id":"none","name":"Clean"},{"id":"stubble","name":"Stubble"},{"id":"mustache","name":"Mustache"},{"id":"goatee","name":"Goatee"},{"id":"chinstrap","name":"Chin Strap"},{"id":"beard","name":"Full Beard"},{"id":"long_beard","name":"Long Beard"}],"EYE_COLORS":["#2a1a10","#4a2c17","#6b4a24","#7a6a2e","#3f7a4a","#3d6fa8","#7d8a94"],"BROWS":[{"id":"natural","name":"Natural"},{"id":"thick","name":"Thick"},{"id":"thin","name":"Thin"},{"id":"slit","name":"Eyebrow Slit"},{"id":"sleek","name":"Sleek Arch"},{"id":"arched","name":"High Arch"},{"id":"laminated","name":"Brushed Up"}],"EXTRAS":[{"id":"chain","name":"Gold Chain","group":"jewelry","pick":"pendant"},{"id":"plat_chain","name":"Platinum Chain","group":"jewelry","pick":"pendant"},{"id":"cuban","name":"Cuban Link","group":"jewelry","pick":"choker"},{"id":"plat_cuban","name":"Platinum Cuban","group":"jewelry","pick":"choker"},{"id":"plat_rope","name":"Platinum Rope","group":"jewelry","pick":"rope"},{"id":"tennis","name":"Iced Tennis Chain","group":"jewelry","pick":"rope"},{"id":"grill","name":"Gold Grill","group":"jewelry","pick":"grill"},{"id":"plat_grill","name":"Platinum Grill","group":"jewelry","pick":"grill"},{"id":"studs","name":"Diamond Studs","group":"pierce"},{"id":"nose_stud","name":"Nose Stud","group":"pierce"},{"id":"nose_ring","name":"Nose Ring","group":"pierce"},{"id":"septum","name":"Septum Ring","group":"pierce"},{"id":"brow_ring","name":"Eyebrow Ring","group":"pierce"},{"id":"lip_ring","name":"Lip Ring","group":"pierce"},{"id":"shades","name":"Shades","group":"face","pick":"eyes"},{"id":"glasses","name":"Glasses","group":"face","pick":"eyes"},{"id":"teardrop","name":"Teardrop Tat","group":"face"},{"id":"neck_tat","name":"Neck Tat","group":"face"},{"id":"freckles","name":"Freckles","group":"face"},{"id":"durag","name":"Durag","group":"face"}],"ORIGINS":[{"id":"fresh","name":"Fresh Start","blurb":"New in town with a clean slate. $4,500 cash."},{"id":"stopsix","name":"Stop Six Raised","blurb":"The east side knows your name. +60 REP, +80 followers."},{"id":"hustler","name":"Hustler","blurb":"Came up with a little paper. +$2,500 cash, but $2,000 of it is dirty."},{"id":"working","name":"Working Man","blurb":"Years on the line at the plant. +$4,000 clean in the bank."},{"id":"influencer","name":"Influencer","blurb":"Big following, small wallet. +900 followers, $1,500 less cash."},{"id":"gearhead","name":"Gearhead","blurb":"Grew up under a hood on the Northside. +40 REP, +$1,000 cash."}],"EXTRA_GROUPS":[{"id":"jewelry","name":"Chains & grills"},{"id":"pierce","name":"Piercings"},{"id":"face","name":"Face"}],"TATTOOS":[{"id":"sleeve_r","name":"Right Sleeve"},{"id":"sleeve_l","name":"Left Sleeve"},{"id":"half_r","name":"Right Half Sleeve"},{"id":"half_l","name":"Left Half Sleeve"},{"id":"hands","name":"Hand Tats"},{"id":"chest","name":"Chest Piece"},{"id":"stomach","name":"Stomach Script"},{"id":"back","name":"Back Piece"},{"id":"legs","name":"Leg Sleeves"},{"id":"neck","name":"Throat Piece"},{"id":"face","name":"Face Tats"},{"id":"full","name":"Full Body"}],"INKS":[{"id":"bw","name":"Black & Grey"},{"id":"color","name":"Color"}],"BRANDS":{"vortex":{"name":"Vortex","logo":"vee"},"ascend":{"name":"Ascend","logo":"wing"},"kronos":{"name":"Kronos","logo":"bars"},"offlane":{"name":"Off Lane","logo":"diag"},"maison":{"name":"Maison Noir","logo":"mono"},"royale":{"name":"Royale","logo":"crown"},"glitch":{"name":"Glitch Gang","logo":"glitch"},"mws":{"name":"Murda Worth Supply","logo":"star"}},"PLATINUM":["plat_chain","plat_cuban","plat_rope","tennis","plat_grill"]};
 
   const col = (hex) => new THREE.Color(hex).convertSRGBToLinear();
   // ---------------------------------------------------------------------
@@ -2050,6 +2054,19 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // ---------------------------------------------------------------------
   const HX = 0.077, HY = 0.112, HZ = 0.098;
   const EYE_X = 0.031, EYE_Y = 0.006;
+  /*LOOKS2*/
+  // brow shape: centre line at t (0 inner .. 1 tail), width and taper. Sleek
+  // and high arches are shaped; women's brows are slimmer with some arch.
+  const BROW_W = { natural: 0.0032, thick: 0.0046, thin: 0.0019, slit: 0.0032, sleek: 0.0021, arched: 0.0025, laminated: 0.0044 };
+  const browArch = look => ({ sleek: 1, arched: 1.35 })[look.brows] || (look.body === 'f' && look.brows !== 'laminated' && look.brows !== 'thick' ? 0.7 : 0);
+  function browY(look, t) {
+    const base = 0.028 + 0.0055 * Math.sin(Math.PI * Math.min(1, Math.max(0, t) * 1.15)) - 0.003 * t, a = browArch(look);
+    if (!a) return base;
+    const tt = clamp(t, 0, 1), arch = 0.0275 + 0.0068 * a * (tt < 0.62 ? Math.sin(Math.PI / 2 * tt / 0.62) : Math.cos(Math.PI / 2 * (tt - 0.62) / 0.38 * 0.9)) - 0.0028 * t;
+    return lerp(base, arch, Math.min(1, a));
+  }
+  const browW = look => (BROW_W[look.brows] || 0.0032) * (look.body === 'f' && look.brows !== 'thick' && look.brows !== 'laminated' ? 0.78 : 1);
+  const browTaper = (look, v) => browArch(look) ? (v < 0.12 ? 0.7 + v * 2.5 : 1 - 0.8 * smooth(0.45, 1, v)) : (v < 0.15 ? 0.85 + v : 1 - 0.55 * smooth(0.5, 1, v));
   function headPoint(dx, dy, dz) {
     let x = dx * HX, y = dy * HY, z = dz * HZ;
     if (dy < 0) {
@@ -2159,7 +2176,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const freck = look.extras.includes('freckles');
     /*REAL1*/
     const lum = sk[0] * 0.3 + sk[1] * 0.59 + sk[2] * 0.11, red = 0.04 + 0.035 * lum, deep = 1 - lum;
-    const bwid = { natural: 0.0032, thick: 0.0046, thin: 0.0019, slit: 0.0032 }[look.brows] || 0.0032;
+    const bwid = browW(look);
     const lipTop = ax => -0.0402 - 0.0013 * Math.exp(-((ax / 0.0028) ** 2)) + 0.0006 * Math.exp(-(((ax - 0.0065) / 0.004) ** 2)) - 0.0095 * smooth(0.008, 0.023, ax) ** 1.6;
     const lipBot = ax => -0.0625 + 0.0115 * smooth(0.004, 0.023, ax) ** 1.5;
     for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
@@ -2188,8 +2205,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         // brows: short hairs slanting outward and up
         const bt = (ax - 0.012) / 0.034;
         if (bt > -0.08 && bt < 1.08 && !(look.brows === 'slit' && bt > 0.58 && bt < 0.72)) {
-          const yc = 0.028 + 0.0055 * Math.sin(Math.PI * Math.min(1, Math.max(0, bt) * 1.15)) - 0.003 * bt;
-          const w = bwid * (bt < 0.15 ? 0.85 + bt : 1 - 0.55 * smooth(0.5, 1, bt)) * 1.25;
+          const yc = browY(look, bt);
+          const w = bwid * browTaper(look, bt) * 1.25;
           const m = smooth(w, w * 0.45, Math.abs(y - yc)) * smooth(-0.08, 0.06, bt) * smooth(1.08, 0.9, bt);
           if (m > 0) {
             const hair = hash(Math.floor((ax * 2600 - y * 1400 * (0.4 + bt)) ) * 7.7 + Math.floor(y * 900) * 3.1);
@@ -2218,7 +2235,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         const lip = Math.max(Math.exp(-((p[0] / 0.021) ** 4) - (((p[1] + 0.0455) / 0.0052) ** 2)), Math.exp(-((p[0] / 0.019) ** 4) - (((p[1] + 0.057) / 0.006) ** 2)));
         const k = smooth(0.3, 0.75, lip) * 0.48;
         r *= lerp(1, lipT[0], k); g *= lerp(1, lipT[1], k); b *= lerp(1, lipT[2], k);
-        const line = Math.exp(-((p[0] / 0.022) ** 6) - (((p[1] + 0.0508) / 0.0011) ** 2)) * (look.extras.includes('grill') ? 1 : 0.75);
+        const line = Math.exp(-((p[0] / 0.022) ** 6) - (((p[1] + 0.0508) / 0.0011) ** 2)) * (look.extras.includes('grill') || look.extras.includes('plat_grill') ? 1 : 0.75);
         r *= 1 - 0.75 * line; g *= 1 - 0.78 * line; b *= 1 - 0.78 * line;
         const nos = Math.exp(-(((Math.abs(p[0]) - 0.0062) / 0.0032) ** 2) - (((p[1] + 0.0305) / 0.0022) ** 2));
         r *= 1 - 0.7 * nos; g *= 1 - 0.75 * nos; b *= 1 - 0.75 * nos;
@@ -2245,6 +2262,14 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       x.fillStyle = `rgb(${dark.map(c => c * 160 | 0).join(',')})`;
       x.beginPath(); x.moveTo(cx, cy - 5); x.quadraticCurveTo(cx + 3.4, cy + 2, cx, cy + 3.6); x.quadraticCurveTo(cx - 3.4, cy + 2, cx, cy - 5); x.fill();
     }
+    if (hasTat(look, 'face')) {   // a star by the left eye, script over the right brow, a cross on the cheek
+      const at = (px, py) => { const q = surf(px, py), d = new THREE.Vector3(q[0] / HX, q[1] / HY, q[2] / HZ).normalize(); return [(Math.atan2(d.x, d.z) + Math.PI) / (2 * Math.PI) * W, Math.acos(d.y) / Math.PI * H]; };
+      x.save(); x.fillStyle = x.strokeStyle = 'rgba(24,28,40,0.85)';
+      let [cx, cy] = at(EYE_X + 0.014, -0.012); x.beginPath(); for (let q = 0; q < 10; q++) { const a = -Math.PI / 2 + q * Math.PI / 5, rr = q % 2 ? 1.6 : 4; x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); } x.closePath(); x.fill();
+      [cx, cy] = at(-0.03, 0.04); x.lineWidth = 1.3; x.beginPath(); for (let q = 0; q <= 10; q++) x.lineTo(cx - 10 + q * 2, cy + Math.sin(q * 2.1) * 1.5); x.stroke();
+      [cx, cy] = at(-0.042, -0.03); x.lineWidth = 1.6; x.beginPath(); x.moveTo(cx, cy - 4); x.lineTo(cx, cy + 5); x.moveTo(cx - 3, cy - 1); x.lineTo(cx + 3, cy - 1); x.stroke();
+      x.restore();
+    }
     headTex.needsUpdate = true;
   }
   function paintNeck(look) {
@@ -2258,6 +2283,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       x.save(); x.translate(W * 0.66, H * 0.48); x.strokeStyle = 'rgba(40,36,44,0.75)'; x.lineWidth = 2.2;
       x.beginPath(); for (let k = 0; k < 5; k++) { const a = -Math.PI / 2 + k * Math.PI * 4 / 5; x[k ? 'lineTo' : 'moveTo'](Math.cos(a) * 11, Math.sin(a) * 11); } x.closePath(); x.stroke(); x.restore();
     }
+    if (hasTat(look, 'neck')) flash2d(x, W * 0.3, 0, W * 0.4, H, 83, look.ink === 'color', 2.2);
     neckTex.needsUpdate = true;
   }
 
@@ -2699,7 +2725,8 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     { id: 'space_buns', name: 'Space Buns', group: 'her' }, { id: 'finger_waves', name: 'Finger Waves', group: 'her' },
     { id: 'pixie_wig', name: 'Pixie Cut Wig', group: 'her' }, { id: 'butterfly_locs', name: 'Butterfly Locs', group: 'her' },
   );
-  GAME.EXTRAS.push({ id: 'lashes', name: 'Lashes' }, { id: 'lipgloss', name: 'Lip Gloss' }, { id: 'nails', name: 'Nails Done' });
+  GAME.EXTRA_GROUPS.push({ id: 'glam', name: 'Lashes, gloss & nails' });
+  GAME.EXTRAS.push({ id: 'lashes', name: 'Lashes', group: 'glam' }, { id: 'lipgloss', name: 'Lip Gloss', group: 'glam' }, { id: 'nails', name: 'Nails Done', group: 'glam' });
   GAME.CLOTHES.push(
     { id: 'crop_white', slot: 'top', style: 'crop', color: '#f2f2f2', name: 'White Crop Top', price: 30, shop: '' },
     { id: 'crop_pink', slot: 'top', style: 'crop', color: '#e05aa0', name: 'Pink Crop Top', price: 30, shop: '' },
@@ -2850,8 +2877,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       top: wear('top').id, bottom: wear('bottom').id, shoes: wear('shoes').id, hat: R() < (fem ? 0.12 : 0.3) ? wear('hat').id : 'no_hat', mask: 'no_mask',
       bag: fem && R() < 0.75 ? wear('bag').id : 'no_bag',
     };
+    if (fem && R() < 0.6) L.brows = pick(['sleek', 'arched', 'sleek', 'thin']);
+    L.tats = R() < 0.3 ? pick([['sleeve_r'], ['sleeve_l', 'sleeve_r'], ['half_r', 'chest'], ['full'], ['hands', 'neck'], ['sleeve_r', 'legs']]) : []; L.ink = R() < 0.25 ? 'color' : 'bw';
+    if (R() < (fem ? 0.35 : 0.12)) L.extras.push(pick(['nose_stud', 'nose_ring', 'septum']));
     if (fem) { if (R() < 0.75) L.extras.push('lashes'); if (R() < 0.6) L.extras.push('lipgloss'); if (R() < 0.55) L.extras.push('nails'); if (R() < 0.3) L.extras.push('studs'); }
-    else if (R() < 0.3) L.extras.push(pick(['chain', 'cuban', 'studs', 'grill']));
+    else if (R() < 0.35) L.extras.push(pick(['chain', 'cuban', 'studs', 'grill', 'plat_chain', 'plat_cuban', 'tennis', 'plat_grill']));
     if (R() < 0.2) L.extras.push(R() < 0.5 ? 'shades' : 'glasses');
     return L;
   }
@@ -2895,6 +2925,76 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const pupilMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.1 });
   const browMat = new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
   const gold = new THREE.MeshStandardMaterial({ color: col('#f0c25a'), metalness: 1, roughness: 0.2, envMapIntensity: 1.3 });
+  const plat = new THREE.MeshStandardMaterial({ color: col('#e8ebf0'), metalness: 1, roughness: 0.16, envMapIntensity: 1.5 });
+  const metalOf = id => GAME.PLATINUM.includes(id) ? plat : gold;
+  // Ink: white canvases with flash drawn on, used as the map of a skin
+  // material (the skin colour multiplies it, so ink sits under the skin).
+  const COLOR_INK = ['#b3202c', '#1f6fb8', '#2a8a4a', '#d9a21c', '#7b3fc4'];
+  function flash2d(x, x0, y0, w, h, seed, colorInk, dense = 1) {
+    const r = i => hash(seed * 13.1 + i * 7.7);
+    x.save(); x.globalAlpha = 0.16; x.fillStyle = '#1a1e2c'; x.fillRect(x0, y0, w, h); x.globalAlpha = 0.9;
+    const n = Math.round(w * h / 900 * dense) + 4;
+    for (let i = 0; i < n; i++) {
+      const k = r(i * 3), cx = x0 + r(i * 3 + 1) * w, cy = y0 + r(i * 3 + 2) * h, sz = Math.min(w, h) * (0.1 + r(i * 5 + 4) * 0.16);
+      const c = colorInk && i % 3 === 1 ? COLOR_INK[i % 5] : '#151a28';
+      x.strokeStyle = c; x.fillStyle = c; x.lineWidth = Math.max(1.2, sz * 0.14); x.lineCap = 'round'; x.beginPath();
+      if (k < 0.25) { for (let q = 0; q < 3; q++) x.arc(cx, cy, sz * (0.35 + q * 0.25), q, q + Math.PI * 1.4); x.stroke(); }
+      else if (k < 0.45) { for (let q = 0; q < 10; q++) { const a = -Math.PI / 2 + q * Math.PI / 5, rr = q % 2 ? sz * 0.4 : sz; x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); } x.closePath(); x.fill(); }
+      else if (k < 0.65) { x.moveTo(cx - sz, cy); for (let q = 0; q <= 8; q++) x.lineTo(cx - sz + q * sz / 4, cy + Math.sin(q * 1.9 + seed) * sz * 0.3); x.stroke(); }
+      else if (k < 0.8) { x.arc(cx, cy, sz * 0.8, 0, Math.PI * 2); x.moveTo(cx, cy); x.lineTo(cx, cy - sz * 0.6); x.moveTo(cx, cy); x.lineTo(cx + sz * 0.45, cy); x.stroke(); }
+      else { x.moveTo(cx - sz, cy + sz); x.quadraticCurveTo(cx, cy - sz, cx + sz, cy + sz * 0.2); x.quadraticCurveTo(cx, cy, cx - sz, cy + sz); x.fill(); }
+    }
+    x.restore();
+  }
+  const hasTat = (look, id) => { const t = look.tats || []; return t.includes(id) || (id !== 'face' && t.includes('full')) || (id === 'half_r' && t.includes('sleeve_r')) || (id === 'half_l' && t.includes('sleeve_l')); };
+  // a skin material whose map is a tiled flash sheet (sleeves, legs, hands)
+  function inkMat(look, seed, rx = 2, ry = 5, dense = 1) {
+    const t = ctex(256, 256, (x, w, h) => { x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); flash2d(x, 0, 0, w, h, seed, look.ink === 'color', dense * 0.45); });
+    t.repeat.set(rx, ry);
+    const m = skinMat.clone(); m.map = t; m.color.copy(col(look.skin)); m.onBeforeCompile = skinShader; m.userData.ink = true;
+    return m;
+  }
+  // torso skin: u around (0.5 = front), v up in metres from where it starts
+  function torsoInkMat(look, v0) {
+    const t = ctex(512, 256, (x, w, h) => {
+      x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
+      const ci = look.ink === 'color';
+      if (hasTat(look, 'chest')) {   // wings across the collarbones and a piece in the middle
+        x.save(); x.fillStyle = '#151a28'; x.globalAlpha = 0.85;
+        for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(w * 0.5 + sd * 8, h * 0.55); for (let i = 0; i < 6; i++) { x.lineTo(w * 0.5 + sd * (16 + i * 13), h * (0.7 - i * 0.03)); x.lineTo(w * 0.5 + sd * (12 + i * 13), h * (0.48 - i * 0.02)); } x.closePath(); x.fill(); }
+        x.restore(); flash2d(x, w * 0.44, h * 0.2, w * 0.12, h * 0.6, 71, ci, 2);
+      }
+      if (hasTat(look, 'back')) { flash2d(x, 0, 0, w * 0.22, h, 91, ci, 1.4); flash2d(x, w * 0.78, 0, w * 0.22, h, 93, ci, 1.4); }
+      if (hasTat(look, 'stomach')) { x.save(); x.strokeStyle = '#151a28'; x.lineWidth = 3; x.globalAlpha = 0.85; x.beginPath(); for (let q = 0; q <= 30; q++) x.lineTo(w * 0.38 + q * w * 0.008, h * 0.4 + Math.sin(q * 1.7) * 5); x.stroke(); x.restore(); }
+    });
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.repeat.set(1, 1 / v0);
+    const m = skinMat.clone(); m.map = t; m.color.copy(col(look.skin)); m.onBeforeCompile = skinShader; m.userData.ink = true;
+    return m;
+  }
+  // a brand's logo on a transparent canvas, drawn the same way as the 2D portrait
+  function logoTex(brand, on) {
+    const B = GAME.BRANDS[brand]; if (!B) return null;
+    const lum = parseInt((on || '#222222').slice(1, 3), 16), fg = lum > 140 ? '#151515' : '#f4f4f4';
+    return ctex(128, 128, (x, w) => {
+      const S = w * 0.36; x.translate(w / 2, w / 2); x.fillStyle = fg; x.strokeStyle = fg; x.lineCap = 'round'; x.lineJoin = 'round';
+      switch (B.logo) {
+        case 'vee': x.beginPath(); x.moveTo(-S, -S * 0.3); x.quadraticCurveTo(-S * 0.3, S * 0.6, S, -S * 0.5); x.quadraticCurveTo(-S * 0.2, S * 0.15, -S, -S * 0.3); x.fill(); break;
+        case 'wing': x.beginPath(); x.moveTo(-S, S * 0.4); for (let i = 0; i < 4; i++) { x.lineTo(-S + i * S * 0.6, -S * 0.5 + i * 0.1 * S); x.lineTo(-S + i * S * 0.6 + S * 0.25, S * 0.1); } x.lineTo(S, S * 0.4); x.closePath(); x.fill(); break;
+        case 'bars': for (let i = 0; i < 3; i++) x.fillRect(-S + i * S * 0.7, S * 0.5 - (i + 1) * S * 0.38, S * 0.45, (i + 1) * S * 0.38); break;
+        case 'diag': x.lineWidth = S * 0.22; for (let i = -2; i <= 2; i++) { x.beginPath(); x.moveTo(-S * 0.6 + i * S * 0.4, S * 0.6); x.lineTo(i * S * 0.4, -S * 0.6); x.stroke(); } break;
+        case 'mono': x.font = `bold ${Math.round(S * 1.3)}px Georgia, serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = lum > 140 ? '#3a2a1a' : '#d9b46a'; x.fillText('MN', 0, 0); break;
+        case 'crown': x.fillStyle = '#e2b437'; x.beginPath(); x.moveTo(-S, S * 0.5); x.lineTo(-S, -S * 0.4); x.lineTo(-S * 0.5, S * 0.05); x.lineTo(0, -S * 0.6); x.lineTo(S * 0.5, S * 0.05); x.lineTo(S, -S * 0.4); x.lineTo(S, S * 0.5); x.closePath(); x.fill(); break;
+        case 'glitch': x.font = `900 ${Math.round(S * 1.7)}px system-ui, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#18d6e8'; x.fillText('G', -S * 0.12, 0); x.fillStyle = '#e8189a'; x.fillText('G', S * 0.12, 0); x.fillStyle = fg; x.fillText('G', 0, 0); break;
+        case 'star': x.beginPath(); for (let q = 0; q < 10; q++) { const a = -Math.PI / 2 + q * Math.PI / 5, rr = q % 2 ? S * 0.42 : S; x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } x.closePath(); x.fill(); break;
+      }
+    });
+  }
+  function logoMesh(brand, on, size) {
+    const t = logoTex(brand, on); if (!t) return null;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    m.renderOrder = 2; return m;
+  }
   const diamond = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.4, roughness: 0.02, emissive: 0x404858, envMapIntensity: 2.5 });
   const frameMat = new THREE.MeshStandardMaterial({ color: col('#141416'), metalness: 0.3, roughness: 0.3 });
   const shadeLens = new THREE.MeshStandardMaterial({ color: col('#0b0b10'), metalness: 0.9, roughness: 0.05, envMapIntensity: 1.6 });
@@ -2947,10 +3047,10 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     }
     if (hideAll) return;
     // a gold grill shows between the lips
-    if (!hideLower && look.extras.includes('grill')) {
+    if (!hideLower && (look.extras.includes('grill') || look.extras.includes('plat_grill'))) {
       const m = surf(0, -0.051), teeth = new THREE.CylinderGeometry(0.034, 0.034, 0.0042, 32, 1, true, -0.5, 1.0);
       teeth.translate(0, -0.0508, m[2] - 0.034 + 0.0016);
-      g.add(mesh(teeth, gold, false));
+      g.add(mesh(teeth, look.extras.includes('grill') ? gold : plat, false));
     }
     // ears
     const earG = [], inG = [];
@@ -2963,14 +3063,21 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (look.extras.includes('studs')) for (const s of [-1, 1]) {
       const st = new THREE.OctahedronGeometry(0.0034); st.translate(s * (HX + 0.0072), -0.026, -0.006); g.add(mesh(st, diamond, false));
     }
+    // nose, brow and lip piercings in white metal
+    const ringAt = (x, y, r, tube, rotX, rotY, out = 0.0012) => { const q = surf(x, y), t = new THREE.TorusGeometry(r, tube, 6, 18); t.rotateX(rotX); t.rotateY(rotY || 0); t.translate(q[0], q[1], q[2] + out); g.add(mesh(t, plat, false)); };
+    if (look.extras.includes('nose_stud')) { const q = surf(-0.0105, -0.0262), st = new THREE.OctahedronGeometry(0.0019); st.translate(q[0] - 0.0012, q[1], q[2] + 0.0008); g.add(mesh(st, diamond, false)); }
+    if (look.extras.includes('nose_ring')) ringAt(0.0102, -0.0312, 0.0036, 0.0006, 0.35, 0.9, -0.0016);
+    if (look.extras.includes('septum')) ringAt(0, -0.036, 0.0042, 0.0007, -0.25, 0, -0.0012);
+    if (look.extras.includes('brow_ring')) ringAt(0.046, 0.026, 0.003, 0.0005, 0.1, Math.PI / 2 - 0.5, 0);
+    if (look.extras.includes('lip_ring')) ringAt(-0.011, -0.062, 0.0038, 0.0007, 1.2, 0, 0);
     // brows
     browMat.color.copy(col(look.hair)).multiplyScalar(0.9);
-    const bw = ({ natural: 0.0034, thick: 0.0052, thin: 0.0019, slit: 0.0034 }[look.brows] || 0.0034) * 0.62;
+    const bw = browW(look) * 1.0625 * 0.62;
     const bg = [];
     for (const s of [-1, 1]) {
       const pts = [];
-      for (let k = 0; k <= 6; k++) { const t = k / 6, x = s * (0.012 + 0.034 * t), y = 0.028 + 0.0055 * Math.sin(Math.PI * Math.min(1, t * 1.15)) - 0.003 * t; const p = surf(x, y); pts.push([p[0], p[1], p[2] + 0.0018]); }
-      const rf = v => bw * (v < 0.15 ? 0.75 + v * 1.6 : 1 - 0.55 * smooth(0.5, 1, v));
+      for (let k = 0; k <= 6; k++) { const t = k / 6, x = s * (0.012 + 0.034 * t), y = browY(look, t); const p = surf(x, y); pts.push([p[0], p[1], p[2] + 0.0018]); }
+      const rf = v => bw * browTaper(look, v);
       if (look.brows === 'slit') {
         const c = new THREE.CatmullRomCurve3(pts.map(V3));
         const a = [], b = []; for (let k = 0; k <= 8; k++) { const t = k / 8; a.push(c.getPointAt(t * 0.58)); b.push(c.getPointAt(0.72 + t * 0.28)); }
@@ -3119,17 +3226,26 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
 
     // --- the top
     const ts = top.style;
-    const tm = ts === 'hoodie' ? clothMat(top.color, 'knit') : ts === 'tee' || ts === 'crop' ? clothMat(top.color, 'cotton') : /silver/.test(top.id) ? clothMat(top.color, 'cotton', { r: 0.35, m: 0.7, env: 1.2 }) : /racing|leather/.test(top.id + top.name.toLowerCase()) ? clothMat(top.color, 'leather', { r: 0.45, env: 0.9 }) : clothMat(top.color, 'canvas', { r: 0.7 });
+    const tm = ts === 'tank' ? clothMat(top.color, 'rib', { r: 0.9 }) : ts === 'hoodie' ? clothMat(top.color, 'knit') : ts === 'tee' || ts === 'crop' ? clothMat(top.color, 'cotton') : /silver/.test(top.id) ? clothMat(top.color, 'cotton', { r: 0.35, m: 0.7, env: 1.2 }) : /racing|leather/.test(top.id + top.name.toLowerCase()) ? clothMat(top.color, 'leather', { r: 0.45, env: 0.9 }) : clothMat(top.color, 'canvas', { r: 0.7 });
     const rib = clothMat(shadeHex(top.color, -0.15), 'rib', { r: 0.9 });
     const inflate = ts === 'jacket' ? 0.016 : ts === 'hoodie' ? 0.012 : 0.004;
     const hem = ts === 'hoodie' ? 0.85 : ts === 'jacket' ? 0.86 : ts === 'crop' ? 1.1 : 0.87;
-    const torsoG = [ringSurf(topRings(W, inflate, hem).map(r => ({ ...r, y: U(r.y) })), 48, 4)];
+    const TANK_TOP = 1.3;
+    const tankCut = rs => { if (ts !== 'tank') return rs; const lo = rs.filter(r => r.y < TANK_TOP), hi = rs.find(r => r.y >= TANK_TOP), a = lo[lo.length - 1], t = (TANK_TOP - a.y) / (hi.y - a.y); return [...lo, { y: TANK_TOP, rx: lerp(a.rx, hi.rx, t), rz: lerp(a.rz, hi.rz, t), zo: lerp(a.zo || 0, hi.zo || 0, t) }]; };
+    const torsoG = [ringSurf(tankCut(topRings(W, inflate, hem)).map(r => ({ ...r, y: U(r.y) })), 48, 4)];
     const ribG = [];
-    if (ts !== 'tee') { const rr = topRings(W, inflate + 0.003, hem)[0]; ribG.push(ringSurf([{ y: U(hem - 0.004), rx: rr.rx - 0.004, rz: rr.rz - 0.004 }, { y: U(hem + 0.05), rx: rr.rx, rz: rr.rz }], 48, 1)); }
+    if (ts !== 'tee' && ts !== 'tank') { const rr = topRings(W, inflate + 0.003, hem)[0]; ribG.push(ringSurf([{ y: U(hem - 0.004), rx: rr.rx - 0.004, rz: rr.rz - 0.004 }, { y: U(hem + 0.05), rx: rr.rx, rz: rr.rz }], 48, 1)); }
     // collar
     const neckTop = topRings(W, inflate, hem).slice(-1)[0];
     if (ts === 'jacket') {
       ribG.push(ringSurf([{ y: U(1.47), rx: neckTop.rx + 0.006, rz: neckTop.rz + 0.004, zo: -0.008 }, { y: U(1.53), rx: neckTop.rx + 0.002, rz: neckTop.rz + 0.002, zo: -0.012 }], 40, 1, -Math.PI + 0.25, Math.PI - 0.25));
+    } else if (ts === 'tank') {
+      // a binding round the top edge and the arm holes, two straps over the shoulders
+      const tr = tankCut(topRings(W, inflate, hem)).slice(-1)[0], c = new THREE.TorusGeometry(1, 0.003, 6, 48); c.rotateX(Math.PI / 2); c.scale(tr.rx, 1, tr.rz); c.translate(0, U(TANK_TOP), tr.zo || 0); ribG.push(c);
+      // straps: bands of the shirt surface itself, front and back, up over the shoulders
+      const sr = topRings(W, inflate, hem).filter(r => r.y >= TANK_TOP - 0.02).map(r => ({ ...r, y: U(r.y) }));
+      const sa = FEM ? [0.38, 0.58] : [0.42, 0.66];
+      for (const sd of [-1, 1]) for (const [a0, a1] of [sa, [Math.PI - sa[1], Math.PI - sa[0]]]) torsoG.push(sd > 0 ? ringSurf(sr, 6, 4, a0, a1) : ringSurf(sr, 6, 4, -a1, -a0));
     } else {
       const c = new THREE.TorusGeometry(1, 0.0065, 8, 40); c.rotateX(Math.PI / 2); c.scale(neckTop.rx - 0.004, 1, neckTop.rz - 0.004); c.translate(0, U(1.49), -0.008); ribG.push(c);
     }
@@ -3147,21 +3263,31 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       const zip = []; for (const r of topRings(W, inflate + 0.0015, hem)) zip.push([0, U(r.y), r.rz + r.zo]);
       metalG.push(strand(zip, () => 0.0028, 4, 20, 0.4, new THREE.Vector3(0, 0, 1)));
     }
-    if (FEM) {   // the bust is part of the shirt's surface, no seams
-      const T = torsoG[0], P = T.attributes.position;
+    const bustOn = (T, inf) => {   // the bust is part of the shirt's surface, no seams
+      const P = T.attributes.position;
       for (let i = 0; i < P.count; i++) {
         const x = P.getX(i), y = P.getY(i) + 0.95, z = P.getZ(i);
         if (z <= 0) continue;
         let m = 0;
         for (const sd of [-1, 1]) { const dx = (x - sd * 0.054 * W) / 0.052, dy = (y - 1.248) / (y < 1.248 ? 0.056 : 0.075); m = Math.max(m, Math.exp(-dx * dx - dy * dy)); }
         const mid = Math.exp(-((x / 0.05) ** 2) - (((y - 1.24) / 0.05) ** 2)) * 0.5;
-        P.setZ(i, z + (0.025 + inflate * 0.4) * Math.max(m, mid) * smooth(0.02, 0.07, z));
+        P.setZ(i, z + (0.025 + inf * 0.4) * Math.max(m, mid) * smooth(0.02, 0.07, z));
       }
       weldNormals(T);
+    };
+    if (FEM) for (const T of ts === 'tank' ? torsoG : [torsoG[0]]) bustOn(T, inflate);
+    if (ts === 'tank') {   // bare chest, shoulders and back above the tank, with any ink
+      const sk = ringSurf(topRings(W, 0, hem).filter(r => r.y >= 1.24).map(r => ({ ...r, y: U(r.y) })), 48, 4);
+      if (FEM) bustOn(sk, 0);
+      upper.add(mesh(sk, torsoInkMat(look, 0.3)));
     }
-    if (ts === 'crop') { const R = topRings(W, 0, 0.86).filter(r => r.y > 0.99 && r.y < 1.2); upper.add(mesh(ringSurf([{ y: U(0.96), rx: R[0].rx * 0.93, rz: R[0].rz * 0.93, zo: R[0].zo }, ...R.map(r => ({ y: U(r.y), rx: r.rx * 0.985, rz: r.rz * 0.985, zo: r.zo }))], 40, 3), skinMat)); }
+    if (ts === 'crop') { const R = topRings(W, 0, 0.86).filter(r => r.y > 0.99 && r.y < 1.2); const midMat = hasTat(look, 'stomach') || hasTat(look, 'back') ? torsoInkMat(look, 0.3) : skinMat; upper.add(mesh(ringSurf([{ y: U(0.96), rx: R[0].rx * 0.93, rz: R[0].rz * 0.93, zo: R[0].zo }, ...R.map(r => ({ y: U(r.y), rx: r.rx * 0.985, rz: r.rz * 0.985, zo: r.zo }))], 40, 3), midMat)); }
     const shirtMesh = mesh(mergeGeos(torsoG.map(prep)), tm); upper.add(shirtMesh);
-    if (ribG.length) upper.add(mesh(mergeGeos(ribG.map(prep)), ts === 'tee' || ts === 'crop' ? tm : rib));
+    if (ribG.length) upper.add(mesh(mergeGeos(ribG.map(prep)), ts === 'tee' || ts === 'crop' || ts === 'tank' ? tm : rib));
+    if (top.brand === 'maison') {   // all-over monogram: a lighter diamond print on a slightly darkened base
+      tm.map = ctex(128, 128, (x, w, h) => { x.fillStyle = '#b8b8b8'; x.fillRect(0, 0, w, h); x.fillStyle = '#ffffff'; for (const [cx, cy] of [[32, 32], [96, 96]]) { x.beginPath(); x.moveTo(cx, cy - 12); x.lineTo(cx + 12, cy); x.lineTo(cx, cy + 12); x.lineTo(cx - 12, cy); x.closePath(); x.fill(); } });
+      tm.map.repeat.set(10, 14); tm.color.multiplyScalar(1.3);
+    }
     if (extraG.length) upper.add(mesh(mergeGeos(extraG.map(prep)), new THREE.MeshStandardMaterial({ color: col(shadeHex(top.color, top.color === '#1a1a1a' || /0f0f|1a1a/.test(top.color) ? 0.75 : 0.5)), roughness: 0.8 }), false));
     if (whiteG.length || metalG.length) upper.add(mesh(mergeGeos([...whiteG, ...metalG].map(prep)), new THREE.MeshStandardMaterial({ color: 0xc8c8cc, metalness: 0.9, roughness: 0.3 }), false));
 
@@ -3188,24 +3314,46 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     const TR = topRings(W, inflate, hem);
     const ringAt = y => { for (let k = 1; k < TR.length; k++) if (y <= TR[k].y) { const a = TR[k - 1], b = TR[k], t = (y - a.y) / (b.y - a.y); return { rx: lerp(a.rx, b.rx, t), rz: lerp(a.rz, b.rz, t), zo: lerp(a.zo || 0, b.zo || 0, t) }; } return TR[TR.length - 1]; };
     const chestZ = y => { const r = ringAt(y); return r.rz + r.zo; }, chestX = y => ringAt(y).rx;
-    if (look.extras.includes('chain') || look.extras.includes('cuban')) {
-      const cuban = look.extras.includes('cuban'), n = cuban ? 54 : 120, links = [];
-      const rx = (neckR.rx * 0.62), rz = neckR.rz * 0.95;
+    // chain(drop, n, link): drop is how far down the chest the front hangs
+    const chainLinks = (drop, n, mk) => {
+      const links = [], rx = (neckR.rx * 0.62), rz = neckR.rz * 0.95;
       for (let i = 0; i < n; i++) {
         const a = i / n * Math.PI * 2, x = Math.sin(a) * rx, zc = Math.cos(a), z = zc * rz - 0.004 + inflate * 0.3;
-        const y = U(1.47) - 0.1 * smooth(0, 1, zc) * (zc > 0 ? zc : 0) - 0.012 * (1 - Math.abs(zc));
+        const y = U(1.47) - drop * smooth(0, 1, zc) * (zc > 0 ? zc : 0) - 0.012 * (1 - Math.abs(zc));
         const zz = Math.max(z + 0.004, zc > 0 ? chestZ(y + 0.95) * Math.sqrt(Math.max(0, 1 - (x / (chestX(y + 0.95) + 0.001)) ** 2)) + 0.005 : -1);
-        const l = new THREE.TorusGeometry(cuban ? 0.0064 : 0.0028, cuban ? 0.0025 : 0.0009, 6, 12);
-        l.scale(1.3, 1, cuban ? 0.55 : 1); l.rotateX(i % 2 ? Math.PI / 2 : 0); l.rotateY(a + Math.PI / 2);
-        l.translate(x, y, zz); links.push(l);
+        const l = mk(i, a); l.translate(x, y, zz); links.push(l);
       }
-      if (!cuban) links.push(new THREE.OctahedronGeometry(0.009).translate(0, U(1.47) - 0.114, chestZ(1.47 - 0.114) + 0.01));
-      upper.add(mesh(mergeGeos(links.map(prep)), gold, false));
+      return links;
+    };
+    const has = id => look.extras.includes(id);
+    const pendant = ['chain', 'plat_chain'].find(has), choker = ['cuban', 'plat_cuban'].find(has), rope = ['plat_rope', 'tennis'].find(has);
+    if (pendant) {
+      const links = chainLinks(0.1, 120, (i, a) => { const l = new THREE.TorusGeometry(0.0028, 0.0009, 6, 12); l.scale(1.3, 1, 1); l.rotateX(i % 2 ? Math.PI / 2 : 0); l.rotateY(a + Math.PI / 2); return l; });
+      links.push(new THREE.OctahedronGeometry(0.009).translate(0, U(1.47) - 0.114, chestZ(1.47 - 0.114) + 0.01));
+      upper.add(mesh(mergeGeos(links.map(prep)), metalOf(pendant), false));
+    }
+    if (choker) {
+      const links = chainLinks(0.062, 54, (i, a) => { const l = new THREE.TorusGeometry(0.0064, 0.0025, 6, 12); l.scale(1.3, 1, 0.55); l.rotateX(i % 2 ? Math.PI / 2 : 0); l.rotateY(a + Math.PI / 2); return l; });
+      upper.add(mesh(mergeGeos(links.map(prep)), metalOf(choker), false));
+    }
+    if (rope === 'plat_rope') {
+      const links = chainLinks(0.082, 90, (i, a) => { const l = new THREE.TorusGeometry(0.0034, 0.0016, 6, 10); l.rotateZ(0.7); l.rotateY(a + Math.PI / 2); return l; });
+      upper.add(mesh(mergeGeos(links.map(prep)), plat, false));
+    } else if (rope === 'tennis') {
+      const links = chainLinks(0.082, 110, (i, a) => { const l = new THREE.OctahedronGeometry(0.0026); l.rotateY(a); return l; });
+      upper.add(mesh(mergeGeos(links.map(prep)), diamond, false));
+      upper.add(mesh(mergeGeos(chainLinks(0.082, 110, (i, a) => { const l = new THREE.TorusGeometry(0.0022, 0.0005, 4, 8); l.rotateY(a + Math.PI / 2); return l; }).map(prep)), plat, false));
+    }
+    // the brand on the chest: big on hoodies and tees, small on the left chest of jackets and tanks
+    if (top.brand) {
+      const big = ts === 'hoodie' || ts === 'tee' || ts === 'crop', ly = big ? (FEM ? 1.19 : 1.27) : 1.26, lx = big ? 0 : 0.06 * W;
+      const lg = logoMesh(top.brand, top.color, big ? 0.085 : 0.042);
+      if (lg) { const r = ringAt(ly), cz = Math.sqrt(Math.max(0, 1 - (lx / (r.rx + 0.001)) ** 2)); lg.position.set(lx, U(ly), (r.rz * cz + r.zo) + 0.0035 + (FEM && big ? 0.02 : 0)); lg.rotation.y = Math.asin(clamp(lx / (r.rx + 0.001), -1, 1)) * 0.8; upper.add(lg); }
     }
 
     // --- arms (each swings from the shoulder)
     const arms = [], fores = [];
-    const sleeveLong = ts !== 'tee' && ts !== 'crop';
+    const sleeveLong = ts !== 'tee' && ts !== 'crop' && ts !== 'tank';
     const sleeveMat = /varsity/.test(top.id) ? clothMat('#e9e2cf', 'leather', { r: 0.55 }) : tm;
     for (const s of [-1, 1]) {
       const arm = new THREE.Group(); arm.position.set(s * (FEM ? 0.152 : 0.168) * W, U(1.405), -0.004); upper.add(arm); arms.push(arm);
@@ -3218,19 +3366,28 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
       handG.push(ellipsoid([hp[0], hp[1] + 0.006, hp[2]], [0.0175, 0.046, 0.04], 18));
       for (const F of fingers(s, hp)) handG.push(strand(F.pts, v => F.r * (1 - 0.2 * v), 8, 8));
       handG.push(strand([[hp[0] - s * 0.004, hp[1] + 0.03, hp[2] + 0.03], [hp[0] - s * 0.012, hp[1] - 0.005, hp[2] + 0.044], [hp[0] - s * 0.022, hp[1] - 0.032, hp[2] + 0.04]], v => 0.0115 * (1 - 0.25 * v), 8, 8));
+      const r = s > 0, upInk = hasTat(look, r ? 'half_r' : 'half_l'), loInk = hasTat(look, r ? 'sleeve_r' : 'sleeve_l'), hInk = hasTat(look, 'hands');
+      if (loInk || hInk) {   // forearm (and hand) ink: the forearm tube gets its own mesh
+        const foreG = handG.shift();
+        fore.add(mesh(toF(prep(foreG)), loInk ? inkMat(look, r ? 37 : 51) : skinMat));
+        if (hInk) { const palm = handG.shift(); fore.add(mesh(toF(prep(palm)), inkMat(look, 61, 3, 6, 0.35))); }
+      }
       fore.add(mesh(mergeGeos(handG.map(prep).map(toF)), skinMat));
-      arm.add(mesh(mergeGeos(skinG.map(prep)), skinMat));
+      arm.add(mesh(mergeGeos(skinG.map(prep)), upInk ? inkMat(look, r ? 11 : 23) : skinMat));
       const inf = ts === 'jacket' ? 0.017 : ts === 'hoodie' ? 0.014 : 0.012;
-      const fg = [], sg = [ellipsoid([s * -0.006, -0.002, 0], [ra + inf * (sleeveLong ? 1 : 0.7) + 0.0015, 0.043 * Wl + inf * 0.3, (ra + inf * (sleeveLong ? 1 : 0.7)) * 0.98], 22)];
+      const fg = [], sg = ts === 'tank' ? [] : [ellipsoid([s * -0.006, -0.002, 0], [ra + inf * (sleeveLong ? 1 : 0.7) + 0.0015, 0.043 * Wl + inf * 0.3, (ra + inf * (sleeveLong ? 1 : 0.7)) * 0.98], 22)];
       if (sleeveLong) {
         sg.push(limb([0, 0.004, 0], el, ra + inf, re + inf, true, 1, 22));
         fg.push(limb(el, [wr[0] - s * 0.002, wr[1] + 0.03, wr[2] - 0.002], re + inf, rw + inf, true, 0.92, 22));
         fg.push(new THREE.SphereGeometry(re + inf, 22, 12).translate(...el));
+      } else if (ts === 'tank') {
+        // a bare shoulder cap where the sleeve would be
+        arm.add(mesh(ellipsoid([s * -0.006, -0.002, 0], [ra + 0.0035, 0.043 * Wl, ra * 0.98], 22), upInk ? inkMat(look, r ? 13 : 27) : skinMat));
       } else {
         const mid = el.map(v => v * 0.46);
         sg.push(limb([0, 0.004, 0], mid, ra + inf * 0.7, lerp(ra, re, 0.46) + inf * 0.6 + 0.002, true, 1, 22));
       }
-      arm.add(mesh(mergeGeos(sg.map(prep)), sleeveMat));
+      if (sg.length) arm.add(mesh(mergeGeos(sg.map(prep)), sleeveMat));
       if (fg.length) fore.add(mesh(mergeGeos(fg.map(prep).map(toF)), sleeveMat));
       if (sleeveLong) { const cuff = limb([wr[0] - s * 0.002, wr[1] + 0.034, wr[2] - 0.002], [wr[0] - s * 0.001, wr[1] + 0.006, wr[2] - 0.001], rw + inf - 0.002, rw + 0.006, true, 0.92, 22); fore.add(mesh(toF(cuff), rib)); }
       if (/racing/.test(top.id)) { const st = limb([s * (ra + inf) * 0.98, 0, 0], [el[0] + s * (re + inf) * 0.97, el[1], el[2]], 0.004, 0.004, false, 0.5, 6); arm.add(mesh(st, clothMat('#f2f2f2', 'leather', { r: 0.45 }), false)); }
@@ -3292,7 +3449,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     if (bs === 'track') bm.map = stripeTex(0.25, '#d8d8d8'), bm.map.repeat.set(1, 1);
     root.add(mesh(mergeGeos(legG.map(prep)), bm));
     for (let k = 0; k < 2; k++) {
-      const lg = new THREE.Group(); lg.position.y = 0.85; root.add(lg); legs.push(lg); const lmat = bs === 'skirt' ? skinMat : bm, { kn, an } = joints[k];
+      const lg = new THREE.Group(); lg.position.y = 0.85; root.add(lg); legs.push(lg); const lmat = bs === 'skirt' ? (hasTat(look, 'legs') ? inkMat(look, 101 + k, 2, 3) : skinMat) : bm, { kn, an } = joints[k];
       const lm = mesh(mergeGeos(legGs[k].map(prep)), lmat); lm.position.y = -0.85; lg.add(lm);
       const kg = new THREE.Group(); kg.position.set(kn[0], kn[1] - 0.85, kn[2]); lg.add(kg); knees.push(kg);
       const sm = mesh(mergeGeos(shinGs[k].map(prep)), lmat); sm.position.set(-kn[0], -kn[1], -kn[2]); kg.add(sm);
@@ -3303,7 +3460,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
     // --- shoes
     const boots = shoe.style === 'boots', heels = shoe.style === 'heels';
     const upperMat = clothMat(shoe.color, boots || heels ? 'leather' : 'cotton', { r: heels ? 0.3 : boots ? 0.5 : 0.65, env: heels ? 1.1 : 0.5 });
-    const soleMat = new THREE.MeshStandardMaterial({ color: col(heels ? (/red_sole/.test(shoe.id) ? '#c8141c' : shadeHex(shoe.color, -0.2)) : boots ? '#1a1612' : (shoe.color === '#121212' ? '#161616' : '#f4f4f2')), roughness: heels ? 0.35 : 0.7 });
+    const soleMat = new THREE.MeshStandardMaterial({ color: col(shoe.brand === 'royale' ? '#c8141c' : heels ? (/red_sole/.test(shoe.id) ? '#c8141c' : shadeHex(shoe.color, -0.2)) : boots ? '#1a1612' : (shoe.color === '#121212' ? '#161616' : '#f4f4f2')), roughness: heels ? 0.35 : 0.7 });
     for (const s of [-1, 1]) {
       const foot = new THREE.Group(); const J = joints[s < 0 ? 0 : 1].an; foot.position.set(s * 0.098 - J[0], -J[1], -J[2]); foot.rotation.y = s * 0.07; ankles[s < 0 ? 0 : 1].add(foot);
       const sh = new THREE.Shape();
@@ -3329,6 +3486,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         const l = []; for (let k = 0; k < 4; k++) l.push(new THREE.BoxGeometry(0.03, 0.003, 0.006).translate(0, 0.083 - k * 0.008, 0.045 + k * 0.022).rotateX(0));
         foot.add(mesh(mergeGeos(l.map(prep)), new THREE.MeshStandardMaterial({ color: col(shadeHex(shoe.color, shoe.color === '#f0f0f0' ? -0.08 : 0.6)), roughness: 0.8 }), false));
       }
+      if (shoe.brand && !heels) { const lg = logoMesh(shoe.brand, shoe.color, 0.04); if (lg) { lg.position.set(s * 0.0505, boots ? 0.08 : 0.052, 0.02); lg.rotation.y = s * Math.PI / 2; foot.add(lg); } }
     }
     return { root, upper, head, arms, lids, legs, knees, ankles, fores };
   }
@@ -6800,7 +6958,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     return rows;
   }
   // ---------- character creation: the first screen a new player sees ----------
-  const CR = { on: false, scene: null, cam: null, stand: null, P: null, look: null, name: '', origin: 'fresh', tab: 'you', hgroup: 'black', fsub: 'skin', csub: 'top', yaw: 0.35, frame: 'full', fy: 0.95, fh: 1.95, drag: null, first: false, dirty: false };
+  const CR = { on: false, scene: null, cam: null, stand: null, P: null, look: null, name: '', origin: 'fresh', tab: 'you', hgroup: 'black', xsub: 'jewelry', fsub: 'skin', csub: 'top', yaw: 0.35, frame: 'full', fy: 0.95, fh: 1.95, drag: null, first: false, dirty: false };
   let creating = false;
   const ORIGIN_DO = {
     fresh: s => { s.cash = 4500; },
@@ -6900,10 +7058,20 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     else crButtons(fo, GM.FACIAL_HAIR, L.facialHair, id => crSet('facialHair', id));
     // extras: several at once
     const ex = crEl('cr-extras'); ex.innerHTML = '';
-    for (const e of GM.EXTRAS) {
+    crButtons(crEl('cr-xsub'), GM.EXTRA_GROUPS, CR.xsub, id => { CR.xsub = id; crFill(); }, true);
+    for (const e of GM.EXTRAS.filter(e => (e.group || 'face') === CR.xsub)) {
       const b = document.createElement('button'); b.className = 'btn'; b.textContent = e.name; b.setAttribute('aria-pressed', String(L.extras.includes(e.id)));
-      b.onclick = () => { const s = new Set(L.extras); if (s.has(e.id)) s.delete(e.id); else { s.add(e.id); if (e.id === 'shades') s.delete('glasses'); if (e.id === 'glasses') s.delete('shades'); if (e.id === 'cuban') s.delete('chain'); if (e.id === 'chain') s.delete('cuban'); } L.extras = [...s]; crRebuild(); crFill(); };
+      // one of each kind: one pendant, one choker, one rope, one grill, shades or glasses
+      b.onclick = () => { const s = new Set(L.extras); if (s.has(e.id)) s.delete(e.id); else { s.add(e.id); if (e.pick) for (const o of GM.EXTRAS) if (o.pick === e.pick && o.id !== e.id) s.delete(o.id); } L.extras = [...s]; crRebuild(); crFill(); };
       ex.appendChild(b);
+    }
+    // ink: shows wherever skin does (a wife beater shows sleeves and the chest)
+    crButtons(crEl('cr-ink'), GM.INKS, L.ink || 'bw', id => crSet('ink', id), true);
+    const tl = crEl('cr-tats'); tl.innerHTML = '';
+    for (const t of GM.TATTOOS) {
+      const b = document.createElement('button'); b.className = 'btn'; b.textContent = t.name; b.setAttribute('aria-pressed', String((L.tats || []).includes(t.id)));
+      b.onclick = () => { const s = new Set(L.tats || []); if (s.has(t.id)) s.delete(t.id); else s.add(t.id); L.tats = [...s]; crRebuild(); crFill(); };
+      tl.appendChild(b);
     }
     // fit
     crButtons(crEl('cr-csub'), CR_SLOTS.map(([id, name]) => ({ id, name })), CR.csub, id => { CR.csub = id; crFill(); }, true);
@@ -6911,7 +7079,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     if (CR.csub === 'build') crButtons(co, ['Slim', 'Average', 'Big'].map((n, i) => ({ id: i, name: n })), +L.build, i => crSet('build', i));
     else if (CR.csub === 'height') crButtons(co, ['Short', 'Average', 'Tall'].map((n, i) => ({ id: i, name: n })), +L.height, i => crSet('height', i));
     else crButtons(co, GM.CLOTHES.filter(c => c.slot === CR.csub && c.price <= STARTER_MAX).map(c => ({ id: c.id, name: c.name, dot: c.style === 'none' ? null : c.color })), L[CR.csub], id => crSet(CR.csub, id));
-    for (const p of ['you', 'hair', 'face', 'extras', 'fit']) crEl('cr-p-' + p).hidden = p !== CR.tab;
+    for (const p of ['you', 'hair', 'face', 'extras', 'ink', 'fit']) crEl('cr-p-' + p).hidden = p !== CR.tab;
     document.querySelectorAll('#cr-tabs .tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === CR.tab)));
     crLayout();
   }
@@ -6925,7 +7093,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     if (first) Object.assign(base, PEOPLE.randomLook(Math.random, Math.random() < 0.5), { mask: 'no_mask' });
     if (first) for (const k of ['top', 'bottom', 'shoes', 'hat', 'bag']) { const it = PEOPLE.GAME.CLOTHES.find(c => c.id === base[k]); if (it && it.price > STARTER_MAX) base[k] = PEOPLE.GAME.DEFAULT[k]; }
     else { const w = S.wear || {}; Object.assign(base, S.look || {}); for (const k of ['top', 'bottom', 'shoes', 'hat', 'mask', 'bag']) if (w[k]) base[k] = w[k]; }
-    base.extras = [...(base.extras || [])];
+    base.extras = [...(base.extras || [])]; base.tats = [...(base.tats || [])]; base.ink = base.ink || 'bw';
     CR.look = base; CR.first = first; CR.name = S.name || ''; CR.origin = S.origin || 'fresh'; CR.tab = 'you';
     CR.hgroup = (PEOPLE.HAIR_BY[base.hairStyle] || { group: 'black' }).group;
     crEl('cr-name').value = CR.name; crEl('cr-go').textContent = first ? 'Start in Murda Worth' : 'Done';
@@ -6935,7 +7103,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   }
   function closeCreator() {
     const L = CR.look, first = CR.first;
-    S.look = { body: L.body, skin: L.skin, hair: L.hair, hairStyle: L.hairStyle, eyes: L.eyes, brows: L.brows, facialHair: L.facialHair, extras: [...L.extras], build: L.build, height: L.height };
+    S.look = { body: L.body, skin: L.skin, hair: L.hair, hairStyle: L.hairStyle, eyes: L.eyes, brows: L.brows, facialHair: L.facialHair, extras: [...L.extras], tats: [...(L.tats || [])], ink: L.ink || 'bw', build: L.build, height: L.height };
     for (const k of ['top', 'bottom', 'shoes', 'hat', 'mask', 'bag']) { const v = L[k]; S.wear[k] = !v || /^no_/.test(v) ? '' : v; if (S.wear[k] && !S.owned.includes(v)) S.owned.push(v); }
     S.name = CR.name.trim() || S.name || 'Rookie';
     if (first) { S.origin = CR.origin; (ORIGIN_DO[CR.origin] || (() => {}))(S); S.made = true; }
@@ -6952,7 +7120,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   }
   function crWire() {
     crEl('cr-name').addEventListener('input', e => { CR.name = e.target.value.slice(0, 20); crInfo(); });
-    crEl('cr-random').onclick = () => { Object.assign(CR.look, PEOPLE.randomLook(Math.random, Math.random() < 0.5), { mask: 'no_mask' }); CR.look.extras = [...CR.look.extras]; for (const k of ['top', 'bottom', 'shoes', 'hat', 'bag']) { const c = PEOPLE.GAME.CLOTHES.find(c => c.id === CR.look[k]); if (c && c.price > STARTER_MAX) CR.look[k] = PEOPLE.GAME.DEFAULT[k] || ''; } CR.hgroup = (PEOPLE.HAIR_BY[CR.look.hairStyle] || { group: 'black' }).group; crRebuild(); crFill(); };
+    crEl('cr-random').onclick = () => { Object.assign(CR.look, PEOPLE.randomLook(Math.random, Math.random() < 0.5), { mask: 'no_mask' }); CR.look.extras = [...CR.look.extras]; CR.look.tats = [...(CR.look.tats || [])]; for (const k of ['top', 'bottom', 'shoes', 'hat', 'bag']) { const c = PEOPLE.GAME.CLOTHES.find(c => c.id === CR.look[k]); if (c && c.price > STARTER_MAX) CR.look[k] = PEOPLE.GAME.DEFAULT[k] || ''; } CR.hgroup = (PEOPLE.HAIR_BY[CR.look.hairStyle] || { group: 'black' }).group; crRebuild(); crFill(); };
     crEl('cr-go').onclick = closeCreator;
     document.querySelectorAll('#cr-tabs .tab').forEach(t => t.onclick = () => { CR.tab = t.dataset.tab; crFill(); crFrame(); });
   }
@@ -9666,12 +9834,13 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
     if (/caprice|impala|crown_vic|town_car|grand_marquis|lincoln|cadillac_deville|fleetwood|brougham|box|donk|bubble/.test(s)) return 'chevrolet_caprice_classic_box_chevy_1986';
     return 'dodge_charger_scat_pack_2015';
   }
-  const LOOK_KEYS = ['body', 'skin', 'hair', 'hairStyle', 'eyes', 'brows', 'facialHair', 'top', 'bottom', 'hat', 'shoes', 'mask', 'bag'];
+  const LOOK_KEYS = ['body', 'skin', 'hair', 'hairStyle', 'eyes', 'brows', 'facialHair', 'top', 'bottom', 'hat', 'shoes', 'mask', 'bag', 'ink'];
   function cleanLook(L) {
     if (!L || typeof L !== 'object') return null;
     const o = {};
     for (const k of LOOK_KEYS) if (typeof L[k] === 'string' && /^[#\w\-]{1,24}$/.test(L[k])) o[k] = L[k];
-    if (Array.isArray(L.extras)) o.extras = L.extras.filter(x => typeof x === 'string' && /^\w{1,16}$/.test(x)).slice(0, 10);
+    if (Array.isArray(L.extras)) o.extras = L.extras.filter(x => typeof x === 'string' && /^\w{1,16}$/.test(x)).slice(0, 16);
+    if (Array.isArray(L.tats)) o.tats = L.tats.filter(x => typeof x === 'string' && /^\w{1,16}$/.test(x)).slice(0, 12);
     o.build = nNum(L.build, 0.6, 1.6, 1); o.height = nNum(L.height, 0.85, 1.15, 1);
     return o;
   }
