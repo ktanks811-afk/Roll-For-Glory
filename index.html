@@ -12545,6 +12545,17 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
     const line = labelDay(); if (line) { save(); refreshStats(); toast(document.getElementById('toast').textContent + line, 'good'); }
     void L; void before;
   };
+  // start the label from the phone or a studio booth; you pick the name in the phone
+  function lbDefName() { return `${(S.name || 'Glitch').split(' ')[0]} Records`; }
+  function lbStart(name) {
+    const L = label(); if (L.name) return { ok: false, text: `You already run ${L.name}.` };
+    name = String(name || '').replace(/[<>]/g, '').trim().slice(0, 28) || lbDefName();
+    // cash first, then the bank, so you don't have to run to an ATM
+    if (S.cash + S.bank < LB_COST) return { ok: false, text: `Starting a label costs ${money(LB_COST)}. You have ${money(S.cash + S.bank)} between cash and the bank.` };
+    const fromBank = Math.max(0, LB_COST - S.cash); S.bank -= fromBank; S.cash -= LB_COST - fromBank; S.log.unshift(`-${money(LB_COST)} Record label`); S.log.length = Math.min(S.log.length, 30);
+    L.name = name; L.founded = S.day; save(); refreshStats(); phoneStatus();
+    return { ok: true, text: `${L.name} is open for business. Go meet some artists.` };
+  }
   function labelApp(sc, tab, view) {
     PH.app = 'label'; sc.className = 'ph-screen'; const L = label(); tab = tab || GO.lbTab || (L.name ? 'roster' : 'scene'); GO.lbTab = tab;
     const head = phoneHead(L.name ? '🎤 ' + esc(L.name) : '🎤 Label');
@@ -12552,7 +12563,7 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
     const tabs = `<div class="go-tabs">${[['roster', `Roster (${L.roster.length}/${LB_MAX})`], ['scene', 'Scene'], ['studio', 'Studio'], ['music', 'Releases']].map(([k, l]) => `<button class="btn${tab === k ? ' go' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
     let body = '';
     const aRow = (a, sub, extra) => `<button class="go-row click" data-v="${a.id}"><span class="ic">${a.five ? '⭐' : '🎤'}</span><div><b>${esc(a.name)} ${a.five ? '<span class="go-tag5">5-Star</span>' : ''}<small style="color:var(--muted);font-weight:500"> ${esc(a.genre)} · ${esc(a.hood)}</small></b><span>${sub}</span></div>${extra || '<span>›</span>'}</button>`;
-    if (!L.name) body = `<p class="mk-note">Start your own record label: the LLC, a logo and an office over the studio for ${money(LB_COST)}. Walk into any studio and use the vocal booth to start it. Then sign artists in person where they hang out, cut records, and the streams pay your bank every morning.</p>`;
+    if (!L.name) body = `<p class="mk-note">Start your own record label right here: the LLC, a logo and an office over the studio for ${money(LB_COST)}. Then sign artists in person where they hang out, cut records at any studio, and the streams pay your bank every morning.</p><input id="lb-name" class="go-input" maxlength="28" placeholder="Label name" value="${esc(lbDefName())}" style="width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid #444;background:#111;color:#fff;font-size:16px;margin:4px 0 8px;user-select:text;-webkit-user-select:text"><button class="btn go" data-a="start" style="width:100%">Start the label · ${money(LB_COST)}</button>`;
     if (tab === 'roster') body += L.roster.map(r => { const a = LB_BY[r.id]; return aRow(a, `${lbStars(a.talent)} · ${r.buzz.toLocaleString()} fans · keeps ${Math.round(r.cut * 100)}%`); }).join('') || (L.name ? '<p class="mk-note">Nobody signed yet. Check the Scene tab and go meet somebody.</p>' : '');
     else if (tab === 'scene') {
       const list = [...new Set([...L.known, ...LB_ARTISTS.filter(a => a.five).map(a => a.id)])].map(id => LB_BY[id]).filter(a => a && !lbSigned(a.id)).sort((a, b) => !!b.five - !!a.five || b.talent - a.talent);
@@ -12568,6 +12579,7 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
       L.releases.slice(0, 20).map(r => `<div class="go-row"><span class="ic">${r.viral ? '🔥' : '💿'}</span><div><b>"${esc(r.title)}" · ${esc(LB_BY[r.artist].name)}</b><span>${LB_KINDS[r.kind].name} · ${lbGrade(r.q)} · ${lbStreams(r.total)} streams · ${money(r.earned)} to you · ${lbStreams(r.daily)} a day now</span></div></div>`).join('');
     sc.innerHTML = head + `<div class="ph-body">${tabs}${body}</div>`;
     sc.querySelector('.ph-back').onclick = phoneHome;
+    const sb = sc.querySelector('[data-a="start"]'); if (sb) sb.onclick = () => { const res = lbStart(sc.querySelector('#lb-name').value); toast(res.text, res.ok ? 'good' : 'bad'); if (res.ok) labelApp(sc, 'scene'); };
     sc.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => labelApp(sc, b.dataset.tab));
     sc.querySelectorAll('[data-v]').forEach(b => b.onclick = () => labelApp(sc, tab, b.dataset.v));
     sc.querySelectorAll('[data-rel]').forEach(b => b.onclick = () => { const [sid, pr] = b.dataset.rel.split('|'), r = lbRelease(sid, pr); if (r.text) toast(r.text, r.ok ? 'good' : 'bad'); labelApp(sc, 'studio'); });
@@ -12594,7 +12606,7 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
   const _lbBooth = MENUS.booth;
   MENUS.booth = function (p) {
     const base = _lbBooth.apply(this, arguments), L = label(), id = p && p.id, st = LB_STUDIOS[id] || [3, 1.2], rows = [];
-    if (!L.name) rows.push({ t: 'Start your record label', s: 'The LLC, a logo and an office over the studio. Sign artists, cut records, collect streams.', btn: money(LB_COST), act: () => { if (!spend(LB_COST, 'Record label')) return; L.name = `${(S.name || 'Glitch').split(' ')[0]} Records`; L.founded = S.day; toast(`${L.name} is open for business. Open the Label app.`, 'good'); } });
+    if (!L.name) rows.push({ t: 'Start your record label', s: 'The LLC, a logo and an office over the studio. Sign artists, cut records, collect streams.', btn: money(LB_COST), act: () => { const res = lbStart(); toast(res.text, res.ok ? 'good' : 'bad'); } });
     else {
       rows.push({ t: `${L.name}: the Label app`, s: `${L.roster.length} artists · clout ${Math.floor(L.clout)}`, btn: 'Open', act: () => { closeMenu(); openPhone(); phoneApp('label'); } });
       const Q = GO.lbQ || (GO.lbQ = { kind: 'single', prod: '' });
@@ -12616,8 +12628,8 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
   PHONE_APPS.splice(PHONE_APPS.findIndex(x => x.id === 'hustle') + 1, 0, { id: 'label', name: 'Label', icon: '🎤', bg: 'linear-gradient(135deg,#ffb800,#a8329e)' });
   const _lbPhoneApp = phoneApp;
   phoneApp = function (id) { if (id === 'label') { goCss(); return labelApp(phoneEl('ph-screen')); } return _lbPhoneApp.apply(this, arguments); };
-  { const st = document.createElement('style'); st.textContent = '.go-tag5 { display: inline-block; background: #ffd23f; color: #1a1300; border-radius: 6px; padding: 0 6px; font-size: 11px; font-weight: 800; vertical-align: 2px; }'; document.head.append(st); }
-  window.__label = { label, lbSign, lbBook, lbRelease, labelDay, lbAsk, lbDeals, LB_BY, lbNear };
+  { const st = document.createElement('style'); st.textContent = '.go-tag5, .go-row .go-tag5 { display: inline-block; width: auto; background: #ffd23f; color: #1a1300; border-radius: 6px; padding: 0 6px; font-size: 11px; font-weight: 800; vertical-align: 2px; }'; document.head.append(st); }
+  window.__label = { label, lbStart, lbSign, lbBook, lbRelease, labelDay, lbAsk, lbDeals, LB_BY, lbNear };
   // ---------- bikes, trikes, Slingshots and ATVs (_rides.js): Cowtown Powersports, riding them with you on the seat,
   // Cross Timbers Trail Park (trail races against the locals, buy the park and run it) and Sea-Doo rental docks ----------
   // The rides come from the 2D game's data/cars.js; each model is built by mk_rides.mjs and baked to cars/<id>.json
