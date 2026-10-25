@@ -10316,6 +10316,8 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   // run jobs for the big homie, talk down, get flashed on, and shoot it out. Drop a rival block's corner and hold it for
   // your set. AI players (the 2D game's regulars) drive their built cars around you and hang out at the gas stations and
   // food spots: talk to them, race them for real, ask for a ride, or start beef that turns into an opp who slides on you.
+  // Online, everybody on a server sees the same people: the corners and the regulars' routes come from the server and a
+  // shared clock, and whoever is in it with one of them (a shootout, a ride, an opp sliding) runs it for everyone.
   const HOOD_SETS = {
     six_block: { name: 'Six Block', short: 'Six Block', color: '#7b2bd1', at: [1050, -150], boss: 'Trevon "Big Tre" Simms', rivals: ['hemphill', 'riverside', 'everman'],
       style: 'East side. Grew up on Rosedale and Stalcup. Loyal to the block, quick to slide.',
@@ -10397,20 +10399,29 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     '? - hemphill hemphill - everman everman ?',
     '? ? ? ? ? ? ? ?'];
   const HOOD = { ready: false, blocks: [], byId: new Map(), group: null, ents: [], last: 0, cur: null, near: null, pill: null, pillKey: '', act: {}, bases: {}, baseQ: [],
-    nodeGrid: null, regT: 3, ambT: 8, slideT: 240, hold: null, ride: null, flips: 0, bubbles: [], seed: 1, toldT: 0 };
+    nodeGrid: null, regT: 3, ambT: 8, slideT: 240, hold: null, ride: null, flips: 0, bubbles: [], seed: 1, toldT: 0, byEnt: new Map() };
   const hRnd = () => (HOOD.seed = (HOOD.seed * 16807) % 2147483647) / 2147483647;
   const hPick = a => a[Math.floor(hRnd() * a.length)];
   const hHash = s => { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 1000003; return h; };
   const hNorm = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const HNET = { clk: 0, pid: Math.random().toString(36).slice(2, 8), xn: 0, seed: null, room: null, routes: null, spots: null, turf: {}, owns: {}, shots: [], hits: [], tfOut: [], sentAt: 0 };
+  const hNow = () => Date.now() + HNET.clk;   // the server's shared clock (the first player's), so routes line up
+  const hOn = () => netOn() && !!NET.tr;
+  const hXid = s => `x:${HNET.pid}:${s}${HNET.xn++}`;
+  const hToNet = g => g === 'own' ? 'o:' + (S.uid || netMe().uid) : g;
+  const hFromNet = g => S && g === 'o:' + S.uid ? 'own' : g;
+  const H_MODES = ['idle', 'aim', 'fight', 'cruise', 'hang', 'slide', 'flee', 'leave', 'ride', 'down'];
   function hS() {
     const h = S.hood || (S.hood = {});
     h.set = h.set || null; h.own = h.own || null; h.respect = h.respect || 0; h.turf = h.turf || {}; h.beef = h.beef || {}; h.regs = h.regs || {};
-    h.stats = h.stats || { drops: 0, taken: 0, lost: 0, jobs: 0 }; h.job = h.job || null; h.init = h.init || null; h.homies = h.homies || 0;
+    h.turfAt = h.turfAt || {}; h.stats = h.stats || { drops: 0, taken: 0, lost: 0, jobs: 0 }; h.job = h.job || null; h.init = h.init || null; h.homies = h.homies || 0;
     return h;
   }
   function hMe() { return foot.on || !driving ? [foot.x, foot.z] : [drv.x, drv.z]; }
   function hInCar() { return driving && !foot.on && !inside; }
-  function setOf(id) { if (id === 'own') { const o = hS().own; return o ? { id, name: o.name, short: o.name, color: o.color, boss: S.name || 'You', rivals: [], style: 'Your own set.' } : null; } return HOOD_SETS[id] ? { id, ...HOOD_SETS[id] } : null; }
+  function setOf(id) {
+    if (typeof id === 'string' && id.startsWith('o:')) { const o = HNET.owns[id.slice(2)]; return { id, name: o ? o.name : 'A player\'s set', short: o ? o.name : 'Set', color: o ? o.color : '#aaaaaa', boss: o ? o.boss : 'another player', rivals: [], style: 'Another player runs this set.' }; }
+    if (id === 'own') { const o = hS().own; return o ? { id, name: o.name, short: o.name, color: o.color, boss: S.name || 'You', rivals: [], style: 'Your own set.' } : null; } return HOOD_SETS[id] ? { id, ...HOOD_SETS[id] } : null; }
   function hRank() {
     const h = hS(); if (h.set === 'own') return { n: HOOD_RANKS.length, name: 'Big Homie', homies: 3, bag: 400 + h.stats.taken * 40, next: null };
     let n = 0; for (let i = 0; i < HOOD_RANKS.length; i++) if (h.respect >= HOOD_RANKS[i].respect) n = i;
@@ -10468,7 +10479,8 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     for (let r = 1; r < 4 && best < 0; r++) for (const n of hNodesNear(x, z, r)) { if (g.adj[n].length < minAdj) continue; const d = Math.hypot(g.nx[n] - x, g.nz[n] - z); if (d < bd) { bd = d; best = n; } }
     return best;
   }
-  const hOwner = b => { const t = hS().turf; return b.id in t ? t[b.id] : b.own0; };
+  // online the server's turf (everyone's takeovers, newest wins); offline your own
+  const hOwner = b => { if (hOn()) { const o = HNET.turf[b.id]; return o ? o[0] : b.own0; } const t = hS().turf; return b.id in t ? t[b.id] : b.own0; };
   function hBlockAt(x, z) { const i = Math.floor((x - HB.x0) / HB.bs), j = Math.floor((z - HB.z0) / HB.bs); return HOOD.byId.get(i + ',' + j) || null; }
   function hColor(gid) { const s = setOf(gid); return s ? s.color : '#888'; }
   // turf on the Map app (_bigmap.js calls this under the places)
@@ -10527,6 +10539,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   function hEnt(o) {
     const e = Object.assign({ hp: 100, x: 0, z: 0, yaw: 0, walk: 0, ph: hRnd() * 6, mode: 'idle', t: 0, gd: 0, ge: 0, dead: false, deadAt: 0, inCar: false, sp: 0, shotT: 0, sayT: 2 + hRnd() * 6, view: null, hits: 0 }, o);
     e.g = new THREE.Group(); e.g.name = 'hood:' + e.name; HOOD.group.add(e.g); e.view = { g: e.g, P: null, gun: null };
+    e.id = e.id || hXid('e'); HOOD.byEnt.set(e.id, e);
     HOOD.ents.push(e); return e;
   }
   function hDress(e, P) {
@@ -10539,7 +10552,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     e.label = textSprite(txt, 26, e.opp ? '#ff5a4e' : s ? s.color : '#ffd23f'); e.label.visible = false; e.g.add(e.label);
   }
   function hKill(e) {
-    e.gone = true; if (e.view.gun) { try { window.__guns.pv.disposeGun(e.view.gun.b); } catch (er) {} }
+    e.gone = true; if (HOOD.byEnt.get(e.id) === e) HOOD.byEnt.delete(e.id); if (e.view.gun) { try { window.__guns.pv.disposeGun(e.view.gun.b); } catch (er) {} }
     if (e.label) { e.label.material.map.dispose(); e.label.material.dispose(); }
     if (e.slot) e.slot.userData.dead = true; if (e.g.parent) e.g.parent.remove(e.g);
     if (e.blk) e.blk.crew = e.blk.crew.filter(m => m !== e);
@@ -10555,21 +10568,21 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
 
   // ---------- gang members on the corner ----------
   function hCrew(b) {
-    const o = hOwner(b); if (!o || b.crew.length || performance.now() < b.down) return;
+    const o = hOwner(b); if (!o || b.crew.length || hNow() < b.down) return;
     const n = 3 + (b.h % 2), gidv = [0, 1, 2].map(v => hBase(o, o === 'own' ? 0 : v)); if (gidv.some(v => !v)) return;
     for (let k = 0; k < n; k++) {
       const a = k / n * Math.PI * 2 + b.h, r = 1.6 + (k % 2) * 1.4, x = b.corner.x + Math.cos(a) * r, z = b.corner.z + Math.sin(a) * r;
-      const e = hEnt({ kind: 'member', gang: o, blk: b, name: H_NICKS[(b.h + k * 7) % H_NICKS.length], x, z, hx: x, hz: z, yaw: Math.atan2(-(b.corner.x - x), -(b.corner.z - z)) + Math.PI + (k - 1) * 0.6, gunId: ['g19', 'g20', 'arp'][(b.h + k) % 3 === 2 && k === 0 ? 2 : (b.h + k) % 2] });
+      const e = hEnt({ id: `m:${b.id}:${k}`, kind: 'member', gang: o, blk: b, name: H_NICKS[(b.h + k * 7) % H_NICKS.length], x, z, hx: x, hz: z, yaw: Math.atan2(-(b.corner.x - x), -(b.corner.z - z)) + Math.PI + (k - 1) * 0.6, gunId: ['g19', 'g20', 'arp'][(b.h + k) % 3 === 2 && k === 0 ? 2 : (b.h + k) % 2] });
       hDress(e, hClone(gidv[k % 3])); hLabel(e); b.crew.push(e);
     }
   }
   function hHomies(want) {
-    const have = HOOD.ents.filter(e => e.kind === 'homie' && !e.gone);
+    const have = HOOD.ents.filter(e => e.kind === 'homie' && !e.gone && e.own === 'me');
     if (have.length > want) { for (const e of have.slice(want)) hKill(e); return; }
     const gid = hS().set; if (!gid) return;
     for (let k = have.length; k < want; k++) {
-      const B = hBase(gid, (k + 1) % 3); if (!B) return; const [mx, mz] = hMe();
-      const e = hEnt({ kind: 'homie', gang: gid, name: H_NICKS[(hHash(S.name || 'me') + k * 11) % H_NICKS.length], x: mx + 2 + k, z: mz + 2, gunId: k ? 'g19' : 'arp' });
+      const B = hBase(gid, (k + 1) % 3); if (!B) return; const [mx, mz] = hMe(), name = H_NICKS[(hHash(S.name || 'me') + k * 11) % H_NICKS.length], gunId = k ? 'g19' : 'arp';
+      const e = hEnt({ id: hXid('h'), own: 'me', ct: hNow(), desc: { k: 'homie', g: hToNet(gid), n: name, gn: gunId, v: (k + 1) % 3 }, kind: 'homie', gang: gid, name, x: mx + 2 + k, z: mz + 2, gunId });
       hDress(e, hClone(B)); hLabel(e);
     }
   }
@@ -10583,7 +10596,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   }
   function hReg(key, opts) {
     const pr = hPersona(key), P = crowdPerson(pr.look + 3); if (!P) return null;
-    const e = hEnt(Object.assign({ kind: 'reg', key, name: pr.name, pr, carId: pr.r.id, color: pr.r.color }, opts));
+    const e = hEnt(Object.assign({ id: key, kind: 'reg', key, name: pr.name, pr, carId: pr.r.id, color: pr.r.color }, opts));
     hDress(e, P); hLabel(e);
     e.slot = putCar(e.g, e.carId, e.color, m => { m.position.y = 0; e.model = m; try { applyMotor(m); } catch (er) {} });
     const beef = hS().regs[key]; if (beef && beef.opp) { e.opp = true; hLabel(e); }
@@ -10666,6 +10679,11 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   };
   function hShotAt(e, dmg) {
     const h = hS();
+    if (e.own && e.own !== 'me') {
+      if (e.kind === 'member' && e.gang) hBeef(e.gang, 20); else if (e.kind === 'reg') hRegBeef(e, dmg ? 30 : 15);
+      if (dmg) hSay(e, hPick(HL.hit)); HNET.hits.push([e.id, Math.round(dmg), e.own]); return;
+    }
+    hClaim(e);
     if (e.kind === 'reg') {
       if (e.inCar && !dmg) { if (e.hits >= 6 && e.mode !== 'flee') { e.mode = 'flee'; e.want = 22; hSay(e, e.opp ? hPick(RL.smoked) : hPick(RL.shot), true); } else if (e.hits === 1) hSay(e, hPick(RL.shot), true); hRegBeef(e, 15); return; }
       hRegBeef(e, 30);
@@ -10676,18 +10694,26 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     if (e.kind === 'reg' && e.temper > 0.35 && !e.inCar) { e.mode = 'fight'; e.t = 0; }
     if (e.hp <= 0) hDrop(e);
   }
-  function hDrop(e) {
+  function hApplyHit(e, dmg, by) { if (e.down || e.gone) return; e.hp -= dmg; if (dmg) hSay(e, hPick(HL.hit)); if (e.hp <= 0) hDrop(e, by); }
+  function hHitAny(e, dmg) { if (e.own && e.own !== 'me') { if (hOn()) HNET.hits.push([e.id, Math.round(dmg), e.own]); return; } hClaim(e); hApplyHit(e, dmg, 'me'); }
+  // down for everyone; the credit (respect, jobs, heat) goes to whoever dropped them
+  function hDrop(e, by = 'me') {
     if (e.down) return; e.down = true; e.dead = true; e.mode = 'down'; e.gd = 0; e.t = 0; e.inCar = false;
+    e.by = by === 'me' ? (hOn() ? NET.id : 'me') : by;
+    if (e.kind === 'member' && e.blk && e.blk.crew.every(m => m.down)) e.blk.down = hNow() + 240000;
+    if (e.kind === 'reg' && e.ride) hRideOut(true);
+    if (by === 'me') hDropCredit(e);
+  }
+  function hDropCredit(e) {
     const h = hS(); h.stats.drops++; S.heat = Math.min(5, (S.heat || 0) + 1);
     if (e.kind === 'member') {
       const b = e.blk, rival = hRivals().includes(e.gang);
       if (h.set && rival) hRespect(25, `dropped ${e.name} from ${setOf(e.gang).short}`); else toast(`You dropped ${e.name}${e.gang ? ' from ' + setOf(e.gang).short : ''}.`, 'good');
       if (h.init && h.init.vs.includes(e.gang)) { h.init.got++; if (h.init.got >= h.init.need) hJoin(h.init.set, 'work'); else toast(`${h.init.got}/${h.init.need} for ${setOf(h.init.set).short}.`, 'good'); }
       if (h.job && h.job.kind === 'work' && rival) { h.job.got++; if (h.job.got >= h.job.need) hJobDone(); }
-      if (b && b.crew.every(m => m.down)) { b.down = performance.now() + 240000; if (h.set && hOwner(b) !== h.set) toast(`${b.name} is open. Hold the corner to take it for ${setOf(h.set).short}.`, 'good'); }
+      if (b && b.crew.every(m => m.down)) { if (h.set && hOwner(b) !== h.set) toast(`${b.name} is open. Hold the corner to take it for ${setOf(h.set).short}.`, 'good'); }
     } else if (e.kind === 'reg') {
       const r = hS().regs[e.key]; if (r && r.opp) { r.smoked = (r.smoked || 0) + 1; toast(`You smoked ${e.name}. They'll be back.`, 'good'); } else toast(`You dropped ${e.name}.`, 'good');
-      if (e.ride) hRideOut(true);
     }
     save(); refreshStats();
   }
@@ -10700,6 +10726,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     const hit = Math.random() < chance, o = new THREE.Vector3(e.x, gy + 1.4, e.z), mh = incar ? 1.0 : (G.ME ? 1.25 : 1.2);
     const t = new THREE.Vector3(mx + (hit ? 0 : (Math.random() - 0.5) * 3), (hit ? mh : Math.random() * 1.6), mz + (hit ? 0 : (Math.random() - 0.5) * 3));
     try { pv.fxInit(); pv.pvPlay({ p: { view: e.view, gun: { id: e.gunId }, name: e.name }, o, h: t, k: hit ? (incar ? 3 : 4) : 1 }); } catch (er) {}
+    hShotOut(e, t, hit ? (incar ? 3 : 4) : 1);
     if (!hit) return;
     const dmg = H_GUN_DMG[e.gunId] || 24, head = !incar && Math.random() < 0.08, glass = incar && Math.random() < 0.35;
     const m = incar ? { pd: glass ? dmg * 0.55 : 0, cb: glass ? 0 : D.body || 6, ce: 0, ct: 0, x: e.x, z: e.z } : { pd: dmg * (head ? 2 : 0.6), hd: head ? 1 : 0, x: e.x, z: e.z };
@@ -10713,7 +10740,8 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     const hit = Math.random() < clamp(0.5 - dist * 0.01, 0.1, 0.45), gy = tgt.gy || 0;
     const t = new THREE.Vector3(tgt.x + (hit ? 0 : (Math.random() - 0.5) * 2.5), gy + (hit ? 1.2 : Math.random() * 1.5), tgt.z + (hit ? 0 : (Math.random() - 0.5) * 2.5));
     try { G.pv.fxInit(); G.pv.pvPlay({ p: { view: e.view, gun: { id: e.gunId }, name: e.name }, o: new THREE.Vector3(e.x, (e.gy || 0) + 1.4, e.z), h: t, k: hit ? 4 : 1 }); } catch (er) {}
-    if (hit) { tgt.hp -= (H_GUN_DMG[e.gunId] || 24) * 0.8; if (tgt.hp <= 0) hDrop(tgt); }
+    hShotOut(e, t, hit ? 4 : 1);
+    if (hit) hHitAny(tgt, (H_GUN_DMG[e.gunId] || 24) * 0.8);
   }
 
   // ---------- the brains ----------
@@ -10721,7 +10749,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz); if (d < 0.4) return false;
     const sp = run ? 6 : 2.2, nx = e.x + dx / d * sp * dt, nz = e.z + dz / d * sp * dt;
     if (!solids.at(nx, nz).some(b => nx > b.x0 - 0.3 && nx < b.x1 + 0.3 && nz > b.z0 - 0.3 && nz < b.z1 + 0.3)) { e.x = nx; e.z = nz; } else return false;
-    e.yaw += hNorm(Math.atan2(-dx, -dz) - e.yaw) * Math.min(1, dt * 8); e.walk += dt * sp * Math.PI * 2 / (run ? 3.8 : 1.55); e.moving = run ? 2 : 1; return true;
+    e.yaw += hNorm(Math.atan2(-dx, -dz) - e.yaw) * Math.min(1, dt * 8); e.walk += dt * sp * Math.PI * 2 / (run ? 3.8 : 1.55); e.moving = run ? 2 : 1; e.mvT = performance.now(); e.mvR = run; return true;
   }
   const hFace = (e, x, z, dt) => { e.yaw += hNorm(Math.atan2(-(x - e.x), -(z - e.z)) - e.yaw) * Math.min(1, dt * 6); };
   function hMember(e, dt, mx, mz, d, aiming) {
@@ -10744,7 +10772,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     // posted up: shift around the corner, turn to watch whoever walks up
     if (!mine && hostile && d < 32 && !(HOOD.dropped && performance.now() - HOOD.dropped < 15000)) { e.mode = 'aim'; e.t = 0; hSay(e, hPick(HL.flash), true); return; }
     if (d < 9) hFace(e, mx, mz, dt);
-    else { e.t -= dt; if (e.t <= 0) { e.t = 4 + Math.random() * 8; e.tx = e.hx + (Math.random() - 0.5) * 3; e.tz = e.hz + (Math.random() - 0.5) * 3; } if (e.tx != null) hFootMove(e, e.tx, e.tz, dt, false); }
+    else { const ph = Math.floor((hNow() / 1000 + hHash(e.id) % 9) / 9), q = hHash(e.id + ':' + ph); e.tx = e.hx + ((q % 100) / 100 - 0.5) * 3; e.tz = e.hz + ((Math.floor(q / 100) % 100) / 100 - 0.5) * 3; hFootMove(e, e.tx, e.tz, dt, false); }
     if (d < 7) { e.sayT -= dt; if (e.sayT <= 0) { e.sayT = 9 + Math.random() * 10; hSay(e, hPick(mine ? HL.homie : h.set && !mine ? HL.trash : HL.hi)); } }
   }
   function hHomie(e, dt, mx, mz) {
@@ -10788,7 +10816,6 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     e.gd = 0;
     if (d < 8) hFace(e, mx, mz, dt);
     if (d < 6 && R && R.heat >= 20 && !R.opp) { e.sayT -= dt; if (e.sayT <= 0) { e.sayT = 8 + Math.random() * 8; hSay(e, hPick(R.heat >= 50 ? HL.flash : HL.trash), true); if (R.heat >= 50) e.gd = 1; } }
-    if (d > 300 && !e.ride) { e.mode = 'cruise'; e.inCar = true; }
   }
   function hRegBeef(e, n) {
     const h = hS(), R = h.regs[e.key] || (h.regs[e.key] = { name: e.name, heat: 0, opp: false });
@@ -10806,33 +10833,84 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
       if (d < 230) hCrew(b);
       else if (d > 330 && b.crew.length) for (const e of b.crew.slice()) hKill(e);
     }
-    // regulars: some cruising, some at the gas station or the food spot
-    const regs = live.filter(e => e.kind === 'reg');
-    for (const e of regs) if (Math.hypot(e.x - mx, e.z - mz) > 520 && !e.ride && e.mode !== 'slide') hKill(e);
-    HOOD.regT -= 1; if (HOOD.regT > 0 || CROWD.length < CROWD_N) return; HOOD.regT = 4;
-    const want = phone ? 4 : 6; if (regs.length >= want) return;
-    const slot = Math.floor(Date.now() / 600000), key = `r${slot}:${Math.floor(hRnd() * 40)}`; if (regs.some(e => e.key === key)) return;
-    const R = hS().regs[key]; if (R && R.opp) return;
-    if (hRnd() < 0.45) {
-      // parked at a spot near you
-      let best = null, bd = 260;
-      for (const p of DATA.P) { if (!/gas|food|corner|meet|carshow|club|liquor/.test(p.type)) continue; const dd = Math.hypot(p.x - mx, p.z - mz); if (dd > 70 && dd < bd && !live.some(e => e.at === p.id)) { bd = dd; best = p; } }
-      if (best) {
-        const [ox, oz] = outDir(best), e = hReg(key, { mode: 'hang', at: best.id }); if (!e) return;
-        const cx = best.x + ox * 9 + oz * 3, cz = best.z + oz * 9 - ox * 3; e.parked = { x: cx, z: cz, yaw: Math.atan2(-ox, -oz) + Math.PI / 2 };
-        e.x = cx + Math.cos(e.parked.yaw) * 1.9; e.z = cz - Math.sin(e.parked.yaw) * 1.9; e.yaw = Math.atan2(ox, oz); return;
-      }
+    // regulars: everybody on the server has the same ones, on the same routes, at the same gas stations
+    const T = hNow() / 1000, slot = Math.floor(T / 600);
+    for (const e of live) {
+      if (e.kind !== 'reg' || e.gone) continue; const d = Math.hypot(e.x - mx, e.z - mz);
+      if (d > 520 && !(e.own === 'me' && (e.ride || e.mode === 'slide'))) hKill(e);
+      else if (!e.own && e.id.startsWith('h:') && +e.id.split(':')[1] !== slot && d > 150) hKill(e);
     }
-    const g = gpsGraph(), a = hRnd() * Math.PI * 2, r = 160 + hRnd() * 140, e = hReg(key, { mode: 'cruise', inCar: true, want: 10 + hRnd() * 6 });
-    if (!e) return; if (!hPlaceOnRoad(e, mx + Math.cos(a) * r, mz + Math.sin(a) * r)) hKill(e);
+    if (CROWD.length < CROWD_N) return;
+    const R = hRoutes(); let made = 0;
+    for (let n = 0; n < R.list.length && made < 2; n++) {
+      const id = `r:${HNET.seed}:${n}`; if (HOOD.byEnt.has(id)) continue;
+      const p = hSched(n, T); if (Math.hypot(p.x - mx, p.z - mz) > 420) continue;
+      if (hRegSched(n, p)) made++;
+    }
+    for (const sp of hSpots()) {
+      if (made >= 3) break; const dd = Math.hypot(sp.x - mx, sp.z - mz); if (dd < 70 || dd > 260) continue;
+      const id = `h:${slot}:${sp.id}`; if (HOOD.byEnt.has(id) || hHash(HNET.seed + id) % 100 >= 32 || live.some(e => e.at === sp.id && !e.gone)) continue;
+      if (hRegHang(id, sp)) made++;
+    }
+  }
+  // the server's regulars: each drives its own long loop of Fort Worth at its own speed, worked out from the shared clock
+  const H_REGS = 48;
+  function hRoutes() {
+    if (HNET.routes && HNET.routes.seed === HNET.seed) return HNET.routes;
+    const g = gpsGraph(), inCity = n => Math.abs(g.nx[n]) < 950 && Math.abs(g.nz[n]) < 950, ok = [];
+    for (let n = 0; n < g.nx.length; n++) if (inCity(n) && g.adj[n].filter(a => inCity(a[0])).length >= 2) ok.push(n);
+    const list = [];
+    for (let i = 0; i < H_REGS && ok.length; i++) {
+      let sd = hHash(HNET.seed + ':route:' + i) || 1; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647; R();
+      let prev = -1, cur = ok[Math.floor(R() * ok.length)]; const nodes = [cur], cum = [0];
+      for (let k = 0; k < 700; k++) {
+        const opts = g.adj[cur].filter(a => inCity(a[0]) && a[0] !== prev), all = g.adj[cur].filter(a => inCity(a[0]));
+        const nx = (opts.length ? opts : all)[Math.floor(R() * (opts.length ? opts : all).length)]; if (!nx) break;
+        const L = Math.hypot(g.nx[nx[0]] - g.nx[cur], g.nz[nx[0]] - g.nz[cur]); if (L < 0.5) { prev = cur; cur = nx[0]; continue; }
+        nodes.push(nx[0]); cum.push(cum[cum.length - 1] + L); prev = cur; cur = nx[0];
+      }
+      const L = cum[cum.length - 1]; if (L < 200) continue;
+      list.push({ i, nodes, cum, L, v: 10 + R() * 5, ph: R() * L });
+    }
+    return HNET.routes = { seed: HNET.seed, list };
+  }
+  function hSched(n, T) {
+    const R = hRoutes().list[n], g = gpsGraph(), s = ((T * R.v + R.ph) % R.L + R.L) % R.L;
+    let lo = 0, hi = R.cum.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (R.cum[mid] <= s) lo = mid; else hi = mid; }
+    const a = R.nodes[lo], b = R.nodes[lo + 1], u = s - R.cum[lo], L = Math.max(0.1, R.cum[lo + 1] - R.cum[lo]), gx = (g.nx[b] - g.nx[a]) / L, gz = (g.nz[b] - g.nz[a]) / L;
+    return { x: g.nx[a] + gx * u - gz * 3.6, z: g.nz[a] + gz * u + gx * 3.6, yaw: Math.atan2(-gx, -gz), a, b, u, v: R.v };
+  }
+  function hRegSched(n, p) {
+    p = p || hSched(n, hNow() / 1000);
+    const e = hReg(`r:${HNET.seed}:${n}`, { mode: 'cruise', inCar: true, want: p.v, sn: n }); if (!e) return null;
+    e.x = p.x; e.z = p.z; e.yaw = p.yaw; e.sp = p.v; e.sch = p; return e;
+  }
+  function hSpots() { return HNET.spots || (HNET.spots = DATA.P.filter(p => /gas|food|corner|meet|carshow|club|liquor/.test(p.type) && Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000 && /^[\w-]{1,40}$/.test(p.id))); }
+  function hRegHang(id, sp) {
+    const [ox, oz] = outDir(sp), e = hReg(id, { mode: 'hang', at: sp.id }); if (!e) return null;
+    const cx = sp.x + ox * 9 + oz * 3, cz = sp.z + oz * 9 - ox * 3; e.parked = { x: cx, z: cz, yaw: Math.atan2(-ox, -oz) + Math.PI / 2 }; e.home = { ...e.parked };
+    e.x = cx + Math.cos(e.parked.yaw) * 1.9; e.z = cz - Math.sin(e.parked.yaw) * 1.9; e.yaw = Math.atan2(ox, oz); return e;
+  }
+  // a regular nobody is dealing with: right where the clock says it is
+  function hRegAmbient(e, dt, mx, mz, d) {
+    const p = hSched(e.sn, hNow() / 1000); e.sch = p; e.inCar = true; e.sp = p.v; e.want = p.v;
+    // you're sitting in its lane: it stops for you, and from here on it drives itself (for everyone)
+    const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), ex = mx - e.x, ez = mz - e.z, ahead = ex * fx + ez * fz, side = Math.abs(-ex * fz + ez * fx);
+    if (ahead > 0 && ahead < 16 && side < 3.4) { hClaim(e); return; }
+    const dx = p.x - e.x, dz = p.z - e.z;
+    if (dx * dx + dz * dz > 900) { e.x = p.x; e.z = p.z; e.yaw = p.yaw; } else { const k = 1 - Math.exp(-dt * 6); e.x += dx * k; e.z += dz * k; e.yaw += hNorm(p.yaw - e.yaw) * Math.min(1, dt * 5); }
+    if (hInCar() && d < 12 && Math.abs(drv.v) > 3 && Math.abs(hNorm(drv.yaw - e.yaw)) < 0.4 && !e.asked && e.pr.temper < 0.85) { e.asked = true; hSay(e, hPick(['wanna run it?', 'you tryna roll?', 'run it 40?', 'what that do?']), true); }
   }
   // an opp pulls up every few minutes
   function hOppSlide(mx, mz) {
     const h = hS(), opps = Object.entries(h.regs).filter(([, r]) => r.opp && (!r.lastSlide || Date.now() - r.lastSlide > 180000));
     if (!opps.length || HOOD.ents.some(e => e.mode === 'slide' && !e.gone)) return;
-    const [key, r] = hPick(opps), old = HOOD.ents.find(e => e.key === key && !e.gone); if (old) hKill(old);
-    const a = hRnd() * Math.PI * 2, e = hReg(key, { mode: 'slide', inCar: true, want: 17, walkDown: hRnd() < 0.45, t: 3 });
-    if (!e) return; e.opp = true; hLabel(e); r.lastSlide = Date.now();
+    const [key, r] = hPick(opps); let e = HOOD.byEnt.get(key);
+    if (e && e.own && e.own !== 'me') return;   // somebody else is in it with them right now
+    const m = /^r:(.+):(\d+)$/.exec(key);
+    if (!e) e = m && m[1] === HNET.seed ? hRegSched(+m[2]) : hReg(key, { id: hXid('o'), desc: { k: 'reg', key } });
+    if (!e) return; const a = hRnd() * Math.PI * 2;
+    hClaim(e); Object.assign(e, { mode: 'slide', inCar: true, want: 17, walkDown: hRnd() < 0.45, t: 3, t2: 0, burst: 0, parked: null, path: null, sp: 10 }); e.opp = true; hLabel(e); r.lastSlide = Date.now();
     if (!hPlaceOnRoad(e, mx + Math.cos(a) * 240, mz + Math.sin(a) * 240)) hKill(e);
   }
   // a rival set slides on a block you hold
@@ -10844,7 +10922,8 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     const a = hRnd() * Math.PI * 2;
     for (let k = 0; k < 2 + (h.respect > 900 ? 1 : 0); k++) {
       const x = b.corner.x + Math.cos(a) * 45 + k * 2, z = b.corner.z + Math.sin(a) * 45;
-      const e = hEnt({ kind: 'member', gang: gid, blk: null, slider: true, name: H_NICKS[(hHash(gid) + k * 5 + frame) % H_NICKS.length], x, z, hx: x, hz: z, mode: 'fight', gunId: k ? 'g19' : 'arp' });
+      const name = H_NICKS[(hHash(gid) + k * 5 + frame) % H_NICKS.length], gunId = k ? 'g19' : 'arp';
+      const e = hEnt({ id: hXid('s'), own: 'me', ct: hNow(), desc: { k: 'member', g: hToNet(gid), n: name, gn: gunId, v: k % 2 }, kind: 'member', gang: gid, blk: null, slider: true, name, x, z, hx: x, hz: z, mode: 'fight', gunId });
       hDress(e, hClone(bases[k % 2])); hLabel(e);
     }
     toast(`${HOOD_SETS[gid].name} are sliding on ${b.name}. Hold it down.`, 'bad');
@@ -10859,9 +10938,10 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     if (!HOOD.hold || HOOD.hold.b !== b) HOOD.hold = { b, t: 0, backup: false };
     if (HOOD.ents.some(e => !e.gone && !e.down && e.mode === 'fight')) return;   // can't hold it mid shootout
     HOOD.hold.t += dt;
-    if (!HOOD.hold.backup && HOOD.hold.t > 12 && hOwner(b)) { HOOD.hold.backup = true; const gid = hOwner(b), B = hBase(gid, 0); if (B && gid !== 'own') for (let k = 0; k < 2; k++) { const x = b.corner.x + 40, z = b.corner.z + k * 3; const e = hEnt({ kind: 'member', gang: gid, blk: null, slider: true, name: H_NICKS[(b.h + k * 13) % H_NICKS.length], x, z, hx: x, hz: z, mode: 'fight', gunId: 'g19' }); hDress(e, hClone(B)); hLabel(e); } toast(`${setOf(gid).short} sent backup.`, 'bad'); }
+    if (!HOOD.hold.backup && HOOD.hold.t > 12 && hOwner(b)) { HOOD.hold.backup = true; const gid = hOwner(b), B = hBase(gid, 0); if (B && gid !== 'own') for (let k = 0; k < 2; k++) { const x = b.corner.x + 40, z = b.corner.z + k * 3; const name = H_NICKS[(b.h + k * 13) % H_NICKS.length], e = hEnt({ id: hXid('b'), own: 'me', ct: hNow(), desc: { k: 'member', g: hToNet(gid), n: name, gn: 'g19', v: 0 }, kind: 'member', gang: gid, blk: null, slider: true, name, x, z, hx: x, hz: z, mode: 'fight', gunId: 'g19' }); hDress(e, hClone(B)); hLabel(e); } toast(`${setOf(gid).short} sent backup.`, 'bad'); }
     if (HOOD.hold.t >= 30) {
-      const was = hOwner(b); h.turf[b.id] = h.set; h.stats.taken++; HOOD.hold = null; b.down = 0; for (const e of b.crew.slice()) hKill(e);
+      const was = hOwner(b); h.turf[b.id] = h.set; h.turfAt[b.id] = hNow(); h.stats.taken++;
+      if (hOn()) { HNET.turf[b.id] = [h.set, hNow()]; HNET.tfOut.push([b.id, hToNet(h.set), hNow()]); } HOOD.hold = null; b.down = 0; for (const e of b.crew.slice()) hKill(e);
       hRespect(was ? 80 : 40, `took ${b.name}${was ? ' from ' + setOf(was).short : ''}`); if (was) hBeef(was, 30);
       toast(`${b.name} is ${setOf(h.set).name} now.`, 'good');
       if (h.job && h.job.kind === 'take' && h.job.blk === b.id) hJobDone();
@@ -10882,6 +10962,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
     let path = null, n1 = -1, where = '';
     for (const [tx, tz, nm] of tries) { n1 = hNearestNode(tx, tz); path = n0 >= 0 && n1 >= 0 && n1 !== n0 ? hRoute(n0, n1) : null; if (path && path.length) { where = nm; break; } }
     if (!path || !path.length) { hSay(e, pin.visible ? 'i cant get you there, pick somewhere closer' : 'idk where you tryna go', true); return; }
+    if (!hClaim(e)) { hSay(e, 'cant rn, i got somebody', true); return; }
     if (e.parked) { e.x = e.parked.x; e.z = e.parked.z; e.yaw = e.parked.yaw; e.parked = null; }
     const g = gpsGraph(); e.inCar = true; e.a = n0; e.b = path.shift(); e.u = 0; e.path = path; e.mode = 'ride'; e.want = 13; e.dest = [g.nx[n1], g.nz[n1]];
     HOOD.ride = { e, where, t: 0 }; hSay(e, hPick(RL.ride), true); foot.target = null; if (foot.holder) foot.holder.visible = false; document.body.classList.add('riding');
@@ -11035,11 +11116,174 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   const _hStepFoot = stepFoot;
   stepFoot = function (dt) { if (HOOD.ride && S) { hRideStep(dt); return; } return _hStepFoot.apply(this, arguments); };
 
+  // ---------- online: one set of people for the whole server ----------
+  // Nobody's dealing with them: every game works them out the same (the corners, the clock's routes). Somebody gets into
+  // it with one (shoots, gets flashed on, takes a ride, gets slid on): that player's game runs them and sends where they
+  // are a few times a second, and everybody else draws them from that. Hits from other players go to whoever runs them.
+  const hNum = (v, lo, hi) => typeof v === 'number' && isFinite(v) && v >= lo && v <= hi;
+  function hClaim(e) {
+    if (e.own && e.own !== 'me') return false;
+    const t = hNow();
+    for (const m of (e.kind === 'member' && e.blk ? e.blk.crew : [e])) if (!m.own) {
+      m.own = 'me'; m.ct = t;
+      if (m.sch) { m.a = m.sch.a; m.b = m.sch.b; m.u = m.sch.u; m.path = null; m.sp = m.sch.v; m.want = m.sch.v; m.sch = null; }
+    }
+    return true;
+  }
+  // done with them: back to the corner, or back on the clock once nobody can see the switch
+  function hRelease(mx, mz) {
+    const far = (e, r) => Math.hypot(e.x - mx, e.z - mz) > r && [...NET.peers.values()].every(p => Math.hypot(p.x - e.x, p.z - e.z) > r);
+    for (const e of HOOD.ents) {
+      if (e.own !== 'me' || e.gone || e.down || e.id[0] === 'x') continue;
+      if (e.kind === 'member') { const crew = e.blk ? e.blk.crew : [e]; if (crew.every(m => m.down || m.mode === 'idle') && Math.hypot(e.x - mx, e.z - mz) > 45) { e.own = null; e.gd = 0; } continue; }
+      if (e.ride || HOOD.racing === e || !/cruise|hang/.test(e.mode)) continue;
+      if (e.mode === 'hang' && e.home && e.parked && Math.hypot(e.parked.x - e.home.x, e.parked.z - e.home.z) < 1) { if (Math.hypot(e.x - mx, e.z - mz) > 40) e.own = null; continue; }
+      if (far(e, 300)) hKill(e);
+    }
+  }
+  // joined or left a server: its regulars, its turf
+  function hRoom() {
+    const room = hOn() ? NET.room : '';
+    if (room === HNET.room) return;
+    HNET.room = room; HNET.seed = room || 'solo'; HNET.routes = null; HNET.shots = []; HNET.hits = []; HNET.tfOut = []; if (!room) HNET.clk = 0;
+    for (const e of HOOD.ents.slice()) { if (e.gone) continue; if ((e.id[0] === 'r' || e.id[0] === 'h') && e.own !== 'me') hKill(e); else if (e.own && e.own !== 'me') e.seen = -99; }
+    if (HNET.turfRoom !== room) { HNET.turf = {}; HNET.turfRoom = room; }
+    const h = hS(); for (const id of Object.keys(h.turf)) { const t = h.turfAt[id] || 1, cur = HNET.turf[id]; if (!cur || cur[1] < t) HNET.turf[id] = [h.turf[id], t]; }
+    if (room) HNET.tfOut.push(...Object.keys(h.turf).map(id => [id, h.turf[id] ? hToNet(h.turf[id]) : null, h.turfAt[id] || 1]).slice(0, 20));
+    for (const b of HOOD.blocks) if (b.crew.length && b.crew[0].gang !== hOwner(b)) for (const e of b.crew.slice()) hKill(e);
+    if (BM.open) bmDirty();
+  }
+  function hRemote(e, dt, now) {
+    const r = e.rt;
+    if (!r || now - e.seen > 2.5) {
+      // whoever was running them stopped: they're everybody's again
+      e.own = null; e.rt = null; e.gd = 0; e.hide = false;
+      if (e.id[0] === 'x') { hKill(e); return; }
+      if (e.down) return;
+      if (e.kind === 'member') { e.mode = 'idle'; return; }
+      const [mx, mz] = hMe();
+      if (Math.hypot(e.x - mx, e.z - mz) > 300) { hKill(e); return; }
+      hClaim(e);
+      if (e.inCar) { if (r && r.ab) { e.a = r.ab[0]; e.b = r.ab[1]; e.u = r.ab[2]; } else if (!hPlaceOnRoad(e, e.x, e.z)) { hKill(e); return; } e.mode = 'cruise'; e.want = 12; }
+      else if (e.mode !== 'hang') e.mode = 'leave';
+      return;
+    }
+    const dx = r.x - e.x, dz = r.z - e.z, k = Math.min(1, dt * 8);
+    if (dx * dx + dz * dz > 900) { e.x = r.x; e.z = r.z; e.yaw = r.yaw; } else { e.x += dx * k; e.z += dz * k; e.yaw += hNorm(r.yaw - e.yaw) * Math.min(1, dt * 8); }
+    e.inCar = r.inCar; e.sp = r.sp; e.gd = r.gd; e.ge = r.ge; e.hide = r.hide; e.parked = r.p; if (r.ab) { e.a = r.ab[0]; e.b = r.ab[1]; e.u = r.ab[2]; }
+    if (!r.down && !e.down) e.mode = r.m;
+    if (!e.inCar && !e.down && r.sp > 0.4) { e.walk += dt * r.sp * Math.PI * 2 / (r.sp > 4 ? 3.8 : 1.55); e.moving = r.sp > 4 ? 2 : 1; }
+    if (r.down && !e.down) {
+      e.down = true; e.dead = true; e.mode = 'down'; e.t = 0; e.inCar = false; e.gd = 0;
+      if (e.kind === 'member' && e.blk && e.blk.crew.every(m => m.down)) e.blk.down = Math.max(e.blk.down || 0, hNow() + 240000);
+      if (HOOD.ride && HOOD.ride.e === e) hRideOut(true);
+      if (r.by && r.by === NET.id) hDropCredit(e);   // you dropped them on their screen: the credit is yours
+    }
+  }
+  function hPack(e) {
+    const x = {};
+    if (e.parked && !e.inCar) x.p = [Math.round(e.parked.x * 10), Math.round(e.parked.z * 10), Math.round(e.parked.yaw * 100)];
+    if (e.inCar && e.a != null && e.b != null) x.ab = [e.a, e.b, Math.round((e.u || 0) * 10)];
+    if (e.down && e.by) x.by = e.by;
+    if (e.gd) x.ge = Math.round(clamp(e.ge || 0, -1, 1) * 100);
+    if (e.id[0] === 'x') x.d = e.desc;
+    const walk = !e.inCar && performance.now() - (e.mvT || 0) < 250 ? (e.mvR ? 6 : 2.2) : 0;
+    return [e.id, Math.round(e.x * 10), Math.round(e.z * 10), Math.round(hNorm(e.yaw) * 100), Math.round((e.inCar ? e.sp : walk) * 10), Math.max(0, H_MODES.indexOf(e.mode)), (e.inCar ? 1 : 0) | (e.down ? 2 : 0) | (e.gd ? 4 : 0) | (e.kind === 'homie' && hInCar() ? 8 : 0), e.ct || 0, x];
+  }
+  // somebody else's people: the corner's crew and the server's regulars we can work out ourselves, the rest come described
+  function hMake(id, d) {
+    let m;
+    if ((m = /^m:(\d+,\d+):\d$/.exec(id))) { const b = HOOD.byId.get(m[1]); if (b && !b.crew.length) hCrew(b); return HOOD.byEnt.get(id) || null; }
+    if ((m = /^r:(.+):(\d+)$/.exec(id))) return m[1] === HNET.seed && +m[2] < hRoutes().list.length ? hRegSched(+m[2]) : null;
+    if ((m = /^h:(\d+):([\w-]+)$/.exec(id))) { const sp = hSpots().find(p => p.id === m[2]); return sp ? hRegHang(id, sp) : null; }
+    if (id[0] !== 'x' || !d || typeof d !== 'object') return null;
+    if (d.k === 'reg') return typeof d.key === 'string' && d.key.length <= 40 ? hReg(d.key, { id, desc: d, mode: 'cruise', inCar: true }) : null;
+    const gid = typeof d.g === 'string' ? hFromNet(d.g) : ''; if (!(HOOD_SETS[gid] || gid === 'own' || /^o:\w{1,24}$/.test(gid)) || (d.k !== 'member' && d.k !== 'homie')) return null;
+    const B = hBase(gid, [0, 1, 2].includes(d.v) ? d.v : 0); if (!B) return null;
+    const e = hEnt({ id, desc: d, kind: d.k, gang: gid, blk: null, slider: d.k === 'member', name: nName(d.n, 'Homie'), gunId: ['g19', 'g20', 'arp'].includes(d.gn) ? d.gn : 'g19', mode: 'idle' });
+    hDress(e, hClone(B)); hLabel(e); return e;
+  }
+  function hStateIn(p, a, now) {
+    if (!Array.isArray(a) || a.length < 9) return;
+    const [id, x10, z10, y100, sp10, mi, fl, ct, x] = a;
+    if (typeof id !== 'string' || id.length > 48 || !hNum(x10, -3e5, 3e5) || !hNum(z10, -3e5, 3e5) || !hNum(y100, -400, 400) || !hNum(sp10, -900, 900) || !hNum(fl, 0, 63) || !hNum(ct, 0, 1e14)) return;
+    const ext = x && typeof x === 'object' ? x : {}, X = x10 / 10, Z = z10 / 10, [mx, mz] = hMe();
+    let e = HOOD.byEnt.get(id);
+    if (!e) { if (Math.hypot(X - mx, Z - mz) > 450) return; e = hMake(id, ext.d); if (!e) return; e.x = X; e.z = Z; e.yaw = y100 / 100; }
+    // we both grabbed them at once: whoever grabbed first keeps them
+    if (e.own === 'me') { if (ct > (e.ct || 0) || (ct === e.ct && p.id > NET.id)) return; if (HOOD.ride && HOOD.ride.e === e) hRideOut(true); }
+    e.own = p.id; e.ct = ct; e.seen = now;
+    const P = Array.isArray(ext.p) && ext.p.length === 3 && ext.p.every(v => hNum(v, -3e5, 3e5)) ? { x: ext.p[0] / 10, z: ext.p[1] / 10, yaw: ext.p[2] / 100 } : null;
+    const N = gpsGraph().nx.length, ab = ext.ab, AB = Array.isArray(ab) && ab.length === 3 && Number.isInteger(ab[0]) && Number.isInteger(ab[1]) && ab[0] >= 0 && ab[0] < N && ab[1] >= 0 && ab[1] < N && hNum(ab[2], 0, 1e5) ? [ab[0], ab[1], ab[2] / 10] : null;
+    e.rt = { x: X, z: Z, yaw: y100 / 100, sp: sp10 / 10, m: H_MODES[mi] || 'idle', inCar: !!(fl & 1), down: !!(fl & 2), gd: fl & 4 ? 1 : 0, hide: !!(fl & 8), ge: hNum(ext.ge, -100, 100) ? ext.ge / 100 : 0, p: P, ab: AB, by: typeof ext.by === 'string' && ext.by.length <= 16 ? ext.by : '' };
+  }
+  function hShotOut(e, t, k) { if (hOn() && HNET.shots.length < 24) HNET.shots.push([e.id, Math.round(t.x * 10), Math.round(t.y * 10), Math.round(t.z * 10), k]); }
+  function hShotIn(s) {
+    if (!Array.isArray(s) || s.length < 5 || !s.slice(1, 5).every(v => hNum(v, -3e5, 3e5))) return;
+    const e = HOOD.byEnt.get(s[0]), G = window.__guns; if (!e || e.own === 'me' || e.gone || !e.g.visible || !G || !G.pv) return;
+    try { G.pv.fxInit(); G.pv.pvPlay({ p: { view: e.view, gun: { id: e.gunId }, name: e.name }, o: new THREE.Vector3(e.x, (e.gy || 0) + 1.4, e.z), h: new THREE.Vector3(s[1] / 10, s[2] / 10, s[3] / 10), k: [1, 3, 4].includes(s[4]) ? s[4] : 1 }); } catch (er) {}
+  }
+  function hHitIn(p, a) {
+    if (!Array.isArray(a) || a[2] !== NET.id || !hNum(a[1], 0, 200)) return;
+    const e = HOOD.byEnt.get(a[0]); if (!e || e.own !== 'me' || e.down) return;
+    hApplyHit(e, Math.min(80, a[1]), p.id);
+  }
+  function hTurfIn(list) {
+    if (HNET.turfRoom !== NET.room) { HNET.turf = {}; HNET.turfRoom = NET.room; }
+    let ch = false;
+    for (const it of list.slice(0, 80)) {
+      if (!Array.isArray(it) || typeof it[0] !== 'string' || !/^\d+,\d+$/.test(it[0]) || !hNum(it[2], 0, 1e14)) continue;
+      const g = typeof it[1] === 'string' ? hFromNet(it[1]) : null; if (g !== null && !(HOOD_SETS[g] || g === 'own' || /^o:\w{1,24}$/.test(g))) continue;
+      const cur = HNET.turf[it[0]]; if (cur && cur[1] >= it[2]) continue;
+      HNET.turf[it[0]] = [g, it[2]]; ch = true;
+      const b = HOOD.byId.get(it[0]); if (b && b.crew.length && b.crew[0].gang !== hOwner(b)) for (const e of b.crew.slice()) hKill(e);
+    }
+    if (ch && BM.open) bmDirty();
+  }
+  NET_HOOK.hello.push(() => {
+    if (!HOOD.ready || !S) return {};
+    const h = hS(), t = hNow();
+    return { hc: t, htf: Object.entries(HNET.turf).map(([id, v]) => [id, v[0] ? hToNet(v[0]) : null, v[1]]), hbd: HOOD.blocks.filter(b => b.down > t).map(b => [b.id, b.down]), hos: h.own ? { n: h.own.name, c: h.own.color, b: S.name || '' } : 0 };
+  });
+  NET_HOOK.urgent.push(() => HNET.shots.length > 0 || HNET.hits.length > 0 || HNET.tfOut.length > 0 || (performance.now() / 1000 - HNET.sentAt > 0.2 && HOOD.ents.some(e => e.own === 'me' && !e.gone)));
+  NET_HOOK.state.push(() => {
+    const out = {}, now = performance.now() / 1000;
+    if (HOOD.ride) out.hr = 1;
+    if (now - HNET.sentAt >= 0.15) {
+      const [mx, mz] = hMe(), mine = HOOD.ents.filter(e => e.own === 'me' && !e.gone).sort((a, b) => Math.hypot(a.x - mx, a.z - mz) - Math.hypot(b.x - mx, b.z - mz)).slice(0, 14);
+      if (mine.length) { HNET.sentAt = now; out.ha = mine.map(hPack); }
+    }
+    if (HNET.shots.length) out.hs = HNET.shots.splice(0, 12);
+    if (HNET.hits.length) out.hh = HNET.hits.splice(0, 12);
+    if (HNET.tfOut.length) out.htf = HNET.tfOut.splice(0, 20);
+    return out;
+  });
+  NET_HOOK.recv.push((p, m, now) => {
+    if (m.k === 'h') {
+      if (m.hos && typeof m.hos === 'object' && typeof m.u === 'string' && /^\w{1,24}$/.test(m.u)) HNET.owns[m.u] = { name: nText(m.hos.n).slice(0, 18) || 'Set', color: /^#[0-9a-fA-F]{6}$/.test(m.hos.c) ? m.hos.c : '#aaaaaa', boss: nName(m.hos.b, 'a player') };
+      // the server's clock is the first player's (lowest id), so everybody's regulars are in the same place
+      if (hNum(m.hc, 1e12, 1e14)) { p.hc = 1; const lead = [NET.id, ...[...NET.peers.values()].filter(q => q.hc).map(q => q.id)].sort()[0]; if (lead === p.id) HNET.clk = m.hc + 60 - Date.now(); }
+      if (Array.isArray(m.htf)) hTurfIn(m.htf);
+      if (Array.isArray(m.hbd)) for (const it of m.hbd.slice(0, 80)) { const b = Array.isArray(it) && HOOD.byId.get(it[0]); if (b && hNum(it[1], 0, 1e14) && it[1] > (b.down || 0)) b.down = Math.min(it[1], hNow() + 300000); }
+      return;
+    }
+    if (m.k !== 's') return;
+    p.hr = !!m.hr;
+    if (Array.isArray(m.htf)) hTurfIn(m.htf);
+    if (!HOOD.ready || !worldOn || !S) return;
+    if (Array.isArray(m.ha)) for (const a of m.ha.slice(0, 20)) hStateIn(p, a, now);
+    if (Array.isArray(m.hs)) for (const a of m.hs.slice(0, 12)) hShotIn(a);
+    if (Array.isArray(m.hh)) for (const a of m.hh.slice(0, 12)) hHitIn(p, a);
+  });
+  // riding with one of the regulars: you're in their car, not walking next to it
+  NET_HOOK.draw.push((p, v) => { if (p.hr) v.g.visible = false; });
+
   // ---------- every frame in the world (riding on stepStreet) ----------
   function hoodTick(dt) {
     if (!S || !DATA || !worldOn) return;
     if (!HOOD.ready) { if (CROWD.length < 2) return; try { hBuild(); } catch (er) { console.warn('hood', er); HOOD.ready = true; } HOOD.group = new THREE.Group(); HOOD.group.name = 'hood'; scene.add(HOOD.group); hS(); return; }
     HOOD.group.visible = driving;
+    hRoom();
     if (!driving) return;
     hBuildBases();
     const [mx, mz] = hMe(), now = performance.now() / 1000, G = window.__guns, gnd = G && G.test && G.test.groundAt;
@@ -11048,7 +11292,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       if (b !== HOOD.cur) { const o0 = HOOD.cur && hOwner(HOOD.cur), o1 = b && hOwner(b); HOOD.cur = b; if (b && o1 !== o0 && performance.now() - HOOD.toldT > 8000) { HOOD.toldT = performance.now(); if (o1) toast(`${setOf(o1).name} turf · ${b.name}${hHostile(o1) ? ' · they want smoke' : o1 === hS().set ? ' · your set' : ''}`, hHostile(o1) ? 'bad' : ''); } }
     }
     if ((frame & 31) === 0) {
-      hSpawn(mx, mz);
+      hSpawn(mx, mz); if ((frame & 63) === 0) hRelease(mx, mz);
       const h = hS(); if (h.set && h.homies && !HOOD.ents.some(e => e.kind === 'homie' && !e.gone)) hHomies(Math.min(h.homies, hRank().homies));
       HOOD.slideT -= 32 / 60; if (HOOD.slideT <= 0) { HOOD.slideT = 200 + hRnd() * 160; if (!(G && G.pv && G.pv.PV.down > 0)) { if (hRnd() < 0.6) hOppSlide(mx, mz); else hSetSlide(mx, mz); } }
     }
@@ -11060,14 +11304,16 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     for (const e of HOOD.ents) {
       if (e.gone) continue;
       const d = Math.hypot(e.x - mx, e.z - mz);
-      if (e.down) { e.t += dt; e.deadAt = now; if (e.t > 50 || d > 360) { hKill(e); continue; } }
-      else if (e.kind === 'member') hMember(e, dt, mx, mz, d, aiming && d < 40);
+      if (e.own && e.own !== 'me' && !e.down) hRemote(e, dt, now);   // another player is running this one
+      else if (e.down) { if (e.own && e.own !== 'me') hRemote(e, dt, now); e.t += dt; e.deadAt = now; if (e.t > 50 || d > 360) { hKill(e); continue; } }
+      else if (e.kind === 'member') { hMember(e, dt, mx, mz, d, aiming && d < 40); if (!e.own && e.mode !== 'idle') hClaim(e); }
       else if (e.kind === 'homie') hHomie(e, dt, mx, mz);
-      else hRegBrain(e, dt, mx, mz, d);
+      else if (!e.own && e.mode === 'cruise' && e.sn != null) hRegAmbient(e, dt, mx, mz, d);
+      else { hRegBrain(e, dt, mx, mz, d); if (!e.own && !/cruise|hang/.test(e.mode)) hClaim(e); }
       if (e.gone) continue;
       if (e.kind === 'member' && e.slider && !e.down && d > 260) { hKill(e); continue; }
       // a hold-it-down job is done once the sliders are dropped
-      const vis = d < (e.inCar ? 420 : 170); e.g.visible = vis && !(e.kind === 'homie' && hInCar());
+      const vis = d < (e.inCar ? 420 : 170); e.g.visible = vis && !e.hide && !(e.kind === 'homie' && e.own === 'me' && hInCar());
       if (!e.g.visible) continue;
       e.gy = gnd && !e.inCar ? gnd(e.x, e.z) : 0;
       e.g.position.set(e.x, e.inCar ? 0 : e.gy, e.z);
@@ -11095,14 +11341,14 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if (HOOD.ambT <= 0) HOOD.ambT = 6;
     HOOD.ents = HOOD.ents.filter(e => !e.gone);
     const h = hS();
-    if (h.job && h.job.kind === 'hold' && h.job.live && !HOOD.ents.some(e => e.slider && !e.down)) { h.job.live = false; hJobDone(); }
+    if (h.job && h.job.kind === 'hold' && h.job.live && !HOOD.ents.some(e => e.slider && !e.down && e.own === 'me')) { h.job.live = false; hJobDone(); }
     HOOD.near = (foot.on || hInCar()) ? near : null;
     hHoldStep(dt, mx, mz);
     if ((frame & 3) === 0 || HOOD.ride || HOOD.near !== HOOD.pillNear || HOOD.hold) { HOOD.pillNear = HOOD.near; hPill(); }
   }
   const _hStepStreet = stepStreet;
   stepStreet = function (t) { _hStepStreet.apply(this, arguments); const n = performance.now(), dt = Math.min(0.05, (n - (HOOD.last || n)) / 1000); HOOD.last = n; try { hoodTick(dt); } catch (er) { if (!HOOD.err) { HOOD.err = 1; console.error('hood', er); } } };
-  window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire };
+  window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire, HNET, hClaim, hSched, hRoutes, hNow };
 
   // ---------- your homes online: one owner per house on a server, inviting people over, knocking on doors ----------
   // Deeds are the 2D game's (supabase/rfg_servers.sql, js/net/deeds.js): on a server, a house or lot a real player
