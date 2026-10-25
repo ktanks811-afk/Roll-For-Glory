@@ -293,7 +293,7 @@ export function openTrap(loc, app) {
       take: () => { const n = moveStash(s, id, false); toast(`${n} unit${n > 1 ? 's' : ''} in your bag. Don't get pulled over.`, 'info'); h.refresh(); },
       safe: () => { const v = t.safe; t.safe = 0; earn(s, v, `${T.name}: the safe`, { dirty: true }); h.refresh(); },
       worker: () => { t.worker = !t.worker; toast(t.worker ? 'Somebody\'s on the door now. Keep the stash stocked.' : 'You sent him home.', 'info'); h.refresh(); },
-      garage: () => openGarage(app, { mode: 'home' }),
+      garage: () => openGarage(app, { mode: 'home', at: id }),
     });
   });
 }

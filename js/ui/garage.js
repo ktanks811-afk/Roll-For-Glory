@@ -4,6 +4,7 @@
 import { BREAKDOWNS, needsOil, oilInterval } from '../core/upkeep.js';
 import { openPanel, bind, esc, toast, modal, confirm, prompt, bar } from './dom.js';
 import { ensureTow } from '../core/tow.js';
+import { settle as settleGarages, haulQuote, haulCar, parkActive } from '../core/garages.js';
 import { game, fmtMoney, spend, earn, activeCar, carSpec, carMetrics, carValue, modelOf, levels, uid, carMpg, tankGallons, getCar } from '../core/state.js';
 import { ITEM_BY_ID, CATEGORY_NAMES, fits, fitNote, LABOR_RATE } from '../data/catalog.js';
 import { PERF, partLabel, FX, PAINT_SWATCHES, WHEEL_COLORS, NITROUS_REFILL, partLevels } from '../data/parts.js';
@@ -25,7 +26,7 @@ const SHOP_ONLY = new Set(['paint', 'kit', 'interior']);
 
 // mode: 'home' | 'perf' | 'visual' | 'readOnly'
 export function openGarage(app, opts = {}) {
-  const st = { tab: opts.tab || 'overview', mode: opts.mode || 'readOnly', carUid: game.s.activeCar };
+  const st = { tab: opts.tab || 'overview', mode: opts.mode || 'readOnly', carUid: opts.carUid || game.s.activeCar, at: opts.at || null };
   return openPanel((root, h) => render(root, h, app, st), { onClose: opts.onClose || null });
 }
 
@@ -487,23 +488,35 @@ function tune(body, h, app, st, s, car, m) {
 function collection(body, h, app, st, s, car, m) {
   const atHome = st.mode === 'home';
   const cap = s.properties.reduce((n, id) => n + (PROPERTIES[id]?.slots || 0), 0);
-  body.innerHTML = `<p class="muted small">${s.cars.length} / ${cap} garage spaces. ${atHome ? 'Pick a car to drive.' : 'Switch cars at home.'}</p>
+  settleGarages(s);
+  const here = atHome && st.at && PROPERTIES[st.at]?.slots ? st.at : null;
+  // a car parked at another of your garages: the hauler brings it over first
+  const elsewhere = c => here && c.uid !== s.activeCar && c.garage && c.garage !== here;
+  body.innerHTML = `<p class="muted small">${s.cars.length} / ${cap} garage spaces. ${atHome ? `Pick a car to drive.${here ? ` Cars parked at your other places can be hauled over to ${esc(PROPERTIES[here].name)}.` : ''}` : 'Switch cars at home.'}</p>
     <div class="grid">${s.cars.map(c => {
       const mm = modelOf(c), mt = carMetrics(c);
       return `<div class="card ${c.uid === st.carUid ? '' : 'click'}" data-action="view" data-uid="${c.uid}"><canvas width="320" height="180" data-thumb="${c.uid}" class="carthumb"></canvas>
         <h3>${esc(carName(mm, c.year))}</h3><div class="muted small">${Math.round(c.miles).toLocaleString()} mi · <span class="pi"><b>${mt.cls}</b>${mt.pi}</span> · ${fmtMoney(carValue(c))}</div>
-        <div class="row" style="margin-top:8px">${c.stolen ? '<span class="tag tag-red">Stolen — cops are looking</span>' : `${s.tow?.car === c.uid ? '<span class="tag">On the trailer</span> ' : s.tow?.rig && s.tow.truck === c.uid ? '<span class="tag">Parked out with the trailer</span> ' : ''}${c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : atHome ? `<button class="btn btn-sm btn-primary" data-action="drive" data-uid="${c.uid}">Drive this</button>` : ''}
+        <div class="row" style="margin-top:8px">${c.stolen ? '<span class="tag tag-red">Stolen — cops are looking</span>' : `${s.tow?.car === c.uid ? '<span class="tag">On the trailer</span> ' : s.tow?.rig && s.tow.truck === c.uid ? '<span class="tag">Parked out with the trailer</span> ' : ''}${c.uid === s.activeCar ? '<span class="tag tag-green">Driving</span>' : elsewhere(c) ? `<span class="tag">At ${esc(PROPERTIES[c.garage]?.name || 'another garage')}</span> <button class="btn btn-sm btn-primary" data-action="bring" data-uid="${c.uid}">Bring it here · ${fmtMoney(haulQuote(s, c, here).fee || 0)}</button>` : atHome ? `<button class="btn btn-sm btn-primary" data-action="drive" data-uid="${c.uid}">Drive this</button>` : ''}
         <button class="btn btn-sm" data-action="tradein" data-uid="${c.uid}">Sell to dealer ${fmtMoney(carValue(c) * 0.7)}</button>`}</div></div>`;
     }).join('')}</div>`;
   body.querySelectorAll('[data-thumb]').forEach(cv => { const c = getCar(s, cv.dataset.thumb); drawThumb(cv, modelOf(c), c.visual, c.parts, c.cond); });
   bind(body, {
     view: d => { st.carUid = d.uid; st.tab = 'overview'; h.refresh(); },
+    bring: d => {
+      const r = haulCar(s, d.uid, here, (a, l) => spend(s, a, l));
+      if (!r.ok) { toast(r.text, 'bad'); return; }
+      advanceTime(s, r.minutes);
+      toast('The hauler dropped it off. It\'s parked here now.', 'good');
+      h.refresh();
+    },
     drive: d => {
-      s.activeCar = d.uid; s.carPos = null;
+      parkActive(s, here || s.home);
+      s.activeCar = d.uid; s.carPos = null; s.carLeft = null;
       const t = s.tow, rigBack = !!(t?.rig && t.truck === d.uid), offTrailer = !!(t?.car && t.car === d.uid);
       ensureTow(s);   // the truck brings its trailer home; a car on the trailer comes off it
       const w = app.world;
-      if (w) { const home = LOC_BY_ID[s.home]; w.vehicle = null; const hs = w.homeSpot(home); w.placeCar(getCar(s, d.uid), hs.x, hs.z, hs.h); }
+      if (w) { const home = LOC_BY_ID[here || s.home]; w.vehicle = null; const hs = w.homeSpot(home); w.placeCar(getCar(s, d.uid), hs.x, hs.z, hs.h); }
       toast(`Now driving your ${modelOf(getCar(s, d.uid)).model}.${rigBack ? ' A buddy drove it and the trailer home for you.' : offTrailer ? ' You unloaded it off the trailer.' : ''}`, 'good');
       h.refresh();
     },
