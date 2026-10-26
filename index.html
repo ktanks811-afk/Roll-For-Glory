@@ -14270,6 +14270,585 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
   window.__boats = { scene, camera, BOAT_BY, BOAT, BOATS, MAR, takeOut, endTrip, boatModel, fleet, waterY, WTR, WU, RF, newRec, dockMenu, boatWet };
   })();
   // ==== boats+water (end) ====
+  // ==== realistic buildings (begin) ====
+  // Stores, warehouses, crates, shipping containers, barns, churches, sheds and silos get real walls instead of
+  // plain boxes: brick and stucco with windows (lit at random at night), storefront glass, roll-up dock doors,
+  // corrugated metal, tilt-up concrete, parapets, awnings and roof gear.
+  // Everything is one atlas material (MAT.bld): uv.x carries the tile as tile*100 + u, and the shader repeats
+  // inside that tile, so a whole part of town is still one draw call. The alpha of the atlas says which pixels
+  // take the building's colour (bricks, siding) and which keep their own (glass, frames, mortar, stone).
+  // Stores, warehouses, churches and barns have a door you can walk in on foot (generic places, p.gen).
+  const BLD = (() => {
+    const AT = 2048, TS = 512, PAD = 16, IS = TS - 2 * PAD, EAT = 1024;
+    const T = { brickWin: 0, stuccoWin: 1, brick: 2, metal: 3, clere: 4, rollup: 5, front: 6, door: 7, crate: 8, board: 9, cont: 10, contEnd: 11, chWin: 12, roof: 13, barnDoor: 14, panel: 15 };
+    // metres per repeat of each tile (decals are 1 x 1: stretched over the quad)
+    const SIZE = [[8, 7], [8, 7], [4, 4], [4, 4], [8, 2], [1, 1], [8, 4.2], [1, 1], [1, 1], [3, 3], [6.1, 2.6], [1, 1], [1, 1], [8, 8], [1, 1], [7.5, 9]];
+    let R = 1;
+    const rr = () => { R = (R * 16807) % 2147483647; return R / 2147483647; };
+
+    // ---------- atlas ----------
+    // each tile is drawn at IS x IS into three canvases: colour, wall mask (white = takes the building colour), glow
+    function drawTile(i) {
+      const mk = () => { const c = document.createElement('canvas'); c.width = c.height = IS; return c; };
+      const C = mk(), M = mk(), E = mk(), c = C.getContext('2d'), m = M.getContext('2d'), e = E.getContext('2d');
+      m.fillStyle = '#000'; m.fillRect(0, 0, IS, IS); e.fillStyle = '#000'; e.fillRect(0, 0, IS, IS);
+      const [tw, th] = SIZE[i], sx = IS / tw, sy = IS / th;
+      // rect in metres, y up from the bottom of the tile
+      const rect = (ctx, x0, y0, x1, y1, f) => { ctx.fillStyle = f; ctx.fillRect(x0 * sx, IS - y1 * sy, (x1 - x0) * sx, (y1 - y0) * sy); };
+      const both = (x0, y0, x1, y1, f, wall) => { rect(c, x0, y0, x1, y1, f); rect(m, x0, y0, x1, y1, wall ? '#fff' : '#000'); };
+      const noise = (n, a, b, x0 = 0, y0 = 0, x1 = tw, y1 = th) => { for (let k = 0; k < n; k++) { c.fillStyle = rr() < 0.5 ? a : b; c.fillRect((x0 + rr() * (x1 - x0)) * sx, IS - (y0 + rr() * (y1 - y0)) * sy, 1 + rr() * 2, 1 + rr() * 2); } };
+      const bricks = (x0, y0, x1, y1) => {
+        both(x0, y0, x1, y1, '#bdb8ae', false);   // mortar keeps its own colour
+        const ch = 0.0762, bl = 0.2286;
+        for (let r = 0, y = y0; y < y1; r++, y += ch) {
+          for (let x = x0 - (r % 2) * bl / 2; x < x1; x += bl) {
+            const v = 200 + Math.floor(rr() * 55), a = Math.max(x, x0) + 0.008, b = Math.min(x + bl, x1) - 0.008;
+            if (b > a) both(a, y + 0.01, b, Math.min(y + ch, y1), `rgb(${v},${v},${v})`, true);
+          }
+        }
+      };
+      const stucco = (x0, y0, x1, y1) => { both(x0, y0, x1, y1, '#f2f2f0', true); noise(Math.floor((x1 - x0) * (y1 - y0) * 260), '#e2e2e0', '#fbfbfa', x0, y0, x1, y1); };
+      const glass = (x0, y0, x1, y1, a = '#4a5a6a', b = '#1a222a') => {
+        const g = c.createLinearGradient(0, IS - y1 * sy, 0, IS - y0 * sy); g.addColorStop(0, a); g.addColorStop(0.55, b); g.addColorStop(1, '#2a3440');
+        rect(c, x0, y0, x1, y1, g); rect(m, x0, y0, x1, y1, '#000');
+        // a streak of sky in the glass
+        c.fillStyle = 'rgba(255,255,255,0.10)'; c.beginPath(); c.moveTo(x0 * sx, IS - y1 * sy); c.lineTo((x0 + (x1 - x0) * 0.45) * sx, IS - y1 * sy); c.lineTo(x0 * sx, IS - (y1 - (y1 - y0) * 0.6) * sy); c.fill();
+      };
+      const glow = (x0, y0, x1, y1, f) => {   // room light: brighter near the ceiling, falling off toward the sill
+        if (f) { rect(e, x0, y0, x1, y1, f); return; }
+        const g = e.createLinearGradient(0, IS - y1 * sy, 0, IS - y0 * sy); g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, '#a89c8c'); g.addColorStop(1, '#5a5048'); rect(e, x0, y0, x1, y1, g);
+      };
+      // a window with a frame, sill, lintel, mullions and sometimes blinds
+      const win = (x0, y0, x1, y1, frame, stone, mul) => {
+        if (stone) { both(x0 - 0.1, y0 - 0.14, x1 + 0.1, y0, stone, false); both(x0 - 0.06, y1, x1 + 0.06, y1 + 0.22, stone, false); }
+        both(x0, y0, x1, y1, frame, false);
+        const f = 0.06; glass(x0 + f, y0 + f, x1 - f, y1 - f); glow(x0 + f, y0 + f, x1 - f, y1 - f);
+        for (let k = 1; k < mul; k++) { const x = x0 + (x1 - x0) * k / mul; both(x - 0.025, y0, x + 0.025, y1, frame, false); }
+        if (rr() < 0.35) { const b = (y1 - y0) * (0.2 + rr() * 0.5); both(x0 + f, y1 - f - b, x1 - f, y1 - f, '#d8d0bc', false); for (let y = y1 - f - b; y < y1 - f; y += 0.05) rect(c, x0 + f, y, x1 - f, y + 0.012, 'rgba(0,0,0,0.12)'); glow(x0 + f, y1 - f - b, x1 - f, y1 - f, '#806040'); }
+      };
+      switch (i) {
+        case T.brickWin: {
+          bricks(0, 0, 8, 7);
+          for (let f = 0; f < 2; f++) for (let b = 0; b < 2; b++) win(b * 4 + 1.3, f * 3.5 + 0.95, b * 4 + 2.7, f * 3.5 + 2.95, '#2c2e32', '#d6cfbf', 2);
+          break;
+        }
+        case T.stuccoWin: {
+          stucco(0, 0, 8, 7);
+          for (let f = 0; f < 2; f++) {
+            rect(c, 0, f * 3.5 + 3.47, 8, f * 3.5 + 3.5, 'rgba(0,0,0,0.18)');
+            for (let b = 0; b < 2; b++) {
+              const x0 = b * 4 + 0.6, x1 = b * 4 + 3.4, y0 = f * 3.5 + 1.0, y1 = f * 3.5 + 2.8;
+              both(x0, y0, x1, y1, '#8d9298', false); glass(x0 + 0.05, y0 + 0.05, x1 - 0.05, y1 - 0.05, '#5a7480', '#22303a'); glow(x0 + 0.05, y0 + 0.05, x1 - 0.05, y1 - 0.05);
+              for (let k = 1; k < 4; k++) { const x = x0 + (x1 - x0) * k / 4; both(x - 0.025, y0, x + 0.025, y1, '#8d9298', false); }
+              rect(c, x0, y0 - 0.05, x1, y0, 'rgba(0,0,0,0.25)');
+            }
+          }
+          break;
+        }
+        case T.brick: bricks(0, 0, 4, 4); break;
+        case T.metal: {
+          both(0, 0, 4, 4, '#ececec', true);
+          for (let x = 0; x < 4; x += 0.3) { const g = c.createLinearGradient(x * sx, 0, (x + 0.3) * sx, 0); g.addColorStop(0, '#f6f6f6'); g.addColorStop(0.35, '#d8d8d8'); g.addColorStop(0.5, '#bdbdbd'); g.addColorStop(0.65, '#e4e4e4'); g.addColorStop(1, '#f6f6f6'); rect(c, x, 0, x + 0.3, 4, g); }
+          const d = c.createLinearGradient(0, IS * 0.75, 0, IS); d.addColorStop(0, 'rgba(90,80,60,0)'); d.addColorStop(1, 'rgba(90,80,60,0.18)'); c.fillStyle = d; c.fillRect(0, 0, IS, IS);
+          break;
+        }
+        case T.clere: {
+          both(0, 0, 8, 2, '#e8e8e8', true);
+          for (let x = 0; x < 8; x += 0.3) rect(c, x + 0.12, 0, x + 0.18, 2, '#c4c4c4');
+          for (let k = 0; k < 4; k++) {
+            const x0 = k * 2 + 0.25, x1 = k * 2 + 1.75, y0 = 0.4, y1 = 1.6;
+            both(x0, y0, x1, y1, '#6e7278', false); glass(x0 + 0.05, y0 + 0.05, x1 - 0.05, y1 - 0.05, '#7890a0', '#3a4a58'); glow(x0 + 0.05, y0 + 0.05, x1 - 0.05, y1 - 0.05);
+            for (let g = 1; g < 3; g++) both(x0 + (x1 - x0) * g / 3 - 0.02, y0, x0 + (x1 - x0) * g / 3 + 0.02, y1, '#6e7278', false);
+          }
+          break;
+        }
+        case T.rollup: {
+          both(0, 0, 1, 1, '#4a4c50', false);
+          both(0.05, 0, 0.95, 0.94, '#e0e0e0', true);
+          for (let y = 0; y < 0.94; y += 0.035) { rect(c, 0.05, y, 0.95, y + 0.006, 'rgba(0,0,0,0.28)'); rect(c, 0.05, y + 0.006, 0.95, y + 0.01, 'rgba(255,255,255,0.4)'); }
+          both(0.05, 0, 0.95, 0.025, '#1a1a1a', false);
+          rect(c, 0.46, 0.06, 0.54, 0.08, '#555');
+          break;
+        }
+        case T.front: {
+          // fascia for the sign, two glass bays with a door in the second, bulkheads
+          both(0, 3.35, 8, 4.2, '#d8d8d8', true); rect(c, 0, 3.35, 8, 3.42, 'rgba(0,0,0,0.3)');
+          for (let b = 0; b < 2; b++) {
+            const X = b * 4;
+            both(X, 0, X + 4, 3.35, '#2e3034', false);
+            both(X + 0.12, 0, X + 3.88, 0.5, '#cfcfcf', true);
+            const panes = b ? [[0.15, 1.85], [3.0, 3.85]] : [[0.15, 1.95], [2.05, 3.85]];
+            for (const [a, z] of panes) {
+              // shelves and goods seen through the glass
+              glass(X + a, 0.55, X + z, 2.55, '#56636e', '#2a323a');
+              glow(X + a, 0.55, X + z, 2.55, '#5a4e40');
+              for (let s = 0; s < 3; s++) { const y = 0.75 + s * 0.55; rect(c, X + a, y, X + z, y + 0.04, 'rgba(200,200,200,0.35)'); rect(e, X + a, y, X + z, y + 0.04, '#c8c0b0'); for (let q = X + a + 0.05; q < X + z - 0.1; q += 0.09 + rr() * 0.06) { const hu = Math.floor(rr() * 360), hh = y + 0.12 + rr() * 0.12; rect(c, q, y + 0.04, q + 0.07, hh, `hsla(${hu},55%,${40 + Math.floor(rr() * 25)}%,0.55)`); rect(e, q, y + 0.04, q + 0.07, hh, `hsl(${hu},50%,45%)`); } }
+              rect(e, X + a, 2.3, X + z, 2.55, '#fff4dc');
+              glass(X + a, 2.62, X + z, 3.25, '#6a7884', '#36404a'); glow(X + a, 2.62, X + z, 3.25, '#d0b080');
+            }
+            if (b) {   // the door: glass in a frame, push bar, transom
+              both(X + 1.95, 0, X + 2.95, 2.55, '#2e3034', false); glass(X + 2.03, 0.08, X + 2.87, 2.45, '#4e5c68', '#20282e'); glow(X + 2.03, 0.08, X + 2.87, 2.45, '#7a6a58');
+              rect(c, X + 2.08, 1.0, X + 2.82, 1.05, '#b8bcc0'); glass(X + 1.95, 2.62, X + 2.95, 3.25, '#6a7884', '#36404a'); glow(X + 1.95, 2.62, X + 2.95, 3.25, '#d0b080');
+            } else if (rr() < 2) {   // neon OPEN sign in the first window
+              c.font = `700 ${Math.floor(0.3 * sy)}px Arial`; c.textAlign = 'center'; c.textBaseline = 'middle';
+              rect(c, 0.55, 1.75, 1.55, 2.15, 'rgba(20,10,10,0.6)'); c.fillStyle = '#ff5a4a'; c.fillText('OPEN', 1.05 * sx, IS - 1.95 * sy);
+              e.font = c.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#ff3020'; e.fillText('OPEN', 1.05 * sx, IS - 1.95 * sy);
+              rect(c, 2.4, 1.0, 3.4, 2.2, '#f0e8d8'); rect(c, 2.5, 1.9, 3.3, 2.1, '#c0392b'); rect(c, 2.5, 1.2, 3.3, 1.7, 'rgba(40,40,40,0.5)');
+            }
+          }
+          break;
+        }
+        case T.door: {
+          both(0, 0, 1, 1, '#3a3c40', false);
+          both(0.08, 0, 0.92, 0.96, '#d4d4d4', true);
+          rect(c, 0.14, 0.62, 0.86, 0.9, 'rgba(0,0,0,0.12)'); rect(c, 0.14, 0.08, 0.86, 0.36, 'rgba(0,0,0,0.12)');
+          rect(c, 0.72, 0.42, 0.84, 0.47, '#a8a8a8'); rect(c, 0.74, 0.47, 0.77, 0.5, '#888');
+          break;
+        }
+        case T.crate: {
+          both(0, 0, 1, 1, '#e4e4e4', true);
+          for (let y = 0; y < 1; y += 0.125) { const v = 205 + Math.floor(rr() * 45); rect(c, 0, y, 1, y + 0.122, `rgb(${v},${v},${v})`); rect(c, 0, y, 1, y + 0.006, 'rgba(0,0,0,0.35)'); }
+          noise(500, 'rgba(0,0,0,0.12)', 'rgba(255,255,255,0.15)');
+          const fr = '#a8a8a8'; rect(c, 0, 0, 1, 0.09, fr); rect(c, 0, 0.91, 1, 1, fr); rect(c, 0, 0, 0.09, 1, fr); rect(c, 0.91, 0, 1, 1, fr);
+          c.save(); c.translate(0.09 * sx, IS - 0.09 * sy); c.rotate(-Math.atan2(0.82 * sy, 0.82 * sx)); c.fillStyle = fr; c.fillRect(0, -0.045 * sy, Math.hypot(0.82 * sx, 0.82 * sy), 0.09 * sy); c.restore();
+          for (const [x, y] of [[0.045, 0.045], [0.955, 0.045], [0.045, 0.955], [0.955, 0.955]]) rect(c, x - 0.01, y - 0.01, x + 0.01, y + 0.01, '#444');
+          c.font = `700 ${Math.floor(0.09 * sy)}px Arial`; c.fillStyle = 'rgba(30,30,30,0.6)'; c.textAlign = 'center'; c.fillText(['FRAGILE', 'THIS SIDE UP', 'MW FREIGHT', 'KEEP DRY'][Math.floor(rr() * 4)], 0.5 * sx, IS - 0.72 * sy);
+          break;
+        }
+        case T.board: {
+          both(0, 0, 3, 3, '#e8e8e8', true);
+          for (let x = 0; x < 3; x += 0.3) { const v = 200 + Math.floor(rr() * 50); rect(c, x, 0, x + 0.3, 3, `rgb(${v},${v},${v})`); rect(c, x + 0.27, 0, x + 0.33, 3, '#c8c8c8'); rect(c, x + 0.32, 0, x + 0.33, 3, 'rgba(0,0,0,0.35)'); }
+          noise(2500, 'rgba(0,0,0,0.10)', 'rgba(255,255,255,0.12)');
+          for (let k = 0; k < 40; k++) { const x = rr() * 3, y = rr() * 3; rect(c, x, y, x + 0.01, y + 0.2 + rr() * 0.6, 'rgba(0,0,0,0.12)'); }
+          break;
+        }
+        case T.cont: {
+          both(0, 0, 6.1, 2.6, '#e0e0e0', true);
+          for (let x = 0.1; x < 6; x += 0.28) { rect(c, x, 0.12, x + 0.07, 2.48, '#f4f4f4'); rect(c, x + 0.07, 0.12, x + 0.1, 2.48, '#b8b8b8'); rect(c, x + 0.17, 0.12, x + 0.2, 2.48, '#cfcfcf'); }
+          rect(c, 0, 0, 6.1, 0.12, '#9a9a9a'); rect(c, 0, 2.48, 6.1, 2.6, '#9a9a9a');
+          noise(1800, 'rgba(110,60,30,0.18)', 'rgba(255,255,255,0.1)', 0, 0, 6.1, 0.6);
+          c.font = `700 ${Math.floor(0.22 * sy)}px Arial`; c.fillStyle = 'rgba(255,255,255,0.85)'; c.fillText('MWSU 40' + Math.floor(1000 + rr() * 8999), 0.3 * sx, IS - 2.1 * sy);
+          break;
+        }
+        case T.contEnd: {
+          both(0, 0, 1, 1, '#e0e0e0', true);
+          for (let y = 0.05; y < 0.95; y += 0.05) rect(c, 0.04, y, 0.96, y + 0.012, 'rgba(0,0,0,0.12)');
+          both(0, 0, 0.04, 1, '#8a8a8a', false); both(0.96, 0, 1, 1, '#8a8a8a', false); both(0, 0, 1, 0.04, '#8a8a8a', false); both(0, 0.96, 1, 1, '#8a8a8a', false);
+          both(0.495, 0.04, 0.505, 0.96, '#555', false);
+          for (const x of [0.16, 0.36, 0.64, 0.84]) { both(x - 0.012, 0.04, x + 0.012, 0.96, '#b4b8bc', false); both(x - 0.03, 0.42, x + 0.03, 0.47, '#9a9ea2', false); }
+          break;
+        }
+        case T.chWin: {
+          both(0, 0, 1, 1, '#d8d0bc', false);
+          noise(800, '#ccc4b0', '#e4dccb');
+          // pointed (lancet) arch in coloured glass with lead lines
+          const path = (ctx) => { ctx.beginPath(); ctx.moveTo(0.18 * IS, IS * 0.97); ctx.lineTo(0.18 * IS, IS * 0.36); ctx.quadraticCurveTo(0.18 * IS, IS * 0.08, 0.5 * IS, IS * 0.03); ctx.quadraticCurveTo(0.82 * IS, IS * 0.08, 0.82 * IS, IS * 0.36); ctx.lineTo(0.82 * IS, IS * 0.97); ctx.closePath(); };
+          const cols = ['#b02a2a', '#2a52b0', '#e0b030', '#2a8a4a', '#7a2ab0', '#e07a20'];
+          c.save(); path(c); c.clip(); e.save(); path(e); e.clip();
+          for (let y = 0; y < IS; y += IS / 14) for (let x = 0; x < IS; x += IS / 6) { const k = cols[Math.floor(rr() * cols.length)]; c.fillStyle = k; c.fillRect(x, y, IS / 6, IS / 14); e.fillStyle = k; e.fillRect(x, y, IS / 6, IS / 14); }
+          c.strokeStyle = '#1a1a1a'; c.lineWidth = 3; for (let y = 0; y < IS; y += IS / 14) { c.beginPath(); c.moveTo(0, y); c.lineTo(IS, y); c.stroke(); } for (let x = 0; x < IS; x += IS / 6) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, IS); c.stroke(); }
+          c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(0, 0, IS, IS);
+          c.restore(); e.restore();
+          path(c); c.lineWidth = 8; c.strokeStyle = '#3a3630'; c.stroke();
+          rect(c, 0.1, 0, 0.9, 0.03, '#c4bca8');
+          break;
+        }
+        case T.roof: {
+          both(0, 0, 8, 8, '#e6e6e6', true);
+          noise(6000, '#d6d6d6', '#f2f2f2');
+          for (let y = 0; y < 8; y += 1.0) rect(c, 0, y, 8, y + 0.03, 'rgba(0,0,0,0.12)');
+          for (let k = 0; k < 6; k++) { const x = rr() * 8, y = rr() * 8, r = (0.4 + rr()) * sx, g = c.createRadialGradient(x * sx, IS - y * sy, 0, x * sx, IS - y * sy, r); g.addColorStop(0, 'rgba(60,50,40,0.18)'); g.addColorStop(1, 'rgba(60,50,40,0)'); c.fillStyle = g; c.fillRect(x * sx - r, IS - y * sy - r, r * 2, r * 2); }
+          break;
+        }
+        case T.barnDoor: {
+          both(0, 0, 1, 1, '#e8e8e8', true);
+          for (let x = 0; x < 1; x += 0.08) { const v = 205 + Math.floor(rr() * 45); rect(c, x, 0, x + 0.078, 1, `rgb(${v},${v},${v})`); rect(c, x + 0.077, 0, x + 0.08, 1, 'rgba(0,0,0,0.3)'); }
+          const tr = '#f2efe8';
+          for (const [a, b, z, d] of [[0, 0, 1, 0.07], [0, 0.93, 1, 1], [0, 0, 0.06, 1], [0.94, 0, 1, 1], [0.47, 0, 0.53, 1]]) both(a, b, z, d, tr, false);
+          for (const X of [0, 0.5]) { c.save(); m.save(); for (const ctx of [c, m]) { ctx.strokeStyle = ctx === c ? tr : '#000'; ctx.lineWidth = 0.05 * IS; ctx.beginPath(); ctx.moveTo((X + 0.05) * IS, IS * 0.07); ctx.lineTo((X + 0.45) * IS, IS * 0.93); ctx.moveTo((X + 0.45) * IS, IS * 0.07); ctx.lineTo((X + 0.05) * IS, IS * 0.93); ctx.stroke(); } c.restore(); m.restore(); }
+          break;
+        }
+        case T.panel: {
+          both(0, 0, 7.5, 9, '#ececea', true);
+          noise(5000, '#e0e0de', '#f6f6f4');
+          for (const y of [3.0, 6.0]) rect(c, 0, y, 7.5, y + 0.04, 'rgba(0,0,0,0.16)');
+          rect(c, 0, 0, 0.03, 9, 'rgba(0,0,0,0.3)'); rect(c, 7.47, 0, 7.5, 9, 'rgba(255,255,255,0.4)');
+          for (let k = 0; k < 10; k++) { const x = rr() * 7.5; rect(c, x, 0.5 + rr() * 4, x + 0.05 + rr() * 0.1, 9, 'rgba(80,70,60,0.05)'); }
+          break;
+        }
+      }
+      return { C, M, E };
+    }
+    function buildAtlas() {
+      R = 4242;
+      const col = document.createElement('canvas'); col.width = col.height = AT;
+      const em = document.createElement('canvas'); em.width = em.height = EAT;
+      const mask = document.createElement('canvas'); mask.width = mask.height = AT;
+      const cc = col.getContext('2d'), ec = em.getContext('2d'), mc = mask.getContext('2d');
+      ec.fillStyle = '#000'; ec.fillRect(0, 0, EAT, EAT);
+      for (let i = 0; i < 16; i++) {
+        const { C, M, E } = drawTile(i), ox = (i % 4) * TS, oy = Math.floor(i / 4) * TS;
+        // the tile plus its wrap-around in the gutter so mipmaps and filtering stay seamless
+        for (const [ctx, src, k] of [[cc, C, 1], [mc, M, 1], [ec, E, EAT / AT]]) {
+          ctx.save(); ctx.beginPath(); ctx.rect(ox * k, oy * k, TS * k, TS * k); ctx.clip();
+          for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) ctx.drawImage(src, (ox + PAD + a * IS) * k, (oy + PAD + b * IS) * k, IS * k, IS * k);
+          ctx.restore();
+        }
+      }
+      // colour + mask into one RGBA texture (canvas alpha would lose the colour under it)
+      const cd = cc.getImageData(0, 0, AT, AT).data, md = mc.getImageData(0, 0, AT, AT).data, data = new Uint8Array(AT * AT * 4);
+      for (let y = 0; y < AT; y++) {
+        const src = y * AT * 4, dst = (AT - 1 - y) * AT * 4;
+        for (let x = 0; x < AT * 4; x += 4) { data[dst + x] = cd[src + x]; data[dst + x + 1] = cd[src + x + 1]; data[dst + x + 2] = cd[src + x + 2]; data[dst + x + 3] = md[src + x]; }
+      }
+      const map = new THREE.DataTexture(data, AT, AT, THREE.RGBAFormat);
+      map.encoding = THREE.sRGBEncoding; map.generateMipmaps = true; map.minFilter = THREE.LinearMipmapLinearFilter; map.magFilter = THREE.LinearFilter;
+      map.anisotropy = renderer.capabilities.getMaxAnisotropy ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 4; map.needsUpdate = true;
+      const emt = new THREE.CanvasTexture(em); emt.encoding = THREE.sRGBEncoding;
+      return { map, emt };
+    }
+    function makeMaterial() {
+      const { map, emt } = buildAtlas(), gl2 = !!renderer.capabilities.isWebGL2;
+      const m = new THREE.MeshStandardMaterial({ map, vertexColors: true, roughness: 0.82, metalness: 0, emissiveMap: emt, emissive: 0xffffff, emissiveIntensity: 0 });
+      const P = (PAD / AT).toFixed(6), I = (IS / AT).toFixed(6);
+      const samp = (tex) => gl2 ? `textureGrad(${tex}, bUV, dFdx(bLoc) * bI, dFdy(bLoc) * bI)` : `texture2D(${tex}, bUV)`;
+      m.onBeforeCompile = (sh) => {
+        sh.uniforms.detailMap = { value: TEX.detail };
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform sampler2D detailMap;\nfloat bHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }')
+          .replace('#include <map_fragment>', `
+            float bTile = floor((vUv.x + 0.01) / 100.0);
+            vec2 bLoc = vec2(vUv.x - bTile * 100.0, vUv.y);
+            vec2 bOrg = vec2(mod(bTile, 4.0), 3.0 - floor(bTile / 4.0)) * 0.25;
+            float bI = ${I};
+            vec2 bUV = bOrg + ${P} + fract(bLoc) * bI;
+            vec4 texelColor = mapTexelToLinear(${samp('map')});
+            float bWall = texelColor.a;
+            diffuseColor.rgb *= texelColor.rgb;
+            diffuseColor.rgb *= mix(1.0, texture2D(detailMap, bLoc * 0.31).r * 2.0, 0.55 * bWall);`)
+          .replace('#include <color_fragment>', 'diffuseColor.rgb *= mix(vec3(1.0), vColor, bWall);')
+          .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(0.12, roughness, bWall);')
+          .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = mix(0.35, metalness, bWall);')
+          .replace('#include <emissivemap_fragment>', `
+            vec3 bEm = emissiveMapTexelToLinear(${samp('emissiveMap')}).rgb;
+            // office and apartment windows: each one on or off at random, warm lamps or cool screens
+            if (bTile < 1.5 || abs(bTile - 4.0) < 0.5) {
+              vec2 cell = bTile < 1.5 ? floor(bLoc * 2.0) : vec2(floor(bLoc.x * 4.0), floor(bLoc.y));
+              float h = bHash(cell + bTile * 17.0), h2 = bHash(cell * 1.7 + 3.1);
+              bEm *= step(h, 0.42) * mix(vec3(1.0, 0.74, 0.42), vec3(0.62, 0.78, 1.0), step(0.78, h2)) * (0.3 + 0.45 * h2);
+            }
+            totalEmissiveRadiance *= bEm;`);
+      };
+      m.customProgramCacheKey = () => 'bld-atlas';
+      return m;
+    }
+
+    // ---------- geometry ----------
+    // a wall quad from p to q (outside on the left of p→q, like R4 rings); u in tile repeats, v from height
+    function wall(a, p, q, y0, y1, tile, uo, vo, c, out = 0) {
+      const dx = q[0] - p[0], dz = q[1] - p[1], L = Math.hypot(dx, dz); if (L < 0.01 || y1 <= y0) return;
+      const nx = -dz / L * out, nz = dx / L * out, [tw, th] = SIZE[tile], b = tile * 100;
+      const u0 = b + uo, u1 = b + uo + L / tw, v0 = vo + y0 / th, v1 = vo + y1 / th;
+      quad(a, [p[0] + nx, y0, p[1] + nz], [q[0] + nx, y0, q[1] + nz], [q[0] + nx, y1, q[1] + nz], [p[0] + nx, y1, p[1] + nz], [u0, v0], [u1, v0], [u1, v1], [u0, v1], c);
+    }
+    // a decal (door, window) stretched over part of a wall: t0..t1 metres along p→q
+    function decal(a, p, q, t0, t1, y0, y1, tile, c, out = 0.03) {
+      const dx = q[0] - p[0], dz = q[1] - p[1], L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L, nx = -uz * out, nz = ux * out, b = tile * 100;
+      const A = [p[0] + ux * t0 + nx, p[1] + uz * t0 + nz], B = [p[0] + ux * t1 + nx, p[1] + uz * t1 + nz], e = 0.004;
+      quad(a, [A[0], y0, A[1]], [B[0], y0, B[1]], [B[0], y1, B[1]], [A[0], y1, A[1]], [b + e, e], [b + 1 - e, e], [b + 1 - e, 1 - e], [b + e, 1 - e], c);
+    }
+    function sides(ring) { return ring.map((p, i) => [p, ring[(i + 1) % ring.length]]); }
+    function roofCap(a, x0, z0, x1, z1, y, c, uo = 0, vo = 0) { const b = T.roof * 100, s = SIZE[T.roof][0]; quad(a, [x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0], [b + uo, vo], [b + uo, vo + (z1 - z0) / s], [b + uo + (x1 - x0) / s, vo + (z1 - z0) / s], [b + uo + (x1 - x0) / s, vo], c); }
+    function boxT(a, x0, z0, x1, z1, y0, y1, tile, c, top) { for (const [p, q] of sides(R4(x0, z0, x1, z1))) wall(a, p, q, y0, y1, tile, 0, 0, c); if (top != null) roofCap(a, x0, z0, x1, z1, y1, top); }
+    // copy a plain-uv Acc (u, v in metres / k) into the atlas on a tile
+    function onTile(dst, src, tile, k) { const [tw, th] = SIZE[tile]; for (let i = 0; i < src.u.length; i += 2) { src.u[i] = tile * 100 + Math.abs(src.u[i] * k / tw) % 90; src.u[i + 1] = src.u[i + 1] * k / th; } dst.p.push(...src.p); dst.u.push(...src.u); dst.c.push(...src.c); }
+
+    // which side faces the street: 0 N (z0), 1 W (x0), 2 S (z1), 3 E (x1) — the same order as R4's edges
+    const SIDE_OF = { N: 0, W: 1, S: 2, E: 3 };
+    function frontSide(x0, z0, x1, z1, ex) {
+      if (ex && ex.side && SIDE_OF[ex.side] != null) return [SIDE_OF[ex.side], null];
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, mids = [[cx, z0 - 9], [x0 - 9, cz], [cx, z1 + 9], [x1 + 9, cz]];
+      let best = 2, bd = 1e9, name = null;
+      mids.forEach(([x, z], s) => {
+        for (const e of streets.at(x, z)) {
+          const nx = clamp(x, Math.min(e.ax, e.bx) - e.w / 2, Math.max(e.ax, e.bx) + e.w / 2), nz = clamp(z, Math.min(e.az, e.bz) - e.w / 2, Math.max(e.az, e.bz) + e.w / 2), d = Math.hypot(nx - x, nz - z);
+          if (d < bd) { bd = d; best = s; name = e.name; }
+        }
+      });
+      return [best, bd < 40 ? name : null];
+    }
+    const FACE = [Math.PI, -Math.PI / 2, 0, Math.PI / 2];   // outDir() angle for each side
+    const STUCCO = ['#e8dcc4', '#d8c8a8', '#f0ece2', '#c9c2b2', '#d6cdb8', '#bfc6c0', '#e2d2b6', '#cbb89a'];
+    const AWN = ['#1f4f8a', '#8a1f24', '#1f6a3a', '#2a2a2e', '#b06a1a', '#5a2a6a'];
+    const METAL = ['#e6e4de', '#d6d0c0', '#b7bec6', '#c8cbcf', '#a6b2ba', '#cfc6b0', '#9aa6a0'];
+    const PANEL = ['#d8d4cc', '#c8c2b6', '#e0dcd2', '#bdb8ae', '#cdc5b5'];
+    const BOX = ['#b8341e', '#1f4f9a', '#2a7a4a', '#c8781a', '#5a5e66', '#e8e4dc', '#7a2a24', '#1a6a8a', '#8a8a2a'];
+    const gen = [];   // generic walk-in doors, added to placeGrid once the real places are in
+    function door(type, name, side, p, q, t, bi, color) {
+      const dx = q[0] - p[0], dz = q[1] - p[1], L = Math.hypot(dx, dz), x = p[0] + dx / L * t - dz / L * 0.8, z = p[1] + dz / L * t + dx / L * 0.8;
+      gen.push({ id: 'gen' + bi, gen: true, type, name, x, z, face: FACE[side], color: color || '#ffd23f' });
+    }
+    const word = s => /\d|^(Loop|Interstate|Hwy|Highway|US|FM|SH)\b/i.test(s || '') ? '' : (s || '').replace(/\b(Blvd|St|Ave|Rd|Dr|Hwy|Pkwy|Fwy|Ln|Way|Loop|Pike|Trl|Ct|Pl)\b\.?/g, '').replace(/^(N|S|E|W)\s+/, '').trim().split(' ').slice(0, 2).join(' ');
+
+    // ---------- the buildings ----------
+    function store(L, x0, z0, x1, z1, h, hex, bi, ex, walkIn) {
+      const hs = hash(bi + 1), hs2 = hash(bi * 7 + 3), hs3 = hash(bi * 13 + 5), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      const A = acc(L, 'bld', cx, cz), Dt = acc('mid', 'bld', cx, cz), Pm = acc('mid', 'plain', cx, cz);
+      const brick = hs3 < 0.62, tint = brick ? lin(hex) : lin(STUCCO[Math.floor(hs * STUCCO.length)]);
+      const [fs, street] = frontSide(x0, z0, x1, z1, ex), S4 = sides(R4(x0, z0, x1, z1));
+      const gh = Math.min(4.2, h), top = h - 0.9, uo = Math.floor(hs * 40), vo = Math.floor(hs2 * 20);
+      const upTile = brick ? T.brickWin : T.stuccoWin, blank = brick ? T.brick : T.panel;
+      const vUp = Math.ceil(gh / 7) + vo - gh / 7;   // windows start on the floor line above the shops
+      S4.forEach(([p, q], s) => {
+        const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        if (s === fs && len >= 5) wall(A, p, q, 0, gh, T.front, 0, 0, tint);
+        else wall(A, p, q, 0, gh, blank, uo, 0, tint);
+        if (h > gh + 0.2) {
+          if (top - gh >= 2.6) { wall(A, p, q, gh, top, upTile, uo, vUp, tint); wall(A, p, q, top, h, blank, uo, 0, tint); }
+          else wall(A, p, q, gh, h, blank, uo, 0, tint);
+        }
+        // a steel back door on the side across from the shop front
+        if (s === (fs + 2) % 4 && len > 4) decal(Dt, p, q, len / 2 - 0.55, len / 2 + 0.55, 0, 2.3, T.door, lin('#6a6e74'));
+      });
+      roofCap(A, x0, z0, x1, z1, h, lin(FLAT_ROOFS[Math.floor(hs2 * FLAT_ROOFS.length)], 1.25), uo, vo);
+      // parapet coping (stone or metal cap) and a cornice line over the shops
+      const cap = lin(brick ? '#cfc8b8' : '#e8e4da'), o = 0.14, w = 0.32;
+      for (const r of [R4(x0 - o, z0 - o, x1 + o, z0 + w), R4(x0 - o, z1 - w, x1 + o, z1 + o), R4(x0 - o, z0 + w, x0 + w, z1 - w), R4(x1 - w, z0 + w, x1 + o, z1 - w)]) prism(Pm, Pm, r, h, h + 0.22, cap, cap, 4, 4);
+      if (h > gh + 0.5) for (const r of [R4(x0 - 0.08, z0 - 0.08, x1 + 0.08, z1 + 0.08)]) loft(Pm, r, gh - 0.02, r, gh + 0.16, cap, 4, 4);
+      // fabric awning over the shop front
+      const [p, q] = S4[fs], len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      if (hs2 < 0.7 && len >= 5) {
+        const ux = (q[0] - p[0]) / len, uz = (q[1] - p[1]) / len, nx = -uz, nz = ux, ac = lin(AWN[Math.floor(hs3 * 7919) % AWN.length]);
+        const a0 = 0.4, a1 = len - 0.4, y0 = Math.min(3.3, gh - 0.9), y1 = y0 - 0.55, d = 1.3;
+        const P0 = [p[0] + ux * a0, p[1] + uz * a0], P1 = [p[0] + ux * a1, p[1] + uz * a1];
+        const Q0 = [P0[0] + nx * d, P0[1] + nz * d], Q1 = [P1[0] + nx * d, P1[1] + nz * d];
+        quad(Pm, [P0[0], y0, P0[1]], [Q0[0], y1, Q0[1]], [Q1[0], y1, Q1[1]], [P1[0], y0, P1[1]], [0, 0], [0, 1], [1, 1], [1, 0], ac);
+        quad(Pm, [P0[0], y0, P0[1]], [P1[0], y0, P1[1]], [Q1[0], y1, Q1[1]], [Q0[0], y1, Q0[1]], [0, 0], [0, 1], [1, 1], [1, 0], lin(AWN[Math.floor(hs3 * 7919) % AWN.length], 0.6));
+        quad(Pm, [Q0[0], y1 - 0.3, Q0[1]], [Q1[0], y1 - 0.3, Q1[1]], [Q1[0], y1, Q1[1]], [Q0[0], y1, Q0[1]], [0, 0], [1, 0], [1, 1], [0, 1], ac);
+        quad(Pm, [Q1[0], y1 - 0.3, Q1[1]], [Q0[0], y1 - 0.3, Q0[1]], [Q0[0], y1, Q0[1]], [Q1[0], y1, Q1[1]], [0, 0], [1, 0], [1, 1], [0, 1], ac);
+      }
+      // rooftop AC units
+      if (x1 - x0 > 9 && z1 - z0 > 9) { const n = 1 + Math.floor(hs * 3); for (let k = 0; k < n; k++) { const ux = x0 + 3 + hash(bi + k * 13) * (x1 - x0 - 7), uz = z0 + 3 + hash(bi + k * 29) * (z1 - z0 - 7); prism(Pm, Pm, R4(ux, uz, ux + 2.2, uz + 1.6), h, h + 1.3, lin('#a4a6a8'), lin('#8e9092'), 4, 4); prism(Pm, Pm, R4(ux + 0.4, uz + 0.3, ux + 1.0, uz + 0.9), h + 1.3, h + 1.38, lin('#2a2a2c'), lin('#2a2a2c'), 4, 4); } }
+      if (walkIn && len >= 5) {
+        const nm = ['Food Mart', 'Corner Store', 'Tienda', 'Discount Mart', 'Liquor & Wine', 'Smoke Shop', 'Dollar Store', 'Meat Market', 'Grocery', 'Quick Stop'][Math.floor(hs3 * 977) % 10];
+        door('gstore', ((word(street) || 'Cowtown') + ' ' + nm), fs, p, q, Math.min(len - 1, 6.45), bi, '#ffd23f');
+      }
+    }
+    function warehouse(x0, z0, x1, z1, h, hex, bi, ex) {
+      const hs = hash(bi + 1), hs2 = hash(bi * 7 + 3), hs3 = hash(bi * 13 + 5), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      const A = acc('far', 'bld', cx, cz), Dt = acc('mid', 'bld', cx, cz), Pm = acc('mid', 'plain', cx, cz);
+      const metal = hs3 < 0.6, tint = lin(metal ? METAL[Math.floor(hs * METAL.length)] : PANEL[Math.floor(hs * PANEL.length)]);
+      const [fs, street] = frontSide(x0, z0, x1, z1, ex), S4 = sides(R4(x0, z0, x1, z1)), uo = Math.floor(hs * 40);
+      S4.forEach(([p, q], s) => {
+        const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        wall(A, p, q, 0, h, metal ? T.metal : T.panel, uo, 0, tint);
+        if (metal) { wall(Dt, p, q, 0, 1.1, T.panel, uo, 0, lin('#9a9890'), 0.03); if (len > 20 && h > 7) wall(Dt, p, q, h - 2.8, h - 0.8, T.clere, uo, 0, tint, 0.02); }
+      });
+      // the front: an office corner with windows and a door, then a row of dock doors
+      const [p, q] = S4[fs], len = Math.hypot(q[0] - p[0], q[1] - p[1]), office = Math.min(12, len * 0.3);
+      const offTint = lin(STUCCO[Math.floor(hs2 * STUCCO.length)]), offH = Math.min(h - 1, 7);
+      if (office >= 5) {
+        const ux = (q[0] - p[0]) / len, uz = (q[1] - p[1]) / len, P1 = [p[0] + ux * office, p[1] + uz * office];
+        wall(Dt, p, P1, 0, offH, T.stuccoWin, Math.floor(hs2 * 30), 0, offTint, 0.04);
+        decal(Dt, p, q, office / 2 - 0.5, office / 2 + 0.5, 0, 2.3, T.door, lin('#5a6a7a'), 0.06);
+        // entry canopy
+        const a0 = office / 2 - 1.4, a1 = office / 2 + 1.4, nx = -uz, nz = ux;
+        const r = [[p[0] + ux * a0, p[1] + uz * a0], [p[0] + ux * a1, p[1] + uz * a1], [p[0] + ux * a1 + nx * 1.6, p[1] + uz * a1 + nz * 1.6], [p[0] + ux * a0 + nx * 1.6, p[1] + uz * a0 + nz * 1.6]];
+        const bb = [Math.min(...r.map(v => v[0])), Math.min(...r.map(v => v[1])), Math.max(...r.map(v => v[0])), Math.max(...r.map(v => v[1]))];
+        prism(Pm, Pm, R4(bb[0], bb[1], bb[2], bb[3]), 2.7, 2.9, lin('#3a3c40'), lin('#4a4c50'), 4, 4);
+      }
+      const dockHigh = hs2 < 0.65, dw = dockHigh ? 3.0 : 4.2, dh = dockHigh ? 3.0 : Math.min(4.6, h - 1.2), y0 = dockHigh ? 1.2 : 0, gap = dockHigh ? 1.6 : 2.4;
+      const n = Math.max(1, Math.min(12, Math.floor((len - office - 2) / (dw + gap))));
+      const ux = (q[0] - p[0]) / len, uz = (q[1] - p[1]) / len, nx = -uz, nz = ux, doorC = lin(['#e8e8e4', '#c8cdd2', '#3a5a8a', '#8a2a24', '#d8c8a0'][Math.floor(hs3 * 977) % 5]);
+      for (let k = 0; k < n; k++) {
+        const t = office + 1 + gap / 2 + k * (dw + gap);
+        decal(Dt, p, q, t, t + dw, y0, y0 + dh, T.rollup, doorC, 0.04);
+        if (dockHigh) {   // black rubber bumpers and a dock light either side
+          for (const tt of [t + 0.1, t + dw - 0.35]) { const bx = p[0] + ux * tt + nx * 0.02, bz = p[1] + uz * tt + nz * 0.02, ex2 = bx + ux * 0.25 + nx * 0.18, ez = bz + uz * 0.25 + nz * 0.18; prism(Pm, Pm, R4(Math.min(bx, ex2), Math.min(bz, ez), Math.max(bx, ex2), Math.max(bz, ez)), 0.75, 1.2, lin('#141414'), lin('#141414'), 4, 4); }
+          const mx = p[0] + ux * (t + dw / 2), mz = p[1] + uz * (t + dw / 2), bx = mx + nx * 0.05, bz = mz + nz * 0.05, ex2 = mx + nx * 0.5 + ux * 0.0, ez = mz + nz * 0.5;
+          prism(Pm, Pm, R4(Math.min(bx, ex2) - Math.abs(ux) * dw / 2 - Math.abs(nx) * 0.02, Math.min(bz, ez) - Math.abs(uz) * dw / 2, Math.max(bx, ex2) + Math.abs(ux) * dw / 2, Math.max(bz, ez) + Math.abs(uz) * dw / 2), y0 + dh + 0.05, y0 + dh + 0.3, lin('#2a2a2e'), lin('#2a2a2e'), 4, 4);
+        }
+      }
+      roofCap(A, x0, z0, x1, z1, h, lin(FLAT_ROOFS[Math.floor(hs2 * FLAT_ROOFS.length)], 1.3), uo, 0);
+      const cap = lin('#8a8c90');
+      for (const r of [R4(x0 - 0.1, z0 - 0.1, x1 + 0.1, z0 + 0.25), R4(x0 - 0.1, z1 - 0.25, x1 + 0.1, z1 + 0.1), R4(x0 - 0.1, z0 + 0.25, x0 + 0.25, z1 - 0.25), R4(x1 - 0.25, z0 + 0.25, x1 + 0.1, z1 - 0.25)]) prism(Pm, Pm, r, h, h + 0.5, cap, cap, 4, 4);
+      // skylights and roof fans
+      const W = x1 - x0, Dd = z1 - z0, nx2 = Math.max(1, Math.floor(W / 14)), nz2 = Math.max(1, Math.floor(Dd / 14));
+      for (let i = 0; i < nx2; i++) for (let j = 0; j < nz2; j++) {
+        if (hash(bi * 31 + i * 7 + j) < 0.35) continue;
+        const sx = x0 + (i + 0.5) * W / nx2, sz = z0 + (j + 0.5) * Dd / nz2;
+        if ((i + j) % 3) prism(Pm, Pm, R4(sx - 0.7, sz - 1.3, sx + 0.7, sz + 1.3), h, h + 0.35, lin('#b0b4b8'), lin('#d8e6ee', 1.2), 4, 4);
+        else { prism(Pm, Pm, R4(sx - 0.6, sz - 0.6, sx + 0.6, sz + 0.6), h, h + 0.6, lin('#8a8c90'), lin('#5a5c60'), 4, 4); }
+      }
+      if (!(ex && ex.loc)) { const nm = ['Warehouse', 'Freight', 'Supply Co.', 'Storage', 'Distribution', 'Logistics'][Math.floor(hs * 6)]; door('gwh', (word(street) || 'Trinity') + ' ' + nm, fs, p, q, office >= 5 ? office / 2 : 2, bi, '#9ad0ff'); }
+    }
+    function crate(x0, z0, x1, z1, h, hex, bi) {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, A = acc('near', 'bld', cx, cz), Pm = acc('near', 'plain', cx, cz), c = lin(hex, 1.35);
+      prism(Pm, Pm, R4(x0 + 0.05, z0 + 0.05, x1 - 0.05, z1 - 0.05), 0, 0.14, lin('#7a6040'), lin('#8a7050'), 4, 4);
+      const two = h > 2.1, hh = two ? (h - 0.14) / 2 : h - 0.14;
+      for (let k = 0; k < (two ? 2 : 1); k++) {
+        const y0 = 0.14 + k * hh, s = k ? 0.12 + hash(bi) * 0.2 : 0;
+        for (const [p, q] of sides(R4(x0 + s, z0 + s, x1 - s, z1 - s))) decal(A, p, q, 0, Math.hypot(q[0] - p[0], q[1] - p[1]), y0, y0 + hh, T.crate, c, 0);
+        const b = T.crate * 100, e = 0.004, yt = y0 + hh;
+        quad(A, [x0 + s, yt, z0 + s], [x0 + s, yt, z1 - s], [x1 - s, yt, z1 - s], [x1 - s, yt, z0 + s], [b + e, e], [b + e, 1 - e], [b + 1 - e, 1 - e], [b + 1 - e, e], c);
+      }
+    }
+    function containers(x0, z0, x1, z1, h, hex, bi) {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, A = acc('mid', 'bld', cx, cz), alongX = x1 - x0 > z1 - z0;
+      const W = alongX ? z1 - z0 : x1 - x0, Lg = alongX ? x1 - x0 : z1 - z0, cw = 2.44, cl = 12.19, ch = 2.59;
+      const cols = Math.max(1, Math.floor(W / (cw + 0.3))), rows = Math.max(1, Math.floor(Lg / (cl + 0.4))), tiers = Math.max(1, Math.round(h / ch));
+      for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) for (let t = 0; t < tiers; t++) {
+        const hh = hash(bi * 101 + i * 17 + j * 5 + t * 3); if (t && hh < 0.3) continue;
+        const a0 = i * (cw + 0.3) + (W - cols * (cw + 0.3)) / 2, b0 = j * (cl + 0.4) + (Lg - rows * (cl + 0.4)) / 2;
+        const r = alongX ? [x0 + b0, z0 + a0, x0 + b0 + cl, z0 + a0 + cw] : [x0 + a0, z0 + b0, x0 + a0 + cw, z0 + b0 + cl];
+        const c = lin(BOX[Math.floor(hh * 977) % BOX.length]), y0 = t * ch, y1 = y0 + ch;
+        sides(R4(r[0], r[1], r[2], r[3])).forEach(([p, q]) => { const len = Math.hypot(q[0] - p[0], q[1] - p[1]); if (len > 5) wall(A, p, q, y0, y1, T.cont, 0, -y0 / ch, c); else decal(A, p, q, 0, len, y0, y1, T.contEnd, c, 0); });
+        const b = T.cont * 100; quad(A, [r[0], y1, r[1]], [r[0], y1, r[3]], [r[2], y1, r[3]], [r[2], y1, r[1]], [b, 0.05], [b, 0.95], [b + 2, 0.95], [b + 2, 0.05], c);
+      }
+    }
+    function barn(x0, z0, x1, z1, h, hex, bi, ex) {
+      const hs = hash(bi + 1), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, A = acc('mid', 'bld', cx, cz), Dt = acc('mid', 'bld', cx, cz), Rf = acc('mid', 'roof', cx, cz);
+      const tint = lin(['#8a2e24', '#7a2a22', '#8c8478', '#9a3a2a', '#6e6a62', '#e4ded2'][Math.floor(hs * 6)]), hw = h * 0.55, rise = Math.min(x1 - x0, z1 - z0) * 0.38;
+      const S4 = sides(R4(x0, z0, x1, z1));
+      S4.forEach(([p, q]) => wall(A, p, q, 0, hw, T.board, Math.floor(hs * 20), 0, tint));
+      const tmp = new Acc(); roofHip(Rf, tmp, x0 - 0.3, z0 - 0.3, x1 + 0.3, z1 + 0.3, hw, rise, lin(hs < 0.5 ? '#4c4f54' : '#7a2a22'), tint, true); onTile(A, tmp, T.board, 4);
+      // big sliding doors on both gable ends
+      const alongX = x1 - x0 >= z1 - z0, ends = alongX ? [1, 3] : [0, 2];
+      for (const s of ends) { const [p, q] = S4[s], len = Math.hypot(q[0] - p[0], q[1] - p[1]), dw = Math.min(4.2, len * 0.5); decal(Dt, p, q, len / 2 - dw / 2, len / 2 + dw / 2, 0, Math.min(4.2, hw - 0.2), T.barnDoor, tint, 0.04); }
+      const [fs] = frontSide(x0, z0, x1, z1, null), e = ends.includes(fs) ? fs : ends[0], [p, q] = S4[e];
+      if (!(ex && ex.loc)) door('gbarn', 'Barn', e, p, q, Math.hypot(q[0] - p[0], q[1] - p[1]) / 2, bi, '#e8c070');
+    }
+    function church(x0, z0, x1, z1, h, hex, bi) {
+      const hs = hash(bi + 1), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, A = acc('far', 'bld', cx, cz), Dt = acc('mid', 'bld', cx, cz), Rf = acc('far', 'roof', cx, cz);
+      const brick = hex !== '#e8e2d8' && hex !== '#d7d2c4', tint = brick ? lin(hex) : lin('#f2eee6'), tile = brick ? T.brick : T.panel;
+      const hw = h * 0.62, rise = Math.min(x1 - x0, z1 - z0) * 0.5, S4 = sides(R4(x0, z0, x1, z1));
+      S4.forEach(([p, q], s) => {
+        wall(A, p, q, 0, hw, tile, 0, 0, tint);
+        const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        if (s === 1 || s === 3) for (let t = 3; t < len - 2; t += 4) decal(Dt, p, q, t - 0.7, t + 0.7, 1.4, Math.min(hw - 0.5, 5.2), T.chWin, lin('#ffffff'));
+      });
+      const tmp = new Acc(); roofHip(Rf, tmp, x0 - 0.3, z0 - 0.3, x1 + 0.3, z1 + 0.3, hw, rise, lin('#3b3a3c'), tint, true); onTile(A, tmp, tile, 4);
+      // steeple on the front (north) end, double doors under it
+      const s = Math.min(x1 - x0, z1 - z0) * 0.28, r = R4(cx - s / 2, z0 - s * 0.2, cx + s / 2, z0 + s * 0.8);
+      sides(r).forEach(([p, q]) => wall(A, p, q, 0, h + 4, tile, 0, 0, tint));
+      loft(Rf, r, h + 4, r.map(() => [cx, z0 + s * 0.3]), h + 4 + s * 2.4, lin('#3b3a3c'), 4, 4);
+      const [p, q] = sides(r)[0], len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      decal(Dt, p, q, len / 2 - 1.1, len / 2, 0, 2.8, T.door, lin('#6a3e24'), 0.04); decal(Dt, p, q, len / 2, len / 2 + 1.1, 0, 2.8, T.door, lin('#6a3e24'), 0.04);
+      decal(Dt, p, q, len / 2 - 0.6, len / 2 + 0.6, 3.6, Math.min(h + 2, 6.4), T.chWin, lin('#ffffff'), 0.04);
+      const nm = ['Greater', 'Mount Zion', 'New Hope', 'True Vine', 'St. Paul', 'Grace', 'Bethel', 'Greater Ebenezer'][Math.floor(hs * 8)] + ' ' + ['Baptist Church', 'Missionary Baptist', 'Church of God in Christ', 'Methodist Church', 'Fellowship Church'][Math.floor(hash(bi * 3) * 5)];
+      door('gchurch', nm, 0, p, q, len / 2, bi, '#f0d890');
+    }
+    function round(kind, x0, z0, x1, z1, h, hex, bi) {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, A = acc('far', 'bld', cx, cz), Pm = acc('far', 'plain', cx, cz);
+      const r = circ(cx, cz, (x1 - x0) / 2, (z1 - z0) / 2, 20), tint = lin(hex, 1.1);
+      let u = 0; sides(r).forEach(([p, q]) => { wall(A, p, q, 0, h, T.metal, u % 40, 0, tint); u += Math.hypot(q[0] - p[0], q[1] - p[1]) / 4; });
+      if (kind === 'silo') { dome(Pm, cx, cz, (x1 - x0) / 2, (x1 - x0) * 0.3, h, lin('#b8bcc0')); for (let y = 3; y < h; y += 3) loft(Pm, scaleRing(r, 1.012), y, scaleRing(r, 1.012), y + 0.12, lin('#8a8e92'), 4, 4); }
+      else cap(Pm, r, h, tint);
+    }
+    function shed(kind, x0, z0, x1, z1, h, hex, bi) {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, A = acc('mid', 'bld', cx, cz), Pm = acc('mid', 'plain', cx, cz), tile = kind === 'hut' ? T.board : T.metal, tint = lin(hex, kind === 'hut' ? 1 : 1.4);
+      const S4 = sides(R4(x0, z0, x1, z1)); S4.forEach(([p, q]) => wall(A, p, q, 0, h, tile, 0, 0, tint));
+      const [fs] = frontSide(x0, z0, x1, z1, null), [p, q] = S4[fs], len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      if (len > 2) decal(A, p, q, len / 2 - 0.5, len / 2 + 0.5, 0, Math.min(2.1, h - 0.2), T.door, lin('#8a8c90'));
+      prism(Pm, Pm, R4(x0 - 0.25, z0 - 0.25, x1 + 0.25, z1 + 0.25), h, h + 0.15, lin('#6a6c70'), lin('#7a7c80'), 4, 4);
+    }
+
+    // ---------- hooks ----------
+    const KINDS = new Set(['store', 'landmark', 'warehouse', 'crate', 'containers', 'barn', 'church', 'silo', 'tank', 'shed', 'hut']);
+    function add(D, i, bi) {
+      const B = D.B, kind = D.kinds[B[i + 5]];
+      if (!KINDS.has(kind)) return false;
+      const x0 = B[i], z0 = B[i + 1], w = B[i + 2], d = B[i + 3], h = B[i + 4], hex = D.colors[B[i + 6]], ex = B[i + 7] >= 0 ? D.extras[B[i + 7]] : null, x1 = x0 + w, z1 = z0 + d;
+      if (kind === 'landmark' && h >= 14) return false;   // tall landmarks keep their office facade
+      if (HOME.skipB(ex)) return true;
+      solids.add({ x0, z0, x1, z1 }, x0, z0, x1, z1);
+      if (LM.byB.has(i)) return true;   // one of our banks or shops stands here (_landmarks.js)
+      switch (kind) {
+        case 'store': case 'landmark': store(kind === 'landmark' ? 'far' : 'far', x0, z0, x1, z1, h, hex, bi, ex, kind === 'store' && !(ex && ex.loc)); addSign(x0, z0, x1, z1, h, ex, false); break;
+        case 'warehouse': warehouse(x0, z0, x1, z1, h, hex, bi, ex); addSign(x0, z0, x1, z1, h, ex, false); break;
+        case 'crate': crate(x0, z0, x1, z1, h, hex, bi); break;
+        case 'containers': containers(x0, z0, x1, z1, h, hex, bi); break;
+        case 'barn': barn(x0, z0, x1, z1, h, hex, bi, ex); break;
+        case 'church': church(x0, z0, x1, z1, h, hex, bi); break;
+        case 'silo': case 'tank': round(kind, x0, z0, x1, z1, h, hex, bi); break;
+        case 'shed': case 'hut': shed(kind, x0, z0, x1, z1, h, hex, bi); break;
+      }
+      return true;
+    }
+    // generic doors go in after the real places, and never on top of one
+    function addDoors() {
+      let n = 0;
+      for (const g of gen) {
+        if (placeGrid.at(g.x, g.z).some(p => !p.gen && Math.hypot(p.x - g.x, p.z - g.z) < 30)) continue;
+        placeGrid.add(g, g.x - 26, g.z - 26, g.x + 26, g.z + 26); n++;
+      }
+      return n;
+    }
+    return { T, SIZE, add, addDoors, makeMaterial, gen, frontSide };
+  })();
+  window.__bld = BLD;
+  {
+    const _buildMaterials = buildMaterials;
+    buildMaterials = function () { _buildMaterials(); MAT.bld = BLD.makeMaterial(); WINDOW_MATS.push(MAT.bld); SHADOW_MATS.add('bld'); };
+    const _addBuilding = addBuilding;
+    addBuilding = function (D, i, bi) { if (!BLD.add(D, i, bi)) return _addBuilding(D, i, bi); };
+    const _addPlaces = addPlaces;
+    addPlaces = function (D) { _addPlaces(D); BLD.addDoors(); };
+    // generic doors only count on foot, right at the door, so driving down a street of shops stays quiet
+    placeNear = function (x, z, R = 24) { let best = null, bd = R; for (const p of placeGrid.at(x, z)) { const d = Math.hypot(p.x - x, p.z - z); if (p.gen && (!foot.on || d > 6)) continue; if (d < bd) { bd = d; best = p; } } return best; };
+    Object.assign(TYPE_INFO, { gstore: ['Store', 'Snacks, drinks and an ATM.'], gwh: ['Warehouse', 'Walk the floor. The dock office has work.'], gchurch: ['Church', 'Sit a while.'], gbarn: ['Barn', 'Hay, stalls and tack.'] });
+    Object.assign(STYLE, { gstore: 'store', gwh: 'warehouse', gchurch: 'church', gbarn: 'barn' });
+    Object.assign(ROOM, { warehouse: { W: 30, D: 22, floor: 'concrete', wall: '#a9aaa6', rep: 4 }, church: { W: 16, D: 22, floor: 'wood', wall: '#efe8da', rep: 3 }, barn: { W: 18, D: 14, floor: 'concrete', wall: '#7a4a32', rep: 4 } });
+    // pallet racks full of boxes, a forklift, stacked crates and the dock office
+    FURNISH.warehouse = (p, W, D) => {
+      const box = ['#b08a5a', '#a07a4a', '#c09a6a', '#8a6a42', '#d0b080'];
+      for (let r = 0; r < 3; r++) {
+        const z = -D / 2 + 2 + r * 4.5;
+        for (const x0 of [-W / 2 + 1.5, 1.5]) {
+          const x1 = x0 + 11;
+          for (let x = x0; x <= x1 + 0.01; x += 2.75) { rbox(x, 0, z, x + 0.1, 5.6, z + 0.1, '#e07a1a'); rbox(x, 0, z + 1.1, x + 0.1, 5.6, z + 1.2, '#e07a1a'); }
+          for (const y of [1.6, 3.2, 4.8]) rbox(x0, y, z, x1 + 0.1, y + 0.12, z + 1.2, '#2a5aa8', false);
+          rbox(x0, 0, z, x1 + 0.1, 0.01, z + 1.2, '#888', true);
+          for (const y of [0, 1.72, 3.32]) for (let x = x0 + 0.2; x < x1 - 0.8; x += 1.35) if (rnd() < 0.82) { const hh = 0.6 + rnd() * 0.7; rbox(x, y + 0.02, z + 0.1, x + 1.1, y + 0.14, z + 1.1, '#9a7a50', false); rbox(x + 0.05, y + 0.14, z + 0.15, x + 1.05, y + 0.14 + hh, z + 1.05, box[Math.floor(rnd() * box.length)], false); }
+        }
+      }
+      // forklift
+      const fx = -2, fz = 4.5;
+      rbox(fx - 0.6, 0.15, fz - 1.1, fx + 0.6, 1.1, fz + 1.0, '#e0b020'); rbox(fx - 0.55, 1.1, fz - 0.2, fx + 0.55, 2.2, fz + 0.9, '#2a2a2e', false);
+      rbox(fx - 0.6, 2.2, fz - 0.3, fx + 0.6, 2.28, fz + 1.0, '#e0b020', false); rbox(fx - 0.5, 0, fz - 1.4, fx + 0.5, 2.6, fz - 1.25, '#3a3a3e', false);
+      rbox(fx - 0.45, 0.05, fz - 2.5, fx - 0.3, 0.12, fz - 1.3, '#3a3a3e', false); rbox(fx + 0.3, 0.05, fz - 2.5, fx + 0.45, 0.12, fz - 1.3, '#3a3a3e', false);
+      for (const [a, b] of [[-0.62, -0.7], [0.5, -0.7], [-0.62, 0.6], [0.5, 0.6]]) rbox(fx + a, 0, fz + b, fx + a + 0.12, 0.45, fz + b + 0.45, '#141414', false);
+      // crates on pallets by the dock doors
+      for (let k = 0; k < 6; k++) { const x = 4 + (k % 3) * 1.8, z = 3.2 + Math.floor(k / 3) * 1.8; rbox(x, 0, z, x + 1.4, 0.14, z + 1.2, '#9a7a50'); rbox(x + 0.05, 0.14, z + 0.05, x + 1.35, 0.14 + 0.9 + rnd() * 0.6, z + 1.15, box[k % box.length]); }
+      // dock doors on the back wall of the floor and the office with its counter
+      for (let k = 0; k < 3; k++) { const x = W / 2 - 3 - k * 4.5; rbox(x - 1.5, 0.3, -D / 2 + 0.05, x + 1.5, 3.6, -D / 2 + 0.12, '#c8ccd0', false); for (let y = 0.4; y < 3.6; y += 0.25) rbox(x - 1.5, y, -D / 2 + 0.12, x + 1.5, y + 0.03, -D / 2 + 0.14, '#9aa0a6', false); }
+      rbox(W / 2 - 6, 0, D / 2 - 5, W / 2 - 5.85, 3, D / 2 - 0.3, '#d8d4cc'); counter(W / 2 - 5, 2.5 + D / 2 - 7.5, W / 2 - 1.5, 3.2 + D / 2 - 7.5, '#5a5e66');
+      station('Dock office', W / 2 - 3.2, D / 2 - 3.2, () => MENUS.jobs(p), 2.4);
+      rbox(-W / 2 + 0.2, 0, D / 2 - 3, -W / 2 + 0.8, 1.9, D / 2 - 1.2, '#3a5a3a');
+    };
+    // pews down both sides, the pulpit and choir up front, stained glass all round
+    FURNISH.church = (p, W, D) => {
+      for (let r = 0; r < 7; r++) for (const s of [-1, 1]) { const z = -2.5 + r * 1.5, x0 = s < 0 ? -W / 2 + 1 : 1, x1 = s < 0 ? -1 : W / 2 - 1; rbox(x0, 0, z, x1, 0.45, z + 0.5, '#6a4228'); rbox(x0, 0.45, z + 0.42, x1, 1.0, z + 0.55, '#6a4228', false); }
+      rbox(-4, 0, -D / 2 + 0.3, 4, 0.5, -D / 2 + 4, '#8a2a2a'); rbox(-0.6, 0.5, -D / 2 + 2.2, 0.6, 1.6, -D / 2 + 2.9, '#5a3820');
+      for (let k = 0; k < 3; k++) rbox(-3.6 + k * 0.1, 0.5 + k * 0.35, -D / 2 + 0.4, 3.6 - k * 0.1, 0.85 + k * 0.35, -D / 2 + 1.2 - k * 0.15, '#4a3020', false);
+      rbox(-0.08, 1.4, -D / 2 + 0.15, 0.08, 3.8, -D / 2 + 0.25, '#d8b860', false); rbox(-0.7, 3.0, -D / 2 + 0.15, 0.7, 3.16, -D / 2 + 0.25, '#d8b860', false);
+      const gl = ['#b02a2a', '#2a52b0', '#e0b030', '#2a8a4a', '#7a2ab0'];
+      for (let z = -D / 2 + 3; z < D / 2 - 3; z += 3.4) for (const x of [-W / 2 + 0.02, W / 2 - 0.08]) for (let k = 0; k < 4; k++) addMesh(new THREE.BoxGeometry(0.06, 0.6, 0.28), new THREE.MeshBasicMaterial({ color: gl[(k + Math.floor(z)) % gl.length] }), x + 0.03, 1.8 + Math.floor(k / 2) * 0.62, z + (k % 2) * 0.3);
+      station('Sit a while', 0, -1.4, () => { S.energy = Math.min(100, (S.energy || 0) + 10); refreshStats(); toast('You sit a while. The choir is warming up. +10 energy', 'good'); }, 2.2);
+      plant(-W / 2 + 1, -D / 2 + 1); plant(W / 2 - 1, -D / 2 + 1);
+    };
+    // stalls, hay, a tack wall and a tractor
+    FURNISH.barn = (p, W, D) => {
+      for (let k = 0; k < 4; k++) { const z = -D / 2 + 1 + k * 3; rbox(-W / 2 + 0.2, 0, z, -W / 2 + 3.5, 1.4, z + 0.12, '#6a4a2a'); rbox(-W / 2 + 3.4, 0, z, -W / 2 + 3.5, 1.4, z + 2.2, '#6a4a2a'); }
+      for (let k = 0; k < 10; k++) { const x = W / 2 - 1.2 - (k % 3) * 1.25, z = -D / 2 + 0.6 + Math.floor(k / 3) * 0.7, y = 0; rbox(x - 0.6, y, z, x + 0.6, y + 0.5, z + 0.5, '#d8c070'); }
+      for (let k = 0; k < 5; k++) rbox(W / 2 - 3.5 + (k % 3) * 1.25, 0.5, -D / 2 + 0.6 + Math.floor(k / 3) * 0.7, W / 2 - 2.3 + (k % 3) * 1.25, 1.0, -D / 2 + 1.1 + Math.floor(k / 3) * 0.7, '#d0b860', false);
+      rbox(-1.6, 0.4, 0.5, 0.4, 1.6, 2.6, '#2a7a3a'); rbox(-1.2, 1.6, 1.4, 0.0, 2.4, 2.4, '#1a1a1e', false);
+      for (const [a, b, r] of [[-1.7, 0.6, 0.55], [0.5, 0.6, 0.55], [-1.7, 2.3, 0.35], [0.5, 2.3, 0.35]]) rbox(a - 0.12, 0, b - r, a + 0.12, r * 2, b + r, '#141414', false);
+      rbox(W / 2 - 0.3, 0.8, 1, W / 2 - 0.15, 2.4, 4, '#5a3a22', false);
+      station('Feed room', W / 2 - 2.6, 2.6, () => toast('Feed, hay and tack. Buy animals at the sale barn.', 'good'), 2.2);
+    };
+  }
+  // ==== realistic buildings (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
