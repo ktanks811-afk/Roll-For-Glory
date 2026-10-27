@@ -14849,6 +14849,584 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
     };
   }
   // ==== realistic buildings (end) ====
+  // ==== police (begin) ====
+  (() => {
+  // ---------- FWPD in 3D: marked Charger and Tahoe units and a slicktop Hellcat, built on our own hand-built models ----------
+  // The car under each one is the real model (putCar); this adds the black-and-white livery (painted in the paint shader so it
+  // follows every panel), a lightbar with LED modules, push bar, spotlight, antennas and grille/deck strobes.
+  // Then cops drive the roads: patrols, units parked at the precincts, traffic stops, pursuits, searches and busts.
+  const COP_KINDS = {
+    charger: { id: 'dodge_charger_scat_pack_2015', liv: 'bw', bar: true, name: 'Charger Pursuit', unit: 'Charger' },
+    tahoe: { id: 'chevrolet_tahoe_2021', liv: 'bw', bar: true, name: 'Tahoe PPV', unit: 'Tahoe' },
+    hellcat: { id: 'dodge_charger_srt_hellcat_widebody_2020', liv: 'slick', bar: false, name: 'Hellcat interceptor', unit: 'Interceptor' },
+  };
+  const COP = { units: [], phase: 'none', pullT: 0, stillT: 0, stop: null, seenT: 0, unseenT: 0, bustT: 0, coolT: 0, spawnT: 0, last: 0, heat0: null, seen: false, lastSeen: null,
+    shape: {}, seq: 101, pill: null, pillKey: '', snd: null, gunT: 0, ramT: 0, said: 0, officerBase: null, officerQ: false, T: 0, ready: false };
+  const UNITS_FOR = [1, 1, 2, 3, 4, 5];
+  const PULL_S = 10;
+  const copRand = (() => { let sd = 777; return () => (sd = (sd * 16807) % 2147483647) / 2147483647; })();
+  const cPick = a => a[Math.floor(copRand() * a.length)];
+  const cNorm = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const night = () => timeName === 'night';
+  const dusk = () => timeName !== 'day';
+
+  // ---------- livery textures: side lettering, the door star and the roof number ----------
+  const LIV = {};
+  function livTex(kind) {
+    if (LIV[kind]) return LIV[kind];
+    const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const x = c.getContext('2d');
+    const slick = kind === 'slick', ink = slick ? 'rgba(70,74,82,0.9)' : '#0b0c10', blue = slick ? 'rgba(60,64,72,0.85)' : '#1f4fa8';
+    // side band (top half): FORT WORTH over a big POLICE, a thin blue stripe under it
+    x.textAlign = 'center'; x.textBaseline = 'alphabetic'; x.fillStyle = ink;
+    x.font = '800 50px "Barlow Condensed", Impact, "Arial Narrow", sans-serif'; x.fillText('FORT WORTH', 512, 50);
+    x.save(); x.scale(1, 1.18); x.font = '900 168px "Barlow Condensed", Impact, "Arial Narrow", sans-serif'; x.fillText('POLICE', 512, 196 / 1.18); x.restore();
+    x.fillStyle = blue; x.fillRect(30, 218, 964, 16);
+    x.fillStyle = ink; x.font = '700 26px "Barlow Condensed", Impact, sans-serif'; x.fillText('DIAL 911', 512, 254);
+    // roof number (bottom left quarter), car front at the top
+    x.save(); x.translate(256, 384); x.fillStyle = ink; x.font = '900 150px "Barlow Condensed", Impact, sans-serif'; x.textBaseline = 'middle'; x.fillText('FW' , 0, -56); x.font = '900 120px "Barlow Condensed", Impact, sans-serif'; x.fillText('#', 0, 60); x.restore();
+    // the door star (bottom right quarter): a seven point star in a ring, the same both ways round
+    x.save(); x.translate(768, 384);
+    const gold = slick ? '#4a4e56' : '#c9a23a', dk = slick ? '#2a2d33' : '#6d5212';
+    x.beginPath(); x.arc(0, 0, 118, 0, Math.PI * 2); x.fillStyle = dk; x.fill(); x.beginPath(); x.arc(0, 0, 106, 0, Math.PI * 2); x.fillStyle = gold; x.fill();
+    x.beginPath(); for (let i = 0; i < 14; i++) { const a = -Math.PI / 2 + i * Math.PI / 7, r = i % 2 ? 46 : 98; x.lineTo(Math.cos(a) * r, Math.sin(a) * r); } x.closePath(); x.fillStyle = dk; x.fill();
+    x.beginPath(); x.arc(0, 0, 34, 0, Math.PI * 2); x.fillStyle = gold; x.fill();
+    x.restore();
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; LIV[kind] = { t, c, x };
+    return LIV[kind];
+  }
+  // the roof number is per car, so each car with a roof number gets its own copy of the texture
+  function livFor(kind, num) {
+    const L = livTex(kind); if (kind === 'slick') return L.t;
+    const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const x = c.getContext('2d'); x.drawImage(L.c, 0, 0);
+    x.clearRect(0, 256, 512, 256); x.save(); x.translate(256, 384); x.fillStyle = '#0b0c10'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = '900 118px "Barlow Condensed", Impact, sans-serif'; x.fillText(String(num), 0, 0); x.restore();
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+  }
+  const LIV_GLSL = `
+    vec3 livC = diffuse; vec3 cp = vCarP; vec3 cn = normalize(vCarN);
+    float inDoor = step(uZ.x, cp.x) * step(cp.x, uZ.y);
+    if (uMode < 0.5) {
+      livC = mix(livC, uBlack, step(cp.y, uZ.z) * (1.0 - inDoor));
+      livC = mix(livC, uBlack, step(cp.y, uZ.w));
+    }
+    float sd = smoothstep(0.5, 0.75, abs(cn.z));
+    vec2 uv = vec2((cp.x - uT.x) / (uT.y - uT.x), (cp.y - uT.z) / (uT.w - uT.z));
+    if (cn.z < 0.0) uv.x = 1.0 - uv.x;
+    if (uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0) { vec4 t = texture2D(uTex, vec2(uv.x, 0.5 + uv.y * 0.5)); livC = mix(livC, pow(t.rgb, vec3(2.2)), t.a * sd); }
+    vec2 bv = vec2((cp.x - uS.x) / (2.0 * uS.z) + 0.5, (cp.y - uS.y) / (2.0 * uS.z) + 0.5);
+    if (bv.x > 0.0 && bv.x < 1.0 && bv.y > 0.0 && bv.y < 1.0) { vec4 t = texture2D(uTex, vec2(0.5 + bv.x * 0.5, bv.y * 0.5)); livC = mix(livC, pow(t.rgb, vec3(2.2)), t.a * sd); }
+    float tp = smoothstep(0.7, 0.9, cn.y) * step(uR.w - 0.14, cp.y);
+    vec2 rv = vec2((cp.x - uR.x) / (uR.y - uR.x), (cp.z + uR.z) / (2.0 * uR.z));
+    if (rv.x > 0.0 && rv.x < 1.0 && rv.y > 0.0 && rv.y < 1.0) { vec4 t = texture2D(uTex, vec2(rv.y * 0.5, rv.x * 0.5)); livC = mix(livC, pow(t.rgb, vec3(2.2)), t.a * tp); }
+    vec4 diffuseColor = vec4(livC, opacity);`;
+  function livery(paint, P, kind, num) {
+    const U = {
+      uInv: { value: new THREE.Matrix4() }, uTex: { value: livFor(kind, num) }, uMode: { value: kind === 'slick' ? 1 : 0 }, uBlack: { value: lin('#0b0c0f') },
+      uZ: { value: new THREE.Vector4(P.dx0, P.dx1, P.belt, P.rocker) },
+      uT: { value: new THREE.Vector4(P.tx0, P.tx1, P.ty0, P.ty1) },
+      uS: { value: new THREE.Vector3(P.sx, P.sy, P.sr) },
+      uR: { value: new THREE.Vector4(P.barX - 0.25 - Math.min(0.75, P.barX - P.fx0 - 0.3), P.barX - 0.25, P.rw * 0.6, P.roofY) },
+    };
+    paint.onBeforeCompile = sh => {
+      Object.assign(sh.uniforms, U);
+      sh.vertexShader = 'uniform mat4 uInv;\nvarying vec3 vCarP;\nvarying vec3 vCarN;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  { mat4 cm = uInv * modelMatrix; vCarP = (cm * vec4(transformed, 1.0)).xyz; vCarN = normalize(mat3(cm) * objectNormal); }');
+      sh.fragmentShader = 'uniform sampler2D uTex;\nuniform vec4 uZ;\nuniform vec4 uT;\nuniform vec3 uS;\nuniform vec4 uR;\nuniform vec3 uBlack;\nuniform float uMode;\nvarying vec3 vCarP;\nvarying vec3 vCarN;\n'
+        + sh.fragmentShader.replace('vec4 diffuseColor = vec4( diffuse, opacity );', LIV_GLSL);
+    };
+    paint.customProgramCacheKey = () => 'fwpd-livery-1';
+    paint.color.copy(lin(kind === 'slick' ? '#0d0e11' : '#f1f2f0')); paint.roughness = 0.24; paint.metalness = kind === 'slick' ? 0.5 : 0.15; paint.needsUpdate = true;
+    return U;
+  }
+
+  // ---------- where things go on each model: roof, belt line, doors, the nose and tail (worked out once per model) ----------
+  function copShape(m, kind) {
+    const id = COP_KINDS[kind].id; if (COP.shape[id]) return COP.shape[id];
+    const inner = m.children[0]; m.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(inner.matrixWorld).invert(), M = new THREE.Matrix4(), v = new THREE.Vector3();
+    const paintV = [], glassV = [], allY = [];
+    inner.traverse(o => {
+      if (!o.isMesh) return; for (let p = o.parent; p && p !== inner; p = p.parent) if (!p.visible) return;
+      if (o.parent && o.parent.parent === inner && m.userData.wheels.includes(o.parent)) return;
+      const isP = o.material === m.userData.paint, isG = o.material.transparent; if (!isP && !isG) return;
+      M.multiplyMatrices(inv, o.matrixWorld); const a = o.geometry.attributes.position.array;
+      for (let i = 0; i < a.length; i += 3) { v.set(a[i], a[i + 1], a[i + 2]).applyMatrix4(M); (isP ? paintV : glassV).push(v.x, v.y, v.z); }
+    });
+    const U = m.userData, W = U.wheels.map(w => w.position), xf = Math.max(...W.map(p => p.x)), xr = Math.min(...W.map(p => p.x)), r = U.r;
+    let roofY = 0; for (let i = 1; i < paintV.length; i += 3) roofY = Math.max(roofY, paintV[i]);
+    let rx0 = 1e9, rx1 = -1e9, rw = 0;
+    for (let i = 0; i < paintV.length; i += 3) if (paintV[i + 1] > roofY - 0.05) { rx0 = Math.min(rx0, paintV[i]); rx1 = Math.max(rx1, paintV[i]); rw = Math.max(rw, Math.abs(paintV[i + 2])); }
+    let gz = 0; for (let i = 0; i < glassV.length; i += 3) gz = Math.max(gz, Math.abs(glassV[i + 2]));
+    let belt = roofY; for (let i = 0; i < glassV.length; i += 3) if (Math.abs(glassV[i + 2]) > gz * 0.8 && glassV[i] < xf && glassV[i] > xr) belt = Math.min(belt, glassV[i + 1]);
+    // the A pillar: where the front side window ends
+    let wsX = -1e9; for (let i = 0; i < glassV.length; i += 3) if (Math.abs(glassV[i + 2]) > gz * 0.8 && glassV[i + 1] > belt - 0.02) wsX = Math.max(wsX, glassV[i]);
+    // the flat of the roof, for the bar and the number
+    let fx0 = 1e9, fx1 = -1e9; for (let i = 0; i < paintV.length; i += 3) if (paintV[i + 1] > roofY - 0.12) { fx0 = Math.min(fx0, paintV[i]); fx1 = Math.max(fx1, paintV[i]); }
+    const dx0 = xr + r + 0.16, dx1 = xf - r - 0.14;
+    let hw = 0; for (let i = 0; i < paintV.length; i += 3) { const y = paintV[i + 1], x = paintV[i]; if (y > belt - 0.3 && y < belt && x > dx0 && x < dx1) hw = Math.max(hw, Math.abs(paintV[i + 2])); }
+    const H = U.wid ? roofY : 1.4, front = U.front, rear = front - U.len;
+    const sr = Math.min(0.17, (belt - r * 1.4) * 0.35);
+    const P = {
+      xf, xr, r, roofY, rx0, rx1, rw: rw || U.wid * 0.38, belt, wsX, hw: hw || U.wid / 2, front, rear, H,
+      dx0, dx1, rocker: r * 0.95, sx: dx1 - sr - 0.2, sy: belt - sr - 0.1, sr,
+      tx0: dx0 + 0.02, tx1: dx1 - sr * 2 - 0.22, ty0: r * 1.1, ty1: belt - 0.04, fx0, fx1,
+      barX: kind === 'tahoe' ? fx1 - 0.75 : fx0 + (fx1 - fx0) * 0.62, noseY: roofY * 0.42,
+    };
+    // keep the lettering in proportion: POLICE is about 5 times as wide as it is tall
+    const tw = P.tx1 - P.tx0, th = P.ty1 - P.ty0, want = tw / 3.5; if (th > want) { const c = (P.ty0 + P.ty1) / 2; P.ty0 = c - want / 2; P.ty1 = c + want / 2; }
+    return (COP.shape[id] = P);
+  }
+
+  // ---------- the kit: lightbar, push bar, spotlight, antennas, strobes ----------
+  const KM = {};
+  function kitMats() {
+    if (KM.ready) return KM; KM.ready = true;
+    const S = o => new THREE.MeshStandardMaterial(o);
+    KM.blk = S({ color: lin('#0f1012'), roughness: 0.55, metalness: 0.3 });
+    KM.rub = S({ color: lin('#141416'), roughness: 0.9 });
+    KM.chrome = S({ color: lin('#d8dade'), roughness: 0.15, metalness: 1 });
+    KM.lens = S({ color: lin('#dfe6ee'), roughness: 0.05, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false });
+    KM.spot = new THREE.MeshBasicMaterial({ color: 0xfff6dc });
+    const gl = document.createElement('canvas'); gl.width = gl.height = 128; const g = gl.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    KM.glow = new THREE.CanvasTexture(gl);
+    KM.box = new THREE.BoxGeometry(1, 1, 1); KM.cyl = new THREE.CylinderGeometry(1, 1, 1, 14); KM.disc = new THREE.CircleGeometry(1, 20); KM.plane = new THREE.PlaneGeometry(1, 1);
+    return KM;
+  }
+  function kbox(parent, mat, sx, sy, sz, x, y, z) { const o = new THREE.Mesh(KM.box, mat); o.scale.set(sx, sy, sz); o.position.set(x, y, z); o.castShadow = !mat.transparent; parent.add(o); return o; }
+  function lightMat(hex) { return new THREE.MeshStandardMaterial({ color: lin(hex, 0.25), emissive: lin(hex), emissiveIntensity: 0, roughness: 0.3, metalness: 0 }); }
+  function copKit(m, kind, num) {
+    const K = COP_KINDS[kind], P = copShape(m, kind), inner = m.children[0], U = m.userData; kitMats();
+    const kit = new THREE.Group(); kit.name = 'copkit'; inner.add(kit);
+    const L = { red: [lightMat('#ff1020'), lightMat('#ff1020')], blue: [lightMat('#1a4dff'), lightMat('#1a4dff')], white: lightMat('#ffffff'), glow: [] };
+    // livery on the paint
+    const liv = livery(U.paint, P, K.liv, num);
+    if (K.bar) {
+      // a low LED bar on two feet: red on the driver side, blue on the passenger side, white takedowns in the middle
+      const bar = new THREE.Group(); bar.position.set(P.barX, P.roofY - 0.005, 0); kit.add(bar);
+      const W = Math.min(1.3, P.rw * 2 * 1.02), D = 0.3;
+      for (const s of [-1, 1]) { kbox(bar, KM.blk, 0.22, 0.05, 0.05, 0, 0.022, s * W * 0.36); }
+      kbox(bar, KM.blk, D, 0.03, W, 0, 0.06, 0);
+      const seg = (mat, z0, z1) => kbox(bar, mat, D * 0.88, 0.05, Math.abs(z1 - z0), 0, 0.1, (z0 + z1) / 2);
+      seg(L.red[0], -W * 0.49, -W * 0.3); seg(L.red[1], -W * 0.29, -W * 0.08); seg(L.white, -W * 0.07, W * 0.07); seg(L.blue[1], W * 0.08, W * 0.29); seg(L.blue[0], W * 0.3, W * 0.49);
+      kbox(bar, KM.lens, D, 0.075, W + 0.02, 0, 0.1, 0);
+      for (const s of [-1, 1]) { const cap = kbox(bar, KM.blk, D * 0.98, 0.075, 0.025, 0, 0.1, s * (W / 2 + 0.012)); cap.castShadow = false; }
+      L.glow.push([-W * 0.45, P.roofY + 0.1, P.barX, 'red'], [W * 0.45, P.roofY + 0.1, P.barX, 'blue']);
+      // push bar on the nose: two uprights, two cross bars, rubber pads, a pair of LED heads on top
+      const pb = new THREE.Group(); pb.position.set(P.front + 0.07, 0, 0); kit.add(pb);
+      const y0 = P.noseY * 0.55, y1 = P.noseY * 1.45;
+      for (const s of [-1, 1]) { kbox(pb, KM.blk, 0.07, y1 - y0, 0.07, 0, (y0 + y1) / 2, s * 0.34); kbox(pb, KM.rub, 0.04, (y1 - y0) * 0.8, 0.09, 0.05, (y0 + y1) / 2, s * 0.34); kbox(pb, KM.blk, 0.16, 0.05, 0.05, -0.08, y0 + 0.06, s * 0.34); }
+      kbox(pb, KM.blk, 0.06, 0.06, 0.82, 0, y1 - 0.03, 0); kbox(pb, KM.blk, 0.06, 0.06, 0.82, 0, y0 + (y1 - y0) * 0.35, 0);
+      kbox(pb, L.red[1], 0.05, 0.05, 0.16, 0.01, y1 + 0.02, -0.2); kbox(pb, L.blue[1], 0.05, 0.05, 0.16, 0.01, y1 + 0.02, 0.2);
+      // spotlight on the driver's A pillar
+      const sp = new THREE.Group(); sp.position.set(P.wsX - 0.18, P.belt + 0.08, -(P.hw + 0.04)); kit.add(sp);
+      const can = new THREE.Mesh(KM.cyl, KM.chrome); can.scale.set(0.075, 0.16, 0.075); can.rotation.z = Math.PI / 2; can.position.x = 0.04; sp.add(can);
+      const face = new THREE.Mesh(KM.disc, KM.spot); face.scale.set(0.066, 0.066, 1); face.rotation.y = Math.PI / 2; face.position.x = 0.121; sp.add(face);
+      const arm = new THREE.Mesh(KM.cyl, KM.chrome); arm.scale.set(0.012, 0.14, 0.012); arm.position.set(-0.02, -0.06, 0.02); sp.add(arm);
+      // antennas on the roof and the trunk
+      for (const [x, y, h] of [[P.rx0 + 0.12, P.roofY, 0.32], [P.rear + 0.45, P.roofY * (kind === 'tahoe' ? 1 : 0.68), 0.5]]) { const a = new THREE.Mesh(KM.cyl, KM.blk); a.scale.set(0.006, h, 0.006); a.position.set(x, y + h / 2, 0.15); kit.add(a); }
+    } else {
+      // slicktop: a visor light up in the windshield, a deck light in the back glass, and grille lights
+      const vz = P.rw * 0.8;
+      kbox(kit, KM.blk, 0.05, 0.05, vz * 2 + 0.04, P.rx1 - 0.02, P.roofY - 0.085, 0);
+      kbox(kit, L.red[0], 0.03, 0.04, vz * 0.9, P.rx1 + 0.005, P.roofY - 0.085, -vz * 0.5); kbox(kit, L.blue[0], 0.03, 0.04, vz * 0.9, P.rx1 + 0.005, P.roofY - 0.085, vz * 0.5);
+      kbox(kit, L.blue[1], 0.03, 0.035, vz * 0.8, P.rx0 - 0.08, P.roofY - 0.13, -vz * 0.45); kbox(kit, L.red[1], 0.03, 0.035, vz * 0.8, P.rx0 - 0.08, P.roofY - 0.13, vz * 0.45);
+      L.glow.push([-vz * 0.5, P.roofY - 0.05, P.rx1 + 0.1, 'red'], [vz * 0.5, P.roofY - 0.05, P.rx1 + 0.1, 'blue']);
+    }
+    // grille wig-wags and rear strobes
+    kbox(kit, L.red[1], 0.03, 0.05, 0.12, P.front + 0.01, P.noseY, -0.42); kbox(kit, L.blue[1], 0.03, 0.05, 0.12, P.front + 0.01, P.noseY, 0.42);
+    kbox(kit, L.red[0], 0.03, 0.04, 0.12, P.rear - 0.01, P.noseY * 1.25, -0.5); kbox(kit, L.blue[0], 0.03, 0.04, 0.12, P.rear - 0.01, P.noseY * 1.25, 0.5);
+    // the glow: a soft sprite at each end of the bar, and a splash of color on the road at night
+    const glows = L.glow.map(([z, y, x, c]) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: KM.glow, color: c === 'red' ? 0xff2030 : 0x2a5cff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 })); s.position.set(x, y, z); s.userData.c = c; s.renderOrder = 3; kit.add(s); return s; });
+    const splash = new THREE.Mesh(KM.plane, new THREE.MeshBasicMaterial({ map: KM.glow, color: 0xff2030, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 }));
+    splash.rotation.x = -Math.PI / 2; splash.scale.set(14, 11, 1); splash.position.set(0, 0.06, 0); splash.renderOrder = 2; kit.add(splash);
+    U.cop = { L, glows, splash, liv, inner, P, kind };
+    return U.cop;
+  }
+  // flash pattern: the outer modules alternate sides in triple bursts, the inner ones wig-wag, takedowns stay off unless asked
+  function copLights(m, on, t, ph) {
+    const C = m && m.userData.cop; if (!C) return;
+    const L = C.L, k = night() ? 1 : dusk() ? 0.8 : 0.6;
+    let ro = 0, bo = 0, ri = 0, bi = 0;
+    if (on) {
+      const tt = t + ph, c = (tt % 0.9) / 0.9, side = c < 0.5 ? 0 : 1, q = (c * 2) % 1, burst = q < 0.8 && (q * 3.75) % 1 < 0.55 ? 1 : 0;
+      ro = side === 0 ? burst : 0; bo = side === 1 ? burst : 0; ri = (tt % 0.5) < 0.25 ? 1 : 0; bi = 1 - ri;
+    }
+    const I = night() ? 4.5 : 5.5;
+    L.red[0].emissiveIntensity = ro * I; L.blue[0].emissiveIntensity = bo * I; L.red[1].emissiveIntensity = ri * I * 0.85; L.blue[1].emissiveIntensity = bi * I * 0.85;
+    for (const s of C.glows) { const v = s.userData.c === 'red' ? Math.max(ro, ri * 0.6) : Math.max(bo, bi * 0.6); s.material.opacity = v * (night() ? 1 : 0.6) * k; const sc = night() ? 4.2 : 1.7; s.scale.set(sc, sc, 1); }
+    const sv = Math.max(ro, bo, (ri + bi) * 0.4); C.splash.visible = on && dusk(); if (C.splash.visible) { C.splash.material.color.setHex(ro >= bo && (ro || ri) ? 0xff2030 : 0x2a5cff); C.splash.material.opacity = sv * (night() ? 0.5 : 0.25); }
+  }
+
+  // ---------- units ----------
+  function copUnit(kind, x, z, yaw, mode) {
+    const K = COP_KINDS[kind], g = new THREE.Group(); g.position.set(x, 0.12, z); g.rotation.y = yaw; scene.add(g);
+    const u = { id: COP.seq++, kind, K, g, model: null, x, z, yaw, sp: 0, a: null, b: null, u: 0, path: null, mode, lights: false, siren: false, ph: copRand() * 2, t: 0, stuck: 0, sx: x, sz: z, off: false, home: null, gone: false, cop: true, inCar: true, hits: 0 };
+    const num = 100 + Math.floor(copRand() * 800);
+    u.slot = putCar(g, K.id, K.liv === 'slick' ? '#0d0e11' : '#f1f2f0', m => { m.position.y = 0; u.model = m; try { copKit(m, kind, num); } catch (e) { console.warn('cop kit: ' + e.message); } });
+    COP.units.push(u); return u;
+  }
+  function copKill(u) { u.gone = true; u.slot.userData.dead = true; scene.remove(u.g); if (u.officer) copOfficerGone(u); COP.units = COP.units.filter(o => o !== u); }
+  function copMe() { return hMe(); }
+  function inTown(x, z) { return Math.abs(x) < 1500 && Math.abs(z) < 1500 || !!districtAt(x, z); }
+
+  // follow the roads like the hood's drivers do, a bit quicker into the turns when they're running hot
+  function copNext(u) {
+    const g = gpsGraph(), adj = g.adj[u.b] || [];
+    if (u.path && u.path.length) return u.path.shift();
+    const [mx, mz] = copMe(), opts = adj.filter(a => a[0] !== u.a), ok = (opts.length ? opts : adj).filter(a => Math.hypot(g.nx[a[0]] - mx, g.nz[a[0]] - mz) < 600);
+    return (ok.length ? cPick(ok) : cPick(opts.length ? opts : adj) || [u.a])[0];
+  }
+  function copRoad(u, dt, want, hot) {
+    const g = gpsGraph(); if (u.join != null) { copJoined(u, dt, want); return; } if (u.a == null) return;
+    const ax = g.nx[u.a], az = g.nz[u.a], bx = g.nx[u.b], bz = g.nz[u.b], L = Math.max(0.1, Math.hypot(bx - ax, bz - az)), fx = (bx - ax) / L, fz = (bz - az) / L;
+    let tgt = want; if (L - u.u < (hot ? 22 : 16)) tgt = Math.min(tgt, hot ? 13 : 6);
+    if (!hot) { const [mx, mz] = copMe(), ex = mx - u.x, ez = mz - u.z, ahead = ex * fx + ez * fz, side = Math.abs(ex * -fz + ez * fx); if (ahead > 0 && ahead < 12 && side < 3.2) tgt = 0;
+      for (const o of COP.units) { if (o === u || o.a !== u.a || o.b !== u.b) continue; const d = o.u - u.u; if (d > 0 && d < 11) tgt = 0; } }
+    u.sp += clamp(tgt - u.sp, -11 * dt, (hot ? 9 : 4.5) * dt); u.u += u.sp * dt;
+    if (u.u >= L) { u.u -= L; const nb = copNext(u); u.a = u.b; u.b = nb; if (u.a === u.b) { u.sp = 0; u.u = 0; } }
+    const ax2 = g.nx[u.a], az2 = g.nz[u.a], bx2 = g.nx[u.b], bz2 = g.nz[u.b], L2 = Math.max(0.1, Math.hypot(bx2 - ax2, bz2 - az2)), gx = (bx2 - ax2) / L2, gz = (bz2 - az2) / L2;
+    const uu = Math.min(u.u, L2), lane = hot ? 1.6 : 3.6, tx = ax2 + gx * uu - gz * lane, tz = az2 + gz * uu + gx * lane;
+    const k = 1 - Math.exp(-dt * 6); u.x += (tx - u.x) * k; u.z += (tz - u.z) * k;
+    u.yaw += cNorm(Math.atan2(-gx, -gz) - u.yaw) * Math.min(1, dt * 5);
+  }
+  function copOnRoad(u, x, z) {
+    const g = gpsGraph(), n = hNearestNode(x, z); if (n < 0) return false; const adj = g.adj[n]; if (!adj.length) return false;
+    u.a = n; u.b = cPick(adj)[0]; u.u = 0; u.x = g.nx[n]; u.z = g.nz[n]; u.yaw = Math.atan2(-(g.nx[u.b] - u.x), -(g.nz[u.b] - u.z)); u.path = null; u.off = false; u.join = null; return true;
+  }
+  // back onto the roads: drive to the nearest corner first (no popping across the map)
+  function copJoin(u) { const n = hNearestNode(u.x, u.z); if (n < 0) return; u.join = n; u.off = false; u.a = null; u.path = null; }
+  function copJoined(u, dt, want) {
+    const g = gpsGraph(), n = u.join, d = copSteer(u, dt, g.nx[n], g.nz[n], Math.min(want, 4 + Math.hypot(g.nx[n] - u.x, g.nz[n] - u.z)));
+    if (d < 3) { u.join = null; const adj = g.adj[n]; if (!adj.length) return; u.a = n; u.b = (u.path && u.path.length ? u.path.shift() : cPick(adj)[0]); u.u = 0; }
+    else { u.t2 = (u.t2 || 0) + dt; if (u.t2 > 8) { u.t2 = 0; u.join = null; copOnRoad(u, u.x, u.z); } }
+  }
+  // off the graph: drive straight at a point (the suspect, or behind them on a stop), sliding along walls
+  function copSteer(u, dt, tx, tz, want) {
+    const dx = tx - u.x, dz = tz - u.z, d = Math.hypot(dx, dz), wy = Math.atan2(-dx, -dz), dy = cNorm(wy - u.yaw);
+    const turn = Math.min(2.2, 0.6 + Math.abs(u.sp) * 0.09) * dt; u.yaw += clamp(dy, -turn, turn);
+    let tgt = want; if (Math.abs(dy) > 1.1) tgt = Math.min(tgt, 9);
+    u.sp += clamp(tgt - u.sp, -14 * dt, 10 * dt);
+    let nx = u.x - Math.sin(u.yaw) * u.sp * dt, nz = u.z - Math.cos(u.yaw) * u.sp * dt; const R = 1.5; let hit = false;
+    for (const b of solids.at(nx, nz)) { const cx = clamp(nx, b.x0, b.x1), cz = clamp(nz, b.z0, b.z1), ex = nx - cx, ez = nz - cz, e = Math.hypot(ex, ez); if (e < R) { hit = true; if (e > 1e-4) { nx = cx + ex / e * R; nz = cz + ez / e * R; } else { nx = u.x; nz = u.z; } } }
+    if (hit) u.sp *= Math.pow(0.3, dt * 3);
+    u.x = nx; u.z = nz; return d;
+  }
+  function copSees(u, px, pz, R) {
+    const d = Math.hypot(px - u.x, pz - u.z); if (d > R) return false; if (d < 22) return true;
+    const n = Math.ceil(d / 6); for (let i = 1; i < n; i++) { const x = u.x + (px - u.x) * i / n, z = u.z + (pz - u.z) * i / n; if (solids.at(x, z).some(b => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1)) return false; }
+    return true;
+  }
+  // a road spot 250-400 m out, for a unit to come in from (nobody pops in next to you)
+  function copEntry(px, pz, lo = 240, hi = 420) {
+    const g = gpsGraph();
+    for (let i = 0; i < 60; i++) { const a = copRand() * Math.PI * 2, r = lo + copRand() * (hi - lo), n = hNearestNode(px + Math.sin(a) * r, pz + Math.cos(a) * r); if (n < 0) continue; const d = Math.hypot(g.nx[n] - px, g.nz[n] - pz); if (d > lo * 0.8 && d < hi * 1.2 && g.adj[n].length) return [g.nx[n], g.nz[n]]; }
+    return null;
+  }
+
+  // ---------- the officer: walks up on a traffic stop, runs you down on foot ----------
+  function copOfficerLook() {
+    let sd = 4242 + COP.seq * 31; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647; R();
+    const L = PEOPLE.randomLook(R, R() < 0.25);
+    return { ...L, top: 'fleece_black', bottom: 'cargo_black', shoes: 'boots_tactical', hat: 'cap_black', mask: 'no_mask', bag: 'no_bag', extras: R() < 0.5 ? ['shades'] : [], tats: [] };
+  }
+  function copOfficer(u) {
+    if (!COP.officerBase) { try { COP.officerBase = hNameParts(PEOPLE.build(copOfficerLook(), 1)); } catch (e) { console.warn('officer: ' + e.message); return null; } }
+    const P = hClone(COP.officerBase); scene.add(P.wrap);
+    const s = Math.sin(u.yaw), c = Math.cos(u.yaw), lx = -c, lz = s;
+    const o = { P, x: u.x + lx * 1.5, z: u.z + lz * 1.5, yaw: u.yaw, walk: 0 }; P.wrap.position.set(o.x, 0, o.z); u.officer = o; return o;
+  }
+  function copOfficerGone(u) { const o = u.officer; if (!o) return; scene.remove(o.P.wrap); u.officer = null; }
+  function copWalk(o, tx, tz, dt, sp) {
+    const dx = tx - o.x, dz = tz - o.z, d = Math.hypot(dx, dz);
+    if (d > 0.25) { const st = Math.min(d, sp * dt); o.x += dx / d * st; o.z += dz / d * st; o.yaw += cNorm(Math.atan2(-dx, -dz) - o.yaw) * Math.min(1, dt * 10); o.walk += dt * sp * Math.PI * 2 / (sp > 4 ? 3.6 : 1.6); animPerson(o.P, o.walk, 1, sp > 4 ? 1 : 0); }
+    else idlePerson(o.P, performance.now() / 1000);
+    o.P.wrap.position.set(o.x, 0, o.z); o.P.wrap.rotation.y = o.yaw; return d;
+  }
+
+  // ---------- siren: wail far off, yelp up close, from the closest unit running hot ----------
+  function copSiren(dt) {
+    let best = 1e9, mode = 'wail'; const [mx, mz] = copMe();
+    for (const u of COP.units) if (u.siren && !u.gone) { const d = Math.hypot(u.x - mx, u.z - mz); if (d < best) best = d; }
+    const vol = best < 420 ? Math.pow(1 - best / 420, 1.6) * 0.16 : 0;
+    if (!vol && !COP.snd) return;
+    const ac = audioCtx(); if (!ac) return;
+    if (!COP.snd) {
+      const o1 = ac.createOscillator(), o2 = ac.createOscillator(), lp = ac.createBiquadFilter(), g = ac.createGain();
+      o1.type = 'square'; o2.type = 'triangle'; lp.type = 'lowpass'; lp.frequency.value = 2600; g.gain.value = 0;
+      o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(ac.destination); o1.start(); o2.start(); COP.snd = { o1, o2, g, t: 0 };
+    }
+    const S2 = COP.snd; S2.t += dt; if (best < 45) mode = 'yelp';
+    const f = mode === 'yelp' ? 700 + 650 * ((S2.t % 0.34) / 0.34) : 640 + 680 * (0.5 - 0.5 * Math.cos(S2.t * Math.PI * 2 / 4.4));
+    const now = ac.currentTime; S2.o1.frequency.setTargetAtTime(f, now, 0.01); S2.o2.frequency.setTargetAtTime(f * 1.005, now, 0.01);
+    S2.g.gain.setTargetAtTime(vol * 0.55, now, 0.08);
+  }
+  function copWhoop() {
+    const ac = audioCtx(); if (!ac) return; const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = 'square';
+    o.frequency.setValueAtTime(500, t); o.frequency.exponentialRampToValueAtTime(1400, t + 0.35); o.frequency.exponentialRampToValueAtTime(600, t + 0.6);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.62); o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + 0.65);
+  }
+
+  // ---------- the wanted bar ----------
+  function copBar() {
+    if (!COP.pill) {
+      const st = document.createElement('style');
+      st.textContent = `#copbar{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 118px);transform:translateX(-50%);z-index:28;display:flex;gap:8px;align-items:center;background:rgba(14,14,20,0.88);color:#f1ece4;border-radius:14px;padding:6px 8px 6px 12px;font:700 14px var(--body);border:2px solid #ff2030;max-width:92vw;pointer-events:auto}
+#copbar[hidden]{display:none}#copbar.b{border-color:#2a5cff}#copbar b{color:#ffd23f}#copbar .st{letter-spacing:2px;color:#ffd23f}#copbar .st u{text-decoration:none;color:#4a4652}
+#copbar button{font:800 13px var(--body);border-radius:10px;border:0;padding:7px 11px;background:#d1a52a;color:#141016;cursor:pointer;white-space:nowrap}
+body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
+      document.head.append(st);
+      COP.pill = document.createElement('div'); COP.pill.id = 'copbar'; COP.pill.hidden = true; document.body.append(COP.pill);
+      COP.pill.addEventListener('click', ev => { const b = ev.target.closest('button'); if (b && COP.act) COP.act(); });
+    }
+    const lv = Math.floor(clamp(S.heat || 0, 0, 5)), stars = '★'.repeat(lv) + `<u>${'★'.repeat(5 - lv)}</u>`;
+    let html = '';
+    COP.act = null;
+    if (COP.phase === 'notice') html = `<span>🚨 <b>Pull over</b> · ${Math.ceil(COP.pullT)}s · stop the car</span>`;
+    else if (COP.phase === 'stop') { const st = COP.stop; html = st && st.step === 'ticket' ? `<span>👮 Officer at your window</span><button>TICKET</button>` : `<span>👮 Traffic stop · stay put</span>`; if (st && st.step === 'ticket') COP.act = () => openMenu(copTicketMenu); }
+    else if (COP.phase === 'chase') html = `<span>🚨 <b>Pursuit</b> <span class="st">${stars}</span>${COP.bustT > 0.3 ? ` · busted in ${Math.ceil(3 - COP.bustT)}` : ''}</span>`;
+    else if (COP.phase === 'search') html = `<span>🔎 <b>Searching</b> <span class="st">${stars}</span> · stay out of sight ${Math.ceil(Math.max(0, 18 - COP.unseenT))}s</span>`;
+    if (html !== COP.pillKey) { COP.pillKey = html; COP.pill.innerHTML = html; }
+    const show = !!html && worldOn && driving && !inside && !menuFn; if (COP.pill.hidden === show) COP.pill.hidden = !show;
+    COP.pill.classList.toggle('b', (performance.now() % 600) < 300);
+  }
+
+  // ---------- phases: none, notice (lit up, pull over), stop (officer walks up), chase, search, cool ----------
+  // heat the cops add themselves (a chase, a ticket) doesn't count as a new crime
+  function copHeat(n) { S.heat = Math.min(5, (S.heat || 0) + n); COP.heat0 = S.heat; refreshStats(); }
+  function copSay(t) { const n = performance.now(); if (n - COP.said < 3500) return; COP.said = n; toast(t, 'bad'); }
+  function suspectCar() { return S.car ? carLabel(carOf(S.car.id)).replace(/^\d+ /, '') : 'on foot'; }
+  function copStreet() { const [x, z] = copMe(), s = streetAt(x, z); return s ? TC(s.name) : districtAt(x, z) || 'the area'; }
+  function copChase(why) {
+    const was = COP.phase; COP.phase = 'chase'; COP.unseenT = 0; COP.bustT = 0; COP.seen = true; COP.lastSeen = copMe(); COP.chaseT = 0;
+    if (COP.stop) { const u = COP.stop.u; if (u) copOfficerGone(u); COP.stop = null; closeMenu(); }
+    for (const u of COP.units) if (!u.gone && Math.hypot(u.x - COP.lastSeen[0], u.z - COP.lastSeen[1]) < 600) { u.mode = 'chase'; u.lights = u.siren = true; }
+    if (was !== 'chase') { copSay(`Dispatch: units in pursuit of a ${suspectCar()} on ${copStreet()}. ${why || ''}`.trim()); copWhoop(); }
+  }
+  function copNotice(u, why) {
+    if (COP.phase !== 'none' && COP.phase !== 'cool') return;
+    COP.phase = 'notice'; COP.pullT = PULL_S; COP.stillT = 0; COP.why = why; COP.unitStop = u; u.mode = 'stop'; u.lights = true; u.siren = false; copWhoop();
+    toast(`🚨 FWPD is lighting you up: ${why}. Pull over.`, 'bad');
+  }
+  function copEnd(msg, kind) {
+    COP.phase = msg === 'lost' ? 'cool' : 'none'; COP.coolT = 30; COP.stop = null; COP.bustT = 0;
+    for (const u of COP.units) { u.lights = u.siren = false; if (u.officer) copOfficerGone(u); if (u.mode !== 'park') { u.mode = 'patrol'; if (u.off) copJoin(u); } }
+    if (msg === 'lost') toast('You lost them. Lay low, the heat stays on you till you sleep it off.', 'good');
+    else if (msg) toast(msg, kind || 'bad');
+  }
+  function copBusted() {
+    const lv = Math.max(1, Math.floor(S.heat || 0)), fine = 500 + 800 * lv, pay = Math.min(S.cash, fine);
+    S.cash -= pay; S.log.unshift(`-${money(pay)} Bail and fines`); S.heat = 0; COP.heat0 = 0; S.health = clamp100(S.health - 5); save(); refreshStats();
+    copEnd(`🚔 Busted. ${money(pay)} bail and fines${pay < fine ? ' (all the cash you had)' : ''}. Heat cleared.`);
+  }
+  // the ticket: pay it, fight it in court (heat stays), or pull off (that's a chase)
+  function copTicketMenu() {
+    const st = COP.stop; if (!st) return null;
+    const lv = Math.floor(S.heat || 0), fine = st.fine;
+    return { title: 'FWPD traffic stop', sub: `${st.why}${lv ? ` · Heat ${lv}: the officer ran your name` : ''}`, rows: [
+      { t: `Pay the ticket`, s: lv ? 'Clears one heat level' : 'Have a good night', btn: money(fine), act: () => { if (!spend(fine, 'Ticket')) return; if (lv) { S.heat = Math.max(0, S.heat - 1); COP.heat0 = S.heat; } copEnd('Ticket paid. Drive safe out here.', 'good'); closeMenu(); } },
+      { t: 'Sign it, see you in court', s: 'Pay nothing now. Heat +1', btn: 'Sign', act: () => { copHeat(1); copEnd('Signed. Your court date is on you.', 'good'); closeMenu(); } },
+      { t: 'Pull off', s: 'Hit the gas. That\'s a felony chase.', btn: 'Run', act: () => { closeMenu(); copHeat(2); copChase('Suspect fled a traffic stop.'); } },
+    ] };
+  }
+
+  // ---------- the world: precinct cars, patrols, responders ----------
+  function copPrecincts() {
+    if (COP.prec) return COP.prec;
+    COP.prec = DATA.P.filter(p => p.type === 'police').map(p => ({ p, made: false, units: [] }));
+    return COP.prec;
+  }
+  function copPark(pr) {
+    const p = pr.p, [ox, oz] = outDir(p), tx = -oz, tz = ox, kinds = ['charger', 'tahoe', 'charger', 'hellcat'];
+    for (let k = 0; k < 4; k++) {
+      const side = (k - 1.5) * 3.3, x = p.x + ox * 9 + tx * side, z = p.z + oz * 9 + tz * side;
+      if (solids.at(x, z).some(b => x > b.x0 - 1.2 && x < b.x1 + 1.2 && z > b.z0 - 1.2 && z < b.z1 + 1.2)) continue;
+      const u = copUnit(kinds[k], x, z, Math.atan2(ox, oz) + Math.PI, 'park'); u.home = pr; u.lights = k === 1; pr.units.push(u);
+    }
+    pr.made = true;
+  }
+  function copPopulate(mx, mz) {
+    for (const pr of copPrecincts()) {
+      const d = Math.hypot(pr.p.x - mx, pr.p.z - mz);
+      if (d < 420 && !pr.made) copPark(pr);
+      else if (d > 560 && pr.made && pr.units.every(u => u.mode === 'park')) { pr.units.forEach(copKill); pr.units = []; pr.made = false; }
+    }
+    // patrols cruise the city around you; far ones go home
+    for (const u of COP.units.slice()) if (u.mode !== 'park' && Math.hypot(u.x - mx, u.z - mz) > (u.mode === 'chase' ? 900 : 640)) copKill(u);
+    const patrols = COP.units.filter(u => u.mode === 'patrol').length, want = inTown(mx, mz) ? (phone ? 2 : 3) : 1;
+    if (patrols < want && COP.phase !== 'chase') { const e = copEntry(mx, mz, 180, 420); if (e) { const u = copUnit(copRand() < 0.6 ? 'charger' : 'tahoe', e[0], e[1], 0, 'patrol'); copOnRoad(u, e[0], e[1]); } }
+  }
+  function copRespond(mx, mz) {
+    const lv = Math.floor(clamp(S.heat || 0, 1, 5)), want = Math.min(phone ? 4 : 6, UNITS_FOR[lv] + (COP.chaseT > 40 ? 1 : 0));
+    const hot = COP.units.filter(u => u.mode === 'chase');
+    // patrols nearby join in first, then precinct cars roll out, then units drive in from the edge
+    if (hot.length < want) {
+      const free = COP.units.filter(u => u.mode !== 'chase' && Math.hypot(u.x - mx, u.z - mz) < 600).sort((a, b) => Math.hypot(a.x - mx, a.z - mz) - Math.hypot(b.x - mx, b.z - mz))[0];
+      if (free) { if (free.mode === 'park') { free.off = true; free.home && (free.home.units = free.home.units.filter(o => o !== free)); } free.mode = 'chase'; free.lights = free.siren = true; return; }
+      if (COP.spawnT > 0) return; COP.spawnT = 3.5;
+      const e = copEntry(mx, mz); if (!e) return;
+      const kind = lv >= 3 && !COP.units.some(u => u.kind === 'hellcat' && u.mode === 'chase') ? 'hellcat' : cPick(['charger', 'charger', 'tahoe']);
+      const u = copUnit(kind, e[0], e[1], 0, 'chase'); copOnRoad(u, e[0], e[1]); u.lights = u.siren = true;
+    }
+  }
+
+  // ---------- each unit, each frame ----------
+  function copThink(u, dt, mx, mz, d) {
+    if (u.mode === 'park') { u.sp = 0; return; }
+    if (u.mode === 'patrol') { copRoad(u, dt, 13, false); return; }
+    if (u.mode === 'stop') {
+      // lit up, following you; once you're stopped the unit pulls in behind you
+      const st = COP.stop, by = st ? st : null;
+      const bx = by ? by.px : mx + Math.sin(drv.yaw) * 9, bz = by ? by.pz : mz + Math.cos(drv.yaw) * 9;
+      if (!u.off && d < 90) u.off = true;
+      if (by && by.parked) { u.sp = 0; u.yaw += cNorm(by.yaw - u.yaw) * Math.min(1, dt * 3); }
+      else if (u.off) { const dd = copSteer(u, dt, bx, bz, by ? Math.min(8, Math.hypot(bx - u.x, bz - u.z) * 1.2) : clamp(d - 9, 0, 30) * 1.4); if (by && dd < 1.4) { u.sp = 0; by.parked = true; } }
+      else { if (!u.path || !u.path.length) { const n = hNearestNode(mx, mz); if (n >= 0 && n !== u.b) u.path = hRoute(u.b, n) || null; } copRoad(u, dt, 22, true); }
+      return;
+    }
+    if (u.mode === 'chase') {
+      const [tx, tz] = COP.phase === 'search' && COP.lastSeen ? COP.lastSeen : [mx, mz];
+      const dd = Math.hypot(tx - u.x, tz - u.z);
+      if (!u.off && dd < 75) u.off = true;
+      if (u.off && dd > 140) copJoin(u);
+      if (u.off) {
+        // lead the target a little, ease off right on top of a stopped car
+        const lead = COP.phase === 'chase' && !foot.on ? 0.6 : 0, mySp = Math.hypot(TIRE.vx, TIRE.vz);
+        let px = tx + TIRE.vx * lead, pz = tz + TIRE.vz * lead;
+        if (dd < 30) { const k = COP.units.filter(o => o.mode === 'chase').indexOf(u), a = drv.yaw + [Math.PI * 0.82, -Math.PI * 0.82, Math.PI * 0.5, -Math.PI * 0.5, 0, Math.PI][k % 6], rr = mySp < 3 ? 6.5 : 4; px += Math.sin(a) * rr; pz += Math.cos(a) * rr; }
+        const dp = Math.hypot(px - u.x, pz - u.z); let want = clamp(dp * 1.3, 0, 47); if (dd < 14) want = Math.min(want, mySp + 2 + dp * 0.8); if (foot.on && dd < 12) want = 0; if (COP.phase === 'search' && dd < 12) want = 0;
+        copSteer(u, dt, px, pz, want);
+        // stuck on a wall: back onto the roads
+        u.t += dt; if (u.t > 2) { const mv = Math.hypot(u.x - u.sx, u.z - u.sz); u.t = 0; u.sx = u.x; u.sz = u.z; if (mv < 1.5 && want > 6) { u.stuck++; if (u.stuck > 1) { copJoin(u); u.stuck = 0; } } else u.stuck = 0; }
+      } else {
+        u.t += dt; if (u.t > 2 || !u.path) { u.t = 0; const n = hNearestNode(tx, tz); if (n >= 0 && n !== u.b) u.path = hRoute(u.b, n) || null; }
+        copRoad(u, dt, COP.phase === 'search' ? 24 : 40, true);
+      }
+      // on foot close by: an officer jumps out and runs you down
+      if (foot.on && COP.phase === 'chase' && dd < 30 && !u.officer && Math.abs(u.sp) < 2 && !COP.units.some(o => o.officer)) copOfficer(u);
+      if (u.officer) { const od = copWalk(u.officer, mx, mz, dt, foot.on ? 7.4 : 0); if (foot.on && od < 1.3) copBusted(); else if (!foot.on || od > 60) copOfficerGone(u); }
+    }
+  }
+  // your car and theirs: bump apart; ramming a cop is a crime
+  function copBump(u) {
+    if (foot.on || !u.model) return;
+    const dx = drv.x - u.x, dz = drv.z - u.z, d = Math.hypot(dx, dz), R = 2.6; if (d >= R || d < 1e-3) return;
+    const nx = dx / d, nz = dz / d, push = R - d; drv.x += nx * push * 0.6; drv.z += nz * push * 0.6; u.x -= nx * push * 0.4; u.z -= nz * push * 0.4;
+    const vn = TIRE.vx * nx + TIRE.vz * nz; if (vn < 0) { TIRE.vx -= vn * nx * 1.3; TIRE.vz -= vn * nz * 1.3; }
+    const hit = Math.abs(vn) + Math.abs(u.sp) * 0.3; u.sp *= 0.5;
+    if (hit > 7 && performance.now() - COP.ramT > 4000) { COP.ramT = performance.now(); if (COP.phase !== 'chase') { copHeat(1); copChase('Suspect rammed a unit.'); } }
+    drv.px = drv.x; drv.pz = drv.z;
+  }
+  function copStep(dt) {
+    if (!HOOD.ready || !S || !worldOn || !driving || inside || ROLL.on || STRIP.on) { for (const u of COP.units) u.g.visible = false; if (COP.snd) COP.snd.g.gain.value = 0; if (COP.pill && !COP.pill.hidden) COP.pill.hidden = true; return; }
+    COP.T += dt; COP.spawnT -= dt;
+    const [mx, mz] = copMe(), incar = !foot.on, mySp = incar ? Math.hypot(TIRE.vx, TIRE.vz) : 0;
+    if ((frame & 31) === 0 && !COP.noPop) copPopulate(mx, mz);
+    // heat went up (a robbery, a drop, a hot tune): if a cop is close, that's a chase
+    if (COP.heat0 == null) COP.heat0 = S.heat || 0;
+    if ((S.heat || 0) > COP.heat0 && COP.phase !== 'chase') { if (COP.units.some(u => u.mode !== 'park' && Math.hypot(u.x - mx, u.z - mz) < 260) || S.heat >= 3) copChase('Report of a crime in progress.'); }
+    COP.heat0 = S.heat || 0;
+    // who can see you
+    let seen = false, near = 1e9;
+    if ((frame & 3) === 0) {
+      for (const u of COP.units) { const d = Math.hypot(u.x - mx, u.z - mz); near = Math.min(near, d); if (copSees(u, mx, mz, COP.phase === 'chase' ? 150 : 85)) { seen = true; u.sawT = COP.T; } }
+      COP.seen = seen;
+    } else seen = COP.seen;
+    if (COP.phase === 'none' || COP.phase === 'cool') {
+      COP.coolT -= dt; if (COP.phase === 'cool' && COP.coolT <= 0) COP.phase = 'none';
+      if (seen && COP.phase === 'none') {
+        const w = COP.units.filter(u => u.sawT === COP.T && u.mode !== 'park')[0] || COP.units.filter(u => u.sawT === COP.T)[0];
+        if ((S.heat || 0) >= 2) copChase('Units have eyes on a wanted suspect.');
+        else if (w && incar && (S.heat || 0) >= 1 && Math.hypot(w.x - mx, w.z - mz) < 60) { if (w.mode === 'park') { w.off = true; w.home && (w.home.units = w.home.units.filter(o => o !== w)); } copNotice(w, 'Your plate came back with a warrant'); }
+        else if (w && incar && mySp > 36 && Math.hypot(w.x - mx, w.z - mz) < 70) { if (w.mode === 'park') { w.off = true; w.home && (w.home.units = w.home.units.filter(o => o !== w)); } copNotice(w, `${Math.round(mySp * 2.237)} in a 45`); }
+      }
+    } else if (COP.phase === 'notice') {
+      const u = COP.unitStop; if (!u || u.gone) { COP.phase = 'none'; return; }
+      const d = Math.hypot(u.x - mx, u.z - mz); if (d < 160) COP.pullT -= dt;
+      if (!incar) COP.stillT += dt; else COP.stillT = mySp < 0.6 ? COP.stillT + dt : 0;
+      if (COP.stillT > 0.6) {
+        const by = { px: drv.x + Math.sin(drv.yaw) * 8.5, pz: drv.z + Math.cos(drv.yaw) * 8.5, yaw: drv.yaw, step: 'approach', u, x: drv.x, z: drv.z, why: COP.why, fine: /warrant/.test(COP.why) ? 800 : 250, t: 0 };
+        if (by.fine === 250 && (S.heat || 0) >= 1) by.fine = 800;
+        COP.stop = by; COP.phase = 'stop'; toast('Stay in the car. The officer is walking up.', '');
+      } else if (COP.pullT <= 0) { copHeat(1); copChase('Suspect failed to stop.'); }
+    } else if (COP.phase === 'stop') {
+      const st = COP.stop, u = st.u; st.t += dt;
+      if (Math.hypot(drv.x - st.x, drv.z - st.z) > 4 || (incar && mySp > 3)) { copHeat(1); copChase('Suspect fled a traffic stop.'); }
+      else if (st.step === 'approach' && st.parked) { if (copOfficer(u)) st.step = 'walk'; else { st.step = 'ticket'; openMenu(copTicketMenu); } }
+      else if (st.step === 'approach' && st.t > 14) { u.x = st.px; u.z = st.pz; u.yaw = st.yaw; u.sp = 0; st.parked = true; }
+      else if (st.step === 'walk' && u.officer) {
+        const lx = -Math.cos(st.yaw), lz = Math.sin(st.yaw), wx = st.x + lx * 1.55 - Math.sin(st.yaw) * 0.3, wz = st.z + lz * 1.55 - Math.cos(st.yaw) * 0.3;
+        if (copWalk(u.officer, wx, wz, dt, 1.9) < 0.3) { u.officer.yaw = Math.atan2(-(drv.x - u.officer.x), -(drv.z - u.officer.z)); u.officer.P.wrap.rotation.y = u.officer.yaw; st.step = 'ticket'; openMenu(copTicketMenu); }
+      } else if (st.step === 'ticket' && u.officer) idlePerson(u.officer.P, performance.now() / 1000);
+    } else if (COP.phase === 'chase' || COP.phase === 'search') {
+      COP.chaseT = (COP.chaseT || 0) + dt;
+      copRespond(mx, mz);
+      if (seen) { COP.unseenT = 0; COP.lastSeen = [mx, mz]; if (COP.phase === 'search') { COP.phase = 'chase'; copSay(`Dispatch: eyes back on the ${suspectCar()}, ${copStreet()}.`); } }
+      else { COP.unseenT += dt; if (COP.phase === 'chase' && COP.unseenT > 6) { COP.phase = 'search'; copSay('Dispatch: lost visual. Units, search the area.'); } if (COP.phase === 'search' && COP.unseenT > 18) { copEnd('lost'); } }
+      // boxed in: stopped with a unit on you for 3 s
+      let close = false; for (const u of COP.units) if (u.mode === 'chase' && Math.hypot(u.x - mx, u.z - mz) < 9) close = true;
+      if (COP.phase === 'chase' && incar && close && mySp < 1.6) { COP.bustT += dt; if (COP.bustT > 3) copBusted(); } else COP.bustT = Math.max(0, COP.bustT - dt * 2);
+    }
+    // move and draw them; units running hot keep a car's length apart
+    const t = performance.now() / 1000;
+    for (let i = 0; i < COP.units.length; i++) for (let j = i + 1; j < COP.units.length; j++) {
+      const a = COP.units[i], b = COP.units[j]; if (a.mode === 'park' && b.mode === 'park') continue;
+      const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz); if (d > 4.4 || d < 1e-3) continue;
+      const k = (4.4 - d) / 2 / d, ka = a.mode === 'park' ? 0 : b.mode === 'park' ? 2 : 1, kb = 2 - ka; a.x -= dx * k * ka; a.z -= dz * k * ka; b.x += dx * k * kb; b.z += dz * k * kb;
+    }
+    for (const u of COP.units.slice()) {
+      if (u.gone) continue; const d = Math.hypot(u.x - mx, u.z - mz), ox = u.x, oz = u.z;
+      copThink(u, dt, mx, mz, d); if (u.gone) continue;
+      copBump(u);
+      u.g.position.set(u.x, 0.12, u.z); u.g.rotation.y = u.yaw; u.g.visible = d < 520;
+      const m = u.model; if (m && u.g.visible) { spinWheels(m, Math.hypot(u.x - ox, u.z - oz)); copLights(m, u.lights, t, u.ph); const C = m.userData.cop; if (C) C.liv.uInv.value.copy(C.inner.matrixWorld).invert(); }
+    }
+    copSiren(dt);
+    if ((frame & 7) === 0) copBar();
+    if (COP.cam) { const c = COP.cam; camera.position.set(c[0], c[1], c[2]); camera.lookAt(c[3], c[4], c[5]); camera.updateMatrixWorld(); }
+  }
+
+  // ---------- shots: firing near a cop is heat, hitting a cop car is a chase ----------
+  const _cShotHook = window.__shotHook;
+  window.__shotHook = (O, D, best, t0) => {
+    if (_cShotHook) _cShotHook(O, D, best, t0);
+    if (!S) return;
+    for (const u of COP.units) {
+      if (u.gone || !u.g.visible) continue; const dx = u.x - O.x, dz = u.z - O.z, rr = best.t + 4; if (dx * dx + dz * dz > rr * rr) continue;
+      const c = Math.cos(u.yaw), s = Math.sin(u.yaw), lo = { x: (O.x - u.x) * c - (O.z - u.z) * s, y: O.y, z: (O.x - u.x) * s + (O.z - u.z) * c }, ld = { x: D.x * c - D.z * s, y: D.y, z: D.x * s + D.z * c };
+      const tall = u.kind === 'tahoe', r = hSlab(lo, ld, -1, 0.2, -2.5, 1, tall ? 1.95 : 1.45, 2.5);
+      if (r && r.t > t0 && r.t < best.t) { best.t = r.t; best.kind = 'npc'; best.npc = u; best.part = 'car'; best.box = null; best.n.set(0, 1, 0); }
+    }
+    const now = performance.now();
+    if (now - COP.gunT > 5000 && COP.units.some(u => !u.gone && Math.hypot(u.x - O.x, u.z - O.z) < 140)) { COP.gunT = now; copHeat(1); refreshStats(); copChase('Shots fired near officers.'); }
+  };
+  const _cShotLand = window.__shotLand;
+  window.__shotLand = (B, fx) => {
+    const e = B.hit && B.hit.npc; if (e && e.cop) { fx.sparks(B.hit.p, B.d); e.hits++; if (e.hits === 1) { copHeat(2); refreshStats(); copChase('Shots fired at a unit!'); } return; }
+    if (_cShotLand) _cShotLand(B, fx);
+  };
+  // ---------- cops on the minimap: flashing red and blue when they're running hot ----------
+  const _cMini = hoodMini;
+  hoodMini = function (x, to, dpr, R, px, pz) {
+    _cMini.apply(this, arguments);
+    const fl = (performance.now() % 500) < 250;
+    for (const u of COP.units) {
+      if (u.gone) continue; const dx = u.x - px, dz = u.z - pz; if (dx * dx + dz * dz > R * R * 1.4) continue;
+      const q = to(u.x, u.z); x.fillStyle = u.lights ? (fl ? '#ff2030' : '#2a5cff') : '#7fa8ff'; x.strokeStyle = '#fff'; x.lineWidth = dpr;
+      x.beginPath(); x.arc(q[0], q[1], 4 * dpr, 0, Math.PI * 2); x.fill(); x.stroke();
+    }
+  };
+  const _cStepStreet = stepStreet;
+  stepStreet = function (t) {
+    _cStepStreet.apply(this, arguments);
+    const n = performance.now(), dt = Math.min(0.05, (n - (COP.last || n)) / 1000); COP.last = n;
+    try { copStep(dt); } catch (e) { if (!COP.err) { COP.err = 1; console.warn('police: ' + e.message, e.stack); } }
+  };
+  const _cSleep = sleep;
+  sleep = function (p) { const r = _cSleep.apply(this, arguments); if (COP.phase !== 'none') copEnd(''); return r; };
+  // test hooks
+  window.__cops = { step: copStep, populate: copPopulate, COP, COP_KINDS, copUnit, copKill, copChase, copNotice, copEnd, copBusted, copLights, copOnRoad, copPark, copPrecincts, copTicketMenu };
+  })();
+  // ==== police (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
