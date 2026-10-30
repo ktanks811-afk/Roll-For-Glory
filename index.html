@@ -16821,7 +16821,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function gunHolsterNow() {
     laserOff();
     GUN.want = false; GUN.d = 0; GUN.camK = 0; GUN.reload = null; GUN.anim = null; GUN.held = false; GUN.kick = 0;
-    untwistArms(ME); if (GUN.b && ME) { const D = GUN.b.D; poseAt(D.pistol ? POSE.pistolHip(D) : POSE.arpBack(D), PA); GUN.b.rig.position.copy(PA.p); GUN.b.rig.quaternion.copy(PA.q); }
+    untwistArms(ME); if (GUN.b && ME) { const D = GUN.b.D; poseAt(restDefOf(D, drawStyle(eqGun(), D)), PA); GUN.b.rig.position.copy(PA.p); GUN.b.rig.quaternion.copy(PA.q); }
     gunHud();
   }
   function syncGunModel() {
@@ -17178,9 +17178,272 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const g = eqGun(); if (!g) { openPhone(); phoneApp('amazin'); return; }
     if (GUN.reload) return; GUN.want = !GUN.want; SND.rustle(); gunHud();
   }
+  // ==== draw styles (begin) ====
+  // how you pull the gun: each style is keyframes in your upper body's space (+z forward, -x your right).
+  // g: the grip point [where, muzzle dir, slide-top dir] or 'rest' / 'aim'; rw/rt: right hand weight and target ('grip' or a point);
+  // lw/lt: left hand ('sup' on the gun, 'hem' holding the shirt up, or a point); lift: how far the shirt is pulled up; spin: twirl round the grip.
+  // keys marked fx are flourishes that the holster (the same keys played backwards) skips.
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+  const qB = (X, up) => { const x = X.clone().normalize(), y = up.clone().addScaledVector(x, -up.dot(x)).normalize(), z = new THREE.Vector3().crossVectors(x, y); return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z)); };
+  const F = V3(0, 0, 1), UP = V3(0, 1, 0);
+  const DRAW_STYLES = {
+    pistol: [
+      { id: 'holster', name: 'Hip holster', s: 'Straight out of the kydex on your hip.' },
+      { id: 'waist', name: 'Waistband', s: 'Tucked in your waistband. Lift the shirt, pull it, punch out.', dur: 0.66, carry: 'waist', kf: [
+        { t: 0, g: 'rest', rw: 0, rt: 'grip', lw: 0, lt: 'hem', lift: 0 },
+        { t: 0.2, lw: 1, lift: 0.75, rw: 0.55 },
+        { t: 0.32, rw: 1, lift: 1 },
+        { t: 0.5, g: [[-0.075, 0.17, 0.18], V3(0, -1, 0.12), V3(1, 0, 0)] },
+        { t: 0.66, g: [[-0.07, 0.34, 0.28], V3(0, -0.25, 1), UP], lt: 'sup', lw: 0.8, lift: 0.25 },
+        { t: 1, g: 'aim', lw: 1, lift: 0 },
+      ] },
+      { id: 'quick', name: 'Quick draw', s: 'Fastest pull there is. Straight off the hip and on target.', dur: 0.27, kf: [
+        { t: 0, g: 'rest', rw: 0, rt: 'grip', lw: 0, lt: 'sup' },
+        { t: 0.28, rw: 1 },
+        { t: 0.62, g: [[-0.12, 0.3, 0.33], V3(0, 0.05, 1), UP], lw: 0.5 },
+        { t: 1, g: 'aim', lw: 1 },
+      ] },
+      { id: 'spin', name: 'Spin draw', s: 'Twirl it twice round your trigger finger on the way up.', dur: 1.05, kf: [
+        { t: 0, g: 'rest', rw: 0, rt: 'grip', lw: 0, lt: 'sup', spin: 0 },
+        { t: 0.14, rw: 1 },
+        { t: 0.3, g: [[-0.17, 0.24, 0.3], F, UP] },
+        { t: 0.74, g: [[-0.16, 0.27, 0.34], F, UP], spin: 4 * Math.PI, fx: 1, lin: 1 },
+        { t: 0.86, g: [[-0.1, 0.42, 0.42], F, UP], lw: 0.6 },
+        { t: 1, g: 'aim', lw: 1 },
+      ] },
+      { id: 'side', name: 'Sideways', s: 'Pull it and turn it flat. One hand, held sideways.', dur: 0.5, aim: 'side', kf: [
+        { t: 0, g: 'rest', rw: 0, rt: 'grip', lw: 0, lt: 'sup' },
+        { t: 0.3, rw: 1 },
+        { t: 0.66, g: [[-0.11, 0.36, 0.34], F, UP] },
+        { t: 1, g: 'aim' },
+      ] },
+      { id: 'flip', name: 'Toss & catch', s: 'Flick it up out the holster, let it flip, catch it on target.', dur: 1.15, kf: [
+        { t: 0, g: 'rest', rw: 0, rt: 'grip', lw: 0, lt: 'sup', spin: 0 },
+        { t: 0.13, rw: 1 },
+        { t: 0.28, g: [[-0.14, 0.2, 0.3], V3(0, 0.25, 1), UP] },
+        { t: 0.36, g: [[-0.13, 0.3, 0.33], V3(0, 1, 0.35), V3(0, -0.35, 1)], fx: 1, ev: 'toss' },
+        { t: 0.4, rt: [-0.14, 0.31, 0.33], fx: 1 },
+        { t: 0.6, g: [[-0.12, 0.78, 0.38], V3(0, 1, 0.35), V3(0, -0.35, 1)], spin: Math.PI * 1.2, fx: 1, lin: 1, rt: [-0.12, 0.3, 0.36] },
+        { t: 0.8, g: [[-0.1, 0.4, 0.4], F, UP], spin: 2 * Math.PI, fx: 1, rt: 'grip', ev: 'catch' },
+        { t: 0.88, lw: 0.6 },
+        { t: 1, g: 'aim', lw: 1 },
+      ] },
+    ],
+    arp: [
+      { id: 'sling', name: 'Back sling', s: 'Reach back and bring it round.' },
+      { id: 'swing', name: 'Swing it round', s: 'Yank the sling and swing it off your back into your hands.', dur: 0.8, kf: [
+        { t: 0, g: 'rest', rw: 0, rt: [-0.16, 0.12, 0.2], lw: 0, lt: [0.08, 0.42, 0.15] },
+        { t: 0.22, lw: 1, rw: 0.6 },
+        { t: 0.3, g: [[-0.32, 0.2, -0.2], V3(0.5, -0.8, 0.4), V3(-1, 0, 0)] },
+        { t: 0.45, g: [[-0.3, 0.1, -0.02], V3(0.25, -0.5, 1), V3(-1, 0, 0)], lt: [0.0, 0.34, 0.2] },
+        { t: 0.66, g: [[-0.17, 0.14, 0.24], V3(0, 0.05, 1), UP], rw: 1, rt: 'grip', lt: 'sup', lw: 0.7, ev: 'catch' },
+        { t: 1, g: 'aim', lw: 1 },
+      ] },
+    ],
+  };
+  // fill each key with the last value it didn't set, and keep a holster copy without the flourishes
+  for (const list of Object.values(DRAW_STYLES)) for (const st of list) {
+    if (!st.kf) continue; let last = {};
+    st.kf = st.kf.map(k => (last = { lift: 0, spin: 0, ...last, fx: 0, lin: 0, ev: null, ...k }));
+    st.back = st.kf.filter(k => !k.fx).map(k => ({ ...k, spin: 0 }));
+  }
+  const drawStyle = (g, D) => { const list = DRAW_STYLES[D.pistol ? 'pistol' : 'arp']; return (g && list.find(s => s.id === g.draw)) || list[0]; };
+  const Q_SIDE = qB(F, V3(1, 0.12, 0));
+  const restDefOf = (D, st) => st.carry === 'waist' ? [D.grip, [-0.07, 0.025, 0.083], qB(V3(0.04, -1, 0.06), V3(1, 0, 0))] : D.pistol ? POSE.pistolHip(D) : POSE.arpBack(D);
+  const aimDefOf = (D, st) => st.aim === 'side' ? [D.grip, [-0.08, 0.5, 0.46], Q_SIDE] : D.pistol ? POSE.pistolAim(D) : POSE.arpAim(D);
+
+  // ---- the shirt: lifted up off the waistband in the vertex shader, with skin under it ----
+  const LIFT = { me: null, u: { value: new THREE.Vector4(0, 0, -0.1, 0) }, skin: null, hem: -0.1, ok: false };
+  function liftShader(sh) {
+    if (this.userData.prevOBC) this.userData.prevOBC.call(this, sh);
+    sh.uniforms.uLift = LIFT.u;
+    sh.vertexShader = 'uniform vec4 uLift;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+  if (uLift.y > 0.001) {
+    float lh_ = transformed.y - uLift.z, lw_ = exp(-pow((transformed.x - uLift.x) / 0.13, 2.0)) * smoothstep(-0.02, 0.07, transformed.z);
+    float lk_ = uLift.y * lw_ * (1.0 - smoothstep(0.0, 0.26, lh_));
+    transformed.y += lk_ * 0.17; transformed.z += lk_ * 0.028 * (1.0 + sin(transformed.x * 60.0) * 0.4);
+  }`);
+  }
+  function setupLift() {
+    if (LIFT.me === ME) return; LIFT.me = ME; LIFT.ok = false; if (LIFT.skin && LIFT.skin.parent) LIFT.skin.parent.remove(LIFT.skin); LIFT.skin = null;
+    if (!ME || !ME.upper) return;
+    let shirt = null, neck = null; const bb = new THREE.Box3();
+    for (const c of ME.upper.children) {
+      if (!c.isMesh) continue; if (!c.geometry.boundingBox) c.geometry.computeBoundingBox(); const b = c.geometry.boundingBox;
+      if (c.material.userData && c.material.userData.cloth) { if (!shirt || b.max.y - b.min.y > shirt.geometry.boundingBox.max.y - shirt.geometry.boundingBox.min.y) shirt = c; }
+      else if (b.min.y > 0.38 && b.max.x < 0.1 && !neck) neck = c;
+    }
+    if (!shirt) return;
+    LIFT.hem = shirt.geometry.boundingBox.min.y; if (LIFT.hem > 0.02) return;   // crop tops already show the belly
+    for (const c of ME.upper.children) {
+      const m = c.isMesh && c.material; if (!m || !m.userData.cloth || m.userData.lifted) continue;
+      m.userData.lifted = true; m.userData.prevOBC = m.onBeforeCompile; m.onBeforeCompile = liftShader; m.needsUpdate = true;
+    }
+    // skin just inside the shirt, only drawn while it's lifted
+    const sm = neck ? neck.material : new THREE.MeshStandardMaterial({ color: 0x6b4630, roughness: 0.6 });
+    const sk = new THREE.Mesh(shirt.geometry, sm); sk.scale.set(0.955, 1, 0.94); sk.position.z = 0.003; sk.visible = false; sk.castShadow = false;
+    ME.upper.add(sk); LIFT.skin = sk; LIFT.ok = true;
+  }
+  function setLift(k, cx) {
+    if (!LIFT.ok) return; k = clamp(k, 0, 1); LIFT.u.value.set(cx, k, LIFT.hem, 0); LIFT.skin.visible = k > 0.01;
+  }
+  const hemPoint = (out, k) => out.set(-0.005, LIFT.hem + 0.17 * k + 0.02, 0.19 + 0.02 * k);
+  const PLOW = { R: new THREE.Vector3(-0.4, -1, -0.15), L: new THREE.Vector3(0.4, -1, -0.15), r: new THREE.Vector3(), l: new THREE.Vector3() };
+
+
+  // two-bone IK with a real elbow hinge: the upper arm takes all the turn and the forearm only bends about its own x,
+  // so sleeves and elbows stay together when the hands work close to the body
+  const HK = { A: new THREE.Matrix4(), B: new THREE.Matrix4(), u: new THREE.Vector3(), f: new THREE.Vector3(), n: new THREE.Vector3(), w: new THREE.Vector3(), E: new THREE.Vector3(), D: new THREE.Vector3(), m: new THREE.Vector3(), qa: new THREE.Quaternion(), qf: new THREE.Quaternion(), X: new THREE.Vector3(1, 0, 0), h0: [], phi0: [] };
+  for (let i = 0; i < 2; i++) { const h = new THREE.Vector3(-1, 0, 0).addScaledVector(ARM_U0[i], ARM_U0[i].x).normalize(); HK.h0[i] = h; HK.A.makeBasis(ARM_U0[i], h, new THREE.Vector3().crossVectors(ARM_U0[i], h)); HK['A' + i] = HK.A.clone().invert(); HK.phi0[i] = ARM_U0[i].angleTo(ARM_F0[i]); }
+  function armHinge(P, i, T, pole, w) {
+    if (w <= 0.001) return;
+    const arm = P.arms[i], fore = P.fores[i], Sp = arm.position;
+    const D = HK.D.subVectors(T, Sp), d = clamp(D.length(), 0.08, LA + LB - 0.004); D.normalize();
+    const m = HK.m.copy(pole).addScaledVector(D, -pole.dot(D)).normalize();
+    const ca = clamp((LA * LA + d * d - LB * LB) / (2 * LA * d), -1, 1), sa = Math.sqrt(1 - ca * ca);
+    const u = HK.u.copy(D).multiplyScalar(ca).addScaledVector(m, sa), E = HK.E.copy(Sp).addScaledVector(u, LA);
+    const f = HK.f.copy(Sp).addScaledVector(D, d).sub(E).normalize();
+    let n = HK.n.crossVectors(u, f); if (n.lengthSq() < 1e-8) n.copy(HK.X).applyQuaternion(arm.quaternion).multiplyScalar(-1); n.normalize();
+    HK.B.makeBasis(u, n, HK.w.crossVectors(u, n)); HK.qa.setFromRotationMatrix(HK.B.multiply(HK['A' + i]));
+    HK.qf.setFromAxisAngle(HK.X, -Math.max(0, u.angleTo(f) - HK.phi0[i]));
+    arm.quaternion.slerp(HK.qa, w); fore.quaternion.slerp(HK.qf, w);
+  }
+  // ---- playing the keys ----
+  const DR = { q: new THREE.Quaternion(), qa: new THREE.Quaternion(), p: [0, 1, 2, 3].map(() => new THREE.Vector3()), gp: new THREE.Vector3(), tmp: new THREE.Vector3(), tR: [new THREE.Vector3(), new THREE.Vector3()], tL: [new THREE.Vector3(), new THREE.Vector3()], R: { w: 0, t: new THREE.Vector3() }, L: { w: 0, t: new THREE.Vector3() }, lastEv: null, rest: { p: new THREE.Vector3(), q: new THREE.Quaternion() }, aim: { p: new THREE.Vector3(), q: new THREE.Quaternion() } };
+  const gripOf = (D, pose, out) => out.set(D.grip[0], D.grip[1], D.grip[2]).multiplyScalar(0.1).applyQuaternion(pose.q).add(pose.p);
+  function keyPose(D, k, outP, outQ) {
+    if (k.g === 'rest') { gripOf(D, DR.rest, outP); if (outQ) outQ.copy(DR.rest.q); }
+    else if (k.g === 'aim') { gripOf(D, DR.aim, outP); if (outQ) outQ.copy(DR.aim.q); }
+    else { outP.set(k.g[0][0], k.g[0][1], k.g[0][2]); if (outQ) { if (!k.q) k.q = qB(k.g[1], k.g[2]); outQ.copy(k.q); } }
+  }
+  // returns false when the style has no keys (the old straight pull is used)
+  function drawPose(b, D, st, d, want) {
+    const keys = want ? st.kf : st.back; if (!keys) return false;
+    poseAt(restDefOf(D, st), DR.rest); poseAt(aimDefOf(D, st), DR.aim);
+    let i = 0; while (i < keys.length - 2 && d > keys[i + 1].t) i++;
+    const k0 = keys[i], k1 = keys[i + 1], s = clamp((d - k0.t) / Math.max(1e-4, k1.t - k0.t), 0, 1), se = k1.lin ? s : smooth01(s);
+    // grip path: Catmull-Rom through the neighbours, so the gun swings through the keys instead of stopping at each one
+    const km = keys[Math.max(0, i - 1)], k2 = keys[Math.min(keys.length - 1, i + 2)];
+    keyPose(D, km, DR.p[0]); keyPose(D, k0, DR.p[1], DR.q); keyPose(D, k1, DR.p[2], DR.qa); keyPose(D, k2, DR.p[3]);
+    const [p0, p1, p2, p3] = DR.p, t = se, t2 = t * t, t3 = t2 * t;
+    DR.gp.set(0, 0, 0).addScaledVector(p1, 2).addScaledVector(DR.tmp.subVectors(p2, p0), t).addScaledVector(DR.tmp.copy(p0).multiplyScalar(2).addScaledVector(p1, -5).addScaledVector(p2, 4).sub(p3), t2).addScaledVector(DR.tmp.copy(p1).multiplyScalar(3).sub(p0).addScaledVector(p2, -3).add(p3), t3).multiplyScalar(0.5);
+    DR.q.slerp(DR.qa, se);
+    const spin = lerp(k0.spin, k1.spin, se); if (spin) DR.q.multiply(DR.qa.setFromAxisAngle(F, spin));
+    // the rig sits so its grip point lands on the path
+    b.rig.quaternion.copy(DR.q); b.rig.position.copy(DR.gp).sub(DR.tmp.set(D.grip[0], D.grip[1], D.grip[2]).multiplyScalar(0.1).applyQuaternion(DR.q));
+    DR.R.w = lerp(k0.rw, k1.rw, se); DR.L.w = lerp(k0.lw, k1.lw, se);
+    DR.k = [k0, k1, se]; DR.lift = lerp(k0.lift, k1.lift, smooth01(s));
+    const ev = s > 0.98 ? k1.ev : null; if (ev && want && DR.lastEv !== k1) { DR.lastEv = k1; if (ev === 'toss') SND.rustle(); else SND.click(1300, 0.06); }
+    if (d < 0.02) DR.lastEv = null;
+    return true;
+  }
+  // hand targets, once the rig's matrix is final
+  function drawTarget(D, b, spec, out) {
+    if (spec === 'grip') return out.set(D.grip[0], D.grip[1], D.grip[2]).applyMatrix4(b.rig.matrix);
+    if (spec === 'sup') return out.set(D.sup[0], D.sup[1], D.sup[2]).applyMatrix4(b.rig.matrix);
+    if (spec === 'hem') return hemPoint(out, DR.lift);
+    return out.set(spec[0], spec[1], spec[2]);
+  }
+  function drawHands(D, b) {
+    const [k0, k1, s] = DR.k;
+    if (DR.R.w > 0.001) { drawTarget(D, b, k0.rt, DR.tR[0]); drawTarget(D, b, k1.rt, DR.tR[1]); DR.R.t.lerpVectors(DR.tR[0], DR.tR[1], s); armHinge(ME, 0, DR.R.t, PLOW.r.lerpVectors(PLOW.R, D.pistol ? POLE.pR : POLE.aR, smooth01((DR.R.t.y - 0.1) / 0.25)), DR.R.w); }
+    if (DR.L.w > 0.001) { drawTarget(D, b, k0.lt, DR.tL[0]); drawTarget(D, b, k1.lt, DR.tL[1]); DR.L.t.lerpVectors(DR.tL[0], DR.tL[1], s); armHinge(ME, 1, DR.L.t, PLOW.l.lerpVectors(PLOW.L, D.pistol ? POLE.pL : POLE.aL, smooth01((DR.L.t.y - 0.1) / 0.25)), DR.L.w); }
+  }
+
+  // ---- QuickDraw: a steel plate 7 m out, wait for the beep, draw and ring it. Your time vs a rival's ----
+  const QD = { on: false, st: '', t: 0, go: 0, wait: 0, plate: null, swing: 0, x: 0, z: 0, y: 0, yaw: 0, drawT: 0, rival: null, hooked: false };
+  const RIVALS = [['Lil Tre', 'arp'], ['Big Smoke', 'arp'], ['Dre from Stop Six', 'g19'], ['Murda Mike', 'arp'], ['Slim', 'g20']];
+  function qdPlate() {
+    const g = new THREE.Group(), steel = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.55, metalness: 0.35 }), post = new THREE.MeshStandardMaterial({ color: 0x3a3a3c, roughness: 0.5, metalness: 0.6 });
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.05), post); legs.position.y = 0.03; g.add(legs);
+    const legs2 = legs.clone(); legs2.rotation.y = Math.PI / 2; g.add(legs2);
+    const up = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.42, 0.05), post); up.position.y = 0.73; g.add(up);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.05), post); arm.position.y = 1.45; g.add(arm);
+    const hinge = new THREE.Group(); hinge.position.y = 1.45; g.add(hinge);
+    const hang = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.03), post); hang.position.y = -0.06; hinge.add(hang);
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.012, 32), steel); plate.rotation.x = Math.PI / 2; plate.position.y = -0.31; hinge.add(plate);
+    const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.014, 24), new THREE.MeshStandardMaterial({ color: 0xff5a1f, roughness: 0.6 })); dot.rotation.x = Math.PI / 2; dot.position.y = -0.31; hinge.add(dot);
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    g.userData.hinge = hinge; return g;
+  }
+  const qdEl = (() => {
+    const css = document.createElement('style');
+    css.textContent = `#qd { position: fixed; left: 50%; top: 9%; width: min(92vw, 520px); transform: translateX(-50%); z-index: 9; text-align: center; pointer-events: none; display: none; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.85); font-family: var(--body); }
+#qd.on { display: block; } #qd b { display: block; font: 900 38px var(--body); white-space: nowrap; letter-spacing: 0.04em; } #qd small { display: block; font: 700 15px var(--body); opacity: 0.9; margin-top: 4px; }
+#qd b.go { color: #ffd23a; transform: scale(1.15); } #qd b.win { color: #5dff8a; } #qd b.lose { color: #ff6a50; }
+#qd .row { pointer-events: auto; margin-top: 12px; display: flex; gap: 10px; justify-content: center; }
+#qd .row button { font: 800 15px var(--body); padding: 10px 18px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.3); background: rgba(24,20,30,0.7); color: #fff; }
+#qd .row button.again { background: #ff9900; border-color: #ff9900; color: #111; }`;
+    document.head.appendChild(css); const el = document.createElement('div'); el.id = 'qd'; document.body.appendChild(el); return el;
+  })();
+  function qdShow(big, small, cls, buttons) {
+    qdEl.className = 'on'; qdEl.innerHTML = `<b class="${cls || ''}">${esc(big)}</b>${small ? `<small>${esc(small)}</small>` : ''}${buttons ? '<div class="row"><button class="again">Again</button><button class="done">Done</button></div>' : ''}`;
+    if (buttons) { qdEl.querySelector('.again').onclick = () => qdRound(); qdEl.querySelector('.done').onclick = () => qdStop(); }
+  }
+  function qdBeep(f, len, vol) { if (!gac()) return; const v = voice(null), t = GA.c.currentTime; tn(v, t, len, 'square', f, f, vol); }
+  function qdHook() {
+    if (QD.hooked) return; QD.hooked = true;
+    const ph = window.__shotHook, pl = window.__shotLand, ob = { qd: true };
+    window.__shotHook = (O, D, best, t0) => {
+      if (ph) ph(O, D, best, t0);
+      if (!QD.on || !QD.plate) return;
+      const r = {}, c = QD.plate.position, h = 0.21;
+      if (slab(O, D, c.x - h, c.y + 0.93, c.z - h, c.x + h, c.y + 1.35, c.z + h, r) && r.t > t0 && r.t < best.t) { best.t = r.t; best.kind = 'npc'; best.npc = ob; best.part = 'plate'; best.box = null; best.n.set(0, 0, 0).setComponent(r.ax, r.sg); }
+    };
+    window.__shotLand = (B, fx) => {
+      if (B.hit.npc === ob) { fx.sparks(B.hit.p, B.d); SND.hit('metal', B.hit.p, 0); qdRang(); return; }
+      if (pl) pl(B, fx);
+    };
+  }
+  function qdStart() {
+    if (!foot.on || inside || creating || !eqGun()) { toast('Get on foot with a gun on you first.', 'bad'); return; }
+    if (typeof closePhone === 'function') closePhone();
+    qdHook(); QD.on = true;
+    const yaw = foot.holder.rotation.y, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    QD.x = foot.x + fx * 7; QD.z = foot.z + fz * 7; QD.yaw = yaw;
+    if (!QD.plate) QD.plate = qdPlate();
+    QD.plate.position.set(QD.x, groundAt(QD.x, QD.z), QD.z); QD.plate.rotation.y = yaw; scene.add(QD.plate);
+    qdRound();
+  }
+  function qdRound() {
+    if (GUN.want) gunToggle();
+    const g = eqGun(), mine = g ? g.id : 'g19', pool = RIVALS.filter(r => (r[1] === 'arp') !== (mine === 'arp'));
+    const r = pool[Math.floor(Math.random() * pool.length)], arp = r[1] === 'arp';
+    QD.rival = { name: r[0], gun: GUN_DEF[r[1]].name, t: (arp ? 0.78 : 0.6) + (Math.random() - 0.35) * (arp ? 0.3 : 0.22) };
+    QD.st = 'ready'; QD.t = 0; QD.wait = 1.6 + Math.random() * 2.2;
+    qdShow('READY...', `vs ${QD.rival.name} with the ${QD.rival.gun}. Hands off. Draw on the beep.`);
+  }
+  function qdRang() {
+    if (QD.st === 'go') {
+      const t = QD.t, a = A3(), best = a.qdBest || 0, win = t < QD.rival.t;
+      if (!best || t < best) a.qdBest = +t.toFixed(3);
+      a.qdWins = (a.qdWins || 0) + (win ? 1 : 0); save();
+      QD.st = 'done'; QD.swing = 1;
+      qdShow(win ? 'YOU WIN' : 'TOO SLOW', `You ${t.toFixed(2)}s · ${QD.rival.name} ${QD.rival.t.toFixed(2)}s · draw ${QD.drawT ? QD.drawT.toFixed(2) + 's' : '-'} · best ${(a.qdBest || t).toFixed(2)}s${!best || t < best ? ' (new)' : ''}`, win ? 'win' : 'lose', true);
+    } else if (QD.st !== 'done') QD.swing = 1;
+  }
+  function qdStop() {
+    QD.on = false; QD.st = ''; qdEl.className = ''; if (QD.plate && QD.plate.parent) QD.plate.parent.remove(QD.plate);
+  }
+  function stepQD(dt) {
+    if (!QD.on) return;
+    if (!foot.on || inside) { qdStop(); return; }
+    if (Math.hypot(foot.x - QD.x, foot.z - QD.z) > 40) { qdStop(); toast('QuickDraw over. You walked off.', ''); return; }
+    QD.t += dt;
+    if (QD.plate) { const hg = QD.plate.userData.hinge; QD.swing = Math.max(0, QD.swing - dt * 1.6); hg.rotation.x = -Math.sin(QD.swing * 14) * QD.swing * 0.9; }
+    if (QD.st === 'ready') {
+      if (GUN.want && GUN.d > 0.02) { QD.st = 'done'; qdShow('FALSE START', 'You jumped the beep. Wait for it.', 'lose', true); return; }
+      if (QD.t >= QD.wait) { QD.st = 'go'; QD.t = 0; QD.drawT = 0; qdBeep(1760, 0.22, 0.25); qdShow('DRAW!', '', 'go'); }
+    } else if (QD.st === 'go') {
+      if (!QD.drawT && GUN.d >= 1) QD.drawT = QD.t;
+      if (QD.t > 4) { QD.st = 'done'; qdShow('TOO SLOW', `${QD.rival.name} rang it in ${QD.rival.t.toFixed(2)}s.`, 'lose', true); }
+    }
+  }
+  window.__qd = { QD, qdStart, qdRound, qdStop };
+  // ==== draw styles (end) ====
   const _T = _v(), _T2 = _v(), _m4 = new THREE.Matrix4();
   function stepGuns(dt) {
-    syncGunModel();
+    syncGunModel(); stepQD(dt);
     const b = GUN.b, g = eqGun(), bc = document.body.classList;
     const has = !!(b && foot.on && !inside && !creating); if (has !== bc.contains('g-has')) bc.toggle('g-has', has);
     if (!b || !ME) { laserOff(); if (bc.contains('g-armed')) bc.remove('g-armed'); return; }
@@ -17192,7 +17455,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const holdFire = GUN.held || padFire || (!!keys.KeyQ && !menuFn && !PH.open);
     const D = b.D, upper = ME.upper; untwistArms(ME);
     // draw and holster
-    const was = GUN.d; GUN.d = clamp(GUN.d + (GUN.want ? 1 : -1) * dt / D.draw, 0, 1);
+    const sty = drawStyle(g, D), was = GUN.d; GUN.d = clamp(GUN.d + (GUN.want ? 1 / (sty.dur || D.draw) : -1 / D.draw) * dt, 0, 1); if (window.__drawFreeze != null) GUN.d = window.__drawFreeze;   // test hook: hold the draw at one point
     if (was < 1 && GUN.d >= 1) SND.click(D.pistol ? 1100 : 900, 0.08);
     GUN.camK += ((GUN.want && GUN.d > 0.5 ? 1 : 0) - GUN.camK) * Math.min(1, dt * 9);
     const out = GUN.d > 0.001;
@@ -17245,11 +17508,15 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     }
     b.magIn.position.y = magY;
     // the gun's pose: in the holster or sling, on its way out, or up and aimed
-    const d = GUN.d, aimDef = D.pistol ? POSE.pistolAim(D) : POSE.arpAim(D), restDef = D.pistol ? POSE.pistolHip(D) : POSE.arpBack(D);
-    const reach = D.pistol ? 0.3 : 0.25, mv = d <= reach ? 0 : (d - reach) / (1 - reach), em = mv * mv * (3 - 2 * mv);
-    poseAt(restDef, PA); poseAt(aimDef, PB);
-    b.rig.position.lerpVectors(PA.p, PB.p, em); b.rig.quaternion.slerpQuaternions ? b.rig.quaternion.slerpQuaternions(PA.q, PB.q, em) : b.rig.quaternion.copy(PA.q).slerp(PB.q, em);
-    const arc = Math.sin(Math.PI * em); if (D.pistol) b.rig.position.add(_T.set(-0.06 * arc, 0.1 * arc, 0.06 * arc)); else b.rig.position.add(_T.set(-0.28 * arc, 0.22 * arc, 0.12 * arc));
+    const d = GUN.d, aimDef = aimDefOf(D, sty), restDef = restDefOf(D, sty);
+    const reach = D.pistol ? 0.3 : 0.25, mv = d <= reach ? 0 : (d - reach) / (1 - reach), em = d >= 1 ? 1 : sty.kf ? 0 : mv * mv * (3 - 2 * mv);
+    setupLift(); if (GUN.holster) GUN.holster.visible = sty.carry !== 'waist';
+    const keyed = d < 1 && drawPose(b, D, sty, d, GUN.want); setLift(keyed ? DR.lift : 0, -0.02);
+    if (!keyed) {
+      poseAt(restDef, PA); poseAt(aimDef, PB);
+      b.rig.position.lerpVectors(PA.p, PB.p, em); b.rig.quaternion.slerpQuaternions ? b.rig.quaternion.slerpQuaternions(PA.q, PB.q, em) : b.rig.quaternion.copy(PA.q).slerp(PB.q, em);
+      const arc = Math.sin(Math.PI * em); if (D.pistol) b.rig.position.add(_T.set(-0.06 * arc, 0.1 * arc, 0.06 * arc)); else b.rig.position.add(_T.set(-0.28 * arc, 0.22 * arc, 0.12 * arc));
+    }
     // recoil: the pistol flips up around your grip, the AR shoves back into the brace
     if (GUN.kick > 0.001 && em > 0.9) {
       if (D.pistol) { b.rig.quaternion.multiply(_q().setFromAxisAngle(_T.set(0, 0, 1), GUN.kick * 0.9)); b.rig.position.z -= GUN.kick * 0.05; }
@@ -17257,7 +17524,8 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     }
     b.rig.updateMatrix();
     // hands: right hand on the grip once it reaches it, left hand on the support point (or the fresh mag mid reload)
-    const wR = d <= reach ? smooth01(d / reach) : 1, wL = d <= 0.55 ? 0 : smooth01((d - 0.55) / 0.45);
+    const wR = keyed ? 0 : d <= reach ? smooth01(d / reach) : 1, wL = sty.aim === 'side' && !GUN.reload ? 0 : d <= 0.55 ? 0 : smooth01((d - 0.55) / 0.45);
+    if (keyed) drawHands(D, b);
     if (wR > 0.001) {
       _T.set(D.grip[0], D.grip[1], D.grip[2]).applyMatrix4(b.rig.matrix);
       armIK(ME, 0, _T, D.pistol ? POLE.pR : POLE.aR, wR);
@@ -17394,6 +17662,17 @@ body.g-armed #walkhint { display: none !important; }
       rows.push({ sec: 'Trigger' });
       if (D.pistol) rows.push(item('', 'Glock switch', g.sw ? 'Installed. Full auto.' : `You have ${a.kits.switch || 0}`, g.sw ? 'Remove' : 'Install', () => set(() => { if (g.sw) { g.sw = false; a.kits.switch++; } else { g.sw = true; a.kits.switch--; } }, g.sw ? 'Switch out.' : 'Switch on. Hold Fire.'), !g.sw && !(a.kits.switch > 0), g.sw));
       rows.push(item('', 'FRT trigger', g.frt ? 'Installed. Hold Fire to rip it.' : `You have ${a.kits.frt || 0}`, g.frt ? 'Remove' : 'Install', () => set(() => { if (g.frt) { g.frt = false; a.kits.frt++; } else { g.frt = true; a.kits.frt--; } }, g.frt ? 'FRT out.' : 'FRT in. Hold Fire.'), !g.frt && !(a.kits.frt > 0), g.frt));
+      rows.push({ sec: 'Draw style' });
+      for (const st of DRAW_STYLES[D.pistol ? 'pistol' : 'arp']) {
+        const on = drawStyle(g, D) === st;
+        rows.push(item('', st.name, st.s, on ? 'On' : 'Use', () => set(() => { g.draw = st.id; }, `${st.name} it is. Hit Draw.`), on, on));
+      }
+      rows.push(item('', 'QuickDraw challenge', `A steel plate goes up 7 m in front of you. Draw on the beep and ring it before your rival does.${a.qdBest ? ` Your best: ${a.qdBest.toFixed(2)}s.` : ''}`, 'Start', () => { if (a.eq !== i) { a.eq = i; save(); syncGunModel(); } qdStart(); }));
+      rows.push({ sec: 'Draw style' });
+      for (const st of DRAW_STYLES[D.pistol ? 'pistol' : 'arp']) {
+        const on = drawStyle(g, D) === st;
+        rows.push(item('', st.name, st.s, on ? 'On' : 'Use', () => set(() => { g.draw = st.id; }, `${st.name} it is. Hit Draw.`), on, on));
+      }
       rows.push({ sec: 'Attachments' });
       g.own = g.own || {};
       for (const [k, nm, pr] of GUN_ADDS[D.pistol ? 'pistol' : 'arp']) {
