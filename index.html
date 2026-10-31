@@ -17573,14 +17573,20 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   }
   // which way is out of that window, and the way you face while climbing out (from the seat, facing forward, round to the window)
   const hangOutYaw = (R, w) => R.yaw - (Math.sign(w.z) || 1) * Math.PI / 2;
-  // legs folded in the car, hips on the door
+  // in the seat at k 0; at 1 kneeling on it with your hips on the door, so the legs fold back into the car
   function hangLegs(P, k) {
     const Hs = P.root.scale.y || 1, e = smooth01(k);
     for (let i = 0; i < 2; i++) {
-      P.legs[i].rotation.set(-lerp(1.45, 0.3, e), 0, (i ? 1 : -1) * 0.07);
-      if (P.knees) { P.knees[i].rotation.x = lerp(1.55, 1.8, e); P.ankles[i].rotation.x = -0.2; }
+      P.legs[i].rotation.set(lerp(-1.45, 0.35, e), 0, (i ? 1 : -1) * 0.07);
+      if (P.knees) { P.knees[i].rotation.x = lerp(1.55, 1.6, e); P.ankles[i].rotation.x = lerp(-0.3, 0.5, e); }
     }
     P.root.position.set(0, 0.07 - 0.85 * Hs, 0);
+  }
+  // the hips stay square to the window (legs inside the car) and the chest turns the rest of the way to where you aim
+  const _hy = new THREE.Vector3(0, 1, 0);
+  function hangHips(P, ry0, bodyYaw, outYaw) {
+    const d = clamp(angDiff(bodyYaw, outYaw), -0.6, 0.6) + outYaw - bodyYaw;
+    P.root.rotation.y = ry0 + d; P.upper.quaternion.premultiply(_hq2.setFromAxisAngle(_hy, -d));
   }
   // lean the chest out of the window by rolling it round the line you're aiming down, so the aim stays where it is
   function hangRoll(P, ox, oz, amt) {
@@ -17605,7 +17611,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   }
   // straight back in the seat: you got out, got dropped or the ride ended
   function hangReset() {
-    hangGlass(HANG, null);
+    hangGlass(HANG, null); if (ME && HANG.ry0 != null) ME.root.rotation.y = HANG.ry0; HANG.ry0 = null;
     if (!HANG.k && !HANG.want) return;
     HANG.want = false; HANG.k = 0;
     if (GUN.want || GUN.d > 0) gunHolsterNow();
@@ -17615,12 +17621,13 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function hangPre(dt) {
     const R = HANG.k > 0 || HANG.want ? hangRide() : null;
     if (!R) { if (HANG.k > 0 || HANG.want || HANG.glass) hangReset(); return; }
+    if (ME) { if (HANG.ry0 == null) HANG.ry0 = ME.root.rotation.y; ME.root.rotation.y = HANG.ry0; }
     HANG.seat = hangSeat();
     const w = hangWin(R.m, HANG.seat);
     HANG.k = clamp(HANG.k + (HANG.want ? 1 : GUN.d < 0.05 ? -1 : 0) * dt / HANG_UP, 0, 1);
     if (HANG.want && HANG.k >= 1 && !GUN.want && !GUN.reload) GUN.want = true;   // up on the door: the gun comes out
     const on = HANG.k > 0, bc = document.body.classList; if (on !== bc.contains('hanging')) bc.toggle('hanging', on);
-    if (!on) { foot.holder.visible = false; hangGlass(HANG, null); HANG.want = false; return; }
+    if (!on) { foot.holder.visible = false; hangGlass(HANG, null); HANG.want = false; HANG.ry0 = null; return; }
     hangGlass(HANG, w.glass);
     hangSpot(R, w, HANG.k, HP); HANG.x = HP.x; HANG.y = HP.y; HANG.z = HP.z; HANG.eye = HP.y + 0.62;
     foot.x = HP.x; foot.z = HP.z; foot.target = null; drv.x = HP.x; drv.z = HP.z;
@@ -17641,6 +17648,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     if (!(HANG.k > 0) || !ME) return;
     const R = hangRide(); if (!R) return;
     const w = hangWin(R.m, HANG.seat), s = Math.sign(w.z) || 1;
+    hangHips(ME, HANG.ry0, foot.holder.rotation.y, hangOutYaw(R, w));
     hangRoll(ME, Math.cos(R.yaw) * s, -Math.sin(R.yaw) * s, 0.45 * smooth01(HANG.k));
   }
   // a regular's car moves after your feet do (in the street step), so keep up with it there
@@ -17672,7 +17680,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const P = v.P; if (!P) return;
     if (v.hang) P.upper.rotation.set(v.hang.ux, 0, 0);
     const R = p.ride && p.ho ? hangRideOf(p) : null;
-    if (!R) { if (v.hang) { hangGlass(v.hang, null); v.hang = null; p.hangAt = null; if (p.ride) v.g.visible = false; } return; }
+    if (!R) { if (v.hang) { hangGlass(v.hang, null); v.hang = null; P.root.rotation.y = Math.PI; p.hangAt = null; if (p.ride) v.g.visible = false; } return; }
     const hg = v.hang || (v.hang = { ux: 0, glass: null, k: 0 });
     hg.k += ((p.hk || 0) - hg.k) * 0.25;
     const w = hangWin(R.m, p.hs || 0); hangGlass(hg, hg.k > 0.05 ? w.glass : null);
@@ -17686,6 +17694,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function hangDrawPost(p, v) {
     const hg = v.hang; if (!hg || !hg.R || !v.P) return;
     hg.ux = v.P.upper.rotation.x;
+    hangHips(v.P, Math.PI, v.P.wrap.rotation.y, hangOutYaw(hg.R, hg.w));
     const s = Math.sign(hg.w.z) || 1; hangRoll(v.P, Math.cos(hg.R.yaw) * s, -Math.sin(hg.R.yaw) * s, 0.45 * smooth01(hg.k));
   }
   window.__hang = { HANG, hangToggle, hangReset, hangRide, hangWin, hangFollow, active: () => HANG.k > 0 };
