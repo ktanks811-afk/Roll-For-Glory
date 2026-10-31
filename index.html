@@ -10847,7 +10847,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   const hPick = a => a[Math.floor(hRnd() * a.length)];
   const hHash = s => { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 1000003; return h; };
   const hNorm = a => Math.atan2(Math.sin(a), Math.cos(a));
-  const HNET = { clk: 0, pid: Math.random().toString(36).slice(2, 8), xn: 0, seed: null, room: null, routes: null, spots: null, turf: {}, owns: {}, shots: [], hits: [], tfOut: [], sentAt: 0 };
+  const HNET = { clk: 0, pid: Math.random().toString(36).slice(2, 8), xn: 0, seed: null, room: null, routes: null, spots: null, turf: {}, owns: {}, shots: [], hits: [], tfOut: [], sentAt: 0, dead: {}, ddOut: [], says: [], sayRx: false };
   const hNow = () => Date.now() + HNET.clk;   // the server's shared clock (the first player's), so routes line up
   const hOn = () => netOn() && !!NET.tr;
   const hXid = s => `x:${HNET.pid}:${s}${HNET.xn++}`;
@@ -10979,11 +10979,40 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   }
   const hGun = id => { const G = window.__guns, D = G && G.GUN_DEF[id]; return D ? { id, mag: D.std, sw: false, optic: false, light: false, laser: false, comp: false, brake: false, brace: true } : null; };
   // a person or a car in the world: gang members, homies, regulars and opps all run on this
+  // ==== shared world (begin) ====
+  // who got dropped stays dropped for the whole server: every drop is remembered (id, when, where) for 4 minutes and
+  // rides on the hello, so somebody pulling up later sees the body, not the same dude standing back on the corner
+  const H_DEAD_MS = 240000, H_BODY_MS = 50000;
+  const hDeadAge = id => { const d = HNET.dead[id]; return d ? hNow() - d[0] : 1e12; };
+  const hGoneDead = id => { const a = hDeadAge(id); return a > H_BODY_MS && a < H_DEAD_MS; };
+  function hDeadMark(e, t) {
+    if (!/^[mrh]:/.test(e.id)) return false;
+    t = t || hNow(); const d = HNET.dead[e.id]; if (d && hNow() - d[0] < H_DEAD_MS) return false;
+    HNET.dead[e.id] = [t, Math.round(e.x * 10), Math.round(e.z * 10)]; return true;
+  }
+  // a fresh body: lying where they fell
+  function hDeadCheck(e) {
+    const a = hDeadAge(e.id); if (a >= H_DEAD_MS) return; const d = HNET.dead[e.id];
+    e.x = d[1] / 10; e.z = d[2] / 10; e.down = e.dead = true; e.mode = 'down'; e.inCar = false; e.gd = 0; e.hp = 0; e.t = Math.max(0, a / 1000); e.by = e.by || 'net';
+  }
+  function hDeadIn(list) {
+    for (const it of list.slice(0, 80)) {
+      if (!Array.isArray(it) || typeof it[0] !== 'string' || it[0].length > 48 || !/^[mrh]:/.test(it[0]) || !hNum(it[1], 1e12, 1e14) || !hNum(it[2], -3e5, 3e5) || !hNum(it[3], -3e5, 3e5)) continue;
+      const [id, t, x10, z10] = it, cur = HNET.dead[id]; if (cur && cur[0] >= t - 1000) continue;
+      const age = hNow() - t; if (age > H_DEAD_MS || age < -60000) continue;
+      HNET.dead[id] = [t, x10, z10];
+      let e = HOOD.byEnt.get(id);
+      if (e && !e.down && (e.own !== 'me' || age < 5000)) { e.x = x10 / 10; e.z = z10 / 10; hDrop(e, 'net'); e.t = Math.max(0, age / 1000); continue; }
+      if (!e && age < H_BODY_MS && HOOD.ready && driving) { const [mx, mz] = hMe(); if (Math.hypot(x10 / 10 - mx, z10 / 10 - mz) < 300) { e = hMake(id, null); if (e && !e.down) hDeadCheck(e); } }
+    }
+  }
+  function hDeadList() { const t = hNow(); return Object.entries(HNET.dead).filter(([, d]) => t - d[0] < H_DEAD_MS).slice(-60).map(([id, d]) => [id, d[0], d[1], d[2]]); }
+  // ==== shared world (end) ====
   function hEnt(o) {
     const e = Object.assign({ hp: 100, x: 0, z: 0, yaw: 0, walk: 0, ph: hRnd() * 6, mode: 'idle', t: 0, gd: 0, ge: 0, dead: false, deadAt: 0, inCar: false, sp: 0, shotT: 0, sayT: 2 + hRnd() * 6, view: null, hits: 0 }, o);
     e.g = new THREE.Group(); e.g.name = 'hood:' + e.name; HOOD.group.add(e.g); e.view = { g: e.g, P: null, gun: null };
     e.id = e.id || hXid('e'); HOOD.byEnt.set(e.id, e);
-    HOOD.ents.push(e); return e;
+    HOOD.ents.push(e); if (HNET.dead[e.id]) hDeadCheck(e); return e;
   }
   function hDress(e, P) {
     if (e.view.P) { e.g.remove(e.view.P.wrap); if (e.view.gun) { try { window.__guns.pv.disposeGun(e.view.gun.b); } catch (er) {} e.view.gun = null; } }
@@ -11006,6 +11035,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
       .replace(/\{mycar\}/g, S.car ? carOf(S.car.id).model || 'car' : 'car').replace(/\{street\}/g, hPick(H_STREETS));
     if (e.bub) { e.g.remove(e.bub); e.bub.material.map.dispose(); e.bub.material.dispose(); }
     e.bub = textSprite(text, 28, '#ffffff'); e.bubT = 4.2; e.g.add(e.bub);
+    if (!HNET.sayRx && hOn() && HNET.says.length < 6 && (!e.own || e.own === 'me')) HNET.says.push([e.id, text.slice(0, 90)]);
     const [mx, mz] = hMe(); if (toYou && Math.hypot(e.x - mx, e.z - mz) < 60) toast(`💬 ${e.name}: ${text}`);
   }
 
@@ -11014,6 +11044,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     const o = hOwner(b); if (!o || b.crew.length || hNow() < b.down) return;
     const n = 3 + (b.h % 2), gidv = [0, 1, 2].map(v => hBase(o, o === 'own' ? 0 : v)); if (gidv.some(v => !v)) return;
     for (let k = 0; k < n; k++) {
+      if (hGoneDead(`m:${b.id}:${k}`)) continue;
       const a = k / n * Math.PI * 2 + b.h, r = 1.6 + (k % 2) * 1.4, x = b.corner.x + Math.cos(a) * r, z = b.corner.z + Math.sin(a) * r;
       const e = hEnt({ id: `m:${b.id}:${k}`, kind: 'member', gang: o, blk: b, name: H_NICKS[(b.h + k * 7) % H_NICKS.length], x, z, hx: x, hz: z, yaw: Math.atan2(-(b.corner.x - x), -(b.corner.z - z)) + Math.PI + (k - 1) * 0.6, gunId: ['g19', 'g20', 'arp'][(b.h + k) % 3 === 2 && k === 0 ? 2 : (b.h + k) % 2] });
       hDress(e, hClone(gidv[k % 3])); hLabel(e); b.crew.push(e);
@@ -11143,6 +11174,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   function hDrop(e, by = 'me') {
     if (e.down) return; e.down = true; e.dead = true; e.mode = 'down'; e.gd = 0; e.t = 0; e.inCar = false;
     e.by = by === 'me' ? (hOn() ? NET.id : 'me') : by;
+    if (by !== 'net' && hDeadMark(e) && hOn()) { const d = HNET.dead[e.id]; HNET.ddOut.push([e.id, d[0], d[1], d[2]]); }
     if (e.kind === 'member' && e.blk && e.blk.crew.every(m => m.down)) e.blk.down = hNow() + 240000;
     if (e.kind === 'reg' && e.ride) hRideOut(true);
     if (by === 'me') hDropCredit(e);
@@ -11286,13 +11318,13 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     if (CROWD.length < CROWD_N) return;
     const R = hRoutes(); let made = 0;
     for (let n = 0; n < R.list.length && made < 2; n++) {
-      const id = `r:${HNET.seed}:${n}`; if (HOOD.byEnt.has(id)) continue;
+      const id = `r:${HNET.seed}:${n}`; if (HOOD.byEnt.has(id) || hGoneDead(id)) continue;
       const p = hSched(n, T); if (Math.hypot(p.x - mx, p.z - mz) > 420) continue;
       if (hRegSched(n, p)) made++;
     }
     for (const sp of hSpots()) {
       if (made >= 3) break; const dd = Math.hypot(sp.x - mx, sp.z - mz); if (dd < 70 || dd > 260) continue;
-      const id = `h:${slot}:${sp.id}`; if (HOOD.byEnt.has(id) || hHash(HNET.seed + id) % 100 >= 32 || live.some(e => e.at === sp.id && !e.gone)) continue;
+      const id = `h:${slot}:${sp.id}`; if (HOOD.byEnt.has(id) || hGoneDead(id) || hHash(HNET.seed + id) % 100 >= 32 || live.some(e => e.at === sp.id && !e.gone)) continue;
       if (hRegHang(id, sp)) made++;
     }
   }
@@ -11590,7 +11622,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   function hRoom() {
     const room = hOn() ? NET.room : '';
     if (room === HNET.room) return;
-    HNET.room = room; HNET.seed = room || 'solo'; HNET.routes = null; HNET.shots = []; HNET.hits = []; HNET.tfOut = []; if (!room) HNET.clk = 0;
+    HNET.room = room; HNET.seed = room || 'solo'; HNET.routes = null; HNET.shots = []; HNET.hits = []; HNET.tfOut = []; HNET.dead = {}; HNET.ddOut = []; HNET.says = []; if (!room) HNET.clk = 0;
     for (const e of HOOD.ents.slice()) { if (e.gone) continue; if ((e.id[0] === 'r' || e.id[0] === 'h') && e.own !== 'me') hKill(e); else if (e.own && e.own !== 'me') e.seen = -99; }
     if (HNET.turfRoom !== room) { HNET.turf = {}; HNET.turfRoom = room; }
     const h = hS(); for (const id of Object.keys(h.turf)) { const t = h.turfAt[id] || 1, cur = HNET.turf[id]; if (!cur || cur[1] < t) HNET.turf[id] = [h.turf[id], t]; }
@@ -11619,6 +11651,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if (!r.down && !e.down) e.mode = r.m;
     if (!e.inCar && !e.down && r.sp > 0.4) { e.walk += dt * r.sp * Math.PI * 2 / (r.sp > 4 ? 3.8 : 1.55); e.moving = r.sp > 4 ? 2 : 1; }
     if (r.down && !e.down) {
+      e.x = r.x; e.z = r.z; hDeadMark(e);
       e.down = true; e.dead = true; e.mode = 'down'; e.t = 0; e.inCar = false; e.gd = 0;
       if (e.kind === 'member' && e.blk && e.blk.crew.every(m => m.down)) e.blk.down = Math.max(e.blk.down || 0, hNow() + 240000);
       if (HOOD.ride && HOOD.ride.e === e) hRideOut(true);
@@ -11639,6 +11672,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   function hMake(id, d) {
     let m;
     if ((m = /^m:(\d+,\d+):\d$/.exec(id))) { const b = HOOD.byId.get(m[1]); if (b && !b.crew.length) hCrew(b); return HOOD.byEnt.get(id) || null; }
+    if (hGoneDead(id)) return null;
     if ((m = /^r:(.+):(\d+)$/.exec(id))) return m[1] === HNET.seed && +m[2] < hRoutes().list.length ? hRegSched(+m[2]) : null;
     if ((m = /^h:(\d+):([\w-]+)$/.exec(id))) { const sp = hSpots().find(p => p.id === m[2]); return sp ? hRegHang(id, sp) : null; }
     if (id[0] !== 'x' || !d || typeof d !== 'object') return null;
@@ -11688,9 +11722,9 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   NET_HOOK.hello.push(() => {
     if (!HOOD.ready || !S) return {};
     const h = hS(), t = hNow();
-    return { hc: t, htf: Object.entries(HNET.turf).map(([id, v]) => [id, v[0] ? hToNet(v[0]) : null, v[1]]), hbd: HOOD.blocks.filter(b => b.down > t).map(b => [b.id, b.down]), hos: h.own ? { n: h.own.name, c: h.own.color, b: S.name || '' } : 0 };
+    return { hc: t, htf: Object.entries(HNET.turf).map(([id, v]) => [id, v[0] ? hToNet(v[0]) : null, v[1]]), hbd: HOOD.blocks.filter(b => b.down > t).map(b => [b.id, b.down]), hdd: hDeadList(), hos: h.own ? { n: h.own.name, c: h.own.color, b: S.name || '' } : 0 };
   });
-  NET_HOOK.urgent.push(() => HNET.shots.length > 0 || HNET.hits.length > 0 || HNET.tfOut.length > 0 || (performance.now() / 1000 - HNET.sentAt > 0.2 && HOOD.ents.some(e => e.own === 'me' && !e.gone)));
+  NET_HOOK.urgent.push(() => HNET.shots.length > 0 || HNET.hits.length > 0 || HNET.tfOut.length > 0 || HNET.ddOut.length > 0 || HNET.says.length > 0 || (performance.now() / 1000 - HNET.sentAt > 0.2 && HOOD.ents.some(e => e.own === 'me' && !e.gone)));
   NET_HOOK.state.push(() => {
     const out = {}, now = performance.now() / 1000;
     if (HOOD.ride) out.hr = 1;
@@ -11701,6 +11735,8 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if (HNET.shots.length) out.hs = HNET.shots.splice(0, 12);
     if (HNET.hits.length) out.hh = HNET.hits.splice(0, 12);
     if (HNET.tfOut.length) out.htf = HNET.tfOut.splice(0, 20);
+    if (HNET.ddOut.length) out.hdd = HNET.ddOut.splice(0, 20);
+    if (HNET.says.length) out.hsy = HNET.says.splice(0, 6);
     return out;
   });
   NET_HOOK.recv.push((p, m, now) => {
@@ -11709,6 +11745,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       // the server's clock is the first player's (lowest id), so everybody's regulars are in the same place
       if (hNum(m.hc, 1e12, 1e14)) { p.hc = 1; const lead = [NET.id, ...[...NET.peers.values()].filter(q => q.hc).map(q => q.id)].sort()[0]; if (lead === p.id) HNET.clk = m.hc + 60 - Date.now(); }
       if (Array.isArray(m.htf)) hTurfIn(m.htf);
+      if (Array.isArray(m.hdd)) hDeadIn(m.hdd);
       if (Array.isArray(m.hbd)) for (const it of m.hbd.slice(0, 80)) { const b = Array.isArray(it) && HOOD.byId.get(it[0]); if (b && hNum(it[1], 0, 1e14) && it[1] > (b.down || 0)) b.down = Math.min(it[1], hNow() + 300000); }
       return;
     }
@@ -11719,6 +11756,12 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if (Array.isArray(m.ha)) for (const a of m.ha.slice(0, 20)) hStateIn(p, a, now);
     if (Array.isArray(m.hs)) for (const a of m.hs.slice(0, 12)) hShotIn(a);
     if (Array.isArray(m.hh)) for (const a of m.hh.slice(0, 12)) hHitIn(p, a);
+    if (Array.isArray(m.hdd)) hDeadIn(m.hdd);
+    if (Array.isArray(m.hsy)) for (const a of m.hsy.slice(0, 6)) {
+      if (!Array.isArray(a) || typeof a[0] !== 'string' || typeof a[1] !== 'string') continue;
+      const e = HOOD.byEnt.get(a[0]); if (!e || e.gone || e.own === 'me') continue;
+      HNET.sayRx = true; try { hSay(e, nText(a[1])); } finally { HNET.sayRx = false; }
+    }
   });
   // riding with one of the regulars: you're in their car, not walking next to it
   NET_HOOK.draw.push((p, v) => { if (p.hr) v.g.visible = false; });
@@ -11793,7 +11836,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   }
   const _hStepStreet = stepStreet;
   stepStreet = function (t) { _hStepStreet.apply(this, arguments); const n = performance.now(), dt = Math.min(0.05, (n - (HOOD.last || n)) / 1000); HOOD.last = n; try { hoodTick(dt); } catch (er) { if (!HOOD.err) { HOOD.err = 1; console.error('hood', er); } } };
-  window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire, HNET, hClaim, hSched, hRoutes, hNow };
+  window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire, HNET, hClaim, hSched, hRoutes, hNow, hDeadIn, hDeadList, hDrop };
 
   // ---------- your homes online: one owner per house on a server, inviting people over, knocking on doors ----------
   // Deeds are the 2D game's (supabase/rfg_servers.sql, js/net/deeds.js): on a server, a house or lot a real player
@@ -15143,12 +15186,12 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
   }
 
   // ---------- units ----------
-  function copUnit(kind, x, z, yaw, mode) {
+  function copUnit(kind, x, z, yaw, mode, num0, remote) {
     const K = COP_KINDS[kind], g = new THREE.Group(); g.position.set(x, 0.12, z); g.rotation.y = yaw; scene.add(g);
     const u = { id: COP.seq++, kind, K, g, model: null, x, z, yaw, sp: 0, a: null, b: null, u: 0, path: null, mode, lights: false, siren: false, ph: copRand() * 2, t: 0, stuck: 0, sx: x, sz: z, off: false, home: null, gone: false, cop: true, inCar: true, hits: 0 };
-    const num = 100 + Math.floor(copRand() * 800);
+    const num = num0 || 100 + Math.floor(copRand() * 800); u.num = num;
     u.slot = putCar(g, K.id, K.liv === 'slick' ? '#0d0e11' : '#f1f2f0', m => { m.position.y = 0; u.model = m; try { copKit(m, kind, num); } catch (e) { console.warn('cop kit: ' + e.message); } });
-    COP.units.push(u); return u;
+    if (!remote) COP.units.push(u); return u;
   }
   function copKill(u) { u.gone = true; u.slot.userData.dead = true; scene.remove(u.g); if (u.officer) copOfficerGone(u); COP.units = COP.units.filter(o => o !== u); }
   function copMe() { return hMe(); }
@@ -15223,6 +15266,7 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
   function copOfficerGone(u) { const o = u.officer; if (!o) return; scene.remove(o.P.wrap); u.officer = null; }
   function copWalk(o, tx, tz, dt, sp) {
     const dx = tx - o.x, dz = tz - o.z, d = Math.hypot(dx, dz);
+    o.mv = d > 0.25 ? sp : 0;
     if (d > 0.25) { const st = Math.min(d, sp * dt); o.x += dx / d * st; o.z += dz / d * st; o.yaw += cNorm(Math.atan2(-dx, -dz) - o.yaw) * Math.min(1, dt * 10); o.walk += dt * sp * Math.PI * 2 / (sp > 4 ? 3.6 : 1.6); animPerson(o.P, o.walk, 1, sp > 4 ? 1 : 0); }
     else idlePerson(o.P, performance.now() / 1000);
     o.P.wrap.position.set(o.x, 0, o.z); o.P.wrap.rotation.y = o.yaw; return d;
@@ -15231,7 +15275,7 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
   // ---------- siren: wail far off, yelp up close, from the closest unit running hot ----------
   function copSiren(dt) {
     let best = 1e9, mode = 'wail'; const [mx, mz] = copMe();
-    for (const u of COP.units) if (u.siren && !u.gone) { const d = Math.hypot(u.x - mx, u.z - mz); if (d < best) best = d; }
+    for (const u of [...COP.units, ...CNET.rem.values()]) if (u.siren && !u.gone) { const d = Math.hypot(u.x - mx, u.z - mz); if (d < best) best = d; }
     const vol = best < 420 ? Math.pow(1 - best / 420, 1.6) * 0.16 : 0;
     if (!vol && !COP.snd) return;
     const ac = audioCtx(); if (!ac) return;
@@ -15325,7 +15369,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     for (let k = 0; k < 4; k++) {
       const side = (k - 1.5) * 3.3, x = p.x + ox * 9 + tx * side, z = p.z + oz * 9 + tz * side;
       if (solids.at(x, z).some(b => x > b.x0 - 1.2 && x < b.x1 + 1.2 && z > b.z0 - 1.2 && z < b.z1 + 1.2)) continue;
-      const u = copUnit(kinds[k], x, z, Math.atan2(ox, oz) + Math.PI, 'park'); u.home = pr; u.lights = k === 1; pr.units.push(u);
+      const u = copUnit(kinds[k], x, z, Math.atan2(ox, oz) + Math.PI, 'park', 100 + hHash(p.id + ':' + k) % 800); u.nid = `p:${p.id}:${k}`; u.home = pr; u.lights = k === 1; pr.units.push(u);
     }
     pr.made = true;
   }
@@ -15336,8 +15380,8 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       else if (d > 560 && pr.made && pr.units.every(u => u.mode === 'park')) { pr.units.forEach(copKill); pr.units = []; pr.made = false; }
     }
     // patrols cruise the city around you; far ones go home
-    for (const u of COP.units.slice()) if (u.mode !== 'park' && Math.hypot(u.x - mx, u.z - mz) > (u.mode === 'chase' ? 900 : 640)) copKill(u);
-    const patrols = COP.units.filter(u => u.mode === 'patrol').length, want = inTown(mx, mz) ? (phone ? 2 : 3) : 1;
+    for (const u of COP.units.slice()) if (u.mode !== 'park' && Math.hypot(u.x - mx, u.z - mz) > (u.mode === 'chase' ? 900 : 640) && !(u.mode === 'patrol' && copPeerNear(u.x, u.z, 260) && Math.hypot(u.x - mx, u.z - mz) < 1100)) copKill(u);
+    const patrols = COP.units.filter(u => u.mode === 'patrol').length + copRemNear(mx, mz, 450), want = inTown(mx, mz) ? (phone ? 2 : 3) : 1;
     if (patrols < want && COP.phase !== 'chase') { const e = copEntry(mx, mz, 180, 420); if (e) { const u = copUnit(copRand() < 0.6 ? 'charger' : 'tahoe', e[0], e[1], 0, 'patrol'); copOnRoad(u, e[0], e[1]); } }
   }
   function copRespond(mx, mz) {
@@ -15402,7 +15446,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     drv.px = drv.x; drv.pz = drv.z;
   }
   function copStep(dt) {
-    if (!HOOD.ready || !S || !worldOn || !driving || inside || ROLL.on || STRIP.on) { for (const u of COP.units) u.g.visible = false; if (COP.snd) COP.snd.g.gain.value = 0; if (COP.pill && !COP.pill.hidden) COP.pill.hidden = true; return; }
+    if (!HOOD.ready || !S || !worldOn || !driving || inside || ROLL.on || STRIP.on) { for (const u of COP.units) u.g.visible = false; for (const r of CNET.rem.values()) { r.g.visible = false; if (r.officer) r.officer.P.wrap.visible = false; } if (COP.snd) COP.snd.g.gain.value = 0; if (COP.pill && !COP.pill.hidden) COP.pill.hidden = true; return; }
     COP.T += dt; COP.spawnT -= dt;
     const [mx, mz] = copMe(), incar = !foot.on, mySp = incar ? Math.hypot(TIRE.vx, TIRE.vz) : 0;
     if ((frame & 31) === 0 && !COP.noPop) copPopulate(mx, mz);
@@ -15423,6 +15467,11 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         if ((S.heat || 0) >= 2) copChase('Units have eyes on a wanted suspect.');
         else if (w && incar && (S.heat || 0) >= 1 && Math.hypot(w.x - mx, w.z - mz) < 60) { if (w.mode === 'park') { w.off = true; w.home && (w.home.units = w.home.units.filter(o => o !== w)); } copNotice(w, 'Your plate came back with a warrant'); }
         else if (w && incar && mySp > 36 && Math.hypot(w.x - mx, w.z - mz) < 70) { if (w.mode === 'park') { w.off = true; w.home && (w.home.units = w.home.units.filter(o => o !== w)); } copNotice(w, `${Math.round(mySp * 2.237)} in a 45`); }
+      }
+      if (!seen && COP.phase === 'none' && (frame & 3) === 0) {
+        const r = [...CNET.rem.values()].find(r => !r.lights && copSees(r, mx, mz, 85));
+        if (r && (S.heat || 0) >= 2) { copTake(r); copChase('Units have eyes on a wanted suspect.'); }
+        else if (r && incar && Math.hypot(r.x - mx, r.z - mz) < 60 && ((S.heat || 0) >= 1 || mySp > 36)) copNotice(copTake(r), (S.heat || 0) >= 1 ? 'Your plate came back with a warrant' : `${Math.round(mySp * 2.237)} in a 45`);
       }
     } else if (COP.phase === 'notice') {
       const u = COP.unitStop; if (!u || u.gone) { COP.phase = 'none'; return; }
@@ -15465,6 +15514,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       u.g.position.set(u.x, 0.12, u.z); u.g.rotation.y = u.yaw; u.g.visible = d < 520;
       const m = u.model; if (m && u.g.visible) { spinWheels(m, Math.hypot(u.x - ox, u.z - oz)); copLights(m, u.lights, t, u.ph); const C = m.userData.cop; if (C) C.liv.uInv.value.copy(C.inner.matrixWorld).invert(); }
     }
+    copRemStep(dt, t, mx, mz);
     copSiren(dt);
     if ((frame & 7) === 0) copBar();
     if (COP.cam) { const c = COP.cam; camera.position.set(c[0], c[1], c[2]); camera.lookAt(c[3], c[4], c[5]); camera.updateMatrixWorld(); }
@@ -15475,14 +15525,14 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   window.__shotHook = (O, D, best, t0) => {
     if (_cShotHook) _cShotHook(O, D, best, t0);
     if (!S) return;
-    for (const u of COP.units) {
+    for (const u of [...COP.units, ...CNET.rem.values()]) {
       if (u.gone || !u.g.visible) continue; const dx = u.x - O.x, dz = u.z - O.z, rr = best.t + 4; if (dx * dx + dz * dz > rr * rr) continue;
       const c = Math.cos(u.yaw), s = Math.sin(u.yaw), lo = { x: (O.x - u.x) * c - (O.z - u.z) * s, y: O.y, z: (O.x - u.x) * s + (O.z - u.z) * c }, ld = { x: D.x * c - D.z * s, y: D.y, z: D.x * s + D.z * c };
       const tall = u.kind === 'tahoe', r = hSlab(lo, ld, -1, 0.2, -2.5, 1, tall ? 1.95 : 1.45, 2.5);
       if (r && r.t > t0 && r.t < best.t) { best.t = r.t; best.kind = 'npc'; best.npc = u; best.part = 'car'; best.box = null; best.n.set(0, 1, 0); }
     }
     const now = performance.now();
-    if (now - COP.gunT > 5000 && COP.units.some(u => !u.gone && Math.hypot(u.x - O.x, u.z - O.z) < 140)) { COP.gunT = now; copHeat(1); refreshStats(); copChase('Shots fired near officers.'); }
+    if (now - COP.gunT > 5000 && [...COP.units, ...CNET.rem.values()].some(u => !u.gone && Math.hypot(u.x - O.x, u.z - O.z) < 140)) { COP.gunT = now; copHeat(1); refreshStats(); copChase('Shots fired near officers.'); }
   };
   const _cShotLand = window.__shotLand;
   window.__shotLand = (B, fx) => {
@@ -15494,7 +15544,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   hoodMini = function (x, to, dpr, R, px, pz) {
     _cMini.apply(this, arguments);
     const fl = (performance.now() % 500) < 250;
-    for (const u of COP.units) {
+    for (const u of [...COP.units, ...CNET.rem.values()]) {
       if (u.gone) continue; const dx = u.x - px, dz = u.z - pz; if (dx * dx + dz * dz > R * R * 1.4) continue;
       const q = to(u.x, u.z); x.fillStyle = u.lights ? (fl ? '#ff2030' : '#2a5cff') : '#7fa8ff'; x.strokeStyle = '#fff'; x.lineWidth = dpr;
       x.beginPath(); x.arc(q[0], q[1], 4 * dpr, 0, Math.PI * 2); x.fill(); x.stroke();
@@ -15508,8 +15558,91 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   };
   const _cSleep = sleep;
   sleep = function (p) { const r = _cSleep.apply(this, arguments); if (COP.phase !== 'none') copEnd(''); return r; };
+  // ==== shared world: cops (begin) ====
+  // Online, everybody on the server sees the same cops. You run your own units (the patrols around you, the cars on
+  // you) and they ride on your state packets; everybody else draws the same car, roof number, lights, siren and the
+  // officer on foot. The four cars parked at a precinct are the same four on every screen, so one pulling out of the
+  // lot to get you leaves the lot for everybody. Another player's patrol can light you up: you take that car over
+  // (same id) and their copy hands off to you.
+  const CNET = { rem: new Map(), sentAt: 0, took: {} };
+  const C_KINDS = ['charger', 'tahoe', 'hellcat'];
+  const cOn = () => netOn() && !!NET.tr;
+  const copNid = u => u.nid || (u.nid = `x:${NET.id || 'me'}:${u.id}`);
+  function copPeerNear(x, z, r) { if (!cOn()) return false; for (const p of NET.peers.values()) if (Math.hypot(p.x - x, p.z - z) < r) return true; return false; }
+  function copRemNear(x, z, r) { let n = 0; for (const u of CNET.rem.values()) if (!u.lights && Math.hypot(u.x - x, u.z - z) < r) n++; return n; }
+  function copMine() { const [mx, mz] = copMe(); return COP.units.filter(u => !u.gone && u.mode !== 'park' && Math.hypot(u.x - mx, u.z - mz) < 1100); }
+  function copPack(u) {
+    const o = u.officer, f = (u.lights ? 1 : 0) | (u.siren ? 2 : 0) | (o ? 4 : 0) | (/chase|stop/.test(u.mode) ? 8 : 0);
+    const a = [copNid(u), Math.round(u.x * 10), Math.round(u.z * 10), Math.round(cNorm(u.yaw) * 100), Math.round(u.sp * 10), C_KINDS.indexOf(u.kind), f, u.num || 0];
+    if (o) a.push(Math.round(o.x * 10), Math.round(o.z * 10), Math.round(cNorm(o.yaw) * 100), Math.round((o.mv || 0) * 10));
+    return a;
+  }
+  function copIn(p, a, now) {
+    if (!Array.isArray(a) || a.length < 8) return;
+    const [nid, x10, z10, y100, sp10, ki, f, num] = a;
+    if (typeof nid !== 'string' || nid.length > 60 || !/^[px]:/.test(nid) || !hNum(x10, -3e5, 3e5) || !hNum(z10, -3e5, 3e5) || !hNum(y100, -400, 400) || !hNum(sp10, -900, 900) || !Number.isInteger(ki) || !C_KINDS[ki] || !hNum(f, 0, 63) || !hNum(num, 0, 9999)) return;
+    const X = x10 / 10, Z = z10 / 10, [mx, mz] = copMe();
+    // the same car is one of mine: a precinct car sitting in my lot, or my patrol they just got lit up by
+    const mine = COP.units.find(u => u.nid === nid && !u.gone);
+    if (mine) {
+      if (mine.mode !== 'park' && (mine.mode !== 'patrol' || mine.lights || COP.unitStop === mine)) return;
+      if (mine.home) mine.home.units = mine.home.units.filter(o => o !== mine); copKill(mine);
+    }
+    if (CNET.took[nid] && now - CNET.took[nid] < 10) return;
+    let r = CNET.rem.get(nid);
+    if (!r) { if (Math.hypot(X - mx, Z - mz) > 520) return; r = copUnit(C_KINDS[ki], X, Z, y100 / 100, 'remote', num || 100, true); r.nid = nid; r.remote = true; CNET.rem.set(nid, r); }
+    r.by = p.id; r.seen = now; r.lights = !!(f & 1); r.siren = !!(f & 2);
+    r.rt = { x: X, z: Z, yaw: y100 / 100, sp: sp10 / 10, t: now, hot: !!(f & 8) };
+    r.ort = f & 4 && a.length >= 12 && [8, 9].every(i => hNum(a[i], -3e5, 3e5)) && hNum(a[10], -400, 400) && hNum(a[11], 0, 200) ? { x: a[8] / 10, z: a[9] / 10, yaw: a[10] / 100, mv: a[11] / 10 } : null;
+  }
+  function copRemDrop(r) { CNET.rem.delete(r.nid); copKill(r); }
+  // their units on your screen: eased toward where they said, run ahead by speed so it doesn't stutter
+  function copRemStep(dt, t, mx, mz) {
+    const now = performance.now() / 1000;
+    for (const r of [...CNET.rem.values()]) {
+      if (!cOn() || now - r.seen > 2.5 || !NET.peers.has(r.by) || Math.hypot(r.x - mx, r.z - mz) > 800) { copRemDrop(r); continue; }
+      const q = r.rt, ox = r.x, oz = r.z, ag = Math.min(0.5, now - q.t), px = q.x - Math.sin(q.yaw) * q.sp * ag, pz = q.z - Math.cos(q.yaw) * q.sp * ag, dx = px - r.x, dz = pz - r.z;
+      if (dx * dx + dz * dz > 900) { r.x = px; r.z = pz; r.yaw = q.yaw; } else { const k = 1 - Math.exp(-dt * 8); r.x += dx * k; r.z += dz * k; r.yaw += cNorm(q.yaw - r.yaw) * Math.min(1, dt * 8); }
+      r.sp = q.sp; copBump(r);
+      const d = Math.hypot(r.x - mx, r.z - mz); r.g.position.set(r.x, 0.12, r.z); r.g.rotation.y = r.yaw; r.g.visible = d < 520;
+      const m = r.model; if (m && r.g.visible) { spinWheels(m, Math.hypot(r.x - ox, r.z - oz)); copLights(m, r.lights, t, r.ph); const C = m.userData.cop; if (C) C.liv.uInv.value.copy(C.inner.matrixWorld).invert(); }
+      // the officer out of their car: walking up to a window, or running somebody down
+      const o = r.ort;
+      if (o && !r.officer && copOfficer(r)) { r.officer.x = o.x; r.officer.z = o.z; }
+      else if (!o && r.officer) copOfficerGone(r);
+      if (o && r.officer) {
+        const f = r.officer, ex = o.x - f.x, ez = o.z - f.z; f.P.wrap.visible = r.g.visible;
+        if (ex * ex + ez * ez > 100) { f.x = o.x; f.z = o.z; } else { const k = Math.min(1, dt * 10); f.x += ex * k; f.z += ez * k; }
+        f.yaw += cNorm(o.yaw - f.yaw) * Math.min(1, dt * 10);
+        if (o.mv > 0.2) { f.walk += dt * o.mv * Math.PI * 2 / (o.mv > 4 ? 3.6 : 1.6); animPerson(f.P, f.walk, 1, o.mv > 4 ? 1 : 0); } else idlePerson(f.P, t);
+        f.P.wrap.position.set(f.x, 0, f.z); f.P.wrap.rotation.y = f.yaw;
+      }
+    }
+  }
+  // you got lit up by their patrol: that car is yours now, right where it is
+  function copTake(r) {
+    const u = copUnit(r.kind, r.x, r.z, r.yaw, 'patrol', r.num); u.nid = r.nid; u.sp = r.sp; CNET.took[r.nid] = performance.now() / 1000;
+    copRemDrop(r); copJoin(u); return u;
+  }
+  NET_HOOK.urgent.push(() => {
+    if (!cOn() || !COP.units.length || !worldOn || !driving || inside) return false;
+    const since = performance.now() / 1000 - CNET.sentAt, hot = COP.phase !== 'none' && COP.phase !== 'cool';
+    return since > (hot ? 0.2 : 0.4) && copMine().length > 0;
+  });
+  NET_HOOK.state.push(() => {
+    if (!cOn() || !S || !worldOn || !driving || inside) return {};
+    const now = performance.now() / 1000; if (now - CNET.sentAt < 0.16) return {};
+    const [mx, mz] = copMe(), list = copMine().sort((a, b) => (b.lights - a.lights) || Math.hypot(a.x - mx, a.z - mz) - Math.hypot(b.x - mx, b.z - mz)).slice(0, 8);
+    if (!list.length) return {};
+    CNET.sentAt = now; return { cu: list.map(copPack) };
+  });
+  NET_HOOK.recv.push((p, m, now) => {
+    if (m.k !== 's' || !Array.isArray(m.cu) || !S || !HOOD.ready || !worldOn) return;
+    for (const a of m.cu.slice(0, 10)) copIn(p, a, now);
+  });
+  // ==== shared world: cops (end) ====
   // test hooks
-  window.__cops = { step: copStep, populate: copPopulate, COP, COP_KINDS, copUnit, copKill, copChase, copNotice, copEnd, copBusted, copLights, copOnRoad, copPark, copPrecincts, copTicketMenu };
+  window.__cops = { CNET, copIn, copRemStep, copTake, step: copStep, populate: copPopulate, COP, COP_KINDS, copUnit, copKill, copChase, copNotice, copEnd, copBusted, copLights, copOnRoad, copPark, copPrecincts, copTicketMenu };
   })();
   // ==== police (end) ====
   // ---------- assemble ----------
