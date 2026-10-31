@@ -3857,7 +3857,7 @@ uniform mat3 normalMatrix;
   }
   const FURNISH = {
     shop(p, W, D) {
-      if (p.type === 'rims') { rbox(-W / 2 + 1, 0.3, -D / 2 + 0.05, W / 2 - 1, 4.2, -D / 2 + 0.12, '#1a1a1c', false); rimWallIn(-3, 2.25, -D / 2 + 0.3, 0, 12, 5, 0); rimWallIn(-W / 2 + 0.3, 2.25, 2, Math.PI / 2, 6, 4, 60); station('Rim wall', -3, -D / 2 + 2.4, () => MENUS.rims(p), 3.2); }
+      if (p.type === 'rims') { rbox(-W / 2 + 1, 0.3, -D / 2 + 0.05, W / 2 - 1, 4.2, -D / 2 + 0.12, '#1a1a1c', false); rimWallIn(-3, 2.25, -D / 2 + 0.3, 0, 12, 5, 0); rimWallIn(-W / 2 + 0.3, 2.25, 2, Math.PI / 2, 6, 4, 60); station('Rim wall', -3, -D / 2 + 2.4, () => MENUS.rims(p), 3.2); rbox(W / 2 - 1.1, 0.78, -6.4, W / 2 - 0.2, 0.83, -1.6, '#2a1a10'); rbox(W / 2 - 1.1, 0, -6.4, W / 2 - 0.2, 0.78, -6.3, '#2a1a10'); rbox(W / 2 - 1.1, 0, -1.7, W / 2 - 0.2, 0.78, -1.6, '#2a1a10'); swangaRack(W / 2 - 0.9, -4, -Math.PI / 2); station('Swangas on vogues', W / 2 - 2.6, -4, () => { RIMUI.line = 'hs'; RIMUI.dia = 15; return MENUS.rims(p); }, 2.4); }
       else for (let i = -2; i <= 0; i++) { const x = i * 7 + 3; rbox(x - 2.4, 0.4, -D / 2 + 0.05, x + 2.4, 3.9, -D / 2 + 0.12, '#8e9298', false); for (let y = 0.6; y < 3.8; y += 0.3) rbox(x - 2.4, y, -D / 2 + 0.12, x + 2.4, y + 0.04, -D / 2 + 0.14, '#6e7278', false); }
       lift(-6, -3.5, S.car ? S.car.color : '#6b6e78', true);
       station(p.type === 'perf' ? 'Your car on the lift: engine' : p.type === 'rims' ? 'Your car on the lift: wheels' : 'Your car on the lift', -6, -0.6, () => p.type === 'perf' ? MENUS.engine(p) : p.type === 'rims' ? MENUS.rims(p) : p.type === 'chop' ? MENUS.chop(p) : MENUS.repair(p), 2.6);
@@ -8345,6 +8345,64 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       g.add(lathe([V2(rf * 0.98, fz - 0.02), V2(rf, fz + 0.03), V2(R * 0.9, 0.31), V2(R * 0.97, 0.33), V2(R, 0.35), V2(R * 0.995, 0.375), V2(R * 0.95, 0.378), V2(R * 0.9, 0.36)], lm, 64));
       if (d.bolts) boltRing(g, rf * 0.97, fz + 0.04, d.bolts);
     }
+    // ---------------------------------------------------------------------
+    // Houston swangas (elbows, 84s, 83s): a laced wire wheel whose outer row of
+    // spokes runs from the lip out to a hub that pokes past the tire, capped
+    // with an eared knockoff. Built in metres on the unscaled wheel group, so
+    // the poke and the spokes keep their real size on any car.
+    // ---------------------------------------------------------------------
+    const goldMat = std({ color: 0xd8a93a, metalness: 1, roughness: 0.12 });
+    const Y1 = new THREE.Vector3(0, 1, 0);
+    function wireWheel(g, Rm, zS, d, f) {
+      const zL = 0.3 * zS, rr = Rm * 0.84, poke = d.poke || 0, tip = zL + Math.max(0.035, poke), hubR = 0.032;
+      const spokeGeo = new THREE.CylinderGeometry(0.0036, 0.0036, 1, 5, 1, true), nipGeo = new THREE.CylinderGeometry(0.0052, 0.0052, 0.016, 6);
+      const sets = new Map(), put = (geo, mat, m4) => { const k = geo.uuid + mat.uuid; if (!sets.has(k)) sets.set(k, { geo, mat, list: [] }); sets.get(k).list.push(m4); };
+      const at = (r, a, z) => new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z);
+      const spoke = (a, b, mat, nip) => {
+        const dir = b.clone().sub(a), L = dir.length(), q = new THREE.Quaternion().setFromUnitVectors(Y1, dir.clone().normalize());
+        put(spokeGeo, mat, new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, L, 1)));
+        put(nipGeo, nip, new THREE.Matrix4().compose(b.clone().addScaledVector(dir, -0.006 / L), q, new THREE.Vector3(1, 1, 1)));
+      };
+      const alt = d.mix === 'gold' ? goldMat : f.b, nip = d.nip === 'gold' ? goldMat : f.a, cross = d.cross || 0.32;
+      // the cone (the elbow): two flange rows at the tip, laced both ways
+      for (let i = 0; i < d.n; i++) {
+        const a = i / d.n * Math.PI * 2, k = i % 2 ? 1 : -1, row = (i >> 1) % 2;
+        spoke(at(hubR + 0.004, a, tip - 0.018 - row * 0.014), at(rr, a + k * cross, zL - row * 0.01), d.mix && i % 2 ? alt : f.a, nip);
+      }
+      // the back row: a flat laced disc inside the barrel
+      const nb = d.back || Math.round(d.n / 2);
+      for (let i = 0; i < nb; i++) {
+        const a = (i + 0.5) / nb * Math.PI * 2, k = i % 2 ? 1 : -1;
+        spoke(at(0.05, a, zL - 0.06), at(rr * 1.02, a + k * cross * 0.8, zL - 0.075), f.a, nip);
+      }
+      sets.forEach(({ geo, mat, list }) => { const im = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((m4, i) => im.setMatrixAt(i, m4)); im.castShadow = true; g.add(im); });
+      // hub body: a chrome barrel from the face out to the tip
+      const hubMat = d.mix === 'gold' ? goldMat : f.hub;
+      g.add(lathe([V2(0.001, zL - 0.08), V2(0.06, zL - 0.08), V2(0.062, zL - 0.05), V2(0.05, zL - 0.04), V2(hubR + 0.004, zL - 0.02), V2(hubR, tip - 0.04), V2(hubR + 0.01, tip - 0.03), V2(hubR + 0.01, tip - 0.006), V2(0.001, tip - 0.006)], hubMat, 28));
+      // knockoff: bullet, badge and the ears (2 or 3), or a hex nut
+      const ko = new THREE.Group(); ko.position.z = tip;
+      const bullet = lathe([V2(0.001, -0.008), V2(0.046, -0.008), V2(0.048, 0.004), V2(0.042, 0.02), V2(0.03, 0.03), V2(0.001, 0.032)], hubMat, 28); ko.add(bullet);
+      const badge = disc(0.022, 0.0325, d.badge === 'red' ? std({ color: 0x9a0612, metalness: 0.6, roughness: 0.2 }) : capMat, 24); ko.add(badge);
+      const rim2 = new THREE.Mesh(new THREE.TorusGeometry(0.023, 0.0035, 6, 24), goldMat); rim2.position.z = 0.033; ko.add(rim2);
+      if (d.ears === 'hex') { const h = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 6), hubMat); h.rotation.x = Math.PI / 2; h.position.z = 0.002; ko.add(h); }
+      else {
+        const wing = new THREE.Shape([V2(0.03, -0.02), V2(0.12, -0.014), V2(0.136, 0), V2(0.12, 0.014), V2(0.03, 0.02)]);
+        const wg = new THREE.ExtrudeGeometry(wing, { depth: 0.012, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.003, bevelSegments: 1 });
+        const n = d.ears === 3 ? 3 : 2;
+        for (let i = 0; i < n; i++) { const e = new THREE.Mesh(wg, d.mix === 'gold' ? goldMat : f.hub); e.rotation.z = i / n * Math.PI * 2 + 0.4; e.position.z = 0.0; ko.add(e); }
+      }
+      g.add(ko);
+    }
+    // vogue-style whitewalls on the outer sidewall (tyre units): a white band with a pinstripe through it
+    const wwMat = std({ color: 0xf3f1ea, roughness: 0.55 }); wwMat.polygonOffset = true; wwMat.polygonOffsetFactor = -2;
+    const STRIPE = { gold: std({ color: 0xc99a2e, metalness: 0.7, roughness: 0.25 }), red: std({ color: 0xa60d16, roughness: 0.35 }) };
+    for (const m of Object.values(STRIPE)) { m.polygonOffset = true; m.polygonOffsetFactor = -4; }
+    function vogue(inner, Ri, kind) {
+      if (!kind || kind === 'black') return;
+      const r0 = Ri + 0.055, r1 = r0 + (0.92 - r0) * 0.58, ring = (a, b, mat, z) => { const m = new THREE.Mesh(new THREE.RingGeometry(a, b, 56), mat); m.position.z = z; inner.add(m); };
+      ring(r0, r1, wwMat, 0.352);
+      if (STRIPE[kind]) { const w = r1 - r0; ring(r0 + w * 0.56, r0 + w * 0.7, STRIPE[kind], 0.354); }
+    }
     function buildForged(R, d, f, bare) {
       const g = new THREE.Group();
       const barrel = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.93, R * 0.93, 0.56, 40, 1, true), barrelMat);
@@ -8352,6 +8410,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       g.add(disc(R * 0.93, -0.12, shadowFace));
       if (!bare) brakes(R, g, d.cal || caliperMat);
       forgedLip(g, R, f, d);
+      if (d.wire) return g;   // swangas: spokes, hub and knockoff go on in metres (wheelM)
       forgedFace(g, R, d, f);
       forgedCentre(g, R, f, d.fz + 0.06, d.cap);
       return g;
@@ -8399,11 +8458,19 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       { key: 'hw', name: 'Hemphill Window', code: 'HW', price: 5000, designs: Bx({ dish: 0, fz: 0.1, n: 0, w0: 0.1, w1: 0.08, bolts: 0, cap: 'flat' }, [
         { face: { n: 5, ww: 0.13, wl: 0.22, wr: 0.54 } }, { face: { n: 6, ww: 0.11, wl: 0.22, wr: 0.54 } }, { face: { n: 8, ww: 0.09, wl: 0.2, wr: 0.55, round: 1 } }, { face: { n: 10, ww: 0.07, wl: 0.12, wr: 0.6, round: 1 } }, { face: { n: 5, ww: 0.15, wl: 0.22, wr: 0.54, tear: 0.08 } },
         { face: { n: 7, ww: 0.1, wl: 0.24, wr: 0.53, tear: -0.06 }, bolts: 40 }, { face: { n: 12, ww: 0.055, wl: 0.25, wr: 0.54 } }, { face: { n: 6, ww: 0.16, wl: 0.16, wr: 0.56, round: 1 }, cap: 'dome' }, { face: { n: 9, ww: 0.08, wl: 0.25, wr: 0.54, tear: 0.1 } }, { face: { n: 4, ww: 0.2, wl: 0.22, wr: 0.54 }, cap: 'hex' }]) },
+      // Houston swangas: wire wheels that poke (poke in metres past the lip), on vogues
+      { key: 'hs', name: 'Third Coast Swangas', code: 'HS', price: 3600, wire: 1, designs: Bx({ wire: 1, dish: 0, fz: 0.1, n: 72, poke: 0.17, ears: 2, cap: 'flat' }, [
+        { nick: '84s', poke: 0.17 }, { nick: '83s', poke: 0.25 }, { nick: 'Super Elbows', n: 84, poke: 0.33 },
+        { nick: 'Triple Gold 84s', mix: 'gold', nip: 'gold', poke: 0.17 }, { nick: '3-Ear Slab Spinners', ears: 3, poke: 0.21 },
+        { nick: 'Flat Wire 100s', n: 100, poke: 0, cross: 0.4 }, { nick: 'Cross-Lace 72s', poke: 0.12, cross: 0.5 },
+        { nick: 'Gold Nipple Elbows', nip: 'gold', poke: 0.22, badge: 'red' }, { nick: 'Gold Long Pokes', mix: 'gold', nip: 'gold', ears: 3, poke: 0.29 },
+        { nick: 'Hex Knock 84s', ears: 'hex', poke: 0.17 }]) },
     ];
     const ALL = [];
     LINES.forEach(L => L.designs.forEach((d, i) => {
       d.id = L.key + (i + 1); d.line = L; d.name = L.name + ' ' + L.code + '-' + String(i + 1).padStart(2, '0');
       d.spokes = d.face ? d.face.n + ' windows' : d.layers ? 'mesh' : d.n + (d.split ? ' split' : d.fork ? ' Y' : '') + ' spoke';
+      if (d.wire) { d.name = L.name + ' ' + d.nick; d.spokes = `${d.n} spoke wire${d.poke ? ` · ${Math.round(d.poke / 0.0254)} in poke` : ' · flat'}${d.ears === 3 ? ' · 3-ear' : d.ears === 'hex' ? ' · hex knock' : ' · 2-ear'}${d.mix === 'gold' ? ' · gold' : ''}`; }
       ALL.push(d);
     }));
 
@@ -8429,14 +8496,16 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     };
     const FIN_KEYS = Object.keys(FIN);
     const RIM = (id) => ALL.find(d => d.id === id);
-    const widthIn = (dia) => dia <= 20 ? 9 : dia <= 22 ? 10 : dia <= 24 ? 12 : 14;
+    const widthIn = (dia) => dia <= 15 ? 7 : dia <= 20 ? 9 : dia <= 22 ? 10 : dia <= 24 ? 12 : 14;
     // A wheel in metres, face toward +z. tyreR: tyre radius in m (0 = bare rim).
-    function wheelM(d, fk, dia, tyreR, bare) {
+    function wheelM(d, fk, dia, tyreR, bare, tire) {
       const rimR = dia * 0.0254 / 2, Rt = tyreR || rimR / 0.92, Ri = tyreR ? Math.min(0.9, rimR / tyreR) : 0.95;
       const g = new THREE.Group(), inner = new THREE.Group(); g.add(inner);
-      if (tyreR) inner.add(tyre(Ri));
+      if (tyreR) { inner.add(tyre(Ri)); vogue(inner, Ri, tire || (d.wire ? 'gold' : 'black')); }
       inner.add(buildForged(Ri - 0.005, d, FIN[fk], bare));
-      inner.scale.set(Rt, Rt, (widthIn(dia) * 0.0254 + 0.06) / 0.7);
+      const zS = (widthIn(dia) * 0.0254 + 0.06) / 0.7;
+      inner.scale.set(Rt, Rt, zS);
+      if (d.wire) wireWheel(g, (Ri - 0.005) * Rt, zS, d, FIN[fk]);
       return g;
     }
     function bake(g) {   // every mesh (and instance) in g → one mesh per material
@@ -8455,13 +8524,16 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   })();
   const RIM_FIN = { chrome: ['Chrome', '#eef0f3'], polish: ['Brushed, chrome lip', '#c9ced6'], black: ['Gloss black', '#0c0c0f'], milled: ['Black milled', '#18181b'], gun: ['Gunmetal', '#4a4d53'], bronze: ['Bronze', '#8a5a2b'],
     gold: ['Gold', '#d8a93a'], blkgold: ['Black and gold', '#1a1408'], red: ['Candy red', '#9a0612'], blue: ['Candy blue', '#0b2f9a'], purple: ['Candy purple', '#4a0f8a'], white: ['White', '#f2f2f0'] };
-  const RIM_SIZES = { 17: 0.7, 18: 0.8, 20: 1, 22: 1.25, 24: 1.6, 26: 2.1 };
+  const RIM_SIZES = { 15: 0.6, 17: 0.7, 18: 0.8, 20: 1, 22: 1.25, 24: 1.6, 26: 2.1 };
+  // tires for the swangas: vogues (whitewall with a gold or red pinstripe), plain whitewalls or black walls
+  const RIM_TIRES = { gold: ['Vogues, gold stripe', '#c99a2e'], red: ['Vogues, red stripe', '#a60d16'], white: ['Plain whitewalls', '#f3f1ea'], black: ['Black walls', '#141316'] };
+  const tireOf = c => c && c.rims && RIM_TIRES[c.rims.tire] ? c.rims.tire : (rimOf(c) && rimOf(c).wire ? 'gold' : 'black');
   const rimOf = c => c && c.rims && FORGED.RIM(c.rims.id);
   // one baked wheel per design/finish/size/tire, shared by every car that runs it
   const RIMG = new Map();
-  function rimWheel(id, fin, dia, tr) {
-    const key = [id, fin, dia, tr.toFixed(3)].join('|');
-    if (!RIMG.has(key)) RIMG.set(key, FORGED.bake(FORGED.wheelM(FORGED.RIM(id), fin, dia, tr, true)));
+  function rimWheel(id, fin, dia, tr, tire) {
+    const key = [id, fin, dia, tr.toFixed(3), tire || ''].join('|');
+    if (!RIMG.has(key)) RIMG.set(key, FORGED.bake(FORGED.wheelM(FORGED.RIM(id), fin, dia, tr, true, tire)));
     const g = new THREE.Group(); for (const m of RIMG.get(key).children) { const k = new THREE.Mesh(m.geometry, m.material); k.castShadow = true; g.add(k); } return g;
   }
   // put a car's rims on its model (drag packs win: their wheels own the corners while they're on)
@@ -8470,13 +8542,13 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     if (!m || !m.userData.wheels) return;
     rimLive.add(m); m.userData.rimCar = c;
     const U = m.userData; if (c && c.drag) { U.rimKey = ''; return; }
-    const r = rimOf(c), want = r ? [c.rims.id, c.rims.fin, c.rims.dia].join('|') : '';
+    const r = rimOf(c), want = r ? [c.rims.id, c.rims.fin, c.rims.dia, tireOf(c)].join('|') : '';
     if ((U.rimKey || '') === want) return; U.rimKey = want;
     for (const w of U.wheels) {
       const st = w.userData.stock || (w.userData.stock = { kids: w.children.slice(), scale: w.scale.clone() });
       for (const o of w.children.slice()) w.remove(o);
       if (!r) { st.kids.forEach(o => w.add(o)); w.scale.copy(st.scale); continue; }
-      const tr = st.scale.x, g = rimWheel(c.rims.id, c.rims.fin, c.rims.dia, tr);
+      const tr = st.scale.x, g = rimWheel(c.rims.id, c.rims.fin, c.rims.dia, tr, tireOf(c));
       w.scale.set(1, 1, 1); if (w.position.z < 0) g.rotation.y = Math.PI; w.add(g);
     }
   }
@@ -8511,26 +8583,37 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     }
   }
   // ---------- the rim menu: pick a line, a design, a size and a finish ----------
-  const RIMUI = { line: null, dia: 20, fin: 'chrome' };
+  const RIMUI = { line: null, dia: 20, fin: 'chrome', tire: 'gold' };
   const rimPrice = (L, dia, p) => Math.round(L.price * RIM_SIZES[dia] * (p.rate || 1) / 10) * 10;
   MENUS.rims = p => { if (!S.car) return noCar(p);
     const c = S.car, r = rimOf(c), rows = [], set = (v, msg) => { c.rims = v; save(); rimRefresh(c); toast(msg, 'good'); };
     if (c.drag) rows.push({ t: 'Drag pack on this car', s: 'Pull the drag pack at a mechanic to run street rims', btn: '—', off: true, act: () => {} });
     if (!RIMUI.line) {
-      for (const [dia, k] of Object.entries(RIM_SIZES)) rows.push({ t: `Size: ${dia} in`, s: dia >= 24 ? 'Big rims, thin rubber' : dia <= 18 ? 'More sidewall, rides softer' : 'Street size', btn: +dia === RIMUI.dia ? 'Picked' : 'Pick', off: +dia === RIMUI.dia, act: () => { RIMUI.dia = +dia; } });
+      for (const [dia, k] of Object.entries(RIM_SIZES)) rows.push({ t: `Size: ${dia} in`, s: dia >= 24 ? 'Big rims, thin rubber' : +dia === 15 ? 'Classic swanga size, fat sidewall for vogues' : dia <= 18 ? 'More sidewall, rides softer' : 'Street size', btn: +dia === RIMUI.dia ? 'Picked' : 'Pick', off: +dia === RIMUI.dia, act: () => { RIMUI.dia = +dia; } });
       for (const [id, [label, sw]] of Object.entries(RIM_FIN)) rows.push({ sw, t: `Finish: ${label}`, s: r ? 'For your next set, or refinish the set you run' : 'For your next set', btn: id === RIMUI.fin ? 'Picked' : 'Pick', off: id === RIMUI.fin, act: () => { RIMUI.fin = id; } });
-      for (const L of FORGED.LINES) rows.push({ t: L.name, s: `10 designs · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4`, btn: money(rimPrice(L, RIMUI.dia, p)), act: () => { RIMUI.line = L.key; } });
+      for (const L of FORGED.LINES) rows.push({ t: L.name, s: L.wire ? `Houston swangas: 84s, 83s, elbows · on vogues · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4` : `10 designs · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4`, btn: money(rimPrice(L, RIMUI.dia, p)), act: () => { RIMUI.line = L.key; } });
       if (r && c.rims.fin !== RIMUI.fin) rows.push({ t: `Refinish your ${r.name} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()}`, s: 'Strip and refinish the set', btn: money(Math.round(450 * (p.rate || 1))), act: () => { if (spend(Math.round(450 * (p.rate || 1)), 'Rim refinish')) set(Object.assign({}, c.rims, { fin: RIMUI.fin }), 'Refinished.'); } });
       if (r) rows.push({ t: 'Stock wheels back on', s: `Sell your ${c.rims.dia} in ${r.name} back for ${money(Math.round(rimPrice(r.line, c.rims.dia, { rate: 1 }) * 0.4))}`, btn: 'Sell', act: () => { S.money += Math.round(rimPrice(r.line, c.rims.dia, { rate: 1 }) * 0.4); set(null, 'Stock wheels back on.'); } });
       return { title: p.name || 'Rims', sub: r ? `On your car: ${r.name} · ${c.rims.dia} in · ${RIM_FIN[c.rims.fin][0]}` : 'Pick a size and finish, then a line', rows };
     }
     const L = FORGED.LINES.find(l => l.key === RIMUI.line), cost = rimPrice(L, RIMUI.dia, p);
     rows.push({ t: '← All lines', s: 'Back to sizes, finishes and lines', btn: 'Back', act: () => { RIMUI.line = null; } });
+    if (L.wire) {   // swangas ride on vogues: pick the tires for the set (or change the ones on yours)
+      for (const [k, [label, sw]] of Object.entries(RIM_TIRES)) { const mine = r && r.wire && tireOf(c) === k;
+        rows.push({ sw, t: `Tires: ${label}`, s: mine ? 'On your swangas now' : r && r.wire ? 'Put these on your swangas: $600' : 'Comes with your set', btn: RIMUI.tire === k ? 'Picked' : 'Pick', off: RIMUI.tire === k && !(r && r.wire && !mine),
+          act: () => { RIMUI.tire = k; if (r && r.wire && !mine && spend(600, 'Vogue tires')) set(Object.assign({}, c.rims, { tire: k }), `${label} on.`); } }); }
+    }
     for (const d of L.designs) { const on = r === d && c.rims.dia === RIMUI.dia && c.rims.fin === RIMUI.fin;
       rows.push({ sw: RIM_FIN[RIMUI.fin][1], t: d.name, s: `${d.spokes}${d.deep ? ' · deep lip' : ''}${d.dish > 0.35 ? ' · deep concave' : ''} · ${RIMUI.dia} in`, btn: on ? 'On the car' : money(cost), off: on || !!c.drag,
-        act: () => { if (spend(cost, d.name)) set({ id: d.id, fin: RIMUI.fin, dia: RIMUI.dia }, `${d.name} on. Look at it on the lift.`); } }); }
+        act: () => { if (spend(cost, d.name)) set(Object.assign({ id: d.id, fin: RIMUI.fin, dia: RIMUI.dia }, d.wire ? { tire: RIMUI.tire } : {}), d.wire ? `${d.name} on ${RIM_TIRES[RIMUI.tire][0].toLowerCase()}. Swang it.` : `${d.name} on. Look at it on the lift.`); } }); }
     return { title: L.name, sub: `${RIMUI.dia} in · ${RIM_FIN[RIMUI.fin][0]} · ${money(cost)} a set`, rows };
   };
+  // the swanga corner: elbows on vogues, standing on a low rack against the right wall
+  function swangaRack(x, z, ry) {
+    const g = new THREE.Group(), hs = FORGED.LINES.find(l => l.key === 'hs').designs, fins = ['chrome', 'chrome', 'gold', 'chrome', 'red', 'chrome', 'blue', 'chrome'], tires = ['gold', 'red', 'gold', 'white', 'gold', 'gold', 'red', 'gold'];
+    for (let i = 0; i < 8; i++) { const w = FORGED.wheelM(hs[[0, 1, 3, 2, 4, 7, 8, 9][i]], fins[i], 15, 0.34, true, tires[i]); w.position.set((i % 4 - 1.5) * 0.85, i < 4 ? 0.36 : 1.18, 0); g.add(w); }
+    const b = FORGED.bake(g); b.position.set(x, 0.02, z); b.rotation.y = ry; IN.room.add(b);
+  }
   // a wall of rims in the shop, baked into one mesh per material
   function rimWallIn(x, y, z, ry, cols, rows, pick) {
     const g = new THREE.Group(), fins = Object.keys(RIM_FIN);
@@ -9466,7 +9549,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   // [name, nick, car, paint, build, rep needed, skill 0..1]
   // build: mods, engK (motor work past the bolt-ons), tuning parts + preset, forged rims, drag pack
   const STREET3D = [
-    ['Junebug', 'Stop Six', 'chevrolet_caprice_classic_box_chevy_1986', '#2b6e3a', { mods: ['intake'], rims: ['ns3', 'chrome', 24] }, 0, 0.3],
+    ['Junebug', 'Stop Six', 'chevrolet_caprice_classic_box_chevy_1986', '#2b6e3a', { mods: ['intake'], rims: ['hs1', 'chrome', 15, 'gold'] }, 0, 0.3],
     ['Keisha', 'Tahoe Tuesday', 'chevrolet_tahoe_2021', '#ece9e2', { mods: ['intake', 'tune'], rims: ['sb2', 'black', 26] }, 0, 0.45],
     ['Lil Pete', 'Northside', 'ford_f_150_regular_cab_2021', '#1f4fa8', { mods: ['intake', 'tune', 'hot'], tparts: ['ecu'], preset: 'Street', rims: ['ac4', 'milled', 22] }, 3, 0.5],
     ['Ghost', 'Riverside', 'dodge_charger_scat_pack_2015', '#121214', { mods: ['intake', 'tune', 'nitrous'], tparts: ['ecu', 'gears'], preset: 'Street', rims: ['pm2', 'gun', 22] }, 8, 0.55],
@@ -9482,7 +9565,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     if (r.car) return r.car; const b = r.b, c = newCar(r.id, r.color);
     for (const k of b.mods || []) c.mods[k] = true; if (b.engK) c.engK = b.engK;
     if (b.tparts) c.tparts = b.tparts.slice(); if (b.preset) c.tune = Object.assign({}, TUNE_PRESETS[b.preset]);
-    if (b.rims) c.rims = { id: b.rims[0], fin: b.rims[1], dia: b.rims[2] };
+    if (b.rims) c.rims = { id: b.rims[0], fin: b.rims[1], dia: b.rims[2], tire: b.rims[3] };
     if (b.drag) { const k = DRAG_PACKS.find(x => x.id === b.drag); c.drag = { pack: k.id, rim: k.rim, front: k.rim, fin: k.fin, bead: !!k.bead, susp: { shocks: !!k.shocks, bars: !!k.bars, wbar: true, ext: 2, comp: 0 } }; dragFix(c); }
     return (r.car = c);
   }
@@ -10617,12 +10700,12 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   window.__ride = { RIDE, rideRequest, rideAnswer, rideGetOut, rideStep };
   // ---------- other players see your build: rims, drag pack, factory motor and ride height ride on the hello ----------
   // b3 is the 3D build; v also carries the 2D game's wheel fields so 2D players see rims close to yours (and theirs show here)
-  const RIM_STYLE2D = d => d.layers ? 'mesh' : d.line.key === 'ld' ? 'dish' : (d.sweep || 0) >= 0.5 ? 'turbine' : d.split || d.n >= 8 ? 'split' : d.n === 6 ? 'six' : 'five';
+  const RIM_STYLE2D = d => d.layers || d.wire ? 'mesh' : d.line.key === 'ld' ? 'dish' : (d.sweep || 0) >= 0.5 ? 'turbine' : d.split || d.n >= 8 ? 'split' : d.n === 6 ? 'six' : 'five';
   const STYLE3D = { five: 'ls1', six: 'ls4', split: 'ns1', mesh: 'rm1', dish: 'ld1', turbine: 'sb1' };
   function myBuild() {
     const c = S.car; if (!c) return null;
     const b = {}, r = c.rims && FORGED.RIM(c.rims.id);
-    if (r) b.r = [c.rims.id, c.rims.fin, c.rims.dia];
+    if (r) b.r = r.wire ? [c.rims.id, c.rims.fin, c.rims.dia, tireOf(c)] : [c.rims.id, c.rims.fin, c.rims.dia];
     if (c.drag && DRAG_PACKS.some(k => k.id === c.drag.pack)) { const d = c.drag; b.d = [d.pack, d.rim, d.front, d.fin, d.bead ? 1 : 0]; }
     if (c.eng) b.e = c.eng;
     try { const T = tunePerf(c), rh = (T.rideF + T.rideR) / 2; if (Math.abs(rh) > 0.004) b.h = Math.round(rh * 1000) / 1000; } catch (e) {}
@@ -10640,7 +10723,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   const hex = s => parseInt(s.slice(1), 16), near = (a, b) => { const x = hex(a), y = hex(b); return Math.abs((x >> 16) - (y >> 16)) + Math.abs((x >> 8 & 255) - (y >> 8 & 255)) + Math.abs((x & 255) - (y & 255)); };
   function cleanBuild(b) {
     const o = {}; if (!b || typeof b !== 'object') return o;
-    if (Array.isArray(b.r) && FORGED.RIM(b.r[0]) && RIM_FIN[b.r[1]] && RIM_SIZES[b.r[2]]) o.rims = { id: b.r[0], fin: b.r[1], dia: +b.r[2] };
+    if (Array.isArray(b.r) && FORGED.RIM(b.r[0]) && RIM_FIN[b.r[1]] && RIM_SIZES[b.r[2]]) { o.rims = { id: b.r[0], fin: b.r[1], dia: +b.r[2] }; if (RIM_TIRES[b.r[3]]) o.rims.tire = b.r[3]; }
     if (Array.isArray(b.d) && DRAG_PACKS.some(k => k.id === b.d[0])) o.drag = { pack: b.d[0], rim: String(b.d[1]), front: String(b.d[2]), fin: String(b.d[3]), bead: !!b.d[4] };
     if (typeof b.e === 'string' && /^\w{1,32}$/.test(b.e)) o.eng = b.e;
     if (typeof b.h === 'number' && isFinite(b.h)) o.rh = clamp(b.h, -0.2, 0.2);
