@@ -10332,7 +10332,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
       if (p.fresh || !p.st || !p.car) continue;
       const far = Math.hypot(p.x - mx, p.z - mz) > N_DRAW, riding = !!p.ride;
       let v = p.view;
-      if (far || riding) { if (v) v.g.visible = false; continue; }
+      if (far || (riding && !p.ho)) { if (v) v.g.visible = false; continue; }
       if (!v) { v = p.view = { g: new THREE.Group(), carKey: '', lookKey: '', slot: null, P: null, label: null, name: '' }; NET.group.add(v.g); }
       v.g.visible = true;
       const ck = p.car + '|' + p.paint;
@@ -10656,7 +10656,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
       const st = document.createElement('style');
       st.textContent = `#ridepill{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 44px);z-index:30;display:flex;gap:8px;align-items:center;background:rgba(18,16,22,0.85);color:#f1ece4;border:1px solid rgba(127,209,255,0.5);border-radius:14px;padding:6px 8px 6px 12px;font:600 14px var(--body);max-width:92vw}
 #ridepill[hidden]{display:none}#ridepill span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#ridepill button{font:800 13px var(--body);letter-spacing:.03em;border-radius:10px;border:0;padding:7px 11px;background:#2a6fd1;color:#fff;cursor:pointer;white-space:nowrap}#ridepill button.no{background:#3a3244}
-body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,body.riding #em-btn,body.riding #prompt,body.riding #stick{display:none!important}`;
+body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,body.riding #prompt,body.riding #stick{display:none!important}body.riding:not(.hanging) #g-reload,body.riding:not(.hanging) #g-fire{display:none!important}`;
       document.head.append(st);
       RIDE.el = document.createElement('div'); RIDE.el.id = 'ridepill'; RIDE.el.hidden = true; document.body.append(RIDE.el);
       RIDE.el.addEventListener('click', e => { const b = e.target.closest('button'); if (b && RIDE.act[b.dataset.a]) RIDE.act[b.dataset.a](); });
@@ -11100,7 +11100,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   window.__shotHook = (O, D, best, t0) => {
     if (!HOOD.ready) return;
     for (const e of HOOD.ents) {
-      if (e.gone || e.down || !e.g.visible || e.kind === 'homie') continue;
+      if (e.gone || e.down || !e.g.visible || e.kind === 'homie' || (HOOD.ride && HOOD.ride.e === e)) continue;
       const dx = e.x - O.x, dz = e.z - O.z, rr = best.t + 4; if (dx * dx + dz * dz > rr * rr) continue;
       if (e.inCar) {
         const c = Math.cos(e.yaw), s = Math.sin(e.yaw), lo = { x: (O.x - e.x) * c - (O.z - e.z) * s, y: O.y, z: (O.x - e.x) * s + (O.z - e.z) * c }, ld = { x: D.x * c - D.z * s, y: D.y, z: D.x * s + D.z * c };
@@ -11423,9 +11423,11 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #g-pad,b
   function hRideStep(dt) {
     const r = HOOD.ride, e = r.e; r.t += dt;
     if (e.gone || e.down) { hRideOut(true); return; }
-    e.ride = true; foot.x = e.x; foot.z = e.z; drv.x = e.x; drv.z = e.z; if (foot.holder) foot.holder.position.set(e.x, foot.holder.position.y, e.z);
+    const hg = window.__hang && window.__hang.hangFollow();   // hanging out of the window: you stay on the door and the gun runs the camera
+    e.ride = true; if (!hg) { foot.x = e.x; foot.z = e.z; drv.x = e.x; drv.z = e.z; if (foot.holder) foot.holder.position.set(e.x, foot.holder.position.y, e.z); }
     if (!e.path || !e.path.length) { const dd = e.dest ? Math.hypot(e.dest[0] - e.x, e.dest[1] - e.z) : 0; if (dd < 30 || r.t > 400) { e.want = 0; if (Math.abs(e.sp) < 0.5) { toast(`${e.name} dropped you off at ${r.where}.`, 'good'); hRideOut(true); return; } } }
     if (performance.now() - LOOK.dragAt > 1500) foot.camYaw += hNorm(e.yaw - foot.camYaw) * Math.min(1, dt * 2.5);
+    if (hg) return;
     const pt = clamp(LOOK.pitch, -0.1, 1.0), d = 7, cy = foot.camYaw;
     _hlook.set(e.x, 1.3, e.z); _hcam.set(e.x + Math.sin(cy) * Math.cos(pt) * d, Math.max(0.6, 1.3 + Math.sin(pt) * d + 0.6), e.z + Math.cos(cy) * Math.cos(pt) * d);
     camera.position.lerp(_hcam, Math.min(1, dt * 10)); camera.lookAt(_hlook);
@@ -17226,7 +17228,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const e = clamp(0.24 - LOOK.pitch * 0.95, -0.85, 0.62), yaw = foot.camYaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
     const tall = innerWidth < innerHeight * 0.8, side = tall ? 0.5 : 0.62; let back = tall ? 3.3 : 2.2;
     dir.set(fx * Math.cos(e), Math.sin(e), fz * Math.cos(e));
-    const qx = foot.x + rx * side, qz = foot.z + rz * side, qy = 1.62;
+    const qx = foot.x + rx * side, qz = foot.z + rz * side, qy = HANG.k > 0 ? HANG.eye : 1.62;
     for (let t = 0.2; t <= 1.0001; t += 0.1) { const x = qx - dir.x * back * t, z = qz - dir.z * back * t; if (solids.at(x, z).some(b => x > b.x0 - 0.15 && x < b.x1 + 0.15 && z > b.z0 - 0.15 && z < b.z1 + 0.15)) { back *= Math.max(0.15, t - 0.12); break; } }
     C.set(qx - dir.x * back, Math.max(0.3, qy - dir.y * back + 0.08), qz - dir.z * back); L.set(qx + dir.x * 30, qy + dir.y * 30, qz + dir.z * 30);
     GUN.camBack = back; return e;
@@ -17258,6 +17260,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   }
   function gunToggle() {
     if (!foot.on || inside || creating || PV.down > 0) return;
+    if (hangRide()) { hangToggle(); return; }
     const g = eqGun(); if (!g) { openPhone(); phoneApp('amazin'); return; }
     if (GUN.reload) return; GUN.want = !GUN.want; SND.rustle(); gunHud();
   }
@@ -17524,6 +17527,169 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   }
   window.__qd = { QD, qdStart, qdRound, qdStop };
   // ==== draw styles (end) ====
+  // ==== hang out (begin) ====
+  // riding with somebody (a friend online or one of the regulars), DRAW hangs you out of the window: you climb up and sit
+  // on the door with your legs folded inside, the window drops, and you aim and shoot from there like on foot.
+  // Online, everybody sees you up on the door of the driver's car (ho/hk/hs/ay on your state packets) and your shots come from there.
+  const HANG = { want: false, k: 0, seat: 0, eye: 1.62, x: 0, y: 0, z: 0, ix: 0, iy: 0, iz: 0, glass: null, label: '' };
+  const HANG_UP = 0.6;   // seconds to climb out onto the door
+  const HP = _v(), _hc = _v(), _hl = _v(), _hf = _v(), _hr = _v(), _hq = _q(), _hq2 = _q();
+  // the car you're a passenger in: its model, where it is and which way it faces
+  function hangRide() {
+    if (typeof RIDE !== 'undefined' && RIDE.with) { const p = NET.peers.get(RIDE.with.id); return p ? { m: p.view && p.view.model, x: p.x, y: 0.12, z: p.z, yaw: -p.h } : null; }
+    if (typeof HOOD !== 'undefined' && HOOD.ride) { const e = HOOD.ride.e; return { m: e.model, x: e.x, y: 0.12, z: e.z, yaw: e.yaw }; }
+    return null;
+  }
+  // your seat: the first rider takes the front passenger window, then the back right, then the back left
+  function hangSeat() {
+    if (typeof RIDE === 'undefined' || !RIDE.with) return 0;
+    const ids = [NET.id]; for (const p of NET.peers.values()) if (p.ride === RIDE.with.id && !p.fresh) ids.push(p.id);
+    return Math.min(2, ids.sort().indexOf(NET.id));
+  }
+  // the window for a seat, in the car's own space (x forward, y up, z right): the bottom of that door's glass, measured once per model
+  const HANG_DEF = { front: 2.45, len: 4.9, wid: 1.9, r: 0.34 };
+  function hangWin(m, seat) {
+    const U = m ? m.userData : HANG_DEF, c = m ? (U.hangW || (U.hangW = [])) : [];
+    if (c[seat]) return c[seat];
+    const side = seat === 2 ? -1 : 1, names = ['doorR0', 'doorR1', 'doorL1'];
+    let pn = m && U.panels && U.panels[names[seat]], back = 0, w = null;
+    if (!pn && m && U.panels) { pn = U.panels[side > 0 ? 'doorR0' : 'doorL0']; back = seat ? 0.85 : 0; }
+    if (pn) {
+      const inner = m.children[0]; m.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(inner.matrixWorld).invert(), M = new THREE.Matrix4(), bb = new THREE.Box3(), glass = [];
+      pn.g.traverse(o => { if (!o.isMesh || !o.material.transparent) return; glass.push(o); if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(M.multiplyMatrices(inv, o.matrixWorld))); });
+      if (!bb.isEmpty()) w = { x: (bb.min.x + bb.max.x) / 2 - back, y: bb.min.y, z: side * Math.max(Math.abs(bb.min.z), Math.abs(bb.max.z)), glass: back ? [] : glass };
+    }
+    if (!w) w = { x: U.front - U.len * 0.45 - (seat ? 0.85 : 0), y: Math.max(0.85, U.r * 2.9), z: side * (U.wid / 2 - 0.04), glass: [] };
+    if (m) c[seat] = w;
+    return w;
+  }
+  // the spot on (or in) that car for k: 0 down in the seat .. 1 sitting up on the door
+  function hangSpot(R, w, k, out) {
+    const s = Math.sign(w.z) || 1, e = smooth01(k);
+    const ix = w.x - 0.05 - 0.12 * (1 - e), iy = lerp(w.y - 0.45, w.y + 0.02, e) + Math.sin(Math.PI * e) * 0.07, iz = w.z - s * lerp(0.5, 0.05, e);
+    const rx = iz, rz = -ix, c = Math.cos(R.yaw), sn = Math.sin(R.yaw);   // the model is turned so its +x runs along -z
+    return out.set(R.x + rx * c + rz * sn, R.y + iy, R.z - rx * sn + rz * c);
+  }
+  // which way is out of that window, and the way you face while climbing out (from the seat, facing forward, round to the window)
+  const hangOutYaw = (R, w) => R.yaw - (Math.sign(w.z) || 1) * Math.PI / 2;
+  // legs folded in the car, hips on the door
+  function hangLegs(P, k) {
+    const Hs = P.root.scale.y || 1, e = smooth01(k);
+    for (let i = 0; i < 2; i++) {
+      P.legs[i].rotation.set(-lerp(1.45, 0.3, e), 0, (i ? 1 : -1) * 0.07);
+      if (P.knees) { P.knees[i].rotation.x = lerp(1.55, 1.8, e); P.ankles[i].rotation.x = -0.2; }
+    }
+    P.root.position.set(0, 0.07 - 0.85 * Hs, 0);
+  }
+  // lean the chest out of the window by rolling it round the line you're aiming down, so the aim stays where it is
+  function hangRoll(P, ox, oz, amt) {
+    const up = P.upper; up.updateWorldMatrix(true, false); up.getWorldQuaternion(_hq);
+    const R = _hr.set(-1, 0, 0).applyQuaternion(_hq), a = amt * (R.x * ox + R.z * oz);
+    if (Math.abs(a) < 1e-4) return;
+    _hf.set(0, 0, 1).applyQuaternion(up.quaternion); up.quaternion.premultiply(_hq2.setFromAxisAngle(_hf, a));
+  }
+  // roll the window down (hide that door's glass) while somebody's up on it
+  function hangGlass(own, list) {
+    if (own.glass === list) return;
+    if (own.glass) for (const o of own.glass) o.visible = true;
+    own.glass = list && list.length ? list : null;
+    if (own.glass) for (const o of own.glass) o.visible = false;
+  }
+  function hangToggle() {
+    if (PV.down > 0) return;
+    const g = eqGun(); if (!g) { openPhone(); phoneApp('amazin'); return; }
+    if (GUN.reload) return;
+    HANG.want = !HANG.want; if (!HANG.want) GUN.want = false;
+    SND.rustle(); gunHud();
+  }
+  // straight back in the seat: you got out, got dropped or the ride ended
+  function hangReset() {
+    hangGlass(HANG, null);
+    if (!HANG.k && !HANG.want) return;
+    HANG.want = false; HANG.k = 0;
+    if (GUN.want || GUN.d > 0) gunHolsterNow();
+    document.body.classList.remove('hanging'); gunHud();
+  }
+  // every frame on foot, after the ride has put you in the car and before the gun aims
+  function hangPre(dt) {
+    const R = HANG.k > 0 || HANG.want ? hangRide() : null;
+    if (!R) { if (HANG.k > 0 || HANG.want || HANG.glass) hangReset(); return; }
+    HANG.seat = hangSeat();
+    const w = hangWin(R.m, HANG.seat);
+    HANG.k = clamp(HANG.k + (HANG.want ? 1 : GUN.d < 0.05 ? -1 : 0) * dt / HANG_UP, 0, 1);
+    if (HANG.want && HANG.k >= 1 && !GUN.want && !GUN.reload) GUN.want = true;   // up on the door: the gun comes out
+    const on = HANG.k > 0, bc = document.body.classList; if (on !== bc.contains('hanging')) bc.toggle('hanging', on);
+    if (!on) { foot.holder.visible = false; hangGlass(HANG, null); HANG.want = false; return; }
+    hangGlass(HANG, w.glass);
+    hangSpot(R, w, HANG.k, HP); HANG.x = HP.x; HANG.y = HP.y; HANG.z = HP.z; HANG.eye = HP.y + 0.62;
+    foot.x = HP.x; foot.z = HP.z; foot.target = null; drv.x = HP.x; drv.z = HP.z;
+    const h = foot.holder; h.visible = true; h.position.set(HP.x, HP.y - 0.07, HP.z);
+    const oy = hangOutYaw(R, w), e = smooth01(HANG.k);
+    if (GUN.d <= 0.05) { h.rotation.y = R.yaw + angDiff(oy, R.yaw) * e; foot.yaw = h.rotation.y; }
+    if (ME) hangLegs(ME, HANG.k);
+    // the camera: swings round to the window while you climb out, then the gun's over-the-shoulder camera takes it
+    LOOK.dragAt = Math.max(LOOK.dragAt, performance.now() - 1400);
+    if (HANG.want && !GUN.want) foot.camYaw += angDiff(oy + Math.PI * 0.12 * (Math.sign(w.z) || 1), foot.camYaw) * Math.min(1, dt * 3);
+    const pt = clamp(LOOK.pitch, -0.1, 1.0), d = 5.4, cy = foot.camYaw;
+    _hl.set(HP.x, HP.y + 0.35, HP.z); _hc.set(HP.x + Math.sin(cy) * Math.cos(pt) * d, Math.max(0.6, HP.y + 0.35 + Math.sin(pt) * d + 0.5), HP.z + Math.cos(cy) * Math.cos(pt) * d);
+    foot.cam.lerp(_hc, Math.min(1, dt * 10)); foot.look.lerp(_hl, Math.min(1, dt * 14));
+    camera.position.copy(foot.cam); camera.lookAt(foot.look);
+  }
+  // after the gun has aimed: lean out of the window
+  function hangPost() {
+    if (!(HANG.k > 0) || !ME) return;
+    const R = hangRide(); if (!R) return;
+    const w = hangWin(R.m, HANG.seat), s = Math.sign(w.z) || 1;
+    hangRoll(ME, Math.cos(R.yaw) * s, -Math.sin(R.yaw) * s, 0.45 * smooth01(HANG.k));
+  }
+  // a regular's car moves after your feet do (in the street step), so keep up with it there
+  function hangFollow() {
+    if (!(HANG.k > 0)) return false;
+    const R = hangRide(); if (!R) return false;
+    hangSpot(R, hangWin(R.m, HANG.seat), HANG.k, HP);
+    const dx = HP.x - HANG.x, dy = HP.y - HANG.y, dz = HP.z - HANG.z; HANG.x = HP.x; HANG.y = HP.y; HANG.z = HP.z; HANG.eye = HP.y + 0.62;
+    foot.holder.position.x += dx; foot.holder.position.y += dy; foot.holder.position.z += dz; foot.x = HP.x; foot.z = HP.z; drv.x = HP.x; drv.z = HP.z;
+    camera.position.x += dx; camera.position.y += dy; camera.position.z += dz; GUN.cam.x += dx; GUN.cam.y += dy; GUN.cam.z += dz;
+    return true;
+  }
+  // the DRAW button says what it does while you ride
+  function hangLabel() {
+    const l = hangRide() ? (HANG.want ? 'GET IN' : 'HANG OUT') : GUN.want ? 'HOLSTER' : 'DRAW';
+    const b = gEl('g-draw'); if (b.textContent !== l) b.textContent = l;
+  }
+  // ---------- online: you up on the door, and other riders up on theirs ----------
+  NET_HOOK.state.push(() => HANG.k > 0 ? { ho: 1, hk: +HANG.k.toFixed(2), hs: HANG.seat, ay: +foot.holder.rotation.y.toFixed(2) } : {});
+  NET_HOOK.urgent.push(() => { const s = NET.sent || {}, on = HANG.k > 0; return on !== (s.ho === 1) || (on && (Math.abs(HANG.k - (s.hk || 0)) > 0.25 || Math.abs(angDiff(foot.holder.rotation.y, s.ay || 0)) > 0.12)); });
+  NET_HOOK.recv.push((p, m) => { if (m.k === 's') { p.ho = m.ho === 1 && !!m.rd; p.hk = nNum(m.hk, 0, 1, 0); p.hs = clamp(m.hs | 0, 0, 2); p.ay = nNum(m.ay, -50, 50, 0); } });
+  // the car somebody rides in: another player's, or yours
+  function hangRideOf(p) {
+    if (p.ride === NET.id) return driving && !foot.on && car && car.userData.model ? { m: car.userData.model, x: car.position.x, y: car.position.y, z: car.position.z, yaw: car.rotation.y, mine: true } : null;
+    const q = NET.peers.get(p.ride); return q && q.view && q.view.g.visible ? { m: q.view.model, x: q.x, y: 0.12, z: q.z, yaw: -q.h } : null;
+  }
+  const _hp = _v();
+  function hangDrawPeer(p, v) {
+    const P = v.P; if (!P) return;
+    if (v.hang) P.upper.rotation.set(v.hang.ux, 0, 0);
+    const R = p.ride && p.ho ? hangRideOf(p) : null;
+    if (!R) { if (v.hang) { hangGlass(v.hang, null); v.hang = null; p.hangAt = null; if (p.ride) v.g.visible = false; } return; }
+    const hg = v.hang || (v.hang = { ux: 0, glass: null, k: 0 });
+    hg.k += ((p.hk || 0) - hg.k) * 0.25;
+    const w = hangWin(R.m, p.hs || 0); hangGlass(hg, hg.k > 0.05 ? w.glass : null);
+    hangSpot(R, w, hg.k, _hp); v.g.position.set(_hp.x, _hp.y - 0.07, _hp.z);
+    p.hangAt = { x: _hp.x, y: _hp.y, z: _hp.z };
+    if (v.slot) v.slot.visible = false;
+    P.wrap.visible = hg.k > 0.02; P.wrap.rotation.y = p.ay; hangLegs(P, hg.k);
+    if (v.label) v.label.position.set(0, 1.25, 0);
+    hg.R = R; hg.w = w;
+  }
+  function hangDrawPost(p, v) {
+    const hg = v.hang; if (!hg || !hg.R || !v.P) return;
+    hg.ux = v.P.upper.rotation.x;
+    const s = Math.sign(hg.w.z) || 1; hangRoll(v.P, Math.cos(hg.R.yaw) * s, -Math.sin(hg.R.yaw) * s, 0.45 * smooth01(hg.k));
+  }
+  window.__hang = { HANG, hangToggle, hangReset, hangRide, hangWin, hangFollow, active: () => HANG.k > 0 };
+  // ==== hang out (end) ====
   const _T = _v(), _T2 = _v(), _m4 = new THREE.Matrix4();
   function stepGuns(dt) {
     syncGunModel(); stepQD(dt);
@@ -17556,7 +17722,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     if (GUN.d > 0.05 && GUN.camK > 0.05) {
       const aim = castShot(GUN.cam, GUN.dir, D.range, GUN.camBack - 0.2); GUN.aimP.copy(aim.p);
       const ax = aim.p.x - foot.x, az = aim.p.z - foot.z, hz = Math.max(0.5, Math.hypot(ax, az));
-      GUN.yaw = Math.atan2(-ax, -az); GUN.e = Math.atan2(aim.p.y - 1.4, hz);
+      GUN.yaw = Math.atan2(-ax, -az); GUN.e = Math.atan2(aim.p.y - (HANG.k > 0 ? HANG.eye - 0.2 : 1.4), hz);
       if (GUN.bodyYaw == null) GUN.bodyYaw = foot.holder.rotation.y;
       GUN.bodyYaw += angDiff(GUN.yaw, GUN.bodyYaw) * Math.min(1, dt * 16);
       foot.holder.rotation.y += angDiff(GUN.bodyYaw, foot.holder.rotation.y) * blend; foot.yaw = foot.holder.rotation.y;
@@ -17692,6 +17858,7 @@ body.g-armed #walkhint { display: none !important; }
   }
   let crossK = -1;
   function gunHudFrame() {
+    hangLabel();
     const cr = gEl('g-cross'), on = GUN.camK > 0.85 && GUN.d > 0.95; if (on !== cr.classList.contains('on')) cr.classList.toggle('on', on);
     const k = Math.round((7 + GUN.kick * 40) * 2) / 2; if (k !== crossK) { crossK = k; cr.style.setProperty('--s', k + 'px'); }
     const hit = GUN.hitT > 0; if (hit !== cr.classList.contains('hit')) cr.classList.toggle('hit', hit);
@@ -17815,7 +17982,7 @@ body.g-armed #walkhint { display: none !important; }
     _stepFoot(dt); fxInit();
     const want = groundAt(foot.x, foot.z); foot.gy = Math.abs(want - gy) > 0.3 ? want : gy + (want - gy) * Math.min(1, dt * 18);   // a quick step up the curb, not a pop
     foot.holder.position.y = foot.gy + 0.015;   // the shoe soles hang 1.5 cm below the body origin
-    if (foot.on && S) stepGuns(dt); else laserOff();
+    if (foot.on && S) { hangPre(dt); stepGuns(dt); hangPost(); } else laserOff();
     stepFx(dt);
     if (foot.on && window.__gcam) { const [ox, oy, oz] = window.__gcam, h = foot.holder.rotation.y, c = Math.cos(h), sn = Math.sin(h); camera.position.set(foot.x + ox * c + oz * sn, oy, foot.z - ox * sn + oz * c); camera.lookAt(foot.x, window.__gcam[3] || 1.2, foot.z); }
   };
@@ -18166,7 +18333,13 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
   // other players as targets: on foot a body and a head, in a car the same two-box car as your own
   function peerHit(O, D, best, t0) {
     for (const p of NET.peers.values()) {
-      if (p.fresh || !p.st || p.ride || p.dead || !p.view || !p.view.g.visible) continue;
+      if (p.fresh || !p.st || p.dead || !p.view || !p.view.g.visible || (RIDE.with && (p.id === RIDE.with.id || p.ride === RIDE.with.id))) continue;
+      if (p.ride) {   // up on the door of somebody's car
+        const a = p.ho && p.hangAt; if (!a) continue;
+        for (const [w, y0, y1, part] of [[0.24, -0.25, 0.55, 'body'], [0.14, 0.55, 0.92, 'head']])
+          if (slab(O, D, a.x - w, a.y + y0, a.z - w, a.x + w, a.y + y1, a.z + w, _sl) && _sl.t > t0 && _sl.t < best.t) { best.t = _sl.t; best.kind = 'peer'; best.box = null; best.peer = p; best.part = part; best.n.set(0, 0, 0).setComponent(_sl.ax, _sl.sg); }
+        continue;
+      }
       const dx = p.x - O.x, dz = p.z - O.z, rr = best.t + 4; if (dx * dx + dz * dz > rr * rr) continue;
       if (p.inCar) {
         const yaw = -p.h, cs = Math.cos(yaw), sn = Math.sin(yaw), ex = O.x - p.x, ez = O.z - p.z, body = carOf(p.car || BUILT[0]).body, tall = body === 'truck' || body === 'suv';
@@ -18305,6 +18478,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
   function pvDown(name) {
     PV.down = PV_DOWN; PV.by = name; S.health = 0;
     if (driving && !foot.on && !inside) getOut();   // they drag out of the car and drop
+    hangReset(); if (RIDE.with) rideGetOut(true); if (HOOD.ride) hRideOut(true);
     gunHolsterNow(); PV.at.x = foot.x; PV.at.z = foot.z; foot.target = null;
     netSend({ k: 'pvp', t: 'dead', target: NET.id, to: '*' });
     toast(`${name} dropped you.`, 'bad'); save(); refreshStats();
@@ -18343,7 +18517,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     const P = v.P; if (!P) return;
     if (p.dead && now - (p.deadAt || 0) > 15) p.dead = false;   // missed their 'alive'
     const lying = !!p.dead && !p.inCar; P.wrap.rotation.x = lying ? -Math.PI / 2 : 0; P.wrap.position.y = lying ? 0.12 : 0;
-    const want = !p.inCar && p.gun ? gunKey(p.gun) : '';
+    const want = (!p.inCar || (p.ride && p.ho)) && p.gun ? gunKey(p.gun) : '';
     if (v.gun && (v.gun.key !== want || v.gun.P !== P)) { disposeGun(v.gun.b); v.gun = null; }
     if (!v.gun && want && P.wrap.visible) { const b = buildGun(p.gun); P.upper.add(b.rig); v.gun = { b, key: want, P, d: 0, flashT: 0, kick: 0 }; }
     const G = v.gun; if (!G) return;
@@ -18362,7 +18536,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     b.flash.visible = G.flashT > 0; if (G.flashT > 0) G.flashT -= dt * 30;
     if (b.beam) b.beam.visible = !!p.gun.light && em > 0.9;
   };
-  NET_HOOK.draw.push(pvDrawGun);
+  NET_HOOK.draw.push(hangDrawPeer, pvDrawGun, hangDrawPost);
   NET_HOOK.kill.push(v => { if (v.gun) { disposeGun(v.gun.b); v.gun = null; } });
   const _getInP = getIn;
   getIn = function () { if (PV.down > 0) return; return _getInP(); };
