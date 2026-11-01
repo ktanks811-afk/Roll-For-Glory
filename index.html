@@ -1427,12 +1427,13 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const money = v => (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString();
   const carOf = id => G.cars.find(c => c.id === id) || G.cars[0];
   // only the cars we have built in 3D, one by one; the rest come back as each model is finished
-  const BUILT = ['chevrolet_caprice_classic_box_chevy_1986', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_camaro_ss_2016', 'ford_f_150_regular_cab_2021', 'chevrolet_corvette_stingray_c8_2020', 'ram_1500_trx_2021', 'dodge_charger_scat_pack_2015', 'chevrolet_tahoe_2021'];
+  const BUILT = ['chevrolet_caprice_classic_box_chevy_1986', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_camaro_ss_2016', 'ford_f_150_regular_cab_2021', 'chevrolet_corvette_stingray_c8_2020', 'ram_1500_trx_2021', 'dodge_charger_scat_pack_2015', 'chevrolet_tahoe_2021', 'ford_mustang_gt_2019'];
   function builtCars(all) {
     const by = id => all.find(c => c.id === id);
     const extra = {
       ford_f_150_regular_cab_2021: { ...by('ford_f_150_xlt_5_0_2015'), id: 'ford_f_150_regular_cab_2021', trim: 'Regular Cab 5.0', y: 2021, msrp: 42000 },
       chevrolet_tahoe_2021: { ...by('chevrolet_tahoe_lt_2007'), id: 'chevrolet_tahoe_2021', trim: '5.3 V8', y: 2021, msrp: 58000, hp: 355 },
+      ford_mustang_gt_2019: { ...by('ford_mustang_gt_s650_2024'), id: 'ford_mustang_gt_2019', model: 'Mustang', trim: 'GT 5.0 Fastback', y: 2019, msrp: 36000, market: null, hp: 460, kg: 1705, drive: 'RWD', engine: '5.0L Coyote V8', body: 'muscle', color: '#0b0c0f', asp: 'na' },
     };
     return BUILT.map(id => extra[id] || by(id)).filter(Boolean);
   }
@@ -1504,6 +1505,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   }
 
   // ---------- menus: every system the place runs ----------
+  // Ford's 2019 Mustang colours, offered first in the paint booth when you bring the Mustang in
+  const FORD_PAINTS = [['Shadow Black', '#0b0c0f'], ['Race Red', '#b4121b'], ['Oxford White', '#eceeea'], ['Velocity Blue', '#1d4f9e'], ['Magnetic Gray', '#55585c'], ['Kona Blue', '#1a2b5c'], ['Orange Fury', '#e2541a'], ['Need For Green', '#3f8a3a'], ['Ruby Red', '#7a0e18'], ['Royal Crimson', '#4a0f1e'], ['Ingot Silver', '#a7abb0']];
   const PAINTS = [['Candy red', '#b3121b'], ['Midnight black', '#121214'], ['Pearl white', '#ece9e2'], ['Cowtown blue', '#1f4fa8'], ['Lime green', '#7ac224'], ['Royal purple', '#5a2a8a'], ['Orange crush', '#e8651a'], ['Gold flake', '#c9a23a'], ['Gunmetal', '#4a4e54'], ['Baby blue', '#7ab8e0'], ['Pink champagne', '#e0a8b8'], ['Forest green', '#24502e']];
   function repairCosts(rate) {
     const c = S.car, lux = carOf(c.id).msrp, k = rate || 1;
@@ -1546,7 +1549,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: [{ t: 'Parts counter', s: `Real brands, stages 1-4: internals, turbos, blowers, intake, exhaust, fuel, tunes, nitrous, trans and more · ${Object.keys(c.parts || {}).length} on your car`, btn: 'Open', act: () => { closeMenu(); openParts(p); } }].concat(nosRefillRow(p), motorRows(p)) };
     },
     dyno(p) { if (!S.car) return noCar(p); const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
-    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: PAINTS.map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
+    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: (c.id === 'ford_mustang_gt_2019' ? FORD_PAINTS.map(([n, h]) => ['Ford ' + n, h]) : []).concat(PAINTS).map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
     chop(p) { if (!S.car) return noCar(p); return { title: p.name, sub: 'No questions asked', rows: [{ t: 'Hot engine tune', s: '+8% hp, off the books. Heat +1', btn: S.car.mods.hot ? 'Installed' : money(600), off: !!S.car.mods.hot, act: () => { if (spend(600, 'Hot tune')) { S.car.mods.hot = true; S.heat = Math.min(5, S.heat + 1); } } }, { t: 'Swap the VIN', s: 'Clears 1 heat', btn: money(900), off: !S.heat, act: () => { if (spend(900, 'VIN swap')) S.heat--; } }] }; },
     fuel(p) { if (!S.car) return noCar(p);
       const c = S.car, ev = isEV(c), grade = ev ? 'kwh' : carHp(c) > 300 ? 'premium' : 'regular', price = G.gas[grade], need = (1 - c.fuel) * (ev ? 75 : tankGal(c)), cost = need * price;
@@ -1710,10 +1713,11 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       });
     };
     const A = d.audio, audio = A && { seats: A.seats ? build(A.seats) : null,
-      subs: Object.fromEntries(Object.entries(A.subs).map(([k, v]) => [k, { body: build(v.body), lid: v.lid, lidParts: build(v.lidParts), noSeats: v.noSeats }])),
+      subs: Object.fromEntries(Object.entries(A.subs).map(([k, v]) => [k, { body: build(v.body), lid: v.lid, lidParts: build(v.lidParts), noSeats: v.noSeats, cones: (v.cones || []).map(c => ({ pos: c.pos, parts: build(c.parts) })) }])),
       doors: Object.fromEntries(Object.entries(A.doors).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).map(([n, q]) => [n, build(q)]))])) };
     const engines = (d.engines || []).map(e => ({ kind: e.kind, label: e.label, stock: e.stock, box: e.box, parts: build(e.parts) }));
-    return { engines, audio, mats, body: build(d.body), wheels: d.wheels.map(w => ({ pos: w.pos, scale: w.scale, parts: build(w.parts) })), panels: (d.panels || []).map(p => ({ ...p, parts: build(p.parts) })), box: d.box };
+    const lamps = d.lamps ? Object.fromEntries(Object.entries(d.lamps).map(([k, L]) => [k, L.map(build)])) : null, anim = (d.anim || []).map(a => ({ ...a, parts: build(a.parts) }));
+    return { engines, audio, mats, lamps, anim, eye: d.eye, body: build(d.body), wheels: d.wheels.map(w => ({ pos: w.pos, scale: w.scale, parts: build(w.parts) })), panels: (d.panels || []).map(p => ({ ...p, parts: build(p.parts) })), box: d.box };
   }
   // a fresh copy of a car: front faces -z like everything else on the map, sitting on y = 0
   function carMesh(T, color) {
@@ -1739,10 +1743,14 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       if (!bb.isEmpty()) bay = { x0: bb.min.x, x1: bb.max.x, w: bb.max.z - bb.min.z, y: bb.min.y };
     }
     // the audio builds from each car's page: subs (and the lid amps), door speakers, and back seats that come out for a sub box
-    const AU = { subs: {}, doors: {}, seats: null, kind: ['', ''] }, grp = (parent, parts) => { const g = new THREE.Group(); g.visible = false; for (const q of parts) g.add(new THREE.Mesh(q.geo, matOf(q.mat))); parent.add(g); return g; };
+    const AU = { subs: {}, doors: {}, seats: null, cones: {}, kind: ['', ''] }, grp = (parent, parts) => { const g = new THREE.Group(); g.visible = false; for (const q of parts) g.add(new THREE.Mesh(q.geo, matOf(q.mat))); parent.add(g); return g; };
     if (T.audio) {
       if (T.audio.seats) { AU.seats = grp(inner, T.audio.seats); AU.seats.visible = true; }
-      for (const [k, v] of Object.entries(T.audio.subs)) AU.subs[k] = [grp(inner, v.body), v.lid && panels[v.lid] ? grp(panels[v.lid].g, v.lidParts) : null, v.noSeats];
+      for (const [k, v] of Object.entries(T.audio.subs)) {
+        const b = grp(inner, v.body); AU.subs[k] = [b, v.lid && panels[v.lid] ? grp(panels[v.lid].g, v.lidParts) : null, v.noSeats];
+        // sub cones ride on their own so they can move with the music
+        AU.cones[k] = (v.cones || []).map(c => { const g = new THREE.Group(); g.position.fromArray(c.pos); g.userData.x0 = c.pos[0]; for (const q of c.parts) g.add(new THREE.Mesh(q.geo, matOf(q.mat))); b.add(g); return g; });
+      }
       for (const [k, v] of Object.entries(T.audio.doors)) AU.doors[k] = Object.entries(v).filter(([n]) => panels[n]).map(([n, q]) => grp(panels[n].g, q));
     }
     // the motors: each one sits in a mount that shakes while it runs; a swapped crate motor goes in the same spot
@@ -1750,7 +1758,10 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     for (const e of T.engines) { const [w, g] = mount(e.box); for (const q of e.parts) g.add(new THREE.Mesh(q.geo, matOf(q.mat))); w.visible = e.stock; motors[e.kind] = w; }
     const stockE = T.engines.find(e => e.stock) || T.engines[0];
     const ENG = { motors, kinds: T.engines.map(e => ({ kind: e.kind, label: e.label, stock: e.stock })), box: stockE ? stockE.box : null, kind: stockE ? stockE.kind : '', swap: null, swapKey: '', on: 0, rev: 0 };
-    root.userData = { bay, eng: ENG, audio: AU, panels, wheels, paint: myPaint, len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
+    // lamps (hidden until lit) and the pieces that move: steering wheel, gauge needles, radiator fans, crank pulley
+    const LAMPS = {}; if (T.lamps) for (const [k, L] of Object.entries(T.lamps)) LAMPS[k] = L.map(parts => { const g = new THREE.Group(); g.visible = false; for (const q of parts) g.add(new THREE.Mesh(q.geo, matOf(q.mat))); inner.add(g); return g; });
+    const ANIM = {}; for (const a of T.anim || []) { const hold = new THREE.Group(); hold.matrixAutoUpdate = false; hold.matrix.fromArray(a.pm); inner.add(hold); const g = new THREE.Group(); g.position.fromArray(a.pos); g.rotation.set(a.rot[0], a.rot[1], a.rot[2]); hold.add(g); for (const q of a.parts) { const mm = new THREE.Mesh(q.geo, matOf(q.mat)); mm.castShadow = false; g.add(mm); } (ANIM[a.name] || (ANIM[a.name] = [])).push({ g, axis: a.axis, k: a.k, min: a.min, max: a.max, base: g.rotation[a.axis] }); }
+    root.userData = { bay, eng: ENG, audio: AU, panels, wheels, paint: myPaint, lamps: T.lamps ? LAMPS : null, anim: T.anim && T.anim.length ? ANIM : null, inner, eye: T.eye || [(T.box[0][0] + T.box[1][0]) / 2 - 0.15, T.box[1][1] - 0.26, -0.37], len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
     return root;
   }
   // drop a car into any group; the model streams in, the slot is ready right away
@@ -1824,7 +1835,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const PK = { spots: [], grid: new Map(), types: {}, data: null, cls: null, lastX: 1e9, lastZ: 0, lastY: 0, lastQ: new THREE.Quaternion(), dirty: true };
   const PK_CELL = 100;
   // what tends to be parked where: cars in normal spots, trucks and SUVs in the long ones
-  const PK_CARS = [['chevrolet_caprice_classic_box_chevy_1986', 4], ['dodge_charger_scat_pack_2015', 2], ['dodge_charger_srt_hellcat_widebody_2020', 1.5], ['chevrolet_camaro_ss_2016', 2], ['chevrolet_corvette_stingray_c8_2020', 1], ['chevrolet_tahoe_2021', 1.5], ['ford_f_150_regular_cab_2021', 1.5], ['ram_1500_trx_2021', 0.7]];
+  const PK_CARS = [['chevrolet_caprice_classic_box_chevy_1986', 4], ['dodge_charger_scat_pack_2015', 2], ['dodge_charger_srt_hellcat_widebody_2020', 1.5], ['chevrolet_camaro_ss_2016', 2], ['chevrolet_corvette_stingray_c8_2020', 1], ['chevrolet_tahoe_2021', 1.5], ['ford_f_150_regular_cab_2021', 1.5], ['ram_1500_trx_2021', 0.7], ['ford_mustang_gt_2019', 2]];
   const PK_TRUCKS = [['ford_f_150_regular_cab_2021', 3], ['ram_1500_trx_2021', 2], ['chevrolet_tahoe_2021', 3]];
   const pkPick = (L, h) => { const tot = L.reduce((s, x) => s + x[1], 0); let r = h * tot; for (const [id, w] of L) { if ((r -= w) < 0) return id; } return L[0][0]; };
   // called by the world builder for each parked-car box; false means it isn't car shaped (a rig, a trailer) and keeps its block
@@ -6844,10 +6855,18 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   // ---------- car button: open and close the doors, hood and trunk of your car ----------
   const backName = () => { const m = car && car.userData.model; const n = m && Object.keys(m.userData.panels).find(k => panelKind(k) === 'trunk'); return n === 'tailgate' ? 'Tailgate' : n === 'hatch' ? 'Hatch' : 'Trunk'; };
   function carNear() { if (!S || !S.car || !car || !car.userData.model || inside || creating) return false; if (driving && !foot.on) return true; return !!(foot.on && foot.park && Math.hypot(foot.x - foot.park.x, foot.z - foot.park.z) < 12); }
+  // the camera button goes chase -> far -> driver's seat -> chase
+  function camCycle() { if (drv.fp) { drv.fp = false; drv.far = false; } else if (drv.far) { drv.far = false; drv.fp = true; } else drv.far = true; }
   function renderCarPanel() {
     const el = $('carpanel'), m = car && car.userData.model; if (el.hidden) return;
     el.innerHTML = [['doors', 'Doors'], ['hood', 'Hood'], ['trunk', backName()]].map(([k, l]) => `<button class="btn${panelsOpen(m, k) ? ' go' : ''}" data-pk="${k}">${panelsOpen(m, k) ? 'Close' : 'Open'} ${l.toLowerCase()}</button>`).join('');
     el.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => { const k = b.dataset.pk; setPanels(car.userData.model, k, !panelsOpen(car.userData.model, k)); renderCarPanel(); });
+    // cars with real lamps get signals, hazards and a headlight switch
+    if (m && m.userData.lamps && m.userData.lamps.turnL) {
+      el.insertAdjacentHTML('beforeend', [['L', '◀ Signal'], ['H', 'Hazards'], ['R', 'Signal ▶']].map(([k, l]) => `<button class="btn${BLINK.mode === k ? ' go' : ''}" data-bl="${k}">${l}</button>`).join('') + `<button class="btn${BLINK.lights ? ' go' : ''}" data-hl="1">Headlights ${BLINK.lights ? 'off' : 'on'}</button>`);
+      el.querySelectorAll('[data-bl]').forEach(b => b.onclick = () => { setBlink(b.dataset.bl); renderCarPanel(); });
+      el.querySelector('[data-hl]').onclick = () => { BLINK.lights = !BLINK.lights; renderCarPanel(); };
+    }
   }
   function bindCarUI() {
     $('carbtn').onclick = () => { const el = $('carpanel'); el.hidden = !el.hidden; renderCarPanel(); };
@@ -6968,6 +6987,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     const m = car && car.userData.model; if (!m) return;
     const b = audioBuild(S.car); setCarAudio(m, b.subs.id, b.doors.id);
     const k = radioBass();
+    const cones = m.userData.audio && m.userData.audio.cones[m.userData.audio.kind[0]]; if (cones) for (const c of cones) c.position.x = c.userData.x0 - k * 0.02;
     for (const [n, p] of Object.entries(m.userData.panels)) { const kind = panelKind(n); p.rat = k ? (Math.random() - 0.5) * k * (kind === 'trunk' ? 0.06 : kind === 'hood' ? 0.008 : 0.012) : 0; }
   }
   // ---------- motors: each car's own engines with their sound, and the 3D Engine Build for swaps ----------
@@ -6980,6 +7000,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     chevrolet_caprice_classic_box_chevy_1986: { s350: { base: 30, lfo: 6.5, lg: 0.08, lp: 380 }, b454: { base: 34, lfo: 4.2, lg: 0.14, lp: 520, whine: ['sawtooth', 380, 0.012, 0.05], o: 0.6 } },
     dodge_charger_srt_hellcat_widebody_2020: HEMI, dodge_charger_scat_pack_2015: HEMI, ram_1500_trx_2021: HEMI, chevrolet_camaro_ss_2016: HEMI, chevrolet_tahoe_2021: HEMI,
     ford_f_150_regular_cab_2021: { v8: { base: 33, lfo: 6.6, lp: 520 }, eb: { base: 42, lfo: 9.6, lp: 700, whine: ['sine', 2200, 0.004, 0.03], turbo: true } },
+    ford_mustang_gt_2019: { coyote: { base: 37, lfo: 7.8, lg: 0.055, lp: 760, peak: 4.4, drive: 2.0 }, coyote_sc: { base: 39, lfo: 8.0, lg: 0.05, lp: 880, peak: 4.4, drive: 2.3, whine: ['triangle', 900, 0.01, 0.05], o: 0.5 } },
     chevrolet_corvette_stingray_c8_2020: { lt2: { base: 34, lfo: 7.0, lg: 0.1, lp: 560 }, lt6: { base: 50, lfo: 13, lg: 0.05, lp: 1300, peak: 5.2, o: 0.6 } },
   };
   // a swapped crate motor sounds like the Engine Build page says: open pipes are louder, brighter and crackle, a cam lopes, blowers whine, turbos whistle and hiss
@@ -8160,6 +8181,28 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     SQ.a.bp.frequency.setTargetAtTime((1150 + 600 * k) * wob, t, 0.05); SQ.a.bp2.frequency.setTargetAtTime((2600 + 700 * k) * wob, t, 0.05);
   }
 
+  // ---------- a car's live bits (the Mustang has them): steering wheel, tach and speedo needles, fans and crank pulley, and its lamps ----------
+  // sequential turn signals: [ and ] (or the Car panel) left / right, \\ hazards; they cancel themselves after the turn
+  const BLINK = { mode: '', t: 0, peak: 0, lights: false };
+  function setBlink(m) { BLINK.mode = BLINK.mode === m ? '' : m; BLINK.t = 0; BLINK.peak = 0; }
+  function carLive(m, dt, on) {
+    const U = m && m.userData; if (!U || (!U.lamps && !U.anim)) return;
+    const A = U.anim || {}, L = U.lamps || {}, spd = Math.hypot(TIRE.vx, TIRE.vz), rpm = on ? clamp(TIRE.re || 0, 0, 1) : 0;
+    if (A.steer) for (const s of A.steer) s.g.rotation[s.axis] = s.base - (on ? TIRE.delta : 0) * (s.k || 6);
+    if (A.tach) for (const n of A.tach) n.g.rotation[n.axis] = lerp(n.min, n.max, rpm);
+    if (A.speedo) for (const n of A.speedo) n.g.rotation[n.axis] = lerp(n.min, n.max, clamp(spd * 2.237 / 180, 0, 1));
+    const E = U.eng, stock = E && E.motors[E.kind], run = on && !!stock && stock.visible && !E.swap;
+    for (const key of ['fans', 'pulley']) if (A[key]) for (const f of A[key]) { f.g.visible = !!stock && stock.visible && !E.swap; if (run) f.g.rotation[f.axis] += dt * (key === 'fans' ? 14 + 10 * rpm : 60 + 520 * rpm); }
+    const brake = on && drv.brk > 0.1 && drv.v > -0.5, rev = on && (drv.v < -0.3 || (GBX.man && GBX.g === -1));
+    if (L.brake) for (const g of L.brake) g.visible = brake;
+    if (L.rev) for (const g of L.rev) g.visible = rev;
+    if (L.head) for (const g of L.head) g.visible = on && (BLINK.lights || !!(car && car.userData.head && car.userData.head.visible));
+    // signals cancel once the wheel comes back after a real turn
+    if (BLINK.mode === 'L' || BLINK.mode === 'R') { const d = (BLINK.mode === 'L' ? 1 : -1) * TIRE.delta; BLINK.peak = Math.max(BLINK.peak, d); if (BLINK.peak > 0.25 && d < 0.05) BLINK.mode = ''; }
+    BLINK.t += dt; const ph = BLINK.t % 0.8;
+    for (const [key, side] of [['turnL', 'L'], ['turnR', 'R']]) if (L[key]) { const act = BLINK.mode === side || BLINK.mode === 'H'; L[key].forEach((g, i) => { g.visible = act && (i === 0 ? ph < 0.5 : ph > (i - 1) * 0.11 && ph < 0.55); }); }
+  }
+  addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !document.body.classList.contains('incar')) return; if (e.code === 'BracketLeft') setBlink('L'); if (e.code === 'BracketRight') setBlink('R'); if (e.code === 'Backslash') setBlink('H'); if (e.code === 'KeyC') camCycle(); });
   // smoke, rubber, squeal, body lean and the rims, once per frame after the physics
   const _wp = new THREE.Vector3();
   function driveFx(dt, on) {
@@ -8173,6 +8216,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     const r = m.userData.r || 0.34;
     const dF = TIRE.drv !== 'R', dR = TIRE.drv !== 'F';
     for (const w of m.userData.wheels) { w.rotation.z -= ((w.userData.front ? dF : dR) ? TIRE.wv : drv.v) * dt / r; if (w.userData.front) w.rotation.y = TIRE.delta; }
+    carLive(m, dt, true);
     // the tires that spin or slide hard smoke and lay black marks (the rears, or the fronts in a front wheel drive)
     const useF = TIRE.slipF > TIRE.slipR + 1, rears = m.userData.wheels.filter(w => !w.userData.front === !useF);
     rears.forEach((w, i) => {
@@ -10094,7 +10138,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
     return { x: st.x + Math.sin(hm) * vm * age, z: st.z - Math.cos(hm) * vm * age, h: st.h + r * age, v };
   }
   // our 3D-only builds go out as the 2D car they come from, so 2D players can draw them
-  const TO_2D = { ford_f_150_regular_cab_2021: 'ford_f_150_xlt_5_0_2015', chevrolet_tahoe_2021: 'chevrolet_tahoe_lt_2007' };
+  const TO_2D = { ford_f_150_regular_cab_2021: 'ford_f_150_xlt_5_0_2015', chevrolet_tahoe_2021: 'chevrolet_tahoe_lt_2007', ford_mustang_gt_2019: 'ford_mustang_gt_s650_2024' };
   // a 2D player's car we haven't built in 3D yet shows as the closest one we have
   function model3d(id, m3) {
     if (m3 && BUILT.includes(m3)) return m3;
@@ -10105,7 +10149,8 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
     if (/tahoe|suburban|yukon|escalade|durango|jeep|navigator|expedition|bronco|4runner|land_cruiser|range_rover|g_class|g_wagon|urus|cullinan|bentayga|explorer|highlander|x5|x7|gle|gls|q7|q8|rivian_r1s|model_x|lx/.test(s)) return 'chevrolet_tahoe_2021';
     if (/corvette|lambo|ferrari|mclaren|porsche|gt_r|nsx|supra|viper|aston|bugatti|koenigsegg|pagani|lotus|r8|amg_gt|lfa|ford_gt/.test(s)) return 'chevrolet_corvette_stingray_c8_2020';
     if (/hellcat|demon|redeye|trackhawk|challenger/.test(s)) return 'dodge_charger_srt_hellcat_widebody_2020';
-    if (/camaro|mustang|firebird|trans_am|gto|chevelle|nova|cutlass|monte_carlo|grand_national|regal/.test(s)) return 'chevrolet_camaro_ss_2016';
+    if (/mustang/.test(s) && !/mach_e/.test(s)) return 'ford_mustang_gt_2019';
+    if (/camaro|firebird|trans_am|gto|chevelle|nova|cutlass|monte_carlo|grand_national|regal/.test(s)) return 'chevrolet_camaro_ss_2016';
     if (/caprice|impala|crown_vic|town_car|grand_marquis|lincoln|cadillac_deville|fleetwood|brougham|box|donk|bubble/.test(s)) return 'chevrolet_caprice_classic_box_chevy_1986';
     return 'dodge_charger_scat_pack_2015';
   }
@@ -14234,7 +14279,7 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
     th.addEventListener('pointermove', e => { if (e.pointerId === tid) set(e); });
     th.addEventListener('pointerup', () => { tid = null; }); th.addEventListener('pointercancel', () => { tid = null; });
     $('bt-horn').onclick = () => { if (BOAT.b) bsHorn(BOAT.b.d); };
-    $('bt-cam').onclick = () => { drv.far = !drv.far; };
+    $('bt-cam').onclick = camCycle;
     $('bt-dock').onclick = () => { if (BOAT.near) endTrip(BOAT.near, 'dock'); };
     $('bt-tow').onclick = () => { const L = MAR.by[BOAT.from]; if (!L || !BOAT.b) return; const near = nearMarina(BOAT.b.x, BOAT.b.z, 120); if (near) { endTrip(near, 'dock'); return; } const fee = Math.round(150 + BOAT.b.d.L * 25); if (payAny(fee, 'Marina tow')) endTrip(L, 'tow'); };
     for (const e of [th, $('bt-steer'), $('bt-btns')]) e.addEventListener('pointerdown', ev => ev.stopPropagation());
@@ -16214,6 +16259,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     setTime(timeName); syncDrive();
   }
   function stopDrive() {
+    if (drv.fpLens) { drv.fpLens = false; drv.fp = false; if (drv.lens0) { camera.near = drv.lens0[0]; camera.fov = drv.lens0[1]; camera.updateProjectionMatrix(); } }
     if (inside) leaveInterior(true);
     if (foot.on) { foot.on = false; foot.holder.visible = false; showPrompt(null); $('hud').classList.remove('foot'); $('walkhint').hidden = true; if (foot.park) { drv.x = foot.park.x; drv.z = foot.park.z; } }
     if (!driving) return; driving = false; controls.enabled = true; car.visible = false; document.body.classList.remove('busy');
@@ -16334,7 +16380,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     return { gas, brake, steer, hb };
   }
   function stepDrive(dt) {
-    const I = nosInput(window.__drvIn ? window.__drvIn() : input()); drv.gas = I.gas || 0;
+    const I = nosInput(window.__drvIn ? window.__drvIn() : input()); drv.gas = I.gas || 0; drv.brk = I.brake || 0;
     const P = carPerf();
     // moved by something else (teleport, garage, getting back in): start from rest
     if (drv.px == null || Math.hypot(drv.x - drv.px, drv.z - drv.pz) > 0.01 || drv.v === 0 && drv.pv !== 0) { physReset(); drv.camYaw = drv.yaw; }
@@ -16373,8 +16419,13 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const back = drv.far ? 26 : 11.5, up = drv.far ? 12 : 4.2;
     const want = v4.set(drv.x + Math.sin(drv.camYaw) * back, up, drv.z + Math.cos(drv.camYaw) * back);
     drv.cam.lerp(want, 1 - Math.exp(-dt * 5));
-    camera.position.copy(drv.cam);
-    drv.look.set(drv.x - Math.sin(drv.camYaw) * 8, 1.6, drv.z - Math.cos(drv.camYaw) * 8); camera.lookAt(drv.look);
+    const M3 = car.userData.model;
+    // the driver's seat: a short near plane so the wheel and gauges right in front of you still draw, and a wider lens like a real head turn
+    const fpNow = !!(drv.fp && M3 && M3.userData.inner);
+    if (fpNow !== !!drv.fpLens) { drv.fpLens = fpNow; if (fpNow) { drv.lens0 = [camera.near, camera.fov]; camera.near = 0.04; camera.fov = 66; } else if (drv.lens0) { camera.near = drv.lens0[0]; camera.fov = drv.lens0[1]; } camera.updateProjectionMatrix(); }
+    if (fpNow) { const inn = M3.userData.inner, e = M3.userData.eye; inn.updateWorldMatrix(true, false); camera.position.copy(inn.localToWorld(v4.set(e[0], e[1], e[2]))); camera.lookAt(inn.localToWorld(v4.set(e[0] + 8, e[1] - 0.75, e[2]))); }
+    else { camera.position.copy(drv.cam);
+    drv.look.set(drv.x - Math.sin(drv.camYaw) * 8, 1.6, drv.z - Math.cos(drv.camYaw) * 8); camera.lookAt(drv.look); }
     spdEl.firstChild.nodeValue = Math.round(spd * 2.237);
     if ((frame & 7) === 0) { const s = streetAt(drv.x, drv.z); streetEl.textContent = s ? s.name : districtAt(drv.x, drv.z); }
     drv.px = drv.x; drv.pz = drv.z; drv.pv = drv.v;
@@ -16584,7 +16635,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
-  window.__map = { GBX, gbShift, gbMode, drvS: () => drv,
+  window.__map = { GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, dragPerf, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
