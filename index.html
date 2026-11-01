@@ -14989,7 +14989,8 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
     hellcat: { id: 'dodge_charger_srt_hellcat_widebody_2020', liv: 'slick', bar: false, name: 'Hellcat interceptor', unit: 'Interceptor' },
   };
   const COP = { units: [], phase: 'none', pullT: 0, stillT: 0, stop: null, seenT: 0, unseenT: 0, bustT: 0, coolT: 0, spawnT: 0, last: 0, heat0: null, seen: false, lastSeen: null,
-    shape: {}, seq: 101, pill: null, pillKey: '', snd: null, gunT: 0, ramT: 0, said: 0, officerBase: null, officerQ: false, T: 0, ready: false };
+    shape: {}, seq: 101, pill: null, pillKey: '', snd: null, gunT: 0, ramT: 0, said: 0, officerBase: null, officerQ: false, T: 0, ready: false,
+    calls: [], call: null, warn: null, warnedT: -999, armT: 0, armRollT: 0, toldT: -99 };
   const UNITS_FOR = [1, 1, 2, 3, 4, 5];
   const PULL_S = 10;
   const copRand = (() => { let sd = 777; return () => (sd = (sd * 16807) % 2147483647) / 2147483647; })();
@@ -15239,10 +15240,13 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
     if (hit) u.sp *= Math.pow(0.3, dt * 3);
     u.x = nx; u.z = nz; return d;
   }
-  function copSees(u, px, pz, R) {
-    const d = Math.hypot(px - u.x, pz - u.z); if (d > R) return false; if (d < 22) return true;
-    const n = Math.ceil(d / 6); for (let i = 1; i < n; i++) { const x = u.x + (px - u.x) * i / n, z = u.z + (pz - u.z) * i / n; if (solids.at(x, z).some(b => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1)) return false; }
+  function copLos(ax, az, bx, bz) {
+    const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 6); for (let i = 1; i < n; i++) { const x = ax + (bx - ax) * i / n, z = az + (bz - az) * i / n; if (solids.at(x, z).some(b => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1)) return false; }
     return true;
+  }
+  function copSees(u, px, pz, R) {
+    const d = Math.hypot(px - u.x, pz - u.z); if (d > R) return false; if (d < 8) return true;
+    return copLos(u.x, u.z, px, pz);
   }
   // a road spot 250-400 m out, for a unit to come in from (nobody pops in next to you)
   function copEntry(px, pz, lo = 240, hi = 420) {
@@ -15310,7 +15314,9 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const lv = Math.floor(clamp(S.heat || 0, 0, 5)), stars = '★'.repeat(lv) + `<u>${'★'.repeat(5 - lv)}</u>`;
     let html = '';
     COP.act = null;
-    if (COP.phase === 'notice') html = `<span>🚨 <b>Pull over</b> · ${Math.ceil(COP.pullT)}s · stop the car</span>`;
+    if (COP.warn) html = `<span>👮 <b>DROP THE GUN</b> · holster it · ${Math.ceil(Math.max(0, 4 - COP.warn.t))}s</span>`;
+    else if (COP.phase === 'search' && COP.call) html = `<span>📻 <b>911 call</b> · units ${COP.call.on ? 'on scene at' : 'responding to'} ${COP.call.street}</span>`;
+    else if (COP.phase === 'notice') html = `<span>🚨 <b>Pull over</b> · ${Math.ceil(COP.pullT)}s · stop the car</span>`;
     else if (COP.phase === 'stop') { const st = COP.stop; html = st && st.step === 'ticket' ? `<span>👮 Officer at your window</span><button>TICKET</button>` : `<span>👮 Traffic stop · stay put</span>`; if (st && st.step === 'ticket') COP.act = () => openMenu(copTicketMenu); }
     else if (COP.phase === 'chase') html = `<span>🚨 <b>Pursuit</b> <span class="st">${stars}</span>${COP.bustT > 0.3 ? ` · busted in ${Math.ceil(3 - COP.bustT)}` : ''}</span>`;
     else if (COP.phase === 'search') html = `<span>🔎 <b>Searching</b> <span class="st">${stars}</span> · stay out of sight ${Math.ceil(Math.max(0, 18 - COP.unseenT))}s</span>`;
@@ -15323,10 +15329,58 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   // heat the cops add themselves (a chase, a ticket) doesn't count as a new crime
   function copHeat(n) { S.heat = Math.min(5, (S.heat || 0) + n); COP.heat0 = S.heat; refreshStats(); }
   function copSay(t) { const n = performance.now(); if (n - COP.said < 3500) return; COP.said = n; toast(t, 'bad'); }
-  function suspectCar() { return S.car ? carLabel(carOf(S.car.id)).replace(/^\d+ /, '') : 'on foot'; }
-  function copStreet() { const [x, z] = copMe(), s = streetAt(x, z); return s ? TC(s.name) : districtAt(x, z) || 'the area'; }
+  function suspectCar() { return foot.on ? 'suspect on foot' : S.car ? carLabel(carOf(S.car.id)).replace(/^\d+ /, '') : 'on foot'; }
+  function copStreet(x, z) { if (x == null) [x, z] = copMe(); const s = streetAt(x, z); return s ? TC(s.name) : districtAt(x, z) || 'the area'; }
+  // ==== police realism (begin) ====
+  // Cops only know what they see or hear. A unit has to have eyes on you (line of sight, shorter at night) to
+  // react on the spot. Gunfire carries: a unit in earshot radios it in and rolls on the sound, not on you.
+  // Everybody else finds out through 911: a witness has to see it (or hear the shots), get somewhere safe and
+  // make the call, then dispatch sends units to where the caller said, and they look for whoever matches.
+  const cNow = () => performance.now() / 1000;
+  const gunsOut = () => { const G = window.__guns; return !!(G && G.GUN && G.GUN.want && G.GUN.d > 0.5); };
+  // the closest cop who can see a spot: your units first, then another player's unlit patrol
+  function copEyes(R, x, z) {
+    if (x == null) [x, z] = copMe();
+    let best = null, bd = 1e9;
+    for (const u of COP.units) { if (u.gone) continue; const d = Math.hypot(u.x - x, u.z - z); if (d < bd && copSees(u, x, z, R)) { best = { u, rem: false }; bd = d; } }
+    if (!best) for (const r of CNET.rem.values()) { if (r.gone || r.lights) continue; const d = Math.hypot(r.x - x, r.z - z); if (d < bd && copSees(r, x, z, R)) { best = { u: r, rem: true }; bd = d; } }
+    return best;
+  }
+  const copEye = e => e.rem ? copTake(e.u) : e.u;
+  // people who could pick up the phone: folks out on the street and the city's regulars. The corners don't call the police.
+  function copWitnesses(x, z, R, sight) {
+    const W = [];
+    if (typeof STREET !== 'undefined') for (const q of STREET.list) { const w = q.P.wrap.position; if (Math.hypot(w.x - x, w.z - z) < R && (!sight || copLos(w.x, w.z, x, z))) W.push({ x: w.x, z: w.z }); }
+    if (HOOD.ready) for (const e of HOOD.ents) {
+      if (e.gone || e.down || e.kind !== 'reg' || e.opp || e.mode === 'fight' || e.mode === 'slide' || (HOOD.ride && HOOD.ride.e === e)) continue;
+      if (Math.hypot(e.x - x, e.z - z) < R && (!sight || copLos(e.x, e.z, x, z))) W.push({ x: e.x, z: e.z, e });
+    }
+    return W.sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+  }
+  // a call comes in: it lands with dispatch after a delay, then units drive to that spot (not to you)
+  function copReport(x, z, why, o = {}) {
+    if (COP.phase === 'chase') return null;
+    const at = cNow() + (o.delay != null ? o.delay : 12), units = o.units || 1, pri = o.pri || 0;
+    if (COP.call && Math.hypot(COP.call.x - x, COP.call.z - z) < 150) { COP.call.units = Math.max(COP.call.units, units); return COP.call; }
+    const old = COP.calls.find(c => Math.hypot(c.x - x, c.z - z) < 150);
+    if (old) { old.at = Math.min(old.at, at); old.units = Math.max(old.units, units); if (pri > old.pri) { old.why = why; old.pri = pri; old.who = o.who || old.who; } return old; }
+    const c = { x, z, why, at, units, pri, who: o.who || '911 caller reports', street: copStreet(x, z) };
+    COP.calls.push(c); return c;
+  }
+  // somebody saw it (or heard it): most people duck first, then call. Nobody around, nobody calls.
+  function copWitnessCall(x, z, why, R, sight, p, o = {}) {
+    let caller = null; for (const w of copWitnesses(x, z, R, sight)) if (copRand() < p) { caller = w; break; }
+    if (!caller) return null;
+    if (caller.e && o.lines) hSay(caller.e, cPick(o.lines), true);
+    if (cNow() - COP.toldT > 20) { COP.toldT = cNow(); toast(`📱 A witness ${Math.hypot(caller.x - x, caller.z - z) < 30 ? 'right there' : 'down the street'} is on the phone with 911.`, 'bad'); }
+    return copReport(x, z, why, { ...o, delay: (o.delay || 0) + 3 + copRand() * 4 + 6 + copRand() * 8 });
+  }
+  const SEE_GUN = ['he got a gun!', "I'm calling the police", 'oh hell no, 911', 'yeah 911? man got a gun out'];
+  const HEARD = ['was that shots?!', 'somebody call 911', "I'm calling the police!", 'yeah 911, shots fired'];
+  const SAW_DROP = ['oh my god!', "I'm calling 911!", 'somebody got shot!', 'yeah 911? somebody down'];
+  // ==== police realism (end) ====
   function copChase(why) {
-    const was = COP.phase; COP.phase = 'chase'; COP.unseenT = 0; COP.bustT = 0; COP.seen = true; COP.lastSeen = copMe(); COP.chaseT = 0;
+    const was = COP.phase; COP.phase = 'chase'; COP.call = null; COP.calls = []; if (COP.warn) COP.warn = null; COP.unseenT = 0; COP.bustT = 0; COP.seen = true; COP.lastSeen = copMe(); COP.chaseT = 0;
     if (COP.stop) { const u = COP.stop.u; if (u) copOfficerGone(u); COP.stop = null; closeMenu(); }
     for (const u of COP.units) if (!u.gone && Math.hypot(u.x - COP.lastSeen[0], u.z - COP.lastSeen[1]) < 600) { u.mode = 'chase'; u.lights = u.siren = true; }
     if (was !== 'chase') { copSay(`Dispatch: units in pursuit of a ${suspectCar()} on ${copStreet()}. ${why || ''}`.trim()); copWhoop(); }
@@ -15337,9 +15391,10 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     toast(`🚨 FWPD is lighting you up: ${why}. Pull over.`, 'bad');
   }
   function copEnd(msg, kind) {
-    COP.phase = msg === 'lost' ? 'cool' : 'none'; COP.coolT = 30; COP.stop = null; COP.bustT = 0;
+    COP.phase = msg === 'lost' || msg === 'cleared' ? 'cool' : 'none'; COP.coolT = 30; COP.stop = null; COP.bustT = 0; COP.call = null; COP.calls = []; COP.warn = null;
     for (const u of COP.units) { u.lights = u.siren = false; if (u.officer) copOfficerGone(u); if (u.mode !== 'park') { u.mode = 'patrol'; if (u.off) copJoin(u); } }
     if (msg === 'lost') toast('You lost them. Lay low, the heat stays on you till you sleep it off.', 'good');
+    else if (msg === 'cleared') toast('Units cleared the call. Nobody out there matched the description.', 'good');
     else if (msg) toast(msg, kind || 'bad');
   }
   function copBusted() {
@@ -15384,8 +15439,8 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const patrols = COP.units.filter(u => u.mode === 'patrol').length + copRemNear(mx, mz, 450), want = inTown(mx, mz) ? (phone ? 2 : 3) : 1;
     if (patrols < want && COP.phase !== 'chase') { const e = copEntry(mx, mz, 180, 420); if (e) { const u = copUnit(copRand() < 0.6 ? 'charger' : 'tahoe', e[0], e[1], 0, 'patrol'); copOnRoad(u, e[0], e[1]); } }
   }
-  function copRespond(mx, mz) {
-    const lv = Math.floor(clamp(S.heat || 0, 1, 5)), want = Math.min(phone ? 4 : 6, UNITS_FOR[lv] + (COP.chaseT > 40 ? 1 : 0));
+  function copRespond(mx, mz, extra) {
+    const lv = Math.floor(clamp(S.heat || 0, 1, 5)), want = Math.min(phone ? 4 : 6, Math.max(UNITS_FOR[lv], extra || 0) + (COP.chaseT > 40 ? 1 : 0));
     const hot = COP.units.filter(u => u.mode === 'chase');
     // patrols nearby join in first, then precinct cars roll out, then units drive in from the edge
     if (hot.length < want) {
@@ -15446,13 +15501,17 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     drv.px = drv.x; drv.pz = drv.z;
   }
   function copStep(dt) {
-    if (!HOOD.ready || !S || !worldOn || !driving || inside || ROLL.on || STRIP.on) { for (const u of COP.units) u.g.visible = false; for (const r of CNET.rem.values()) { r.g.visible = false; if (r.officer) r.officer.P.wrap.visible = false; } if (COP.snd) COP.snd.g.gain.value = 0; if (COP.pill && !COP.pill.hidden) COP.pill.hidden = true; return; }
+    if (!HOOD.ready || !S || !worldOn || !driving || inside || ROLL.on || STRIP.on) { for (const u of COP.units) u.g.visible = false; for (const r of CNET.rem.values()) { r.g.visible = false; if (r.officer) r.officer.P.wrap.visible = false; } if (COP.snd) COP.snd.g.gain.value = 0; if (COP.pill && !COP.pill.hidden) COP.pill.hidden = true; if (S) COP.heat0 = S.heat || 0; return; }
     COP.T += dt; COP.spawnT -= dt;
     const [mx, mz] = copMe(), incar = !foot.on, mySp = incar ? Math.hypot(TIRE.vx, TIRE.vz) : 0;
     if ((frame & 31) === 0 && !COP.noPop) copPopulate(mx, mz);
     // heat went up (a robbery, a drop, a hot tune): if a cop is close, that's a chase
     if (COP.heat0 == null) COP.heat0 = S.heat || 0;
-    if ((S.heat || 0) > COP.heat0 && COP.phase !== 'chase') { if (COP.units.some(u => u.mode !== 'park' && Math.hypot(u.x - mx, u.z - mz) < 260) || S.heat >= 3) copChase('Report of a crime in progress.'); }
+    if ((S.heat || 0) > COP.heat0 && COP.phase !== 'chase') {
+      const e = copEyes(night() ? 110 : 150);
+      if (e) { copEye(e); copChase('Officers saw it go down.'); }
+      else copWitnessCall(mx, mz, 'a shooting, somebody is down', 70, true, 0.6, { units: 2, pri: 3, lines: SAW_DROP });
+    }
     COP.heat0 = S.heat || 0;
     // who can see you
     let seen = false, near = 1e9;
@@ -15460,17 +15519,46 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       for (const u of COP.units) { const d = Math.hypot(u.x - mx, u.z - mz); near = Math.min(near, d); if (copSees(u, mx, mz, COP.phase === 'chase' ? 150 : 85)) { seen = true; u.sawT = COP.T; } }
       COP.seen = seen;
     } else seen = COP.seen;
+    // ==== police realism: guns out, warnings, 911 calls landing (begin) ====
+    const armed = gunsOut();
+    COP.armT = armed ? COP.armT + dt : 0;
+    if (armed && !COP.warn && (COP.phase === 'none' || COP.phase === 'cool') && (frame & 3) === 0) {
+      // an officer has to actually see the gun. Texas lets you carry, so holster it when they say and it ends there
+      const e = copEyes(night() ? 30 : 50);
+      if (e) {
+        const u = copEye(e);
+        if ((S.heat || 0) >= 1 || COP.T - COP.warnedT < 90) { copHeat(1); copChase('Armed suspect, officers have eyes on.'); }
+        else { COP.warn = { u, t: 0 }; u.lights = true; copWhoop(); toast('👮 "POLICE! DROP THE GUN!" Holster it now.', 'bad'); }
+      }
+    }
+    if (COP.warn) {
+      const w = COP.warn; w.t += dt;
+      if (COP.phase === 'chase' || w.u.gone) COP.warn = null;
+      else if (!armed) { COP.warn = null; COP.warnedT = COP.T; w.u.lights = false; toast('👮 "Keep that thing holstered out here." Let off with a warning.', ''); }
+      else if (w.t > 4) { COP.warn = null; copHeat(1); copChase('Suspect refused to drop the weapon.'); }
+    }
+    // people around you see the gun and some of them call it in
+    if (armed && COP.armT > 2.5 && COP.phase !== 'chase' && cNow() - COP.armRollT > 5) { COP.armRollT = cNow(); copWitnessCall(mx, mz, 'a person with a gun out', 30, true, 0.3, { units: 1, pri: 1, lines: SEE_GUN }); }
+    // calls that reached dispatch: units roll on the spot the caller gave
+    for (const c of COP.calls.slice()) {
+      if (c.at > cNow()) continue;
+      COP.calls = COP.calls.filter(o => o !== c);
+      if (COP.phase !== 'none' && COP.phase !== 'cool') continue;
+      COP.phase = 'search'; COP.call = { ...c, t: 0, on: false }; COP.lastSeen = [c.x, c.z]; COP.unseenT = 0; COP.chaseT = 0;
+      copSay(`Dispatch: ${c.who} ${c.why} on ${c.street}. Units responding.`); copWhoop();
+    }
+    // ==== police realism: guns out, warnings, 911 calls landing (end) ====
     if (COP.phase === 'none' || COP.phase === 'cool') {
       COP.coolT -= dt; if (COP.phase === 'cool' && COP.coolT <= 0) COP.phase = 'none';
       if (seen && COP.phase === 'none') {
         const w = COP.units.filter(u => u.sawT === COP.T && u.mode !== 'park')[0] || COP.units.filter(u => u.sawT === COP.T)[0];
-        if ((S.heat || 0) >= 2) copChase('Units have eyes on a wanted suspect.');
+        if ((S.heat || 0) >= 2 && w && Math.hypot(w.x - mx, w.z - mz) < (incar ? 60 : 40)) copChase('Units have eyes on a wanted suspect.');
         else if (w && incar && (S.heat || 0) >= 1 && Math.hypot(w.x - mx, w.z - mz) < 60) { if (w.mode === 'park') { w.off = true; w.home && (w.home.units = w.home.units.filter(o => o !== w)); } copNotice(w, 'Your plate came back with a warrant'); }
         else if (w && incar && mySp > 36 && Math.hypot(w.x - mx, w.z - mz) < 70) { if (w.mode === 'park') { w.off = true; w.home && (w.home.units = w.home.units.filter(o => o !== w)); } copNotice(w, `${Math.round(mySp * 2.237)} in a 45`); }
       }
       if (!seen && COP.phase === 'none' && (frame & 3) === 0) {
         const r = [...CNET.rem.values()].find(r => !r.lights && copSees(r, mx, mz, 85));
-        if (r && (S.heat || 0) >= 2) { copTake(r); copChase('Units have eyes on a wanted suspect.'); }
+        if (r && (S.heat || 0) >= 2 && Math.hypot(r.x - mx, r.z - mz) < (incar ? 60 : 40)) { copTake(r); copChase('Units have eyes on a wanted suspect.'); }
         else if (r && incar && Math.hypot(r.x - mx, r.z - mz) < 60 && ((S.heat || 0) >= 1 || mySp > 36)) copNotice(copTake(r), (S.heat || 0) >= 1 ? 'Your plate came back with a warrant' : `${Math.round(mySp * 2.237)} in a 45`);
       }
     } else if (COP.phase === 'notice') {
@@ -15491,6 +15579,14 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         const lx = -Math.cos(st.yaw), lz = Math.sin(st.yaw), wx = st.x + lx * 1.55 - Math.sin(st.yaw) * 0.3, wz = st.z + lz * 1.55 - Math.cos(st.yaw) * 0.3;
         if (copWalk(u.officer, wx, wz, dt, 1.9) < 0.3) { u.officer.yaw = Math.atan2(-(drv.x - u.officer.x), -(drv.z - u.officer.z)); u.officer.P.wrap.rotation.y = u.officer.yaw; st.step = 'ticket'; openMenu(copTicketMenu); }
       } else if (st.step === 'ticket' && u.officer) idlePerson(u.officer.P, performance.now() / 1000);
+    } else if (COP.phase === 'search' && COP.call) {
+      const c = COP.call; c.t += dt; COP.chaseT = (COP.chaseT || 0) + dt;
+      copRespond(c.x, c.z, c.units);
+      if (seen && (armed || Math.hypot(mx - c.x, mz - c.z) < 80 || (S.heat || 0) >= 2)) { if (!((S.heat || 0) >= 1)) copHeat(1); copChase('Suspect matches the caller\'s description.'); }
+      else {
+        if (COP.units.some(u => u.mode === 'chase' && Math.hypot(u.x - c.x, u.z - c.z) < 70)) { if (!c.on) { c.on = true; copSay(`Dispatch: units on scene, ${c.street}.`); } COP.unseenT += dt; }
+        if (COP.unseenT > 22 || c.t > 120) copEnd('cleared');
+      }
     } else if (COP.phase === 'chase' || COP.phase === 'search') {
       COP.chaseT = (COP.chaseT || 0) + dt;
       copRespond(mx, mz);
@@ -15532,7 +15628,24 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       if (r && r.t > t0 && r.t < best.t) { best.t = r.t; best.kind = 'npc'; best.npc = u; best.part = 'car'; best.box = null; best.n.set(0, 1, 0); }
     }
     const now = performance.now();
-    if (now - COP.gunT > 5000 && [...COP.units, ...CNET.rem.values()].some(u => !u.gone && Math.hypot(u.x - O.x, u.z - O.z) < 140)) { COP.gunT = now; copHeat(1); refreshStats(); copChase('Shots fired near officers.'); }
+    if (COP.phase === 'chase') { if (now - COP.gunT > 5000 && copEyes(160, O.x, O.z)) { COP.gunT = now; copHeat(1); } return; }
+    if (now - COP.gunT < 2500) return; COP.gunT = now;
+    const e = copEyes(night() ? 110 : 160, O.x, O.z);
+    if (e) { copEye(e); copHeat(1); copChase('Shots fired! Officers saw the shooter.'); return; }
+    // gunfire carries a lot farther than anybody can see
+    let ear = null, ed = night() ? 380 : 320;
+    for (const u of [...COP.units, ...CNET.rem.values()]) { if (u.gone) continue; const d = Math.hypot(u.x - O.x, u.z - O.z); if (d < ed) { ed = d; ear = u; } }
+    if (ear) {
+      copReport(O.x, O.z, 'shots fired', { delay: 2 + copRand() * 3, units: 2, pri: 2, who: `unit ${ear.num} heard` });
+      if (cNow() - COP.toldT > 20) { COP.toldT = cNow(); toast('🚔 A unit nearby heard the shots. They\'re rolling on the sound.', 'bad'); }
+    }
+    copWitnessCall(O.x, O.z, 'shots fired', 140, false, 0.35, { units: 2, pri: 2, lines: HEARD });
+  };
+  // a robbery you got away with: the clerk (or the alarm) calls it in, and units head for the store
+  const _cRob = rob;
+  rob = function (p, odds, lo, hi, what, heatUp) {
+    const cash0 = S ? S.cash : 0; _cRob.apply(this, arguments);
+    if (S && S.cash > cash0 && p && isFinite(p.x) && isFinite(p.z)) copReport(p.x, p.z, `a robbery at ${p.name || 'a store'}`, { delay: (/bank/i.test(p.type || '') ? 4 : 7) + copRand() * 6, units: 1 + (heatUp || 1), pri: 3, who: /bank/i.test(p.type || '') ? 'silent alarm,' : 'the clerk reports' });
   };
   const _cShotLand = window.__shotLand;
   window.__shotLand = (B, fx) => {
@@ -15642,7 +15755,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   });
   // ==== shared world: cops (end) ====
   // test hooks
-  window.__cops = { CNET, copIn, copRemStep, copTake, step: copStep, populate: copPopulate, COP, COP_KINDS, copUnit, copKill, copChase, copNotice, copEnd, copBusted, copLights, copOnRoad, copPark, copPrecincts, copTicketMenu };
+  window.__cops = { copEyes, copWitnesses, copReport, copWitnessCall, gunsOut, CNET, copIn, copRemStep, copTake, step: copStep, populate: copPopulate, COP, COP_KINDS, copUnit, copKill, copChase, copNotice, copEnd, copBusted, copLights, copOnRoad, copPark, copPrecincts, copTicketMenu };
   })();
   // ==== police (end) ====
   // ---------- assemble ----------
