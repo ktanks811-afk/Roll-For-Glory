@@ -1427,13 +1427,14 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const money = v => (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString();
   const carOf = id => G.cars.find(c => c.id === id) || G.cars[0];
   // only the cars we have built in 3D, one by one; the rest come back as each model is finished
-  const BUILT = ['chevrolet_caprice_classic_box_chevy_1986', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_camaro_ss_2016', 'ford_f_150_regular_cab_2021', 'chevrolet_corvette_stingray_c8_2020', 'ram_1500_trx_2021', 'dodge_charger_scat_pack_2015', 'chevrolet_tahoe_2021', 'ford_mustang_gt_2019', 'chevrolet_nova_1972'];
+  const BUILT = ['chevrolet_caprice_classic_box_chevy_1986', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_camaro_ss_2016', 'ford_f_150_regular_cab_2021', 'chevrolet_corvette_stingray_c8_2020', 'ram_1500_trx_2021', 'dodge_charger_scat_pack_2015', 'chevrolet_tahoe_2021', 'ford_mustang_gt_2019', 'chevrolet_nova_1972', 'dodge_challenger_rt_scat_pack_widebody_2019'];
   function builtCars(all) {
     const by = id => all.find(c => c.id === id);
     const extra = {
       ford_f_150_regular_cab_2021: { ...by('ford_f_150_xlt_5_0_2015'), id: 'ford_f_150_regular_cab_2021', trim: 'Regular Cab 5.0', y: 2021, msrp: 42000 },
       chevrolet_tahoe_2021: { ...by('chevrolet_tahoe_lt_2007'), id: 'chevrolet_tahoe_2021', trim: '5.3 V8', y: 2021, msrp: 58000, hp: 355 },
       chevrolet_nova_1972: { ...by('chevrolet_chevelle_ss_454_1970'), id: 'chevrolet_nova_1972', model: 'Nova', trim: 'Pro Street', y: 1972, cls: 'Muscle', msrp: 2900, market: 42000, mkBase: 30000, hp: 345, kg: 1530, drive: 'RWD', engine: '350 small-block V8', body: 'muscle', color: '#050506', asp: 'na' },
+      dodge_challenger_rt_scat_pack_widebody_2019: { ...by('dodge_challenger_r_t_2015'), id: 'dodge_challenger_rt_scat_pack_widebody_2019', model: 'Challenger', trim: 'R/T Scat Pack Widebody', y: 2019, cls: 'Muscle', msrp: 52000, market: null, hp: 485, kg: 1950, drive: 'RWD', engine: '392 HEMI 6.4L V8', body: 'muscle', color: '#3a3c40', asp: 'na' },
       ford_mustang_gt_2019: { ...by('ford_mustang_gt_s650_2024'), id: 'ford_mustang_gt_2019', model: 'Mustang', trim: 'GT 5.0 Fastback', y: 2019, msrp: 36000, market: null, hp: 460, kg: 1705, drive: 'RWD', engine: '5.0L Coyote V8', body: 'muscle', color: '#0b0c0f', asp: 'na' },
     };
     return BUILT.map(id => extra[id] || by(id)).filter(Boolean);
@@ -1510,6 +1511,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const FORD_PAINTS = [['Shadow Black', '#0b0c0f'], ['Race Red', '#b4121b'], ['Oxford White', '#eceeea'], ['Velocity Blue', '#1d4f9e'], ['Magnetic Gray', '#55585c'], ['Kona Blue', '#1a2b5c'], ['Orange Fury', '#e2541a'], ['Need For Green', '#3f8a3a'], ['Ruby Red', '#7a0e18'], ['Royal Crimson', '#4a0f1e'], ['Ingot Silver', '#a7abb0']];
   // Chevrolet's 1972 colours, offered first in the paint booth when you bring the Nova in
   const NOVA_PAINTS = [['Tuxedo Black', '#050506'], ['Cranberry Red', '#7c0d16'], ['Mulsanne Blue', '#1c3f8f'], ['Antique White', '#ece6d4'], ['Orange Flame', '#d4511a'], ['Spring Green', '#7da84a'], ['Sequoia Green', '#2d4630'], ['Midnight Bronze', '#4a3424'], ['Pewter Silver', '#8e9196'], ['Cream Yellow', '#e8d58a'], ['Ascot Blue', '#7fa6c8'], ['Covert Tan', '#b8a07a']];
+  // Dodge Challenger colours, offered first in the paint booth for the Challenger
+  const DODGE_PAINTS = [['Granite', '#3a3c40'], ['Pitch Black', '#0a0a0b'], ['White Knuckle', '#e9e9e6'], ['Destroyer Grey', '#5d6166'], ['Smoke Show', '#8b8f93'], ['Triple Nickel', '#9a9da1'], ['TorRed', '#c8261b'], ['Go Mango', '#e85a12'], ['Sinamon Stick', '#7a2b17'], ['Octane Red', '#5e1018'], ['Frostbite', '#2a63b8'], ['B5 Blue', '#1e78c8'], ['Indigo Blue', '#1c2a5e'], ['Plum Crazy', '#5a2a7a'], ['Hellraisin', '#3a1f3d'], ['Sublime', '#9ccc2a'], ['F8 Green', '#3a4a35']];
   const PAINTS = [['Candy red', '#b3121b'], ['Midnight black', '#121214'], ['Pearl white', '#ece9e2'], ['Cowtown blue', '#1f4fa8'], ['Lime green', '#7ac224'], ['Royal purple', '#5a2a8a'], ['Orange crush', '#e8651a'], ['Gold flake', '#c9a23a'], ['Gunmetal', '#4a4e54'], ['Baby blue', '#7ab8e0'], ['Pink champagne', '#e0a8b8'], ['Forest green', '#24502e']];
   function repairCosts(rate) {
     const c = S.car, lux = carOf(c.id).msrp, k = rate || 1;
@@ -1552,7 +1555,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: [{ t: 'Parts counter', s: `Real brands, stages 1-4: internals, turbos, blowers, intake, exhaust, fuel, tunes, nitrous, trans and more · ${Object.keys(c.parts || {}).length} on your car`, btn: 'Open', act: () => { closeMenu(); openParts(p); } }].concat(nosRefillRow(p), motorRows(p)) };
     },
     dyno(p) { if (!S.car) return noCar(p); const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
-    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: (c.id === 'ford_mustang_gt_2019' ? FORD_PAINTS.map(([n, h]) => ['Ford ' + n, h]) : c.id === 'chevrolet_nova_1972' ? NOVA_PAINTS.map(([n, h]) => ['Chevy ' + n, h]) : []).concat(PAINTS).map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
+    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: (c.id === 'ford_mustang_gt_2019' ? FORD_PAINTS.map(([n, h]) => ['Ford ' + n, h]) : c.id === 'chevrolet_nova_1972' ? NOVA_PAINTS.map(([n, h]) => ['Chevy ' + n, h]) : c.id === 'dodge_challenger_rt_scat_pack_widebody_2019' ? DODGE_PAINTS.map(([n, h]) => ['Dodge ' + n, h]) : []).concat(PAINTS).map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
     chop(p) { if (!S.car) return noCar(p); return { title: p.name, sub: 'No questions asked', rows: [{ t: 'Hot engine tune', s: '+8% hp, off the books. Heat +1', btn: S.car.mods.hot ? 'Installed' : money(600), off: !!S.car.mods.hot, act: () => { if (spend(600, 'Hot tune')) { S.car.mods.hot = true; S.heat = Math.min(5, S.heat + 1); } } }, { t: 'Swap the VIN', s: 'Clears 1 heat', btn: money(900), off: !S.heat, act: () => { if (spend(900, 'VIN swap')) S.heat--; } }] }; },
     fuel(p) { if (!S.car) return noCar(p);
       const c = S.car, ev = isEV(c), grade = ev ? 'kwh' : carHp(c) > 300 ? 'premium' : 'regular', price = G.gas[grade], need = (1 - c.fuel) * (ev ? 75 : tankGal(c)), cost = need * price;
@@ -1838,7 +1841,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const PK = { spots: [], grid: new Map(), types: {}, data: null, cls: null, lastX: 1e9, lastZ: 0, lastY: 0, lastQ: new THREE.Quaternion(), dirty: true };
   const PK_CELL = 100;
   // what tends to be parked where: cars in normal spots, trucks and SUVs in the long ones
-  const PK_CARS = [['chevrolet_caprice_classic_box_chevy_1986', 4], ['dodge_charger_scat_pack_2015', 2], ['dodge_charger_srt_hellcat_widebody_2020', 1.5], ['chevrolet_camaro_ss_2016', 2], ['chevrolet_corvette_stingray_c8_2020', 1], ['chevrolet_tahoe_2021', 1.5], ['ford_f_150_regular_cab_2021', 1.5], ['ram_1500_trx_2021', 0.7], ['ford_mustang_gt_2019', 2], ['chevrolet_nova_1972', 1.2]];
+  const PK_CARS = [['chevrolet_caprice_classic_box_chevy_1986', 4], ['dodge_charger_scat_pack_2015', 2], ['dodge_charger_srt_hellcat_widebody_2020', 1.5], ['chevrolet_camaro_ss_2016', 2], ['chevrolet_corvette_stingray_c8_2020', 1], ['chevrolet_tahoe_2021', 1.5], ['ford_f_150_regular_cab_2021', 1.5], ['ram_1500_trx_2021', 0.7], ['ford_mustang_gt_2019', 2], ['chevrolet_nova_1972', 1.2], ['dodge_challenger_rt_scat_pack_widebody_2019', 1.6]];
   const PK_TRUCKS = [['ford_f_150_regular_cab_2021', 3], ['ram_1500_trx_2021', 2], ['chevrolet_tahoe_2021', 3]];
   const pkPick = (L, h) => { const tot = L.reduce((s, x) => s + x[1], 0); let r = h * tot; for (const [id, w] of L) { if ((r -= w) < 0) return id; } return L[0][0]; };
   // called by the world builder for each parked-car box; false means it isn't car shaped (a rig, a trailer) and keeps its block
@@ -7001,7 +7004,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   const HEMI = { n392: { base: 32, lfo: 6.2, lp: 460 }, hc: { base: 36, lfo: 7.4, lp: 620, whine: ['sine', 900, 0.02, 0.05], o: 0.5 } };
   const MOTOR_SND = {
     chevrolet_caprice_classic_box_chevy_1986: { s350: { base: 30, lfo: 6.5, lg: 0.08, lp: 380 }, b454: { base: 34, lfo: 4.2, lg: 0.14, lp: 520, whine: ['sawtooth', 380, 0.012, 0.05], o: 0.6 } },
-    dodge_charger_srt_hellcat_widebody_2020: HEMI, dodge_charger_scat_pack_2015: HEMI, ram_1500_trx_2021: HEMI, chevrolet_camaro_ss_2016: HEMI, chevrolet_tahoe_2021: HEMI,
+    dodge_charger_srt_hellcat_widebody_2020: HEMI, dodge_charger_scat_pack_2015: HEMI, dodge_challenger_rt_scat_pack_widebody_2019: HEMI, ram_1500_trx_2021: HEMI, chevrolet_camaro_ss_2016: HEMI, chevrolet_tahoe_2021: HEMI,
     ford_f_150_regular_cab_2021: { v8: { base: 33, lfo: 6.6, lp: 520 }, eb: { base: 42, lfo: 9.6, lp: 700, whine: ['sine', 2200, 0.004, 0.03], turbo: true } },
     chevrolet_nova_1972: { sbc350: { base: 30, lfo: 5.6, lg: 0.13, lp: 430, drive: 2.3, o: 0.42, peak: 3.5 }, sbc383: { base: 29, lfo: 4.9, lg: 0.18, lp: 470, drive: 2.8, o: 0.5, peak: 3.6 },
       bbc454: { base: 26, lfo: 4.4, lg: 0.15, lp: 400, drive: 2.5, o: 0.45, peak: 3.2 }, bbc496: { base: 25, lfo: 3.9, lg: 0.22, lp: 500, drive: 3.2, o: 0.6, peak: 3.4 },
@@ -10144,7 +10147,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
     return { x: st.x + Math.sin(hm) * vm * age, z: st.z - Math.cos(hm) * vm * age, h: st.h + r * age, v };
   }
   // our 3D-only builds go out as the 2D car they come from, so 2D players can draw them
-  const TO_2D = { ford_f_150_regular_cab_2021: 'ford_f_150_xlt_5_0_2015', chevrolet_tahoe_2021: 'chevrolet_tahoe_lt_2007', ford_mustang_gt_2019: 'ford_mustang_gt_s650_2024', chevrolet_nova_1972: 'chevrolet_chevelle_ss_454_1970' };
+  const TO_2D = { ford_f_150_regular_cab_2021: 'ford_f_150_xlt_5_0_2015', chevrolet_tahoe_2021: 'chevrolet_tahoe_lt_2007', ford_mustang_gt_2019: 'ford_mustang_gt_s650_2024', chevrolet_nova_1972: 'chevrolet_chevelle_ss_454_1970', dodge_challenger_rt_scat_pack_widebody_2019: 'dodge_challenger_r_t_2015' };
   // a 2D player's car we haven't built in 3D yet shows as the closest one we have
   function model3d(id, m3) {
     if (m3 && BUILT.includes(m3)) return m3;
@@ -10154,7 +10157,8 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
     if (/trx|raptor|tundra|ram_|_ram|silverado|sierra|f_150|f_250|f_350|titan|tacoma|ranger|colorado|cybertruck|rivian_r1t|truck/.test(s)) return /trx|raptor|trx/.test(s) ? 'ram_1500_trx_2021' : 'ford_f_150_regular_cab_2021';
     if (/tahoe|suburban|yukon|escalade|durango|jeep|navigator|expedition|bronco|4runner|land_cruiser|range_rover|g_class|g_wagon|urus|cullinan|bentayga|explorer|highlander|x5|x7|gle|gls|q7|q8|rivian_r1s|model_x|lx/.test(s)) return 'chevrolet_tahoe_2021';
     if (/corvette|lambo|ferrari|mclaren|porsche|gt_r|nsx|supra|viper|aston|bugatti|koenigsegg|pagani|lotus|r8|amg_gt|lfa|ford_gt/.test(s)) return 'chevrolet_corvette_stingray_c8_2020';
-    if (/hellcat|demon|redeye|trackhawk|challenger/.test(s)) return 'dodge_charger_srt_hellcat_widebody_2020';
+    if (/challenger/.test(s)) return 'dodge_challenger_rt_scat_pack_widebody_2019';
+    if (/hellcat|demon|redeye|trackhawk/.test(s)) return 'dodge_charger_srt_hellcat_widebody_2020';
     if (/mustang/.test(s) && !/mach_e/.test(s)) return 'ford_mustang_gt_2019';
     if (/camaro|firebird|trans_am|gto|chevelle|nova|cutlass|monte_carlo|grand_national|regal/.test(s)) return 'chevrolet_camaro_ss_2016';
     if (/caprice|impala|crown_vic|town_car|grand_marquis|lincoln|cadillac_deville|fleetwood|brougham|box|donk|bubble/.test(s)) return 'chevrolet_caprice_classic_box_chevy_1986';
