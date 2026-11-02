@@ -1433,7 +1433,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const extra = {
       ford_f_150_regular_cab_2021: { ...by('ford_f_150_xlt_5_0_2015'), id: 'ford_f_150_regular_cab_2021', trim: 'Regular Cab 5.0', y: 2021, msrp: 42000 },
       chevrolet_tahoe_2021: { ...by('chevrolet_tahoe_lt_2007'), id: 'chevrolet_tahoe_2021', trim: '5.3 V8', y: 2021, msrp: 58000, hp: 355 },
-      chevrolet_nova_1972: { ...by('chevrolet_chevelle_ss_454_1970'), id: 'chevrolet_nova_1972', model: 'Nova', trim: 'Pro Street', y: 1972, cls: 'Muscle', msrp: 2900, market: 42000, mkBase: 30000, hp: 345, kg: 1530, drive: 'RWD', engine: '350 small-block V8', body: 'muscle', color: '#050506', asp: 'na', dragTires: true },
+      chevrolet_nova_1972: { ...by('chevrolet_chevelle_ss_454_1970'), id: 'chevrolet_nova_1972', model: 'Nova', trim: 'Pro Street', y: 1972, cls: 'Muscle', msrp: 2900, market: 42000, mkBase: 30000, hp: 345, kg: 1530, drive: 'RWD', engine: '350 small-block V8', body: 'muscle', color: '#050506', asp: 'na' },
       ford_mustang_gt_2019: { ...by('ford_mustang_gt_s650_2024'), id: 'ford_mustang_gt_2019', model: 'Mustang', trim: 'GT 5.0 Fastback', y: 2019, msrp: 36000, market: null, hp: 460, kg: 1705, drive: 'RWD', engine: '5.0L Coyote V8', body: 'muscle', color: '#0b0c0f', asp: 'na' },
     };
     return BUILT.map(id => extra[id] || by(id)).filter(Boolean);
@@ -1495,7 +1495,6 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     P.wr0 = /c8|ferrari|lamborghini|mclaren|911|cayman|boxster|nsx|_r8|ford_gt|mid/.test(c.id) ? 0.6 : m.body === 'truck' ? 0.42 : m.body === 'suv' ? 0.46 : 0.47;
     // fast cars leave the factory on wider, stickier rubber than a family car or a truck
     P.tireK = m.body === 'truck' || m.body === 'suv' ? 0.9 : 1 + clamp((P.pw - 110) / 110, 0, 0.15);
-    if (m.dragTires && !c.rims && !dragPack(c)) { P.tireK *= 1.14; P.corner = (P.corner || 1) * 0.94; }
     // everyday cars from 2000 on leave the factory with launch torque management in 1st (an ECU tune takes it out)
     P.tqm = (m.y || 2020) >= 2000 && P.pw < 130 && !(c.tparts || []).includes('ecu') ? 0.72 : 1;
     P.cgL = m.body === 'truck' || m.body === 'suv' ? 0.28 : 0.21;
