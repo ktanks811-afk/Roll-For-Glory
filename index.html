@@ -9093,9 +9093,19 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   // the road under the car: pavement, grass and dirt, or a prepped drag strip
   const SURF = { mu: 1, rr: 0, prep: 0, box: 0 };
 
+  // tire temperature (Phase 3B): the tread heats with the work its slip does (slip speed x force) and cools to the air,
+  // faster when the car moves. Drag radials and slicks only really grip once they're hot (a burnout puts 100-150°F on
+  // them); street tires barely care until they overheat. Water on the tread (rolling out of the water box) costs grip
+  // until it's spun or rolled off. Ambient is a Texas night, 86°F.
+  const TT_AMB = 30, TT_C = 3500, TT_COOL = 30;
+  function tireGripT(T, temp) {
+    if (T.prep > 1.2) { const x = (temp - 72) / 40; return clamp(1.06 - 0.11 * x * x, 0.72, 1.06); }
+    return clamp(1 + 0.03 * clamp((temp - TT_AMB) / 30, 0, 1) - 0.004 * Math.max(0, temp - 110), 0.75, 1.03);
+  }
   function vdInit(V, u) {
     const st = { id: V.id, w: [0, 0, 0, 0], we: V.idle / RPM, g: 1, lock: false, ce: 0, zc: 0, th: 0, ph: 0, zcv: 0, thv: 0, phv: 0, absK: [1, 1, 1, 1], cut: false, vcut: false, shT: 0, hold: 0, ax: 0, ay: 0,
-      Fz: [0, 0, 0, 0], kap: [0, 0, 0, 0], al: [0, 0, 0, 0], Te: 0, Tc: 0, rev: false, sync: false, lit: 0, tcK: 1 };
+      Fz: [0, 0, 0, 0], kap: [0, 0, 0, 0], al: [0, 0, 0, 0], Te: 0, Tc: 0, rev: false, sync: false, lit: 0, tcK: 1,
+      tT: [TT_AMB, TT_AMB, TT_AMB, TT_AMB], wet: [0, 0, 0, 0], tK: [1, 1, 1, 1], tQ: [0, 0, 0, 0] };
     for (let i = 0; i < 4; i++) st.w[i] = u / V.R[i];
     if (Math.abs(u) > 1 && !V.ev) {   // rolling start: pick the gear the box would be in and lock it up
       let g = 1; for (let i = 0; i < V.auto.length; i++) { const rpm = u / V.R[2] * V.auto[i] * V.fd * RPM; if (rpm < V.red * 0.82) { g = i + 1; break; } }
@@ -9243,7 +9253,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       _lng[i] = lng; _lat[i] = lat; const den = Math.max(Math.abs(lng), lngDen); _den[i] = den;
       // camber against the road changes with body roll; the outside tire wants a little negative
       const gam = V.cam[i] + (V.wy[i] > 0 ? -1 : 1) * st.ph * 57.3 * 0.5, fg = clamp(1 - 0.0035 * (gam + 1.2) ** 2, 0.85, 1.02), fl = clamp(1 - 0.005 * gam * gam, 0.88, 1);
-      const Fn = V.Fn[i], mu = V.mu[i] * SURF.mu * (SURF.prep ? (V.T[i].prep) : 1) * clamp(1 - 0.1 * (st.Fz[i] / Fn - 1), 0.75, 1.12);
+      const Fn = V.Fn[i], mu = V.mu[i] * SURF.mu * (SURF.prep ? (V.T[i].prep) : 1) * clamp(1 - 0.1 * (st.Fz[i] / Fn - 1), 0.75, 1.12) * (st.tK ? st.tK[i] : 1);
       const kap = (st.w[i] * V.R[i] - lng) / den, tA = lat / Math.max(Math.abs(lng), latDen);
       const vs = Math.hypot(st.w[i] * V.R[i] - lng, lat); _vs[i] = vs;
       tireF(V.T[i], mu, st.Fz[i], kap, tA, _tf, vs); _F0x[i] = _tf.x * fl; _F0y[i] = _tf.y * fg; _mu[i] = mu; _fl[i] = fl; _fg[i] = fg;
@@ -9368,6 +9378,12 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       tireF(V.T[i], _mu[i], st.Fz[i], kap, tA, _tf, Math.hypot(st.w[i] * V.R[i] - _lng[i], _lat[i])); st.kap[i] = kap;
       const fxw = _tf.x * _fl[i], fyw = _tf.y * _fg[i], bx = fxw * _cd[i] - fyw * _sd[i], by = fxw * _sd[i] + fyw * _cd[i];
       Fx += bx; Fy += by; Mz += V.wx[i] * by - V.wy[i] * bx;
+      if (st.tT) {   // the tread: heat in from the slip, out to the air; water rolls and spins off
+        const sl = st.w[i] * V.R[i] - _lng[i], Q = Math.abs(fxw * sl) + (spd > 2 ? Math.abs(fyw * _lat[i]) : 0);
+        st.tQ[i] = Q; st.tT[i] += h * (Q - TT_COOL * (1 + 0.05 * Math.abs(u)) * (st.tT[i] - TT_AMB)) / TT_C;
+        if (SURF.box) st.wet[i] = 1; else if (st.wet[i] > 0) st.wet[i] = Math.max(0, st.wet[i] - h * (Math.abs(st.w[i] * V.R[i]) / 30 + Math.abs(sl) / 12));
+        st.tK[i] = tireGripT(V.T[i], st.tT[i]) * (SURF.box ? 1 : 1 - 0.35 * st.wet[i]);
+      }
     }
     const roll = (V.crr + SURF.rr) * W * clamp(u / 0.5, -1, 1), air = 0.5 * RHO * V.cdA * u * Math.abs(u);
     Fx -= roll + air;
@@ -9510,7 +9526,8 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
         else if (d > 0.35) { skidSeg(last, p, 0.3, clamp((slip - 3) / 9, 0.25, 0.7)); TIRE.marks[i] = p; }
       } else TIRE.marks[i] = null;
       if (smoke) {
-        const thick = clamp((slip - 5) / 18, 0, 1), rate = 8 + thick * 24;
+        const vd = TIRE.vd, tt = vd && vd.tT ? Math.max(vd.tT[useF ? 0 : 2], vd.tT[useF ? 1 : 3]) : 60;
+        const thick = clamp((slip - 5) / 18, 0, 1) * clamp((tt - 35) / 45, 0.3, 1.6), rate = 8 + Math.min(1, thick) * 24;
         TIRE.smokeT += dt * rate; while (TIRE.smokeT > 1) { TIRE.smokeT -= 1; puff(_wp.x, 0.35, _wp.z, TIRE.vx, TIRE.vz, thick); }
       }
     });
@@ -18304,7 +18321,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       sgn('1   2   3   4', '#ffffff', null, (sx0 + sx1) / 2, 1186.08, 5.4, 0.6, 0, -1, 30, 'mid');
       // cars waiting in the lanes, a truck or two among them, and their people
       YB.idle = [];
-      for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) { const h = hash(k * 31 + j * 7 + 3); if (h < 0.3 || k === 1 || k === 2) continue; const cx = sx0 + 5.5 + k * 11, cz = 1146 + j * 12; pkPut(cx, cz, 0, h, h > 0.85);
+      for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) { const h = hash(k * 31 + j * 7 + 3); if (h < 0.3 || k === 1 || k === 2 || j === 0) continue; const cx = sx0 + 5.5 + k * 11, cz = 1146 + j * 12; pkPut(cx, cz, 0, h, h > 0.85);
         // running: headlights on the pavement ahead, taillights glowing behind (they face the track, -z)
         for (const s of [-0.62, 0.62]) { box('ybGlow', cx + s - 0.16, cz - 2.42, cx + s + 0.16, cz - 2.36, 0.66, 0.8, '#fff6e0', 'near', false); box('ybGlow', cx + s - 0.18, cz + 2.38, cx + s + 0.18, cz + 2.44, 0.78, 0.9, '#ff1a10', 'near', false); }
         YB.idle.push([cx, cz]); }
@@ -18526,20 +18543,347 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   // The other lane is a racer in their built car on the same physics (physAs), with their own reaction time and pedalling.
   // Each lane is a plain object (kind 'me', 'ai', or later 'net' for a player online) so a lane can be filled from the
   // network without touching the race logic: the race only reads x, z, v and fA, and writes the timing.
-  const BEAM = { pre: 0.178, out: 0.3 }, TRAP = 20.12, YB_SPLITS = [[18.29, '60 ft'], [100.58, '330 ft'], [201.17, '1/8 mile'], [304.8, '1000 ft'], [402.34, '1/4 mile']];
-  const R = YB.race = { on: false, dist: 201.17, mode: 'e' };
+  // ---------- Phase 3B: racing at Yello Belly ----------
+  // The whole procedure is driven: pull into the staging lanes, get called, roll onto the track, the water box and a burnout
+  // if you want one, creep into pre-stage and stage on the real beams, the tree, the run, the shutdown, the turnoff and the
+  // return road back to the lanes. The AI racers do the same in their own built cars on the same vehicle simulation (vdStep
+  // through physAs): same tires, same surface, same tire temperatures, no grip or power bonus.
+  // Timing works like a real timing system: the beams are lines across the lane, a tire blocks one while the beam is under
+  // its tread, and every crossing is found inside the 240 Hz physics step and interpolated, in simulation time. Reaction time
+  // is when the car un-blocks the stage beam minus the green; the elapsed time starts there. The heads-up winner is whoever
+  // got to the finish beam first off a legal start.
+  const TRAP = 20.12, YB_SPLITS = [[18.29, '60 ft'], [100.58, '330 ft'], [201.17, '1/8 mile'], [304.8, '1000 ft'], [402.34, '1/4 mile']];
+  const BEAM = { pre: 0.178, h: 0.1 };   // pre-stage 7 in behind the stage beam, both about 4 in off the ground
+  const TREE = { pro: { label: 'Pro .400', green: 0.4, amb: [[0, 0.4], [0, 0.4], [0, 0.4]] }, sport: { label: 'Sportsman .500', green: 1.5, amb: [[0, 0.5], [0.5, 1.0], [1.0, 1.5]] } };
+  const STAGE_TIMEOUT = 7, YB_FEE = 20;
+  const R = YB.race = { on: false, dist: 201.17, tree: 'pro', lane: 'L', ann: true, t: 0, acc: 0, run: null, next: null, me: null, ags: [], fillT: 6, auto: false, again: null, lastT: null };
+  const halfChord = r => Math.sqrt(Math.max(0.0025, r * r - (r - BEAM.h) ** 2));
   const frontAxle = m => { if (!m || !m.userData.wheels || !m.userData.wheels.length) return 1.4; const xs = m.userData.wheels.map(w => w.position.x); const f = Math.max(...xs); return f > 0.6 && f < 3.4 ? f : 1.4; };
-  function ybLane(kind, x) { return { kind, x, z: YB.water.z1 + 8, v: 0, fA: 1.4, pre: false, staged: false, leave: null, rt: null, red: false, dq: '', split: {}, hist: [], done: null, mph: null, et: null }; }
+  const laneX = side => YB.LANES[side === 'L' ? 0 : 1];
+  const mphOf = v => v * 2.237;
+  const tF = c => Math.round(c * 9 / 5 + 32);
+  function mkLane(kind, side, who) { return { kind, side, lx: laneX(side), who, c: 0.25, fA: 1.4, A: 1e9, Ap: null, pre: false, stg: false, deep: false, leave: null, rt: null, red: false, dq: '', split: {}, trapIn: null, done: null, et: null, mph: null, burnT: 0, tMax: 0, spinT: 0, press: null }; }
+  function beamsAt(L, A) { const c = L.c, SL = YB.SL; L.A = A; L.pre = Math.abs(A - (SL + BEAM.pre)) < c; L.stg = Math.abs(A - SL) < c; L.deep = L.stg && !L.pre && A < SL; }
+  // a tire's front axle went from A0 to A1 between t0 and t1 (inside one physics step): every beam it crossed, and when
+  function crossing(run, L, A0, A1, t0, t1, v) {
+    if (A0 == null || !(A1 < A0)) return;
+    const SL = YB.SL, c = L.c, at = X => t0 + (t1 - t0) * (A0 - X) / (A0 - A1), hit = X => A0 >= X && A1 < X;
+    if (L.leave == null) { if (hit(SL - c)) { L.leave = at(SL - c); laneLeft(run, L); } else return; }
+    if (L.done != null) return;
+    for (const [d, name] of YB_SPLITS) if (d <= run.dist + 0.01 && !L.split[name] && hit(SL - d + c)) L.split[name] = { t: at(SL - d + c) - L.leave, v };
+    if (L.trapIn == null && hit(SL - (run.dist - TRAP) + c)) L.trapIn = at(SL - (run.dist - TRAP) + c);
+    if (hit(SL - run.dist + c)) { const tf = at(SL - run.dist + c); L.done = tf; L.et = tf - L.leave; L.mph = L.trapIn != null && tf > L.trapIn ? mphOf(TRAP / (tf - L.trapIn)) : mphOf(v); ybEvent('finish', { lane: L.side, et: L.et, mph: L.mph }); }
+  }
+  function laneLeft(run, L) {
+    if (run.gT == null) { L.red = true; L.rt = null; L.foul = true; L.dq = 'Left before the tree came down'; if (run.st === 'stage') treeDrop(run, R.t); }
+    else { L.rt = L.leave - run.gT; if (L.rt < 0) L.red = true; }
+    ybEvent('leave', { lane: L.side, rt: L.rt, red: L.red });
+    if (L.red) { crowd('ooh', 0.7); if (L.kind === 'me') toast('RED LIGHT', 'bad'); }
+  }
+  function treeDrop(run, t) { run.ta = t; run.gT = t + TREE[run.tree].green; run.st = 'tree'; ybEvent('tree', { tree: run.tree }); }
+  function treeLit(run, L, t) {
+    const lit = []; if (L.pre) lit.push(0); if (L.stg) lit.push(1);
+    if (run.ta != null && t >= run.ta) {
+      if (t < run.gT) TREE[run.tree].amb.forEach(([a, b], k) => { if (t >= run.ta + a && t < run.ta + b) lit.push(2 + k); });
+      else if (!L.red && (L.done == null || t - L.done < 3)) lit.push(5);
+    }
+    if (L.red) lit.push(6);
+    return lit;
+  }
   function ybTree(side, lit) { const L = YB.bulbs && YB.bulbs[side]; if (!L) return; L.forEach((b, i) => { const on = lit.includes(i); b.material.color.copy(on ? b.userData.col : new THREE.Color(0x1c1c1e)); if (on) b.material.color.multiplyScalar(1.8); }); }
-  // the HUD over the world: speed, clock, distance to stage or to go, a little tree, the time slip
+  function ybEvent(type, data) { (R.events = R.events || []).push([R.t, type, data]); if (R.events.length > 80) R.events.shift(); if (YB.onEvent) try { YB.onEvent(type, data); } catch (e) {} }
+
+  // ---------- the AI racers: their real built cars on the vehicle simulation, a driver on the pedals ----------
+  // On the track they drive dead straight down their lane (the sim's yaw is held at 0); off it they steer along a path
+  // (kinematic heading, the sim still does the speed: throttle, converter, gears, brakes, tires).
+  const PATHS = {
+    // from the head of a staging lane onto the track, lined up in the lane, short of the water box
+    in: (sx, side) => { const lx = laneX(side); return [[sx, 1141], [sx + (lx - sx) * 0.45, 1137], [lx + (sx - lx) * 0.15, 1133.5], [lx, 1129.5], [lx, 1126]]; },
+    // the top end: off the track past the shutdown, round the turnaround, the return road, back past the staging lanes
+    turn: lx => [[lx, 376], [7068, 352], [7080, 336], [7091, 342], [7091, 420]],
+    ret: () => [[7091, 1100], [7091, 1172], [7080, 1178.5], [7036, 1178.5], [6990, 1178], [6963, 1166], [6963, 1126]],
+  };
+  const PIT_SPOTS = []; for (let z = 1100; z > 760; z -= 17) for (const x of [6957.5, 6968.5]) PIT_SPOTS.push([x, z]);
+  function rearAxle(m) { if (!m || !m.userData.wheels || !m.userData.wheels.length) return 1.4; const xs = m.userData.wheels.map(w => w.position.x), r = -Math.min(...xs); return r > 0.4 && r < 3.4 ? r : 1.4; }
+  function agSpawn(r, x, z, yaw) {
+    const c = racerCar(r), P = perfOf(c), V = P.veh;
+    const A = { r, c, P, st: { v: 0, t: rollingTire(0) }, x, z, yaw, ph: 'line', gas: 0, brk: 0, path: null, pi: 0, vMax: 4, lane: null, run: null,
+      skill: r.skill != null ? r.skill : 0.5, seen: 0, t: 0, fA: 1.4, rA: 1.4, rT: V && V.R ? V.R[0] : 0.34, steer: 0, park: 0, voice: null, smokeT: 0, dead: false, burn: false };
+    A.burn = !!V && V.drive === 'R';   // a line-lock burnout needs rear drive
+    A.slot = putCar(scene, c.id, c.color, m => { m.position.y = 0; applyMotor(m, c); applyDrag(m, c); A.m = m; carDims(m); A.fA = frontAxle(m); A.rA = rearAxle(m); if (A.lane) A.lane.fA = A.fA; });
+    A.slot.position.set(x, 0.12, z); A.slot.rotation.y = yaw; R.ags.push(A);
+    return A;
+  }
+  function agKill(A) { A.dead = true; if (A.slot) { A.slot.userData.dead = true; scene.remove(A.slot); } voDrop(A); }
+  const vdOf = A => A.st.t.vd;
+  const agRpm = A => { const vd = vdOf(A); return vd ? Math.abs(vd.we) * RPM : (A.P.veh ? A.P.veh.idle : 800); };
+  const agRearT = A => { const vd = vdOf(A); return vd && vd.tT ? Math.max(vd.tT[2], vd.tT[3]) : TT_AMBIENT; };
+  const TT_AMBIENT = 30;
+  // the pedals: hold a target speed (a light foot, it's a crawl most of the time); no pedals at a stop (the car holds itself,
+  // and pressing the brake at a standstill would select reverse)
+  function agSpeed(A, vT, gMax = 0.45) {
+    const v = A.st.v; A.gas = v < vT - 0.05 ? clamp((vT - v) * 0.3 + 0.06, 0, gMax) : 0;
+    A.brk = v > vT + 0.12 && v > 0.04 ? clamp((v - vT) * 0.35 + 0.15, 0.15, 0.9) : 0;
+    if (A.brk > 0) A.gas = Math.max(A.gas, 0.011);   // a hair of gas with the brake so the box doesn't take it as "reverse"
+    if (vT < 0.02 && v < 0.24) { A.gas = 0; A.brk = 0; }   // at a crawl, feet off: the car's own hold brings it to a stop and keeps it there
+  }
+  // something in the way along the heading (you, another racer): slow and stop behind it
+  function agBlocked(A) {
+    const fx = -Math.sin(A.yaw), fz = -Math.cos(A.yaw), test = (x, z) => { const dx = x - A.x, dz = z - A.z, a = dx * fx + dz * fz, l = Math.abs(dx * fz - dz * fx); return a > 0 && a < 8.5 && l < 2.4; };
+    if (driving && !foot.on && test(drv.x, drv.z)) return true;
+    for (const o of R.ags) if (o !== A && !o.dead && o.ph !== 'line' && test(o.x, o.z)) return true;
+    return false;
+  }
+  // pure pursuit: aim at a point 5 m on along the path from where the car is (a car can't turn tighter than that)
+  function agFollow(A, k) {
+    const P = A.path; if (!P || A.pi >= P.length) return true;
+    if (A.pi === 0) { A.pi = 1; P.unshift([A.x, A.z]); }
+    const seg = i => { const [ax, az] = P[i - 1], [bx, bz] = P[i], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, u = ((A.x - ax) * dx + (A.z - az) * dz) / l2; return { ax, az, dx, dz, l: Math.sqrt(l2), u }; };
+    while (A.pi < P.length - 1 && seg(A.pi).u > 1) A.pi++;
+    let s = seg(A.pi), look = 5, u = clamp(s.u, 0, 1) + look / s.l, i = A.pi;
+    while (u > 1 && i < P.length - 1) { look = (u - 1) * s.l; i++; s = seg(i); u = look / s.l; }
+    const [ex, ez] = P[P.length - 1], dEnd = Math.hypot(ex - A.x, ez - A.z), last = A.pi === P.length - 1;
+    if (last && (dEnd < 0.8 || seg(A.pi).u > 1)) { A.pi = P.length; return true; }
+    let tx = s.ax + s.dx * Math.min(1, u), tz = s.az + s.dz * Math.min(1, u); const d = last ? dEnd : 99;
+    const want = Math.atan2(-(tx - A.x), -(tz - A.z)); let dy = want - A.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    const rate = Math.max(0.2, Math.abs(A.st.v)) / 5.2; A.yaw += clamp(dy, -rate * k, rate * k); A.steer = clamp(dy * 1.6, -0.55, 0.55);
+    const vT = Math.min(A.vMax, last ? Math.max(0.4, d * 0.45) : A.vMax, Math.abs(dy) > 0.5 ? 2.2 : 99);
+    agSpeed(A, agBlocked(A) ? 0 : vT, 0.4);
+    return false;
+  }
+  // the driver, every physics step
+  function agDrive(A, t, k) {
+    const run = A.run, L = A.lane, SL = YB.SL, ax = A.z - A.fA, v = A.st.v, V = A.P.veh;
+    A.t += k;
+    switch (A.ph) {
+      case 'line': A.gas = 0; A.brk = 0; break;
+      case 'call': if (agFollow(A, k)) { A.ph = A.burn ? 'box' : 'pull'; A.track = true; A.yaw = 0; } break;
+      case 'box': {   // roll up till the rear tires sit in the water
+        const d = (A.z + A.rA) - (YB.water.z0 + 7); agSpeed(A, agBlocked(A) ? 0 : clamp(d * 0.5, 0, 3.2));
+        if (d < 0.2 && v < 0.25) { A.ph = 'burn'; A.t = 0; A.gas = 0.35; }
+        break; }
+      case 'burn': {   // line lock on the fronts, hold the motor around 70% of the redline; let go when the tires are up to heat
+        const rpmT = Math.min((V ? V.red : 6000) * 0.72, 5800), rpm = agRpm(A);
+        A.brk = 0.75; A.gas = clamp(A.gas + (rpmT - rpm) / rpmT * k * 5, 0.32, v > 1.2 ? 0.4 : 1);
+        const hotT = A.P.veh && A.P.veh.T[2].prep > 1.2 ? 66 : 50;
+        if ((agRearT(A) >= hotT && A.t > 1.4) || A.t > 4.6) { A.ph = 'roll'; A.t = 0; ybEvent('burnout', { lane: L && L.side, t: agRearT(A) }); }
+        L && (L.burnT += k);
+        break; }
+      case 'roll': A.brk = 0; A.gas = A.t < 0.55 ? 0.38 : 0; if (A.t > 0.55) A.ph = 'pull'; break;
+      case 'pull': { const d = ax - (SL + 0.95); agSpeed(A, d > 0.05 ? clamp(Math.sqrt(2.4 * d), 0.3, 3.6) : 0); if (d < 0.06 && v < 0.12) { A.ph = 'pre'; A.t = 0; } break; }
+      case 'pre': {   // creep in till the pre-stage bulb lights, then wait for the other lane to do the same
+        agSpeed(A, L.pre ? 0 : 0.2, 0.2);
+        const other = run && run.lanes.find(o => o !== L), otherPre = !other || other.pre || other.stg;
+        if (L.pre && otherPre && A.st.v < 0.05) { if (A.wait == null) A.wait = t + 0.4 + Math.random() * 1.4 * (1.1 - A.skill); if (t >= A.wait) { A.ph = 'stg'; A.wait = null; } }
+        break; }
+      case 'stg': { const d = ax - (SL + 0.14), inn = L.stg && L.pre && d < 0.06; agSpeed(A, inn ? 0 : clamp(d * 0.8, 0.12, 0.25), 0.2); if (inn && A.st.v < 0.05) A.ph = 'staged'; break; }
+      case 'staged': {   // the launch: on a pro tree they leave off the ambers; how early depends on what they know their car takes to roll out
+        agSpeed(A, 0);
+        if (run && run.ta != null && L.press == null) {
+          const roll = A.r.rollEst || 0.5, want = 0.012 + (1 - A.skill) * 0.16, sd = 0.012 + (1 - A.skill) * 0.045;
+          const gauss = (Math.random() + Math.random() + Math.random() - 1.5) * 2 * sd;
+          L.press = run.gT - roll + want + gauss;
+        }
+        if (L.press != null && t >= L.press) { A.ph = 'go'; A.gas = 0; }
+        break; }
+      case 'go': {   // full throttle; when it spins they pedal it (how fast they notice depends on how good they are)
+        const vd = vdOf(A), spin = vd && vd.lit ? 1 : 0, lag = 0.06 + (1 - A.skill) * 0.16; A.seen += (spin - A.seen) * Math.min(1, k / lag);
+        const tgt = A.seen > 0.5 ? 0.5 + 0.28 * (1 - A.skill) : 1; A.gas += (tgt - A.gas) * Math.min(1, k * 14); A.brk = 0;
+        if (L.done != null || L.dq || (run && run.st === 'done')) { A.ph = 'shut'; A.gas = 0; }
+        if (L.spinT != null && spin && L.leave != null && L.done == null) L.spinT += k;
+        break; }
+      case 'cruise': agSpeed(A, 12, 0.5); if (A.z < 470) { A.ph = 'shut'; } break;
+      case 'shut': { const room = Math.max(5, A.z - 405), need = v * v / (2 * room); A.gas = 0; A.brk = v > 11 ? clamp(need / 8 + 0.08, 0.08, 0.9) : 0; }
+        if (A.z < 430 || (v < 11.5 && A.z < 470)) { A.ph = 'turn'; A.track = false; A.path = PATHS.turn(A.x); A.pi = 0; A.vMax = 10; } break;
+      case 'turn': A.vMax = A.z < 400 || A.x > 7070 ? 5.5 : 10; if (agFollow(A, k)) { A.ph = 'ret'; A.path = PATHS.ret(); A.pi = 0; A.vMax = 6.7; } break;
+      case 'ret': A.vMax = A.x < 6990 ? 3.4 : 6.7; if (agFollow(A, k)) { const used = new Set(R.ags.filter(o => o.spot).map(o => o.spot)); const sp = PIT_SPOTS.find(s => !used.has(s)) || PIT_SPOTS[0]; A.spot = sp; A.path = [[6963, sp[1] + 9], [sp[0], sp[1] + 3], sp]; A.pi = 0; A.vMax = 2.6; A.ph = 'pit'; } break;
+      case 'pit': if (agFollow(A, k)) { A.ph = 'park'; A.park = 0; A.gas = 0; A.brk = 0; } break;
+      case 'park': A.gas = 0; A.brk = 0; A.park += k; break;
+      case 'home': A.gas = 0; A.brk = 0; break;
+    }
+  }
+  function agStep(A, dt) {
+    if (A.ph === 'line' || A.ph === 'park') {   // sitting there idling: no need to run the car
+      agDrive(A, R.t, dt); if (A.ph === 'park' && (A.park > 50 && Math.hypot(drv.x - A.x, drv.z - A.z) > 70 || A.park > 240)) agKill(A);
+      agPose(A, dt); return;
+    }
+    const n = Math.max(1, Math.ceil(dt / VD_H - 1e-6)), k = dt / n;
+    for (let i = 0; i < n; i++) {
+      const t0 = R.t + i * k;
+      agDrive(A, t0, k);
+      const s = ybSurf(A.x, A.z); SURF.prep = s === 1 ? 1 : 0; SURF.mu = s === 2 ? 0.45 : 1; SURF.box = s === 2 ? 1 : 0;
+      physAs(A.st, { gas: A.gas, brake: A.brk, steer: 0, hb: 0 }, A.P, k);
+      SURF.prep = 0; SURF.mu = 1; SURF.box = 0;
+      const v = A.st.v;
+      if (A.track) { A.yaw = 0; A.x += ((A.lane ? A.lane.lx : A.x) - A.x) * Math.min(1, k * 3); }
+      A.x -= Math.sin(A.yaw) * v * k; A.z -= Math.cos(A.yaw) * v * k;
+      if (A.lane && A.run) { const L = A.lane, A1 = A.z - A.fA; crossing(A.run, L, L.Ap, A1, t0, t0 + k, v); L.Ap = A1; }
+    }
+    if (A.lane) { const vd = vdOf(A); if (vd && vd.tT) A.lane.tMax = Math.max(A.lane.tMax, vd.tT[2], vd.tT[3]); }
+    agPose(A, dt);
+  }
+  // the model: where the car is, each wheel at its own simulated speed (the rears really spin in a burnout), the body on
+  // its springs, smoke from the tires that slip, by how hard they slip and how hot they are
+  const _awp = new THREE.Vector3();
+  function agPose(A, dt) {
+    if (!A.slot) return; A.slot.position.set(A.x, 0.12, A.z); A.slot.rotation.y = A.yaw;
+    const m = A.m, vd = vdOf(A), V = vd && vd.V; if (!m) return;
+    const r = m.userData.r || 0.34;
+    for (const w of m.userData.wheels) { const i = (w.userData.front ? 0 : 2) + (w.position.z < 0 ? 0 : 1), sp = V && vd.w ? vd.w[i] * V.R[i] : A.st.v; w.rotation.z -= sp * dt / r; if (w.userData.front) w.rotation.y = A.track ? 0 : A.steer; }
+    if (vd) { m.rotation.x = clamp(vd.th * 1.25, -0.09, 0.09); m.rotation.z = clamp(-vd.ph * 1.25, -0.11, 0.11); }
+    if (m.userData.head) m.userData.head.visible = !!HW.lamps;
+    if (!V || !vd.w) return;
+    for (const w of m.userData.wheels) {
+      if (w.userData.front) continue; const i = 2 + (w.position.z < 0 ? 0 : 1), slip = Math.abs(vd.w[i] * V.R[i] - A.st.v);
+      if (slip > 5) {
+        const thick = clamp((slip - 5) / 18, 0, 1) * clamp((vd.tT[i] - 35) / 45, 0.3, 1.6); A.smokeT += dt * (8 + Math.min(1, thick) * 22) / 2;
+        if (A.smokeT > 1) { w.getWorldPosition(_awp); while (A.smokeT > 1) { A.smokeT -= 1; puff(_awp.x, 0.35, _awp.z, 0, A.st.v * Math.cos(A.yaw), thick); } }
+      }
+    }
+  }
+
+  // ---------- engine sound for the cars around you: the Phase 2 engine generator, one per car (the closest few) ----------
+  // Each voice is the same AudioWorklet generator and pipe graph as your own car, configured from that car's engine,
+  // cam, headers and exhaust, fed its simulated rpm, throttle and boost, and placed by distance and side.
+  const VO = { list: [], max: phone ? 2 : 3, t: 0 };
+  function voFor(A) {
+    if (EA.st === 'idle') eaInit(); if (EA.st !== 'worklet' && EA.st !== 'script') return null;
+    const ctx = EA.ctx; if (!ctx || ctx.state !== 'running') return null;
+    let cfg; try { cfg = eaCfgOf(A.c); } catch (e) { return null; } if (!cfg || cfg.ev) return null;
+    const keepGen = EA.gen, keepStat = EA.stat, n = eaBuild(cfg), gen = EA.gen; EA.gen = keepGen; EA.stat = keepStat; if (!n) return null;
+    if (n.src.port) n.src.port.onmessage = null;
+    const send = m => { if (n.src.port) n.src.port.postMessage(m); else if (gen) { if (m.cfg) gen.config(m.cfg); if (m.p) gen.set(m.p); if (m.run) { gen.mode = 'run'; gen.ws = gen.w = (gen.p.rpm || 0) * Math.PI / 30; } } };
+    send({ cfg: cfg.gen }); send({ p: { rpm: cfg.R.idle }, run: 1 });
+    const keepNode = EA.node; EA.node = n; try { eaPipes(cfg, 0, false, ctx.currentTime); } finally { EA.node = keepNode; }
+    n.out.gain.setValueAtTime(0, ctx.currentTime);
+    return { n, cfg, send, hot: 0, vk: 0, A };
+  }
+  function voDrop(A) { const o = A.voice; if (!o) return; A.voice = null; VO.list = VO.list.filter(x => x !== o); const t = EA.ctx.currentTime; o.n.out.gain.setTargetAtTime(0, t, 0.15); setTimeout(() => { try { o.n.src.disconnect(); o.n.out.disconnect(); } catch (e) {} }, 900); }
+  function voStep(dt) {
+    if (!EA.ctx || EA.ctx.state !== 'running') return;
+    const cam = camera.position, rx = Math.cos(drv.camYaw || 0), rz = -Math.sin(drv.camYaw || 0);
+    // the loudest few get a voice
+    VO.t -= dt;
+    if (VO.t <= 0) {
+      VO.t = 0.25;
+      const want = R.ags.filter(A => !A.dead).map(A => ({ A, s: (0.35 + A.gas) / (8 + Math.hypot(A.x - cam.x, A.z - cam.z)) })).filter(o => o.s > 0.004).sort((a, b) => b.s - a.s).slice(0, VO.max).map(o => o.A);
+      for (const A of R.ags) if (A.voice && !want.includes(A)) voDrop(A);
+      for (const A of want) if (!A.voice && VO.list.length < VO.max) { const o = voFor(A); if (o) { A.voice = o; VO.list.push(o); } break; }
+    }
+    const t = EA.ctx.currentTime;
+    for (const o of VO.list) {
+      const A = o.A, Rr = o.cfg.R, rpm = agRpm(A), thr = clamp(A.gas, 0, 1), vd = vdOf(A), overrun = thr < 0.03 && rpm > Rr.idle * 1.5;
+      let map = o.cfg.gen.mapIdle + (0.97 - o.cfg.gen.mapIdle) * Math.min(1, thr * (1.2 + 2.4 * Rr.idle / Math.max(rpm, Rr.idle))); if (overrun) map = 0.17;
+      let psi = 0; if (Rr.psiTab) { const i = Math.min(Rr.psiTab.length - 1, Math.max(0, Math.round(rpm / Rr.step))); psi = (Rr.psiTab[i] || 0) * Math.min(1, thr * 1.4) * (Rr.boostKind === 'turbo' ? (A.st.t.boost || 0) : 1); }
+      map += psi / 14.7; o.hot += ((thr * Math.min(1, rpm / Rr.red) * 1.4) - o.hot) * Math.min(1, dt * (thr > o.hot ? 0.8 : 0.35));
+      const scK = o.cfg.gen.sc ? clamp(0.12 + 0.88 * thr, 0, 1) * Math.min(1, 0.25 + rpm / Rr.red) : 0;
+      o.send({ p: { rpm, map, thr, cut: vd && vd.cut ? 1 : 0, dfco: 0, hot: clamp(o.hot, 0, 1), spool: o.cfg.turbo ? (A.st.t.boost || 0) : 0, sc: scK, cold: 0, ev: 0 } });
+      const v = o.cfg.ex.valved ? (thr > 0.55 || rpm > Rr.red * 0.55 ? 1 : 0) : 0; if (Math.abs(v - o.vk) > 0.02) { o.vk += (v - o.vk) * Math.min(1, dt * 5); const keep = EA.node; EA.node = o.n; try { eaPipes(o.cfg, o.vk, false, t); } finally { EA.node = keep; } }
+      const dx = A.x - cam.x, dz = A.z - cam.z, d = Math.hypot(dx, dz), vol = clamp(14 / (d + 5), 0, 1) * (worldOn && !inside ? 1 : 0);
+      o.n.out.gain.setTargetAtTime(0.9 * vol, t, 0.08); if (o.n.pan) o.n.pan.pan.setTargetAtTime(clamp((dx * rx + dz * rz) / Math.max(4, d), -0.85, 0.85), t, 0.08);
+      o.n.cab.frequency.setTargetAtTime(clamp(9000 - d * 40, 1800, 9000), t, 0.1);
+      o.n.ig.gain.setTargetAtTime((0.25 + 0.75 * thr) * 0.5, t, 0.06); o.n.ib.frequency.setTargetAtTime(500 + 1600 * Math.min(1, rpm / Rr.red), t, 0.06);
+    }
+  }
+
+  // ---------- the race (one pair on the tree at a time) ----------
+  function newRun(kind, lanes, opts) {
+    return Object.assign({ kind, lanes, dist: R.dist, tree: R.tree, st: 'stage', ta: null, gT: null, arm: null, toT: null, t0: R.t, done: false, shown: false }, opts || {});
+  }
+  function runStep(run, dt) {
+    const t = R.t, ls = run.lanes;
+    for (const L of ls) beamsAt(L, L.kind === 'me' ? drv.z - L.fA : L.who.z - L.who.fA);
+    if (run.st === 'stage') {
+      const legal = L => L.pre && L.stg && L.leave == null, allStg = ls.every(legal), allIn = ls.every(L => L.pre || L.stg);
+      if (allStg) { if (run.arm == null) run.arm = t + 0.6 + Math.random() * 0.5; if (t >= run.arm) treeDrop(run, run.arm); } else run.arm = null;
+      // the auto start's timeout: once everybody's pre-staged and somebody's staged, the other has 7 seconds
+      if (ls.length > 1 && run.st === 'stage' && allIn && ls.some(legal) && !allStg) { if (run.toT == null) run.toT = t; else if (t - run.toT > STAGE_TIMEOUT) { const L = ls.find(o => !legal(o)); L.red = true; L.dq = 'Timed out staging'; treeDrop(run, t); } } else run.toT = null;
+    }
+    // the lanes that haven't moved well after the green, or never got to the finish
+    if (run.gT != null) for (const L of ls) { if (L.leave == null && t > run.gT + 6 && !L.dq) L.dq = 'Never left the line'; if (L.leave != null && L.done == null && !L.dq && t - L.leave > 40) L.dq = 'Never made it to the stripe'; }
+    // you: the lane rules (the centre line and the walls are a DQ), how much the tires spun
+    const me = ls.find(L => L.kind === 'me');
+    if (me && me.leave != null && me.done == null && !me.dq) {
+      if (me.side === 'L' ? drv.x > YB.TX - 0.95 : drv.x < YB.TX + 0.95) me.dq = 'Crossed the centre line'; else if (drv.hitting) me.dq = 'Hit the wall';
+      if (TIRE.lit) me.spinT += dt;
+    }
+    if (me && TIRE.vd && TIRE.vd.tT) me.tMax = Math.max(me.tMax, TIRE.vd.tT[2], TIRE.vd.tT[3]);
+    const over = ls.every(L => L.done != null || L.dq || (L.red && L.leave != null && t - L.leave > 9));
+    if (run.st !== 'done' && run.gT != null && over) { run.st = 'done'; run.endT = t; runResult(run); }
+    // the tree
+    const lL = ls.find(L => L.side === 'L'), lR = ls.find(L => L.side === 'R');
+    const litL = lL ? treeLit(run, lL, t) : [], litR = lR ? treeLit(run, lR, t) : [];
+    ybTree('L', litL); ybTree('R', litR); run.litL = litL; run.litR = litR;
+  }
+  // who won: a red light or a DQ loses (both red: the first one red loses), then whoever got to the finish beam first
+  function runResult(run) {
+    const [a, b] = run.lanes, pk = L => L.done != null ? L.done : Infinity, bad = L => L.red || !!L.dq || L.done == null;
+    let win = null, why = '';
+    if (!b) win = bad(a) ? null : a;
+    else if (a.red && b.red) { win = (a.rt != null ? a.rt : -9) > (b.rt != null ? b.rt : -9) ? a : b; why = 'Both red'; }
+    else if (bad(a) && bad(b)) win = null;
+    else if (bad(a)) { win = b; why = a.red ? 'red light' : a.dq; }
+    else if (bad(b)) { win = a; why = b.red ? 'red light' : b.dq; }
+    else win = pk(a) <= pk(b) ? a : b;
+    R.lastRun = run;
+    run.win = win; run.why = why; run.margin = b && win && !bad(a) && !bad(b) ? Math.abs(pk(a) - pk(b)) : null;
+    // the boards past the finish: the last run in each lane
+    YB.boards.forEach(bd => { const L = run.lanes.find(o => o.side === bd.side); if (L && L.et != null && !L.red) ybBoard(bd, { et: L.et, mph: L.mph, win: L === win }); else ybBoard(bd, null); });
+    // what the racers learn: how long their car takes to roll out of the beam after they hit it
+    for (const L of run.lanes) if (L.kind === 'ai' && L.press != null && L.leave != null) { const r = L.who.r, m = L.leave - L.press; if (m > 0.03 && m < 0.6) r.rollEst = r.rollEst ? r.rollEst * 0.6 + m * 0.4 : m; }
+    const close = run.margin != null && run.margin < 0.05;
+    crowd(close ? 'roar' : 'cheer', close ? 1 : 0.7);
+    if (win) announce(`${run.lanes.length > 1 ? 'Win light, ' + (win.side === 'L' ? 'left' : 'right') + ' lane. ' : ''}${laneName(win)}${win.et != null ? `, ${win.et.toFixed(3)} at ${win.mph.toFixed(1)}` : ''}${close ? '. Holeshot!' : ''}`);
+    else announce(run.lanes.length > 1 ? 'No winner on that one.' : '');
+    ybEvent('result', { win: win && win.side, lanes: run.lanes.map(L => ({ side: L.side, kind: L.kind, rt: L.rt, et: L.et, mph: L.mph, red: L.red, dq: L.dq })) });
+    if (run.kind === 'me') meResult(run);
+  }
+  const laneName = L => L.kind === 'me' ? (S.name || 'You') : L.who.r.name;
+
+  // ---------- the tower: an announcer on the PA (the phone's speech voice) and the crowd ----------
+  function announce(text) {
+    if (!text || !R.ann || !worldOn || inside || !('speechSynthesis' in window)) return;
+    const c = camera.position; if (Math.hypot(c.x - YB.TX, c.z - 1000) > 520) return;
+    try { const u = new SpeechSynthesisUtterance(text); u.rate = 1.12; u.pitch = 0.85; u.volume = 0.8; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) {}
+  }
+  function crowd(kind, k) {
+    const A = YB.amb, ac = audioCtx(); if (!A || !ac || ac.state !== 'running') return;
+    const t = ac.currentTime, g = A.cheer.gain, f = A.cheerF.frequency, pk = (kind === 'roar' ? 0.5 : kind === 'ooh' ? 0.22 : 0.32) * k;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(pk, t + (kind === 'ooh' ? 0.25 : 0.4)); g.setTargetAtTime(0, t + (kind === 'roar' ? 2.4 : 1.3), 0.7);
+    f.cancelScheduledValues(t); f.setValueAtTime(kind === 'ooh' ? 420 : 900, t); f.linearRampToValueAtTime(kind === 'ooh' ? 300 : 1250, t + 1.2);
+  }
+
+  // ---------- the AI pairs that run while you're around (and your opponent) ----------
+  const LANE_HEAD = { 1: [YB.LANES[0] - 11.4, 1146], 3: [7067.5, 1146], 4: [7078.5, 1146] };
+  function freeRacers(n) { const busy = new Set(R.ags.filter(A => !A.dead).map(A => A.r)); const pool = STREET3D.filter(r => !busy.has(r)); const out = []; while (out.length < n && pool.length) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]); return out; }
+  function aiLane(A, side, run) { const L = mkLane('ai', side, A); L.fA = A.fA; L.c = halfChord(A.rT); L.Ap = A.z - A.fA; A.lane = L; A.run = run; return L; }
+  function callAi(A, side, head) { A.path = PATHS.in(head[0], side); A.pi = 0; A.vMax = 3.4; A.ph = 'call'; A.track = false; }
+  function startFill() {   // two regulars from the lanes: line up, burn out, race, and back to the pits
+    const [ra, rb] = freeRacers(2); if (!ra || !rb) return;
+    const A = agSpawn(ra, ...LANE_HEAD[1], 0), B = agSpawn(rb, ...LANE_HEAD[4], 0);
+    const run = newRun('ai', [], {}); run.lanes = [aiLane(A, 'L', run), aiLane(B, 'R', run)];
+    callAi(A, 'L', LANE_HEAD[1]); callAi(B, 'R', LANE_HEAD[4]); R.run = run;
+    announce(`Next pair. Left lane, ${ra.name} in the ${carLabel(carOf(ra.id))}. Right lane, ${rb.name}.`);
+  }
+  const trackClear = () => !R.ags.some(A => !A.dead && (A.track || A.ph === 'call'));
+  function aiStep(dt) {
+    for (const A of R.ags) if (!A.dead) try { agStep(A, dt); } catch (e) { console.warn('yello belly ai: ' + e.message, e); agKill(A); }
+    R.ags = R.ags.filter(A => !A.dead);
+    // keep the place busy while you're around: a fresh pair once the track's clear
+    const near = Math.hypot(camera.position.x - YB.TX, camera.position.z - 900) < 520;
+    if (!near) { for (const A of R.ags) if (A.ph === 'line' || A.ph === 'park') agKill(A); return; }
+    if (!R.run && !R.next && !R.on && trackClear()) { R.fillT -= dt; if (R.fillT <= 0) { R.fillT = 10 + Math.random() * 14; startFill(); } }
+  }
+
+  // ---------- you: the HUD, the race panel, getting called up, your run ----------
   function ybHud() {
     if (R.el) return R.el;
     const el = R.el = document.createElement('div'); el.id = 'ybhud'; el.hidden = true;
     el.innerHTML = `<style>body.yb-on :is(#card,#radio,#prompt,#walkhint){display:none!important}
       #ybhud{position:fixed;inset:0;pointer-events:none;z-index:24;font-family:"Barlow Condensed","Arial Narrow",sans-serif;color:#f1ece4}
       #ybhud .hud{position:absolute;top:calc(env(safe-area-inset-top,0px) + 34px);left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:stretch}
-      #ybhud .hud>div{background:rgba(18,16,22,.82);border:1px solid #3a3244;border-radius:10px;padding:2px 10px;text-align:center;min-width:58px}
-      #ybhud .hud b{display:block;font-size:21px;line-height:1.1}#ybhud .hud span{font-size:11px;letter-spacing:.08em;color:#a89fb2;text-transform:uppercase}
+      #ybhud .hud>div{background:rgba(18,16,22,.82);border:1px solid #3a3244;border-radius:10px;padding:2px 10px;text-align:center;min-width:54px}
+      #ybhud .hud b{display:block;font-size:21px;line-height:1.1;font-variant-numeric:tabular-nums}#ybhud .hud span{font-size:11px;letter-spacing:.08em;color:#a89fb2;text-transform:uppercase}
       #ybhud .tree{display:grid;grid-template-columns:repeat(7,9px);gap:3px 4px;align-content:center;padding:4px 8px!important}
       #ybhud .tree i{width:9px;height:9px;border-radius:50%;background:#2a2a2e;display:block}
       #ybhud .msg{position:absolute;top:30%;left:0;right:0;text-align:center;font-family:Bungee,Impact,sans-serif;font-size:clamp(26px,7vw,58px);text-shadow:0 4px 18px #000}
@@ -18547,11 +18891,11 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       #ybhud .side{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:42%;display:flex;flex-direction:column;gap:8px;pointer-events:auto}
       #ybhud .side button{background:rgba(18,16,22,.85);color:#f1ece4;border:1px solid #3a3244;border-radius:10px;padding:8px 12px;font:700 15px "Barlow Condensed",sans-serif}
       #ybhud .side button[aria-pressed=true]{background:#ffd23a;color:#141414;border-color:#ffd23a}
-      #ybhud .slip{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(330px,90vw);max-height:84vh;overflow:auto;background:#f6f2e6;color:#141414;border-radius:6px;padding:12px 14px;font:14px ui-monospace,Menlo,monospace;pointer-events:auto;box-shadow:0 10px 40px #000}
-      #ybhud .slip h3{margin:0 0 6px;font:700 19px "Barlow Condensed",sans-serif;text-align:center}#ybhud .slip table{width:100%;border-collapse:collapse}#ybhud .slip td{padding:1px 0}#ybhud .slip td+td,#ybhud .slip th+th{text-align:right}#ybhud .slip th{font:700 13px "Barlow Condensed",sans-serif;text-align:left;border-bottom:1px solid #c8c0a8}
-      #ybhud .slip .hint{font:600 14px "Barlow Condensed",sans-serif;margin:8px 0 0;padding:6px 8px;background:#ece5cf;border-radius:4px}#ybhud .slip .res{font:700 21px "Barlow Condensed",sans-serif;text-align:center;margin:8px 0}
-      #ybhud .slip button{width:100%;margin-top:7px;padding:9px;border-radius:8px;border:0;font:700 16px "Barlow Condensed",sans-serif;background:#141414;color:#f6f2e6}#ybhud .slip button+button{background:#d8d0b8;color:#141414}</style>
-      <div class="hud"><div><b data-k="mph">0</b><span>mph</span></div><div><b data-k="time">0.000</b><span data-k="tl">et</span></div><div><b data-k="go">—</b><span data-k="gol">to stage</span></div><div class="tree" data-k="tree"></div></div>
+      #ybhud .slip{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 84px);transform:translateX(-50%);width:min(340px,92vw);max-height:56vh;overflow:auto;background:#f6f2e6;color:#141414;border-radius:6px;padding:10px 12px;font:13px ui-monospace,Menlo,monospace;pointer-events:auto;box-shadow:0 10px 40px #000}
+      #ybhud .slip h3{margin:0 0 4px;font:700 18px "Barlow Condensed",sans-serif;text-align:center}#ybhud .slip .sm{font:600 12px "Barlow Condensed",sans-serif;text-align:center;color:#5a5448;margin-bottom:4px}#ybhud .slip table{width:100%;border-collapse:collapse}#ybhud .slip td{padding:1px 0}#ybhud .slip td+td,#ybhud .slip th+th{text-align:right}#ybhud .slip th{font:700 13px "Barlow Condensed",sans-serif;text-align:left;border-bottom:1px solid #c8c0a8}
+      #ybhud .slip .hint{font:600 14px "Barlow Condensed",sans-serif;margin:8px 0 0;padding:6px 8px;background:#ece5cf;border-radius:4px}#ybhud .slip .res{font:700 20px "Barlow Condensed",sans-serif;text-align:center;margin:6px 0}
+      #ybhud .slip button{width:100%;margin-top:6px;padding:8px;border-radius:8px;border:0;font:700 16px "Barlow Condensed",sans-serif;background:#141414;color:#f6f2e6}#ybhud .slip button+button{background:#d8d0b8;color:#141414}</style>
+      <div class="hud"><div><b data-k="mph">0</b><span>mph</span></div><div><b data-k="time">0.000</b><span data-k="tl">et</span></div><div><b data-k="go">—</b><span data-k="gol">to stage</span></div><div data-k="tirebox"><b data-k="tire">—</b><span>tires °F</span></div><div class="tree" data-k="tree"></div></div>
       <div class="msg" data-k="msg"></div><div class="sub" data-k="sub"></div>
       <div class="side"><button data-k="auto" aria-pressed="false">Auto stage</button><button data-k="leave">Leave the lanes</button></div><div class="slip" data-k="slip" hidden></div>`;
     document.body.appendChild(el);
@@ -18563,196 +18907,230 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   }
   const TREE_CSS = ['#fff6c8', '#fff6c8', '#ffa51a', '#ffa51a', '#ffa51a', '#1aff5a', '#ff2a1a'];
   function hudTree(litL, litR) { const d = R.q('tree').children; for (let i = 0; i < 7; i++) { d[i].style.background = litL.includes(i) ? TREE_CSS[i] : '#2a2a2e'; d[7 + i].style.background = litR.includes(i) ? TREE_CSS[i] : '#2a2a2e'; } }
-  function ybPlace(x, z) { Object.assign(drv, { x, z, yaw: 0, v: 0, steer: 0 }); physReset(); drv.px = x; drv.pz = z; drv.pv = 0; drv.camYaw = 0; drv.cam.set(x, 4.2, z + 11.5); WHEELIE.a = 0; }
-
+  const inLanes = (x, z) => x > 7036 && x < 7088 && z > 1132 && z < 1188;
+  // you pick a race in the panel: pay at the booth, then you're in line; the tower calls you when the track's yours
   function ybStart(p, opp, wager) {
     if (!S.car) return; if (!driving || foot.on) { toast(foot.on ? 'Get in your car first.' : 'Pull into the staging lanes in your car.', 'bad'); return; }
     if (S.car.fuel <= 0) { toast('No gas.', 'bad'); return; }
-    if (opp && wager && !spend(wager, `Yello Belly vs ${opp.name}`)) return; if (!opp && !spend(20, 'Test & tune at Yello Belly')) return;
-    closeMenu(); ybClear(); ybHud();
-    // you're called up: the car rolls onto the track behind the water box in the left lane, the racer beside you
-    const me = ybLane('me', YB.LANES[0]); ybPlace(me.x, me.z); me.fA = frontAxle(car && car.userData.model);
-    let ai = null;
-    if (opp) {
-      const c = racerCar(opp); ai = ybLane('ai', YB.LANES[1]); Object.assign(ai, { r: opp, c, P: perfOf(c), st: { v: 0, t: rollingTire(0) }, ph: 'box', rt0: opp.skill != null ? 0.02 + (1 - opp.skill) * 0.24 + Math.random() * 0.07 : 0.15 });
-      if (Math.random() < (1 - (opp.skill || 0.5)) * 0.07) ai.rt0 = -0.02 - Math.random() * 0.05;   // a racer can red-light too
-      ai.slot = putCar(scene, c.id, c.color, m => { m.position.y = 0; applyMotor(m, c); applyDrag(m, c); ai.m = m; ai.fA = frontAxle(m); });
-      ai.slot.position.set(ai.x, 0.12, ai.z);
-    }
-    Object.assign(R, { on: true, p, opp, wager, me, ai, lanes: ai ? [me, ai] : [me], st: 'box', t: 0, green: null, drop: null, gT: null, shown: false, heat: R.heat || 0, auto: R.auto || false, burnT: 0, spinT: 0, maxW: 0, end: 0, prevS: 0, events: [] });
-    if (HR.on) hrClose('left'); YB.leaveFn = null; R.q('tree').style.display = ''; R.q('tl').textContent = 'et'; R.q('leave').textContent = 'Leave the lanes'; R.q('gol').textContent = 'to stage';
-    R.el.hidden = false; document.body.classList.add('yb-on'); R.q('slip').hidden = true; R.q('auto').hidden = false; R.q('leave').hidden = false; R.q('auto').setAttribute('aria-pressed', R.auto);
-    R.q('msg').textContent = opp ? `vs ${opp.name}` : 'Test & tune';
-    R.q('sub').textContent = 'Roll into the water box and spin them to heat the tires, or just roll through. Then creep up and stage.';
-    ybTree('L', []); ybTree('R', []); hudTree([], []); ybEvent('start', { opp: opp && opp.name, dist: R.dist });
+    if (opp && opp.need > S.rep) { toast(`${opp.name} wants ${opp.need} rep before they'll run you.`, 'bad'); return; }
+    if (opp && R.ags.some(A => A.r === opp && !A.dead && A.ph !== 'park')) { toast(`${opp.name} is out on the track. Pick somebody else or wait.`, 'bad'); return; }
+    const fee = opp ? wager : YB_FEE; if (!spend(fee, opp ? `Yello Belly vs ${opp.name}` : 'Test & tune at Yello Belly')) return;
+    panelClose(); closeMenu(); showCard(null); ybHud();
+    if (HR.on) hrClose('left'); YB.leaveFn = null;
+    const side = R.lane, me = mkLane('me', side, null); me.fA = frontAxle(car && car.userData.model); { const P = carPerf(); me.c = halfChord(P.veh && P.veh.R ? P.veh.R[0] : 0.34); }
+    me.Ap = drv.z - me.fA;
+    Object.assign(R, { on: true, p, opp, wager: opp ? wager : 0, fee, me, ph: 'wait', ai: null, called: false, again: null, shown: false, slipT: 0, pb: false });
+    const q = R.q; R.el.hidden = false; document.body.classList.add('yb-on'); q('slip').hidden = true; q('auto').hidden = false; q('leave').hidden = false; q('auto').setAttribute('aria-pressed', R.auto);
+    q('tree').style.display = ''; q('tirebox').style.display = ''; q('tl').textContent = 'et'; q('leave').textContent = 'Leave the lanes'; q('gol').textContent = 'to stage';
+    q('msg').textContent = opp ? `vs ${opp.name}` : 'Test & tune'; q('sub').textContent = 'Hold here in the lanes till the tower calls you up.';
+    R.next = { opp, side };
+    ybEvent('queue', { opp: opp && opp.name, side });
   }
-  function ybClear(keep) { if (YB.home) { YB.home.slot.userData.dead = true; scene.remove(YB.home.slot); YB.home = null; } if (R.ai && R.ai.slot) { if (keep && R.ai.ph === 'home') YB.home = R.ai; else { R.ai.slot.userData.dead = true; scene.remove(R.ai.slot); } } R.ai = null; if (window.__drvIn === ybAutoIn) window.__drvIn = null; }
+  // the tower calls you: your opponent pulls out of the far lane, the track's yours
+  function callMe() {
+    const n = R.next; R.next = null; const me = R.me, q = R.q; R.ph = 'call'; R.called = true;
+    const run = newRun('me', [me], {}); R.run = run; me.Ap = drv.z - me.fA;
+    if (n.opp) { const head = n.side === 'L' ? LANE_HEAD[3] : LANE_HEAD[1], A = agSpawn(n.opp, head[0], head[1], 0); run.lanes.push(aiLane(A, n.side === 'L' ? 'R' : 'L', run)); callAi(A, n.side === 'L' ? 'R' : 'L', head); R.ai = A; }
+    q('msg').textContent = 'YOU\'RE UP'; q('sub').textContent = `Pull onto the track in the ${n.side === 'L' ? 'LEFT' : 'RIGHT'} lane. Roll into the water box and do your burnout, or roll on through.`;
+    announce(`${n.opp ? `${S.name || 'You'} versus ${n.opp.name}. ` : 'Test and tune. '}${S.name || 'Driver'}, ${n.side === 'L' ? 'left' : 'right'} lane, ${carLabel(carOf(S.car.id))}.`);
+    ybEvent('call', { side: n.side });
+  }
   function ybClose(why) {
-    if (!R.on) return; R.on = false; ybClear(why === 'drive'); if (R.el) R.el.hidden = true; document.body.classList.remove('yb-on'); ybTree('L', []); ybTree('R', []);
+    if (!R.on) return; const run = R.run;
+    // nobody launched yet: the fee comes back, your opponent goes back to the pits
+    const launched = R.me && R.me.leave != null;
+    if (!launched && why === 'left' && R.fee) { earn(R.fee, 'Yello Belly refund'); }
+    if (R.ai && !R.ai.dead && R.ai.track && R.ai.ph !== 'shut' && R.ai.ph !== 'go') { const A = R.ai; A.run = null; A.lane = null; A.ph = 'cruise'; }
+    else if (R.ai && R.ai.ph === 'call') { const A = R.ai; A.run = null; A.lane = null; A.ph = 'ret'; A.path = PATHS.ret().slice(3); A.pi = 0; A.vMax = 3; }
+    if (run && run.kind === 'me') R.run = null; R.next = null;
+    R.on = false; R.ai = null; R.me = null; if (window.__drvIn === ybAutoIn) window.__drvIn = null;
+    if (R.el) R.el.hidden = true; document.body.classList.remove('yb-on'); ybTree('L', []); ybTree('R', []);
     ybEvent('end', { why });
   }
-  // a hook for later: an online race would send these to the other lane's player
-  function ybEvent(type, data) { (R.events = R.events || []).push([R.t, type, data]); if (R.events.length > 60) R.events.shift(); if (YB.onEvent) try { YB.onEvent(type, data); } catch (e) {} }
-  // auto stage: a light foot on the gas to creep, the brake once you're in; your own gas still wins (so you can red-light yourself)
+  // auto stage: a light foot to creep, nothing on the pedals once you're in (the car holds itself); your own gas still wins
   function ybAutoIn() {
-    const I = input(), me = R.me; if (!R.on || !me) return I;
-    if ((I.gas || 0) > 0.2 || R.st === 'run' || R.st === 'done') return I;
-    if (R.st !== 'stage' && R.st !== 'tree' && R.st !== 'box') return I;
-    const fz = drv.z - me.fA, to = fz - (YB.SL + 0.05);
-    // (stopped with no pedals the car holds itself; pressing the brake at a standstill would put it in reverse)
-    const vT = clamp(to * 0.3, 0.3, 2.4);
-    if (to > 0.02 && !me.staged) return { gas: drv.v < vT - 0.1 ? 0.12 : 0, brake: drv.v > vT + 0.35 ? clamp((drv.v - vT) * 0.3, 0.1, 0.8) : 0, steer: I.steer, hb: 0 };
-    return { gas: 0, brake: drv.v > 0.25 ? 0.8 : 0, steer: I.steer, hb: 0 };
+    const I = input(), me = R.me, run = R.run; if (!R.on || !me || !run || run.kind !== 'me') return I;
+    if ((I.gas || 0) > 0.2 || me.leave != null || run.st === 'done') return I;
+    const ax = drv.z - me.fA, v = drv.v, other = run.lanes.find(o => o !== me);
+    const tgt = !me.pre && !me.stg ? YB.SL + 0.33 : (!other || other.pre || other.stg) ? YB.SL + 0.13 : YB.SL + 0.33, d = ax - tgt;
+    // a stopping profile (about 1 m/s² of braking) down to a crawl, then a crawl into the beams; the brake always rides with a
+    // hair of gas so the gearbox never reads it as "reverse", and at a crawl the feet come off and the car holds itself
+    const go = d > 0.02 && !(me.stg && me.pre && tgt < YB.SL + 0.2), vT = go ? clamp(Math.sqrt(2 * 1.0 * d), 0.15, 2.4) : 0;
+    let gas = v < vT - 0.05 ? clamp((vT - v) * 0.3 + 0.07, 0, 0.18) : 0, brake = v > vT + 0.1 ? clamp((v - vT) * 0.6 + 0.2, 0.2, 0.9) : 0;
+    if (brake > 0) gas = Math.max(gas, 0.011); if (!go && v < 0.24) gas = brake = 0;
+    return { gas, brake, steer: I.steer, hb: 0 };
   }
-  // when a lane's front tire crosses a mark between two frames: interpolate the time
-  const xT = (t0, s0, t1, s1, d) => s1 === s0 ? t1 : t0 + (t1 - t0) * clamp((d - s0) / (s1 - s0), 0, 1);
-  function laneTiming(L, t0, s0, t1, s1, v) {
-    if (L.leave == null || L.done != null) return;
-    for (const [d, name] of YB_SPLITS) if (d <= R.dist + 0.01 && L.split[name] == null && s1 >= d) L.split[name] = { t: xT(t0, s0, t1, s1, d) - L.leave, v };
-    if (L.trapIn == null && s1 >= R.dist - TRAP) L.trapIn = xT(t0, s0, t1, s1, R.dist - TRAP);
-    if (s1 >= R.dist) { const tf = xT(t0, s0, t1, s1, R.dist); L.done = tf; L.et = tf - L.leave; L.mph = L.trapIn != null && tf > L.trapIn ? TRAP / (tf - L.trapIn) * 2.237 : v * 2.237; ybEvent('finish', { lane: L.kind, et: L.et, mph: L.mph }); }
+  // the timing tap: every physics substep of your car, the front axle's travel through the beams
+  function meTap(h, nx, nz) {
+    const L = R.me, t0 = R.t + R.acc; R.acc += h; if (!L) return;
+    const A1 = nz - L.fA; if (R.run && R.run.kind === 'me' && R.run.lanes.includes(L)) crossing(R.run, L, L.Ap, A1, t0, R.t + R.acc, -TIRE.vz); L.Ap = A1;
   }
-  function beams(L) { const fz = L.z - L.fA; L.fz = fz; L.pre = fz <= YB.SL + BEAM.pre + 0.1 && fz >= YB.SL - BEAM.out; L.staged = fz <= YB.SL + 0.1 && fz >= YB.SL - BEAM.out; return fz; }
-  function treeLit(L) {
-    const lit = []; if (L.pre) lit.push(0); if (L.staged) lit.push(1);
-    if (R.drop != null && R.t >= R.drop) { if (R.t < R.gT) lit.push(2, 3, 4); else if (!L.red) lit.push(5); }
-    if (L.red) lit.push(6); return lit;
-  }
-  // the racer: rolls into the box, smokes them, pulls up, stages a beat after you, leaves on their reaction time and pedals it
-  function stepAi(A, dt, me) {
-    const hb = A.ph === 'box' || A.ph === 'burn' || A.ph === 'pull' || A.ph === 'pre' || A.ph === 'stage';
-    if (A.ph === 'box') { A.z -= 4 * dt; if (A.z - A.fA <= (YB.water.z0 + YB.water.z1) / 2) { A.ph = 'burn'; A.bt = 0; } }
-    else if (A.ph === 'burn') { A.bt += dt; if (A.m) { spinWheels(A.m, 30 * dt); if (Math.random() < dt * 30) puff(A.x + (Math.random() - 0.5) * 1.6, 0.4, A.z + 1.6, 0, 2, 1); } if (A.bt > 2.4) A.ph = 'pull'; }
-    else if (A.ph === 'pull') { const to = A.z - A.fA - (YB.SL + 1.2); A.z -= Math.min(to, 3.2 * dt); if (to <= 0.01) A.ph = 'pre'; }
-    else if (A.ph === 'pre') { const to = A.z - A.fA - (YB.SL + BEAM.pre); A.z -= Math.min(to, 0.5 * dt); if (to <= 0.01 && me.pre) A.ph = 'stage'; }
-    else if (A.ph === 'stage') { const to = A.z - A.fA - (YB.SL + 0.02); if ((A.waitS = (A.waitS || 0) + dt) > 0.6) A.z -= Math.min(to, 0.25 * dt); }
-    if (hb) { if (A.slot) { if (A.m && A.ph !== 'burn') spinWheels(A.m, A.lastZ != null ? A.lastZ - A.z : 0); A.lastZ = A.z; A.slot.position.set(A.x, 0.12, A.z); } return; }
-    if (A.ph === 'go' || A.ph === 'shut') {
-      const since = R.gT != null ? R.t - R.gT : -1, n = Math.max(1, Math.ceil(dt / (1 / 240))), k = dt / n;
-      const spin = A.st.t.spin > 0.5, skill = A.r.skill || 0.5, gas = A.ph === 'shut' ? 0 : since < A.rt0 ? 0 : spin ? 1 - 0.45 * skill : 1;
-      const I = { gas, brake: A.ph === 'shut' ? 0.55 : 0, steer: 0, hb: 0 };
-      SURF.prep = 1; SURF.mu = 1.05;
-      for (let i = 0; i < n; i++) {
-        const t0 = R.t - dt + i * k, s0 = YB.SL - (A.z - A.fA);
-        physAs(A.st, I, A.P, k); A.st.v = Math.max(0, A.st.v); A.z -= A.st.v * k;
-        const s1 = YB.SL - (A.z - A.fA);
-        if (A.leave == null && s1 > BEAM.out) { A.leave = xT(t0, s0, t0 + k, s1, BEAM.out); A.rt = A.leave - R.gT; if (A.rt < 0) A.red = true; }
-        laneTiming(A, t0, s0, t0 + k, s1, A.st.v);
+  function meStep(dt) {
+    const me = R.me, q = R.q, run = R.run && R.run.kind === 'me' ? R.run : null;
+    const fz = drv.z - me.fA, onTrack = drv.x > YB.track.x0 && drv.x < YB.track.x1 && drv.z < YB.track.z1 + 1 && drv.z > YB.track.z0;
+    // waiting in line: the tower calls you once the pair ahead is gone (or right away)
+    if (R.ph === 'wait') {
+      if (R.next && (!R.run || (R.run.kind === 'ai' && R.run.st === 'done'))) { R.run = null; callMe(); }
+      else q('sub').textContent = 'There\'s a pair on the track. Hold here in the lanes, you\'re next.';
+    }
+    if (!driving || foot.on) { if (R.ph !== 'done') return ybClose('left'); }
+    // way off from the strip before your run: it's off
+    if (R.ph !== 'done' && !inLanes(drv.x, drv.z) && !onTrack && Math.hypot(drv.x - 7060, drv.z - 1150) > 120) { toast('You left the strip. Race called off, fee refunded.', 'bad'); return ybClose('left'); }
+    if (run) {
+      // into the lane: the right one, or the lanes get swapped if your opponent isn't out there yet
+      if (R.ph === 'call' && onTrack && drv.z < YB.track.z1 - 1) {
+        const side = drv.x < YB.TX ? 'L' : 'R';
+        if (side !== me.side) { const o = run.lanes.find(L => L !== me); if (!o || !o.who.track) { me.side = side; me.lx = laneX(side); if (o) { o.side = side === 'L' ? 'R' : 'L'; o.lx = laneX(o.side); o.who.path = PATHS.in(o.who.path ? o.who.path[0][0] : 7067.5, o.side); o.who.pi = 0; } } else { q('sub').textContent = `Wrong lane. ${o.who.r.name} has the ${side === 'L' ? 'left' : 'right'}. Back up and take the other one.`; } }
+        if (side === me.side) { R.ph = 'box'; q('msg').textContent = ''; q('sub').textContent = R.burnHint(); }
       }
-      SURF.prep = 0; SURF.mu = 1;
-      if (A.done != null && A.ph === 'go') A.ph = 'shut';
-      if (A.ph === 'shut' && A.st.v < 6) { A.ph = 'home'; A.path = [[A.x, 336], [7091, 330], [7091, 1180]]; A.v = A.st.v; }
-      if (A.m) { spinWheels(A.m, A.st.v * dt); A.m.rotation.x += (clamp(A.st.t.ax * 0.0045, -0.05, 0.05) - A.m.rotation.x) * Math.min(1, dt * 7); }
-      if (A.slot) A.slot.position.set(A.x, 0.12, A.z);
-      return;
-    }
-    if (A.ph === 'home' && A.slot) {   // turn off at the top end and come back down the return road, then they're gone
-      const tgt = A.path[0], dx = tgt[0] - A.x, dz = tgt[1] - A.z, d = Math.hypot(dx, dz); A.v = Math.min(11, A.v + dt * 2);
-      if (d < 3) { A.path.shift(); if (!A.path.length) { A.slot.visible = false; A.ph = 'gone'; return; } }
-      const yaw = Math.atan2(-dx, -dz); let dy = yaw - A.slot.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); A.slot.rotation.y += dy * Math.min(1, dt * 2.5);
-      A.x -= Math.sin(A.slot.rotation.y) * A.v * dt; A.z -= Math.cos(A.slot.rotation.y) * A.v * dt; A.slot.position.set(A.x, 0.12, A.z); if (A.m) spinWheels(A.m, A.v * dt);
-    }
-  }
-  function ybStep(dt) {
-    if (!R.on) return;
-    const me = R.me, ai = R.ai, q = R.q; R.t += dt;
-    me.x = drv.x; me.z = drv.z; me.v = Math.max(0, drv.v);
-    const s1 = YB.SL - (drv.z - me.fA), s0 = R.prevS; R.prevS = s1;
-    if (R.st !== 'run' && R.st !== 'done') beams(me);
-    if (ai && R.st !== 'run' && R.st !== 'done') beams(ai);
-    // the water box: spin them and they heat (a little more grip off the line, it cools off in a minute and a half)
-    const inBox = Math.abs(drv.x - me.x) < 1 && drv.z - me.fA < YB.water.z1 + 1 && drv.z + me.fA > YB.water.z0 - 1 && drv.x > YB.track.x0 && drv.x < YB.track.x1;
-    if (inBox && TIRE.spin > 0.5) { R.burnT += dt; R.heat = Math.min(1, R.heat + dt / 2.5); } else R.heat = Math.max(0, R.heat - dt / 90);
-    if (window.__drvIn == null && R.auto && (R.st === 'box' || R.st === 'stage' || R.st === 'tree')) window.__drvIn = ybAutoIn; else if (window.__drvIn === ybAutoIn && (!R.auto || R.st === 'run' || R.st === 'done')) window.__drvIn = null;
-    if (ai) stepAi(ai, dt, me);
-    if (R.st === 'box') {
-      if (drv.z - me.fA < YB.SL + 4) { R.st = 'stage'; q('sub').textContent = R.burnT > 0.6 ? 'Tires are hot. Creep up: light pre-stage, then stage. Hold the brake.' : 'Creep up: light pre-stage, then stage. Hold the brake.'; q('msg').textContent = ''; }
-    }
-    if (R.st === 'stage') {
-      const both = me.staged && (!ai || ai.staged);
-      if (both) { R.st = 'tree'; R.drop = R.t + 0.7 + Math.random() * 1.1; R.gT = R.drop + 0.4; q('sub').textContent = ''; q('msg').textContent = ''; ybEvent('staged', {}); }
-      if (s1 > BEAM.out + 0.05) { me.red = true; me.dq = 'Rolled through the beams before the tree came down'; me.leave = R.t; return ybEnd(); }
-    }
-    if (R.st === 'tree') {
-      if (!me.staged && s1 < 0 && R.t < R.drop) { R.st = 'stage'; R.drop = R.gT = null; }   // backed out of it before the ambers: stage again
-      else {
-        if (R.green == null && R.t >= R.gT) { R.green = R.gT; ybEvent('green', {}); }
-        if (s1 > BEAM.out) {   // you left: before the green it's red
-          me.leave = xT(R.t - dt, s0, R.t, s1, BEAM.out); me.rt = me.leave - R.gT; if (me.rt < 0) { me.red = true; me.rt = Math.max(-0.999, me.rt); }
-          R.st = 'run'; q('auto').hidden = true; q('leave').hidden = true; ybEvent('leave', { lane: 'me', rt: me.rt });
-        }
+      // burnout: the rear tires spinning in (or just out of) the water box
+      const rz = drv.z + (car && car.userData.model ? rearAxle(car.userData.model) : 1.4), wetRear = rz > YB.water.z0 - 3 && rz < YB.water.z1 + 1;
+      if (wetRear && TIRE.slipR > 5) { me.burnT += dt; if (me.burnT > 0.5 && !R.burnSaid) { R.burnSaid = true; crowd('cheer', 0.35); } }
+      if ((R.ph === 'box') && fz < YB.SL + 6) { R.ph = 'stage'; q('sub').textContent = me.burnT > 0.6 ? `Tires are ${tF(me.tMax)}°F. Creep in: pre-stage, then stage. Nothing on the pedals once you're in.` : 'Creep in: pre-stage bulb, then the stage bulb. Nothing on the pedals once you\'re in.'; }
+      if (R.ph === 'stage' && me.leave != null) { R.ph = 'run'; q('auto').hidden = true; q('leave').hidden = true; }
+      if (R.ph === 'stage' || R.ph === 'box') {
+        if (me.deep) q('sub').textContent = 'Too deep: the pre-stage bulb went out. Back it up an inch.';
+        else if (run.toT != null && !me.stg) q('sub').textContent = `Stage it: ${Math.max(0, Math.ceil(STAGE_TIMEOUT - (R.t - run.toT)))}`;
+        else if (me.pre && me.stg && run.st === 'stage') q('sub').textContent = run.lanes.length > 1 && !run.lanes.every(L => L.stg) ? 'Staged. Waiting on the other lane.' : 'Staged. Watch the tree.';
       }
+      if (window.__drvIn == null && R.auto && (R.ph === 'stage' || R.ph === 'box')) window.__drvIn = ybAutoIn; else if (window.__drvIn === ybAutoIn && (!R.auto || me.leave != null)) window.__drvIn = null;
+      if (run.st === 'tree' && run.gT != null && R.t >= run.gT && me.leave == null && !me.red) q('msg').textContent = 'GO';
+      if (me.leave != null && R.t - me.leave > 0.6 && me.done == null) q('msg').textContent = me.red ? 'RED LIGHT' : '';
+      if (me.done != null && !R.doneSaid) { R.doneSaid = true; q('sub').textContent = 'Off the gas, brake easy. Turn off at the top end and come back down the return road.'; }
+      // the slip: when you've slowed down after the finish (or it's over)
+      if (run.st === 'done' && !R.shown && (Math.abs(drv.v) < 9 || R.t - run.endT > 6 || me.red || me.dq)) showSlip(run);
+      hudTree(run.litL || [], run.litR || []);
     }
-    if (ai && ai.ph === 'stage' && R.gT != null && R.t >= R.gT + ai.rt0) ai.ph = 'go';
-    if (R.st === 'run' || R.st === 'done') {
-      laneTiming(me, R.t - dt, s0, R.t, s1, me.v);
-      if (me.done == null) { if (TIRE.spin > 0.5 && s1 < 201) R.spinT += dt; R.maxW = Math.max(R.maxW, WHEELIE.a || 0); }
-      // the rules: stay in your lane (the centre line is a DQ), off the wall
-      if (me.done == null && !me.dq) { if (drv.x > YB.TX - 0.95) me.dq = 'Crossed the centre line'; else if (drv.hitting) me.dq = 'Hit the wall'; }
-      if (me.dq && R.st === 'run') { R.st = 'done'; R.end = R.t; }
-      if (me.done != null && R.st === 'run') { R.st = 'done'; R.end = R.t; }
-      if (R.st === 'done' && !R.shown && (R.t - R.end > 1.2 || (!ai || ai.done != null || ai.ph === 'gone') && R.t - R.end > 0.4)) ybEnd();
-      if (R.st === 'run' && ai && ai.done != null && R.t - ai.done > 8) { me.dq = me.dq || 'Never made it to the stripe'; R.st = 'done'; R.end = R.t; }
-    }
-    // the trees, the HUD
-    const lL = treeLit(me), lR = ai ? treeLit(ai) : [];
-    ybTree('L', lL); ybTree('R', lR); hudTree(lL, lR);
-    q('mph').textContent = Math.round(me.v * 2.237);
+    // back in the lanes after a run and you want another: the tower calls you again
+    if (R.ph === 'done' && R.again && inLanes(drv.x, drv.z) && Math.abs(drv.v) < 2.5) { const a = R.again; ybClose('again'); ybStart(R.p0, a.opp, a.wager); }
+    // the HUD numbers
+    q('mph').textContent = Math.round(Math.abs(drv.v) * 2.237);
     q('time').textContent = me.done != null ? me.et.toFixed(3) : me.leave != null ? Math.max(0, R.t - me.leave).toFixed(3) : '0.000';
-    if (me.leave == null) { const inch = (drv.z - me.fA - YB.SL) * 39.37; q('go').textContent = me.staged ? 'STAGED' : me.pre ? `${Math.round(inch)} in` : inch < 600 ? `${Math.round(inch / 12)} ft` : '—'; q('gol').textContent = 'to stage'; }
-    else { q('go').textContent = Math.max(0, Math.round((R.dist - s1) * 3.281)) + ' ft'; q('gol').textContent = 'to go'; }
-    if (R.st === 'tree' && R.green != null && me.leave == null) q('msg').textContent = 'GO';
-    if (R.st === 'run' && R.t - (me.leave || 0) > 0.6) q('msg').textContent = me.red ? 'RED LIGHT' : '';
+    const vd = TIRE.vd; q('tire').textContent = vd && vd.tT ? tF(Math.max(vd.tT[2], vd.tT[3])) : '—';
+    if (me.leave == null) { const inch = (fz - YB.SL) * 39.37; q('go').textContent = me.deep ? 'DEEP' : me.stg && me.pre ? 'STAGED' : me.pre ? 'PRE' : inch < 600 && inch > 0 ? `${Math.round(inch / 12)} ft` : '—'; q('gol').textContent = 'to stage'; }
+    else { q('go').textContent = me.done != null ? '—' : Math.max(0, Math.round((R.run ? R.run.dist : R.dist) * 3.281 - (YB.SL - fz) * 3.281)) + ' ft'; q('gol').textContent = 'to go'; }
   }
-  function ybEnd() {
-    if (R.shown) return; R.shown = true; R.st = 'done'; const me = R.me, ai = R.ai, opp = R.opp, q = R.q; if (window.__drvIn === ybAutoIn) window.__drvIn = null;
-    q('auto').hidden = true; q('leave').hidden = true;
-    // who won: a red light or a DQ loses (both red: the first one red loses), then whoever got to the stripe first (reaction plus ET)
-    const pk = L => L.done != null ? L.done : Infinity;
-    let won = false, why = '';
-    if (!opp) won = false;
-    else if (me.red && ai.red) won = me.rt > ai.rt, why = 'Both red.';
-    else if (me.red || me.dq) won = false;
-    else if (ai.red) won = true, why = `${opp.name} red-lit.`;
-    else won = pk(me) < pk(ai);
-    let res = '', rep = 0, cash = 0;
-    if (!opp) res = me.red ? 'Red light' : me.dq ? me.dq : 'Test pass';
-    else if (won) { rep = opp.rep; cash = R.wager * 2; res = why ? `You win · ${why}` : `You win by ${(pk(ai) - pk(me)).toFixed(3)}`; }
-    else res = me.red ? `Red light. ${opp.name} takes it.` : me.dq ? `${me.dq}. ${opp.name} takes it.` : `${opp.name} by ${(pk(me) - pk(ai)).toFixed(3)}`;
-    if (rep) { S.rep += rep; earn(cash, `Yello Belly win vs ${opp.name}`); }
-    const key = R.dist < 300 ? 'e' : 'q'; S.ybBest = S.ybBest || {}; let pb = false;
-    if (!me.red && !me.dq && me.et != null) { const b = S.ybBest[key]; if (!b || me.et < b.et) { S.ybBest[key] = { et: me.et, mph: me.mph }; pb = true; if (!opp) { S.rep += 1; rep = 1; } } }
-    S.ybRuns = (S.ybRuns || 0) + 1; save(); refreshStats();
-    // the boards past the finish
-    YB.boards.forEach(b => { const L = b.side === 'L' ? me : ai; if (L && L.et != null && !L.red) ybBoard(b, { et: L.et, mph: L.mph, win: b.side === 'L' ? won : !won }); else ybBoard(b, null); });
-    q('msg').textContent = me.red ? 'RED LIGHT' : won ? 'WIN' : opp ? '' : '';
-    const sp = (L, n) => L && L.split[n] ? L.split[n].t.toFixed(3) : '—', mp = (L, n) => L && L.split[n] ? (n === (R.dist < 300 ? '1/8 mile' : '1/4 mile') && L.mph ? L.mph : L.split[n].v * 2.237).toFixed(2) : '—';
-    const row = (a, b, c) => `<tr><td>${a}</td><td>${b}</td>${opp ? `<td>${c}</td>` : ''}</tr>`;
-    const rows = [['R/T', me.rt != null ? me.rt.toFixed(3) : '—', ai && ai.rt != null ? ai.rt.toFixed(3) : '—'], ['60 ft', sp(me, '60 ft'), sp(ai, '60 ft')], ['330 ft', sp(me, '330 ft'), sp(ai, '330 ft')], ['1/8 ET', sp(me, '1/8 mile'), sp(ai, '1/8 mile')], ['1/8 MPH', mp(me, '1/8 mile'), mp(ai, '1/8 mile')]];
-    if (R.dist > 300) rows.push(['1000 ft', sp(me, '1000 ft'), sp(ai, '1000 ft')], ['1/4 ET', sp(me, '1/4 mile'), sp(ai, '1/4 mile')], ['1/4 MPH', mp(me, '1/4 mile'), mp(ai, '1/4 mile')]);
-    const k = dragPack(S.car);
-    const hint = me.red ? 'You left before the green. Wait for it: the three ambers come on together, green is 0.4 later.' : me.dq ? (me.dq.startsWith('Crossed') ? 'Keep it straight: steer small on the hit, the car moves when it hooks.' : '') : R.spinT > 0.25 ? `The tires spun for ${R.spinT.toFixed(2)}s. ${R.burnT < 0.5 ? 'Do a burnout in the water box first. ' : ''}${k ? 'Soften the rear, drop the rear pressure or add traction bars on the tuning laptop.' : 'A drag pack would hook it.'}` : R.maxW > 0.1 ? `Big wheelie (${Math.round(R.maxW * 57.3)}°) cost you. Stiffen the front shock extension or bolt on wheelie bars.` : me.rt != null && me.rt > 0.45 ? `Late on the tree (${me.rt.toFixed(3)}). Leave on the ambers: green is 0.4 after them and the car takes a beat to roll out of the beam.` : me.et != null ? 'It hooked clean.' : '';
+  R.burnHint = () => { const k = dragPack(S.car), P = carPerf(); return P.veh && P.veh.drive !== 'R' ? 'No line lock on this drivetrain: roll through the water and dry them off on the way up.' : `Burnout: hold the gas and the brake together (line lock), let go when the tires are hot${k ? ' (drag tires like 150-170°F)' : ''}. Or roll through.`; };
+  // your run is over: the slip, the money, your records
+  function meResult(run) {
+    const me = R.me; if (!me) return; const opp = R.opp, ai = run.lanes.find(L => L !== me), won = run.win === me;
+    let rep = 0, cash = 0;
+    if (opp && won) { rep = opp.rep; cash = R.wager * 2; S.rep += rep; earn(cash, `Yello Belly win vs ${opp.name}`); }
+    // personal records: by car and distance (and the overall best, which the old menu showed)
+    const key = run.dist < 300 ? 'e' : 'q', cid = S.car.id; S.ybRec = S.ybRec || {}; const rec = S.ybRec[cid] = S.ybRec[cid] || { runs: 0, w: 0, l: 0 };
+    rec.runs++; if (opp) won ? rec.w++ : rec.l++;
+    let pb = false; const clean = !me.red && !me.dq && me.et != null;
+    if (clean) { const b = rec[key]; if (!b || me.et < b.et) { rec[key] = { et: me.et, mph: me.mph, rt: me.rt, s60: me.split['60 ft'] && me.split['60 ft'].t, day: S.day }; pb = true; if (!opp) { S.rep += 1; rep = 1; } } if (me.rt != null && me.rt >= 0 && (rec.rt == null || me.rt < rec.rt)) rec.rt = me.rt;
+      S.ybBest = S.ybBest || {}; const ob = S.ybBest[key]; if (!ob || me.et < ob.et) S.ybBest[key] = { et: me.et, mph: me.mph }; }
+    S.ybRuns = (S.ybRuns || 0) + 1;
+    const snap = L => L && { name: L.kind === 'me' ? (S.name || 'You') : L.who.r.name, car: carLabel(carOf(L.kind === 'me' ? S.car.id : L.who.c.id)), side: L.side, rt: L.rt, s60: L.split['60 ft'] && L.split['60 ft'].t, s330: L.split['330 ft'] && L.split['330 ft'].t, e: L.split['1/8 mile'] && L.split['1/8 mile'].t, em: L.split['1/8 mile'] && (run.dist < 300 ? L.mph : mphOf(L.split['1/8 mile'].v)), s1000: L.split['1000 ft'] && L.split['1000 ft'].t, q: L.split['1/4 mile'] && L.split['1/4 mile'].t, qm: run.dist > 300 ? L.mph : null, red: L.red, dq: L.dq, burn: L.burnT, tire: L.tMax, win: run.win === L };
+    const slip = { day: S.day, dist: run.dist, tree: run.tree, me: snap(me), op: snap(ai), margin: run.margin, why: run.why, won, rep, cash, pb, test: !opp };
+    S.ybSlips = S.ybSlips || []; S.ybSlips.unshift(slip); S.ybSlips.length = Math.min(S.ybSlips.length, 30);
+    save(); refreshStats(); R.slip = slip; R.pb = pb; R.ph = 'done';
+  }
+  function slipHtml(sl) {
+    const f = (v, d = 3) => v == null ? '—' : v.toFixed(d), q = sl.dist > 300, two = !!sl.op;
+    const rows = [['Lane', sl.me.side === 'L' ? 'Left' : 'Right', two && (sl.op.side === 'L' ? 'Left' : 'Right')], ['R/T', sl.me.red ? `${f(sl.me.rt)} RED` : f(sl.me.rt), two && (sl.op.red ? `${f(sl.op.rt)} RED` : f(sl.op.rt))], ['60 ft', f(sl.me.s60), two && f(sl.op.s60)], ['330 ft', f(sl.me.s330), two && f(sl.op.s330)], ['1/8 ET', f(sl.me.e), two && f(sl.op.e)], ['1/8 MPH', f(sl.me.em, 2), two && f(sl.op.em, 2)]];
+    if (q) rows.push(['1000 ft', f(sl.me.s1000), two && f(sl.op.s1000)], ['1/4 ET', f(sl.me.q), two && f(sl.op.q)], ['1/4 MPH', f(sl.me.qm, 2), two && f(sl.op.qm, 2)]);
+    rows.push(['Tires', sl.me.tire ? `${tF(sl.me.tire)}°F` : '—', two && (sl.op.tire ? `${tF(sl.op.tire)}°F` : '—')]);
+    const res = sl.test ? (sl.me.red ? 'Red light' : sl.me.dq || 'Test pass') : sl.won ? `WIN${sl.margin != null ? ` by ${sl.margin.toFixed(3)}` : sl.why ? ` · ${sl.op.name} ${sl.why}` : ''}` : sl.me.red ? `Red light · ${sl.op.name} wins` : sl.me.dq ? `${sl.me.dq} · ${sl.op.name} wins` : `${sl.op.name} by ${sl.margin != null ? sl.margin.toFixed(3) : '—'}`;
+    return `<h3>YELLO BELLY DRAG STRIP</h3><div class="sm">Grand Prairie TX · ${q ? '1/4' : '1/8'} mile · ${TREE[sl.tree].label} tree · Day ${sl.day}</div><table><tr><th></th><th>${esc(sl.me.name)}</th>${two ? `<th>${esc(sl.op.name)}</th>` : ''}</tr>${rows.map(([a, b, c]) => `<tr><td>${a}</td><td>${b}</td>${two ? `<td>${c}</td>` : ''}</tr>`).join('')}</table>
+      <div class="sm">${esc(sl.me.car)}${two ? ` vs ${esc(sl.op.car)}` : ''}</div><div class="res">${esc(res)}${sl.pb ? ' · new personal best' : ''}${sl.rep ? ` · +${sl.rep} rep` : ''}${sl.cash ? ` · +${money(sl.cash)}` : ''}</div>`;
+  }
+  function showSlip(run) {
+    if (R.shown || !R.slip) return; R.shown = true; const me = R.me, q = R.q, sl = R.slip, k = dragPack(S.car);
+    q('msg').textContent = me.red ? 'RED LIGHT' : run.win === me && run.lanes.length > 1 ? 'WIN' : '';
+    const hint = me.red ? (me.foul ? 'You rolled out of the beam before the tree came down.' : run.tree === 'pro' ? 'Left before the green. On a pro tree all three ambers come on together and the green is .400 later: leave on the ambers, but your car still needs a beat to roll out of the beam.' : 'Left before the green. On a sportsman tree the ambers count down .500 apart and the green is .500 after the last one.')
+      : me.dq ? (me.dq.startsWith('Crossed') ? 'Keep it straight: small steering on the hit, the car moves when it hooks.' : '')
+      : me.spinT > 0.25 ? `The tires spun for ${me.spinT.toFixed(2)}s. ${me.burnT < 0.5 ? `They were ${tF(me.tMax)}°F: a burnout first would have them hot and clean. ` : ''}${k ? 'Soften the rear, drop the rear pressure or add traction bars on the tuning laptop.' : 'A drag pack would hook it.'}`
+      : me.rt != null && me.rt > 0.35 ? `Late on the tree (${me.rt.toFixed(3)}). ${run.tree === 'pro' ? 'Leave on the ambers.' : 'Leave as the last amber comes on.'}`
+      : me.et != null ? 'It hooked clean.' : '';
     const el = q('slip'); el.hidden = false;
-    el.innerHTML = `<h3>YELLO BELLY DRAG STRIP · ${R.dist < 300 ? '1/8' : '1/4'} MILE</h3><table>${opp ? `<tr><th></th><th>You · L</th><th>${opp.name} · R</th></tr>` : ''}${rows.map(r => row(...r)).join('')}</table>
-      ${hint ? `<div class="hint">${hint}</div>` : ''}<div class="res">${res}${pb ? ' · new personal best' : ''}${rep ? ` · +${rep} rep` : ''}${cash ? ` · +${money(cash)}` : ''}</div>
-      <button data-a="again">Run it back${opp ? ` (${money(R.wager)})` : ' ($20)'}</button><button data-a="drive">Drive it back on the return road</button><button data-a="lanes">Back to the staging lanes</button>`;
-    el.querySelector('[data-a="again"]').onclick = () => { const p = R.p; R.shown = false; ybClose('again'); ybStart(p, opp, R.wager); };
-    el.querySelector('[data-a="drive"]').onclick = () => { R.shown = false; ybClose('drive'); };
-    el.querySelector('[data-a="lanes"]').onclick = () => { const p = R.p; R.shown = false; ybClose('lanes'); ybPlace(YB.LANES[0], 1162); openMenu(() => ybMenu(p)); };
-    ybEvent('result', { won, me: { rt: me.rt, et: me.et, mph: me.mph, red: me.red, dq: me.dq }, ai: ai && { rt: ai.rt, et: ai.et, mph: ai.mph, red: ai.red } });
+    el.innerHTML = `${slipHtml(sl)}${hint ? `<div class="hint">${esc(hint)}</div>` : ''}<button data-a="again">Run it back${R.opp ? ` (${money(R.wager)})` : ` (${money(YB_FEE)})`}</button><button data-a="done">Done racing</button>`;
+    el.querySelector('[data-a="again"]').onclick = () => { R.again = { opp: R.opp, wager: R.wager }; R.p0 = R.p; el.hidden = true; q('msg').textContent = ''; q('sub').textContent = 'Turn off at the top end, come back down the return road to the staging lanes and the tower calls you again.'; };
+    el.querySelector('[data-a="done"]').onclick = () => { el.hidden = true; ybClose('done'); };
   }
-  // the menu in the staging lanes: eighth or quarter, a test pass, or line up a racer (their real built car)
-  function ybMenu(p) {
-    if (!S.car) return noCar(p);
-    const k = dragPack(S.car), b = (S.ybBest || {})[R.dist < 300 ? 'e' : 'q'];
-    const rows = [{ t: R.dist < 300 ? 'Street night · 1/8 mile' : 'Full pass · 1/4 mile', s: 'Tap to switch between the eighth and the quarter', btn: 'Switch', act: () => { R.dist = R.dist < 300 ? 402.34 : 201.17; } },
-      { t: 'Test & tune pass', s: 'Just you on the tree and the clock. A new personal best is +1 rep', btn: money(20), act: () => ybStart(p, null, 0) }];
-    for (const r of STREET3D) { const locked = S.rep < r.need; rows.push({ t: `${r.name} "${r.nick}" · ${carLabel(carOf(r.id))}`, s: locked ? `Needs ${r.need} rep` : `${racerBlurb(r)} · win +${r.rep} rep and ${money(r.wager * 2)}`, btn: locked ? 'Locked' : `Race ${money(r.wager)}`, off: locked, act: () => ybStart(p, r, r.wager) }); }
-    return { title: p.name, sub: `Rep ${S.rep}${b ? ` · your best ${b.et.toFixed(3)} @ ${b.mph.toFixed(1)} mph` : ''}${k ? ` · ${k.brand} drag pack` : ' · no drag pack'} · pro tree .400`, rows };
+
+  // ---------- the race panel (the registration booth): test & tune, challenge a racer, lane, tree, your records, your slips ----------
+  function carClass(c) {
+    const k = dragPack(c), P = perfOf(c), kg = P.veh ? P.veh.m : 1600, hp = carHp(c), pt = hp / (kg / 1000);
+    const tire = k ? (k.tire === 'slick' ? 'Slick' : 'Radial') : 'Street tire', cls = pt < 120 ? 'Street' : pt < 200 ? 'Street Fast' : pt < 300 ? 'Pro Street' : 'Outlaw';
+    return { label: `${tire} · ${cls}`, hp, kg, pt: Math.round(pt) };
+  }
+  const PANEL = { el: null, tab: 'race', p: null, open: null };
+  function panelCss() {
+    return `<style>#ybpanel{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translateX(-50%);width:min(560px,96vw);max-height:62vh;display:flex;flex-direction:column;z-index:30;background:linear-gradient(#17151b,#0f0e12);color:#efeae2;border:1px solid #3a3440;border-radius:14px;box-shadow:0 14px 50px rgba(0,0,0,.7);font-family:"Barlow Condensed","Arial Narrow",sans-serif;overflow:hidden}
+      #ybpanel[hidden]{display:none}#ybpanel .top{display:flex;align-items:center;gap:8px;padding:9px 12px 6px;border-bottom:2px solid #ffd23a;background:repeating-linear-gradient(135deg,#1b1a1f 0 8px,#17161b 8px 16px)}
+      #ybpanel .top b{font-family:Bungee,Impact,sans-serif;font-size:17px;color:#ffd23a;letter-spacing:.04em;flex:1}#ybpanel .top small{display:block;font:600 12px "Barlow Condensed",sans-serif;color:#a9a1b4;letter-spacing:.06em}
+      #ybpanel button{font:700 15px "Barlow Condensed",sans-serif;color:#efeae2;background:#26222c;border:1px solid #3d3646;border-radius:8px;padding:6px 10px;touch-action:manipulation;cursor:pointer}
+      #ybpanel button.on{background:#ffd23a;color:#141414;border-color:#ffd23a}#ybpanel button[disabled]{opacity:.4}#ybpanel .x{background:none;border:0;font-size:20px;padding:2px 6px}
+      #ybpanel .tabs{display:flex;gap:4px;padding:6px 10px;background:#141317}#ybpanel .tabs button{flex:1}
+      #ybpanel .body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px 10px 12px;font-size:15px}
+      #ybpanel .set{display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:center;margin-bottom:8px}#ybpanel .set>span{color:#a9a1b4;font-size:13px;text-transform:uppercase;letter-spacing:.06em}#ybpanel .seg{display:flex;gap:4px}#ybpanel .seg button{flex:1;padding:5px 6px}
+      #ybpanel .car{background:#1d1a22;border:1px solid #3a3440;border-radius:10px;padding:7px 10px;margin-bottom:8px;display:flex;gap:10px;align-items:center}#ybpanel .car .k{font-size:12px;color:#a9a1b4}
+      #ybpanel .num{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+      #ybpanel .opp{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:7px 4px;border-top:1px solid #2a2630}#ybpanel .opp .n{font-weight:700;font-size:16px}#ybpanel .opp .d{font-size:13px;color:#a9a1b4;grid-column:1}#ybpanel .opp button{grid-row:1 / span 2;grid-column:2}
+      #ybpanel table{width:100%;border-collapse:collapse;font-size:14px}#ybpanel td,#ybpanel th{padding:3px 4px;border-bottom:1px solid #2a2630;text-align:left}#ybpanel td+td,#ybpanel th+th{text-align:right}
+      #ybpanel .slipv{background:#f6f2e6;color:#141414;border-radius:6px;padding:8px 10px;margin:6px 0;font:13px ui-monospace,Menlo,monospace}#ybpanel .slipv h3{margin:0;font:700 17px "Barlow Condensed",sans-serif;text-align:center}#ybpanel .slipv .sm{font:600 12px "Barlow Condensed",sans-serif;text-align:center;color:#5a5448}#ybpanel .slipv table td,#ybpanel .slipv th{border-color:#d8d0b8;color:#141414}#ybpanel .slipv .res{font:700 18px "Barlow Condensed",sans-serif;text-align:center}
+      #ybpanel .row{display:flex;justify-content:space-between;gap:8px;padding:6px 4px;border-top:1px solid #2a2630;cursor:pointer}#ybpanel .muted{color:#a9a1b4;font-size:13px}</style>`;
+  }
+  function ybPanel(p) {
+    if (!S.car) { openMenu(() => noCar(p)); return; }
+    PANEL.p = p; if (!PANEL.el) { PANEL.el = document.createElement('div'); PANEL.el.id = 'ybpanel'; document.body.appendChild(PANEL.el); PANEL.el.addEventListener('click', panelClick); }
+    PANEL.el.hidden = false; panelRender();
+  }
+  function panelClose() { if (PANEL.el) PANEL.el.hidden = true; }
+  function panelRender() {
+    const el = PANEL.el, c = S.car, cl = carClass(c), rec = (S.ybRec || {})[c.id] || {}, key = R.dist < 300 ? 'e' : 'q', b = rec[key];
+    const seg = (name, opts, cur) => `<div class="seg">${opts.map(([v, l]) => `<button data-set="${name}" data-v="${v}" class="${String(cur) === String(v) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    let body = '';
+    if (PANEL.tab === 'race') {
+      const busy = R.on ? `<div class="muted" style="margin-bottom:6px">You're already ${R.ph === 'wait' ? 'in line' : 'racing'}. Finish that run first.</div>` : '';
+      body = `<div class="car"><div style="flex:1"><b>${esc(carLabel(carOf(c.id)))}</b><div class="k">${esc(cl.label)} · ${cl.hp} hp · ${Math.round(cl.kg)} kg · ${cl.pt} hp/ton</div></div><div class="num" style="text-align:right">${b ? `${b.et.toFixed(3)}<div class="k">@ ${b.mph.toFixed(1)} mph</div>` : '<span class="k">no time yet</span>'}</div></div>
+        <div class="set"><span>Distance</span>${seg('dist', [[201.17, '1/8 mile'], [402.34, '1/4 mile']], R.dist)}<span>Tree</span>${seg('tree', [['pro', 'Pro .400'], ['sport', 'Sportsman .500']], R.tree)}<span>Lane</span>${seg('lane', [['L', 'Left'], ['R', 'Right']], R.lane)}<span>Tower</span>${seg('ann', [[1, 'Announcer on'], [0, 'Off']], R.ann ? 1 : 0)}</div>${busy}
+        <div class="opp"><div class="n">Test & tune</div><div class="d">Just you, the tree and the clock. A new personal best is +1 rep</div><button data-go="test" ${R.on ? 'disabled' : ''}>Run ${money(YB_FEE)}</button></div>
+        ${STREET3D.map((r, i) => { const rc = racerCar(r), rcl = carClass(rc), locked = S.rep < r.need, out = R.ags.some(A => A.r === r && !A.dead && A.ph !== 'park'), seen = (S.ybSeen || {})[r.name];
+          return `<div class="opp"><div class="n">${esc(r.name)} "${esc(r.nick)}" · ${esc(carLabel(carOf(r.id)))}</div><div class="d">${esc(rcl.label)} · ${esc(racerBlurb(r))}${seen ? ` · best seen ${seen.toFixed(3)}` : ''} · win +${r.rep} rep, ${money(r.wager * 2)}${locked ? ` · needs ${r.need} rep` : out ? ' · on the track' : ''}</div><button data-go="${i}" ${locked || out || R.on ? 'disabled' : ''}>Race ${money(r.wager)}</button></div>`; }).join('')}`;
+    } else if (PANEL.tab === 'rec') {
+      const all = Object.entries(S.ybRec || {});
+      body = `<table><tr><th>This car</th><th>1/8</th><th>1/4</th></tr><tr><td>Best ET</td><td class="num">${rec.e ? rec.e.et.toFixed(3) : '—'}</td><td class="num">${rec.q ? rec.q.et.toFixed(3) : '—'}</td></tr><tr><td>MPH</td><td class="num">${rec.e ? rec.e.mph.toFixed(2) : '—'}</td><td class="num">${rec.q ? rec.q.mph.toFixed(2) : '—'}</td></tr><tr><td>60 ft</td><td class="num">${rec.e && rec.e.s60 ? rec.e.s60.toFixed(3) : '—'}</td><td class="num">${rec.q && rec.q.s60 ? rec.q.s60.toFixed(3) : '—'}</td></tr></table>
+        <div class="muted" style="margin:6px 0 10px">Best reaction ${rec.rt != null ? rec.rt.toFixed(3) : '—'} · ${rec.runs || 0} runs · ${rec.w || 0} wins, ${rec.l || 0} losses · class ${esc(cl.label)}</div>
+        <table><tr><th>All your cars</th><th>1/8</th><th>1/4</th></tr>${all.length ? all.map(([id, r]) => `<tr><td>${esc(carLabel(carOf(id)))}</td><td class="num">${r.e ? `${r.e.et.toFixed(3)} @ ${r.e.mph.toFixed(1)}` : '—'}</td><td class="num">${r.q ? `${r.q.et.toFixed(3)} @ ${r.q.mph.toFixed(1)}` : '—'}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">No runs yet.</td></tr>'}</table>`;
+    } else {
+      const L = S.ybSlips || [];
+      body = L.length ? L.map((sl, i) => PANEL.open === i ? `<div class="slipv" data-slip="${i}">${slipHtml(sl)}</div>` : `<div class="row" data-slip="${i}"><span>Day ${sl.day} · ${sl.test ? 'Test & tune' : `vs ${esc(sl.op.name)}`}</span><span class="num">${sl.me.red ? 'RED' : sl.me.dq ? 'DQ' : (sl.dist > 300 ? sl.me.q : sl.me.e) != null ? (sl.dist > 300 ? sl.me.q : sl.me.e).toFixed(3) : '—'} ${sl.test ? '' : sl.won ? 'W' : 'L'}</span></div>`).join('') : '<div class="muted">No time slips yet. Make a pass.</div>';
+    }
+    el.innerHTML = `${panelCss()}<div class="top"><b>YELLO BELLY · RACE CONTROL<small>Rep ${S.rep} · ${money(S.cash)} · pay at the booth, then the tower calls you up</small></b><button class="x" data-x="1" aria-label="Close">✕</button></div>
+      <div class="tabs">${[['race', 'Race'], ['rec', 'Records'], ['slips', 'Time slips']].map(([k, l]) => `<button data-tab="${k}" class="${PANEL.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="body">${body}</div>`;
+  }
+  function panelClick(e) {
+    const b = e.target.closest('button,[data-slip]'); if (!b) return;
+    if (b.dataset.x) return panelClose();
+    if (b.dataset.tab) { PANEL.tab = b.dataset.tab; PANEL.open = null; return panelRender(); }
+    if (b.dataset.set) { const v = b.dataset.v; if (b.dataset.set === 'dist') R.dist = +v; else if (b.dataset.set === 'tree') R.tree = v; else if (b.dataset.set === 'lane') R.lane = v; else if (b.dataset.set === 'ann') R.ann = v === '1'; S.ybPrefs = { dist: R.dist, tree: R.tree, lane: R.lane, ann: R.ann }; save(); return panelRender(); }
+    if (b.dataset.slip != null) { const i = +b.dataset.slip; PANEL.open = PANEL.open === i ? null : i; return panelRender(); }
+    if (b.dataset.go) { const p = PANEL.p; if (b.dataset.go === 'test') ybStart(p, null, 0); else { const r = STREET3D[+b.dataset.go]; ybStart(p, r, r.wager); } }
   }
   const _ybMenuStrip = MENUS.strip;
-  MENUS.strip = p => p && p.id === 'yellowbelly' ? ybMenu(p) : _ybMenuStrip(p);
-  Object.assign(YB, { start: ybStart, close: ybClose, step: ybStep, menu: ybMenu });
+  MENUS.strip = p => { if (p && p.id === 'yellowbelly') { if (S.ybPrefs) Object.assign(R, S.ybPrefs); ybPanel(p); return null; } return _ybMenuStrip(p); };
+
+  // every frame at the strip: the clock, the AI, the race on the tree, your run
+  function ybStep(t) {
+    const dt = R.acc > 0 ? R.acc : clamp(R.lastT == null ? 0 : t - R.lastT, 0, 0.05); R.lastT = t;
+    const c = camera.position, near = Math.hypot(c.x - YB.TX, c.z - 900) < 700;
+    if (!near && !R.on && !R.ags.length) { R.acc = 0; return; }
+    aiStep(dt);
+    if (R.run) { runStep(R.run, dt); if (R.run.st === 'done' && R.run.kind === 'ai' && R.t - R.run.endT > 3) { for (const L of R.run.lanes) { const s = (S.ybSeen = S.ybSeen || {}); if (L.et != null && !L.red && R.run.dist < 300 && (!s[L.who.r.name] || L.et < s[L.who.r.name])) s[L.who.r.name] = L.et; } R.run = null; ybTree('L', []); ybTree('R', []); }
+      else if (R.run && R.run.kind === 'me' && R.run.st === 'done' && R.shown && R.t - R.run.endT > 4) { R.run = null; ybTree('L', []); ybTree('R', []); } }
+    if (R.on && R.me) meStep(dt);
+    if (PANEL.el && !PANEL.el.hidden && (!driving || foot.on || !inLanes(drv.x, drv.z))) panelClose();
+    R.t += dt; R.acc = 0;
+    if ((frame & 1) === 0) try { voStep(dt * 2); } catch (e) {}
+  }
+  Object.assign(YB, { agKill, start: ybStart, close: ybClose, step: ybStep, panel: ybPanel, crossing, beamsAt, halfChord, mkLane, newRun, treeLit, treeDrop, runStep, agSpawn, TREE, BEAM, VO });
+  YB.test = { startFill, callMe, meTap, manual: false, inTick: false,
+    // a test tick: your car's physics then the strip, on a fixed step (the frame loop is held off while manual is on)
+    tick(dt) { YB.test.inTick = true; try { if (driving && !foot.on) stepDrive(dt); } finally { YB.test.inTick = false; } ybStep((R.lastT || 0) + dt); } };
 
 
   // ---------- highway traffic on I-20: real parked-car models driving the lanes both ways ----------
@@ -19030,28 +19408,28 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   setTime = function (n) { const r = _ybSetTime.apply(this, arguments); HW.lamps = !!(TIMES[n] && TIMES[n].lamps); if (MAT.ybGlow) MAT.ybGlow.color.setScalar(TIMES[n] && TIMES[n].lamps ? (n === 'night' ? 2.4 : 1.5) : 0.62); return r; };
   const _ybStepDrive = stepDrive;
   stepDrive = function (dt) {
+    if (YB.test && YB.test.manual && !YB.test.inTick) return;
     const s = YB.built && S.car ? ybSurf(drv.x, drv.z) : 0;
-    if (s === 1) { SURF.prep = 1; SURF.mu = 1 + 0.05 * (YB.race.heat || 0); } else if (s === 2) { SURF.mu = 0.45; SURF.box = 1; }
-    try { _ybStepDrive.apply(this, arguments); } finally { if (s) { SURF.prep = 0; SURF.mu = 1; SURF.box = 0; } }
-    if (YB.race.on) try { ybStep(dt); } catch (e) { console.warn('yellow belly race: ' + e.message, e); }
-    else if (YB.race.heat) YB.race.heat = Math.max(0, YB.race.heat - dt / 90);
+    if (s === 1) SURF.prep = 1; else if (s === 2) { SURF.mu = 0.45; SURF.box = 1; }
+    R.acc = 0; window.__vdTap = meTap;
+    try { _ybStepDrive.apply(this, arguments); } finally { window.__vdTap = null; if (s) { SURF.prep = 0; SURF.mu = 1; SURF.box = 0; } }
     if (HR.on) try { hrStep(dt); } catch (e) { console.warn('I-20 roll race: ' + e.message, e); }
     if (HR.ghost) try { hrGhost(dt); } catch (e) { HR.ghost = null; }
     try { htStep(dt); } catch (e) { console.warn('I-20 traffic: ' + e.message, e); HT.cars.length = 0; }
-    if (YB.home) { try { stepAi(YB.home, dt, null); } catch (e) {} if (YB.home && YB.home.ph === 'gone') { YB.home.slot.userData.dead = true; scene.remove(YB.home.slot); YB.home = null; } }
   };
   const _ybStepStreet = stepStreet;
   stepStreet = function (t) {
     const r = _ybStepStreet.apply(this, arguments);
     if (HW.group && (frame & 7) === 0) { const c = camera.position, d = Math.abs(c.z - HW.z) + Math.max(0, HW.x0 + 1500 - c.x, c.x - HW.marks.h - 700); const on = d < (phone ? 700 : 1000) && (HW.lamps || HR.on); if (on !== HW.group.visible) HW.group.visible = on; }
     if ((frame & 7) === 0) try { ybAmb(); } catch (e) {}
+    if (YB.built && !(YB.test && YB.test.manual)) try { ybStep(t); } catch (e) { console.warn('yello belly race: ' + e.message, e); }
     if (YB.group && (frame & 7) === 0) { const c = camera.position, d = Math.hypot(c.x - YB.TX, c.z - 740); const near = d < (phone ? 1100 : 1700); if (near !== YB.group.visible) YB.group.visible = near; if (YB.fans.length) { const f = d < (phone ? 650 : 1000); for (const m of YB.fans) m.visible = f; } }
     return r;
   };
   YB.board = ybBoard;
-  // ---------- the sound of the place: the crowd, cammed motors idling in the lanes and the pits, a pass now and then ----------
-  // A light procedural bed (no recordings): murmur from band-passed noise, three lopey idles (low saw tones with an uneven
-  // chop), and a distant pass that rises and falls. It fades in with distance and gets louder on a race.
+  // ---------- the sound of the place: the crowd (a murmur, and the cheer when a pair goes) ----------
+  // Procedural (no recordings): band-passed noise for the murmur, a second band that swells for a cheer or an "ooh".
+  // The engines are each car's own Phase 2 engine sound (voStep), not a generic bed.
   function ybAmb() {
     const c = camera.position, d = Math.hypot(c.x - YB.TX, c.z - 900), on = d < 700 && worldOn && !inside, A = YB.amb;
     if (!on && !A) return;
@@ -19060,25 +19438,12 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       const out = ac.createGain(); out.gain.value = 0; out.connect(ac.destination);
       const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), ch = nb.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
       const n = ac.createBufferSource(); n.buffer = nb; n.loop = true; const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 650; bp.Q.value = 0.7; const cg = ac.createGain(); cg.gain.value = 0.16; n.connect(bp); bp.connect(cg); cg.connect(out); n.start();
-      const idles = [];
-      for (const [hz, chop] of [[41, 5.3], [47, 6.1], [55, 4.6]]) {
-        const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
-        const g = ac.createGain(); g.gain.value = 0.05; const lfo = ac.createOscillator(); lfo.type = 'square'; lfo.frequency.value = chop; const lg = ac.createGain(); lg.gain.value = 0.035;
-        lfo.connect(lg); lg.connect(g.gain); o.connect(lp); lp.connect(g); g.connect(out); o.start(); lfo.start(); idles.push(o);
-      }
-      const pass = ac.createGain(); pass.gain.value = 0; const pb = ac.createBiquadFilter(); pb.type = 'lowpass'; pb.frequency.value = 900; const po = ac.createOscillator(); po.type = 'sawtooth'; po.frequency.value = 70;
-      po.connect(pb); pb.connect(pass); pass.connect(out); po.start();
-      YB.amb = { out, cg, pass, po, nextPass: ac.currentTime + 6 };
+      const cheerF = ac.createBiquadFilter(); cheerF.type = 'bandpass'; cheerF.frequency.value = 900; cheerF.Q.value = 0.9; const cheer = ac.createGain(); cheer.gain.value = 0; n.connect(cheerF); cheerF.connect(cheer); cheer.connect(out);
+      YB.amb = { out, cg, cheer, cheerF };
       return;
     }
-    const t = ac.currentTime, near = on ? clamp(1 - (d - 60) / 640, 0, 1) : 0, race = (R.on || HR.on) ? 1.6 : 1;
+    const t = ac.currentTime, near = on ? clamp(1 - (d - 60) / 640, 0, 1) : 0, race = (R.run || HR.on) ? 1.5 : 1;
     A.out.gain.setTargetAtTime(near * near * 0.55, t, 0.6); A.cg.gain.setTargetAtTime(0.12 * race, t, 0.5);
-    if (on && t > A.nextPass && !R.on) {   // somebody making a pass down the strip: the motor winds up through the gears, then lifts
-      A.po.frequency.cancelScheduledValues(t); A.po.frequency.setValueAtTime(60, t);
-      for (let g = 0; g < 4; g++) { A.po.frequency.linearRampToValueAtTime(150 + g * 18, t + 1.1 + g * 1.2); A.po.frequency.setValueAtTime(95 + g * 14, t + 1.12 + g * 1.2); }
-      A.pass.gain.cancelScheduledValues(t); A.pass.gain.setValueAtTime(0, t); A.pass.gain.linearRampToValueAtTime(0.09, t + 1.2); A.pass.gain.setValueAtTime(0.09, t + 4.6); A.pass.gain.linearRampToValueAtTime(0, t + 6.5);
-      A.nextPass = t + 25 + Math.random() * 35;
-    }
   }
   YB.ambStep = ybAmb;
 
@@ -19369,7 +19734,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const n = Math.max(1, Math.ceil(Math.min(dt, 0.06) / VD_H - 1e-6)), h = Math.min(dt, 0.06) / n;
     let nx = drv.x, nz = drv.z;
     I.gb = gbFor(P);
-    for (let i = 0; i < n; i++) { physStep(I, P, h); nx += TIRE.vx * h; nz += TIRE.vz * h; }
+    for (let i = 0; i < n; i++) { physStep(I, P, h); nx += TIRE.vx * h; nz += TIRE.vz * h; if (window.__vdTap) window.__vdTap(h, nx, nz); }
     gbAfter(dt, I, P);
     // push out of buildings
     const R = 1.7; let hit = false;
