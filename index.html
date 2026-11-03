@@ -1363,16 +1363,17 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const beacon = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 10, 1, true).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.6, depthWrite: false, fog: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide }), n);
     D.P.forEach((p, i) => {
       const c = new THREE.Color(p.color && p.color !== '#ffffff' ? p.color : '#ffd23f');
-      m4.makeTranslation(p.x, 0.235, p.z); ring.setMatrixAt(i, m4);   // above the raised sidewalk (_streets.js) ring.setColorAt(i, c); beacon.setColorAt(i, c);
+      m4.makeTranslation(p.x, 0.235, p.z); ring.setMatrixAt(i, m4); ring.setColorAt(i, c); beacon.setColorAt(i, c);   // above the raised sidewalk (_streets.js)
     });
     ring.frustumCulled = beacon.frustumCulled = false; ring.renderOrder = 2; beacon.renderOrder = 3;
-    scene.add(ring); scene.add(beacon); BEACONS.mesh = beacon; BEACONS.ring = ring; BEACONS.list = D.P;
+    ring.visible = false;   // no glowing rings on the street (Kimari 2026-11-03): walk or pull up and the place card shows
+    scene.add(beacon); BEACONS.mesh = beacon; BEACONS.ring = ring; BEACONS.list = D.P;
   }
   let beaconFilter = null, beaconKey = '';
   function updateBeacons(dist) {
     const B = BEACONS.mesh; if (!B) return;
     const show = !driving && camera.position.y > 140;
-    B.visible = show; BEACONS.ring.visible = camera.position.y < 2500 || driving;
+    B.visible = show;
     if (!show) return;
     const r = clamp(dist * 0.0028, 1.5, 60), h = clamp(dist * 0.09, 40, 2600), key = r.toFixed(1) + '|' + h.toFixed(0) + '|' + (beaconFilter || []).join();
     if (key === beaconKey) return; beaconKey = key;
@@ -1427,7 +1428,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const money = v => (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString();
   const carOf = id => G.cars.find(c => c.id === id) || G.cars[0];
   // only the cars we have built in 3D, one by one; the rest come back as each model is finished
-  const BUILT = ['chevrolet_caprice_classic_box_chevy_1986', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_camaro_ss_2016', 'ford_f_150_regular_cab_2021', 'chevrolet_corvette_stingray_c8_2020', 'ram_1500_trx_2021', 'dodge_charger_scat_pack_2015', 'chevrolet_tahoe_2021', 'ford_mustang_gt_2019', 'chevrolet_nova_1972', 'dodge_challenger_rt_scat_pack_widebody_2019'];
+  const BUILT = ['chevrolet_caprice_classic_box_chevy_1986', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_camaro_ss_2016', 'ford_f_150_regular_cab_2021', 'chevrolet_corvette_stingray_c8_2020', 'ram_1500_trx_2021', 'dodge_charger_scat_pack_2015', 'chevrolet_tahoe_2021', 'ford_mustang_gt_2019', 'chevrolet_nova_1972', 'dodge_challenger_rt_scat_pack_widebody_2019', 'mercedes_amg_g63_2019'];
   function builtCars(all) {
     const by = id => all.find(c => c.id === id);
     const extra = {
@@ -1435,6 +1436,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       chevrolet_tahoe_2021: { ...by('chevrolet_tahoe_lt_2007'), id: 'chevrolet_tahoe_2021', trim: '5.3 V8', y: 2021, msrp: 58000, hp: 355 },
       chevrolet_nova_1972: { ...by('chevrolet_chevelle_ss_454_1970'), id: 'chevrolet_nova_1972', model: 'Nova', trim: 'Pro Street', y: 1972, cls: 'Muscle', msrp: 2900, market: 42000, mkBase: 30000, hp: 345, kg: 1530, drive: 'RWD', engine: '350 small-block V8', body: 'muscle', color: '#050506', asp: 'na' },
       dodge_challenger_rt_scat_pack_widebody_2019: { ...by('dodge_challenger_r_t_2015'), id: 'dodge_challenger_rt_scat_pack_widebody_2019', model: 'Challenger', trim: 'R/T Scat Pack Widebody', y: 2019, cls: 'Muscle', msrp: 52000, market: null, hp: 485, kg: 1950, drive: 'RWD', engine: '392 HEMI 6.4L V8', body: 'muscle', color: '#3a3c40', asp: 'na' },
+      mercedes_amg_g63_2019: { ...by('mercedes_amg_g63_2019'), trim: 'G-Wagon', y: 2019, cls: 'SUV', msrp: 156000, market: null, hp: 577, kg: 2560, drive: 'AWD', engine: '4.0L V8 biturbo', body: 'suv', color: '#050506', asp: 'turbo' },
       ford_mustang_gt_2019: { ...by('ford_mustang_gt_s650_2024'), id: 'ford_mustang_gt_2019', model: 'Mustang', trim: 'GT 5.0 Fastback', y: 2019, msrp: 36000, market: null, hp: 460, kg: 1705, drive: 'RWD', engine: '5.0L Coyote V8', body: 'muscle', color: '#0b0c0f', asp: 'na' },
     };
     return BUILT.map(id => extra[id] || by(id)).filter(Boolean);
@@ -1503,6 +1505,10 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const tn = tuneOf(c), prog = hasPart(c, 'prog');
     P.turbo = turboShare(c); P.tSize = 1 + 0.15 * X.L('turbo'); P.nosHp = X.nos; P.kg = kg; P.nosStart = prog ? tn.nosStart / 100 : 1; P.nosRamp = prog ? tn.nosRamp : 0;
     P.aero = m.body === 'truck' || m.body === 'suv' ? 1.5 : 1;
+    // the real vehicle the physics drives: the car's own sheet with everything bolted on and dialed in (cached), traction
+    // control if it came with it (unless you switched it off), and the top speed its power, gears and drag really reach
+    P.veh = vehOf(c, kg); P.tc = P.veh.tcAvail && !c.tcOff;
+    if (P.top > 0) P.top = Math.max(8, vehTop(P.veh, P.pw * kg / 634 * 745.7));
     return P;
   }
 
@@ -1513,6 +1519,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const NOVA_PAINTS = [['Tuxedo Black', '#050506'], ['Cranberry Red', '#7c0d16'], ['Mulsanne Blue', '#1c3f8f'], ['Antique White', '#ece6d4'], ['Orange Flame', '#d4511a'], ['Spring Green', '#7da84a'], ['Sequoia Green', '#2d4630'], ['Midnight Bronze', '#4a3424'], ['Pewter Silver', '#8e9196'], ['Cream Yellow', '#e8d58a'], ['Ascot Blue', '#7fa6c8'], ['Covert Tan', '#b8a07a']];
   // Dodge Challenger colours, offered first in the paint booth for the Challenger
   const DODGE_PAINTS = [['Granite', '#3a3c40'], ['Pitch Black', '#0a0a0b'], ['White Knuckle', '#e9e9e6'], ['Destroyer Grey', '#5d6166'], ['Smoke Show', '#8b8f93'], ['Triple Nickel', '#9a9da1'], ['TorRed', '#c8261b'], ['Go Mango', '#e85a12'], ['Sinamon Stick', '#7a2b17'], ['Octane Red', '#5e1018'], ['Frostbite', '#2a63b8'], ['B5 Blue', '#1e78c8'], ['Indigo Blue', '#1c2a5e'], ['Plum Crazy', '#5a2a7a'], ['Hellraisin', '#3a1f3d'], ['Sublime', '#9ccc2a'], ['F8 Green', '#3a4a35']];
+  // Mercedes G-Class colours, offered first in the paint booth for the G63
+  const MB_PAINTS = [['Obsidian Black', '#050506'], ['Polar White', '#ecedeb'], ['Diamond White', '#e3e1d8'], ['Selenite Grey', '#5c6064'], ['Iridium Silver', '#a3a7ab'], ['designo Night Black Magno', '#141516'], ['Emerald Green', '#0f3a2a'], ['designo Hyacinth Red', '#5a0d18'], ['Brilliant Blue', '#1d3f8a'], ['China Blue', '#2c4a7a'], ['Sun Yellow', '#e9b411'], ['Olive Magno', '#4d4f3c'], ['Desert Sand', '#b9a585'], ['Graphite Grey', '#3b3d40']];
   const PAINTS = [['Candy red', '#b3121b'], ['Midnight black', '#121214'], ['Pearl white', '#ece9e2'], ['Cowtown blue', '#1f4fa8'], ['Lime green', '#7ac224'], ['Royal purple', '#5a2a8a'], ['Orange crush', '#e8651a'], ['Gold flake', '#c9a23a'], ['Gunmetal', '#4a4e54'], ['Baby blue', '#7ab8e0'], ['Pink champagne', '#e0a8b8'], ['Forest green', '#24502e']];
   function repairCosts(rate) {
     const c = S.car, lux = carOf(c.id).msrp, k = rate || 1;
@@ -1555,7 +1563,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: [{ t: 'Parts counter', s: `Real brands, stages 1-4: internals, turbos, blowers, intake, exhaust, fuel, tunes, nitrous, trans and more · ${Object.keys(c.parts || {}).length} on your car`, btn: 'Open', act: () => { closeMenu(); openParts(p); } }].concat(nosRefillRow(p), motorRows(p)) };
     },
     dyno(p) { if (!S.car) return noCar(p); const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
-    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: (c.id === 'ford_mustang_gt_2019' ? FORD_PAINTS.map(([n, h]) => ['Ford ' + n, h]) : c.id === 'chevrolet_nova_1972' ? NOVA_PAINTS.map(([n, h]) => ['Chevy ' + n, h]) : c.id === 'dodge_challenger_rt_scat_pack_widebody_2019' ? DODGE_PAINTS.map(([n, h]) => ['Dodge ' + n, h]) : []).concat(PAINTS).map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
+    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: (c.id === 'ford_mustang_gt_2019' ? FORD_PAINTS.map(([n, h]) => ['Ford ' + n, h]) : c.id === 'chevrolet_nova_1972' ? NOVA_PAINTS.map(([n, h]) => ['Chevy ' + n, h]) : c.id === 'dodge_challenger_rt_scat_pack_widebody_2019' ? DODGE_PAINTS.map(([n, h]) => ['Dodge ' + n, h]) : c.id === 'mercedes_amg_g63_2019' ? MB_PAINTS.map(([n, h]) => ['Mercedes ' + n, h]) : []).concat(PAINTS).map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; if (car) car.userData.body.color.copy(lin(hex)); toast(`${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) c.tint = true; } }]) }; },
     chop(p) { if (!S.car) return noCar(p); return { title: p.name, sub: 'No questions asked', rows: [{ t: 'Hot engine tune', s: '+8% hp, off the books. Heat +1', btn: S.car.mods.hot ? 'Installed' : money(600), off: !!S.car.mods.hot, act: () => { if (spend(600, 'Hot tune')) { S.car.mods.hot = true; S.heat = Math.min(5, S.heat + 1); } } }, { t: 'Swap the VIN', s: 'Clears 1 heat', btn: money(900), off: !S.heat, act: () => { if (spend(900, 'VIN swap')) S.heat--; } }] }; },
     fuel(p) { if (!S.car) return noCar(p);
       const c = S.car, ev = isEV(c), grade = ev ? 'kwh' : carHp(c) > 300 ? 'premium' : 'regular', price = G.gas[grade], need = (1 - c.fuel) * (ev ? 75 : tankGal(c)), cost = need * price;
@@ -1842,7 +1850,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const PK_CELL = 100;
   // what tends to be parked where: cars in normal spots, trucks and SUVs in the long ones
   const PK_CARS = [['chevrolet_caprice_classic_box_chevy_1986', 4], ['dodge_charger_scat_pack_2015', 2], ['dodge_charger_srt_hellcat_widebody_2020', 1.5], ['chevrolet_camaro_ss_2016', 2], ['chevrolet_corvette_stingray_c8_2020', 1], ['chevrolet_tahoe_2021', 1.5], ['ford_f_150_regular_cab_2021', 1.5], ['ram_1500_trx_2021', 0.7], ['ford_mustang_gt_2019', 2], ['chevrolet_nova_1972', 1.2], ['dodge_challenger_rt_scat_pack_widebody_2019', 1.6]];
-  const PK_TRUCKS = [['ford_f_150_regular_cab_2021', 3], ['ram_1500_trx_2021', 2], ['chevrolet_tahoe_2021', 3]];
+  const PK_TRUCKS = [['ford_f_150_regular_cab_2021', 3], ['ram_1500_trx_2021', 2], ['chevrolet_tahoe_2021', 3], ['mercedes_amg_g63_2019', 1.4]];
   const pkPick = (L, h) => { const tot = L.reduce((s, x) => s + x[1], 0); let r = h * tot; for (const [id, w] of L) { if ((r -= w) < 0) return id; } return L[0][0]; };
   // called by the world builder for each parked-car box; false means it isn't car shaped (a rig, a trailer) and keeps its block
   function parkSpot(cx, cz, w, d, h, hex, bi) {
@@ -6859,7 +6867,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     return { place, skipB, furnish, leave, anim, tap, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns };
   })();
   // ---------- car button: open and close the doors, hood and trunk of your car ----------
-  const backName = () => { const m = car && car.userData.model; const n = m && Object.keys(m.userData.panels).find(k => panelKind(k) === 'trunk'); return n === 'tailgate' ? 'Tailgate' : n === 'hatch' ? 'Hatch' : 'Trunk'; };
+  const backName = () => { const m = car && car.userData.model; const n = m && Object.keys(m.userData.panels).find(k => panelKind(k) === 'trunk'); return n === 'tailgate' ? 'Tailgate' : n === 'hatch' ? 'Hatch' : n === 'swing' ? 'Rear door' : 'Trunk'; };
   function carNear() { if (!S || !S.car || !car || !car.userData.model || inside || creating) return false; if (driving && !foot.on) return true; return !!(foot.on && foot.park && Math.hypot(foot.x - foot.park.x, foot.z - foot.park.z) < 12); }
   // the camera button goes chase -> far -> driver's seat -> chase
   function camCycle() { if (drv.fp) { drv.fp = false; drv.far = false; } else if (drv.far) { drv.far = false; drv.fp = true; } else drv.far = true; }
@@ -6872,6 +6880,12 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       el.insertAdjacentHTML('beforeend', [['L', '◀ Signal'], ['H', 'Hazards'], ['R', 'Signal ▶']].map(([k, l]) => `<button class="btn${BLINK.mode === k ? ' go' : ''}" data-bl="${k}">${l}</button>`).join('') + `<button class="btn${BLINK.lights ? ' go' : ''}" data-hl="1">Headlights ${BLINK.lights ? 'off' : 'on'}</button>`);
       el.querySelectorAll('[data-bl]').forEach(b => b.onclick = () => { setBlink(b.dataset.bl); renderCarPanel(); });
       el.querySelector('[data-hl]').onclick = () => { BLINK.lights = !BLINK.lights; renderCarPanel(); };
+    }
+    // traction and stability control, on cars that came with it: switch it off to spin the tires and slide it yourself
+    const c = S.car, V = c && vehOf(c, partsKg(c));
+    if (V && V.tcAvail && !V.ev) {
+      el.insertAdjacentHTML('beforeend', `<button class="btn${c.tcOff ? '' : ' go'}" data-tc="1">Traction control ${c.tcOff ? 'OFF' : 'ON'}</button>`);
+      el.querySelector('[data-tc]').onclick = () => { c.tcOff = !c.tcOff; toast(c.tcOff ? 'Traction and stability control off. The tires will spin and the back can come around.' : 'Traction and stability control on.'); save(); renderCarPanel(); };
     }
   }
   function bindCarUI() {
@@ -7009,6 +7023,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     chevrolet_nova_1972: { sbc350: { base: 30, lfo: 5.6, lg: 0.13, lp: 430, drive: 2.3, o: 0.42, peak: 3.5 }, sbc383: { base: 29, lfo: 4.9, lg: 0.18, lp: 470, drive: 2.8, o: 0.5, peak: 3.6 },
       bbc454: { base: 26, lfo: 4.4, lg: 0.15, lp: 400, drive: 2.5, o: 0.45, peak: 3.2 }, bbc496: { base: 25, lfo: 3.9, lg: 0.22, lp: 500, drive: 3.2, o: 0.6, peak: 3.4 },
       ls3: { base: 34, lfo: 7.0, lg: 0.07, lp: 620, drive: 2.0, o: 0.4, peak: 4.2 }, lssc: { base: 35, lfo: 6.8, lg: 0.07, lp: 720, drive: 2.4, o: 0.5, peak: 4.2, whine: ['triangle', 900, 0.012, 0.05] } },
+    mercedes_amg_g63_2019: { m177: { base: 38, lfo: 7.2, lg: 0.06, lp: 640, drive: 2.2, o: 0.5, peak: 4.2, whine: ['sine', 2400, 0.005, 0.03], turbo: true }, b800: { base: 39, lfo: 7.0, lg: 0.07, lp: 760, drive: 2.7, o: 0.58, peak: 4.3, whine: ['sine', 2700, 0.008, 0.04], turbo: true } },
     ford_mustang_gt_2019: { coyote: { base: 37, lfo: 7.8, lg: 0.055, lp: 760, peak: 4.4, drive: 2.0 }, coyote_sc: { base: 39, lfo: 8.0, lg: 0.05, lp: 880, peak: 4.4, drive: 2.3, whine: ['triangle', 900, 0.01, 0.05], o: 0.5 } },
     chevrolet_corvette_stingray_c8_2020: { lt2: { base: 34, lfo: 7.0, lg: 0.1, lp: 560 }, lt6: { base: 50, lfo: 13, lg: 0.05, lp: 1300, peak: 5.2, o: 0.6 } },
   };
@@ -7974,19 +7989,242 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   }
   window.__gps = GPS;
 
-  // ---------- car physics: real tire grip, so the back steps out, the tires spin, and you can hold a slide ----------
-  // a two-axle (bicycle) model: each axle makes sideways grip from its slip angle on a curve that peaks and then
-  // falls off, the driven tires share their grip between pushing and holding (friction circle), so too much gas
-  // spins them and the back comes around. Gas + brake from a stop is a burnout. The handbrake locks the rears.
-  const G9 = 9.81, TIRE = { vx: 0, vz: 0, w: 0, ax: 0, ay: 0, wv: 0, spin: 0, slipR: 0, slipF: 0, delta: 0, smokeT: 0, marks: [null, null], gA: 1, re: 0.12, lit: 0, shT: 0, thr: 0, axL: 0, shW: 0, boost: 0, nosK: 0, nosT: 0, drv: 'R' };
-  // peaks near 7 degrees of slip, then a sliding tire holds less
-  function tireCurve(a) { return Math.sin(1.6 * Math.atan(11 * a)); }
-  // pushing: grip builds to its peak at about 12% wheelspin, then falls off as the tire spins faster (to about 3/4 lit up)
-  function tireLong(s) { const a = Math.abs(s); return Math.sign(s) * (a < 0.125 ? Math.sin(1.6 * Math.atan(12 * a)) : Math.max(0.76, 1 - (a - 0.125) * 0.16)); }
-  // the motor's torque across the rev range (r = revs / redline), scaled so its peak power is 1
-  const engTq = r => Math.max(0.3, 1 - 0.8 * (r - 0.55) * (r - 0.55)) / 0.838;
-  const TOPS = [0, 0, 0, 0, 0, 0];
-  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = TIRE.boost = TIRE.nosK = TIRE.nosT = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; }
+  // ---------- car physics: a real four-wheel vehicle simulation (Phase 1 rebuild) ----------
+  // Everything here is in SI units (kg, m, s, N, N·m, rad/s) and runs at a fixed 240 Hz step.
+  // The car is a sprung body (heave, pitch, roll on four springs and dampers, anti-roll bars, anti-squat/anti-dive
+  // geometry) on four individually simulated wheels. Each wheel has its own load, spin speed, slip ratio and slip
+  // angle, and a Pacejka-style tire curve that shares one grip budget between pushing and cornering. The engine makes
+  // torque from its own torque curve; it reaches the wheels through a clutch (manual / dual clutch) or a torque
+  // converter (automatic), the gear and final drive, and open / limited-slip / spool differentials. Weight transfer is
+  // not a number someone picked: it comes out of the springs, dampers and geometry every step.
+  const G9 = 9.81, RHO = 1.2, RPM = 30 / Math.PI, VD_H = 1 / 240;
+  const TIRE = { vx: 0, vz: 0, w: 0, ax: 0, ay: 0, wv: 0, spin: 0, slipR: 0, slipF: 0, delta: 0, smokeT: 0, marks: [null, null], gA: 1, re: 0.12, lit: 0, shT: 0, thr: 0, axL: 0, shW: 0, boost: 0, nosK: 0, nosT: 0, drv: 'R', vd: null };
+  // tire compounds. mu = peak friction on dry asphalt, kp = slip ratio at peak drive grip, ap = slip angle at peak
+  // cornering grip (rad), cx / cy = Pacejka shape (higher = loses more grip once it's past the peak), prep = how much
+  // more it grips on a prepped drag strip (sticky rubber on a glued track bites far harder than on the street)
+  const TIRES = {
+    old: { mu: 0.87, lx: 0.15, kp: 0.10, ap: 0.13, cx: 1.45, cy: 1.38, prep: 1.03, label: 'Old-school radial (1970s-80s)' },
+    touring: { mu: 0.93, lx: 0.18, kp: 0.10, ap: 0.12, cx: 1.45, cy: 1.38, prep: 1.04, label: 'All-season touring' },
+    highway: { mu: 0.86, lx: 0.2, kp: 0.11, ap: 0.13, cx: 1.45, cy: 1.36, prep: 1.03, label: 'Highway truck tire' },
+    allterrain: { mu: 0.8, lx: 0.17, kp: 0.12, ap: 0.14, cx: 1.42, cy: 1.34, prep: 1.0, label: 'All-terrain' },
+    perfas: { mu: 1.0, lx: 0.22, kp: 0.10, ap: 0.115, cx: 1.47, cy: 1.4, prep: 1.05, label: 'Performance all-season' },
+    summer: { mu: 1.1, lx: 0.3, kp: 0.09, ap: 0.105, cx: 1.5, cy: 1.42, prep: 1.06, label: 'Max-performance summer' },
+    track: { mu: 1.16, lx: 0.3, kp: 0.085, ap: 0.1, cx: 1.52, cy: 1.44, prep: 1.07, label: 'Track-biased summer (Z51 / PS4S)' },
+    radial: { mu: 1.12, lx: 0.3, kp: 0.14, ap: 0.14, cx: 1.55, cy: 1.4, prep: 1.34, label: 'Drag radial' },
+    slick: { mu: 1.06, lx: 0.32, kp: 0.18, ap: 0.16, cx: 1.6, cy: 1.42, prep: 1.62, label: 'Drag slick' },
+    skinny: { mu: 0.86, lx: 0.1, kp: 0.1, ap: 0.13, cx: 1.4, cy: 1.32, prep: 1.0, label: 'Front runner skinny' },
+    moto: { mu: 1.0, lx: 0.2, kp: 0.1, ap: 0.12, cx: 1.45, cy: 1.38, prep: 1.05, label: 'Sport bike tire' },
+  };
+  for (const k in TIRES) { const T = TIRES[k]; T.bx = Math.tan(Math.PI / (2 * T.cx)); T.by = Math.tan(Math.PI / (2 * T.cy)); T.tap = Math.tan(T.ap); }
+
+  // ---- each car's real sheet. ✓ = manufacturer / published figure, ~ = estimate (configurable, refine later) ----
+  // kg comes from the game's catalog (so the weight-reduction parts still work); everything else is here.
+  // eng: tq (N·m) at nT rpm ✓, hp at nP rpm ✓, red = redline, idle, kl = how much torque it has down low,
+  //      Ie = crank + flywheel/flexplate inertia (kg·m²) ~, fam = engine family (Phase 2 uses it for the sound and cam model)
+  // tr: auto ratios ✓, fd ✓, man = the H-pattern box (factory manual where the car had one ✓; otherwise the first six
+  //     gears of the automatic, used as paddles), rev, stall = converter stall rpm ~, type tc (converter) or dct
+  // geo: wb ✓, tf/tr track ✓, fw = front weight share ✓/~, h = CG height ~, hrc = roll centers ~, as/ad = anti-squat / anti-dive ~
+  // susp: fF/fR = ride frequencies (Hz) ~, arb = anti-roll bar stiffness vs the springs ~, z = damping ~
+  // tire: front/rear compound + radius (m) from the factory size ✓; aero: CdA, lift ~; abs, brake bias ~, vmax = factory limiter
+  const VSPEC = {
+    chevrolet_caprice_classic_box_chevy_1986: { note: '1986 Caprice Classic, LG4 305 V8 (150 hp @ 4000, 240 lb-ft @ 2400 ✓), 700R4 ✓, 2.73 gears ✓, P225/70R15 ✓, 116 in wheelbase ✓',
+      eng: { tq: 325, nT: 2400, hp: 150, nP: 4000, red: 4800, idle: 600, kl: 0.38, Ie: 0.24, fam: 'sbc305' },
+      tr: { type: 'tc', auto: [3.06, 1.63, 1.0, 0.7], fd: 2.73, rev: 2.29, stall: 1800, shiftT: 0.45, lockFrom: 3, modern: false, man: null, fdMan: null },
+      geo: { wb: 2.946, tf: 1.565, tr: 1.539, fw: 0.555, h: 0.56, hrcF: 0.08, hrcR: 0.28, as: 0.55, ad: 0.2 },
+      susp: { fF: 1.0, fR: 1.12, arbF: 1.71, arbR: 0, z: 0.22 }, diff: 'open', drive: 'R',
+      tire: { f: 'old', r: 'old', rf: 0.348, rr: 0.348, wf: 225, wr: 225, mwt: 21 }, aero: { cdA: 0.92, clF: 0.12, clR: 0.06 }, abs: false, tc: false, biasF: 0.72, brakeG: 0.92, steerMax: 0.6, vmax: 0 },
+    dodge_charger_srt_hellcat_widebody_2020: { note: '2020 Charger SRT Hellcat Widebody, 6.2 SC HEMI (707 hp @ 6000, 650 lb-ft @ 4800 ✓), TF 8HP90 ✓, 2.62 ✓, 305/35ZR20 ✓, 120.2 in wb ✓',
+      eng: { tq: 881, nT: 4800, hp: 707, nP: 6000, red: 6200, idle: 700, kl: 0.22, Ie: 0.3, fam: 'hemi62sc' },
+      tr: { type: 'tc', auto: [4.71, 3.14, 2.1, 1.67, 1.29, 1.0, 0.84, 0.67], fd: 2.62, rev: 3.3, stall: 2400, shiftT: 0.2, lockFrom: 2, modern: true, man: null, fdMan: null },
+      geo: { wb: 3.052, tf: 1.643, tr: 1.645, fw: 0.565, h: 0.53, hrcF: 0.07, hrcR: 0.12, as: 0.3, ad: 0.25 },
+      susp: { fF: 1.55, fR: 1.75, arbF: 1.02, arbR: 0.2, z: 0.3 }, diff: 'lsd', lock: 35, drive: 'R',
+      tire: { f: 'summer', r: 'summer', rf: 0.361, rr: 0.361, wf: 305, wr: 305, mwt: 31 }, aero: { cdA: 0.95, clF: 0.06, clR: -0.02 }, abs: true, biasF: 0.66, brakeG: 1.12, steerMax: 0.6, vmax: 0 },
+    chevrolet_camaro_ss_2016: { note: '2016 Camaro SS, LT1 6.2 (455 hp @ 6000, 455 lb-ft @ 4400 ✓), TR6060 6-speed ✓ (3.73 ✓) / 8L90 ✓ (2.77 ✓), 245/40 + 275/35 ZR20 ✓, 110.7 in wb ✓',
+      eng: { tq: 617, nT: 4400, hp: 455, nP: 6000, red: 6500, idle: 650, kl: 0.32, Ie: 0.24, fam: 'lt1' },
+      tr: { type: 'tc', auto: [4.56, 2.97, 2.08, 1.69, 1.27, 1.0, 0.85, 0.65], fd: 2.77, rev: 3.82, stall: 2300, shiftT: 0.18, lockFrom: 2, modern: true, man: [2.66, 1.78, 1.3, 1.0, 0.74, 0.5], fdMan: 3.73 },
+      geo: { wb: 2.811, tf: 1.588, tr: 1.604, fw: 0.52, h: 0.48, hrcF: 0.06, hrcR: 0.1, as: 0.3, ad: 0.25 },
+      susp: { fF: 1.75, fR: 1.95, arbF: 0.94, arbR: 0.2, z: 0.32 }, diff: 'lsd', lock: 35, drive: 'R',
+      tire: { f: 'summer', r: 'summer', rf: 0.352, rr: 0.35, wf: 245, wr: 275, mwt: 28 }, aero: { cdA: 0.77, clF: 0.04, clR: 0.0 }, abs: true, biasF: 0.64, brakeG: 1.12, steerMax: 0.6, vmax: 0 },
+    ford_f_150_regular_cab_2021: { note: '2021 F-150 Regular Cab 5.0 Coyote (400 hp @ 6000, 410 lb-ft @ 4250 ✓), 10R80 ✓, 3.55 ✓, 265/70R17 ✓, 122.8 in wb ✓',
+      eng: { tq: 556, nT: 4250, hp: 400, nP: 6000, red: 6250, idle: 650, kl: 0.3, Ie: 0.26, fam: 'coyote' },
+      tr: { type: 'tc', auto: [4.696, 2.985, 2.146, 1.769, 1.52, 1.275, 1.0, 0.854, 0.689, 0.636], fd: 3.55, rev: 4.866, stall: 2200, shiftT: 0.2, lockFrom: 2, modern: true, man: null, fdMan: null },
+      geo: { wb: 3.119, tf: 1.735, tr: 1.735, fw: 0.58, h: 0.72, hrcF: 0.1, hrcR: 0.3, as: 0.35, ad: 0.2 },
+      susp: { fF: 1.3, fR: 1.75, arbF: 2.01, arbR: 0, z: 0.26 }, diff: 'open', drive: 'R',
+      tire: { f: 'highway', r: 'highway', rf: 0.401, rr: 0.401, wf: 265, wr: 265, mwt: 36 }, aero: { cdA: 1.5, clF: 0.1, clR: 0.05 }, abs: true, biasF: 0.68, brakeG: 0.98, steerMax: 0.62, vmax: 47.8 },
+    chevrolet_corvette_stingray_c8_2020: { note: '2020 Corvette Stingray Z51, LT2 6.2 (495 hp @ 6450, 470 lb-ft @ 5150 ✓), Tremec TR-9080 8-speed DCT ✓, 5.17 ✓, 245/35ZR19 + 305/30ZR20 ✓, 107.2 in wb ✓, 40/60 ✓',
+      eng: { tq: 637, nT: 5150, hp: 495, nP: 6450, red: 6600, idle: 700, kl: 0.34, Ie: 0.2, fam: 'lt2' },
+      tr: { type: 'dct', auto: [2.91, 1.76, 1.22, 0.97, 0.81, 0.66, 0.53, 0.45], fd: 5.17, rev: 2.33, stall: 0, shiftT: 0.1, lockFrom: 1, modern: true, man: null, fdMan: null },
+      geo: { wb: 2.722, tf: 1.648, tr: 1.594, fw: 0.4, h: 0.44, hrcF: 0.05, hrcR: 0.08, as: 0.25, ad: 0.3 },
+      susp: { fF: 1.95, fR: 2.1, arbF: 0.73, arbR: 0.15, z: 0.34 }, diff: 'lsd', lock: 45, drive: 'R',
+      tire: { f: 'track', r: 'track', rf: 0.327, rr: 0.346, wf: 245, wr: 305, mwt: 26 }, aero: { cdA: 0.72, clF: -0.05, clR: -0.1 }, abs: true, biasF: 0.6, brakeG: 1.2, steerMax: 0.58, vmax: 0 },
+    ram_1500_trx_2021: { note: '2021 Ram 1500 TRX, 6.2 SC HEMI (702 hp @ 6100, 650 lb-ft @ 4800 ✓), 8HP95 ✓, 3.55 ✓, 35 in 325/65R18 ✓, 145.1 in wb ✓, full-time 4WD (40/60 split ~)',
+      eng: { tq: 881, nT: 4800, hp: 702, nP: 6100, red: 6200, idle: 700, kl: 0.22, Ie: 0.32, fam: 'hemi62sc' },
+      tr: { type: 'tc', auto: [4.71, 3.14, 2.1, 1.67, 1.29, 1.0, 0.84, 0.67], fd: 3.55, rev: 3.3, stall: 2400, shiftT: 0.22, lockFrom: 2, modern: true, man: null, fdMan: null },
+      geo: { wb: 3.686, tf: 1.87, tr: 1.87, fw: 0.56, h: 0.88, hrcF: 0.18, hrcR: 0.35, as: 0.35, ad: 0.2 },
+      susp: { fF: 1.15, fR: 1.35, arbF: 1.03, arbR: 0, z: 0.36 }, diff: 'open', drive: 'A', split: 0.4, center: 0.45,
+      tire: { f: 'allterrain', r: 'allterrain', rf: 0.444, rr: 0.444, wf: 325, wr: 325, mwt: 42 }, aero: { cdA: 2.15, clF: 0.12, clR: 0.06 }, abs: true, biasF: 0.66, brakeG: 0.92, steerMax: 0.6, vmax: 52.7 },
+    dodge_charger_scat_pack_2015: { note: '2015 Charger R/T Scat Pack, 392 HEMI 6.4 (485 hp @ 6100, 475 lb-ft @ 4100 ✓), 8HP70 ✓, 3.09 ✓, 245/45ZR20 ✓, 120.2 in wb ✓',
+      eng: { tq: 644, nT: 4100, hp: 485, nP: 6100, red: 6400, idle: 650, kl: 0.3, Ie: 0.26, fam: 'hemi392' },
+      tr: { type: 'tc', auto: [4.71, 3.14, 2.1, 1.67, 1.29, 1.0, 0.84, 0.67], fd: 3.09, rev: 3.3, stall: 2200, shiftT: 0.2, lockFrom: 2, modern: true, man: null, fdMan: null },
+      geo: { wb: 3.052, tf: 1.605, tr: 1.62, fw: 0.54, h: 0.53, hrcF: 0.07, hrcR: 0.12, as: 0.3, ad: 0.25 },
+      susp: { fF: 1.45, fR: 1.65, arbF: 1.05, arbR: 0.2, z: 0.28 }, diff: 'lsd', lock: 30, drive: 'R',
+      tire: { f: 'perfas', r: 'perfas', rf: 0.364, rr: 0.364, wf: 245, wr: 245, mwt: 28 }, aero: { cdA: 0.86, clF: 0.06, clR: 0.0 }, abs: true, biasF: 0.66, brakeG: 1.05, steerMax: 0.6, vmax: 0 },
+    chevrolet_tahoe_2021: { note: '2021 Tahoe 5.3 V8 (355 hp @ 5600, 383 lb-ft @ 4100 ✓), 10L80 ✓, 3.23 ✓, 275/60R20 ✓, 120.9 in wb ✓, 112 mph limiter ✓',
+      eng: { tq: 519, nT: 4100, hp: 355, nP: 5600, red: 5800, idle: 600, kl: 0.34, Ie: 0.26, fam: 'l84' },
+      tr: { type: 'tc', auto: [4.7, 2.99, 2.15, 1.8, 1.52, 1.28, 1.0, 0.85, 0.69, 0.64], fd: 3.23, rev: 4.87, stall: 2000, shiftT: 0.22, lockFrom: 2, modern: true, man: null, fdMan: null },
+      geo: { wb: 3.071, tf: 1.745, tr: 1.73, fw: 0.53, h: 0.78, hrcF: 0.12, hrcR: 0.15, as: 0.3, ad: 0.2 },
+      susp: { fF: 1.2, fR: 1.4, arbF: 0.78, arbR: 0.1, z: 0.26 }, diff: 'open', drive: 'R',
+      tire: { f: 'highway', r: 'highway', rf: 0.419, rr: 0.419, wf: 275, wr: 275, mwt: 36 }, aero: { cdA: 1.25, clF: 0.08, clR: 0.04 }, abs: true, biasF: 0.66, brakeG: 0.95, steerMax: 0.62, vmax: 50.1 },
+    ford_mustang_gt_2019: { note: '2019 Mustang GT 5.0 Coyote (460 hp @ 7000, 420 lb-ft @ 4600 ✓), MT82 6-speed ✓ (3.55 ✓) / 10R80 ✓ (3.15 ✓), 255/40ZR19 ✓, 107.1 in wb ✓, Torsen LSD ✓, 155 mph limiter ✓',
+      eng: { tq: 570, nT: 4600, hp: 460, nP: 7000, red: 7500, idle: 700, kl: 0.36, Ie: 0.22, fam: 'coyote' },
+      tr: { type: 'tc', auto: [4.696, 2.985, 2.146, 1.769, 1.52, 1.275, 1.0, 0.854, 0.689, 0.636], fd: 3.15, rev: 4.866, stall: 2300, shiftT: 0.18, lockFrom: 2, modern: true, man: [3.66, 2.43, 1.69, 1.32, 1.0, 0.65], fdMan: 3.55 },
+      geo: { wb: 2.72, tf: 1.582, tr: 1.648, fw: 0.53, h: 0.5, hrcF: 0.06, hrcR: 0.1, as: 0.3, ad: 0.25 },
+      susp: { fF: 1.6, fR: 1.85, arbF: 1.09, arbR: 0.2, z: 0.3 }, diff: 'lsd', lock: 40, drive: 'R', lineLock: true,
+      tire: { f: 'summer', r: 'summer', rf: 0.343, rr: 0.343, wf: 255, wr: 255, mwt: 27 }, aero: { cdA: 0.8, clF: 0.05, clR: 0.0 }, abs: true, biasF: 0.65, brakeG: 1.08, steerMax: 0.6, vmax: 69.3 },
+    chevrolet_nova_1972: { note: '1972 Nova, built 350 small block (345 hp, ~380 lb-ft ~), TH350 3-speed ✓ / Muncie M21 4-speed ✓, 3.73 gears ~, 15 in Rally wheels on street radials ✓, 111 in wb ✓, no ABS ✓',
+      eng: { tq: 515, nT: 3800, hp: 345, nP: 5400, red: 6000, idle: 750, kl: 0.4, Ie: 0.22, fam: 'sbc350' },
+      tr: { type: 'tc', auto: [2.52, 1.52, 1.0], fd: 3.73, rev: 1.93, stall: 2200, shiftT: 0.4, lockFrom: 9, modern: false, man: [2.2, 1.64, 1.28, 1.0], fdMan: 3.73 },
+      geo: { wb: 2.819, tf: 1.5, tr: 1.49, fw: 0.555, h: 0.55, hrcF: 0.08, hrcR: 0.28, as: 0.4, ad: 0.15 },
+      susp: { fF: 1.05, fR: 1.18, arbF: 1.77, arbR: 0, z: 0.2 }, diff: 'lsd', lock: 25, drive: 'R',
+      tire: { f: 'old', r: 'old', rf: 0.348, rr: 0.348, wf: 225, wr: 225, mwt: 21 }, aero: { cdA: 0.92, clF: 0.14, clR: 0.06 }, abs: false, tc: false, biasF: 0.74, brakeG: 0.85, steerMax: 0.6, vmax: 0 },
+    dodge_challenger_rt_scat_pack_widebody_2019: { note: '2019 Challenger R/T Scat Pack Widebody, 392 HEMI 6.4 (485 hp @ 6100, 475 lb-ft @ 4100 ✓), 8HP70 ✓ (3.09 ✓) / TR6060 6-speed ✓ (3.73 ✓, ratios ~), 305/35ZR20 ✓, 116 in wb ✓',
+      eng: { tq: 644, nT: 4100, hp: 485, nP: 6100, red: 6400, idle: 650, kl: 0.3, Ie: 0.26, fam: 'hemi392' },
+      tr: { type: 'tc', auto: [4.71, 3.14, 2.1, 1.67, 1.29, 1.0, 0.84, 0.67], fd: 3.09, rev: 3.3, stall: 2200, shiftT: 0.2, lockFrom: 2, modern: true, man: [2.66, 1.78, 1.3, 1.0, 0.74, 0.5], fdMan: 3.73 },
+      geo: { wb: 2.946, tf: 1.67, tr: 1.68, fw: 0.56, h: 0.53, hrcF: 0.07, hrcR: 0.12, as: 0.3, ad: 0.25 },
+      susp: { fF: 1.5, fR: 1.7, arbF: 1.06, arbR: 0.2, z: 0.3 }, diff: 'lsd', lock: 35, drive: 'R', lineLock: true,
+      tire: { f: 'summer', r: 'summer', rf: 0.361, rr: 0.361, wf: 305, wr: 305, mwt: 31 }, aero: { cdA: 0.98, clF: 0.06, clR: -0.02 }, abs: true, biasF: 0.66, brakeG: 1.1, steerMax: 0.6, vmax: 0 },
+    mercedes_amg_g63_2019: { note: '2019 Mercedes-AMG G63 (W463A), M177 4.0 twin-turbo (577 hp @ 6000, 627 lb-ft @ 2500-3500 ✓), 9G-Tronic ✓, 40/60 full-time AWD ✓, 295/40R22 ✓, 113.8 in wb ✓, 137 mph limiter ✓',
+      eng: { tq: 850, nT: 3000, hp: 577, nP: 6000, red: 6500, idle: 650, kl: 0.15, Ie: 0.24, fam: 'm177' },
+      tr: { type: 'tc', auto: [5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.87, 0.72, 0.6], fd: 3.27, rev: 4.8, stall: 2400, shiftT: 0.18, lockFrom: 2, modern: true, man: null, fdMan: null },
+      geo: { wb: 2.89, tf: 1.638, tr: 1.655, fw: 0.5, h: 0.8, hrcF: 0.12, hrcR: 0.3, as: 0.35, ad: 0.2 },
+      susp: { fF: 1.4, fR: 1.55, arbF: 1.13, arbR: 0.05, z: 0.3 }, diff: 'open', drive: 'A', split: 0.4, center: 0.5,
+      tire: { f: 'perfas', r: 'perfas', rf: 0.397, rr: 0.397, wf: 295, wr: 295, mwt: 38 }, aero: { cdA: 1.82, clF: 0.1, clR: 0.06 }, abs: true, biasF: 0.64, brakeG: 1.0, steerMax: 0.6, vmax: 61.2 },
+  };
+  // anything without a sheet (bikes, ATVs, a car in an old save): a reasonable sheet built from its catalog numbers
+  function vspecGeneric(m, red) {
+    const ride = m.ride, truck = m.body === 'truck' || m.body === 'suv', moto = m.body === 'moto', hp = m.hp || 200;
+    const nP = red * 0.88, tq = hp * 745.7 / (nP / RPM) * 1.18, sheet = !!ride;
+    const top = ride ? (m.lim || 120) / 2.237 * 1.04 : 0, r = moto ? 0.31 : ride ? 0.3 : truck ? 0.4 : 0.33;
+    // a bike's sequential box: the top gear lands its redline at the speed the bike really tops out at
+    const auto = ride ? (() => { const gTop = (red / RPM) * r / top, a = []; for (let i = 0; i < 6; i++) a.push(gTop * Math.pow(2.6, (5 - i) / 5)); return a; })() : truck ? [4.03, 2.36, 1.53, 1.15, 0.85, 0.67] : [3.6, 2.19, 1.41, 1.0, 0.83, 0.69];
+    return { note: 'Generic sheet from the catalog (estimate)', generic: true,
+      eng: { tq, nT: red * 0.62, hp, nP, red, idle: moto ? 1200 : 700, kl: 0.35, Ie: moto ? 0.03 : ride ? 0.05 : 0.22, fam: 'generic' },
+      tr: { type: sheet ? 'dct' : 'tc', auto, fd: ride ? 1 : truck ? 3.42 : 3.23, rev: sheet ? auto[0] : 3.0, stall: 2100, shiftT: ride ? 0.08 : 0.3, lockFrom: 2, modern: true, man: null, fdMan: null },
+      geo: { wb: moto ? 1.45 : ride ? 1.25 : truck ? 3.1 : 2.75, tf: moto ? 0.9 : ride ? 1.1 : truck ? 1.72 : 1.56, tr: moto ? 0.9 : ride ? 1.1 : truck ? 1.72 : 1.56,
+        fw: m.drive === 'FWD' ? 0.61 : moto ? 0.5 : truck ? 0.56 : 0.53, h: moto ? 0.55 : ride ? 0.5 : truck ? 0.75 : 0.52, hrcF: 0.08, hrcR: 0.15, as: 0.3, ad: 0.2 },
+      susp: { fF: 1.4, fR: 1.6, arbF: 0.9, arbR: 0.4, z: 0.28 }, diff: m.drive === 'FWD' ? 'open' : 'lsd', lock: 25, drive: m.drive === 'FWD' ? 'F' : m.drive === 'AWD' || m.drive === '4WD' ? 'A' : 'R', split: 0.4, center: 0.4,
+      tire: { f: moto ? 'moto' : truck ? 'highway' : 'touring', r: moto ? 'moto' : truck ? 'highway' : 'touring', rf: r, rr: r, wf: 225, wr: 225, mwt: moto ? 10 : 24 },
+      aero: { cdA: moto ? 0.4 : truck ? 1.4 : 0.75, clF: 0.06, clR: 0.03 }, abs: (m.y || 2020) >= 1995, tc: !ride && (m.y || 2020) >= 2005, biasF: 0.66, brakeG: 1.0, steerMax: 0.6, vmax: 0 };
+  }
+  const vspecOf = (id, m, red) => VSPEC[id] || vspecGeneric(m, red);
+  // torque at the crank, wide open (N·m), from the sheet's torque and power peaks; past the torque peak it falls on a
+  // curve that puts the power peak where the factory says it is
+  function tqCurve(E) {
+    const Tp = E.hp * 745.7 / (E.nP / RPM), xp = (E.nP - E.nT) / Math.max(1, E.red - E.nT);
+    E.kh = xp > 0 ? Math.max(0, (1 - Tp / E.tq) / (xp * xp)) : 0;
+    let pk = 0; for (let n = 800; n <= E.red; n += 50) pk = Math.max(pk, tqAt(E, n) * n / RPM); E.pkW = pk;
+  }
+  function tqAt(E, n) {
+    if (n <= E.nT) { const x = (E.nT - n) / E.nT; return E.tq * (1 - E.kl * x * x); }
+    const x = (n - E.nT) / Math.max(1, E.red - E.nT); return E.tq * Math.max(0.2, 1 - E.kh * x * x);
+  }
+  // the tuning laptop's knob, but only if its part is on the car
+  function tuneKnob(c, t, k) { for (const g of Object.values(TUNE_KNOBS)) for (const r of g) if (r[0] === k) return hasPart(c, r[5]) ? t[k] : TUNE_DEF[k]; return t[k]; }
+
+  // ---- build the physical car from the sheet plus everything bolted on and dialed in ----
+  const VEH_CACHE = new Map();
+  function vehOf(c, kg) {
+    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0].join('|');
+    let V = VEH_CACHE.get(key); if (V) return V;
+    const sp = vspecOf(c.id, m, red0), E = Object.assign({}, sp.eng), tr = sp.tr, geo = sp.geo, su = sp.susp, ti = sp.tire;
+    // ECU: the rev limiter knob moves the limiter (the curve keeps falling past the factory redline, so it only pays
+    // if the motor still makes power up there)
+    const revK = tuneKnob(c, t, 'rev'); if (hasPart(c, 'ecu') && revK !== TUNE_DEF.rev) E.red = Math.max(E.nP + 200, E.red + (revK - TUNE_DEF.rev));
+    tqCurve(E);
+    const mass = kg + 80, L = geo.wb, rhF = tuneKnob(c, t, 'rhF') / 100, rhR = tuneKnob(c, t, 'rhR') / 100;
+    const h = Math.max(0.25, geo.h + (rhF + rhR) / 2 * 0.85), b = geo.fw * L, a = L - b;   // a: CG to front axle, b: CG to rear axle
+    const fd = hasPart(c, 'gears') ? sp.tr.fd * (tuneKnob(c, t, 'fd') / TUNE_DEF.fd) : tr.fd;
+    // ---- suspension: wheel rates from the ride frequency, the coilover knobs scale them; bars scale with their knob ----
+    const mcF = mass * 0.88 * (b / L) / 2, mcR = mass * 0.88 * (a / L) / 2, sc = x => Math.pow(1.32, x - 5), zc = x => Math.pow(1.22, x - 5);
+    const kF = mcF * (2 * Math.PI * su.fF) ** 2 * sc(tuneKnob(c, t, 'spF')), kR = mcR * (2 * Math.PI * su.fR) ** 2 * sc(tuneKnob(c, t, 'spR'));
+    const d = k && c.drag.susp, ext = d && d.shocks ? [0.5, 1, 1.6][d.ext] : 1, comp = d && d.shocks ? [0.55, 1, 1.5][d.comp] : 1;
+    const cc = (kk, mc) => 2 * Math.sqrt(kk * mc);
+    const cBF = cc(kF, mcF) * su.z * zc(tuneKnob(c, t, 'bF')), cBR = cc(kR, mcR) * su.z * zc(tuneKnob(c, t, 'bR')) * comp;
+    const cRF = cc(kF, mcF) * su.z * 1.6 * zc(tuneKnob(c, t, 'rF')) * ext, cRR = cc(kR, mcR) * su.z * 1.6 * zc(tuneKnob(c, t, 'rR'));
+    const arbF = kF * su.arbF * sc(tuneKnob(c, t, 'swF')), arbR = kR * su.arbR * (su.arbR ? sc(tuneKnob(c, t, 'swR')) : (hasPart(c, 'sway') ? 0.25 * sc(tuneKnob(c, t, 'swR')) : 0));
+    // ---- tires: the compound, the pressure, wear; a drag pack swaps the rears for radials or slicks and the fronts for skinnies ----
+    const tF = TIRES[k ? 'skinny' : ti.f], tR = TIRES[k ? (k.tire === 'slick' ? 'slick' : 'radial') : ti.r];
+    const psiF = t.psiF, psiR = t.psiR, wear = 0.82 + 0.18 * clamp(c.cond.tires / 100, 0, 1);
+    const psiK = (T, p) => T === TIRES.radial || T === TIRES.slick ? 1 - ((p - 16) / 22) ** 2 * 0.3 : 1 - ((p - 32) / 22) ** 2 * 0.25;
+    const muF = tF.mu * psiK(tF, psiF) * wear, muR = tR.mu * psiK(tR, psiR) * wear * (k ? 1 + 0.1 * (dragPerf(c).launch || 0) : 1);
+    const rF = k ? ti.rf * 1.02 : ti.rf, rR = k ? Math.max(ti.rr, 0.37) : ti.rr;   // drag radials and slicks are taller (28-30 in)
+    const mwF = k ? 12 : ti.mwt, mwR = k ? 25 : ti.mwt;
+    // ---- drivetrain ----
+    const D = sp.drive, split = D === 'A' ? sp.split : D === 'F' ? 1 : 0;
+    const s = D === 'A' ? [split / 2, split / 2, (1 - split) / 2, (1 - split) / 2] : D === 'F' ? [0.5, 0.5, 0, 0] : [0, 0, 0.5, 0.5];
+    let diff = sp.diff, lock = sp.lock || 0;
+    if (dl) { diff = dl >= 4 ? 'spool' : 'lsd'; lock = [0, 40, 55, 70, 100][dl]; }
+    if (hasPart(c, 'diff')) { diff = t.diff; lock = diff === 'lsd' ? tuneKnob(c, t, 'lock') : diff === 'spool' ? 100 : 0; }
+    const capPart = PFX.clutch.cap[partLv(c, 'clutch')] / PFX.clutch.cap[0];
+    const shiftK = (partsPerfShift(c) || 0.42) / 0.42;
+    const bias = hasPart(c, 'bias') ? sp.biasF + (tuneKnob(c, t, 'bias') - TUNE_DEF.bias) / 100 : sp.biasF;
+    const brakeTot = sp.brakeG * mass * G9 * PFX.brakes.force[partLv(c, 'brakes')];
+    const camF = tuneKnob(c, t, 'camF'), camR = tuneKnob(c, t, 'camR'), toeF = tuneKnob(c, t, 'toeF') * Math.PI / 180, toeR = tuneKnob(c, t, 'toeR') * Math.PI / 180;
+    const stall = tr.stall || 0, tqStall = stall ? tqAt(E, stall) : 1;
+    V = { key, sp, id: c.id, m: mass, kg, L, a, b, h, tf: geo.tf, tr: geo.tr, Iz: mass * a * b, Iyy: mass * 0.88 * (0.42 * L) ** 2, Ixx: mass * 0.88 * (0.38 * (geo.tf + geo.tr) / 2) ** 2 + mass * 0.1 * h * h,
+      ms: mass * 0.88, hrcF: Math.max(0.01, geo.hrcF + rhF * 0.7), hrcR: Math.max(0.01, geo.hrcR + rhR * 0.7), AS: geo.as + (d && d.bars ? 0.3 : 0), AD: geo.ad,
+      wx: [a, a, -b, -b], wy: [geo.tf / 2, -geo.tf / 2, geo.tr / 2, -geo.tr / 2], R: [rF, rF, rR, rR], Iw: [mwF * rF * rF * 0.62, mwF * rF * rF * 0.62, mwR * rR * rR * 0.62, mwR * rR * rR * 0.62],
+      T: [tF, tF, tR, tR], mu: [muF, muF, muR, muR], Fn: (() => { const wF = k ? 120 : ti.wf, wR = k ? Math.max(ti.wr, 300) : ti.wr, wa = (wF + wR) / 2; return [wF, wF, wR, wR].map(w => mass * G9 / 4 * w / wa); })(), cam: [camF, camF, camR, camR], toe: [-toeF, toeF, -toeR, toeR],
+      ks: [kF, kF, kR, kR], cB: [cBF, cBF, cBR, cBR], cR: [cRF, cRF, cRR, cRR], arb: [arbF, arbR], travC: [0.08 + rhF * 0.9, 0.08 + rhF * 0.9, 0.09 + rhR * 0.9, 0.09 + rhR * 0.9].map(x => Math.max(0.015, x)), travE: 0.11,
+      drive: D, s, split, diff, lock, center: sp.center || 0.4, eta: (tr.type === 'tc' ? 0.89 : 0.91) - (D === 'A' ? 0.03 : 0),
+      E, idle: E.idle, red: E.red, Ie: E.Ie + (tr.type === 'tc' ? 0.06 : 0), ev: isEV(c),
+      tt: tr.type, auto: tr.auto, fd, man: tr.man || tr.auto.slice(0, 6), fdMan: tr.man ? (hasPart(c, 'gears') ? tr.fdMan * (tuneKnob(c, t, 'fd') / TUNE_DEF.fd) : tr.fdMan) : fd, rev: tr.rev, stall, K: stall ? (stall / RPM) / Math.sqrt(tqStall) : 0,
+      TR0: 1.9, shiftT: tr.shiftT * shiftK, lockFrom: tr.lockFrom, modern: tr.modern, clutchCap: E.tq * 1.35 * capPart,
+      bias: clamp(bias, 0.4, 0.85), brakeTot, abs: sp.abs, tcAvail: sp.tc !== false, lineLock: !!sp.lineLock || !!k, steerMax: sp.steerMax * (tuneKnob(c, t, 'angle') / TUNE_DEF.angle),
+      cdA: sp.aero.cdA, clF: sp.aero.clF, clR: sp.aero.clR, crr: ti.f === 'allterrain' ? 0.014 : 0.011, vmax: hasPart(c, 'ecu') ? 0 : sp.vmax, wbar: !!(d && d.wbar) };
+    if (VEH_CACHE.size > 40) VEH_CACHE.clear(); VEH_CACHE.set(key, V); return V;
+  }
+  const partsPerfShift = c => PFX.transmission.shift[partLv(c, 'transmission')];
+  // top speed the physics can actually reach: the gear, the power and the air
+  function vehTop(V, crankW) {
+    if (V._tW === crankW) return V._t;
+    let best = 0; const n = V.auto.length, ks = crankW / V.E.pkW;
+    for (let v = 5; v < 125; v += 0.5) {
+      let F = 0;
+      for (let g = 0; g < n; g++) { const G = V.auto[g] * V.fd, w = v / V.R[2] * G, rpm = w * RPM; if (rpm > V.red || rpm < 1000) continue; F = Math.max(F, tqAt(V.E, rpm) * ks * G * V.eta / V.R[2]); }
+      const res = 0.5 * RHO * V.cdA * v * v + V.crr * V.m * G9; if (F >= res) best = v; else if (best) break;
+    }
+    V._tW = crankW; return (V._t = V.vmax ? Math.min(best, V.vmax) : best);
+  }
+
+  // ---- the tire: combined slip (one grip budget for push and turn), Pacejka shape, load sensitivity ----
+  const _tf = { x: 0, y: 0 };
+  // past the peak, rubber loses grip with how fast it's sliding over the road (vs, m/s): a tire that's barely
+  // spinning at walking pace still holds most of its peak, one that's smoking at 30 mph holds the Pacejka tail
+  function tireF(T, mu, Fz, kap, tanA, out, vs) {
+    const sx = kap / T.kp, sy = tanA / T.tap, rho = Math.sqrt(sx * sx + sy * sy);
+    if (rho < 1e-7 || Fz <= 0) { out.x = 0; out.y = 0; return; }
+    const wx = sx * sx / (rho * rho), C = T.cx * wx + T.cy * (1 - wx), B = T.bx * wx + T.by * (1 - wx);
+    let f = Math.sin(C * Math.atan(B * rho)); if (rho > 1) f = 1 - (1 - f) * Math.min(1, (vs || 0) / 9);
+    const F = mu * (1 + T.lx * wx) * Fz * f;   // tires grip harder pushing than turning (the friction ellipse is long)
+    out.x = F * sx / rho; out.y = -F * sy / rho;
+  }
+  // the road under the car: pavement, grass and dirt, or a prepped drag strip
+  const SURF = { mu: 1, rr: 0, prep: 0 };
+
+  function vdInit(V, u) {
+    const st = { id: V.id, w: [0, 0, 0, 0], we: V.idle / RPM, g: 1, lock: false, ce: 0, zc: 0, th: 0, ph: 0, zcv: 0, thv: 0, phv: 0, absK: [1, 1, 1, 1], cut: false, vcut: false, shT: 0, hold: 0, ax: 0, ay: 0,
+      Fz: [0, 0, 0, 0], kap: [0, 0, 0, 0], al: [0, 0, 0, 0], Te: 0, Tc: 0, rev: false, sync: false, lit: 0, tcK: 1 };
+    for (let i = 0; i < 4; i++) st.w[i] = u / V.R[i];
+    if (Math.abs(u) > 1 && !V.ev) {   // rolling start: pick the gear the box would be in and lock it up
+      let g = 1; for (let i = 0; i < V.auto.length; i++) { const rpm = u / V.R[2] * V.auto[i] * V.fd * RPM; if (rpm < V.red * 0.82) { g = i + 1; break; } }
+      st.g = g; st.we = Math.max(V.idle, u / V.R[2] * V.auto[g - 1] * V.fd * RPM) / RPM; st.lock = true; st.ce = 1;
+    }
+    return st;
+  }
+  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = TIRE.boost = TIRE.nosK = TIRE.nosT = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; TIRE.vd = null; }
+  // after a wall: the tires stop with the car
+  function vdSync() { if (TIRE.vd) TIRE.vd.sync = true; }
   function carDims(m) {
     if (m && m.userData.wb == null) {
       const xs = m.userData.wheels.map(w => w.position.x), wb = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
@@ -7995,141 +8233,288 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     }
     return m ? m.userData.wb : 2.8;
   }
-  // one physics step; I = { gas, brake, steer, hb, gb }. Moves drv.x/z/yaw and returns nothing; drv.v is forward speed
-  // The drivetrain is real: the motor's power goes through the gear you're in (low gears push hard, tall ones less),
-  // and the driven tires can only hold their grip times the weight on them (more as the car squats onto them).
-  // Ask for more in any gear and they break loose: the wheels and the revs flare up, and a spinning tire holds less
-  // than a hooked one, so it stays lit until you lift, short shift or the car catches up.
-  function physStep(I, P, h) {
-    const sy = Math.sin(drv.yaw), cy = Math.cos(drv.yaw), fx = -sy, fz = -cy, lx = -cy, lz = sy;
-    let u = TIRE.vx * fx + TIRE.vz * fz, vl = TIRE.vx * lx + TIRE.vz * lz, w = TIRE.w;
-    const L = carDims(car && car.userData.model), a = L / 2, b = L / 2, k2 = a * b * 1.05;
-    const grip = P.grip, mu = (0.72 + grip * 0.42) * G9 * (P.corner || 1); // cornering grip, about 1 g on good tires
-    // weight moves back when you accelerate, forward when you brake
-    const shift = clamp(TIRE.ax * 0.045 * (P.xfer || 1), -0.35, 0.35) + (P.transfer || 0) * 0.35 * clamp(TIRE.ax / 12, 0, 1), Nf = 0.5 - shift * 0.5, Nr = 0.5 + shift * 0.5;
-    const spd = Math.hypot(u, vl);
-    // steering: lots of lock when slow, less at speed
-    // caster: when the car slides, the front wheels swing toward where it's going on their own (a real car's wheel
-    // spins into the countersteer when you loosen your grip), so your input steers relative to the slide
-    const betaF = u > 1 ? Math.atan2(vl + a * w, u) : 0, cast = clamp((Math.abs(betaF) - 0.05) / 0.1, 0, 1) * betaF * 0.85;
-    const lockK = P.steer || 1, delta = clamp(drv.steer * 0.62 * lockK / (1 + Math.abs(u) / 22) + cast, -0.7 * lockK, 0.7 * lockK); TIRE.delta = delta;
 
-    // ---- the drivetrain ----
-    const D = P.drive === 'FWD' ? 'F' : P.drive === 'AWD' || P.drive === '4WD' ? 'A' : 'R'; TIRE.drv = D;
-    const ev = !!P.ev, gb = I.gb && I.gb.man && !I.gb.ev && !ev ? I.gb : null;
-    // power at the wheels per kg of car (older callers only know P.acc, so work it back from that)
-    const pw = P.pw != null ? P.pw : Math.max(0, (P.acc - 5) / 55) * 634;
-    // the gear: yours in a manual, the box's own in an automatic (it shifts on the wheel speed, so a spinning tire
-    // revs it out and it grabs the next gear like a real slushbox does)
-    let g, V;
-    if (ev) { g = 1; V = Math.max(5, P.top); }
-    else if (gb) { g = gb.g; V = g > 0 ? gb.tops[g - 1] : 0; }
-    else {
-      for (let i = 0; i < 6; i++) TOPS[i] = Math.max(4, P.top * GB_R[i]);
-      let ga = TIRE.gA || 1; const wsA = Math.max(0, TIRE.wv), up = I.gas > 0.85 ? 0.97 : 0.5 + 0.42 * I.gas, dn = 0.3 + 0.2 * I.gas;
-      // it shifts on the output speed (the wheels), waits a beat between shifts and won't kick down while the tires are lit
-      TIRE.shW = Math.max(0, (TIRE.shW || 0) - h);
-      if (ga < 6 && wsA > TOPS[ga - 1] * up && !(I.brake > 0.3 && ga >= 2)) { ga++; TIRE.shT = 0.16; TIRE.shW = 0.7; }
-      else if (ga > 1 && wsA < TOPS[ga - 2] * dn && !TIRE.shW && !TIRE.lit) { ga--; TIRE.shT = 0.08; TIRE.shW = 0.5; }
-      if (Math.abs(u) < 1 && wsA < 2) ga = 1;
-      TIRE.gA = g = ga; V = TOPS[ga - 1];
+  // one physics call; I = { gas, brake, steer, hb, gb, nos, als }. Moves the car's velocity, yaw rate and drv.yaw;
+  // drv.v is the forward speed. Callers pass whatever h they like: it's cut into steps of at most 1/240 s.
+  function physStep(I, P, h) {
+    const n = Math.max(1, Math.ceil(h / VD_H - 1e-6)), k = h / n;
+    for (let i = 0; i < n; i++) vdStep(I, P, k);
+  }
+  const _esc = [0, 0, 0, 0], _vs = [0, 0, 0, 0], _dI = [0, 0, 0, 0], _w0 = [0, 0, 0, 0], _mu = [0, 0, 0, 0], _fl = [0, 0, 0, 0], _fg = [0, 0, 0, 0], _F0x = [0, 0, 0, 0], _F0y = [0, 0, 0, 0], _kx = [0, 0, 0, 0], _dw = [0, 0, 0, 0], _tb = [0, 0, 0, 0], _lng = [0, 0, 0, 0], _lat = [0, 0, 0, 0], _den = [0, 0, 0, 0], _cd = [0, 0, 0, 0], _sd = [0, 0, 0, 0], _zi = [0, 0, 0, 0];
+  function vdStep(I, P, h) {
+    const V = P.veh; if (!V) return;
+    const sy = Math.sin(drv.yaw), cy = Math.cos(drv.yaw), fx = -sy, fz = -cy, lx = -cy, lz = sy;
+    let u = TIRE.vx * fx + TIRE.vz * fz, v = TIRE.vx * lx + TIRE.vz * lz, r = TIRE.w;
+    let st = TIRE.vd; if (!st || st.id !== V.id) st = TIRE.vd = vdInit(V, u); st.V = V;
+    if (st.sync) { st.sync = false; for (let i = 0; i < 4; i++) st.w[i] = (u - r * V.wy[i]) / V.R[i]; if (st.lock && !V.ev) st.we = Math.max(V.idle * 0.5 / RPM, Math.abs(vdGin(V, st, I) * vdOmegaIn(V, st))); }
+    const spd = Math.hypot(u, v), D = V.drive; TIRE.drv = D;
+    const gb = I.gb && I.gb.man && !I.gb.ev && !V.ev ? I.gb : null;
+
+    // ---- the driver: pedals, auto reverse, line lock ----
+    let gas = I.gas || 0, brk = I.brake || 0;
+    if (!gb) {
+      if (st.rev) { if (gas > 0.05 && u > -0.8) st.rev = false; else { const g2 = gas; gas = brk * 0.6; brk = g2; } }
+      else if (brk > 0.05 && !gas && Math.abs(u) < 0.6) st.rev = true, gas = brk * 0.6, brk = 0;
+      if (!st.rev && gas > 0.05 && u < -0.8) { brk = Math.max(brk, gas); gas = 0; }
     }
-    if (TIRE.shT > 0) TIRE.shT = Math.max(0, TIRE.shT - h);
-    // the motor takes a moment to come up on the throttle (and the car a moment to squat onto the rears)
-    const thr = TIRE.thr += (I.gas - TIRE.thr) * Math.min(1, h * (I.gas > TIRE.thr ? 5 : 14));
-    const cut = (gb && gb.cut > 0) || g <= 0, slipOK = !gb || g <= 2;
+    // auto hold: stopped with your feet off the pedals, the brakes hold it (no idle creep off a stop)
+    if (gas < 0.02 && brk < 0.02 && Math.abs(u) < 0.25) brk = 0.5;
+    const lineLock = D === 'R' && gas > 0.3 && brk > 0.3 && Math.abs(u) < 3.5 && V.lineLock !== false;
+    const thr = TIRE.thr += (gas - TIRE.thr) * Math.min(1, h * (gas > TIRE.thr ? 9 : 14));
+    // steering: lots of lock when slow, less at speed; caster swings the fronts into a slide when you let the wheel go
+    const betaF = u > 1 ? Math.atan2(v + V.a * r, u) : 0, cast = clamp((Math.abs(betaF) - 0.05) / 0.1, 0, 1) * betaF * 0.85 * (1 - 0.8 * Math.min(1, Math.abs(drv.steer)));   // hands on the wheel hold it
+    // at speed a full press asks for about what the front tires can use: the angle that makes the car's grip-limit turn, plus
+    // a bit of the front tire's peak slip angle (a real driver doesn't dial 10 degrees of lock at 75 mph)
+    const dLim = Math.atan(V.L * V.mu[0] * SURF.mu * G9 / Math.max(1, u * u)) + 0.55 * V.T[0].ap;
+    const delta = clamp(drv.steer * Math.min(V.steerMax / (1 + Math.abs(u) / 22), dLim) + cast, -V.steerMax * 1.15, V.steerMax * 1.15); TIRE.delta = delta;
+
+    // ---- the gearbox ----
+    const nA = V.auto.length; let G = 0, ratio = 0, mode;   // mode: 'clutch' (manual / DCT), 'tc' (converter), 'ev'
+    const wIn = vdOmegaIn(V, st);
+    if (V.ev) { G = 9 * (st.rev ? -1 : 1); mode = 'ev'; }
+    else if (gb) {
+      mode = 'clutch'; const g = gb.g;
+      ratio = g > 0 ? V.man[Math.min(g, V.man.length) - 1] : g === -1 ? -V.rev : 0; G = ratio * V.fdMan;
+    } else {
+      mode = V.tt === 'dct' ? 'clutch' : 'tc';
+      if (st.rev) { G = -V.rev * V.fd; st.g = 1; }
+      else {
+        // the shift logic: up on the input shaft rpm (late at full throttle, early cruising), down when it lugs,
+        // a beat between shifts, and no kickdown while the tires are lit
+        st.hold = Math.max(0, st.hold - h);
+        const rpmIn = g => Math.abs(wIn) * V.auto[g - 1] * V.fd * RPM, red = V.red;
+        const up = 1400 + (red * (mode === 'tc' ? 0.87 : 0.96) - 1400) * Math.pow(clamp(thr, 0, 1), 1.3), dn = 1050 + (red * 0.45 - 1050) * thr * thr;
+        const neNow = st.we * RPM;
+        if (st.g < nA && (rpmIn(st.g) > up || (neNow > red * 0.95 && rpmIn(st.g) > up * 0.7)) && rpmIn(st.g + 1) > V.idle * 1.3 && !st.hold && !(brk > 0.3)) { st.g++; st.shT = V.shiftT; st.hold = 0.45; st.lock = false; if (mode === 'clutch') st.ce = 0; }
+        else if (st.g > 1 && rpmIn(st.g) < dn && rpmIn(st.g - 1) < up * 0.8 && !st.hold && !TIRE.lit) { st.g--; st.shT = V.shiftT * 0.8; st.hold = 0.4; st.lock = false; if (mode === 'clutch') st.ce = 0; }
+        if (Math.abs(u) < 1 && Math.abs(wIn) * V.R[2] < 1.5) st.g = 1;
+        G = V.auto[st.g - 1] * V.fd;
+      }
+      TIRE.gA = st.g;
+    }
+    st.shT = Math.max(0, st.shT - h); TIRE.shT = st.shT;
+    const shifting = gb ? gb.cut > 0 : st.shT > 0;
+
+    // ---- the motor: torque from its curve at this rpm and throttle; engine braking off the gas; the limiter cuts fuel ----
+    const E = V.E, crankW = Math.max(0, P.pw || 0) * (P.kg || V.kg) / 634 * 745.7, ks = crankW / E.pkW, alive = crankW > 0 && P.top !== 0;
+    let ne = st.we * RPM;
+    if (ne > V.red) st.cut = true; else if (ne < V.red - 180) st.cut = false;
+    if (V.vmax && u > V.vmax) st.vcut = true; else if (u < V.vmax - 0.6) st.vcut = false;
+    const lcCut = P.lc && Math.abs(u) < 2 && ne > P.lc;   // 2-step: a second limiter on the line
+    let a = (gb && gb.cut > 0) ? 0 : thr;
+    if (alive && !V.ev && ne < V.idle * 1.2) a = Math.max(a, clamp(0.07 + (V.idle - ne) * 0.0007, 0, 0.3));   // idle control
+    if (!alive || st.cut || st.vcut || lcCut) a = 0;
     // a turbo builds boost with revs and throttle (anti-lag holds it up off the gas); until it does, the motor is down on power
-    if (P.turbo) { const want = Math.max(thr * clamp((TIRE.re - 0.25) / 0.4, 0, 1), I.als ? 0.92 : 0); TIRE.boost += (want - TIRE.boost) * Math.min(1, h * (want > TIRE.boost ? (0.4 + 1.3 * TIRE.re) / (P.tSize || 1) : 4)); }
+    const re0 = ne / V.red;
+    if (P.turbo) { const want = Math.max(thr * clamp((re0 - 0.25) / 0.4, 0, 1), I.als ? 0.92 : 0); TIRE.boost += (want - TIRE.boost) * Math.min(1, h * (want > TIRE.boost ? (0.4 + 1.3 * re0) / (P.tSize || 1) : 4)); }
     const boostK = P.turbo ? 1 - P.turbo * (1 - TIRE.boost) : 1;
     // nitrous sprays at wide open throttle, in gear, above the window switch; a progressive controller starts it low and ramps it in
-    const spray = !!I.nos && P.nosHp > 0 && thr > 0.7 && g > 0 && !cut && !ev && TIRE.re > 0.3, n0 = P.nosStart == null ? 1 : P.nosStart;
+    const spray = !!I.nos && P.nosHp > 0 && thr > 0.7 && G !== 0 && !shifting && !V.ev && re0 > 0.3 && alive, n0 = P.nosStart == null ? 1 : P.nosStart;
     TIRE.nosT = spray ? TIRE.nosT + h : 0;
     TIRE.nosK = spray ? Math.min(1, n0 + (1 - n0) * TIRE.nosT / Math.max(0.05, P.nosRamp || 0)) : 0;
-    const pwN = spray ? P.nosHp * 634 / (P.kg || 1600) * TIRE.nosK : 0;
-    // push from the motor at a wheel speed: below the launch revs the clutch (manual) or the converter (automatic)
-    // slips so the motor can sit in its torque and dump it in; at the limiter it cuts
-    const engF = ws => {
-      if (cut || I.gas <= 0) return 0;
-      const r = Math.max(0, ws) / V;
-      if (ev) return pw / Math.max(ws, V * 0.3, 1);
-      // a manual launch is however high you rev it before you let the clutch out: rev it to the moon and the
-      // flywheel dumps into the tires; the automatic's converter stalls lower and multiplies a little
-      const held = slipOK ? (gb ? 0.2 + 0.55 * thr : 0.15 + 0.3 * thr) : 0, re = Math.max(r, held);
-      if (re >= 1) return 0;
-      const bog = (!slipOK && r < 0.25 ? 0.3 + 0.7 * r / 0.25 : 1) * (g === 1 && P.tqm < 1 ? P.tqm + (1 - P.tqm) * clamp(r / 0.6, 0, 1) : 1);
-      return (pw * boostK * engTq(re) + pwN * 1.15) / V * bog * (1 + (gb ? 0.5 : 0.25) * clamp((re - r) / 0.5, 0, 1));
+    ne = Math.max(0, ne);
+    const Tf = E.tq * (0.04 + 0.1 * (ne / V.red) ** 2) * (ne > 50 ? 1 : ne / 50);
+    let Te;
+    if (V.ev) { const w = Math.max(30, Math.abs(st.we)), Tm = crankW / (0.3 * 1500); Te = alive ? (a > 0.01 ? a * Math.min(Tm, crankW / w) : -0.12 * Tm * Math.min(1, Math.abs(st.we) / 60)) : 0; }
+    else {
+      const tqm = !gb && st.g === 1 && P.tqm < 1 ? P.tqm + (1 - P.tqm) * clamp(ne / (0.6 * V.red), 0, 1) : 1;
+      Te = (a * tqAt(E, ne) * ks * boostK * tqm * (st.shT > 0 && !gb && mode === 'tc' ? 0.5 : 1) + (spray ? P.nosHp * 745.7 / (E.nP / RPM) * TIRE.nosK : 0)) * (st.tcE == null ? 1 : st.tcE) - (1 - a) * Tf;
+    }
+    st.Te = Te;
+    // traction control (cars that came with it, unless you switch it off): it watches the driven wheels against the
+    // car's speed and pulls engine torque the moment they spin past the tire's peak; on an open diff it also brakes the
+    // wheel that's peeling. A gas + brake burnout or the handbrake suspends it, like the real track modes do.
+    const tcOn = !!P.tc && !V.ev && !lineLock && !I.hb && G !== 0;
+    if (tcOn) {
+      const ref = Math.max(Math.abs(u), 1.5), i0 = D === 'F' ? 0 : 2; let sl = 0;
+      for (let i = 0; i < 4; i++) if (V.s[i] > 0) sl = Math.max(sl, (st.w[i] * V.R[i] * Math.sign(G) - Math.abs(u - r * V.wy[i])) / ref);
+      const tgt = V.T[i0].kp * 1.15; st.tcSl = sl;
+      st.tcK = clamp(st.tcK + h * (sl > tgt ? -(sl - tgt) / tgt * 12 : 2.2), 0.04, 1);
+    } else st.tcK = Math.min(1, st.tcK + h * 4);
+
+    // ---- wheel loads: static + springs/dampers (heave, pitch, roll) + anti-squat/dive geometry + roll centers + air ----
+    const W = V.m * G9, ax0 = st.ax, ay0 = st.ay, u2 = u * u;
+    const asK = ax0 > 0 ? (D === 'F' ? 0.1 : V.AS) : V.AD, geoX = V.m * ax0 * V.h / V.L * asK;
+    const rcF = V.m * (V.b / V.L) * ay0 * V.hrcF / V.tf, rcR = V.m * (V.a / V.L) * ay0 * V.hrcR / V.tr;
+    const liftF = 0.25 * RHO * V.clF * u2, liftR = 0.25 * RHO * V.clR * u2;
+    let sumF = 0, mTh = 0, mPh = 0;
+    for (let i = 0; i < 4; i++) {
+      const z = st.zc - V.wx[i] * st.th - V.wy[i] * st.ph, zd = st.zcv - V.wx[i] * st.thv - V.wy[i] * st.phv; _zi[i] = z;
+      let F = V.ks[i] * z + (zd > 0 ? V.cB[i] : V.cR[i]) * zd;
+      if (z > V.travC[i]) F += V.ks[i] * 7 * (z - V.travC[i]);   // bump stop
+      const o = i ^ 1, ar = V.arb[i < 2 ? 0 : 1] * (z - (st.zc - V.wx[o] * st.th - V.wy[o] * st.ph)); F += ar;
+      const front = i < 2, stat = W * (front ? V.b : V.a) / V.L / 2;
+      let Fz = stat + F + (front ? -geoX : geoX) / 2 + (V.wy[i] < 0 ? 1 : -1) * (front ? rcF : rcR) - (front ? liftF : liftR);
+      // the tire can only push, never pull the car down: a wheel off the ground carries nothing
+      if (Fz < 0) { F -= Fz; Fz = 0; }
+      st.Fz[i] = Fz; sumF += F; mTh += F * V.wx[i]; mPh += F * V.wy[i];
+    }
+    // the body moves on its springs (semi-implicit Euler)
+    st.zcv += h * (-sumF / V.ms); st.thv += h * ((1 - asK) * V.ms * ax0 * V.h + mTh) / V.Iyy; st.phv += h * (V.ms * ay0 * (V.h - (V.hrcF + V.hrcR) / 2) + mPh) / V.Ixx;
+    st.zc += h * st.zcv; st.th += h * st.thv; st.ph += h * st.phv;
+
+    // ---- each tire: where the patch is going, its slip, its force (and how fast that force changes with spin) ----
+    const latDen = 2.0, lngDen = 1.5;
+    for (let i = 0; i < 4; i++) {
+      const dl = (i < 2 ? delta : 0) + V.toe[i], cd = Math.cos(dl), sd = Math.sin(dl); _cd[i] = cd; _sd[i] = sd;
+      const ui = u - r * V.wy[i], vi = v + r * V.wx[i], lng = ui * cd + vi * sd, lat = -ui * sd + vi * cd;
+      _lng[i] = lng; _lat[i] = lat; const den = Math.max(Math.abs(lng), lngDen); _den[i] = den;
+      // camber against the road changes with body roll; the outside tire wants a little negative
+      const gam = V.cam[i] + (V.wy[i] > 0 ? -1 : 1) * st.ph * 57.3 * 0.5, fg = clamp(1 - 0.0035 * (gam + 1.2) ** 2, 0.85, 1.02), fl = clamp(1 - 0.005 * gam * gam, 0.88, 1);
+      const Fn = V.Fn[i], mu = V.mu[i] * SURF.mu * (SURF.prep ? (V.T[i].prep) : 1) * clamp(1 - 0.1 * (st.Fz[i] / Fn - 1), 0.75, 1.12);
+      const kap = (st.w[i] * V.R[i] - lng) / den, tA = lat / Math.max(Math.abs(lng), latDen);
+      const vs = Math.hypot(st.w[i] * V.R[i] - lng, lat); _vs[i] = vs;
+      tireF(V.T[i], mu, st.Fz[i], kap, tA, _tf, vs); _F0x[i] = _tf.x * fl; _F0y[i] = _tf.y * fg; _mu[i] = mu; _fl[i] = fl; _fg[i] = fg;
+      tireF(V.T[i], mu, st.Fz[i], kap + 0.004, tA, _tf, vs); _kx[i] = Math.max(0, (_tf.x * fl - _F0x[i]) / 0.004) * V.R[i] / den;
+      st.kap[i] = kap; st.al[i] = Math.atan(tA);
+    }
+
+    // stability control (every car that has traction control has it too): when the car yaws faster than the steering and
+    // the grip can explain, it brakes the outside front to pull the nose back and pulls engine torque, like real ESC
+    st.esc = 0; _esc[0] = _esc[1] = _esc[2] = _esc[3] = 0;
+    if (P.tc && !I.hb && u > 6 && !lineLock) {
+      const muG = V.mu[0] * SURF.mu * G9, rLim = muG / u, rRef = clamp(u * delta / (V.L * (1 + u * u / 900)), -rLim, rLim);
+      // it watches the yaw rate against the reference and the car's side slip (tail out = slip against the yaw)
+      const beta = Math.atan2(v, u), tail = beta * r < 0 ? Math.abs(beta) : 0;
+      const over = Math.max(Math.abs(r) - Math.abs(rRef) - 0.03, (tail - 0.05) * 1.6);
+      if (over > 0 && r !== 0) {
+        const i = r > 0 ? 1 : 0; _esc[i] = Math.min(V.brakeTot * 0.3 * V.R[i], over * 16000); st.esc = over;
+        st.tcK = Math.max(0.1, st.tcK - h * over * 40);
+      }
+    }
+    // ---- brakes: pedal, bias, handbrake on the rears, line lock holds only the fronts, ABS where the car has it ----
+    // (ABS dumps a wheel's pressure fast when it starts to lock and builds it back slowly, about 10-15 cycles a second)
+    for (let i = 0; i < 4; i++) {
+      const front = i < 2; let T = brk * V.brakeTot * (front ? V.bias : 1 - V.bias) / 2 * V.R[i];
+      if (lineLock && !front) T = 0; T += _esc[i]; if (I.hb && !front) T = Math.max(T, V.brakeTot * 0.5 * V.R[i]);
+      if (V.abs && T > 0 && !(I.hb && !front) && Math.abs(u) > 2) { const sk = -st.kap[i] / V.T[i].kp; st.absK[i] = clamp(st.absK[i] + h * (sk > 1.25 ? -70 : sk > 0.9 ? 0 : 10), 0.05, 1); T *= st.absK[i]; } else st.absK[i] = 1;
+      _tb[i] = T;
+    }
+    if (tcOn) for (const [i, j] of D === 'A' ? [[0, 1], [2, 3]] : D === 'F' ? [[0, 1]] : [[2, 3]]) {
+      const d = (st.w[i] * V.R[i] - st.w[j] * V.R[j]) * Math.sign(G); if (Math.abs(d) > 1) _tb[d > 0 ? i : j] += Math.min(1200, (Math.abs(d) - 1) * 220);
+    }
+
+    // ---- the drivetrain: engine, clutch or converter, gear, diffs, the four wheels, solved together ----
+    // Each wheel: Iw dω = s_i·η·G·T − R·Fx(ω) − brake. The engine couples the driven wheels through the gear (rank-one
+    // term A·s·sᵀ); the tire force is linearised around the current spin so the solve stays stable at any speed.
+    let A = 0, Tsrc = 0, Tp = 0, kp = 0, SR = 0;
+    const eta = V.eta, Gs = G;
+    if (G === 0) { st.lock = false; mode = mode === 'ev' ? 'ev' : 'free'; }
+    if (mode === 'clutch') {
+      // auto clutch: off the line it bites around the launch rpm (2-step if you run one), between shifts it lets go and comes back in
+      const stopped = Math.abs(G * wIn) * RPM < V.idle * 1.15;
+      const nL = P.lc ? P.lc : gb ? 1200 + (Math.min(V.red * 0.55, 4500) - 1200) * Math.pow(thr, 0.7) : 1500 + 1300 * thr;
+      if (shifting) { st.ce = 0; st.lock = false; }
+      else if (stopped && !st.lock) st.ce = gas > 0.05 ? clamp((ne - (nL - 700)) / 700, 0, 1) : 0;
+      else st.ce = Math.min(1, st.ce + h / (gb ? 0.18 : 0.08));
+      if (ne < V.idle * 0.8 && Math.abs(G * wIn) * RPM < V.idle * 0.8) { st.lock = false; st.ce = 0; }   // anti-stall
+      if (st.ce <= 0) { st.lock = false; mode = 'free'; }
+    }
+    if (mode === 'tc') {
+      // the torque converter: the pump soaks up torque with the square of engine speed until the turbine catches up;
+      // below the coupling point it multiplies torque (stall), above it the lockup clutch can tie them together
+      const wt = Gs * wIn; SR = st.we > 1 ? wt / st.we : 0;
+      if (!st.lock && !shifting && brk < 0.05 && st.g >= V.lockFrom && SR > 0.93 && ne > 1150 && (V.modern || thr < 0.5)) st.lock = true;
+      if (st.lock && (shifting || ne < 1000 || brk > 0.15 || (!V.modern && thr > 0.7))) st.lock = false;   // the lockup lets go when you brake, like a real TCU
+      if (!st.lock) {
+        const K2 = V.K * V.K, we = Math.max(0, st.we);
+        if (SR < 1) {
+          const f = SR < 0.86 ? 1 : 1 - (SR - 0.86) / 0.14, TR = SR < 0.86 ? V.TR0 - (V.TR0 - 1) * SR / 0.86 : 1;
+          Tp = we * we / K2 * f; const Tt = TR * Tp;
+          kp = 2 * we / K2 * f + (SR >= 0.86 ? we * we / K2 / 0.14 * SR / Math.max(1, we) : 0);
+          // how the turbine torque falls as the turbine speeds up (for the implicit wheel solve)
+          const dTt = (SR >= 0.86 ? we * we / K2 / 0.14 : (V.TR0 - 1) / 0.86 * Tp) / Math.max(1, we);
+          Tsrc = Tt; A = h * eta * Gs * Gs * dTt * Math.sign(1);
+        } else {   // overrun: the wheels drive the motor through the converter (soft engine braking)
+          const x = Math.min(1, (SR - 1) / 0.12); Tp = -(wt * wt / K2) * x * 0.7; Tsrc = Tp; kp = 0; A = h * eta * Gs * Gs * (wt / K2) * 1.4 * x;
+        }
+      }
+    }
+    const locked = mode === 'ev' || ((mode === 'clutch' || mode === 'tc') && st.lock);
+    // traction control pulls engine torque when the drive is locked or through the converter; while a clutch is still
+    // slipping off the line it eases the clutch instead (that's how a dual-clutch launch control holds wheelspin)
+    st.tcE = mode === 'clutch' && !locked ? 1 : st.tcK;
+    if (locked) { Tsrc = Te; A = eta * V.Ie * Gs * Gs; }
+    else if (mode === 'clutch') { const cap = V.clutchCap * st.ce * st.tcK; Tsrc = cap * Math.sign(st.we - Gs * wIn || 1); }
+    else if (mode === 'free') Tsrc = 0;
+    A += 0.02 * Gs * Gs;   // driveshaft / gearbox
+    // the implicit solve (Sherman-Morrison on diag(d) + A s sᵀ)
+    let Sz = 0, Sq = 0;
+    for (let i = 0; i < 4; i++) {
+      const dI = V.Iw[i] + h * V.R[i] * _kx[i], y = h * (V.s[i] * eta * Gs * Tsrc - V.R[i] * _F0x[i]);
+      _dw[i] = y / dI; Sz += V.s[i] * _dw[i]; Sq += V.s[i] * V.s[i] / dI; _dI[i] = dI; _w0[i] = st.w[i];
+    }
+    const corr = A * Sz / (1 + A * Sq);
+    for (let i = 0; i < 4; i++) { _dw[i] -= V.s[i] / _dI[i] * corr; st.w[i] += _dw[i]; }
+    // differentials: an LSD moves torque from the faster wheel to the slower one (up to its lock), a spool ties them
+    const Tin = Math.abs(eta * Gs * Tsrc);
+    const diffAxle = (i, j, typ, lk, Tax) => {
+      const dW = st.w[i] - st.w[j], Ie = (_dI[i] + _dI[j]) / 2;
+      const Tmax = typ === 'spool' ? 1e9 : typ === 'lsd' ? 40 + lk / 100 * Tax : 8 + 0.04 * Tax;
+      const J = Math.sign(dW) * Math.min(Math.abs(dW) * Ie / 2, h * Tmax); st.w[i] -= J / Ie; st.w[j] += J / Ie;
     };
-    // what the driven tires can hold: their grip (tires, wear, the tune, drag radials off the line) times the weight on them
-    const wr = clamp((P.wr0 || 0.47) + clamp(TIRE.axL / G9 * (P.cgL || 0.21) * (P.xfer || 1), -0.2, 0.3) + (P.transfer || 0) * 0.35 * clamp(TIRE.axL / 12, 0, 1), 0.2, 0.85);
-    const muX = (0.55 + 0.6 * grip) * (P.tireK || 1) * (P.tTrac || 1) * (1 + (P.launch || 0) * clamp(1 - Math.abs(u) / 30, 0, 1)) * (1 + (P.tLaunch || 0) * clamp(1 - Math.abs(u) / 20, 0, 1)) * (1 - (P.open || 0) * Math.min(1, Math.abs(w) * 1.2));
-    const Fpk = muX * (D === 'R' ? wr : D === 'F' ? 1 - wr : 1) * G9;
-    const gasK = thr * dragLoss() * (TIRE.shT > 0 ? 0.35 : 1);
-    // launch control holds the revs: right at the hook point it leaves clean, too low bogs, too high lights them up
-    const lcCap = P.lc && u < 12 && I.gas > 0.6 ? Fpk * clamp(0.92 + (P.lc - (P.lcIdeal || 3900)) / 4000, 0.55, 1.35) : 1e9;
-    const push = ws => Math.min(lcCap, engF(ws) * gasK);
-    // the rotating mass behind the tires: the motor's flywheel counts for a lot in 1st, little in 6th
-    const J = ev ? 0.03 : g > 0 && !cut ? 0.014 + 0.16 * Math.pow(GB_R[0] / GB_R[g - 1], 2) : 0.014;
-    const burnout = D === 'R' && I.gas > 0.3 && I.brake > 0.3 && Math.abs(u) < 3.5 && g > 0 && !cut;
-    let Fx = 0, re = 0.12;
-    if (I.hb) { TIRE.lit = 0; TIRE.wv = D === 'F' ? u : 0; }
-    else if ((I.brake && !burnout) || (gb && g === -1) || (!gb && I.brake && !I.gas)) { TIRE.lit = 0; TIRE.wv = u; }
-    else if (I.gas > 0 || TIRE.lit) {
-      const den = Math.max(3, Math.abs(u));
-      if (!TIRE.lit && push(Math.max(u, 0)) > Fpk) { TIRE.lit = 1; TIRE.wv = Math.max(TIRE.wv, u, 0) + 0.4; }
-      if (TIRE.lit) {
-        // the wheel is its own body now: the motor spins it up, the road drags it back; a few small steps, it's light
-        let ws = TIRE.wv, sum = 0; const k = 4, hh = h / k;
-        for (let j = 0; j < k; j++) { const f = Fpk * tireLong((ws - u) / den); sum += f; ws += (push(ws) - f) / J * hh; if (ws < u) ws = u; }
-        TIRE.wv = ws; Fx = burnout ? 0 : sum / k;
-        if ((ws - u) / den < 0.15 && push(ws) <= Fpk && !burnout) TIRE.lit = 0;
-      } else { Fx = burnout ? 0 : push(Math.max(u, 0)); TIRE.wv = Math.max(0, u) * (1 + 0.04 * Fx / Math.max(1, Fpk)); }
-    } else TIRE.wv = u;
-    if (!ev && g > 0 && V > 0) re = Math.max(Math.max(0, TIRE.wv) / V, slipOK && I.gas > 0 && !cut ? (gb ? 0.2 + 0.55 * thr : 0.15 + 0.3 * thr) : 0.12);
-    TIRE.re = re; TIRE.spin += ((TIRE.lit ? 1 : 0) - TIRE.spin) * Math.min(1, h * (TIRE.lit ? 12 : 5));
-    const sR = TIRE.lit ? Math.abs(TIRE.wv - u) / Math.max(3, Math.abs(u)) : 0;
-    // what the driven tires have left for grip sideways: a hooked tire that's pushing hard has less, a spinning one little
-    const latD = TIRE.lit ? clamp(0.8 - 0.45 * Math.min(1, sR), 0.32, 0.8) : Math.sqrt(Math.max(0.12, 1 - Math.pow(Math.min(1, Fx / Math.max(1, Fpk)) * 0.8, 2)));
-    // ---- rear axle ----
-    let Fxr = 0;
-    if (I.hb) Fxr = -Math.sign(u) * Math.min(Math.abs(u) / h, mu * Nr * 0.8);
-    else if (I.brake && !burnout && u > 0.4) Fxr = -Math.min(u / h, 11 * (P.brakeK || 1) * I.brake * Nr * grip * 2 * (1 - (P.biasF || 0.5)));
-    else if (I.brake && !burnout && !I.gas) Fxr = gb ? (u < -0.05 ? Math.min(-u / h, 9 * I.brake) : 0) : -7 * I.brake * (u > -14 ? 1 : 0); // reverse (in a manual you need R)
-    else if (gb && gb.g === -1) Fxr = -7 * I.gas * (u > -14 ? 1 : 0);
-    else Fxr = D === 'R' ? Fx : D === 'A' ? Fx * 0.6 : 0;
-    const latR = I.hb ? 0.32 : D === 'F' ? 1 : D === 'A' ? 0.5 + 0.5 * latD : latD;
-    const lonR = Math.max(2.2, Math.abs(u)), vlR = vl - b * w, alphaR = Math.atan2(vlR, lonR);
-    const Fyr = -mu * 1.1 * (P.gripR || 1) * (0.5 + (Nr - 0.5) * 0.35) * tireCurve(alphaR) * latR; // a bit more grip out back keeps it stable until you provoke it
-    // ---- front axle: steers, and brakes (and pulls, in a front or all wheel drive car) ----
-    const cd = Math.cos(delta), sd = Math.sin(delta), vlF = vl + a * w;
-    const lonW = u * cd + vlF * sd, latW = -u * sd + vlF * cd, alphaF = Math.atan2(latW, Math.max(2.2, Math.abs(lonW)));
-    const latF = D === 'F' ? latD : D === 'A' ? 0.6 + 0.4 * latD : 1;
-    const FyW = -mu * (P.gripF || 1) * latF * (1 - (P.spool || 0) * 0.12 * I.gas * clamp(1 - Math.abs(betaF) * 4, 0, 1)) * (0.5 + (Nf - 0.5) * 0.35) * tireCurve(alphaF);
-    let FxW = 0;
-    if (burnout) FxW = -u / h * 0.9;
-    else if (I.brake && u > 0.4) FxW = -Math.min(u / h, 11 * (P.brakeK || 1) * I.brake * Nf * grip * 2 * (P.biasF || 0.5));
-    else if (!I.hb && !(I.brake && !I.gas) && !(gb && g === -1)) FxW = D === 'F' ? Fx : D === 'A' ? Fx * 0.4 : 0;
-    const Fxf = FxW * cd - FyW * sd, Fyf = FxW * sd + FyW * cd;
-    // rolling and air drag, plus engine braking off the gas (lower gears hold it back harder)
-    const drag = Math.sign(u) * (0.15 + 0.00028 * (P.aero || 1) * u * u + (I.gas ? 0 : ev ? 0.6 : g > 0 && !cut ? 1.2 * (1 + 1.4 * (1 - g / 6)) : 0.15));
-    let Ax = Fxr + Fxf - drag, Ay = Fyr + Fyf;
-    let dw = (a * Fyf - b * Fyr) / k2;
-    // in a parking lot, the car just follows its wheels (no tire model at walking pace)
-    const slow = TIRE.spin > 0.5 || I.hb ? 0 : clamp(1 - spd / 5, 0, 1);
-    u += Ax * h; vl += Ay * h; w += dw * h;
-    if (slow > 0) { const kin = u * Math.tan(delta) / L; w += (kin - w) * slow * Math.min(1, h * 25); vl *= 1 - slow * Math.min(1, h * 20); }
-    if (Math.abs(u) < 0.05 && !I.gas && !I.brake) u = 0;
-    // a little yaw damping from the suspension, more once the car is well sideways so a held slide doesn't
-    // snap into a spin the moment you breathe on the gas (you can still spin it with full lock and full gas)
-    const side = clamp((Math.abs(Math.atan2(vl, Math.max(1, Math.abs(u)))) - 0.3) / 0.5, 0, 1);
-    w *= 1 - Math.min(1, h * (0.6 * (P.damp || 1) + side * 2.2 * (1 - 0.6 * Math.abs(drv.steer) * I.gas)));
-    TIRE.ax += ((Ax + vl * w) - TIRE.ax) * Math.min(1, h * 6); TIRE.axL += (Ax - TIRE.axL) * Math.min(1, h * 12); TIRE.ay += ((Ay) - TIRE.ay) * Math.min(1, h * 6);
-    // how hard each axle is sliding or spinning (for the smoke, the rubber and the squeal)
-    const spinD = Math.abs(TIRE.wv - u);
-    TIRE.slipR = Math.max(Math.abs(vlR) * (spd > 2 ? 1 : 0), D === 'F' ? 0 : spinD);
-    TIRE.slipF = Math.max(Math.abs(latW) * (spd > 3 ? 1 : 0), D === 'R' ? 0 : spinD);
-    TIRE.vx = fx * u + lx * vl; TIRE.vz = fz * u + lz * vl; TIRE.w = w;
-    drv.yaw += w * h; drv.v = u;
+    if (D !== 'F') diffAxle(2, 3, V.diff, V.lock, Tin * (1 - V.split));
+    if (D !== 'R') diffAxle(0, 1, D === 'F' ? V.diff : 'open', D === 'F' ? V.lock : 0, Tin * V.split);
+    if (D === 'A') {   // center: front pair vs rear pair, partly coupled
+      const wf = (st.w[0] + st.w[1]) / 2, wr = (st.w[2] + st.w[3]) / 2, dW = wf - wr, Ie = _dI[0] + _dI[1] + _dI[2] + _dI[3];
+      const x = Math.sign(dW) * Math.min(Math.abs(dW) * 0.5, h * (60 + V.center * Tin) / Ie * 2);   // keeps the gearbox speed, closes the gap
+      st.w[0] -= x * (1 - V.split); st.w[1] -= x * (1 - V.split); st.w[2] += x * V.split; st.w[3] += x * V.split;
+    }
+    // brakes clamp the spin toward zero (friction can stop a wheel, never spin it backward)
+    for (let i = 0; i < 4; i++) if (_tb[i] > 0) { const dmax = h * _tb[i] / _dI[i]; st.w[i] = Math.abs(st.w[i]) <= dmax ? 0 : st.w[i] - Math.sign(st.w[i]) * dmax; }
+    // the engine side
+    const wIn2 = vdOmegaIn(V, st), weOld = st.we;
+    if (mode === 'ev') st.we = Gs * wIn2;
+    else if (locked) {
+      st.we = Gs * wIn2;
+      const Treq = Te - V.Ie * (st.we - weOld) / h;
+      if (mode === 'clutch' && Math.abs(Treq) > V.clutchCap * st.ce * 1.02) st.lock = false;   // more torque than the clutch holds: it slips
+      st.Tc = Treq;
+    } else if (mode === 'tc') { st.we = Math.max(0, (st.we + h / V.Ie * (Te - Tp + kp * st.we)) / (1 + h * kp / V.Ie)); st.Tc = Tp; }
+    else if (mode === 'clutch') {
+      const d0 = weOld - Gs * wIn; let we = weOld + h * (Te - Tsrc) / V.Ie; const d1 = we - Gs * wIn2;
+      if (Math.sign(d0) !== Math.sign(d1) || Math.abs(d1) < 2) { we = Gs * wIn2; if (st.ce > 0.97) st.lock = true; }
+      st.we = Math.max(0, we); st.Tc = Tsrc;
+    } else { st.we = Math.max(0, st.we + h * Te / V.Ie); st.Tc = 0; }
+    if (!alive && !V.ev && !locked) st.we = Math.max(0, st.we - h * 60);
+
+    // ---- the body: tire forces (at the new spin), rolling resistance, air ----
+    let Fx = 0, Fy = 0, Mz = 0;
+    for (let i = 0; i < 4; i++) {
+      // the force at the end of the step, at the spin the wheel actually reached (push and turn share one budget)
+      const kap = (st.w[i] * V.R[i] - _lng[i]) / _den[i], tA = _lat[i] / Math.max(Math.abs(_lng[i]), latDen);
+      tireF(V.T[i], _mu[i], st.Fz[i], kap, tA, _tf, Math.hypot(st.w[i] * V.R[i] - _lng[i], _lat[i])); st.kap[i] = kap;
+      const fxw = _tf.x * _fl[i], fyw = _tf.y * _fg[i], bx = fxw * _cd[i] - fyw * _sd[i], by = fxw * _sd[i] + fyw * _cd[i];
+      Fx += bx; Fy += by; Mz += V.wx[i] * by - V.wy[i] * bx;
+    }
+    const roll = (V.crr + SURF.rr) * W * clamp(u / 0.5, -1, 1), air = 0.5 * RHO * V.cdA * u * Math.abs(u);
+    Fx -= roll + air;
+    let du = Fx / V.m, dv = Fy / V.m, dr = Mz / V.Iz;
+    u += (du + r * v) * h; v += (dv - r * u) * h; r += dr * h;
+    // walking pace: the car follows its wheels (the tire model has nothing to say at a crawl)
+    const slow = st.lit > 0.5 || I.hb ? 0 : clamp(1 - spd / 3, 0, 1);
+    if (slow > 0) { const kin = u * Math.tan(delta) / V.L; r += (kin - r) * slow * Math.min(1, h * 25); v *= 1 - slow * Math.min(1, h * 20); }
+    if (Math.abs(u) < 0.05 && !gas && brk > 0) { u = 0; v *= 0.5; }
+    st.ax = du; st.ay = dv;
+
+    // ---- what the rest of the game reads ----
+    const dr0 = D === 'F' ? 0 : 2, wv = D === 'A' ? (st.w[0] * V.R[0] + st.w[1] * V.R[1] + st.w[2] * V.R[2] + st.w[3] * V.R[3]) / 4 : (st.w[dr0] * V.R[dr0] + st.w[dr0 + 1] * V.R[dr0 + 1]) / 2;
+    TIRE.wv = wv;
+    const kd = D === 'F' ? Math.max(st.kap[0], st.kap[1]) : D === 'R' ? Math.max(st.kap[2], st.kap[3]) : Math.max(st.kap[0], st.kap[1], st.kap[2], st.kap[3]);
+    const kpk = V.T[D === 'F' ? 0 : 2].kp, litNow = kd > kpk * 1.7 && (gas > 0.05 || st.lit) ? 1 : kd < kpk * 1.1 ? 0 : st.lit;
+    st.lit = litNow; TIRE.lit = litNow;
+    TIRE.spin += ((TIRE.lit ? 1 : 0) - TIRE.spin) * Math.min(1, h * (TIRE.lit ? 12 : 5));
+    let sR = 0, sF = 0;
+    for (let i = 0; i < 4; i++) { const sl = Math.hypot(st.w[i] * V.R[i] - _lng[i], spd > 2 ? _lat[i] : 0); if (i < 2) sF = Math.max(sF, sl); else sR = Math.max(sR, sl); }
+    TIRE.slipR = sR; TIRE.slipF = sF;
+    TIRE.re = V.ev ? 0.12 + 0.88 * Math.min(1, Math.abs(st.we) * RPM / 16000) : Math.max(0, st.we * RPM / V.red);
+    TIRE.ax += (du - TIRE.ax) * Math.min(1, h * 6); TIRE.axL = du; TIRE.ay += (dv - TIRE.ay) * Math.min(1, h * 6);
+    TIRE.vx = fx * u + lx * v; TIRE.vz = fz * u + lz * v; TIRE.w = r;
+    drv.yaw += r * h; drv.v = u;
   }
+  // the speed the gearbox input sees (torque-weighted average of the driven wheels), in wheel rad/s
+  function vdOmegaIn(V, st) { return V.s[0] * st.w[0] + V.s[1] * st.w[1] + V.s[2] * st.w[2] + V.s[3] * st.w[3]; }
+  function vdGin(V, st, I) { const gb = I && I.gb && I.gb.man ? I.gb : null; return gb ? (gb.g > 0 ? V.man[Math.min(gb.g, V.man.length) - 1] * V.fdMan : 0) : V.auto[st.g - 1] * V.fd; }
 
   // ---------- tire smoke ----------
   const SMOKE = { list: [], tex: null, i: 0 };
@@ -8219,12 +8604,18 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     const m = car && car.userData.model; dragPose(m, dt, on); if (!m || !on) return;
     carDims(m);
     // body roll and squat (the model sits in the car group, which leans)
-    const T = tunePose(m), rk = T ? T.roll : 1, pitch = clamp(TIRE.ax * 0.0045 * (T ? T.xfer : 1), -0.06, 0.06) + (T ? (T.rideR - T.rideF) * 0.25 : 0), roll = clamp(-TIRE.ay * 0.0055 * rk, -0.09, 0.09);
-    m.rotation.x += (pitch - m.rotation.x) * Math.min(1, dt * 7); m.rotation.z += (roll - m.rotation.z) * Math.min(1, dt * 7);
-    // rims: the fronts roll with the road and steer, the rears turn at wheel speed
-    const r = m.userData.r || 0.34;
+    // the body's pitch and roll come straight from the suspension simulation (springs, dampers, bars, geometry), with a
+    // little extra so you can see it from the chase cam; the ride height knobs still rake the car
+    const T = tunePose(m), vd = TIRE.vd;
+    if (vd) { m.rotation.x = clamp(vd.th * 1.25, -0.09, 0.09) + (T ? (T.rideR - T.rideF) * 0.25 : 0); m.rotation.z = clamp(-vd.ph * 1.25, -0.11, 0.11); }
+    else { const pitch = clamp(TIRE.ax * 0.0045, -0.06, 0.06) + (T ? (T.rideR - T.rideF) * 0.25 : 0), roll = clamp(-TIRE.ay * 0.0055, -0.09, 0.09); m.rotation.x += (pitch - m.rotation.x) * Math.min(1, dt * 7); m.rotation.z += (roll - m.rotation.z) * Math.min(1, dt * 7); }
+    // rims: each one turns at its own simulated wheel speed (a peeling inside tire spins faster than the other side)
+    const r = m.userData.r || 0.34, V = vd && vd.V;
     const dF = TIRE.drv !== 'R', dR = TIRE.drv !== 'F';
-    for (const w of m.userData.wheels) { w.rotation.z -= ((w.userData.front ? dF : dR) ? TIRE.wv : drv.v) * dt / r; if (w.userData.front) w.rotation.y = TIRE.delta; }
+    for (const w of m.userData.wheels) {
+      const i = (w.userData.front ? 0 : 2) + (w.position.z < 0 ? 0 : 1), sp = V && vd.w ? vd.w[i] * V.R[i] : ((w.userData.front ? dF : dR) ? TIRE.wv : drv.v);
+      w.rotation.z -= sp * dt / r; if (w.userData.front) w.rotation.y = TIRE.delta;
+    }
     carLive(m, dt, true);
     // the tires that spin or slide hard smoke and lay black marks (the rears, or the fronts in a front wheel drive)
     const useF = TIRE.slipF > TIRE.slipR + 1, rears = m.userData.wheels.filter(w => !w.userData.front === !useF);
@@ -9543,9 +9934,10 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     if (T.st === 'run' || T.st === 'coast') {
       if (T.rt == null && gas > 0.3) T.rt = T.t - T.green;
       const go = T.st === 'run' && T.rt != null, h = 1 / 240, n = Math.max(1, Math.round(dt / h)), Iin = nosInput({ gas: go ? gas : 0, brake: T.st === 'coast' ? 1 : 0, steer: 0, hb: 0 });
+      SURF.prep = 1;   // a prepped, glued strip: drag radials and slicks bite far harder here than on the street
       for (let i = 0; i < n; i++) { physStep(Iin, P, dt / n); drv.v = Math.max(0, drv.v); T.s += drv.v * dt / n; if (go) { T.et += dt / n; if (TIRE.spin > 0.5 && T.s < 201) T.spinT += dt / n; T.maxW = Math.max(T.maxW, WHEELIE.a); }
         for (const [d, name] of SPLITS) if (go && T.split[name] == null && T.s >= d) T.split[name] = { t: T.et, v: drv.v }; }
-      drv.gas = Iin.gas;
+      SURF.prep = 0; drv.gas = Iin.gas;
       if (go && T.s >= 402.34 && T.done == null) { T.done = T.rt + T.et; T.st = 'coast'; }
     }
     if (opp && T.green && T.odone == null) {   // the racer: reaction, then a pull that matches their ET and trap speed
@@ -9627,7 +10019,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   function perfOf(c) { const mine = S.car; S.car = c; try { return carPerf(); } finally { S.car = mine; } }
   function racerBlurb(r) { const c = racerCar(r), k = dragPack(c); return `${carHp(c)} hp${c.tparts && c.tparts.includes('e85') ? ' on E85' : c.tparts && c.tparts.includes('c16') ? ' on race gas' : ''}${k ? ` · ${k.brand} ${k.tire === 'slick' ? 'slicks' : 'radials'}` : ''}${c.rims ? ` · ${c.rims.dia}s` : ''}`; }
   // run one physics step as another car: swap the shared tire state in, step, swap it back out
-  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv'];
+  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv', 'vd'];
   function physAs(st, I, P, h) {
     const mine = { yaw: drv.yaw, v: drv.v, steer: drv.steer, wa: WHEELIE.a };
     for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
@@ -9636,7 +10028,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     st.v = drv.v; for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
     Object.assign(drv, { yaw: mine.yaw, v: mine.v, steer: mine.steer }); WHEELIE.a = mine.wa;
   }
-  const rollingTire = v => { const t = {}; for (const k of TIRE_KEYS) t[k] = 0; t.vz = -v; t.wv = v; t.gA = 1; t.re = 0.12; t.drv = 'R'; return t; };
+  const rollingTire = v => { const t = {}; for (const k of TIRE_KEYS) t[k] = 0; t.vz = -v; t.wv = v; t.gA = 1; t.re = 0.12; t.drv = 'R'; t.vd = null; return t; };
   // a honk: two detuned horns for a quarter second
   function honk(len = 0.26) {
     const ac = audioCtx(); if (!ac) return; const t = ac.currentTime, g = ac.createGain(), f = ac.createBiquadFilter();
@@ -9911,18 +10303,26 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   const GB_R = [0.27, 0.43, 0.58, 0.72, 0.86, 1.0];
   const gbName = g => g === -1 ? 'R' : g === 0 ? 'N' : String(g), gbOrd = g => g + (['', 'st', 'nd', 'rd'][g] || 'th');
   function gbRed(c) {
+    if (VSPEC[c.id]) return VSPEC[c.id].eng.red;   // the cars with a real sheet use the factory redline
     const m = carOf(c.id), e = (m.engine || '') + ' ' + c.id;
     if (/diesel|cummins|duramax|power ?stroke|tdi/i.test(e)) return 4200;
     if (/v12|ferrari|lambo|porsche|gt3|c8|z06|coyote|lt6|voodoo/i.test(e)) return 8500;
     return /v8|hemi|ls\d|lt\d/i.test(e) ? 6500 : 7000;
   }
-  // the gear tops for this car, every frame (they follow its top speed, so a build changes them)
-  function gbFor(P) { for (let i = 0; i < 6; i++) GBX.tops[i] = Math.max(4, P.top * GB_R[i]); GBX.shiftT = P.shiftT || 0.42; return GBX; }
+  // the gear tops for this car: the speed each of its real manual gears reaches at the limiter (a build's gears and
+  // rev limit change them); a 4- or 5-speed only has that many gears in the gate
+  function gbFor(P) {
+    const V = P.veh;
+    if (V && !V.ev) { GBX.n = Math.min(6, V.man.length); for (let i = 0; i < 6; i++) GBX.tops[i] = Math.max(4, V.red / RPM / (V.man[Math.min(i, V.man.length - 1)] * V.fdMan) * V.R[2]); }
+    else { GBX.n = 6; for (let i = 0; i < 6; i++) GBX.tops[i] = Math.max(4, P.top * GB_R[i]); }
+    GBX.shiftT = P.shiftT || 0.42; return GBX;
+  }
   function gbShift(to, quiet) {
     if (GBX.ev || !GBX.man || to === GBX.g) return true;
     const u = drv.v;
     if (to === -1 && u > 1.5) { if (!quiet) toast('Grind. Stop before you put it in reverse.', 'bad'); gbClunk(true); return false; }
     if (to > 0 && u < -1) { if (!quiet) toast('Stop rolling back first.', 'bad'); return false; }
+    if (to > (GBX.n || 6)) { if (!quiet) toast(`This box only has ${GBX.n} gears.`, 'bad'); return false; }
     if (to > 0 && u / GBX.tops[to - 1] > 1.05) { if (!quiet) toast(`Too fast for ${gbOrd(to)}. That would blow the motor.`, 'bad'); gbClunk(true); return false; }
     const was = GBX.g; GBX.g = to; GBX.cut = to > 0 && was !== 0 ? GBX.shiftT : to > 0 ? 0.12 : 0;
     gbClunk(false); shKnobTo(to); return true;
@@ -9934,18 +10334,20 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
   // after the physics: what the motor is doing, for the tach and the sound
   function gbAfter(dt, I, P) {
     const c = S.car; GBX.ev = isEV(c); GBX.red = gbRed(c); GBX.live = performance.now();
+    const reK = P.veh && !GBX.ev ? P.veh.red / GBX.red : 1;   // an ECU that moves the limiter moves the needle past the factory line
     if (GBX.cut > 0) GBX.cut = Math.max(0, GBX.cut - dt);
     const wv = Math.abs(TIRE.wv), u = drv.v, gas = I.gas || 0;
     // the gear an automatic would be in
     const gA = TIRE.gA || 1; GBX.gA = gA;
     let want;
     if (GBX.ev) want = 0.12 + 0.88 * Math.min(1, wv / Math.max(5, P.top));
+    else if (P.veh) want = TIRE.re * reK;   // the simulated crank speed, in any gear, neutral or reverse (the limiter bounce is real now)
     else if (!GBX.man) want = TIRE.re;
     else if (GBX.g === 0) want = 0.12 + 0.9 * gas;
     else if (GBX.g === -1) want = Math.abs(u) / (GBX.tops[0] * 0.8) + 0.25 * gas;
     else { want = TIRE.re; if (GBX.cut > 0) want = Math.max(want * 0.8, 0.12); }
-    want = Math.max(0.12, want);
-    if (want >= 1 && gas > 0.1) want = 1 - Math.random() * 0.05; // bouncing off the limiter
+    want = Math.max(P.veh ? 0 : 0.12, want);
+    if (!P.veh && want >= 1 && gas > 0.1) want = 1 - Math.random() * 0.05; // bouncing off the limiter
     GBX.rpm += (Math.min(1.12, want) - GBX.rpm) * Math.min(1, dt * 14);
     if (GBX.man && !GBX.told && !GBX.ev) { GBX.told = true; toast('Manual: drag the stick to shift. Tap A on the shifter for automatic.'); }
   }
@@ -10012,7 +10414,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
       if (e.code === 'KeyX') gbSeq(1); if (e.code === 'KeyZ') gbSeq(-1);
     });
   }
-  function gbSeq(d) { if (!GBX.man) return; gbShift(clamp(GBX.g + d, -1, 6)); }
+  function gbSeq(d) { if (!GBX.man) return; gbShift(clamp(GBX.g + d, -1, GBX.n || 6)); }
   function gbMode(man) {
     GBX.man = man; S.gbMan = man; if (!man) GBX.g = 1; else GBX.g = drv.v > 1 ? GBX.gA : 1;
     $('shifter').classList.toggle('auto', !man); $('sh-mode').textContent = man ? 'M' : 'A'; shKnobTo(GBX.g); save();
@@ -10155,6 +10557,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #als
     for (const [k, v] of Object.entries(TO_2D)) if (v === id) return k;
     const s = String(id || '');
     if (/trx|raptor|tundra|ram_|_ram|silverado|sierra|f_150|f_250|f_350|titan|tacoma|ranger|colorado|cybertruck|rivian_r1t|truck/.test(s)) return /trx|raptor|trx/.test(s) ? 'ram_1500_trx_2021' : 'ford_f_150_regular_cab_2021';
+    if (/g63|g_63|g_class|g_wagon|g550|g_550|g500/.test(s)) return 'mercedes_amg_g63_2019';
     if (/tahoe|suburban|yukon|escalade|durango|jeep|navigator|expedition|bronco|4runner|land_cruiser|range_rover|g_class|g_wagon|urus|cullinan|bentayga|explorer|highlander|x5|x7|gle|gls|q7|q8|rivian_r1s|model_x|lx/.test(s)) return 'chevrolet_tahoe_2021';
     if (/corvette|lambo|ferrari|mclaren|porsche|gt_r|nsx|supra|viper|aston|bugatti|koenigsegg|pagani|lotus|r8|amg_gt|lfa|ford_gt/.test(s)) return 'chevrolet_corvette_stingray_c8_2020';
     if (/challenger/.test(s)) return 'dodge_challenger_rt_scat_pack_widebody_2019';
@@ -16832,7 +17235,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   {
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 140, 12, 1, true).translate(0, 70, 0), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.55, depthWrite: false, fog: false }));
     const ring = new THREE.Mesh(new THREE.RingGeometry(6, 9, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.8, depthWrite: false }));
-    ring.position.y = 0.3; pin.add(beam); pin.add(ring); pin.visible = false; scene.add(pin);
+    ring.position.y = 0.3; pin.visible = false; scene.add(pin);   // GPS pin: no yellow pillar or ground ring in the world (Kimari 2026-11-03); the route line, minimap and label still show it
   }
   let pinLabel = null;
   function setPin(name, x, z) {
@@ -17040,8 +17443,8 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     if (drv.px == null || Math.hypot(drv.x - drv.px, drv.z - drv.pz) > 0.01 || drv.v === 0 && drv.pv !== 0) { physReset(); drv.camYaw = drv.yaw; }
     const ox = drv.x, oz = drv.z, vBefore = Math.hypot(TIRE.vx, TIRE.vz);
     drv.steer = lerp(drv.steer, I.steer, 1 - Math.exp(-dt * 7));
-    // the tire model runs in small steps so slides stay stable on a slow phone
-    const n = Math.max(2, Math.ceil(Math.min(dt, 0.06) / 0.008)), h = Math.min(dt, 0.06) / n;
+    // the vehicle simulation runs in steps of at most 1/240 s (a slow frame is capped so a hitch can't launch the car)
+    const n = Math.max(1, Math.ceil(Math.min(dt, 0.06) / VD_H - 1e-6)), h = Math.min(dt, 0.06) / n;
     let nx = drv.x, nz = drv.z;
     I.gb = gbFor(P);
     for (let i = 0; i < n; i++) { physStep(I, P, h); nx += TIRE.vx * h; nz += TIRE.vz * h; }
@@ -17057,7 +17460,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         const vn = TIRE.vx * ux + TIRE.vz * uz; if (vn < 0) { TIRE.vx -= vn * ux * 1.15; TIRE.vz -= vn * uz * 1.15; }
       }
     }
-    if (hit) { const k = Math.pow(0.25, dt * 4); TIRE.vx *= k; TIRE.vz *= k; TIRE.w *= Math.pow(0.1, dt * 4); drv.v = TIRE.vx * -Math.sin(drv.yaw) + TIRE.vz * -Math.cos(drv.yaw); }
+    if (hit) { const k = Math.pow(0.25, dt * 4); TIRE.vx *= k; TIRE.vz *= k; TIRE.w *= Math.pow(0.1, dt * 4); drv.v = TIRE.vx * -Math.sin(drv.yaw) + TIRE.vz * -Math.cos(drv.yaw); vdSync(); }
     const crash = hit && !drv.hitting ? vBefore : 0; drv.hitting = hit;
     drv.x = clamp(nx, WB.x0, WB.x1); drv.z = clamp(nz, WB.z0, WB.z1);
     wearDrive(Math.hypot(drv.x - ox, drv.z - oz), dt, crash);
@@ -17290,7 +17693,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = { GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
-    ready: false, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, dragPerf, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, dragPerf, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
@@ -19610,6 +20013,413 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
   stepFoot = function (dt) { _stepFootP(dt); pvStep(dt); };
   const _stepDriveP = stepDrive;
   stepDrive = function (dt) { _stepDriveP(dt); pvStep(dt); };
+  // ==== photo mode (begin) ====
+  // ---------- photo mode (Kimari 2026-11-03: "a picture mode so players can take pictures together") ----------
+  // Phone > Camera, the 📸 row in the POSE menu, or P. The HUD goes away, you fly the camera around you (drag = orbit,
+  // pinch = closer/further, Move = slide the camera off you), pick a pose, a filter, the time of day and a timer, and
+  // the shot is saved in the Camera roll and to your phone (the share sheet's Save Image on iPhone).
+  // Online: photo poses ride on your state packets, so friends see you pose; Group pic calls everyone close by to pose.
+  const PM = { on: false, mode: 'orbit', yaw: 0, pitch: 0.15, dist: 4, fov: 50, roll: 0, lift: 0, off: new THREE.Vector3(), filter: 'none', names: true, hideMe: false, stamp: true,
+    timer: 0, pose: 0, poseT: 0, poseW: 0, poseAt: [0, 0], sentPz: 0, look: true, fov0: 50, busy: false, count: 0, ptr: new Map(), pinch: 0, last: null, url: null, roll0: [] };
+  const _pa = new THREE.Vector3(), _pb = new THREE.Vector3(), _pf = new THREE.Vector3();
+  const PV3 = (x, y, z) => new THREE.Vector3(x, y, z);
+  const PPOLE = { rOut: PV3(-1, -0.6, -0.1), lOut: PV3(1, -0.6, -0.1), rHip: PV3(-1, 0.2, -0.8), lHip: PV3(0.8, 0.2, -1), rX: PV3(-1, -0.7, 0.6), lX: PV3(1, -0.7, 0.6),
+    rFlex: PV3(-1, -1, -0.1), lFlex: PV3(1, -1, -0.1), rUp: PV3(-1, -0.1, 0.2), lUp: PV3(1, -0.1, 0.2), rFwd: PV3(-0.4, -1, -0.2), lFwd: PV3(0.4, -1, -0.2) };
+  // every pose puts each hand somewhere in upper-body space (x left +, y up, z in front); index + 1 goes out on the network
+  const PPOSES = [
+    { id: 'peace', name: 'Peace', icon: '✌️', f(P, t, w) { armIK(P, 0, _pa.set(-0.17, 0.63, 0.2), PPOLE.rOut, w); armIK(P, 1, _pb.set(0.2, 0.03, -0.02), PPOLE.lHip, w); if (P.head) P.head.rotation.z = 0.12 * w; } },
+    { id: 'cross', name: 'Arms crossed', icon: '🙅🏾‍♂️', f(P, t, w) { armIK(P, 0, _pa.set(0.11, 0.29, 0.19), PPOLE.rX, w); armIK(P, 1, _pb.set(-0.11, 0.26, 0.21), PPOLE.lX, w); P.upper.rotation.x -= 0.06 * w; } },
+    { id: 'flex', name: 'Flex', icon: '💪🏾', f(P, t, w) { const b = Math.sin(t * 3) * 0.01; armIK(P, 0, _pa.set(-0.42, 0.7 + b, 0.04), PPOLE.rFlex, w); armIK(P, 1, _pb.set(0.42, 0.7 + b, 0.04), PPOLE.lFlex, w); } },
+    { id: 'point', name: 'Point', icon: '👉🏾', f(P, t, w) { armIK(P, 0, _pa.set(-0.05, 0.5, 0.62), PPOLE.rFwd, w); if (P.head) P.head.rotation.z = 0.06 * w; } },
+    { id: 'roof', name: 'Raise the roof', icon: '🙌🏾', f(P, t, w) { const u = Math.abs(Math.sin(t * 4)) * 0.09; armIK(P, 0, _pa.set(-0.24, 0.86 + u, 0.12), PPOLE.rUp, w); armIK(P, 1, _pb.set(0.24, 0.86 + u, 0.12), PPOLE.lUp, w); } },
+    { id: 'boss', name: 'Hands on hips', icon: '😤', f(P, t, w) { armIK(P, 0, _pa.set(-0.2, 0.03, -0.02), PPOLE.rHip, w); armIK(P, 1, _pb.set(0.2, 0.03, -0.02), PPOLE.lHip, w); P.upper.rotation.x -= 0.04 * w; } },
+    { id: 'wave', name: 'Wave', icon: '👋🏾', f(P, t, w) { armIK(P, 0, _pa.set(-0.32 + Math.sin(t * 7) * 0.08, 0.74, 0.1), PPOLE.rOut, w); } },
+    { id: 'heart', name: 'Heart hands', icon: '🫶🏾', f(P, t, w) { armIK(P, 0, _pa.set(-0.035, 0.44, 0.3), PPOLE.rX, w); armIK(P, 1, _pb.set(0.035, 0.44, 0.3), PPOLE.lX, w); } },
+    { id: 'think', name: 'Thinking', icon: '🤔', f(P, t, w) { armIK(P, 0, _pa.set(-0.03, 0.6, 0.16), PPOLE.rFwd, w); armIK(P, 1, _pb.set(-0.04, 0.24, 0.19), PPOLE.lX, w); if (P.head) P.head.rotation.z = -0.1 * w; } },
+    { id: 'shrug', name: 'Shrug', icon: '🤷🏾‍♂️', f(P, t, w) { armIK(P, 0, _pa.set(-0.34, 0.2, 0.24), PPOLE.rFwd, w); armIK(P, 1, _pb.set(0.34, 0.2, 0.24), PPOLE.lFwd, w); if (P.head) P.head.rotation.z = 0.14 * w; } },
+    { id: 'salute', name: 'Salute', icon: '🫡', f(P, t, w) { armIK(P, 0, _pa.set(-0.1, 0.7, 0.13), PPOLE.rUp, w); } },
+    { id: 'selfie', name: 'Selfie arm', icon: '🤳🏾', f(P, t, w) { armIK(P, 0, _pa.set(-0.2, 0.62, 0.52), PPOLE.rFwd, w); armIK(P, 1, _pb.set(0.2, 0.62, 0.15), PPOLE.lOut, w * 0.9); } },
+  ];
+  // looks: the same list drives the live preview (CSS filter on the canvas) and the saved photo (a colour matrix)
+  const PFILTERS = [
+    { id: 'none', name: 'Normal', ops: [] },
+    { id: 'vivid', name: 'Vivid', ops: [['saturate', 1.45], ['contrast', 1.1]] },
+    { id: 'warm', name: 'Golden', ops: [['sepia', 0.28], ['saturate', 1.3], ['hue', -6]] },
+    { id: 'cool', name: 'Cold', ops: [['saturate', 0.85], ['hue', 10], ['brightness', 1.04]] },
+    { id: 'bw', name: 'B&W', ops: [['grayscale', 1], ['contrast', 1.1]] },
+    { id: 'noir', name: 'Noir', ops: [['grayscale', 1], ['contrast', 1.5], ['brightness', 0.92]], vig: 0.6 },
+    { id: 'vintage', name: '90s', ops: [['sepia', 0.5], ['contrast', 0.9], ['saturate', 0.85], ['brightness', 1.06]], vig: 0.45 },
+  ];
+  const pfCss = f => f.ops.map(([k, v]) => k === 'hue' ? `hue-rotate(${v}deg)` : `${k}(${v})`).join(' ') || 'none';
+  function pfMatrix(f) {   // 3x4 row-major, applied in order like CSS
+    let M = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+    const mul = (A, B) => { const R = []; for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) R[r * 4 + c] = A[r * 4] * B[c] + A[r * 4 + 1] * B[4 + c] + A[r * 4 + 2] * B[8 + c]; R[r * 4 + 3] = A[r * 4] * B[3] + A[r * 4 + 1] * B[7] + A[r * 4 + 2] * B[11] + A[r * 4 + 3]; } return R; };
+    for (const [k, v] of f.ops) {
+      let A;
+      if (k === 'saturate' || k === 'grayscale') { const s = k === 'grayscale' ? 1 - v : v; A = [0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s, 0, 0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s, 0, 0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s, 0]; }
+      else if (k === 'sepia') { const a = 1 - v; A = [0.393 + 0.607 * a, 0.769 - 0.769 * a, 0.189 - 0.189 * a, 0, 0.349 - 0.349 * a, 0.686 + 0.314 * a, 0.168 - 0.168 * a, 0, 0.272 - 0.272 * a, 0.534 - 0.534 * a, 0.131 + 0.869 * a, 0]; }
+      else if (k === 'hue') { const r = v * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+        A = [0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928, 0, 0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.14, 0.072 - c * 0.072 - s * 0.283, 0, 0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072, 0]; }
+      else if (k === 'contrast') { const o = (0.5 - 0.5 * v) * 255; A = [v, 0, 0, o, 0, v, 0, o, 0, 0, v, o]; }
+      else if (k === 'brightness') A = [v, 0, 0, 0, 0, v, 0, 0, 0, 0, v, 0];
+      if (A) M = mul(A, M);
+    }
+    return M;
+  }
+  function pfApply(x, w, h, f) {
+    if (f.ops.length) {
+      const img = x.getImageData(0, 0, w, h), d = img.data, M = pfMatrix(f);
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        d[i] = M[0] * r + M[1] * g + M[2] * b + M[3]; d[i + 1] = M[4] * r + M[5] * g + M[6] * b + M[7]; d[i + 2] = M[8] * r + M[9] * g + M[10] * b + M[11];
+      }
+      x.putImageData(img, 0, 0);
+    }
+    if (f.vig) { const g = x.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) / 2); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${f.vig})`); x.fillStyle = g; x.fillRect(0, 0, w, h); }
+  }
+  const pfById = id => PFILTERS.find(f => f.id === id) || PFILTERS[0];
+
+  // ---------- the camera roll (IndexedDB, this device only) ----------
+  const PDB = { db: null };
+  function pdb() {
+    if (PDB.db) return Promise.resolve(PDB.db);
+    return new Promise((res, rej) => { try { const r = indexedDB.open('mw3d-photos', 1); r.onupgradeneeded = () => r.result.createObjectStore('p', { keyPath: 'id' }); r.onsuccess = () => res(PDB.db = r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } });
+  }
+  const pTx = (mode, fn) => pdb().then(db => new Promise((res, rej) => { const tx = db.transaction('p', mode), st = tx.objectStore('p'), out = fn(st); tx.oncomplete = () => res(out && out.result !== undefined ? out.result : out); tx.onerror = () => rej(tx.error); }));
+  const pAll = () => pTx('readonly', st => st.getAll()).then(a => (a || []).sort((p, q) => q.id - p.id)).catch(() => []);
+  const pDel = id => pTx('readwrite', st => st.delete(id)).catch(() => {});
+  async function pPut(blob) {
+    try { await pTx('readwrite', st => st.put({ id: Date.now(), blob })); const all = await pAll(); for (const r of all.slice(60)) await pDel(r.id); return true; } catch (e) { return false; }
+  }
+
+  // ---------- the UI ----------
+  { const st = document.createElement('style'); st.textContent = `
+body.pm > *:not(#stage):not(#pm-root):not(#pm-call):not(script):not(style) { visibility: hidden !important; }
+#pm-root { position: fixed; inset: 0; z-index: 60; display: none; font: 700 13px var(--body, sans-serif); color: #fff; -webkit-user-select: none; user-select: none; }
+body.pm #pm-root { display: block; }
+#pm-touch { position: absolute; inset: 0; touch-action: none; }
+#pm-vig { position: absolute; inset: 0; pointer-events: none; }
+#pm-root .pm-bar { position: absolute; display: flex; gap: 6px; align-items: center; }
+#pm-root button { pointer-events: auto; background: rgba(14,12,18,0.62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.18); color: #fff; border-radius: 12px; padding: 7px 10px; font: 700 12px var(--body, sans-serif); letter-spacing: 0.02em; cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent; }
+#pm-root button.on { background: rgba(255,200,40,0.85); color: #16121a; border-color: #ffd65a; }
+#pm-tl { left: max(12px, env(safe-area-inset-left, 0px)); top: calc(env(safe-area-inset-top, 0px) + 10px); }
+#pm-tr { right: max(12px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 10px); }
+#pm-left { left: max(12px, env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%); flex-direction: column; align-items: stretch !important; }
+#pm-right { right: max(14px, env(safe-area-inset-right, 0px)); top: 50%; transform: translateY(-50%); flex-direction: column; gap: 10px !important; }
+#pm-shut { width: 74px; height: 74px; border-radius: 50% !important; padding: 0 !important; background: rgba(255,255,255,0.18) !important; border: 4px solid #fff !important; position: relative; }
+#pm-shut::after { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: #fff; }
+#pm-shut:active::after { inset: 9px; background: #ddd; }
+#pm-bot { left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); background: rgba(14,12,18,0.55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-radius: 14px; padding: 6px 12px; gap: 14px !important; }
+#pm-bot label { display: flex; flex-direction: column; align-items: center; gap: 2px; font: 700 10px var(--body, sans-serif); letter-spacing: 0.08em; color: rgba(255,255,255,0.75); text-transform: uppercase; }
+#pm-bot input { width: min(22vw, 150px); accent-color: #ffd65a; }
+#pm-hint { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 14px); transform: translateX(-50%); font: 600 12px var(--body, sans-serif); color: rgba(255,255,255,0.8); text-shadow: 0 1px 4px #000; pointer-events: none; text-align: center; transition: opacity .6s; }
+#pm-count { position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%); font: 800 110px var(--body, sans-serif); color: #fff; text-shadow: 0 4px 24px rgba(0,0,0,.6); pointer-events: none; display: none; }
+#pm-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .35s; }
+#pm-sheet { position: absolute; inset: 0; background: rgba(8,7,12,0.92); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 12px); box-sizing: border-box; }
+#pm-sheet.open { display: flex; }
+#pm-sheet img { max-width: 100%; max-height: calc(100% - 70px); border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.6); -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; pointer-events: auto; }
+#pm-sheet .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+#pm-sheet .big { background: #ffd65a !important; color: #16121a !important; border-color: #ffd65a !important; padding: 10px 16px !important; font-size: 14px !important; }
+#pm-sheet small { color: rgba(255,255,255,.65); font: 500 12px var(--body, sans-serif); text-align: center; }
+#pm-roll { position: absolute; inset: 0; background: rgba(8,7,12,0.95); display: none; flex-direction: column; padding: calc(env(safe-area-inset-top, 0px) + 10px) max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px)); box-sizing: border-box; }
+#pm-roll.open { display: flex; }
+#pm-roll .hd { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; } #pm-roll .hd b { font: 800 18px var(--body, sans-serif); flex: 1; }
+#pm-roll .grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-content: start; -webkit-overflow-scrolling: touch; }
+#pm-roll .grid img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; pointer-events: auto; cursor: pointer; }
+#pm-roll .none { color: rgba(255,255,255,.6); font: 500 14px var(--body, sans-serif); padding: 30px; text-align: center; grid-column: 1/-1; }
+#pm-poses { position: absolute; right: calc(max(14px, env(safe-area-inset-right, 0px)) + 92px); top: 50%; transform: translateY(-50%); width: min(330px, calc(100vw - 140px)); max-height: calc(100% - 30px); overflow-y: auto; background: rgba(14,12,18,0.85); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.14); border-radius: 16px; padding: 10px; box-sizing: border-box; display: none; }
+#pm-poses.open { display: block; }
+#pm-poses h4, #em-menu h5 { margin: 2px 2px 6px; font: 800 12px var(--body, sans-serif); letter-spacing: 0.08em; color: #ffd65a; }
+#pm-poses .g, #em-menu .pz-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 6px; }
+#pm-poses .g button, #em-menu .pz-grid button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 2px; font-size: 10.5px; border-radius: 12px; white-space: normal; line-height: 1.1; }
+#pm-poses .g button i, #em-menu .pz-grid button i { font-style: normal; font-size: 21px; }
+#pm-poses small { display: block; color: rgba(255,255,255,0.6); font: 500 11px var(--body, sans-serif); margin: 0 2px 6px; }
+#em-menu { max-height: calc(100vh - env(safe-area-inset-bottom, 0px) - 286px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+@media (orientation: landscape) and (max-height: 500px) { #em-menu { max-height: calc(100vh - 32px - env(safe-area-inset-bottom, 0px)); } }
+#em-menu .pz-grid button.on { background: rgba(200,150,30,0.8); border-color: #ffd65a; }
+#em-menu .pm-go { width: 100%; flex-direction: row !important; justify-content: center; gap: 8px !important; margin-bottom: 8px; padding: 9px 4px !important; font-size: 13px !important; background: #ffd65a !important; color: #16121a !important; }
+#pm-call { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 70px); transform: translateX(-50%); z-index: 61; background: rgba(14,12,18,0.9); border: 1px solid #ffd65a; border-radius: 14px; padding: 8px 10px; color: #fff; font: 700 13px var(--body, sans-serif); display: none; text-align: center; max-width: calc(100vw - 32px); box-sizing: border-box; }
+#pm-call.open { display: block; }
+#pm-call .row { display: flex; gap: 6px; margin-top: 6px; justify-content: center; flex-wrap: wrap; }
+#pm-call button { background: #23212b; color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; padding: 6px 8px; font: 700 12px var(--body, sans-serif); }
+@media (orientation: portrait) { #pm-left { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); transform: none; } #pm-right { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); transform: none; } #pm-bot { flex-wrap: wrap; justify-content: center; width: calc(100vw - 24px); box-sizing: border-box; } #pm-bot input { width: 26vw; } #pm-poses { right: 12px; left: 12px; width: auto; top: calc(env(safe-area-inset-top, 0px) + 60px); transform: none; max-height: 50%; } }
+`; document.head.append(st); }
+  const pmRoot = document.createElement('div'); pmRoot.id = 'pm-root';
+  pmRoot.innerHTML = `<div id="pm-touch"></div><div id="pm-vig"></div>
+<div id="pm-hint">Drag to move the camera · pinch to zoom</div>
+<div class="pm-bar" id="pm-tl"><button id="pm-x">✕ Done</button><button id="pm-rollbtn">🖼 Camera roll</button></div>
+<div class="pm-bar" id="pm-tr"><button id="pm-time">☀ Day</button><button id="pm-filt">Normal</button></div>
+<div class="pm-bar" id="pm-left"><button id="pm-mode">🔄 Orbit</button><button id="pm-selfie">🤳 Selfie</button><button id="pm-face">🙂 Face cam</button><button id="pm-hide">👤 Hide me</button><button id="pm-names" class="on">🏷 Names</button><button id="pm-stamp" class="on">© Stamp</button></div>
+<div class="pm-bar" id="pm-right"><button id="pm-posebtn">🕺 Pose</button><button id="pm-shut" aria-label="Take the picture"></button><button id="pm-timer">⏱ Off</button><button id="pm-group">📣 Group pic</button></div>
+<div class="pm-bar" id="pm-bot"><label>Zoom<input id="pm-fov" type="range" min="12" max="95" step="1"></label><label>Tilt<input id="pm-roll-s" type="range" min="-35" max="35" step="1" value="0"></label><label>Height<input id="pm-lift" type="range" min="-1.2" max="14" step="0.1" value="0"></label></div>
+<div id="pm-poses"></div>
+<div id="pm-count"></div><div id="pm-flash"></div>
+<div id="pm-sheet"><img id="pm-img" alt="Your picture"><div class="row"><button class="big" id="pm-save">⬇ Save to phone</button><button id="pm-again">📸 Keep shooting</button><button id="pm-del">🗑 Delete</button></div><small id="pm-note">Saved in your Camera roll. On iPhone, Save to phone opens the share sheet: pick Save Image. You can also press and hold the picture.</small></div>
+<div id="pm-roll"><div class="hd"><b>Camera roll</b><button id="pm-rollx">✕ Close</button></div><div class="grid" id="pm-grid"></div></div>`;
+  document.body.appendChild(pmRoot);
+  const pmCall = document.createElement('div'); pmCall.id = 'pm-call'; document.body.appendChild(pmCall);
+  const pmE = id => document.getElementById(id);
+
+  function pmCan() { return !!(S && worldOn && driving && !inside && !creating && !ROLL.on && !STRIP.on); }
+  function pmFocus(out) {
+    if (foot.on) { const h = foot.holder.position; out.set(h.x, h.y + 1.45, h.z); }
+    else if (car) out.set(car.position.x, car.position.y + 1.0, car.position.z);
+    else out.set(drv.x, 1, drv.z);
+    out.x += PM.off.x; out.z += PM.off.z; out.y += PM.lift; return out;
+  }
+  function pmOpen() {
+    if (PM.on) return;
+    if (!pmCan()) { toast(inside ? 'Step outside to take pictures.' : 'You can take pictures out in the city.', 'bad'); return; }
+    if (PH.open) closePhone(); if (menuFn) closeMenu(); if (EMO.menu) emoMenu(false);
+    PM.on = true; PM.off.set(0, 0, 0); PM.lift = 0; PM.roll = 0; PM.fov0 = camera.fov; PM.fov = clamp(camera.fov, 30, 70);
+    const f = pmFocus(_pf), d = _pa.subVectors(camera.position, f);
+    PM.dist = clamp(d.length(), 1.5, foot.on ? 8 : 14); PM.yaw = Math.atan2(d.x, d.z); PM.pitch = clamp(Math.asin(clamp(d.y / Math.max(0.01, d.length()), -1, 1)), -0.5, 1.2);
+    if (foot.on) foot.target = null;
+    document.body.classList.add('pm'); pmSync(); pmE('pm-hint').style.opacity = 1; setTimeout(() => { if (PM.on) pmE('pm-hint').style.opacity = 0; }, 4000);
+  }
+  function pmClose() {
+    if (!PM.on) return;
+    PM.on = false; document.body.classList.remove('pm'); pmE('pm-poses').classList.remove('open'); pmE('pm-sheet').classList.remove('open'); pmE('pm-roll').classList.remove('open');
+    renderer.domElement.style.filter = ''; camera.fov = PM.fov0; camera.updateProjectionMatrix();
+    if (ME) ME.wrap.visible = true; if (GPS.mesh) GPS.mesh.visible = true;
+    for (const p of NET.peers.values()) if (p.view && p.view.label) p.view.label.visible = true;
+    if (PM.url) { URL.revokeObjectURL(PM.url); PM.url = null; }
+    PM.count = 0; pmE('pm-count').style.display = 'none';
+  }
+  function pmSync() {
+    pmE('pm-mode').textContent = PM.mode === 'orbit' ? '🔄 Orbit' : '✋ Move';
+    pmE('pm-hide').classList.toggle('on', PM.hideMe); pmE('pm-names').classList.toggle('on', PM.names); pmE('pm-stamp').classList.toggle('on', PM.stamp);
+    pmE('pm-timer').textContent = '⏱ ' + (PM.timer ? PM.timer + 's' : 'Off'); pmE('pm-timer').classList.toggle('on', !!PM.timer);
+    const f = pfById(PM.filter); pmE('pm-filt').textContent = '🎨 ' + f.name; pmE('pm-filt').classList.toggle('on', f.id !== 'none');
+    renderer.domElement.style.filter = PM.on && f.ops.length ? pfCss(f) : '';
+    pmE('pm-vig').style.background = f.vig ? `radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,${f.vig}) 100%)` : 'none';
+    pmE('pm-time').textContent = { day: '☀ Day', sunset: '🌇 Sunset', night: '🌙 Night' }[timeName] || '☀ Day';
+    pmE('pm-fov').value = String(Math.round(107 - PM.fov)); pmE('pm-roll-s').value = String(Math.round(-PM.roll * 180 / Math.PI)); pmE('pm-lift').value = String(PM.lift);
+    pmE('pm-group').style.display = netOn() ? '' : 'none';
+    const pz = PPOSES[PM.pose - 1]; pmE('pm-posebtn').textContent = pz ? pz.icon + ' ' + pz.name : '🕺 Pose'; pmE('pm-posebtn').classList.toggle('on', !!pz);
+    pmE('pm-selfie').style.display = pmE('pm-face').style.display = pmE('pm-hide').style.display = foot.on ? '' : 'none';
+  }
+  // the camera, every frame while photo mode is on (runs after the game placed its own)
+  function pmCam(dt) {
+    if (!pmCan()) { pmClose(); return; }
+    if (foot.on) foot.target = null;
+    const f = pmFocus(_pf), cp = Math.cos(PM.pitch);
+    camera.position.set(f.x + Math.sin(PM.yaw) * cp * PM.dist, f.y + Math.sin(PM.pitch) * PM.dist, f.z + Math.cos(PM.yaw) * cp * PM.dist);
+    const gy = groundAt(camera.position.x, camera.position.z) + 0.15; if (camera.position.y < gy) camera.position.y = gy;
+    camera.lookAt(f); if (PM.roll) camera.rotateZ(PM.roll);
+    if (Math.abs(camera.fov - PM.fov) > 0.01) { camera.fov = PM.fov; camera.updateProjectionMatrix(); }
+    if (ME) ME.wrap.visible = !(PM.hideMe && foot.on);
+    if (GPS.mesh) GPS.mesh.visible = false;
+    for (const p of NET.peers.values()) if (p.view && p.view.label) p.view.label.visible = PM.names;
+    camera.updateMatrixWorld();
+  }
+
+  // ---------- poses (yours, in or out of photo mode; friends see them online) ----------
+  function poseStart(i) {
+    if (!foot.on || inside) { toast('Get out of the car to pose.', 'bad'); return; }
+    if (EMO.id) emoClear(); if (GUN.want) { GUN.want = false; gunHud(); }
+    PM.pose = PM.pose === i ? 0 : i; PM.poseT = 0; PM.poseAt = [foot.x, foot.z]; foot.target = null;
+    if (PM.pose && !PM.on) foot.yaw = Math.atan2(-(foot.cam.x - foot.x), -(foot.cam.z - foot.z));   // turn to the camera, like the money poses
+    if (EMO.menu) emoMenu(true); pmSync(); pmPoses(false);
+  }
+  function poseStep(dt) {
+    if (!ME) return;
+    const want = PM.pose && foot.on && !inside && !EMO.id && !GUN.want;
+    if (PM.pose && (!foot.on || EMO.id || GUN.want || Math.hypot(foot.x - PM.poseAt[0], foot.z - PM.poseAt[1]) > 0.05)) { PM.pose = 0; if (PM.on) pmSync(); if (EMO.menu) emoMenu(true); }
+    PM.poseW = clamp(PM.poseW + (want ? 1 : -1) * dt / 0.3, 0, 1);
+    if (want) PM.poseId = PM.pose;
+    if (PM.poseW <= 0 || !PM.poseId) { if (!want) PM.poseT = 0; return; }
+    PM.poseT += dt; untwistArms(ME);
+    const w = smooth01(PM.poseW); PPOSES[PM.poseId - 1].f(ME, PM.poseT, w);
+    // eyes on the lens while the photo camera is out
+    if (PM.on && PM.look && ME.head) {
+      const ya = Math.atan2(-(camera.position.x - foot.x), -(camera.position.z - foot.z)); let dy = ya - foot.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      if (Math.abs(dy) < 2.2) ME.head.rotation.y = lerp(ME.head.rotation.y, clamp(dy, -0.9, 0.9), w);
+    }
+  }
+  function pmPoses(open) {
+    const m = pmE('pm-poses'); open = open == null ? !m.classList.contains('open') : open;
+    if (!open) { m.classList.remove('open'); return; }
+    if (!foot.on) { toast('Get out of the car to pose.', 'bad'); return; }
+    const btn = (p, i) => `<button data-pz="${i + 1}" class="${PM.pose === i + 1 ? 'on' : ''}"><i>${p.icon}</i>${p.name}</button>`;
+    m.innerHTML = `<h4>PHOTO POSES</h4><small>Friends online see your pose too.</small><div class="g">${PPOSES.map(btn).join('')}</div>
+<h4>MONEY &amp; GUN</h4><div class="g">${EMOTES.map(e => `<button data-em="${e.id}" class="${emoBlock(e) ? 'off' : ''} ${EMO.id === e.id ? 'on' : ''}"><i>${e.icon}</i>${e.name}</button>`).join('')}</div>`;
+    m.querySelectorAll('[data-pz]').forEach(b => b.onclick = () => poseStart(+b.dataset.pz));
+    m.querySelectorAll('[data-em]').forEach(b => b.onclick = () => { PM.pose = 0; if (EMO.id === b.dataset.em) emoStop(); else emoStart(b.dataset.em); pmPoses(false); pmSync(); });
+    m.classList.add('open');
+  }
+  // the POSE menu gets the photo poses and a way into photo mode
+  const _emoMenuPm = emoMenu;
+  emoMenu = function (open) {
+    _emoMenuPm(open); if (!EMO.menu) return;
+    const m = gEl('em-menu'); if (!m) return;
+    m.insertAdjacentHTML('afterbegin', `<button class="pm-go" id="pm-go">📸 Photo mode</button><h5>PHOTO POSES</h5><div class="pz-grid">${PPOSES.map((p, i) => `<button data-pz="${i + 1}" class="${PM.pose === i + 1 ? 'on' : ''}"><i>${p.icon}</i>${p.name}</button>`).join('')}</div>`);
+    m.querySelectorAll('[data-pz]').forEach(b => b.onclick = () => poseStart(+b.dataset.pz));
+    gEl('pm-go').onclick = () => { emoMenu(false); pmOpen(); };
+  };
+
+  // ---------- taking the picture ----------
+  function pmShutterSound() { try { if (!gac()) return; const v = voice(null, 0.8), t = GA.c.currentTime; nz(v, t, 0.025, 'highpass', 5200, 3000, 0.35); nz(v, t + 0.08, 0.035, 'bandpass', 2600, 1600, 0.25); } catch (e) {} }
+  function pmGrab() {
+    const src = renderer.domElement;
+    renderer.render(scene, camera);   // a fresh frame, copied before the browser clears it
+    const w = src.width, h = src.height, c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'); x.drawImage(src, 0, 0, w, h);
+    pfApply(x, w, h, pfById(PM.filter));
+    if (PM.stamp) {
+      const s = Math.max(14, Math.round(h * 0.03)); x.font = `800 ${s}px "Barlow Condensed", "Arial Narrow", sans-serif`; x.textAlign = 'right'; x.textBaseline = 'bottom';
+      x.shadowColor = 'rgba(0,0,0,0.7)'; x.shadowBlur = s * 0.4; x.fillStyle = 'rgba(255,255,255,0.88)';
+      x.fillText('MURDA WORTH', w - s * 0.8, h - s * 0.75); x.font = `600 ${Math.round(s * 0.55)}px "Barlow Condensed", "Arial Narrow", sans-serif`; x.fillStyle = 'rgba(255,214,90,0.9)';
+      x.fillText(((S.name || '') + ' · ' + (districtAt(foot.on ? foot.x : drv.x, foot.on ? foot.z : drv.z) || 'Fort Worth')).toUpperCase(), w - s * 0.8, h - s * 0.75 - s * 1.05);
+    }
+    return c;
+  }
+  function pmShoot() {
+    if (PM.busy || PM.count) return;
+    if (PM.timer) { pmCountdown(PM.timer, pmSnap); return; }
+    pmSnap();
+  }
+  function pmCountdown(n, then) {
+    const el = pmE('pm-count'); PM.count = n; el.style.display = 'block'; el.textContent = n; pmE('pm-poses').classList.remove('open');
+    const tick = () => { if (!PM.on) { PM.count = 0; el.style.display = 'none'; return; } PM.count--; if (PM.count <= 0) { el.style.display = 'none'; then(); return; } el.textContent = PM.count; setTimeout(tick, 1000); };
+    setTimeout(tick, 1000);
+  }
+  function pmSnap() {
+    if (!PM.on) return;
+    PM.busy = true; pmCam(0);
+    let c; try { c = pmGrab(); } catch (e) { PM.busy = false; toast('Could not take the picture.', 'bad'); return; }
+    pmShutterSound(); const fl = pmE('pm-flash'); fl.style.transition = 'none'; fl.style.opacity = 0.85; requestAnimationFrame(() => { fl.style.transition = 'opacity .35s'; fl.style.opacity = 0; });
+    c.toBlob(async blob => {
+      PM.busy = false; if (!blob) { toast('Could not save the picture.', 'bad'); return; }
+      pmShow({ id: null, blob }, true);   // show it right away, then keep it in the roll
+      const kept = await pPut(blob);
+      if (!kept && PM.last && PM.last.blob === blob) pmE('pm-note').textContent = "Couldn't keep it in the Camera roll on this device, so save it now. On iPhone, Save to phone opens the share sheet: pick Save Image.";
+    }, 'image/jpeg', 0.92);
+  }
+  function pmFile(blob) { const d = new Date(), z = n => String(n).padStart(2, '0'); return new File([blob], `murda-worth-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.jpg`, { type: 'image/jpeg' }); }
+  function pmShow(rec, kept) {
+    if (PM.url) URL.revokeObjectURL(PM.url);
+    PM.last = rec; PM.url = URL.createObjectURL(rec.blob); pmE('pm-img').src = PM.url;
+    PM.file = pmFile(rec.blob);
+    pmE('pm-note').textContent = (kept === false ? "Couldn't keep it in the Camera roll on this device, so save it now. " : 'In your Camera roll. ') + 'On iPhone, Save to phone opens the share sheet: pick Save Image. You can also press and hold the picture.';
+    pmE('pm-del').style.display = rec.id ? '' : 'none';
+    pmE('pm-sheet').classList.add('open');
+  }
+  function pmSave() {
+    const f = PM.file; if (!f) return;
+    try { if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: 'Murda Worth' }).catch(() => {}); return; } } catch (e) {}
+    const a = document.createElement('a'); a.href = PM.url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+  }
+  async function pmRoll() {
+    const g = pmE('pm-grid'); for (const u of PM.roll0) URL.revokeObjectURL(u); PM.roll0 = [];
+    const all = await pAll();
+    g.innerHTML = all.length ? '' : '<div class="none">No pictures yet. Line up a shot and hit the white button.</div>';
+    for (const r of all) { const u = URL.createObjectURL(r.blob); PM.roll0.push(u); const im = document.createElement('img'); im.src = u; im.onclick = () => { pmE('pm-roll').classList.remove('open'); pmShow(r); }; g.appendChild(im); }
+    pmE('pm-roll').classList.add('open');
+  }
+
+  // ---------- touch: drag orbits (or moves), two fingers pinch ----------
+  { const T = pmE('pm-touch');
+    T.addEventListener('pointerdown', e => { T.setPointerCapture(e.pointerId); PM.ptr.set(e.pointerId, [e.clientX, e.clientY]); PM.pinch = 0; pmE('pm-poses').classList.remove('open'); });
+    T.addEventListener('pointermove', e => {
+      const o = PM.ptr.get(e.pointerId); if (!o) return;
+      const dx = e.clientX - o[0], dy = e.clientY - o[1]; o[0] = e.clientX; o[1] = e.clientY;
+      if (PM.ptr.size >= 2) {
+        const [a, b] = [...PM.ptr.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (PM.pinch) PM.dist = clamp(PM.dist * PM.pinch / Math.max(1, d), 0.6, 40); PM.pinch = d; return;
+      }
+      if (PM.mode === 'orbit') { PM.yaw -= dx * 0.007; PM.pitch = clamp(PM.pitch + dy * 0.005, -0.55, 1.45); }
+      else {
+        const k = Math.max(0.01, PM.dist * 0.0035), s = Math.sin(PM.yaw), c = Math.cos(PM.yaw);
+        PM.off.x += (-c * dx - s * dy) * k; PM.off.z += (s * dx - c * dy) * k;
+        const L = PM.off.length(); if (L > 40) PM.off.multiplyScalar(40 / L);
+      }
+    });
+    const up = e => { PM.ptr.delete(e.pointerId); PM.pinch = 0; };
+    T.addEventListener('pointerup', up); T.addEventListener('pointercancel', up);
+    T.addEventListener('wheel', e => { e.preventDefault(); PM.dist = clamp(PM.dist * Math.exp(e.deltaY * 0.0012), 0.6, 40); }, { passive: false });
+  }
+  pmE('pm-x').onclick = pmClose;
+  pmE('pm-shut').onclick = pmShoot;
+  pmE('pm-mode').onclick = () => { PM.mode = PM.mode === 'orbit' ? 'move' : 'orbit'; pmSync(); pmE('pm-hint').textContent = PM.mode === 'orbit' ? 'Drag to swing around · pinch to zoom' : 'Drag to slide the camera · pinch to zoom'; pmE('pm-hint').style.opacity = 1; setTimeout(() => { pmE('pm-hint').style.opacity = 0; }, 2500); };
+  pmE('pm-selfie').onclick = () => {
+    if (!foot.on) return;
+    PM.off.set(0, 0, 0); PM.lift = 0.12; PM.yaw = foot.yaw + Math.PI + 0.25; PM.pitch = 0.18; PM.dist = 1.15; PM.fov = 68;
+    PM.pose = 0; poseStart(PPOSES.findIndex(p => p.id === 'selfie') + 1); pmSync();
+  };
+  pmE('pm-face').onclick = () => { if (!foot.on) return; foot.yaw = Math.atan2(-(camera.position.x - foot.x), -(camera.position.z - foot.z)); };
+  pmE('pm-hide').onclick = () => { PM.hideMe = !PM.hideMe; pmSync(); };
+  pmE('pm-names').onclick = () => { PM.names = !PM.names; pmSync(); };
+  pmE('pm-stamp').onclick = () => { PM.stamp = !PM.stamp; pmSync(); };
+  pmE('pm-timer').onclick = () => { PM.timer = PM.timer === 0 ? 3 : PM.timer === 3 ? 10 : 0; pmSync(); };
+  pmE('pm-filt').onclick = () => { const i = PFILTERS.findIndex(f => f.id === PM.filter); PM.filter = PFILTERS[(i + 1) % PFILTERS.length].id; pmSync(); };
+  pmE('pm-time').onclick = () => { const order = ['day', 'sunset', 'night']; setTime(order[(order.indexOf(timeName) + 1) % 3]); pmSync(); };
+  pmE('pm-posebtn').onclick = () => pmPoses();
+  pmE('pm-fov').oninput = e => { PM.fov = 107 - +e.target.value; };
+  pmE('pm-roll-s').oninput = e => { PM.roll = -(+e.target.value) * Math.PI / 180; };
+  pmE('pm-lift').oninput = e => { PM.lift = +e.target.value; };
+  pmE('pm-rollbtn').onclick = pmRoll;
+  pmE('pm-rollx').onclick = () => pmE('pm-roll').classList.remove('open');
+  pmE('pm-save').onclick = pmSave;
+  pmE('pm-again').onclick = () => pmE('pm-sheet').classList.remove('open');
+  pmE('pm-del').onclick = async () => { if (PM.last && PM.last.id) await pDel(PM.last.id); pmE('pm-sheet').classList.remove('open'); pmRoll(); };
+  pmE('pm-group').onclick = () => {
+    if (!netOn()) return;
+    const x = foot.on ? foot.x : drv.x, z = foot.on ? foot.z : drv.z, n = Math.max(5, PM.timer || 5);
+    netSend({ k: 'ph', t: 'call', x: +x.toFixed(1), z: +z.toFixed(1), s: n });
+    let near = 0; for (const p of NET.peers.values()) if (!p.fresh && Math.hypot(p.x - x, p.z - z) < 90) near++;
+    pmE('pm-hint').textContent = near ? `Called ${near} ${near > 1 ? 'people' : 'person'} close by. Everybody pose!` : 'Nobody close by yet. Get your people within 90 m.'; pmE('pm-hint').style.opacity = 1;
+    setTimeout(() => { if (PM.on) pmE('pm-hint').style.opacity = 0; }, 4000);
+    if (near) pmCountdown(n, pmSnap);
+  };
+  addEventListener('keydown', e => {
+    if (e.repeat || !S || /INPUT|TEXTAREA/.test((document.activeElement || {}).tagName || '')) return;
+    if (e.code === 'KeyP' && !menuFn && !PH.open) { if (PM.on) pmClose(); else pmOpen(); }
+    else if (PM.on && e.code === 'Escape') pmClose();
+    else if (PM.on && e.code === 'Space') { e.preventDefault(); pmShoot(); }
+  });
+
+  // ---------- a friend calls a group pic ----------
+  let callT = 0;
+  function pmCalled(p, m) {
+    if (!S || !worldOn || inside || PM.on) return;
+    const mx = foot.on ? foot.x : drv.x, mz = foot.on ? foot.z : drv.z, x = nNum(m.x, -N_WR, N_WR), z = nNum(m.z, -N_WR, N_WR);
+    if (Math.hypot(mx - x, mz - z) > 90) return;
+    let n = clamp(nNum(m.s, 3, 15, 5) | 0, 3, 15);
+    const pick = ['peace', 'flex', 'cross', 'roof', 'boss', 'heart'].map(id => PPOSES.findIndex(q => q.id === id) + 1);
+    pmCall.innerHTML = `📸 <b>${esc(p.name || 'Somebody')}</b> is taking a group pic. Strike a pose! <span id="pm-call-n">${n}</span><div class="row">${foot.on ? pick.map(i => `<button data-pz="${i}">${PPOSES[i - 1].icon} ${PPOSES[i - 1].name}</button>`).join('') : '<span>Hop out of the car to get in it.</span>'}</div>`;
+    pmCall.querySelectorAll('[data-pz]').forEach(b => b.onclick = () => { poseStart(+b.dataset.pz); });
+    pmCall.classList.add('open'); clearInterval(callT);
+    callT = setInterval(() => { n--; const el = document.getElementById('pm-call-n'); if (el) el.textContent = n > 0 ? n : '📸'; if (n <= -2) { clearInterval(callT); pmCall.classList.remove('open'); } }, 1000);
+  }
+
+  // ---------- online: your pose rides on the state packets; theirs plays on their model ----------
+  NET_HOOK.urgent.push(() => (PM.pose && foot.on ? PM.pose : 0) !== PM.sentPz);
+  NET_HOOK.state.push(() => { const pz = PM.pose && foot.on ? PM.pose : 0; PM.sentPz = pz; return pz ? { pz } : {}; });
+  NET_HOOK.recv.push((p, m) => {
+    if (m.k === 's') { const pz = m.pz | 0; p.pz = pz > 0 && pz <= PPOSES.length ? pz : 0; }
+    else if (m.k === 'ph' && m.t === 'call') pmCalled(p, m);
+  });
+  NET_HOOK.draw.push((p, v, dt) => {
+    if (v.label && PM.on) v.label.visible = PM.names;
+    const P = v.P; if (!P) return;
+    const want = !p.inCar && !p.dead && !p.gd && Math.abs(p.sp || 0) < 0.4 ? p.pz || 0 : 0;
+    if (want) { if (v.pzId !== want) v.pzT = 0; v.pzId = want; }
+    v.pzW = clamp((v.pzW || 0) + (want ? 1 : -1) * dt / 0.3, 0, 1);
+    if (v.pzW <= 0 || !v.pzId || !P.wrap.visible) return;
+    v.pzT = (v.pzT || 0) + dt; untwistArms(P); PPOSES[v.pzId - 1].f(P, v.pzT, smooth01(v.pzW));
+  });
+
+  // ---------- hooks: the camera app, and the frame ----------
+  PHONE_APPS.splice(Math.max(0, PHONE_APPS.findIndex(a => a.id === 'settings')), 0, { id: 'camera', name: 'Camera', icon: '📸', bg: 'linear-gradient(135deg,#3a3a40,#0c0c0e)' });
+  const _pmPhoneApp = phoneApp;
+  phoneApp = function (id) { if (id === 'camera') { closePhone(); pmOpen(); return; } return _pmPhoneApp.apply(this, arguments); };
+  const _stepFootPm = stepFoot;
+  stepFoot = function (dt) { _stepFootPm(dt); if (foot.on && S) poseStep(dt); else if (PM.pose) PM.pose = 0; if (PM.on) pmCam(dt); };
+  const _stepDrivePm = stepDrive;
+  stepDrive = function (dt) { _stepDrivePm(dt); if (PM.on) pmCam(dt); };
+  window.__photo = { PM, PPOSES, PFILTERS, pmOpen, pmClose, pmSnap, pmGrab, poseStart, pAll, pmCalled, pmSync, pfMatrix };
+  // ==== photo mode (end) ====
   window.__guns.pv = { PV, pvHurt, pvDown, pvUp, peerHit, pvPlay, pvDrawGun, fxInit, disposeGun };
   })();
   boot();
