@@ -18052,7 +18052,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   // ==== city streets (end) ====
   // ==== yellow belly (begin) ====
   (() => {
-  // ---------- Yellow Belly Drag Strip (Phase 3): the main drag strip of the game, built into the world in Grand Prairie ----------
+  // ---------- Yello Belly Drag Strip (Phase 3): the main drag strip of the game, built into the world in Grand Prairie ----------
   // A gritty Texas street-car strip, inspired by the real Dallas-area spot (not a copy of it): staging lanes off the I-20 Frontage,
   // a water box and burnout box, a concrete launch pad on the tree, a quarter mile between concrete walls with the eighth marked,
   // a long shutdown, a sand trap and catch net, the turnoff and the return road. Pits with trailers and pop-ups off Westmoreland Rd,
@@ -18099,13 +18099,20 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       [6914, 1128, 7084, 1186, 'parking'],   // staging lanes
     ]) L2.push(x0, z0, x1 - x0, z1 - z0, lk(k));
     D.L = L2;
-    // roads in: the I-20 Frontage runs on past Westmoreland to I-45 (the staging gate), and Yellow Belly Dr goes into the pits and the spectator lot
+    // roads in: the I-20 Frontage runs on past Westmoreland to I-45 (the staging gate), and Yello Belly Dr goes into the pits and the spectator lot
     const nm = n => { let i = D.names.indexOf(n); if (i < 0) { i = D.names.length; D.names.push(n); } return i; }, city = D.ekinds.indexOf('city');
-    D.E.push(6900, 1200, 7200, 1200, 16, city, nm('I-20 Frontage'), 6900, 900, 6940, 900, 12, city, nm('Yellow Belly Dr'), 6900, 600, 6940, 600, 12, city, nm('Yellow Belly Dr'));
+    // E. Main St carries on east past Westmoreland along the north side (the real strip's address is 4702 E. Main St), and the
+    // spectator gate road runs down off it into the lot
+    const clearRect = (x0, z0, x1, z1) => { const T = D.T, T2 = []; for (let i = 0; i < T.length; i += 4) if (!(T[i] > x0 && T[i] < x1 && T[i + 1] > z0 && T[i + 1] < z1)) T2.push(T[i], T[i + 1], T[i + 2], T[i + 3]); D.T = T2;
+      const B = D.B, B2 = []; for (let i = 0; i < B.length; i += 8) { const bx0 = B[i], bz0 = B[i + 1], bx1 = bx0 + B[i + 2], bz1 = bz0 + B[i + 3]; if (bx1 > x0 && bx0 < x1 && bz1 > z0 && bz0 < z1) continue; for (let k = 0; k < 8; k++) B2.push(B[i + k]); } D.B = B2;
+      const L = D.L, L2 = []; for (let i = 0; i < L.length; i += 5) { const lx0 = L[i], lz0 = L[i + 1], lx1 = lx0 + L[i + 2], lz1 = lz0 + L[i + 3]; if (lx1 > x0 && lx0 < x1 && lz1 > z0 && lz0 < z1 && !(lx0 >= YB.x0 - 2 && lx1 <= YB.x1 + 2 && lz0 >= YB.z0 - 2)) continue; for (let k = 0; k < 5; k++) L2.push(L[i + k]); } D.L = L2; };
+    clearRect(6900, 138, 7206, 162); clearRect(6990, 150, 7010, 300); clearRect(7016, 158, 7044, 176);
+    D.E.push(6900, 150, 7050, 150, 16, city, nm('Main St'), 7050, 150, 7200, 150, 16, city, nm('Main St'), 7000, 150, 7000, 296, 12, city, nm('Yello Belly Dr'));
+    D.E.push(6900, 1200, 7200, 1200, 16, city, nm('I-20 Frontage'), 6900, 900, 6940, 900, 12, city, nm('Yello Belly Dr'), 6900, 600, 6940, 600, 12, city, nm('Yello Belly Dr'));
     // the place: pull into the staging lanes to race
     const p = D.P.find(q => q.id === 'yellowbelly');
-    if (p) Object.assign(p, { x: 7056.5, z: 1162, face: 0, tagline: 'Grand Prairie · street-car drags every night · staging lanes off the I-20 Frontage', blurb: 'The main drag strip. Pull into the staging lanes, do your burnout, stage on the tree and run it.' });
-    D.labels.push(['YELLOW BELLY', YB.TX - 40, 760]);
+    if (p) Object.assign(p, { name: 'Yello Belly Drag Strip', x: 7056.5, z: 1162, face: 0, tagline: '4702 E. Main St, Grand Prairie · 1/8 mile · spectators off E. Main St, racers through the staging lanes off the I-20 Frontage', blurb: 'The main drag strip. Register at the booth in the staging lanes, do your burnout, stage on the tree and run the eighth.' });
+    D.labels.push(['YELLO BELLY', YB.TX - 40, 760]);
     // the roll race marker on the I-20 eastbound shoulder, past the Camp Wisdom ramp
     const rp = { id: 'i20roll', name: 'I-20 Roll Races', type: 'roll', x: 5600, z: 1363.4, face: 0, color: '#ff1a2e', icon: 'flag', tagline: 'Grand Prairie · I-20 eastbound past the Camp Wisdom ramp · digs and rolls every night',
       blurb: 'Pull onto the shoulder at the marker and line up a roll race or a dig. Eastbound gets shut down for the run: 1/4 at the EXIT 463 gantry, 1/2 at the Wheatland Rd overpass, the mile at the Union Pacific bridge.' };
@@ -18242,6 +18249,9 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     for (const lx of YB.LANES) { pa(lx - 2.9, SL - 0.15, lx + 2.9, SL + 0.15, white); pa(lx - 2.9, YB.water.z1, lx + 2.9, YB.water.z1 + 0.2, yellow); pa(lx - 2.9, YB.water.z0 - 0.2, lx + 2.9, YB.water.z0, yellow); pa(lx - 0.06, SL, lx + 0.06, SL + 46, white); }
     for (const [z, c] of [[EL, white], [FL, white]]) pa(T0 + 0.4, z - 0.3, T1 - 0.4, z + 0.3, c);
     for (let x = T0 + 0.4; x < T1 - 0.4; x += 1.2) pa(x, FL - 1.5, x + 0.6, FL - 0.9, white);   // checkers at the stripe
+    for (let x = T0 + 0.4; x < T1 - 0.4; x += 1.2) pa(x, EL - 1.5, x + 0.6, EL - 0.9, white);   // and at the eighth, the main finish here
+    // the 60 ft and 330 ft marks: a short bar at each lane edge (the timing lights sit on the walls beside them)
+    for (const z of [SL - 18.29, SL - 100.58]) for (const x of [T0 + 0.3, TX - 0.9, TX + 0.3, T1 - 1.5]) pa(x, z - 0.12, x + 1.2, z + 0.12, yellow);
     pa(7084.3, 336, 7084.45, 1186, white); pa(7097.55, 336, 7097.7, 1186, white);
     for (let z = 340; z < 1180; z += 12) pa(7090.9, z, 7091.1, z + 6, yellow);
     for (const z of [400, 1110]) { box('plain', 7099.2, z - 0.08, 7099.4, z + 0.08, 0, 2.6, '#3a3c40', 'mid'); sgn('RETURN ROAD  ·  15 MPH', '#ffd23a', '#ffd23a', 7099, z, 2.2, 0.6, -1, 0, 5, 'mid'); }
@@ -18249,7 +18259,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     for (const [x0, x1] of [[T0 - 0.6, T0], [T1, T1 + 0.6]]) { box('plain', x0, 380, x1, 1132, 0, 0.95, '#cfccc4'); box('plain', x0 - 0.05, 380, x1 + 0.05, 1132, 0.95, 1.02, '#e2dfd8'); solid(x0, 380, x1, 1132); }
     chain(T0 - 0.3, 640, T0 - 0.3, 1132, 3.6);
     // the walls carry the sponsors near the line, and the distance boards
-    const ADS = [['YELLOW BELLY', '#ffd23a'], ['GLITCH GAMING', '#c08cff'], ['STOP SIX RIMS & TIRES', '#ffffff'], ['VIRL STUDIOS', '#ff3a3a'], ['COWTOWN POWERSPORTS', '#ff8a1a'], ['THIRD COAST SWANGAS', '#ffd23a'], ['TAILPIPE TACOS', '#3dff6a'], ['VEGA KUSTOMS', '#3da8ff'], ['HOOK & HAUL TOWING', '#ffffff'], ['MURDA WORTH', '#ff1a2e']];
+    const ADS = [['YELLO BELLY', '#ffd23a'], ['GLITCH GAMING', '#c08cff'], ['STOP SIX RIMS & TIRES', '#ffffff'], ['VIRL STUDIOS', '#ff3a3a'], ['COWTOWN POWERSPORTS', '#ff8a1a'], ['THIRD COAST SWANGAS', '#ffd23a'], ['TAILPIPE TACOS', '#3dff6a'], ['VEGA KUSTOMS', '#3da8ff'], ['HOOK & HAUL TOWING', '#ffffff'], ['MURDA WORTH', '#ff1a2e']];
     ADS.forEach(([t, c], i) => { const z = SL - 14 - i * 22; sgn(t, c, c, T0 + 0.01, z, 0.5, 0.62, 1, 0, 9); sgn(ADS[(i + 4) % ADS.length][0], ADS[(i + 4) % ADS.length][1], null, T1 - 0.01, z, 0.5, 0.62, -1, 0, 9); });
     for (const [z, t] of [[SL - 18.29, '60 FT'], [SL - 100.58, '330 FT'], [EL, '1/8 MILE'], [SL - 304.8, '1000 FT'], [FL, '1/4 MILE'], [FL - 120, 'SHUT IT DOWN'], [392, 'TURN OFF  ▶']]) {
       for (const sx of [T0 - 1.4, T1 + 1.4]) { box('plain', sx - 0.08, z - 0.08, sx + 0.08, z + 0.08, 0, 3.2, '#3a3c40', 'mid'); box('plain', sx - 1.3, z - 0.05, sx + 1.3, z + 0.05, 2.4, 3.4, '#141416', 'mid'); sgn(t, '#ffffff', '#ffd23a', sx, z + 0.06, 2.9, 0.8, 0, 1, 2.5, 'mid'); }
@@ -18277,7 +18287,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       // the tower: concrete, the control room glass on top, the name facing the track
       const x0 = 7034, x1 = 7048, z0 = SL - 2, z1 = SL + 12;
       box('plain', x0, z0, x1, z1, 0, 6.2, '#b8b4aa'); box('ybGlow', x0 - 0.02, z0 + 0.6, x1 + 0.02, z1 - 0.6, 6.6, 8.6, '#9ab8d0', 'mid', false); box('plain', x0 - 0.6, z0 - 0.6, x1 + 0.6, z1 + 0.6, 8.6, 9.2, '#2a2a2e'); box('plain', x0, z0, x1, z1, 6.2, 6.6, '#2a2a2e');
-      sgn('YELLOW BELLY', '#ffd23a', '#ffd23a', x1 + 0.6, (z0 + z1) / 2, 10.2, 1.6, 1, 0, 13, 'mid'); sgn('TIMING TOWER', '#ffffff', null, x1, (z0 + z1) / 2, 4.6, 0.8, 1, 0, 8);
+      sgn('YELLO BELLY', '#ffd23a', '#ffd23a', x1 + 0.6, (z0 + z1) / 2, 10.2, 1.6, 1, 0, 13, 'mid'); sgn('TIMING TOWER', '#ffffff', null, x1, (z0 + z1) / 2, 4.6, 0.8, 1, 0, 8);
       for (const zz of [z0 + 3, z1 - 3]) box('plain', x0 + 6, zz - 0.06, x0 + 6.12, zz + 0.06, 9.2, 12, '#3a3c40', 'near');
       solid(x0, z0, x1, z1);
       sgn('PRE-STAGE · STAGE · NO DEEP STAGING', '#ffffff', '#ffd23a', T0 + 0.01, SL + 7, 0.5, 0.55, 1, 0, 9);
@@ -18290,10 +18300,20 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       [0, 1, 2, 3].forEach(k => { const cx = sx0 + 5.5 + k * 11; pa(cx - 1.2, sz1 - 6, cx + 1.2, sz1 - 5.6, yellow); });
       for (const px of [sx0 - 1, sx1 + 1]) { box('plain', px - 0.35, 1186.2, px + 0.35, 1186.9, 0, 7.4, '#2a2a2e'); solid(px - 0.35, 1186.2, px + 0.35, 1186.9); }
       box('plain', sx0 - 1.4, 1186.1, sx1 + 1.4, 1187, 6.0, 7.6, '#141416'); box('ybGlow', sx0 - 1.4, 1186.05, sx1 + 1.4, 1187.05, 7.6, 7.75, '#ffd23a', 'mid', false);
-      sgn('YELLOW BELLY DRAG STRIP', '#ffd23a', '#ffd23a', (sx0 + sx1) / 2, 1187.02, 6.8, 1.35, 0, 1, 42, 'mid'); sgn('STAGING LANES  ·  RACERS ONLY', '#ffffff', '#ffd23a', (sx0 + sx1) / 2, 1186.08, 6.8, 1.2, 0, -1, 40, 'mid');
+      sgn('YELLO BELLY DRAG STRIP', '#ffd23a', '#ffd23a', (sx0 + sx1) / 2, 1187.02, 6.8, 1.35, 0, 1, 42, 'mid'); sgn('STAGING LANES  ·  RACERS ONLY', '#ffffff', '#ffd23a', (sx0 + sx1) / 2, 1186.08, 6.8, 1.2, 0, -1, 40, 'mid');
       sgn('1   2   3   4', '#ffffff', null, (sx0 + sx1) / 2, 1186.08, 5.4, 0.6, 0, -1, 30, 'mid');
       // cars waiting in the lanes, a truck or two among them, and their people
-      for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) { const h = hash(k * 31 + j * 7 + 3); if (h < 0.3 || k === 1 || k === 2) continue; pkPut(sx0 + 5.5 + k * 11, 1146 + j * 12, 0, h, h > 0.85); }
+      YB.idle = [];
+      for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) { const h = hash(k * 31 + j * 7 + 3); if (h < 0.3 || k === 1 || k === 2) continue; const cx = sx0 + 5.5 + k * 11, cz = 1146 + j * 12; pkPut(cx, cz, 0, h, h > 0.85);
+        // running: headlights on the pavement ahead, taillights glowing behind (they face the track, -z)
+        for (const s of [-0.62, 0.62]) { box('ybGlow', cx + s - 0.16, cz - 2.42, cx + s + 0.16, cz - 2.36, 0.66, 0.8, '#fff6e0', 'near', false); box('ybGlow', cx + s - 0.18, cz + 2.38, cx + s + 0.18, cz + 2.44, 0.78, 0.9, '#ff1a10', 'near', false); }
+        YB.idle.push([cx, cz]); }
+      // the booth: sign in, show the tech card, pay to run; the place card here opens the race menu
+      box('plain', 7018, 1146, 7032, 1158, 0, 3.0, '#c8b89a'); box('plain', 7017.5, 1145.5, 7032.5, 1158.5, 3.0, 3.3, '#ffd23a'); solid(7018, 1146, 7032, 1158);
+      box('ybGlow', 7032.01, 1148, 7032.05, 1156, 1.1, 2.2, '#ffe2b0', 'near', false);
+      // a lit board on the roof, readable from the lanes and from the gate
+      box('plain', 7019, 1151.7, 7031, 1152.3, 3.3, 4.7, '#141416', 'near'); box('ybGlow', 7019, 1151.65, 7031, 1152.35, 4.7, 4.82, '#ffd23a', 'near', false);
+      for (const s of [-1, 1]) { sgn('RACE REGISTRATION', '#ffd23a', '#ffd23a', 7025, 1152 + s * 0.32, 4.25, 0.62, 0, s, 11.4); sgn('TECH CARD · $20 TO RUN', '#ffffff', '#ff1a2e', 7025, 1152 + s * 0.32, 3.65, 0.42, 0, s, 11.4); }
     }
     // ---------- the stands, the people, the concession stand ----------
     const fans = [];
@@ -18304,6 +18324,10 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       prism(a, null, R4(x0 - 0.2, z0, x0, z1), 0, top + 1.2, lin('#6a6c70'), null, 4, 4);   // back rail
       for (const z of [z0, z1]) prism(a, a, R4(x0, z - 0.1, x1, z + 0.1), 0.6, top + 1, steel, steel, 4, 4);
       solid(x0, z0, x1, z1);
+      // the shade roof over the stands: steel posts behind and in front, a sloped tin roof
+      for (let z = z0; z <= z1 + 0.01; z += 15.5) for (const px of [x0 + 0.1, x1 - 0.3]) prism(a, a, R4(px, z - 0.12, px + 0.2, z + 0.12), 0, px < x0 + 1 ? 10.4 : 8.6, steel, steel, 4, 4);
+      { const r = acc('mid', 'plain', (x0 + x1) / 2, (z0 + z1) / 2), tin = lin('#9aa0a8'); quad(r, [x0 - 0.6, 10.6, z1 + 0.6], [x0 - 0.6, 10.6, z0 - 0.6], [x1 + 0.8, 8.6, z0 - 0.6], [x1 + 0.8, 8.6, z1 + 0.6], [0, 0], [1, 0], [1, 1], [0, 1], tin);
+        quad(r, [x1 + 0.8, 8.45, z1 + 0.6], [x1 + 0.8, 8.45, z0 - 0.6], [x0 - 0.6, 10.45, z0 - 0.6], [x0 - 0.6, 10.45, z1 + 0.6], [0, 0], [1, 0], [1, 1], [0, 1], lin('#6a6e74')); }
       // the rail by the track: people standing along the catch fence
       for (let z = 700; z < 1120; z += 1.3) if ((z < z0 - 4 || z > z1 + 2 || z > 1090) && hash(z * 1.7) < (z > 900 ? 0.6 : 0.25)) fans.push([7049.8 + (hash(z * 9) - 0.5) * 0.8, z, 0, -Math.PI / 2 + (hash(z * 3) - 0.5) * 0.7, 0.92 + hash(z * 11) * 0.16]);
       // concession stand and restrooms behind the stands
@@ -18316,7 +18340,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     { const aisle = [6952, 6974];
       for (const [x0, x1, face] of [[6916, aisle[0], 1], [aisle[1], 7010, -1]]) {
         for (let z = 706, k = 0; z < 1118; z += 17, k++) {
-          if (Math.abs(z - 900) < 12) continue;   // the pit gate from Yellow Belly Dr
+          if (Math.abs(z - 900) < 12) continue;   // the pit gate from Yello Belly Dr
           const h = hash(x0 * 0.13 + k * 7.7), carX = face > 0 ? x1 - 4 : x0 + 4, trX = face > 0 ? x0 + 3 : x1 - 3;
           if (h < 0.12) continue;
           pkPut(carX, z, face > 0 ? -Math.PI / 2 : Math.PI / 2, h, false);                     // the race car, nose to the pit lane
@@ -18344,19 +18368,27 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         for (let i = 0; i < 8; i++) fans.push([x0 - 2 - hash(i * 1.3) * 4, z0 + 1 + hash(i * 2.7) * 6, 0, Math.PI / 2 + (hash(i) - 0.5), 0.92 + hash(i * 4) * 0.16]); }
     }
     // ---------- spectator parking: rows of cars on the dirt ----------
-    for (let r = 0; r < 12; r++) { const z = 330 + r * 30; for (let x = 6924, k = 0; x < 7040; x += 3.1, k++) { const h = hash(r * 101 + k * 7.3); if (h < 0.55) continue; pkPut(x, z + (k % 2 ? 0 : 0), h < 0.7 ? 0 : Math.PI, h, h > 0.92); } }
+    for (let r = 0; r < 12; r++) { const z = 330 + r * 30; for (let x = 6924, k = 0; x < 7040; x += 3.1, k++) { const h = hash(r * 101 + k * 7.3); if (h < 0.55 || r < 2 && x > 6988 && x < 7012) continue; pkPut(x, z + (k % 2 ? 0 : 0), h < 0.7 ? 0 : Math.PI, h, h > 0.92); } }
     // ---------- the fence round it all, the gates, the signs out on the road ----------
     chain(YB.x0, YB.z0, YB.x0, YB.z1, 2.4, [[588, 612], [888, 912]]);
     chain(YB.x0, YB.z1, YB.x1, YB.z1, 2.4, [[7036, 7088], [7104, 7166]]);
-    chain(YB.x1, YB.z0, YB.x1, YB.z1, 2.4); chain(YB.x0, YB.z0, YB.x1, YB.z0, 2.4);
+    chain(YB.x1, YB.z0, YB.x1, YB.z1, 2.4); chain(YB.x0, YB.z0, YB.x1, YB.z0, 2.4, [[6993, 7007]]);
     chain(7098.5, 640, 7180, 640, 1.6); chain(7012, 694, 7052, 694, 1.6, [[7020, 7044]]);
     // the big pole sign on Westmoreland at the pit gate, and the ticket booth
     { const x = 6919, z = 922; box('plain', x - 0.35, z - 0.35, x + 0.35, z + 0.35, 0, 11, '#2a2a2e'); solid(x - 0.4, z - 0.4, x + 0.4, z + 0.4);
       box('plain', x - 0.3, z - 6.2, x + 0.3, z + 6.2, 8.4, 12.6, '#141416'); box('ybGlow', x - 0.32, z - 6.25, x + 0.32, z + 6.25, 12.6, 12.8, '#ffd23a', 'mid', false); box('ybGlow', x - 0.32, z - 6.25, x + 0.32, z + 6.25, 8.2, 8.4, '#ffd23a', 'mid', false);
-      sgn2('YELLOW BELLY', '#ffd23a', '#ffd23a', x + 0.3, z, 11.4, 1.9, 1, 0, 11.6, 'mid'); sgn('STREET NIGHT · RUN WHAT YA BRUNG', '#ffffff', '#ff1a2e', x - 0.31, z, 9.3, 1.0, -1, 0, 11.6, 'mid'); sgn('DRAG STRIP · PITS · SPECTATORS', '#ffffff', '#ff1a2e', x + 0.31, z, 9.3, 1.0, 1, 0, 11.6, 'mid');
+      sgn2('YELLO BELLY', '#ffd23a', '#ffd23a', x + 0.3, z, 11.4, 1.9, 1, 0, 11.6, 'mid'); sgn('STREET NIGHT · RUN WHAT YA BRUNG', '#ffffff', '#ff1a2e', x - 0.31, z, 9.3, 1.0, -1, 0, 11.6, 'mid'); sgn('DRAG STRIP · PITS · SPECTATORS', '#ffffff', '#ff1a2e', x + 0.31, z, 9.3, 1.0, 1, 0, 11.6, 'mid');
       sgn('DRAG STRIP  ·  RACERS TURN HERE', '#ffd23a', '#ffd23a', x - 0.31, z, 11.4, 1.0, -1, 0, 11.6, 'mid');
       box('plain', 6930, 885, 6934, 889, 0, 2.6, '#c8b89a'); box('plain', 6929.6, 884.6, 6934.4, 889.4, 2.6, 2.9, '#c8161d'); sgn('TICKETS · $20 TO RUN · $10 TO WATCH', '#ffffff', '#ffd23a', 6929.95, 887, 2.0, 0.42, -1, 0, 3.9); solid(6930, 885, 6934, 889);
       sgn('SPECTATOR PARKING', '#ffffff', '#ffd23a', 6914, 618, 2.2, 0.8, -1, 0, 8, 'mid'); box('plain', 6913.9, 614, 6914.0, 622, 1.7, 2.7, '#141416', 'mid');
+      // the main gate on E. Main St: the big sign with the address, the spectator ticket window, the gate into the lot
+      { const x = 7030, z = 168; box('plain', x - 0.35, z - 0.35, x + 0.35, z + 0.35, 0, 12, '#2a2a2e'); solid(x - 0.4, z - 0.4, x + 0.4, z + 0.4);
+        box('plain', x - 7, z - 0.3, x + 7, z + 0.3, 8.6, 13.2, '#141416'); box('ybGlow', x - 7.05, z - 0.32, x + 7.05, z + 0.32, 13.2, 13.4, '#ffd23a', 'mid', false); box('ybGlow', x - 7.05, z - 0.32, x + 7.05, z + 0.32, 8.4, 8.6, '#ffd23a', 'mid', false);
+        for (const s of [-1, 1]) { sgn('YELLO BELLY', '#ffd23a', '#ffd23a', x, z + s * 0.32, 11.9, 2.0, 0, s, 13.4, 'mid'); sgn('DRAG STRIP · 4702 E. MAIN', '#ffffff', '#ff1a2e', x, z + s * 0.32, 9.6, 0.95, 0, s, 13.4, 'mid'); }
+        box('plain', 7008, 286, 7013, 292, 0, 2.6, '#c8b89a'); box('plain', 7007.6, 285.6, 7013.4, 292.4, 2.6, 2.9, '#c8161d'); solid(7008, 286, 7013, 292);
+        sgn('SPECTATORS · $10', '#ffffff', '#ffd23a', 7007.95, 289, 2.0, 0.45, -1, 0, 5); sgn2('ENTRANCE', '#ffd23a', '#ffd23a', 7000, 295.6, 3.4, 0.7, 0, -1, 9, 'mid');
+        for (const px of [6993, 7007]) { box('plain', px - 0.2, 295.8, px + 0.2, 296.2, 0, 4.0, '#2a2a2e', 'mid'); solid(px - 0.25, 295.7, px + 0.25, 296.3); }
+        box('plain', 6993, 295.85, 7007, 296.15, 3.6, 4.2, '#141416', 'mid'); }
       // the frontage gate
       sgn('RACERS ENTER HERE  ▲', '#ffd23a', '#ffd23a', 7030, 1188.3, 2.0, 0.8, 0, 1, 10, 'mid'); box('plain', 7025, 1188, 7035, 1188.25, 1.5, 2.5, '#141416', 'mid');
       sgn('NO STREET RACING · RACE HERE', '#ffffff', '#ff1a2e', 7135, 1188.3, 2.0, 0.8, 0, 1, 14, 'mid'); box('plain', 7128, 1188, 7142, 1188.25, 1.5, 2.5, '#141416', 'mid');
@@ -18371,6 +18403,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       };
       for (let z = 1120, k = 0; z > 360; z -= 56, k++) { tower(T0 - 2.6, z, 1, 15, 4); tower(T1 + 3.4, z - 28, -1, 15, 4); pools.push([TX - 2, z - 6, 17], [TX + 2, z - 34, 17], [7091, z - 28, 10]); }
       for (const [x, z] of [[6963, 760], [6963, 860], [6963, 960], [6963, 1060], [7037.5, 1160], [7120, 940], [7140, 1110], [6980, 400], [6980, 560], [7035, 820]]) { tower(x, z, 0, 13, 3); pools.push([x, z, 24]); }
+      for (const [cx, cz] of YB.idle || []) pools.push([cx, cz - 6, 3.2]);
       const im = new THREE.InstancedMesh(SHAPES.pool, MAT.pool, pools.length);
       pools.forEach(([x, z, r], i) => { m4.compose(v4.set(x, 0.16, z), q4.identity(), s4.set(r * 2, 1, r * 2)); im.setMatrixAt(i, m4); });
       im.frustumCulled = false; im.visible = false; im.renderOrder = 2; YB.group.add(im); NIGHT_ONLY.push(im); YB.pools = im;
@@ -18379,7 +18412,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     scoreBoard(T0 - 5.5, FL - 36, 'L', 'LEFT LANE'); scoreBoard(T1 + 5.5, FL - 36, 'R', 'RIGHT LANE');
     makeFans(fans); YB.nFans = fans.length;
     // the drives through the frontage gates so nothing gets planted in them
-    if (window.__st && window.__st.drives) for (const [x0, z0, x1, z1] of [[7036, 1186, 7088, 1210], [7104, 1186, 7166, 1210], [6904, 890, 6942, 910], [6904, 590, 6942, 610]]) { const o = { x0, z0, x1, z1 }; window.__st.drives.add(o, x0, z0, x1, z1); }
+    if (window.__st && window.__st.drives) for (const [x0, z0, x1, z1] of [[7036, 1186, 7088, 1210], [7104, 1186, 7166, 1210], [6904, 890, 6942, 910], [6904, 590, 6942, 610], [6992, 160, 7008, 300]]) { const o = { x0, z0, x1, z1 }; window.__st.drives.add(o, x0, z0, x1, z1); }
     YB.built = true;
   }
 
@@ -18447,7 +18480,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     };
     bridge(HW.marks.h, 'WHEATLAND RD', false); bridge(HW.marks.m, 'UNION PACIFIC', true);
     // sign gantries over each side: [x, side (+1 eastbound, -1 westbound), sign]
-    const SIGNS = [{ a: 'I-20 EAST', b: 'Dallas · Shreveport', shield: '20' }, { a: 'EXIT 465', b: 'I-45 Houston · Downtown 1 MILE', shield: '45' }, { a: 'I-20 WEST', b: 'Fort Worth · Arlington', shield: '20' }, { a: 'EXIT 463', b: 'Camp Wisdom Rd · Yellow Belly', shield: '' },
+    const SIGNS = [{ a: 'I-20 EAST', b: 'Dallas · Shreveport', shield: '20' }, { a: 'EXIT 465', b: 'I-45 Houston · Downtown 1 MILE', shield: '45' }, { a: 'I-20 WEST', b: 'Fort Worth · Arlington', shield: '20' }, { a: 'EXIT 463', b: 'Camp Wisdom Rd · Yello Belly', shield: '' },
       { a: 'EXIT 467', b: 'I-635 North · Mesquite', shield: '635' }, { a: 'EXIT 461', b: 'I-35E Waco · Dallas', shield: '35E' }];
     const slots = hwSignAtlas(SIGNS);
     const gantry = (x, side, si) => {
@@ -18485,7 +18518,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     makeFans(fans, HW.group, HW.fans); HW.nFans = fans.length;
   }
 
-  // ---------- racing at Yellow Belly: in the world, on the real physics, both lanes ----------
+  // ---------- racing at Yello Belly: in the world, on the real physics, both lanes ----------
   // You drive it yourself: roll through the water box (spin them for heat), creep up and light pre-stage then stage,
   // the tree comes down (pro .400, all three ambers then green), you leave when you want to. Leave before green and
   // it's red. The clocks start when your front tire leaves the stage beam, like a real strip: reaction time from the
@@ -18535,7 +18568,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function ybStart(p, opp, wager) {
     if (!S.car) return; if (!driving || foot.on) { toast(foot.on ? 'Get in your car first.' : 'Pull into the staging lanes in your car.', 'bad'); return; }
     if (S.car.fuel <= 0) { toast('No gas.', 'bad'); return; }
-    if (opp && wager && !spend(wager, `Yellow Belly vs ${opp.name}`)) return; if (!opp && !spend(20, 'Test & tune at Yellow Belly')) return;
+    if (opp && wager && !spend(wager, `Yello Belly vs ${opp.name}`)) return; if (!opp && !spend(20, 'Test & tune at Yello Belly')) return;
     closeMenu(); ybClear(); ybHud();
     // you're called up: the car rolls onto the track behind the water box in the left lane, the racer beside you
     const me = ybLane('me', YB.LANES[0]); ybPlace(me.x, me.z); me.fA = frontAxle(car && car.userData.model);
@@ -18686,7 +18719,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     if (!opp) res = me.red ? 'Red light' : me.dq ? me.dq : 'Test pass';
     else if (won) { rep = opp.rep; cash = R.wager * 2; res = why ? `You win · ${why}` : `You win by ${(pk(ai) - pk(me)).toFixed(3)}`; }
     else res = me.red ? `Red light. ${opp.name} takes it.` : me.dq ? `${me.dq}. ${opp.name} takes it.` : `${opp.name} by ${(pk(me) - pk(ai)).toFixed(3)}`;
-    if (rep) { S.rep += rep; earn(cash, `Yellow Belly win vs ${opp.name}`); }
+    if (rep) { S.rep += rep; earn(cash, `Yello Belly win vs ${opp.name}`); }
     const key = R.dist < 300 ? 'e' : 'q'; S.ybBest = S.ybBest || {}; let pb = false;
     if (!me.red && !me.dq && me.et != null) { const b = S.ybBest[key]; if (!b || me.et < b.et) { S.ybBest[key] = { et: me.et, mph: me.mph }; pb = true; if (!opp) { S.rep += 1; rep = 1; } } }
     S.ybRuns = (S.ybRuns || 0) + 1; save(); refreshStats();
@@ -18700,7 +18733,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const k = dragPack(S.car);
     const hint = me.red ? 'You left before the green. Wait for it: the three ambers come on together, green is 0.4 later.' : me.dq ? (me.dq.startsWith('Crossed') ? 'Keep it straight: steer small on the hit, the car moves when it hooks.' : '') : R.spinT > 0.25 ? `The tires spun for ${R.spinT.toFixed(2)}s. ${R.burnT < 0.5 ? 'Do a burnout in the water box first. ' : ''}${k ? 'Soften the rear, drop the rear pressure or add traction bars on the tuning laptop.' : 'A drag pack would hook it.'}` : R.maxW > 0.1 ? `Big wheelie (${Math.round(R.maxW * 57.3)}°) cost you. Stiffen the front shock extension or bolt on wheelie bars.` : me.rt != null && me.rt > 0.45 ? `Late on the tree (${me.rt.toFixed(3)}). Leave on the ambers: green is 0.4 after them and the car takes a beat to roll out of the beam.` : me.et != null ? 'It hooked clean.' : '';
     const el = q('slip'); el.hidden = false;
-    el.innerHTML = `<h3>YELLOW BELLY DRAG STRIP · ${R.dist < 300 ? '1/8' : '1/4'} MILE</h3><table>${opp ? `<tr><th></th><th>You · L</th><th>${opp.name} · R</th></tr>` : ''}${rows.map(r => row(...r)).join('')}</table>
+    el.innerHTML = `<h3>YELLO BELLY DRAG STRIP · ${R.dist < 300 ? '1/8' : '1/4'} MILE</h3><table>${opp ? `<tr><th></th><th>You · L</th><th>${opp.name} · R</th></tr>` : ''}${rows.map(r => row(...r)).join('')}</table>
       ${hint ? `<div class="hint">${hint}</div>` : ''}<div class="res">${res}${pb ? ' · new personal best' : ''}${rep ? ` · +${rep} rep` : ''}${cash ? ` · +${money(cash)}` : ''}</div>
       <button data-a="again">Run it back${opp ? ` (${money(R.wager)})` : ' ($20)'}</button><button data-a="drive">Drive it back on the return road</button><button data-a="lanes">Back to the staging lanes</button>`;
     el.querySelector('[data-a="again"]').onclick = () => { const p = R.p; R.shown = false; ybClose('again'); ybStart(p, opp, R.wager); };
@@ -19011,10 +19044,43 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   stepStreet = function (t) {
     const r = _ybStepStreet.apply(this, arguments);
     if (HW.group && (frame & 7) === 0) { const c = camera.position, d = Math.abs(c.z - HW.z) + Math.max(0, HW.x0 + 1500 - c.x, c.x - HW.marks.h - 700); const on = d < (phone ? 700 : 1000) && (HW.lamps || HR.on); if (on !== HW.group.visible) HW.group.visible = on; }
+    if ((frame & 7) === 0) try { ybAmb(); } catch (e) {}
     if (YB.group && (frame & 7) === 0) { const c = camera.position, d = Math.hypot(c.x - YB.TX, c.z - 740); const near = d < (phone ? 1100 : 1700); if (near !== YB.group.visible) YB.group.visible = near; if (YB.fans.length) { const f = d < (phone ? 650 : 1000); for (const m of YB.fans) m.visible = f; } }
     return r;
   };
   YB.board = ybBoard;
+  // ---------- the sound of the place: the crowd, cammed motors idling in the lanes and the pits, a pass now and then ----------
+  // A light procedural bed (no recordings): murmur from band-passed noise, three lopey idles (low saw tones with an uneven
+  // chop), and a distant pass that rises and falls. It fades in with distance and gets louder on a race.
+  function ybAmb() {
+    const c = camera.position, d = Math.hypot(c.x - YB.TX, c.z - 900), on = d < 700 && worldOn && !inside, A = YB.amb;
+    if (!on && !A) return;
+    const ac = audioCtx(); if (!ac) return;
+    if (!A) {
+      const out = ac.createGain(); out.gain.value = 0; out.connect(ac.destination);
+      const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), ch = nb.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+      const n = ac.createBufferSource(); n.buffer = nb; n.loop = true; const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 650; bp.Q.value = 0.7; const cg = ac.createGain(); cg.gain.value = 0.16; n.connect(bp); bp.connect(cg); cg.connect(out); n.start();
+      const idles = [];
+      for (const [hz, chop] of [[41, 5.3], [47, 6.1], [55, 4.6]]) {
+        const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
+        const g = ac.createGain(); g.gain.value = 0.05; const lfo = ac.createOscillator(); lfo.type = 'square'; lfo.frequency.value = chop; const lg = ac.createGain(); lg.gain.value = 0.035;
+        lfo.connect(lg); lg.connect(g.gain); o.connect(lp); lp.connect(g); g.connect(out); o.start(); lfo.start(); idles.push(o);
+      }
+      const pass = ac.createGain(); pass.gain.value = 0; const pb = ac.createBiquadFilter(); pb.type = 'lowpass'; pb.frequency.value = 900; const po = ac.createOscillator(); po.type = 'sawtooth'; po.frequency.value = 70;
+      po.connect(pb); pb.connect(pass); pass.connect(out); po.start();
+      YB.amb = { out, cg, pass, po, nextPass: ac.currentTime + 6 };
+      return;
+    }
+    const t = ac.currentTime, near = on ? clamp(1 - (d - 60) / 640, 0, 1) : 0, race = (R.on || HR.on) ? 1.6 : 1;
+    A.out.gain.setTargetAtTime(near * near * 0.55, t, 0.6); A.cg.gain.setTargetAtTime(0.12 * race, t, 0.5);
+    if (on && t > A.nextPass && !R.on) {   // somebody making a pass down the strip: the motor winds up through the gears, then lifts
+      A.po.frequency.cancelScheduledValues(t); A.po.frequency.setValueAtTime(60, t);
+      for (let g = 0; g < 4; g++) { A.po.frequency.linearRampToValueAtTime(150 + g * 18, t + 1.1 + g * 1.2); A.po.frequency.setValueAtTime(95 + g * 14, t + 1.12 + g * 1.2); }
+      A.pass.gain.cancelScheduledValues(t); A.pass.gain.setValueAtTime(0, t); A.pass.gain.linearRampToValueAtTime(0.09, t + 1.2); A.pass.gain.setValueAtTime(0.09, t + 4.6); A.pass.gain.linearRampToValueAtTime(0, t + 6.5);
+      A.nextPass = t + 25 + Math.random() * 35;
+    }
+  }
+  YB.ambStep = ybAmb;
 
   })();
   // ==== yellow belly (end) ====
@@ -19549,7 +19615,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = { GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
-    ready: false, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, dragPerf, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, dragPerf, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
