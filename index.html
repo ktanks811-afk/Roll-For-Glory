@@ -6884,7 +6884,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     addEventListener('pointerdown', () => { if (AC0 && AC0.state !== 'running') AC0.resume().catch(() => {}); if (RADIO.want && RADIO.el && RADIO.el.paused) RADIO.el.play().catch(() => {}); }, true);
   }
   // ---------- car radio: Kimari's songs from the 2D game, only while you're in the car ----------
-  const STATIONS = [['smooth-criminals', 'Smooth Criminals'], ['hustlin', 'Hustlin'], ['srt-punisher', 'SRT Punisher'], ['murda-dance', 'Murda Dance'], ['ass-appeal', 'Ass Appeal']];
+  const STATIONS = [['smooth-criminals', 'Smooth Criminals'], ['hustlin', 'Hustlin'], ['srt-punisher', 'SRT Punisher'], ['murda-dance', 'Murda Dance'], ['ass-appeal', 'Ass Appeal'], ['in-the-rain', 'In The Rain'], ['kick-da-cup', 'Kick Da Cup'], ['freedom', 'Freedom'], ['i-cant-go', "I Can't Go"], ['what-we-had', 'What We Had'], ['cursive', 'Cursive']];
   const RADIO = { el: null, want: false, dead: false, src: '' };
   function radioSet() { const r = S.radio || (S.radio = {}); if (r.on == null) r.on = true; if (r.i == null) r.i = 0; return r; }   // the same object every time, so a toggle sticks
   function radioPower() { const r = radioSet(); r.on = !r.on; radioStep(true); save(); }
