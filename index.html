@@ -1793,6 +1793,48 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     carData(id).then(T => { if (!T || slot.userData.dead) return; const m = carMesh(T, color); slot.add(m); slot.userData.model = m; if (then) then(m); });
     return slot;
   }
+  // ---------- detail levels for everyone else's car (Phase 3F, phones): the full hero model up close; further out the
+  // parts you can't see (the motor under a shut hood, the interior, the stereo) and the tiny ones (lug nuts, badges) stop drawing,
+  // and only the big panels cast a shadow. Nothing is rebuilt or swapped: the same model, fewer draw calls. Lamps are never culled.
+  // Parts are hidden through layers, so the code that shows and hides lamps, subs and motors keeps working as before.
+  const CLOD = { set: new Set(), R: phone ? [22, 70] : [40, 130], n: [0, 0, 0] };
+  function lodCar(slot) { if (slot) CLOD.set.add(slot); return slot; }
+  function clodPrep(m) {
+    const u = m.userData, inside = new Set(), lamp = new Set(), L = { lvl: 0, list: [] };
+    const mark = (g, set = inside) => { if (g) g.traverse(o => { if (o.isMesh) set.add(o); }); };
+    if (u.eng) { for (const w of Object.values(u.eng.motors || {})) mark(w); }
+    if (u.anim) for (const list of Object.values(u.anim)) for (const a of list) mark(a.g);
+    if (u.audio) { mark(u.audio.seats); for (const v of Object.values(u.audio.subs || {})) { mark(v[0]); mark(v[1]); } for (const l of Object.values(u.audio.doors || {})) l.forEach(g => mark(g)); }
+    if (u.lamps) for (const l of Object.values(u.lamps)) l.forEach(g => mark(g, lamp));
+    m.updateMatrixWorld(true);
+    m.traverse(o => {
+      if (!o.isMesh || lamp.has(o)) return;
+      const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
+      const mt = o.material, glow = !!mt && (mt.isMeshBasicMaterial || (!!mt.emissive && mt.emissive.getHex() !== 0 && mt.emissiveIntensity > 0));
+      L.list.push({ o, r: g.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis(), in: inside.has(o) && !glow, cast: o.castShadow, glow });
+    });
+    u.clod = L; return L;
+  }
+  function clodSet(m, lvl) {
+    const L = m.userData.clod || clodPrep(m); if (L.lvl === lvl) return; L.lvl = lvl;
+    for (const q of L.list) {
+      const hide = lvl > 0 && (q.in || (!q.glow && q.r < (lvl === 1 ? 0.07 : 0.18)));
+      q.o.layers.mask = hide ? 0 : 1;
+      q.o.castShadow = q.cast && (lvl === 0 || (lvl === 1 && q.r > 0.5));
+    }
+  }
+  const _clv = new THREE.Vector3();
+  function clodStep() {
+    const c = camera.position, [r1, r2] = CLOD.R; CLOD.n = [0, 0, 0];
+    for (const slot of CLOD.set) {
+      if (slot.userData.dead || !slot.parent) { CLOD.set.delete(slot); continue; }
+      const m = slot.userData.model; if (!m) continue;
+      slot.getWorldPosition(_clv); const d = _clv.distanceTo(c), L = m.userData.clod, cur = L ? L.lvl : 0;
+      // a little hysteresis so a car sitting on a boundary doesn't flicker between levels
+      const lvl = CLOD.force != null ? CLOD.force : d > r2 * (cur === 2 ? 0.9 : 1.1) ? 2 : d > r1 * (cur >= 1 ? 0.9 : 1.1) ? 1 : 0;   // force: tests only
+      clodSet(m, lvl); CLOD.n[lvl]++;
+    }
+  }
   function spinWheels(m, dist) { if (!m) return; const r = m.userData.r || 0.34; for (const w of m.userData.wheels) w.rotation.z -= dist / r; }
   // which panels a button moves: all the doors, the hood, or whatever opens at the back
   const panelKind = n => /^door/.test(n) ? 'doors' : n === 'hood' ? 'hood' : 'trunk';
@@ -9461,26 +9503,65 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   function vdGin(V, st, I) { const gb = I && I.gb && I.gb.man ? I.gb : null; return gb ? (gb.g > 0 ? V.man[Math.min(gb.g, V.man.length) - 1] * V.fdMan : 0) : V.auto[st.g - 1] * V.fd; }
 
   // ---------- tire smoke ----------
-  const SMOKE = { list: [], tex: null, i: 0 };
+  // Phase 3F: every puff is drawn by one instanced billboard mesh (one draw call) instead of a sprite and a material each
+  // (up to 90 draw calls in a burnout). Same texture, colour, fog and fade as before. Phones keep up to 64 puffs alive.
+  const SMOKE = { list: [], tex: null, i: 0, mesh: null, max: phone ? 64 : 90 };
   function smokeTex() {
     if (SMOKE.tex) return SMOKE.tex;
     const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
     gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.45, 'rgba(240,240,240,0.45)'); gr.addColorStop(1, 'rgba(230,230,230,0)');
     g.fillStyle = gr; g.fillRect(0, 0, 64, 64); SMOKE.tex = new THREE.CanvasTexture(c); return SMOKE.tex;
   }
+  function smokeMesh() {
+    if (SMOKE.mesh) return SMOKE.mesh;
+    const N = SMOKE.max, g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)); g.setIndex([0, 1, 2, 0, 2, 3]);
+    const ip = new THREE.InstancedBufferAttribute(new Float32Array(N * 4), 4), ia = new THREE.InstancedBufferAttribute(new Float32Array(N), 1);
+    ip.setUsage(THREE.DynamicDrawUsage); ia.setUsage(THREE.DynamicDrawUsage); g.setAttribute('ip', ip); g.setAttribute('ia', ia); g.instanceCount = 0;
+    const mat = new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, color: { value: new THREE.Color(0xdedede) } }]),
+      vertexShader: `attribute vec4 ip; attribute float ia; varying vec2 vUv; varying float vA;
+        #include <common>
+        #include <fog_pars_vertex>
+        #include <logdepthbuf_pars_vertex>
+        void main() { vUv = uv; vA = ia; vec4 mvPosition = modelViewMatrix * vec4( ip.xyz, 1.0 ); mvPosition.xy += position.xy * ip.w; gl_Position = projectionMatrix * mvPosition;
+        #include <logdepthbuf_vertex>
+        #include <fog_vertex>
+        }`,
+      fragmentShader: `uniform sampler2D map; uniform vec3 color; varying vec2 vUv; varying float vA;
+        #include <common>
+        #include <fog_pars_fragment>
+        #include <logdepthbuf_pars_fragment>
+        void main() {
+        #include <logdepthbuf_fragment>
+          vec4 diffuseColor = vec4( color, vA ) * texture2D( map, vUv ); gl_FragColor = diffuseColor;
+        #include <tonemapping_fragment>
+        #include <encodings_fragment>
+        #include <fog_fragment>
+        }`,
+      transparent: true, depthWrite: false, fog: true });
+    mat.uniforms.map.value = smokeTex();
+    const m = SMOKE.mesh = new THREE.Mesh(g, mat); m.frustumCulled = false; m.name = 'tireSmoke'; scene.add(m); return m;
+  }
   function puff(x, y, z, vx, vz, thick) {
-    if (SMOKE.list.length < 90) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex(), color: 0xdedede, transparent: true, depthWrite: false, opacity: 0 })); s.visible = false; scene.add(s); SMOKE.list.push({ s, t: 9, life: 1 }); }
+    smokeMesh();
+    if (SMOKE.list.length < SMOKE.max) SMOKE.list.push({ t: 9, life: 1, x: 0, y: 0, z: 0 });
     const p = SMOKE.list[SMOKE.i++ % SMOKE.list.length];
-    p.s.visible = true; p.s.position.set(x + (Math.random() - 0.5) * 0.4, y, z + (Math.random() - 0.5) * 0.4); p.t = 0; p.life = 1.6 + thick * 1.8 + Math.random();
+    p.x = x + (Math.random() - 0.5) * 0.4; p.y = y; p.z = z + (Math.random() - 0.5) * 0.4; p.t = 0; p.life = 1.6 + thick * 1.8 + Math.random();
     p.vx = vx * 0.25 + (Math.random() - 0.5) * 1.2; p.vz = vz * 0.25 + (Math.random() - 0.5) * 1.2; p.vy = 0.5 + Math.random() * 0.6; p.a = 0.2 + thick * 0.2; p.g = 2 + thick * 2.6;
   }
   function stepSmoke(dt) {
+    if (!SMOKE.mesh) return;
+    const g = SMOKE.mesh.geometry, ip = g.attributes.ip, ia = g.attributes.ia; let n = 0;
     for (const p of SMOKE.list) {
-      if (p.t >= p.life) { p.s.visible = false; continue; }
+      if (p.t >= p.life) continue;
       p.t += dt; const k = p.t / p.life, sc = 0.7 + p.g * Math.sqrt(k);
-      p.s.position.x += p.vx * dt; p.s.position.y += p.vy * dt; p.s.position.z += p.vz * dt; p.vx *= 1 - dt * 0.8; p.vz *= 1 - dt * 0.8;
-      p.s.scale.set(sc, sc, sc); p.s.material.opacity = p.a * Math.min(1, k * 8) * (1 - k);
+      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vx *= 1 - dt * 0.8; p.vz *= 1 - dt * 0.8;
+      ip.array[n * 4] = p.x; ip.array[n * 4 + 1] = p.y; ip.array[n * 4 + 2] = p.z; ip.array[n * 4 + 3] = sc; ia.array[n] = p.a * Math.min(1, k * 8) * (1 - k); n++;
     }
+    if (n || g.instanceCount) { ip.needsUpdate = ia.needsUpdate = true; }
+    g.instanceCount = n; SMOKE.mesh.visible = n > 0;
   }
 
   // ---------- skid marks: black rubber laid on the road, a ring buffer of quads ----------
@@ -12503,7 +12584,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     const pr = hPersona(key), P = crowdPerson(pr.look + 3); if (!P) return null;
     const e = hEnt(Object.assign({ id: key, kind: 'reg', key, name: pr.name, pr, carId: pr.r.id, color: pr.r.color }, opts));
     hDress(e, P); hLabel(e);
-    e.slot = putCar(e.g, e.carId, e.color, m => { m.position.y = 0; e.model = m; try { applyMotor(m); } catch (er) {} });
+    e.slot = lodCar(putCar(e.g, e.carId, e.color, m => { m.position.y = 0; e.model = m; try { applyMotor(m); } catch (er) {} }));
     const beef = hS().regs[key]; if (beef && beef.opp) { e.opp = true; hLabel(e); }
     return e;
   }
@@ -16622,7 +16703,7 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
     const K = COP_KINDS[kind], g = new THREE.Group(); g.position.set(x, 0.12, z); g.rotation.y = yaw; scene.add(g);
     const u = { id: COP.seq++, kind, K, g, model: null, x, z, yaw, sp: 0, a: null, b: null, u: 0, path: null, mode, lights: false, siren: false, ph: copRand() * 2, t: 0, stuck: 0, sx: x, sz: z, off: false, home: null, gone: false, cop: true, inCar: true, hits: 0 };
     const num = num0 || 100 + Math.floor(copRand() * 800); u.num = num;
-    u.slot = putCar(g, K.id, K.liv === 'slick' ? '#0d0e11' : '#f1f2f0', m => { m.position.y = 0; u.model = m; try { copKit(m, kind, num); } catch (e) { console.warn('cop kit: ' + e.message); } });
+    u.slot = lodCar(putCar(g, K.id, K.liv === 'slick' ? '#0d0e11' : '#f1f2f0', m => { m.position.y = 0; u.model = m; try { copKit(m, kind, num); } catch (e) { console.warn('cop kit: ' + e.message); } }));
     if (!remote) COP.units.push(u); return u;
   }
   function copKill(u) { u.gone = true; u.slot.userData.dead = true; scene.remove(u.g); if (u.officer) copOfficerGone(u); COP.units = COP.units.filter(o => o !== u); }
@@ -18682,7 +18763,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const A = { r, c, P, st: { v: 0, t: rollingTire(0) }, x, z, yaw, ph: 'line', gas: 0, brk: 0, path: null, pi: 0, vMax: 4, lane: null, run: null,
       skill: r.skill != null ? r.skill : 0.5, seen: 0, t: 0, fA: 1.4, rA: 1.4, rT: V && V.R ? V.R[0] : 0.34, steer: 0, park: 0, voice: null, smokeT: 0, dead: false, burn: false };
     A.burn = !!V && V.drive === 'R';   // a line-lock burnout needs rear drive
-    A.slot = putCar(scene, c.id, c.color, m => { m.position.y = 0; applyMotor(m, c); applyDrag(m, c); A.m = m; carDims(m); A.fA = frontAxle(m); A.rA = rearAxle(m); if (A.lane) A.lane.fA = A.fA; });
+    A.slot = lodCar(putCar(scene, c.id, c.color, m => { m.position.y = 0; applyMotor(m, c); applyDrag(m, c); A.m = m; carDims(m); A.fA = frontAxle(m); A.rA = rearAxle(m); if (A.lane) A.lane.fA = A.fA; }));
     A.slot.position.set(x, 0.12, z); A.slot.rotation.y = yaw; R.ags.push(A);
     return A;
   }
@@ -18748,7 +18829,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         const other = run && run.lanes.find(o => o !== L), otherPre = !other || other.pre || other.stg;
         if (L.pre && otherPre && A.st.v < 0.05) { if (A.wait == null) A.wait = t + 0.4 + Math.random() * 1.4 * (1.1 - A.skill); if (t >= A.wait) { A.ph = 'stg'; A.wait = null; } }
         break; }
-      case 'stg': { const d = ax - (SL + 0.14), inn = L.stg && L.pre && d < 0.06; agSpeed(A, inn ? 0 : clamp(d * 0.8, 0.12, 0.25), 0.2); if (inn && A.st.v < 0.05) A.ph = 'staged'; break; }
+      case 'stg': { const d = ax - (SL + 0.14), inn = L.stg && L.pre && d < 0.06; agSpeed(A, inn ? 0 : clamp(d * 0.8, 0.12, 0.25), 0.2); if (inn && A.st.v < 0.05) { A.ph = 'staged'; A.hold0 = null; } break; }
       case 'staged': {   // the launch: on a pro tree they leave off the ambers; how early depends on what they know their car takes to roll out
         agSpeed(A, 0);
         if (run && run.ta != null && L.press == null) {
@@ -18758,8 +18839,11 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         }
         // a car with launch control (factory or a 2-step): once the tree is coming, brake and gas together so the motor sits
         // on the launch rpm, then they let the brake go at their moment (same brake hold and limiter as yours)
-        const lcOn = V && V.lcRpm && !V.ev && run && (run.ta != null || run.lanes.every(o => o.stg && o.pre));
-        if (lcOn) { A.brk = 1; A.gas = 1; }
+        // (3F fix) in a bracket the slower tree comes first, so a handicapped lane brings the motor up on its own ambers, not the other
+        // lane's; and if the brakes start to lose the fight with the launch rpm and the car creeps, they feather off the gas
+        const hc = L.hc || 0, lcOn = V && V.lcRpm && !V.ev && run && (run.ta != null ? t >= run.ta + hc - 0.6 : !hc && run.lanes.every(o => o.stg && o.pre));
+        if (A.hold0 == null) A.hold0 = ax;
+        if (lcOn) { A.brk = 1; A.gas = A.hold0 - ax > 0.03 || A.st.v > 0.03 ? 0 : 1; }
         if (L.press != null && t >= L.press) { A.ph = 'go'; A.gas = lcOn ? 1 : 0; A.brk = 0; }
         break; }
       case 'go': {   // full throttle; when it spins they pedal it (how fast they notice depends on how good they are)
@@ -18981,13 +19065,34 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       #ybhud .slip{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 84px);transform:translateX(-50%);width:min(340px,92vw);max-height:56vh;overflow:auto;background:#f6f2e6;color:#141414;border-radius:6px;padding:10px 12px;font:13px ui-monospace,Menlo,monospace;pointer-events:auto;box-shadow:0 10px 40px #000}
       #ybhud .slip h3{margin:0 0 4px;font:700 18px "Barlow Condensed",sans-serif;text-align:center}#ybhud .slip .sm{font:600 12px "Barlow Condensed",sans-serif;text-align:center;color:#5a5448;margin-bottom:4px}#ybhud .slip table{width:100%;border-collapse:collapse}#ybhud .slip td{padding:1px 0}#ybhud .slip td+td,#ybhud .slip th+th{text-align:right}#ybhud .slip th{font:700 13px "Barlow Condensed",sans-serif;text-align:left;border-bottom:1px solid #c8c0a8}
       #ybhud .slip .hint{font:600 14px "Barlow Condensed",sans-serif;margin:8px 0 0;padding:6px 8px;background:#ece5cf;border-radius:4px}#ybhud .slip .res{font:700 20px "Barlow Condensed",sans-serif;text-align:center;margin:6px 0}
-      #ybhud .slip button{width:100%;margin-top:6px;padding:8px;border-radius:8px;border:0;font:700 16px "Barlow Condensed",sans-serif;background:#141414;color:#f6f2e6}#ybhud .slip button+button{background:#d8d0b8;color:#141414}</style>
+      #ybhud .slip button{width:100%;margin-top:6px;padding:8px;border-radius:8px;border:0;font:700 16px "Barlow Condensed",sans-serif;background:#141414;color:#f6f2e6}#ybhud .slip button+button{background:#d8d0b8;color:#141414}
+      #ybhud .slip .btns{position:sticky;bottom:-10px;margin:4px -12px -10px;padding:0 12px 8px;background:#f6f2e6;box-shadow:0 -8px 10px -8px rgba(0,0,0,.3)}
+      @media (max-height:500px){#ybhud .slip .btns{display:grid;grid-template-columns:repeat(3,1fr);column-gap:5px}#ybhud .slip .btns button{font-size:14px;padding:4px 3px;line-height:1.05}}
+      @media (pointer:coarse){#ybhud .side button,#ybhud .slip button{min-height:44px}}</style>
       <div class="hud"><div><b data-k="mph">0</b><span>mph</span></div><div><b data-k="time">0.000</b><span data-k="tl">et</span></div><div><b data-k="go">—</b><span data-k="gol">to stage</span></div><div data-k="tirebox"><b data-k="tire">—</b><span>tires °F</span></div><div class="tree" data-k="tree"></div></div>
       <div class="roll" data-k="roll" hidden><div class="rb" data-k="rtb"><b data-k="rtgt">60</b><span data-k="rtl">target</span></div><div class="rb" data-k="rgb"><b data-k="rgear">1</b><span data-k="rrpm">0 rpm</span></div><div class="ro" data-k="ropp"></div><div class="rbar"><i class="me" data-k="rme"></i><i class="ai" data-k="rai"></i><em data-k="rfin">FINISH</em></div></div>
       <div class="msg" data-k="msg"></div><div class="sub" data-k="sub"></div>
       <div class="side"><button data-k="auto" aria-pressed="false">Auto stage</button><button data-k="leave">Leave the lanes</button></div><div class="slip" data-k="slip" hidden></div>`;
     document.body.appendChild(el);
     const q = k => el.querySelector(`[data-k="${k}"]`); R.q = q;
+    // Phase 3F: the slip's buttons ride in a bar stuck to the bottom of the slip, so Next round / Run it back are always on screen
+    // without scrolling the slip (a short phone screen can't fit the whole ladder and five buttons)
+    // and it stops above the pedals, steering and shifter, so it never sits on a control you drive with
+    { const sl = q('slip'), CT = ['b-gas', 'b-brake', 'b-left', 'b-right', 'shifter'], fit = () => {
+        if (sl.hidden) return; sl.style.maxHeight = ''; sl.style.left = ''; sl.style.transform = '';
+        const ctl = CT.map(id => document.getElementById(id)).filter(c => c && c.getClientRects().length).map(c => c.getBoundingClientRect()).filter(r => r.width);
+        const sr = sl.getBoundingClientRect(), hits = (l, r, t, b) => ctl.filter(c => c.right > l && c.left < r && c.bottom > t && c.top < b);
+        if (!hits(sr.left, sr.right, sr.top, sr.bottom).length) return;
+        // first try sliding it sideways into the gap between the controls at full height
+        const W = sr.width;
+        for (const x of [...ctl.map(c => c.left - 6 - W), ...ctl.map(c => c.right + 6)].sort((a, b) => Math.abs(a - sr.left) - Math.abs(b - sr.left)))
+          if (x >= 6 && x + W <= innerWidth - 6) { sl.style.left = x + 'px'; sl.style.transform = 'none'; const r = sl.getBoundingClientRect(); if (!hits(r.left, r.right, r.top, r.bottom).length) return; }
+        sl.style.left = ''; sl.style.transform = '';
+        // otherwise make it shorter so it stops above them
+        let lim = innerHeight - 6; for (const c of hits(sr.left, sr.right, sr.top, sr.bottom)) if (c.top > sr.top) lim = Math.min(lim, c.top - 6);
+        sl.style.maxHeight = Math.max(110, lim - sr.top) + 'px'; };
+      new MutationObserver(() => { const bs = [...sl.children].filter(c => c.tagName === 'BUTTON'); if (bs.length) { const d = document.createElement('div'); d.className = 'btns'; bs.forEach(b => d.appendChild(b)); sl.appendChild(d); } fit(); }).observe(sl, { childList: true, attributes: true, attributeFilter: ['hidden'] });
+      addEventListener('resize', fit); setInterval(() => { if (!sl.hidden) fit(); }, 500); }   // the pads can change under it (the shifter shows in manual)
     const tr = q('tree'); for (let r = 0; r < 2; r++) for (let i = 0; i < 7; i++) tr.appendChild(document.createElement('i'));
     q('auto').onclick = () => { R.auto = !R.auto; q('auto').setAttribute('aria-pressed', R.auto); };
     q('leave').onclick = () => (YB.leaveFn || ybClose)('left');
@@ -19177,7 +19282,8 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       #ybpanel .opp{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:7px 4px;border-top:1px solid #2a2630}#ybpanel .opp .n{font-weight:700;font-size:16px}#ybpanel .opp .d{font-size:13px;color:#a9a1b4;grid-column:1}#ybpanel .opp button{grid-row:1 / span 2;grid-column:2}
       #ybpanel table{width:100%;border-collapse:collapse;font-size:14px}#ybpanel td,#ybpanel th{padding:3px 4px;border-bottom:1px solid #2a2630;text-align:left}#ybpanel td+td,#ybpanel th+th{text-align:right}
       #ybpanel .slipv{background:#f6f2e6;color:#141414;border-radius:6px;padding:8px 10px;margin:6px 0;font:13px ui-monospace,Menlo,monospace}#ybpanel .slipv h3{margin:0;font:700 17px "Barlow Condensed",sans-serif;text-align:center}#ybpanel .slipv .sm{font:600 12px "Barlow Condensed",sans-serif;text-align:center;color:#5a5448}#ybpanel .slipv table td,#ybpanel .slipv th{border-color:#d8d0b8;color:#141414}#ybpanel .slipv .res{font:700 18px "Barlow Condensed",sans-serif;text-align:center}
-      #ybpanel .row{display:flex;justify-content:space-between;gap:8px;padding:6px 4px;border-top:1px solid #2a2630;cursor:pointer}#ybpanel .muted{color:#a9a1b4;font-size:13px}</style>`;
+      #ybpanel .row{display:flex;justify-content:space-between;gap:8px;padding:6px 4px;border-top:1px solid #2a2630;cursor:pointer}#ybpanel .muted{color:#a9a1b4;font-size:13px}
+      @media (pointer:coarse){#ybpanel button{min-height:40px}#ybpanel .x{min-width:40px}}</style>`;
   }
   function ybPanel(p) {
     if (!S.car) { openMenu(() => noCar(p)); return; }
@@ -19382,7 +19488,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const rt = 0.12 + (1 - sk) * 0.3 + Math.random() * 0.08 + (Math.random() < (1 - sk) * 0.25 ? 0.2 + Math.random() * 0.25 : 0);
     const ai = { r: opp, c, P, x: x0, z: zAi, v: 0, fA: 1.4, st: { v: 0, t: rollingTire(0) }, rt, done: null, top: 0, spinT: 0, sk, gb: null, miss: 0, missTo: 0, shifts: 0, missed: 0, pre: false, kd: false };
     if (HR_MANUAL[opp.name] && P.veh && P.veh.man && !P.veh.ev) ai.gb = { man: true, g: 1, cut: 0, ev: false };
-    ai.slot = putCar(scene, c.id, c.color, m => { m.position.y = 0; applyMotor(m, c); applyDrag(m, c); ai.m = m; ai.fA = frontAxle(m); if (!v0) ai.x = HW.S - ai.fA - 0.05; });
+    ai.slot = lodCar(putCar(scene, c.id, c.color, m => { m.position.y = 0; applyMotor(m, c); applyDrag(m, c); ai.m = m; ai.fA = frontAxle(m); if (!v0) ai.x = HW.S - ai.fA - 0.05; }));
     if (!v0) ai.x = HW.S - ai.fA - 0.05;
     ai.slot.rotation.y = -Math.PI / 2; ai.slot.position.set(ai.x, 0.12, ai.z);
     const V = carPerf().veh;
@@ -19986,8 +20092,8 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function evActiveHtml(ev) {
     const o = evOppOf(ev), canRace = !ev.over && o && !R.on && !HR.on;
     return `<div class="car" style="display:block"><b>${esc(ev.def.name)}</b><div class="k">Day ${ev.day} · ${ev.over ? `won by ${esc(evName(ev.champ))}` : ev.out ? 'you\'re out' : `you're in ${evRoundName(ev, ev.ri)}${o ? ` vs ${esc(evName(o))} (${esc(o.car)})` : ''}`}${ev.cash ? ` · you took ${money(ev.cash)}` : ''}</div></div>
-      ${evLadderHtml(ev)}<div class="evlog">${ev.log.slice(-4).map(l => `<div>${esc(l)}</div>`).join('')}</div>
-      ${ev.over ? `<button data-ev="clear">Close the event board</button>` : `<button data-ev="race" ${canRace ? '' : 'disabled'}>Race ${evRoundName(ev, ev.ri)}${o ? ` vs ${esc(evName(o))}` : ''}</button> <button data-ev="withdraw">Withdraw</button>`}`;
+      <div style="margin-bottom:6px">${ev.over ? `<button data-ev="clear">Close the event board</button>` : `<button data-ev="race" ${canRace ? '' : 'disabled'}>Race ${evRoundName(ev, ev.ri)}${o ? ` vs ${esc(evName(o))}` : ''}</button> <button data-ev="withdraw">Withdraw</button>`}</div>
+      ${evLadderHtml(ev)}<div class="evlog">${ev.log.slice(-4).map(l => `<div>${esc(l)}</div>`).join('')}</div>`;
   }
   function evPanelBody(tab) {
     if (tab === 'ev') {
@@ -20076,6 +20182,8 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function fanJump(arr, k) { if (!arr || !arr.length || !arr.list) return; FJ.list = FJ.list.filter(j => j.arr !== arr); FJ.list.push({ arr, k, t: 0 }); }
   function fanShow(arr, frac) { if (!arr || !arr.list) return; const n = Math.max(1, Math.round(arr.list.length * frac)); for (const m of arr) if (m.count !== n) m.count = n; }
   function fanStep(dt) {
+    // phones move the jumping crowd at half rate (one instance upload every other frame); the jump itself runs on time, not frames
+    FJ.acc = (FJ.acc || 0) + dt; if (phone && (frame & 1) && FJ.list.length) return; dt = FJ.acc; FJ.acc = 0;
     for (const j of FJ.list) {
       j.t += dt; const L = j.arr.list, done = j.t > 2.6, n = j.arr[0].count;
       for (let i = 0; i < n; i++) { const f = L[i]; if (hash(i * 3.7) > 0.72 && !done) continue; const ph = hash(i * 1.9) * 6.28, up = done ? 0 : Math.max(0, Math.sin(j.t * 9 + ph)) * 0.22 * j.k * (1 - j.t / 2.6);
@@ -20564,7 +20672,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     if (driving) { if (foot.on) stepFoot(dt); else stepDrive(dt); } else { stepFly(dt); controls.update(); }
     if (driving && (frame & 1)) stepMini();
     if (!inside) stepHouses();
-    stepParked(true);
+    stepParked(true); if ((frame & 7) === 3) clodStep();
     const focus = driving ? (foot.on ? foot.holder.position : car.position) : controls.target, dist = driving ? (foot.on ? 14 : 30) : camera.position.distanceTo(controls.target);
     // fog and the sun's shadow box follow the zoom
     scene.fog.near = driving ? 700 : Math.max(1500, dist * 1.1); scene.fog.far = driving ? (phone ? 3200 : 4800) : Math.max(9000, dist * 4 + 8000);
@@ -20619,7 +20727,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
-  window.__map = { GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
+  window.__map = { CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },

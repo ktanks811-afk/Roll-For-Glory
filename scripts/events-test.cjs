@@ -9,14 +9,28 @@
 const { chromium } = require('playwright');
 const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money,hr').split(',');
 (async () => {
-  const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] }); const pg = await b.newPage({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, deviceScaleFactor: +(process.env.DSF || 1) });
+  const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] }); const pg = await b.newPage({ viewport: { width: +(process.env.VW || 844), height: +(process.env.VH || 390) }, isMobile: true, hasTouch: true, deviceScaleFactor: +(process.env.DSF || 1) });
   const errs = []; pg.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 600))); pg.on('console', m => { if (m.type() === 'error' || (m.type() === 'warning' && /event|roll|yello/i.test(m.text()))) errs.push(m.type() + ': ' + m.text().slice(0, 300)); });
   await pg.route(/cdn\.jsdelivr\.net\/npm\/three@0\.128\.0\/(.*)$/, (r, req) => { const p = req.url().split('three@0.128.0/')[1]; r.fulfill({ path: S + '/npm/node_modules/three/' + p, contentType: 'application/javascript' }); });
   await pg.route(/supabase/, r => r.fulfill({ body: 'export const createClient=()=>({channel:()=>({on(){return this},subscribe(){return this},send(){},track(){} }),from:()=>({select(){return this},eq(){return this},upsert:async()=>({}),insert:async()=>({}),then(f){f({data:[]})}}),auth:{getSession:async()=>({data:{}}),onAuthStateChange(){} } });', contentType: 'application/javascript' }));
   await pg.goto('http://localhost:8765/index.html?test=1');
   await pg.waitForFunction(() => window.__map && window.__map.ready, null, { timeout: 180000 });
   const ev = (f, a) => pg.evaluate(f, a), wait = ms => pg.waitForTimeout(ms);
-  const shot = async n => { await ev(() => { let st = document.getElementById('t3dhide'); if (!st) { st = document.createElement('style'); st.id = 't3dhide'; document.head.appendChild(st); } st.textContent = '.pad,#radio,#card,#mini,#compass{display:none!important}'; }); await wait(700); await pg.screenshot({ path: S + '/b/t3e_' + n + '.png', timeout: 180000 }); };
+  // LAYOUT=1: after each screenshot, check the phone layout: everything on screen, touch targets big enough, slip buttons
+  // reachable without scrolling, nothing covering the pedals or steering, the panel tabs not overflowing
+  const layout = async tag => { if (!process.env.LAYOUT) return; const r = await pg.evaluate(() => { const hs = document.getElementById('t3dhide'); if (hs) hs.textContent = '';
+    const vw = innerWidth, vh = innerHeight, vis = e => { if (!e || !e.getClientRects().length) return false; const cs = getComputedStyle(e); return cs.visibility !== 'hidden' && cs.display !== 'none' && +cs.opacity > 0.05; };
+    const R = e => e.getBoundingClientRect(), all = sel => [...document.querySelectorAll(sel)].filter(vis), nm = e => (e.id ? '#' + e.id : '') + (e.dataset.k ? '[' + e.dataset.k + ']' : '') + (e.dataset.a ? '[' + e.dataset.a + ']' : '') + (e.dataset.tab ? '[tab ' + e.dataset.tab + ']' : '') + (e.textContent || '').trim().slice(0, 18);
+    const out = { vw, vh, off: [], small: [], slipHidden: [], cover: [], tabs: null };
+    const ui = all('#pad button, #shifter, #ybhud .hud, #ybhud .roll, #ybhud .side button, #ybhud .slip, #ybhud .slip button, #ybpanel, #ybpanel button');
+    for (const e of ui) { const r = R(e); if (r.left < -1 || r.top < -1 || r.right > vw + 1 || r.bottom > vh + 1) out.off.push(nm(e) + ' ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',')); if (e.tagName === 'BUTTON' && Math.min(r.width, r.height) < 40) out.small.push(nm(e) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)); }
+    const slip = all('#ybhud .slip')[0]; if (slip) { const sr = R(slip); for (const b of slip.querySelectorAll('button')) { const r = R(b); if (r.bottom > sr.bottom + 1 || r.top < sr.top - 1) out.slipHidden.push(nm(b)); } }
+    const ctl = all('#b-gas, #b-brake, #b-left, #b-right, #shifter'), top = all('#ybhud .slip, #ybhud .side button, #ybpanel, #ybhud .roll, #ybhud .hud');
+    for (const a of top) for (const c of ctl) { const x = R(a), y = R(c), w = Math.min(x.right, y.right) - Math.max(x.left, y.left), h = Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top); if (w > 2 && h > 2) out.cover.push(nm(a) + ' over ' + nm(c) + ' ' + Math.round(w) + 'x' + Math.round(h)); }
+    const t = all('#ybpanel .tabs')[0]; if (t) out.tabs = t.scrollWidth > t.clientWidth + 1 ? 'overflow ' + t.scrollWidth + '>' + t.clientWidth : 'fits';
+    return out; }); console.log(JSON.stringify({ layout: tag, ...r })); };
+  const shot0 = async n => { await ev(LAY => { let st = document.getElementById('t3dhide'); if (!st) { st = document.createElement('style'); st.id = 't3dhide'; document.head.appendChild(st); } st.textContent = LAY ? '' : '.pad,#radio,#card,#mini,#compass{display:none!important}'; }, !!process.env.LAYOUT); await wait(700); await pg.screenshot({ path: S + '/b/t3e_' + n + (process.env.VW ? '_' + process.env.VW : '') + '.png', timeout: 180000 }); };
+  const shot = async n => { if (process.env.SHOTS) await shot0(n); await layout(n); };
   await ev(() => { const M = window.__map; M.S.cash = 1e7; M.S.rep = 9999; M.S.day = 1; try { M.closeCreator(); } catch (e) {} });
   await wait(1500);
   const CAR = process.env.CAR || 'dodge_charger_srt_hellcat_widebody_2020';
@@ -69,12 +83,13 @@ const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money,hr').spli
     for (let k = 0; k < 3; k++) {
       await ev(() => { const M = window.__map, Y = window.__yb, H = Y.roll, d = M.drvS(), T = window.__t; T.go = null; M.keys.ArrowUp = false;
         T.drive = dt => { const zMe = Y.hw.lanes[1], st = H.st; if (!H.on) return; if (st === 'run' && T.go == null) T.go = H.t; if (T.go != null && H.t - T.go >= 0.2 && st === 'run') M.keys.ArrowUp = true; if (st === 'done') M.keys.ArrowUp = false; }; });
+      if (k === 0) { await runTo(`window.__yb.roll.st === 'run' && window.__yb.roll.t - window.__t.go > 2`, 200); await layout('hr_racing'); }
       await runTo(`window.__yb.roll.shown || !window.__yb.roll.on`, 200);
       const r = await ev(() => { const H = window.__yb.roll, E = window.__yb.ev.EV.cur, q = k => document.querySelector(`#ybhud [data-k="${k}"]`), M = window.__map;
         return { on: H.on, shown: H.shown, me: H.me && { t: H.me.done && +H.me.done.toFixed(3), jump: H.me.jump }, ai: H.ai && { n: H.opp.name, t: H.ai.done && +H.ai.done.toFixed(3) }, ev: E && { ri: E.ri, wins: E.wins, over: E.over, out: E.out, champ: E.champ && (E.champ.me ? 'ME' : E.champ.r.name), cash: E.cash, log: E.log.slice(-2) },
           slip: q('slip') && q('slip').innerText.replace(/\s+/g, ' ').slice(0, 500), next: !!document.querySelector('#ybhud [data-a="evnext"]'), cashNow: M.S.cash - window.__t.c0, hrMode: H.mode }; });
       rs.push(r); console.log(JSON.stringify({ test: 'hr', round: k, ...r }));
-      if (process.env.SHOTS && k === 0) await shot('hr_slip');
+      if (k === 0) await shot('hr_slip');
       const nx = await ev(() => { const b = document.querySelector('#ybhud [data-a="evnext"]'); window.__map.keys.ArrowUp = false; if (b) { b.click(); return true; } return false; });
       if (!nx) break;
     }
@@ -86,10 +101,10 @@ const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money,hr').spli
     await ev(() => { const M = window.__map, Y = window.__yb, R = Y.race, d = M.drvS(); if (M.foot.on) M.getIn(); for (const A of R.ags.slice()) Y.agKill(A); R.ags.length = 0; R.run = null; R.fillT = 999; Object.assign(d, { x: 7056.5, z: 1162, yaw: 0, v: 0 }); M.physReset(); R.lane = 'L';
       M.S.day = 40; Y.ev.EV.cur = null; M.S.ybRec = M.S.ybRec || {}; M.S.ybRec[M.S.car.id] = Object.assign(M.S.ybRec[M.S.car.id] || {}, { e: { et: 7.54, mph: 98 } });
       const p = M.places().find(q => q.id === 'yellowbelly'); Y.panel(p); document.querySelector('#ybpanel [data-tab="ev"]').click(); });
-    if (process.env.SHOTS) await shot('yb_events');
+    await shot('yb_events');
     const ent = await ev(() => { const btn = document.querySelector('#ybpanel [data-ev="enter"][data-id="bracket"]'); btn.click(); const E = window.__yb.ev.EV.cur; return { ok: !!E, field: E && E.field.map(e => (e.me ? 'ME' : e.r.name) + '@' + e.dial), opp: E && window.__yb.ev.opp(E).r.name }; });
     console.log(JSON.stringify({ test: 'yb-enter', ...ent }));
-    if (process.env.SHOTS) await shot('yb_ladder');
+    await shot('yb_ladder');
     await ev(() => document.querySelector('#ybpanel [data-ev="race"]').click());
     // the scripted driver from the 3B test: out of the lanes, roll through the water, auto stage, gas just after your own green
     await ev(() => { const M = window.__map, Y = window.__yb, R = Y.race, d = M.drvS(), T = window.__t; const inp = { gas: 0, brake: 0, steer: 0, hb: 0 }; T.ph = 'out'; R.auto = false; T.gT = null;
@@ -101,13 +116,14 @@ const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money,hr').spli
         else if (T.ph === 'shut') { M.keys.ArrowDown = d.v > 1; if (R.shown) { M.keys.ArrowDown = false; T.ph = 'end'; } } }; });
     const ok1 = await runTo(`window.__yb.race.ph === 'call'`, 150);
     await runTo(`window.__yb.race.run && window.__yb.race.run.st === 'tree'`, 200);
+    await layout('yb_tree');
     if (process.env.SHOTS) { await runTo(`window.__yb.race.run && window.__yb.race.t > window.__yb.race.run.ta + 0.6`, 5, 1 / 120); await ev(() => { const C = window.__map.cam(); C.position.set(7060, 5.5, 1060); C.lookAt(7060, 1.2, 1084); C.updateMatrixWorld(); }); await shot('yb_tree'); }
     await runTo(`window.__yb.race.shown`, 200);
     const r = await ev(() => { const R = window.__yb.race, run = R.lastRun || R.run || {}, T = window.__t, E = window.__yb.ev.EV.cur, q = k => document.querySelector(`#ybhud [data-k="${k}"]`);
       return { ok: true, hc: T.hc, lanes: (run.lanes || []).map(L => ({ k: L.kind, rt: L.rt && +L.rt.toFixed(3), et: L.et && +L.et.toFixed(3), dial: L.dial, hc: L.hc && +L.hc.toFixed(2), red: L.red, dq: L.dq, done: L.done && +L.done.toFixed(3) })), win: run.win && run.win.kind, why: run.why, ev: E && { ri: E.ri, wins: E.wins, over: E.over, log: E.log.slice(-2) },
         slip: q('slip') && q('slip').innerText.replace(/\s+/g, ' ').slice(0, 700), next: !!document.querySelector('#ybhud [data-a="evnext"]') }; });
     console.log(JSON.stringify({ test: 'yb', ok1, ...r }));
-    if (process.env.SHOTS) { await wait(500); await shot('yb_slip'); }
+    await wait(500); await shot('yb_slip');
   }
   console.log('ERR', errs.filter(e => !/GPU stall|WebGL|deprecated/.test(e)).slice(0, 20).join('\n') || 'none'); await b.close();
 })();
