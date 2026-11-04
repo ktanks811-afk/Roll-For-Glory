@@ -1509,8 +1509,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     P.tqm = (m.y || 2020) >= 2000 && P.pw < 130 && !(c.tparts || []).includes('ecu') ? 0.72 : 1;
     P.cgL = m.body === 'truck' || m.body === 'suv' ? 0.28 : 0.21;
     // boost and spray: how much of the power waits on the turbo (bigger ones light later), the shot, and the progressive controller's ramp
-    const tn = tuneOf(c), prog = hasPart(c, 'prog');
-    P.turbo = turboShare(c); P.tModel = !!(!c.swap && engOf(c)); P.tSize = 1 + 0.15 * X.L('turbo'); P.nosHp = X.nos; P.kg = kg; P.nosStart = prog ? tn.nosStart / 100 : 1; P.nosRamp = prog ? tn.nosRamp : 0;
+    P.turbo = turboShare(c); P.tModel = !!(!c.swap && engOf(c)); P.tSize = 1 + 0.15 * X.L('turbo'); P.kg = kg; P.nx = nxSpec(c); if (P.nx) { P.nxM0 = nxLb(c) * 0.4536; P.nxT0 = nxTNow(c, P.nx); }
     P.aero = m.body === 'truck' || m.body === 'suv' ? 1.5 : 1;
     // the real vehicle the physics drives: the car's own sheet with everything bolted on and dialed in (cached), traction
     // control if it came with it (unless you switched it off), and the top speed its power, gears and drag really reach
@@ -6940,6 +6939,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     }
     // the Engine Lab: specs, dyno, parts and the engine on the stand
     if (c && engDefOf(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-lab="1">Engine Lab</button>`); el.querySelector('[data-lab]').onclick = () => { $('carpanel').hidden = true; labOpen(); }; }
+    if (c && !isEV(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-nx="1">Nitrous</button>`); el.querySelector('[data-nx]').onclick = () => { $('carpanel').hidden = true; nxOpen(); }; }
   }
   function bindCarUI() {
     $('carbtn').onclick = () => { const el = $('carpanel'); el.hidden = !el.hidden; renderCarPanel(); };
@@ -7461,7 +7461,7 @@ registerProcessor('mw-engine', MWEngProc);`;
     let rpm = 0, cut = false, psi = 0, boost = 0, load = gas;
     if (R && inCar && vd && vd.we != null) {
       rpm = Math.abs(vd.we) * 30 / Math.PI; cut = !!vd.cut; boost = R.boostKind === 'turbo' ? TIRE.boost || 0 : 1;
-      const i = Math.min(R.psiTab.length - 1, Math.max(0, Math.round(rpm / R.step))); psi = (R.psiTab[i] || 0) * Math.min(1, gas * 1.4) * boost;
+      const i = Math.min(R.psiTab.length - 1, Math.max(0, Math.round(rpm / R.step))); psi = (R.psiTab[i] || 0) * Math.min(1, gas * 1.4) * boost + (TIRE.nx ? TIRE.nx.k || 0 : 0) * 6;
       ENGFREE.on = false;
     } else if (R) {
       const F = stepEngFree(dt, R, gas, on); rpm = F.rpm; cut = F.cut; psi = F.psi || 0; boost = R.boostKind === 'turbo' ? clamp(gas * rpm / (R.red * 0.5), 0, 1) : 1; load = F.load || 0;
@@ -7511,7 +7511,7 @@ registerProcessor('mw-engine', MWEngProc);`;
     const lay = { sbc: 'cross-plane V8, 1-8-4-3-6-5-7-2', ls: 'cross-plane V8, 1-8-7-2-6-5-4-3', coyote: 'cross-plane V8, 1-5-4-8-6-3-7-2', m177: 'hot-vee V8, 1-5-4-8-6-3-7-2', flat8: 'flat-plane V8 (banks alternate)', v6: 'V6, 1-4-2-5-3-6', i4: 'inline-4, 1-3-4-2', i6: 'inline-6, 1-5-3-6-2-4', i3: 'inline-3', f6: 'flat-6', f4: 'flat-4', v10: 'V10', v12: 'V12', vtwin45: '45° V-twin', vtwin90: '90° V-twin', twin: 'parallel twin', single: 'single', v4: 'V4' }[D.fo] || D.fo;
     const price = labPrice(D, cur, Object.assign({}, cur, LAB.draft)), dirty = JSON.stringify(LAB.draft) !== JSON.stringify(c.eb || {});
     const ov = camOverlap(cs), stat = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`;
-    let h = `<div class="hd"><h2>Engine Lab · ${D.name}</h2><button data-x>Close</button></div>
+    let h = `<div class="hd"><h2>Engine Lab · ${D.name}</h2><button data-tonx>Nitrous</button><button data-x>Close</button></div>
 <div class="note">${D.note || ''}</div>
 <h3>Engine</h3><div class="g">${stat('Layout', lay)}${stat('Displacement', (Rd.disp).toFixed(1) + ' L · ' + D.cyl + ' cyl')}${stat('Bore x stroke', L)}${stat('Compression', Rd.cr.toFixed(1) + ':1')}${stat('Valvetrain', D.vt === 'ohv' ? 'Pushrod 2-valve' : 'DOHC 4-valve')}${stat('Fuel', { carb: 'Carburetor', port: 'Port injection', di: 'Direct injection', pfdi: 'Port + direct' }[D.fuel])}${stat('Air', Rd.boostKind ? { roots: 'Roots blower', twinscrew: 'Twin-screw', centri: 'Centrifugal', turbo: 'Turbo' }[Rd.boostKind] + ' ' + Rd.psi.toFixed(1) + ' psi' : 'Naturally aspirated')}${stat('Idle / redline', Rd.idle + ' / ' + Rd.red)}${stat('Inertia', Rd.Ie.toFixed(2) + ' kg·m²')}</div>
 <h3>Cam</h3><div class="g">${stat('Duration @ .050"', cs.dI.toFixed(0) + '° / ' + cs.dE.toFixed(0) + '°')}${stat('Lift', cs.lI.toFixed(3) + '" / ' + cs.lE.toFixed(3) + '"')}${stat('LSA / ICL', cs.lsa.toFixed(1) + '° / ' + cs.icl.toFixed(1) + '°')}${stat('Overlap @ .050"', ov.toFixed(0) + '°')}${stat('Idle vacuum', Rd.vac.toFixed(1) + ' inHg')}${stat('Idle spread (COV)', (Rd.cov * 100).toFixed(1) + '%')}</div>
@@ -7544,6 +7544,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
 <div class="note">The draft's torque curve feeds the same drivetrain physics as driving (gears, converter, tires). The sound is generated from this engine's firing order, cam and exhaust: a physical approximation, not a recording.</div>`;
     el.innerHTML = h;
     el.querySelector('[data-x]').onclick = labClose;
+    el.querySelector('[data-tonx]').onclick = () => { labClose(); nxOpen(); };
     el.querySelector('[data-run]').onclick = () => { ENGLAB.prev = !ENGLAB.prev; ENGLAB.thr = 0; labRender(); };
     el.querySelector('[data-run]').textContent = ENGLAB.prev ? 'Shut it off' : 'Run it on the stand';
     const blip = el.querySelector('[data-blip]'); blip.onclick = () => { ENGLAB.thr = 1; setTimeout(() => { if (!LAB.hold) ENGLAB.thr = 0; }, 140); };
@@ -9171,7 +9172,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     }
     return st;
   }
-  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = TIRE.boost = TIRE.nosK = TIRE.nosT = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; TIRE.vd = null; }
+  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = TIRE.boost = TIRE.nosK = TIRE.nosT = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; TIRE.vd = null; TIRE.nx = null; }
   // after a wall: the tires stop with the car
   function vdSync() { if (TIRE.vd) TIRE.vd.sync = true; }
   function carDims(m) {
@@ -9266,21 +9267,25 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     // a turbo builds boost with revs and throttle (anti-lag holds it up off the gas); until it does, the motor is down on power
     const re0 = ne / V.red;
     // (with the engine model, its curve already has boost vs rpm, so this is only the spool lag)
-    if (P.turbo) { const want = Math.max(thr * (P.tModel ? 1 : clamp((re0 - 0.25) / 0.4, 0, 1)), I.als ? 0.92 : 0); TIRE.boost += (want - TIRE.boost) * Math.min(1, h * (want > TIRE.boost ? (0.4 + 1.3 * re0) / (P.tSize || 1) : 4)); }
+    if (P.turbo) { const want = Math.max(thr * (P.tModel ? 1 : clamp((re0 - 0.25) / 0.4, 0, 1)), I.als ? 0.92 : 0); TIRE.boost += (want - TIRE.boost) * Math.min(1, h * (want > TIRE.boost ? (0.4 + 1.3 * re0) / (P.tSize || 1) * (1 + 3 * (TIRE.nx ? TIRE.nx.sp || 0 : 0)) : 4)); }   // the spray's extra exhaust energy spools it sooner
     // (an engine-model curve already holds how much boost it makes at each rpm; off idle it runs on the motor alone, so
     // the spool lag only takes away the share of the torque that rides on boost at this rpm)
     const tShare = P.turbo ? (P.tModel ? P.turbo * clamp((re0 - 0.12) / 0.3, 0, 1) : P.turbo) : 0, boostK = P.turbo ? 1 - tShare * (1 - TIRE.boost) : 1;
     // nitrous sprays at wide open throttle, in gear, above the window switch; a progressive controller starts it low and ramps it in
-    const spray = !!I.nos && P.nosHp > 0 && thr > 0.7 && G !== 0 && !shifting && !V.ev && re0 > 0.3 && alive, n0 = P.nosStart == null ? 1 : P.nosStart;
-    TIRE.nosT = spray ? TIRE.nosT + h : 0;
-    TIRE.nosK = spray ? Math.min(1, n0 + (1 - n0) * TIRE.nosT / Math.max(0.05, P.nosRamp || 0)) : 0;
+    // (Phase 4A: the controller, bottle, line and jets decide what sprays; it adds the torque its oxygen and fuel make at
+    // this rpm, the timing retard costs the motor a little, and the knock sensors pull more if it detonates)
+    let Tn = 0, nbk = 1;
+    if (P.nx && !V.ev) {
+      const NS = TIRE.nx && TIRE.nx.id === P.nx.id ? TIRE.nx : (TIRE.nx = nxState(P.nx, P.nxM0, P.nxT0));
+      Tn = nxPhys(P.nx, NS, I, ne, thr, gb ? gb.g : (st.rev ? -1 : st.g), G, shifting, st.cut || st.vcut, a * tqAt(E, ne) * ks * boostK, E.tq * ks, alive, h); nbk = NS.bk; TIRE.nosK = NS.k;
+    } else TIRE.nosK = 0;
     ne = Math.max(0, ne);
     const Tf = E.tq * (0.04 + 0.1 * (ne / V.red) ** 2) * (ne > 50 ? 1 : ne / 50);
     let Te;
     if (V.ev) { const w = Math.max(30, Math.abs(st.we)), Tm = crankW / (0.3 * 1500); Te = alive ? (a > 0.01 ? a * Math.min(Tm, crankW / w) : -0.12 * Tm * Math.min(1, Math.abs(st.we) / 60)) : 0; }
     else {
       const tqm = !gb && st.g === 1 && P.tqm < 1 ? P.tqm + (1 - P.tqm) * clamp(ne / (0.6 * V.red), 0, 1) : 1;
-      Te = (a * tqAt(E, ne) * ks * boostK * tqm * (st.shT > 0 && !gb && mode === 'tc' ? 0.5 : 1) + (spray ? P.nosHp * 745.7 / (E.nP / RPM) * TIRE.nosK : 0)) * (st.tcE == null ? 1 : st.tcE) - (1 - a) * Tf;
+      Te = (a * tqAt(E, ne) * ks * boostK * tqm * nbk * (st.shT > 0 && !gb && mode === 'tc' ? 0.5 : 1) + Tn) * (st.tcE == null ? 1 : st.tcE) - (1 - a) * Tf;
     }
     st.Te = Te;
     // traction control (cars that came with it, unless you switch it off): it watches the driven wheels against the
@@ -10114,7 +10119,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     diff: { name: 'Clutch-type LSD / spool', price: 1100, blurb: 'Open, limited slip (lock %) or a full spool' },
     bias: { name: 'Brake bias valve', price: 180, blurb: 'Move braking front to rear' },
     angle: { name: 'Steering angle kit', price: 850, blurb: 'Up to 68° of lock for drifting' },
-    prog: { name: 'Nitrous progressive controller', price: 650, blurb: 'Starts the shot low and ramps it in so the tires hook' },
+    prog: { name: 'Nitrous progressive controller', price: 650, blurb: 'Starts the shot low and ramps it in so the tires hook. Set it up on the Nitrous screen (Car panel)' },
   };
   // [key, label, min, max, step, part, unit, hint]
   const TUNE_KNOBS = {
@@ -10124,8 +10129,6 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       ['afr', 'Air / fuel (WOT)', 10.8, 14.6, 0.1, 'ecu', ':1', 'Best power near 12.6. Lean knocks, rich bogs'],
       ['rev', 'Rev limiter', 5500, 8500, 100, 'ecu', ' rpm', 'Higher pulls longer. Stock motors hate 7,200+'],
       ['lc', 'Launch control', 0, 6000, 100, 'ecu', ' rpm', '0 = off. Too low bogs, too high spins'],
-      ['nosStart', 'Nitrous start', 10, 100, 5, 'prog', '%', 'How much of the shot hits at first. Lower keeps it hooked'],
-      ['nosRamp', 'Nitrous ramp', 0, 4, 0.1, 'prog', ' s', 'Time to bring in the full shot. Longer = hooks, shorter = quicker'],
     ],
     Drivetrain: [
       ['fd', 'Final drive', 2.73, 4.56, 0.01, 'gears', '', 'Short gears launch hard, long gears run faster'],
@@ -10230,21 +10233,22 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     }
   }
   // what a setup does, from a quick straight-line run with the same tire numbers the physics uses
-  function tuneRun(c, t) {
+  function tuneRun(c, t, opt) {
     const keep = c.tune; c.tune = t; const P = carPerf(); c.tune = keep;
     // a full-throttle pull on the real tire and drivetrain physics, with the shared state swapped out and back
     const saveT = Object.assign({}, TIRE), saveD = { yaw: drv.yaw, v: drv.v, steer: drv.steer }, saveW = WHEELIE.a;
     physReset(); drv.yaw = 0; drv.v = 0; drv.steer = 0; WHEELIE.a = 0;
-    let x = 0, time = 0, t60 = 0, et = 0, trap = 0, spin = 0; const h = 1 / 120, I = { gas: 1, brake: 0, steer: 0, hb: 0 };
+    let x = 0, time = 0, t60 = 0, et = 0, trap = 0, spin = 0, nos = null; const h = 1 / 120, I = { gas: 1, brake: 0, steer: 0, hb: 0, nos: !!(opt && opt.nos) };
     try {
       while (time < 30 && (!et || !t60)) {
-        physStep(I, P, h); const u = Math.max(0, drv.v); TIRE.vx = 0; TIRE.vz = -u; TIRE.w = 0;
+        physStep(I, P, h);
+        if (I.nos && TIRE.nx) { const N = TIRE.nx; if (!nos) nos = { hp: 0, det: 0, m0: N.m, used: 0 }; nos.hp = Math.max(nos.hp, N.hp); nos.det = Math.max(nos.det, N.det); nos.used = nos.m0 - N.m; } const u = Math.max(0, drv.v); TIRE.vx = 0; TIRE.vz = -u; TIRE.w = 0;
         if (TIRE.lit) spin += h; x += u * h; time += h;
         if (!t60 && u >= 26.82) t60 = time;
         if (!et && x >= 402.3) { et = time; trap = u; }
       }
     } finally { Object.assign(TIRE, saveT); Object.assign(drv, saveD); WHEELIE.a = saveW; }
-    return { t60, et, trap: trap * 2.237, top: P.top * 2.237, hp: Math.round(carHp(c) * tunePerf(Object.assign({}, c, { tune: t })).pow), spin, P };
+    return { t60, et, trap: trap * 2.237, top: P.top * 2.237, hp: Math.round(carHp(c) * tunePerf(Object.assign({}, c, { tune: t })).pow), spin, P, nos };
   }
   // ---------- the tuning laptop: sliders for every knob, live numbers from a test run ----------
   const TUI = { tab: 'Engine', place: null };
@@ -10363,9 +10367,9 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     }
     const raw = mult, fuelCap = PFX.fuel.cap[L('fuel')], fuelLimited = !swap && mult > fuelCap; if (fuelLimited) mult = fuelCap;
     // the old one-tap bolt-ons from earlier saves still count until a real part takes their place
-    const md = c.mods || {}, legacy = swap ? 1 : 1 + (md.intake && !L('intake') && !L('exhaust') ? 0.05 : 0) + (md.tune && !L('ecu') ? 0.08 : 0) + (md.turbo && !L('turbo') && !L('supercharger') ? 0.25 : 0) + (md.nitrous && !L('nitrous') ? 0.1 : 0) + (md.hot ? 0.08 : 0);
-    const ecuK = swap ? 1 : PFX.ecu.hp[L('ecu')], legacyE = swap ? 1 : 1 + (md.tune && !L('ecu') ? 0.08 : 0) + (md.nitrous && !L('nitrous') ? 0.1 : 0) + (md.hot ? 0.08 : 0);
-    return { m, mult, raw, fuelCap, fuelLimited, legacy, asp, nos: PFX.nitrous.hp[L('nitrous')], L, ecuK, legacyE };
+    const md = c.mods || {}, legacy = swap ? 1 : 1 + (md.intake && !L('intake') && !L('exhaust') ? 0.05 : 0) + (md.tune && !L('ecu') ? 0.08 : 0) + (md.turbo && !L('turbo') && !L('supercharger') ? 0.25 : 0) + (md.hot ? 0.08 : 0);
+    const ecuK = swap ? 1 : PFX.ecu.hp[L('ecu')], legacyE = swap ? 1 : 1 + (md.tune && !L('ecu') ? 0.08 : 0) + (md.hot ? 0.08 : 0);
+    return { m, mult, raw, fuelCap, fuelLimited, legacy, asp, nos: nxRated(c), L, ecuK, legacyE };
   }
   // how far over stock the motor is, and what that does to it (the 2D game's engine.js)
   const STRENGTH = [1, 1.12, 1.45, 1.9, 2.6], INTERNALS = ['factory cast internals', 'Stage 1 internals', 'forged Stage 2 internals', 'forged Stage 3 internals', 'Stage 4 billet internals'];
@@ -10395,7 +10399,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     P.shiftT = PFX.transmission.shift[L('transmission')]; P.knock = (P.knock || 0) + ld.risk; P.engWhy = ld.why[0] || null;
     return P;
   }
-  const partsKg = c => (carOf(c.id).kg || 1500) * PFX.weight.mult[partLv(c, 'weight')] + (partLv(c, 'nitrous') ? 14 : 0);
+  const partsKg = c => (carOf(c.id).kg || 1500) * PFX.weight.mult[partLv(c, 'weight')] + (() => { const x = nxConf(c); return x ? NX_KITS[x.kit].kg + (x.add && x.add.btl15 ? 3 : 0) : 0; })();
   // hp with a part swapped in, for the +hp on each row
   function hpWith(c, p) {
     const keep = c.parts, np = Object.assign({}, keep, { [p.cat]: p.id }); if (p.cat === 'turbo') delete np.supercharger; if (p.cat === 'supercharger') delete np.turbo;
@@ -10424,6 +10428,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     if (p.cat === 'ecu' && !hasPart(c, 'ecu')) c.tparts = (c.tparts || []).concat('ecu');   // a tune unlocks the laptop's engine map
     if (p.cat === 'intake' || p.cat === 'exhaust') delete (c.mods || {}).intake; if (p.cat === 'ecu') delete (c.mods || {}).tune;
     if (p.cat === 'turbo' || p.cat === 'supercharger') delete (c.mods || {}).turbo; if (p.cat === 'nitrous') delete (c.mods || {}).nitrous;
+    if (p.cat === 'nitrous' && c.nx) { const L = p.stage; c.nx = Object.assign({}, c.nx, { kit: L === 1 ? 'dry' : L >= 3 ? 'plate' : 'wet', s1: PFX.nitrous.hp[L] }); if (L === 1) c.nx.s2 = 0; }   // the Parts counter kit replaces the one set up on the Nitrous screen
     save(); refreshStats();
   }
 
@@ -11068,7 +11073,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   function perfOf(c) { const mine = S.car; S.car = c; try { return carPerf(); } finally { S.car = mine; } }
   function racerBlurb(r) { const c = racerCar(r), k = dragPack(c); return `${carHp(c)} hp${c.tparts && c.tparts.includes('e85') ? ' on E85' : c.tparts && c.tparts.includes('c16') ? ' on race gas' : ''}${k ? ` · ${k.brand} ${k.tire === 'slick' ? 'slicks' : 'radials'}` : ''}${c.rims ? ` · ${c.rims.dia}s` : ''}`; }
   // run one physics step as another car: swap the shared tire state in, step, swap it back out
-  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv', 'vd'];
+  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv', 'vd', 'nx'];
   function physAs(st, I, P, h) {
     const mine = { yaw: drv.yaw, v: drv.v, steer: drv.steer, wa: WHEELIE.a };
     for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
@@ -11077,7 +11082,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     st.v = drv.v; for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
     Object.assign(drv, { yaw: mine.yaw, v: mine.v, steer: mine.steer }); WHEELIE.a = mine.wa;
   }
-  const rollingTire = v => { const t = {}; for (const k of TIRE_KEYS) t[k] = 0; t.vz = -v; t.wv = v; t.gA = 1; t.re = 0.12; t.drv = 'R'; t.vd = null; return t; };
+  const rollingTire = v => { const t = {}; for (const k of TIRE_KEYS) t[k] = 0; t.vz = -v; t.wv = v; t.gA = 1; t.re = 0.12; t.drv = 'R'; t.vd = null; t.nx = null; return t; };
   // a honk: two detuned horns for a quarter second
   function honk(len = 0.26) {
     const ac = audioCtx(); if (!ac) return; const t = ac.currentTime, g = ac.createGain(), f = ac.createBiquadFilter();
@@ -11252,15 +11257,258 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       rows.push({ t: `${r.name} "${r.nick}" · ${carLabel(carOf(r.id))}`, s: locked ? `Needs ${r.need} rep` : `${racerBlurb(r)} · win +${r.rep} rep and ${money(r.wager * 2)}`, btn: locked ? 'Locked' : `Race ${money(r.wager)}`, off: locked, act: () => rollOpen(p, r, mode) }); }
     return { title: p.name, sub: `Rep ${S.rep} · you: ${carHp(S.car)} hp${dragPack(S.car) ? ' on a drag pack' : ''}${S.streetWins ? ` · ${S.streetWins} street wins` : ''}`, rows };
   };
+  // ---------- Phase 4A: nitrous oxide as a real system ----------
+  // A kit is hardware with physical properties: a bottle of liquid N2O at its own vapour pressure (which only depends on
+  // its temperature), a feed line, solenoids, jets, a fuel supply, switches and a controller. What sprays is the flow those
+  // parts pass at this moment; the torque comes from the oxygen it carries and the fuel that meets it, at this rpm. A
+  // 100 shot is a jet that flows about 7 lb a minute at 950 psi, not a number added to the motor.
+  // N2O properties: the ESDU 91022 saturation correlations (vapour pressure, liquid and vapour density, enthalpies, liquid cp)
+  const NX_TC = 309.57, NX_PC = 7251, NX_RC = 452;
+  const NXT = { T0: 215, dT: 0.25, n: 0, p: null, rl: null, rv: null, hfg: null, cp: null };
+  function nxTab() {
+    if (NXT.p) return NXT;
+    const n = NXT.n = Math.floor((NX_TC - 0.3 - NXT.T0) / NXT.dT) + 1, A = () => new Float32Array(n);
+    NXT.p = A(); NXT.rl = A(); NXT.rv = A(); NXT.hfg = A(); NXT.cp = A();
+    for (let i = 0; i < n; i++) {
+      const T = NXT.T0 + i * NXT.dT, t = 1 - T / NX_TC, y = NX_TC / T - 1, a = Math.cbrt(t), yc = Math.cbrt(y);
+      NXT.p[i] = NX_PC * Math.exp(NX_TC / T * (-6.71893 * t + 1.35966 * t ** 1.5 - 1.3779 * t ** 2.5 - 4.051 * t ** 5));          // kPa
+      NXT.rl[i] = NX_RC * Math.exp(1.72328 * a - 0.8395 * a * a + 0.5106 * t - 0.10412 * t * a);                                 // kg/m³
+      NXT.rv[i] = NX_RC * Math.exp(-1.009 * yc - 6.28792 * yc * yc + 7.50332 * y - 7.90463 * y * yc + 0.629427 * y * yc * yc);
+      NXT.hfg[i] = (440.055 - 116.043) * a + (917.225 - 459.701) * a * a + (434.081 - 794.779) * t + (589.587 - 485.338) * t * a;   // kJ/kg
+      NXT.cp[i] = 2.49688 * (1 + 0.0023454 / t - 3.80136 * t + 13.0945 * t * t - 14.518 * t ** 3);                              // kJ/kg·K
+    }
+    return NXT;
+  }
+  const nxAt = (arr, T) => { const x = clamp((T - NXT.T0) / NXT.dT, 0, NXT.n - 1.001), i = x | 0; return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
+  function nxTs(p) {   // saturation temperature at pressure p (kPa)
+    const P = NXT.p; let lo = 0, hi = NXT.n - 1; if (p <= P[0]) return NXT.T0; if (p >= P[hi]) return NXT.T0 + hi * NXT.dT;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (P[m] > p) hi = m; else lo = m; }
+    return NXT.T0 + (lo + (p - P[lo]) / (P[hi] - P[lo])) * NXT.dT;
+  }
+  const nxPsi = T => nxAt(nxTab().p, T) * 0.145038;
+  const nxTofPsi = psi => (nxTab(), nxTs(psi / 0.145038));
+  // liquid out of the siphon tube, through the line and the jets (kg/s). The line costs pressure with the square of the
+  // flow; below the bottle's saturation pressure part of the liquid flashes to gas, which thins what the jets pass
+  function nxFlow(Tb, CdA, kL, pm, pb, guess) {
+    let md = guess > 0 ? guess : CdA * 1500;
+    const cp = nxAt(NXT.cp, Tb);
+    for (let i = 0, n = guess > 0 ? 4 : 14; i < n; i++) {
+      const pj = Math.max(pm + 15, pb - kL * md * md), Ts = nxTs(pj), x = clamp(cp * (Tb - Ts) / Math.max(20, nxAt(NXT.hfg, Ts)), 0, 1);
+      const rm = 1 / (x / nxAt(NXT.rv, Ts) + (1 - x) / nxAt(NXT.rl, Ts));
+      md = 0.5 * md + 0.5 * CdA * Math.sqrt(2 * rm * (pj - pm) * 1000);
+    }
+    return md;
+  }
+  const NX_AMB = TT_AMB + 273.15;                        // the bottle sits at the air temperature: a Texas night, 86°F
+  const NX_LBMIN_HP = 0.07;                              // N2O per hp at the rated ratio: about 7 lb a minute for a 100 shot
+  const nxRatedKg = hp => hp * NX_LBMIN_HP / 60 * 0.4536;
+  const NX_REF_T = 0;                                    // filled lazily: the bottle temperature that makes 950 psi
+  // the kits. dist: how evenly the nozzles share it between cylinders (a single nozzle in the intake tube feeds some
+  // cylinders more than others, and the leanest one knocks first); lo/hi: the jets the kit comes with
+  const NX_KITS = {
+    dry: { name: 'Dry kit (one nozzle, the ECU adds the fuel)', short: 'Dry', price: 650, wet: false, lo: 35, hi: 150, shots: [35, 50, 75, 100, 125, 150], dist: 0.86, stage2: false, kg: 12 },
+    wet: { name: 'Wet kit (single fogger nozzle)', short: 'Wet fogger', price: 850, wet: true, lo: 50, hi: 250, shots: [50, 75, 100, 125, 150, 175, 200, 250], dist: 0.88, stage2: true, kg: 13 },
+    plate: { name: 'Wet plate (under the throttle body or carb)', short: 'Wet plate', price: 1250, wet: true, lo: 100, hi: 450, shots: [100, 125, 150, 175, 200, 250, 300, 350, 400, 450], dist: 0.93, stage2: true, kg: 14 },
+    dport: { name: 'Direct port (a fogger in every runner)', short: 'Direct port', price: 2900, wet: true, lo: 150, hi: 800, shots: [150, 200, 250, 300, 350, 400, 500, 600, 700, 800], dist: 0.99, stage2: true, kg: 16 },
+  };
+  const NX_ADD = {
+    prog: { name: 'Progressive controller', price: 650, blurb: 'Pulses the solenoids to start the shot low and ramp it in, by gear and time. Runs stage 2, a timing retard and the safeties' },
+    win: { name: 'Window switch', price: 180, blurb: 'Only sprays between two rpm: no hit off idle, none on the limiter' },
+    heat: { name: 'Bottle heater', price: 230, blurb: 'Thermostatic blanket: holds the bottle at the pressure you set' },
+    purge: { name: 'Purge kit', price: 200, blurb: 'Vents the gas out of the line so the first hit is all liquid' },
+    pump: { name: 'Dedicated nitrous fuel pump', price: 420, blurb: 'Feeds the wet kit on its own, so it can\'t starve the motor' },
+    btl15: { name: '15 lb bottle', price: 260, blurb: 'Half again the nitrous of the 10 lb bottle, 5 lb heavier' },
+  };
+  const NX_SET = { mode: 'button', on: 3000, off: 0, g0: 1, g1: 9, start: 40, ramp: 1.0, delay: 0, start2: 60, ramp2: 0.6, ret1: 0, ret2: 0, s2by: 'gear', s2g: 2, s2t: 1.0, s2r: 5000, lowP: 0, shiftCut: 1, hOn: 1, hSet: 920 };
+  const nxStoich = f => f === 'e85' ? 6.27 : 9.4;        // N2O to fuel by mass: its oxygen burns this much gasoline (E85 needs more fuel)
+  // the kit on this car: one set up on the Nitrous screen (c.nx), or the Parts counter's nitrous stage or the old one-tap
+  // kit turned into the real hardware they stand for
+  const NX_CONF = new WeakMap();
+  function nxConf(c) {
+    if (!c || isEV(c)) return null;
+    const L = partLv(c, 'nitrous'), md = c.mods || {}, pg = hasPart(c, 'prog'), key = [c.nx, L, md.nitrous ? 1 : 0, pg ? 1 : 0, c.tune && c.tune.nosStart, c.tune && c.tune.nosRamp].join('|'), o = NX_CONF.get(c);
+    if (o && o.key === key && o.nx === c.nx) return o.v;
+    let v = null;
+    if (c.nx) v = c.nx.kit && NX_KITS[c.nx.kit] ? c.nx : null;
+    else if (L || md.nitrous) {
+      const shot = L ? PFX.nitrous.hp[L] : 75, kit = L === 1 ? 'dry' : L >= 3 ? 'plate' : 'wet', t = c.tune || {};
+      v = { kit, s1: shot, s2: 0, ft: 0, jf: null, add: { prog: pg, win: L >= 3 || !L, heat: false, purge: false, pump: false, btl15: false },
+        set: Object.assign({}, NX_SET, pg ? { start: t.nosStart != null ? t.nosStart : 100, ramp: t.nosRamp || 0 } : {}, L >= 2 || !L ? { ret1: 2 } : {}), legacy: true };
+    }
+    NX_CONF.set(c, { key, nx: c.nx, v }); return v;
+  }
+  const nxRated = c => { const x = nxConf(c); return x ? (x.s1 || 0) + (NX_KITS[x.kit].stage2 && x.add.prog ? x.s2 || 0 : 0) : 0; };
+  const nxCap = x => x && x.add && x.add.btl15 ? 15 : 10;   // lb
+  // jet sizes for a rated shot: N2O jet area that flows the rated mass at 950 psi through this kit's line, and the fuel
+  // jet that meets it at the rich ratio (about 6.3:1 on gasoline) at the kit's fuel pressure
+  function nxJet(K, hp, cyl) {
+    nxTab(); const Tr = nxTofPsi(950), pb = nxAt(NXT.p, Tr), kL = nxKL(K), want = nxRatedKg(hp);
+    let lo = 1e-9, hi = 1e-4; for (let i = 0; i < 40; i++) { const m = Math.sqrt(lo * hi); if (nxFlow(Tr, m, kL, 101, pb, 0) > want) hi = m; else lo = m; }
+    const nz = K === NX_KITS.dport ? cyl || 8 : 1, d = Math.sqrt(lo / 0.62 / nz * 4 / Math.PI) / 0.0254;
+    return { CdA: lo, d, nz };
+  }
+  const nxKL = K => (70 / 0.145038) / (nxRatedKg(K.hi) ** 2);   // the line and solenoid lose about 70 psi at the kit's biggest jets
+  const nxFuelD = (mf, dpKpa, nz) => Math.sqrt(mf / (0.62 * Math.sqrt(2 * 740 * dpKpa * 1000)) / nz * 4 / Math.PI) / 0.0254;
+  // what the motor's own fuel system can feed (kg/s): the pump, and the injectors at full duty
+  function nxFuelCap(c) {
+    const R = !c.swap ? engOf(c) : null, lbh = x => x * 0.4536 / 3600;
+    if (!R) { const hp = carHp(c) * 1.35 * 0.5; return { pump: lbh(hp), inj: lbh(hp), di: false, carb: false }; }
+    const D = R.D, b = R.b, ij = (ENG_PARTS.inj.opts[b.inj] || {}).inj, pp = (ENG_PARTS.pump.opts[b.pump] || {}).pump;
+    const kit = (ENG_PARTS.power.opts[b.power] || {}).kit, inj = Math.max(ij || D.inj || 0, kit && D.fuel === 'port' ? 60 : 0), pump = pp || D.pump || 0;
+    const di = D.fuel === 'di' || D.fuel === 'pfdi', bsfc = R.boostKind ? 0.6 : 0.5, fb = (D.fuelHp || D.hp * 1.25) * bsfc;
+    const fromInj = di || !inj ? fb * 1.1 : inj * D.cyl, fromPump = pump ? pump * 0.264 * 6.0 * (D.fuel === 'carb' ? 1 : 0.85) : fb * 1.1;
+    return { pump: lbh(fromPump), inj: lbh(Math.min(fromInj, fromPump)), di, carb: D.fuel === 'carb' };
+  }
+  // why a kit can't go on this car ('' if it can)
+  function nxFits(c, kit, add) {
+    if (!c || isEV(c)) return 'Electric: nothing to burn';
+    const cap = nxFuelCap(c), K = NX_KITS[kit]; if (!K) return 'Unknown kit';
+    if (!K.wet && cap.carb) return 'Dry kits add their fuel through the injectors: this motor has a carburetor';
+    if (K.wet && cap.di && !(add && add.pump)) return 'Direct injection: a wet kit needs its own fuel pump (add the dedicated pump first)';
+    return '';
+  }
+  // the physical constants of the kit on this car, cached on its setup (the bottle itself is runtime state, below)
+  const NX_SPEC = new WeakMap();
+  function nxSpec(c) {
+    const x = nxConf(c); if (!x) return null;
+    const fuel = engFuel(c), R = !c.swap ? engOf(c) : null, m = carOf(c.id), key = JSON.stringify(x) + fuel + (R ? R.key : c.swap ? 'swap' : c.id), o = NX_SPEC.get(c);
+    if (o && o.key === key) return o.X;
+    const K = NX_KITS[x.kit], s = Object.assign({}, NX_SET, x.set), add = x.add || {}, cyl = R ? R.D.cyl : 8, cap = nxFuelCap(c), boosted = R ? !!R.boostKind : (m.asp === 'turbo' || m.asp === 'sc');
+    const s2 = K.stage2 && add.prog ? x.s2 || 0 : 0, j1 = nxJet(K, x.s1, cyl), j2 = s2 ? nxJet(K, s2, cyl) : null;
+    // fuel: a wet kit's fuel jets are sized for the fuel named on the jet card; trim steps are one jet size (about 6% flow)
+    const jf = x.jf || fuel, dpF = add.pump || cap.carb ? 45 : 300, trim = Math.pow(1.06, x.ft || 0), fuelK = jf === 'e85' ? 1.06 : 1;   // E85 is a little denser
+    const F1 = nxRatedKg(x.s1) / (nxStoich(jf) * 0.67) * trim * fuelK, F2 = s2 ? nxRatedKg(s2) / (nxStoich(jf) * 0.67) * trim * fuelK : 0;
+    const crk = R ? R.cr : 10, oct = FUEL_OCT[fuel] || 0, knk = R && R.warn.some(w => /Knock/.test(w));
+    const X = { id: c.id + '|' + key, kit: x.kit, K, wet: K.wet, dist: K.dist, rated: x.s1 + s2, s1: x.s1, s2,
+      A1: j1.CdA, A2: j2 ? j2.CdA : 0, d1: j1.d, d2: j2 ? j2.d : 0, nz: j1.nz, kL: nxKL(K), F1, F2, dpF, fd1: nxFuelD(F1, dpF, j1.nz), fd2: F2 ? nxFuelD(F2, dpF, j1.nz) : 0, fuel, jf,
+      stoich: nxStoich(fuel), lamD: 0.67 / trim, pump: !!add.pump, pumpKg: cap.pump, injKg: cap.inj,
+      bsfc: (boosted ? 0.6 : 0.5) * 0.4536 / (745.7 * 3600) * (fuel === 'e85' ? 1.32 : 1),
+      cap: nxCap(x) * 0.4536, vol: nxCap(x) * 0.4536 / 680, mAl: x.add && x.add.btl15 ? 9.1 : 6.8, hA: 0.010, amb: NX_AMB,
+      lineKg: K === NX_KITS.dport ? 0.11 : 0.066, Ap: 0.62 * Math.PI / 4 * (0.0625 * 0.0254) ** 2,
+      prog: !!add.prog, win: !!add.win, heat: !!add.heat, purge: !!add.purge,
+      mode: s.mode, wot: 0.9, on: s.on, off: s.off || 99999, g0: s.g0, g1: s.g1, start: s.start / 100, ramp: s.ramp, delay: s.delay, start2: s.start2 / 100, ramp2: s.ramp2,
+      ret1: add.prog || hasPart(c, 'ecu') ? s.ret1 : 0, ret2: add.prog ? s.ret2 : 0, s2by: s.s2by, s2g: s.s2g, s2t: s.s2t, s2r: s.s2r, lowP: add.prog ? s.lowP : 0, shiftCut: add.prog ? !!s.shiftCut : false,
+      hOn: !!s.hOn, hSet: s.hSet,
+      // how much extra cylinder pressure it takes before the worst cylinder knocks, as a share of the motor's peak torque:
+      // about 2° of retard per 50 hp on a 10:1 street motor on 93 (a 100 shot from 3,500 rpm wants 2-4°); better fuel buys
+      // more, compression and boost take it away
+      allow0: 0.28 + 0.1 * oct - 0.04 * Math.max(0, crk - 10.5) - (knk ? 0.08 : 0),
+      ks: !(R && R.D.fuel === 'carb') && (m.y || 2005) >= 1996 && !(R && R.D.generic && (m.y || 2005) < 1996), legacy: !!x.legacy };
+    if (!X.win) { X.on = 0; X.off = 99999; } else if (!s.off) X.off = (R ? R.red : 6500) - 200;
+    NX_SPEC.set(c, { key, X }); return X;
+  }
+  // a fresh runtime state for a kit: what's in the bottle (the player's car keeps its own between drives), the line, timers
+  function nxState(X, m0, T0) {
+    nxTab();
+    return { id: X.id, m: m0 == null ? X.cap : clamp(m0, 0, X.cap), T: T0 == null ? X.amb : T0, line: 0.35, t1: 0, t2: 0, k: 0, bk: 1, hp: 0, md: 0, pg: 0, lam: 0, det: 0, lean: 0,
+      fp: 1, fpT: 0, on1: false, on2: false, d1: 0, d2: 0, pool: 0, bf: 0, dmg: 0, psi: nxPsi(T0 == null ? X.amb : T0), Tn: 0, sp: 0, boostPsi: 0, liq: 1 };
+  }
+  const nxHeatC = (X, S0) => X.mAl * 0.9 + S0.m * nxAt(NXT.cp, S0.T);   // kJ/K: aluminium bottle plus what's in it
+  const nxLiq = (X, S0) => { const rl = nxAt(NXT.rl, S0.T), rv = nxAt(NXT.rv, S0.T); return clamp((S0.m / X.vol - rv) / (rl - rv), 0, 1); };
+  // the bottle over a step: liquid drawn off leaves room that boils off more of it (that cools the bottle and drops the
+  // pressure), the air warms it back, the heater holds the pressure it's set to
+  function nxBottle(X, S0, dm, h, heater) {
+    if (dm > 0) {
+      dm = Math.min(dm, S0.m); const liq = S0.liq > 0;
+      const ev = liq ? dm * nxAt(NXT.rv, S0.T) / nxAt(NXT.rl, S0.T) : 0; S0.m -= dm;
+      S0.T -= (liq ? ev * nxAt(NXT.hfg, S0.T) : dm * 60) / nxHeatC(X, S0);
+    }
+    let q = (X.amb - S0.T) * X.hA; if (heater && X.heat && X.hOn && nxAt(NXT.p, S0.T) * 0.145038 < X.hSet) q += 0.25;   // 250 W blanket
+    S0.T = clamp(S0.T + q * h / nxHeatC(X, S0), 230, NX_TC - 1);
+    S0.liq = nxLiq(X, S0);
+  }
+  // one physics step of the system. Returns the torque the nitrous adds at the crank (N·m) and leaves in S0 what it did:
+  // S0.bk is what's left of the motor's own torque (timing retard, the knock sensors pulling more)
+  function nxPhys(X, S0, I, ne, thr, gear, G, shifting, cut, Tb, Tpk, alive, h) {
+    const T = S0.T; let pb = nxAt(NXT.p, T); if (S0.liq <= 0) pb = Math.min(pb, S0.m / X.vol * 0.1889 * T * 0.8);   // out of liquid: just the gas left
+    S0.psi = pb * 0.145038;
+    // the switches and the controller
+    if (S0.fpT > 0) S0.fpT -= h;
+    const req = !!I.nos && S0.m > 0.002, wot = thr >= X.wot, win = ne >= X.on && ne <= X.off, gOk = !X.prog || (gear >= X.g0 && gear <= X.g1);
+    const fOk = !X.wet || X.pump || S0.fpT <= 0, lowOk = !X.lowP || S0.psi >= X.lowP, sOk = !(X.shiftCut && shifting);
+    const on = req && alive && G > 0 && gear > 0 && wot && win && gOk && fOk && lowOk && sOk;
+    S0.t1 = on ? S0.t1 + h : 0;
+    const ramp = (t, s0, rp, dl) => t < dl ? 0 : X.prog ? Math.min(1, s0 + (1 - s0) * (t - dl) / Math.max(0.01, rp)) : 1;
+    const d1 = on ? ramp(S0.t1, X.start, X.ramp, X.prog ? X.delay : 0) : 0;
+    const on2 = d1 > 0 && X.A2 > 0 && (X.s2by === 'gear' ? gear >= X.s2g : X.s2by === 'rpm' ? ne >= X.s2r : S0.t1 >= X.delay + X.s2t);
+    S0.t2 = on2 ? S0.t2 + h : 0;
+    const d2 = on2 ? ramp(S0.t2, X.start2, X.ramp2, 0) : 0;
+    if (d1 > 0 && !S0.on1) S0.click = (S0.click || 0) + 1;
+    S0.on1 = d1 > 0; S0.on2 = d2 > 0; S0.d1 = d1; S0.d2 = d2;
+    // the flow through the jets (the solenoids pulse at the duty the controller asks for); a line still full of gas
+    // passes much less mass until liquid reaches the solenoid
+    const CdA = X.A1 * d1 + X.A2 * d2, pm = 101 + Math.max(0, S0.boostPsi) * 6.895;
+    let md = 0;
+    if (CdA > 0 && pb > pm) {
+      const liq = S0.liq;
+      md = (liq > 0 ? nxFlow(T, CdA, X.kL, pm, pb, S0.md) : 0) * (0.25 + 0.75 * S0.line);
+      if (liq < 0.04) { const mv = CdA * Math.sqrt(2 * (S0.m / X.vol) * (pb - pm) * 1000) * 0.8; md = md * liq / 0.04 + mv * (1 - liq / 0.04); }
+    }
+    S0.md = md;
+    const pg = I.purge && X.purge && S0.m > 0.002 ? X.Ap * Math.sqrt(2 * nxAt(NXT.rl, T) * Math.max(0, pb - 101) * 1000) * (S0.liq > 0 ? 1 : 0.3) : 0;
+    S0.pg = pg;
+    if (md > 0 || pg > 0) S0.line = Math.min(1, S0.line + (md / X.lineKg + (pg > 0 ? 3 : 0)) * h); else S0.line -= S0.line * h / 45;   // parked, underhood heat boils it back to gas
+    nxBottle(X, S0, (md + pg) * h, h, true);
+    // the fuel that meets it: a wet kit's own jets off the fuel pump (which also has to feed the motor), or the ECU's
+    // injectors on a dry kit (only what they have left over at this load)
+    const w = Math.max(10, ne * Math.PI / 30), dem = Math.max(0, Tb) * w * X.bsfc;
+    let mf = 0, lean = 0;
+    if (md > 0) {
+      if (X.wet) {
+        const nom = X.F1 * d1 + X.F2 * d2;   // the fuel solenoid flows the same whatever is in the nitrous line (a gassy line hits soft and rich)
+        if (X.pump) mf = nom;
+        else { const fp = Math.min(1, X.pumpKg / Math.max(1e-7, dem + nom)); mf = nom * fp; lean = 1 - fp; if (fp * fp < 0.55 && !S0.fpT) S0.fpT = 0.5; }   // pressure falls with the square of the shortfall: the safety switch trips
+      } else {
+        const want = (nxRatedKg(X.s1) * d1 + nxRatedKg(X.s2) * d2) / (X.stoich * X.lamD), head = Math.max(0, X.injKg - dem); mf = Math.min(want, head); lean = want > 0 ? 1 - mf / want : 0;
+      }
+    }
+    // its oxygen burns the fuel there is: rich of the rated ratio it gives up power, lean of it a little more until it
+    // runs out of fuel; past the rev limiter's cut it doesn't burn in the cylinder at all
+    let Pw = 0, lam = 0;
+    if (md > 0 && !cut) {
+      lam = mf > 1e-8 ? md / mf / X.stoich : 9;
+      const eff = lam < 0.67 ? Math.max(0.3, 1 - 0.9 * (0.67 - lam)) : lam <= 1 ? 1 + 0.08 * (lam - 0.67) / 0.33 : 1.08 / lam;
+      Pw = md / (NX_LBMIN_HP / 60 * 0.4536) * eff * 745.7;
+    }
+    const Tn = Math.min(Pw / w, 2 * Tpk);
+    // detonation: the shot's extra cylinder pressure (most in the leanest cylinder) against what this motor, fuel and
+    // timing can take. A knock sensor pulls timing (power) to save it; a carb motor just knocks
+    const ret = (S0.on1 ? X.ret1 : 0) + (S0.on2 ? X.ret2 : 0);
+    let bk = 1 - 0.012 * ret, det = 0;
+    if (Tn > 0) {
+      const q = Tn / Math.max(1, Tpk) / X.dist, allow = X.allow0 + 0.07 * ret - Math.max(0, lam - 0.75) * 1.2 - 0.012 * Math.max(0, S0.boostPsi);
+      det = Math.max(0, q - allow) / 0.1;
+      if (X.ks && det > 0) { bk *= 1 - Math.min(0.25, 0.06 * det); det *= 0.35; }
+    }
+    // a wet kit spraying into a motor that's on the limiter (or a clutch that's in without a shift cut, which takes it
+    // there) fills the intake with fuel and nitrous that doesn't burn in the cylinders: it lights off in the manifold
+    if (md > 0 && cut && X.wet) { S0.pool += h; if (S0.pool > 0.06) { S0.pool = 0; S0.bf++; } } else S0.pool = Math.max(0, S0.pool - h * 2);
+    if (md > 0 && cut && !X.wet) lean = 1;   // a dry kit on the limiter: oxygen and no fuel
+    S0.det = det; S0.lean = lean; S0.lam = lam; S0.hp = Pw / 745.7; S0.k = X.rated ? Math.min(1, S0.hp / X.rated) : 0; S0.bk = Tn > 0 ? bk : 1; S0.Tn = Tn;
+    S0.dmg += (det + lean * 2) * h; S0.sp = Tpk > 0 ? Tn / Tpk : 0;
+    return Tn;
+  }
+  // the steady output of a kit at one rpm and bottle pressure, line full (for the dyno sheet and the jet card)
+  function nxSteady(X, rpm, psi, Tb, Tpk) {
+    nxTab(); const S0 = nxState(X, X.cap, nxTofPsi(psi)); S0.line = 1;
+    const I = { nos: 1 }; let Tn = 0;
+    for (let i = 0; i < 6; i++) { S0.t1 = 10; S0.t2 = 10; S0.m = X.cap; S0.T = nxTofPsi(psi); S0.liq = nxLiq(X, S0); Tn = nxPhys(X, S0, I, rpm, 1, 3, 1, false, false, Tb, Tpk, true, 1e-4); }
+    return { Tn, hp: S0.hp, det: S0.det, lam: S0.lam, lean: S0.lean, md: S0.md, bk: S0.bk };
+  }
+
   // ---------- nitrous and anti-lag: buttons on the street, in roll races and at the strip ----------
-  // NOS: hold the button (or B) to spray the kit from the Parts counter. It only fires at wide open throttle above
-  // about 30% of the revs (a real window switch), it drains the bottle, and the full shot hits at once unless you
-  // run a progressive controller (tuning laptop), which starts it low and ramps it in so the tires can keep up.
+  // NOS: with the kit set to Button, hold it (or B) to spray; set to Armed, tap it to arm the system and the throttle
+  // switch (and the window switch and controller, if it has them) fire it. PURGE (purge kit): hold it (or J) to vent the
+  // gas out of the line. Everything about what actually sprays is the Phase 4A system above.
   // Anti-lag: turbo cars only. Tap it (or L) to arm: the turbo stays spooled off the gas and between shifts, so a
   // roll race starts on boost instead of waiting for it. It pops and bangs, and the heat wears the motor.
-  const NOSI = { hold: false, als: false, hiss: null, popT: 0, told: 0, el: null };
-  const nosShot = c => (c && c.parts ? partsSpec(c).nos : 0) || 0;
-  const nosBottle = c => (c && c.nos != null ? c.nos : 1);
+  const NOSI = { hold: false, arm: false, purge: false, als: false, hiss: null, pwm: null, pgG: null, popT: 0, told: 0, el: null, click: 0, bf: 0, warnT: 0, plT: 0, live: 0 };
+  const nosShot = c => (c ? nxRated(c) : 0) || 0;
+  // what's in the bottle (lb): saved with the car; older saves kept a fraction of a 10 lb bottle
+  function nxLb(c) { const x = nxConf(c), cap = nxCap(x); if (c.nosLb == null) c.nosLb = (c.nos != null ? c.nos : 1) * cap; return Math.min(c.nosLb, cap); }
+  const nosBottle = c => { const x = c && nxConf(c); return x ? clamp(nxLb(c) / nxCap(x), 0, 1) : 0; };
+  // the bottle's temperature now: it drifts back to the air temperature while the car sits (about half an hour)
+  function nxTNow(c, X) { if (c.nosT == null) return X.amb; const dt = c.nosAt ? (Date.now() - c.nosAt) / 1000 : 0; return X.amb + (c.nosT - X.amb) * Math.exp(-dt * X.hA / (X.mAl * 0.9 + 4)); }
   // how much of the motor's power waits on the turbo: a factory turbo, a bolt-on kit, or the old one-tap turbo upgrade
   function turboShare(c) {
     if (!c) return 0; const X = partsSpec(c), m = carOf(c.id), R = !c.swap ? engOf(c) : null;
@@ -11269,80 +11517,264 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     return c.mods && c.mods.turbo && !X.L('supercharger') ? 0.2 : 0;
   }
   const hasTurbo = c => turboShare(c) > 0;
+  const nxMode = c => { const x = c && nxConf(c); return x ? (x.set && x.set.mode) || NX_SET.mode : 'button'; };
   // what goes into the physics input this frame for the player's car
   function nosInput(I) {
-    const c = S.car; I.nos = NOSI.hold && nosShot(c) > 0 && nosBottle(c) > 0; I.als = NOSI.als && hasTurbo(c); return I;
+    const c = S.car, x = c && nxConf(c);
+    I.nos = !!x && (nxMode(c) === 'auto' ? NOSI.arm : NOSI.hold); I.purge = !!x && NOSI.purge; I.als = NOSI.als && hasTurbo(c); return I;
   }
-  // after the physics: drain the bottle, the sounds, wear, and the buttons
+  // after the physics: the bottle carries over to the save, the sounds, the purge cloud, backfires, warnings, the buttons
   function stepNos(dt, on) {
-    const c = S.car, shot = nosShot(c), turbo = hasTurbo(c);
-    if (!turbo) NOSI.als = false;
-    const spraying = on && TIRE.nosK > 0.01;
-    if (spraying) {
-      c.nos = Math.max(0, nosBottle(c) - dt * TIRE.nosK * shot / 100 * 0.065);   // a 100 hp shot empties a full bottle in about 15 s
-      if (c.nos <= 0 && performance.now() - NOSI.told > 4000) { NOSI.told = performance.now(); toast('Bottle\'s empty. Refill it in the Engine bay at a shop.', 'bad'); }
+    const c = S.car, X = c ? nxSpec(c) : null, turbo = hasTurbo(c);
+    if (!turbo) NOSI.als = false; if (!X) NOSI.arm = false;
+    const S0 = X && TIRE.nx && TIRE.nx.id === X.id ? TIRE.nx : null;
+    if (S0) {
+      if (!on) nxBottle(X, S0, 0, dt, false);   // the bottle keeps warming or cooling while the physics isn't running
+      c.nosLb = S0.m / 0.4536; c.nosT = S0.T; c.nosAt = Date.now(); c.nos = S0.m / X.cap;
     }
-    nosHiss(spraying ? 0.35 + 0.65 * TIRE.nosK : 0);
+    const ctx = audioCtx(), au = ctx && ctx.state === 'running';
+    const k = on && S0 ? clamp(S0.md / Math.max(1e-6, nxRatedKg(X.rated)), 0, 1.3) : 0, pwm = on && S0 && X.prog && S0.on1 ? 1 - Math.min(S0.d1, S0.on2 ? S0.d2 : 1) : 0;
+    nosHiss(k ? 0.3 + 0.7 * k : 0, pwm);
+    purgeHiss(on && S0 && S0.pg > 0 ? 1 : 0);
+    if (S0 && au) {
+      if (S0.click && S0.click !== NOSI.click) { NOSI.click = S0.click; noisePop(ctx, ctx.currentTime, 4200, 0.22, 0.025, ctx.destination); noisePop(ctx, ctx.currentTime + 0.012, 1800, 0.12, 0.02, ctx.destination); }   // the solenoids snap open
+      if (S0.bf && S0.bf !== NOSI.bf) {
+        NOSI.bf = S0.bf; noisePop(ctx, ctx.currentTime, 160, 1.1, 0.32, ctx.destination); noisePop(ctx, ctx.currentTime + 0.01, 900, 0.5, 0.12, ctx.destination);
+        toast(X.win ? 'BACKFIRE: it sprayed into the limiter. Set the window switch\'s off rpm under the limiter.' : 'BACKFIRE: it sprayed into the limiter. A window switch stops the spray before the limiter (or a shift cut on the controller).', 'bad');
+      }
+    } else if (S0) { NOSI.click = S0.click; NOSI.bf = S0.bf; }
+    // the purge: a white cloud out the front of the car
+    if (on && S0 && S0.pg > 0 && (NOSI.plT -= dt) <= 0) {
+      NOSI.plT = 0.035; const fx = -Math.sin(drv.yaw), fz = -Math.cos(drv.yaw);
+      puff(drv.x + fx * 2.1, 1.0, drv.z + fz * 2.1, fx * 5 + drv.v * fx, fz * 5 + drv.v * fz, 0.7);
+    }
+    // warnings, a few seconds apart
+    if (on && S0 && S0.md > 0 && performance.now() - NOSI.warnT > 6000) {
+      const rpm = TIRE.vd ? Math.round(Math.abs(TIRE.vd.we) * 30 / Math.PI / 100) * 100 : 0;
+      if (S0.det > 0.6) { NOSI.warnT = performance.now(); toast(`Detonation at ${rpm.toLocaleString()} rpm on the ${X.rated} shot. More timing retard, better fuel, a smaller jet, or start it higher in the revs.`, 'bad'); }
+      else if (S0.lean > 0.15) { NOSI.warnT = performance.now(); toast(X.wet ? 'Running lean: the fuel pump can\'t feed the motor and the kit. A bigger pump, or a dedicated nitrous pump.' : 'Running lean: the injectors are maxed. Bigger injectors, a smaller shot, or a wet kit.', 'bad'); }
+      else if (S0.psi < 760) { NOSI.warnT = performance.now(); toast(`Bottle\'s down to ${Math.round(S0.psi)} psi: the shot is soft. A bottle heater holds it near 900-950.`, ''); }
+    }
+    if (S0 && S0.m < 0.03 && on && S0.md > 0 && performance.now() - NOSI.told > 4000) { NOSI.told = performance.now(); toast('Bottle\'s empty. Refill it in the Engine bay at a shop.', 'bad'); }
     // anti-lag: pops and flames off the gas, and the turbo cooks
     if (on && NOSI.als) {
       TIRE.boost += (0.92 - TIRE.boost) * Math.min(1, dt * 3);   // spooled while you cruise up to the honks too
       c.cond.engine = Math.max(0, c.cond.engine - dt * 0.03);
       if (drv.gas < 0.3 && (NOSI.popT -= dt) <= 0) {
-        NOSI.popT = 0.06 + Math.random() * 0.18; const ctx = audioCtx();
-        if (ctx && ctx.state === 'running') noisePop(ctx, ctx.currentTime, 700 + Math.random() * 900, 0.16 + Math.random() * 0.1, 0.09, ctx.destination);
+        NOSI.popT = 0.06 + Math.random() * 0.18;
+        if (au) noisePop(ctx, ctx.currentTime, 700 + Math.random() * 900, 0.16 + Math.random() * 0.1, 0.09, ctx.destination);
       }
     }
-    nosButtons(on, shot, turbo);
+    nosButtons(on, X, S0, turbo);
+    if (NXL.open && (NOSI.live += dt) > 0.4) { NOSI.live = 0; nxLive(); }
   }
-  function nosHiss(k) {
+  // the hiss of the shot (pulsing when the controller runs it below full duty) and the purge's louder blast
+  function nosNoise(ctx, len) { const buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; return s; }
+  function nosHiss(k, pwm) {
     const ctx = audioCtx(); if (!ctx || ctx.state !== 'running') return;
     if (!NOSI.hiss) {
       if (!k) return;
-      const len = ctx.sampleRate, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
-      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3200;
+      const src = nosNoise(ctx, ctx.sampleRate), hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3200;
       const g = ctx.createGain(); g.gain.value = 0; src.connect(hp); hp.connect(g); g.connect(ctx.destination); src.start(); NOSI.hiss = g;
+      const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 15; const dep = ctx.createGain(); dep.gain.value = 0; lfo.connect(dep); dep.connect(g.gain); lfo.start(); NOSI.pwm = dep;
     }
-    NOSI.hiss.gain.setTargetAtTime(k * 0.12, ctx.currentTime, 0.05);
+    const t = ctx.currentTime; NOSI.hiss.gain.setTargetAtTime(k * 0.12 * (1 - 0.5 * (pwm || 0)), t, 0.05); NOSI.pwm.gain.setTargetAtTime(k * 0.06 * (pwm || 0), t, 0.05);
   }
-  // the two buttons: NOS (hold) shows the bottle, ANTI-LAG (tap) lights up when armed
-  function nosButtons(on, shot, turbo) {
+  function purgeHiss(k) {
+    const ctx = audioCtx(); if (!ctx || ctx.state !== 'running') return;
+    if (!NOSI.pgG) {
+      if (!k) return;
+      const src = nosNoise(ctx, ctx.sampleRate), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 0.45;
+      const g = ctx.createGain(); g.gain.value = 0; src.connect(bp); bp.connect(g); g.connect(ctx.destination); src.start(); NOSI.pgG = g;
+    }
+    NOSI.pgG.gain.setTargetAtTime(k * 0.32, ctx.currentTime, k ? 0.03 : 0.12);
+  }
+  // the buttons: NOS (hold, or tap to arm) shows the shot and the bottle, PURGE (hold), ANTI-LAG (tap) lights up when armed
+  function nosButtons(on, X, S0, turbo) {
     if (!NOSI.el) {
       const st = document.createElement('style');
       st.textContent = `.nosbtn{position:fixed;z-index:21;right:max(18px,env(safe-area-inset-right,0px));width:74px;height:58px;border-radius:14px;border:2px solid #3a3244;background:rgba(18,16,22,.82);color:#f1ece4;font:700 15px "Barlow Condensed","Arial Narrow",sans-serif;line-height:1.05;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;display:none;padding:0}
 .nosbtn small{display:block;font-size:12px;font-weight:600;color:#a89fb2}
-#nosbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 196px);border-color:#2a6fd1}#nosbtn.on{background:#2a6fd1;color:#fff}#nosbtn.on small{color:#dfeaff}#nosbtn.empty{opacity:.5}
+#nosbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 196px);border-color:#2a6fd1}#nosbtn.on{background:#2a6fd1;color:#fff}#nosbtn.on small{color:#dfeaff}#nosbtn.arm{box-shadow:0 0 0 3px rgba(42,111,209,.55)}#nosbtn.empty{opacity:.5}#nosbtn.det{border-color:#ff3d3d}#nosbtn.det small{color:#ff8a8a}
 #alsbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 262px);border-color:#e8651a}#alsbtn.on{background:#e8651a;color:#141014}#alsbtn.on small{color:#2a1608}
-body.nos-ok #nosbtn,body.als-ok #alsbtn,body.lay-edit #nosbtn,body.lay-edit #alsbtn{display:block}
-@media (orientation:portrait){#nosbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 330px)}#alsbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 396px)}}`;
+#pgbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 328px);border-color:#b8c4d0}#pgbtn.on{background:#e8eef4;color:#141014}#pgbtn.on small{color:#333}
+body.nos-ok #nosbtn,body.als-ok #alsbtn,body.pg-ok #pgbtn,body.lay-edit #nosbtn,body.lay-edit #alsbtn{display:block}
+@media (orientation:portrait){#nosbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 330px)}#alsbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 396px)}#pgbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 462px)}}`;
       document.head.append(st);
       const nb = document.createElement('button'); nb.id = 'nosbtn'; nb.className = 'nosbtn'; nb.innerHTML = 'NOS<small>100%</small>';
       const ab = document.createElement('button'); ab.id = 'alsbtn'; ab.className = 'nosbtn'; ab.innerHTML = 'ANTI-LAG<small>off</small>';
-      document.body.append(nb, ab); NOSI.el = { nb, ab };
-      const down = e => { e.preventDefault(); NOSI.hold = true; }, up = () => { NOSI.hold = false; };
+      const pb = document.createElement('button'); pb.id = 'pgbtn'; pb.className = 'nosbtn'; pb.innerHTML = 'PURGE<small>hold</small>';
+      document.body.append(nb, ab, pb); NOSI.el = { nb, ab, pb };
+      const auto = () => nxMode(S.car) === 'auto';
+      const down = e => { e.preventDefault(); if (auto()) nxArm(); else NOSI.hold = true; }, up = () => { NOSI.hold = false; };
       nb.addEventListener('pointerdown', down); nb.addEventListener('pointerup', up); nb.addEventListener('pointercancel', up); nb.addEventListener('pointerleave', up);
-      nb.addEventListener('contextmenu', e => e.preventDefault());
+      pb.addEventListener('pointerdown', e => { e.preventDefault(); NOSI.purge = true; }); for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) pb.addEventListener(ev, () => { NOSI.purge = false; });
+      for (const b of [nb, ab, pb]) b.addEventListener('contextmenu', e => e.preventDefault());
       ab.addEventListener('pointerdown', e => { e.preventDefault(); nosArm(); });
-      addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.code === 'KeyB') NOSI.hold = true; if (e.code === 'KeyL' && !e.repeat) nosArm(); });
-      addEventListener('keyup', e => { if (e.code === 'KeyB') NOSI.hold = false; });
+      addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.code === 'KeyB' && !e.repeat) { if (auto()) nxArm(); else NOSI.hold = true; } if (e.code === 'KeyJ') NOSI.purge = true; if (e.code === 'KeyL' && !e.repeat) nosArm(); });
+      addEventListener('keyup', e => { if (e.code === 'KeyB') NOSI.hold = false; if (e.code === 'KeyJ') NOSI.purge = false; });
       // the roll race and the strip hide the street pad, so the buttons go in front of their screens too
       st.textContent += 'body.roll-on .nosbtn,body.strip-on .nosbtn{z-index:26}';
     }
-    const B = document.body.classList, c = S.car;
-    B.toggle('nos-ok', !!(on && shot > 0)); B.toggle('als-ok', !!(on && turbo));
-    if (on && shot > 0) { const b = Math.round(nosBottle(c) * 100); NOSI.el.nb.classList.toggle('on', TIRE.nosK > 0.01); NOSI.el.nb.classList.toggle('empty', b <= 0); NOSI.el.nb.lastChild.textContent = `${shot} hp · ${b}%`; }
+    const B = document.body.classList, c = S.car, shot = X ? X.rated : 0;
+    B.toggle('nos-ok', !!(on && shot > 0)); B.toggle('als-ok', !!(on && turbo)); B.toggle('pg-ok', !!(on && X && X.purge));
+    if (on && shot > 0) {
+      const el = NOSI.el.nb, psi = S0 ? S0.psi : nxPsi(nxTNow(c, X)), lb = S0 ? S0.m / 0.4536 : nxLb(c), sp = S0 && S0.md > 0;
+      el.classList.toggle('on', !!sp); el.classList.toggle('arm', X.mode === 'auto' && NOSI.arm); el.classList.toggle('empty', lb <= 0.05); el.classList.toggle('det', !!(S0 && sp && (S0.det > 0.6 || S0.lean > 0.15)));
+      el.firstChild.textContent = X.mode === 'auto' ? (NOSI.arm ? 'ARMED' : 'NOS off') : 'NOS';
+      el.lastChild.textContent = sp && S0.det > 0.6 ? 'KNOCK' : sp && S0.lean > 0.15 ? 'LEAN' : `${shot} · ${Math.round(psi)} psi`;
+    }
     if (on && turbo) { NOSI.el.ab.classList.toggle('on', NOSI.als); NOSI.el.ab.lastChild.textContent = NOSI.als ? 'armed' : 'off'; }
+    if (on && X && X.purge) NOSI.el.pb.classList.toggle('on', !!(S0 && S0.pg > 0));
+  }
+  function nxArm() {
+    const c = S.car; if (!nosShot(c)) return; NOSI.arm = !NOSI.arm;
+    toast(NOSI.arm ? 'Nitrous armed: it sprays at wide open throttle' + (nxSpec(c).win ? ' inside the window switch\'s rpm.' : '.') : 'Nitrous off.', NOSI.arm ? 'good' : '');
   }
   function nosArm() {
     if (!hasTurbo(S.car)) { toast('Anti-lag needs a turbo. Bolt one on at the Parts counter.', 'bad'); return; }
     NOSI.als = !NOSI.als; toast(NOSI.als ? 'Anti-lag armed: the turbo stays spooled. It cooks the motor, so turn it off on the street.' : 'Anti-lag off.', NOSI.als ? 'good' : '');
   }
-  // refill at a shop's Engine bay: about $6 a pound, a full 10 lb bottle
+  // refill at a shop's Engine bay: about $6 a pound
   function nosRefillRow(p) {
-    const c = S.car, shot = nosShot(c); if (!shot) return [];
-    const need = 1 - nosBottle(c), cost = Math.max(10, Math.round(need * 60 * (p.rate || 1) / 5) * 5);
-    return [{ t: 'Refill nitrous bottle', s: `${shot} hp shot · bottle ${Math.round(nosBottle(c) * 100)}% full`, btn: need < 0.01 ? 'Full' : money(cost), off: need < 0.01,
-      act: () => { if (spend(cost, 'Nitrous refill')) { c.nos = 1; save(); toast('Bottle full. 10 lb of nitrous.', 'good'); } } }];
+    const c = S.car, x = c && nxConf(c); if (!x) return [];
+    const cap = nxCap(x), lb = nxLb(c), need = cap - lb, cost = Math.max(10, Math.round(need * 6 * (p.rate || 1) / 5) * 5);
+    return [{ t: 'Refill nitrous bottle', s: `${nosShot(c)} hp kit · ${lb.toFixed(1)} of ${cap} lb`, btn: need < 0.1 ? 'Full' : money(cost), off: need < 0.1,
+      act: () => { if (spend(cost, 'Nitrous refill')) { nxFill(c); save(); toast(`Bottle full. ${cap} lb of nitrous.`, 'good'); } } }];
+  }
+  function nxFill(c) { const x = nxConf(c); c.nosLb = nxCap(x); c.nos = 1; c.nosT = NX_AMB - 4; c.nosAt = Date.now(); if (TIRE.nx) TIRE.nx = null; }   // a fresh fill comes off the station a little cool
+
+  // ---------- the Nitrous screen (Phase 4A): kit, jets, bottle, controller, switches, a dyno sheet and a test pass ----------
+  const NXL = { open: false, run: null };
+  function nxOpen() {
+    const c = S.car; if (!c) return; if (isEV(c)) { toast('Electric: nothing for nitrous to burn.', 'bad'); return; }
+    labCss(); let el = $('englab'); if (!el) { el = document.createElement('div'); el.id = 'englab'; document.body.appendChild(el); }
+    if (LAB.open) { LAB.open = false; ENGLAB.prev = false; ENGLAB.thr = 0; }
+    NXL.open = true; NXL.run = null; el.hidden = false; nxRender();
+  }
+  function nxClose() { NXL.open = false; const el = $('englab'); if (el) el.hidden = true; save(); }
+  // change the car's kit setup (the old Parts counter kit becomes an editable copy the first time)
+  function nxEdit(fn) {
+    const c = S.car, cur = nxConf(c);
+    const nx = JSON.parse(JSON.stringify(cur || { kit: null, s1: 0, s2: 0, ft: 0, jf: null, add: {}, set: {} })); delete nx.legacy;
+    nx.add = Object.assign({ prog: false, win: false, heat: false, purge: false, pump: false, btl15: false }, nx.add); nx.set = Object.assign({}, NX_SET, nx.set);
+    fn(nx); c.nx = nx; if (nx.add.prog && !hasPart(c, 'prog')) c.tparts = (c.tparts || []).concat('prog');
+    VEH_CACHE.clear(); save(); NXL.run = null; nxRender();
+  }
+  const nxShots = (K, lo) => lo ? [50, 75, 100, 125, 150, 200, 250, 300].filter(v => v <= K.hi) : K.shots;
+  const jetTxt = d => '.' + String(Math.round(d * 1000)).padStart(3, '0');
+  function nxRender() {
+    const el = $('englab'), c = S.car; if (!el || !c) return;
+    const x = nxConf(c), X = x ? nxSpec(c) : null, m = carOf(c.id), cap = nxFuelCap(c), stat = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`;
+    const set = Object.assign({}, NX_SET, x && x.set), add = (x && x.add) || {};
+    let h = `<div class="hd"><h2>Nitrous · ${carLabel(m)}</h2>${engDefOf(c) ? '<button data-tolab>Engine Lab</button>' : ''}<button data-x>Close</button></div>
+<div class="note">What sprays is what the jets flow from the bottle's pressure right now, and the torque is what that oxygen and fuel make at this rpm. A 100 shot flows about 7 lb a minute at 950 psi.</div>`;
+    // kit
+    h += `<h3>Kit</h3><div class="row">`;
+    for (const [id, K] of Object.entries(NX_KITS)) { const why = nxFits(c, id, add), on = x && x.kit === id; h += `<button data-kit="${id}" class="${on ? 'on' : ''}" ${why && !on ? 'disabled title="' + why.replace(/"/g, '') + '"' : ''}>${K.name}${on ? ' ✓' : ' · ' + money(K.price)}</button>`; }
+    if (x) h += `<button data-kit="">Take it off</button>`;
+    h += `</div>`;
+    const blocked = Object.keys(NX_KITS).map(id => nxFits(c, id, add)).filter(Boolean); if (blocked.length) h += `<div class="why">${[...new Set(blocked)].join(' · ')}</div>`;
+    if (x && x.legacy) h += `<div class="note">This is the kit from the Parts counter. Change anything here and it becomes your own setup.</div>`;
+    if (X) {
+      const K = X.K, ref = nxSteady(X, 5000, 950, 400, 500);
+      h += `<h3>Bottle</h3><div class="g" id="nxlive"></div>`;
+      h += `<div class="row">${add.heat ? `<button data-set="hOn" data-v="${set.hOn ? 0 : 1}" class="${set.hOn ? 'on' : ''}">Heater ${set.hOn ? 'on' : 'off'}</button><span class="note">Holds</span><input type="range" data-s="hSet" min="800" max="1000" step="10" value="${set.hSet}"><output>${set.hSet} psi</output>` : '<span class="note">No heater: the bottle sits at the air temperature, and every hit cools it.</span>'}</div>`;
+      // jets
+      h += `<h3>Jets${K.stage2 ? ' · stage 1' : ''}</h3><div class="row">`;
+      for (const v of nxShots(K)) { const j = nxJet(K, v, X.nz > 1 ? X.nz : 8); h += `<button data-s1="${v}" class="${x.s1 === v ? 'on' : ''}">${v} hp · ${jetTxt(j.d)}${X.nz > 1 ? ' ×' + X.nz : ''}</button>`; }
+      h += `</div><div class="row"><span class="note">N2O jet ${jetTxt(X.d1)}${X.nz > 1 ? ' in each of ' + X.nz : ''} · ${X.wet ? `fuel jet ${jetTxt(X.fd1)} at ${Math.round(X.dpF * 0.145)} psi fuel` : 'fuel: the ECU adds it through the injectors'}</span></div>`;
+      h += `<div class="row"><span class="note">${X.wet ? 'Fuel jet' : 'ECU fuel adder'}:</span>${[-3, -2, -1, 0, 1, 2, 3].map(v => `<button data-ft="${v}" class="${(x.ft || 0) === v ? 'on' : ''}">${v > 0 ? '+' + v : v === 0 ? 'chart' : v}</button>`).join('')}<span class="note">${X.wet ? 'Jets sized for:' : ''}</span>${X.wet ? ['93', 'e85'].map(f => `<button data-jf="${f}" class="${(x.jf || X.fuel) === f ? 'on' : ''}">${f === '93' ? 'Gasoline' : 'E85'}</button>`).join('') : ''}</div>`;
+      h += `<div class="row"><span class="note">At 950 psi and 5,000 rpm: ${Math.round(ref.hp)} hp, N2O:fuel ${(ref.lam * X.stoich).toFixed(1)}:1 (λ ${ref.lam.toFixed(2)} on ${X.fuel === 'e85' ? 'E85' : 'gasoline'}). ${ref.lam > 0.8 ? '<b style="color:#ff9a6a">Lean: it will knock and burn pistons.</b>' : ref.lam < 0.55 ? 'Rich: safe, soft.' : 'A safe, rich ratio.'}</span></div>`;
+      if (K.stage2) {
+        h += `<h3>Stage 2</h3>`;
+        if (!add.prog) h += `<div class="note">A second stage needs the progressive controller to bring it in.</div>`;
+        else {
+          h += `<div class="row"><button data-s2="0" class="${!x.s2 ? 'on' : ''}">None</button>${nxShots(K, 50).map(v => `<button data-s2="${v}" class="${x.s2 === v ? 'on' : ''}">${v} hp</button>`).join('')}</div>`;
+          if (x.s2) h += `<div class="row"><span class="note">Comes in by</span>${[['gear', 'Gear'], ['time', 'Time'], ['rpm', 'RPM']].map(([k, l]) => `<button data-set="s2by" data-v="${k}" class="${set.s2by === k ? 'on' : ''}">${l}</button>`).join('')}
+${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set.s2by === 'time' ? nxSlider('s2t', 'after', 0.2, 4, 0.1, set.s2t, ' s') : nxSlider('s2r', 'at', 2500, 7500, 100, set.s2r, ' rpm')}</div>`;
+        }
+      }
+      // controller and switches
+      h += `<h3>Controller and switches</h3><div class="row"><span class="note">Activation:</span>${[['button', 'Button (hold to spray)'], ['auto', 'Armed (throttle switch fires it)']].map(([k, l]) => `<button data-set="mode" data-v="${k}" class="${set.mode === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+      h += `<div class="note">${X.wet ? 'It has a throttle switch and a fuel pressure safety: no spray off wide open throttle, none if the fuel pressure drops.' : 'It has a throttle switch: no spray off wide open throttle.'}</div>`;
+      if (add.win) h += `<div class="row">${nxSlider('on', 'Window on', 1500, 6000, 100, set.on, ' rpm')}${nxSlider('off', 'off', 4000, 9000, 100, set.off || X.off, ' rpm')}</div>`;
+      if (add.prog) {
+        h += `<div class="row">${nxSlider('start', 'Start at', 10, 100, 5, set.start, '%')}${nxSlider('ramp', 'ramp to 100% in', 0, 4, 0.1, set.ramp, ' s')}${nxSlider('delay', 'delay', 0, 3, 0.1, set.delay, ' s')}</div>
+<div class="row">${nxSlider('g0', 'Gears from', 1, 6, 1, set.g0, '')}${nxSlider('g1', 'to', 1, 9, 1, set.g1, '')}${x.s2 ? nxSlider('start2', 'Stage 2 start', 10, 100, 5, set.start2, '%') + nxSlider('ramp2', 'ramp', 0, 3, 0.1, set.ramp2, ' s') : ''}</div>
+<div class="row">${nxSlider('ret1', 'Timing retard', 0, 12, 0.5, set.ret1, '°')}${x.s2 ? nxSlider('ret2', 'stage 2 retard', 0, 12, 0.5, set.ret2, '°') : ''}${nxSlider('lowP', 'Low bottle cut', 0, 900, 25, set.lowP, ' psi')}<button data-set="shiftCut" data-v="${set.shiftCut ? 0 : 1}" class="${set.shiftCut ? 'on' : ''}">Shift cut ${set.shiftCut ? 'on' : 'off'}</button></div>`;
+      } else if (hasPart(c, 'ecu')) h += `<div class="row">${nxSlider('ret1', 'Timing retard (handheld tuner)', 0, 12, 0.5, set.ret1, '°')}</div>`;
+      else h += `<div class="note">No way to pull timing on the spray: a progressive controller or a handheld tuner adds a timing retard.</div>`;
+      h += `<div class="row">${Object.entries(NX_ADD).map(([k, a]) => { const has = add[k], why = k === 'pump' && !X.wet ? 'A dry kit uses the injectors' : ''; return `<button data-add="${k}" ${has || why ? 'disabled' : ''} title="${a.blurb.replace(/"/g, '')}">${a.name}${has ? ' ✓' : ' · ' + money(a.price)}</button>`; }).join('')}</div>`;
+      h += `<div class="note">${Object.entries(NX_ADD).filter(([k]) => !add[k]).map(([, a]) => `<b>${a.name}:</b> ${a.blurb}`).join(' · ')}</div>`;
+      // fuel
+      const dem = (carHp(c) - X.rated) * 745.7 * X.bsfc, nom = X.F1 + X.F2;
+      h += `<h3>Fuel</h3><div class="g">${stat('Pump', Math.round(cap.pump * 3600 / 0.4536) + ' lb/h')}${stat('Injectors', cap.di ? 'Direct injection' : Math.round(cap.inj * 3600 / 0.4536) + ' lb/h')}${stat('Motor at peak', Math.round(dem * 3600 / 0.4536) + ' lb/h')}${stat(X.wet ? 'Kit\'s fuel jets' : 'ECU adds', Math.round((X.wet ? nom : (nxRatedKg(X.s1) + nxRatedKg(X.s2)) / (X.stoich * X.lamD)) * 3600 / 0.4536) + ' lb/h')}</div>`;
+      const short = X.wet ? !X.pump && dem + nom > cap.pump : (nxRatedKg(X.s1) + nxRatedKg(X.s2)) / (X.stoich * X.lamD) > Math.max(0, cap.inj - dem);
+      if (short) h += `<div class="warn">⚠ ${X.wet ? 'The pump can\'t feed the motor and the kit together at the top: the fuel pressure falls, it goes lean and the safety switch cuts it. Bigger pump (Engine Lab) or the dedicated nitrous pump.' : 'The injectors don\'t have room for the fuel this shot needs: it goes lean. Bigger injectors, a smaller shot, or a wet kit.'}</div>`;
+      // dyno
+      h += `<h3>Dyno (crank, wide open, in the window)</h3><div class="row lg"><span><i style="background:#888;border-top:1px dashed #888"></i>Motor</span><span><i style="background:#5aa0ff"></i>On the spray, this bottle</span><span><i style="background:#ff4a4a"></i>Detonation</span></div><canvas id="nxdyno" width="720" height="300"></canvas><div class="note" id="nxdn"></div>`;
+      h += `<div class="row" style="margin-top:6px"><button data-test>Drag test it (quarter mile, with and without)</button><span class="note">${NXL.run || ''}</span></div>`;
+      h += `<div class="note">Verified: N2O's vapour pressure, densities and boiling heat (ESDU correlations); the jet flows from orifice physics. Approximated: the hp per pound (0.07 lb a minute per hp), the line losses, the knock limit (about 2° of retard per 50 hp on a 10:1 motor on 93) and the jet sizes on the card.</div>`;
+    } else h += `<div class="note">No nitrous on this car. Pick a kit above: it comes with jets, a 10 lb bottle, the solenoids and a throttle switch${''}.</div>`;
+    el.innerHTML = h;
+    const q = s => el.querySelectorAll(s);
+    el.querySelector('[data-x]').onclick = nxClose;
+    const tl = el.querySelector('[data-tolab]'); if (tl) tl.onclick = () => { NXL.open = false; labOpen(); };
+    q('[data-kit]').forEach(b => b.onclick = () => {
+      const id = b.dataset.kit;
+      if (!id) { nxEdit(nx => { nx.kit = null; }); toast('Kit off. The bottle and add-ons stay with the car.'); return; }
+      const K = NX_KITS[id]; if (!spend(K.price, 'Nitrous kit')) return;
+      nxEdit(nx => { const keep = nx.kit; nx.kit = id; if (!keep || nx.s1 < K.lo || nx.s1 > K.hi) nx.s1 = clamp(nx.s1 || (K.lo < 100 ? 75 : K.lo), K.lo, K.hi); if (!K.stage2) nx.s2 = 0; if (c.nosLb == null) c.nosLb = nxCap(nx); });
+      toast(`${K.name} on, with a ${nxCap(c.nx)} lb bottle. Jet it below.`, 'good');
+    });
+    q('[data-s1]').forEach(b => b.onclick = () => { if (+b.dataset.s1 === x.s1) return; if (!spend(40, 'Nitrous jets')) return; nxEdit(nx => { nx.s1 = +b.dataset.s1; }); });
+    q('[data-s2]').forEach(b => b.onclick = () => { if (+b.dataset.s2 === (x.s2 || 0)) return; if (+b.dataset.s2 && !spend(40, 'Nitrous jets')) return; nxEdit(nx => { nx.s2 = +b.dataset.s2; }); });
+    q('[data-ft]').forEach(b => b.onclick = () => nxEdit(nx => { nx.ft = +b.dataset.ft; }));
+    q('[data-jf]').forEach(b => b.onclick = () => nxEdit(nx => { nx.jf = b.dataset.jf; }));
+    q('[data-add]').forEach(b => b.onclick = () => { const k = b.dataset.add, a = NX_ADD[k]; if (!spend(a.price, a.name)) return; nxEdit(nx => { nx.add[k] = true; }); if (k === 'btl15') toast('15 lb bottle on. It\'s empty: fill it at a shop.', ''); if (k === 'btl15') { c.nosLb = Math.min(c.nosLb || 0, 15); } });
+    q('[data-set]').forEach(b => b.onclick = () => nxEdit(nx => { const v = b.dataset.v; nx.set[b.dataset.set] = isNaN(+v) ? v : +v; }));
+    q('[data-s]').forEach(r => { r.oninput = () => { r.nextElementSibling.textContent = r.value + (r.dataset.u || ''); }; r.onchange = () => nxEdit(nx => { nx.set[r.dataset.s] = +r.value; }); });
+    const tb = el.querySelector('[data-test]'); if (tb) tb.onclick = () => {
+      const t = tuneOf(c), a = tuneRun(c, t, { nos: 0 }), b2 = tuneRun(c, t, { nos: 1 });
+      const f = r => r && r.et ? `${r.et.toFixed(2)} @ ${Math.round(r.trap)} mph` : '-';
+      NXL.run = `Motor only: ${f(a)} · on the spray: ${f(b2)} · ${b2.nos ? `peak ${Math.round(b2.nos.hp)} hp of nitrous, used ${(b2.nos.used / 0.4536).toFixed(2)} lb${b2.nos.det > 0.05 ? ', <b style="color:#ff9a6a">it detonated</b>' : ''}` : ''} (a street launch, no prep)`;
+      nxRender();
+    };
+    if (X) { nxLive(); nxDyno(c, X); }
+  }
+  const nxSlider = (k, l, a, z, s, v, u) => `<span class="note">${l}</span><input type="range" data-s="${k}" data-u="${u}" min="${a}" max="${z}" step="${s}" value="${v}"><output>${v}${u}</output>`;
+  // the live bottle numbers
+  function nxLive() {
+    const el = $('nxlive'), c = S.car; if (!el || !c) return; const X = nxSpec(c); if (!X) return;
+    const S0 = TIRE.nx && TIRE.nx.id === X.id ? TIRE.nx : null, T = S0 ? S0.T : nxTNow(c, X), m = S0 ? S0.m : nxLb(c) * 0.4536, psi = S0 ? S0.psi : nxPsi(T);
+    const tF = Math.round((T - 273.15) * 9 / 5 + 32), col = psi < 800 ? '#ffb636' : psi > 1010 ? '#ff9a6a' : '#3ddc84';
+    const s = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`;
+    el.innerHTML = s('Pressure', `<span style="color:${col}">${Math.round(psi)} psi</span>`) + s('Bottle temp', tF + '°F') + s('In the bottle', `${(m / 0.4536).toFixed(1)} of ${(X.cap / 0.4536).toFixed(0)} lb`)
+      + s('Shots left', m > 0.01 ? `about ${Math.max(0, m / (nxRatedKg(X.rated) * 12)).toFixed(1)} passes` : 'empty') + s('Line', S0 ? (S0.line > 0.8 ? 'liquid to the solenoid' : S0.line > 0.4 ? 'part gas' : 'gassy: purge it') : 'part gas (parked)')
+      + s('Heater', X.heat ? (X.hOn ? (psi < X.hSet ? 'heating' : 'holding') : 'off') : 'none')
+      + (S0 && S0.hp > 1 ? s('Spraying', `${Math.round(S0.hp)} hp · λ ${S0.lam.toFixed(2)}`) : '');
+  }
+  // the dyno: the motor alone, and on the spray at this bottle's pressure (line full), with knock marked
+  function nxDyno(c, X) {
+    const cv = $('nxdyno'); if (!cv) return; const g = cv.getContext('2d'), W = cv.width, H = cv.height, pad = 34;
+    const V = vehOf(c, partsKg(c)), E = V.E, red = V.red, S0 = TIRE.nx && TIRE.nx.id === X.id ? TIRE.nx : null, psi = S0 ? S0.psi : nxPsi(nxTNow(c, X));
+    const pts = []; let maxY = 100, detAt = null, detLo = null, pk = 0, pkN = 0;
+    for (let n = 1200; n <= red; n += 100) {
+      const Tb = tqAt(E, n), inWin = n >= X.on && n <= X.off, r = inWin ? nxSteady(X, n, psi, Tb, E.tq) : null, tot = r ? Tb * r.bk + r.Tn : Tb;
+      pts.push({ n, hp0: Tb * n / 7120.9, tq0: Tb / 1.3558, hp: tot * n / 7120.9, tq: tot / 1.3558, det: r ? r.det : 0 }); if (r && r.det > 0.05) { detAt = n; if (detLo == null) detLo = n; }
+      if (r && r.hp > pk) { pk = r.hp; pkN = n; }
+    }
+    for (const p of pts) maxY = Math.max(maxY, p.hp, p.tq); maxY *= 1.1;
+    const Xp = n => pad + (W - pad - 8) * n / (red + 300), Y = v => H - 22 - (H - 30) * v / maxY;
+    g.clearRect(0, 0, W, H); g.font = '13px sans-serif'; g.fillStyle = '#8a8394'; g.strokeStyle = '#2b2533'; g.lineWidth = 1;
+    for (let n = 1000; n < red + 300; n += 1000) { g.beginPath(); g.moveTo(Xp(n), 6); g.lineTo(Xp(n), H - 22); g.stroke(); g.fillText(n / 1000 + 'k', Xp(n) - 8, H - 6); }
+    for (let v = 100; v < maxY; v += 100) { g.beginPath(); g.moveTo(pad, Y(v)); g.lineTo(W - 8, Y(v)); g.stroke(); g.fillText(v, 2, Y(v) + 4); }
+    for (const p of pts) if (p.det > 0.05) { g.fillStyle = `rgba(255,60,60,${Math.min(0.35, 0.08 + p.det * 0.08)})`; g.fillRect(Xp(p.n - 50), 6, Xp(p.n + 50) - Xp(p.n - 50), H - 28); }
+    const line = (f, col, dash) => { g.strokeStyle = col; g.setLineDash(dash ? [6, 5] : []); g.lineWidth = 2.2; g.beginPath(); pts.forEach((p, i) => { const y = Y(f(p)); i ? g.lineTo(Xp(p.n), y) : g.moveTo(Xp(p.n), y); }); g.stroke(); };
+    line(p => p.hp0, '#888', true); line(p => p.tq0, '#888', true); line(p => p.hp, '#5aa0ff'); line(p => p.tq, '#5aa0ff');
+    g.setLineDash([]); g.fillStyle = '#8a8394'; g.fillText('hp / lb-ft', pad + 4, 16);
+    const dn = $('nxdn'); if (dn) dn.textContent = `At ${Math.round(psi)} psi the nitrous adds up to ${Math.round(pk)} hp (at ${pkN.toLocaleString()} rpm). The torque it adds is biggest low in the revs: the same oxygen every second is more per combustion stroke.` + (detAt ? ` It knocks ${detLo <= Math.max(1300, X.on) + 50 ? 'below' : 'between ' + detLo.toLocaleString() + ' and'} ${detAt.toLocaleString()} rpm${X.win ? '' : ' (no window switch: it will spray there)'}.` : ' No knock in the window.');
   }
 
   // ---------- the cockpit: a real gauge cluster (tach, speedo, odometer), gas and brake pedals, and a manual stick ----------
@@ -18872,7 +19304,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       const t0 = R.t + i * k;
       agDrive(A, t0, k);
       const s = ybSurf(A.x, A.z); SURF.prep = s === 1 ? 1 : 0; SURF.mu = s === 2 ? 0.45 : 1; SURF.box = s === 2 ? 1 : 0;
-      physAs(A.st, { gas: A.gas, brake: A.brk, steer: 0, hb: 0 }, A.P, k);
+      physAs(A.st, { gas: A.gas, brake: A.brk, steer: 0, hb: 0, nos: A.ph === 'go' }, A.P, k);
       SURF.prep = 0; SURF.mu = 1; SURF.box = 0;
       const v = A.st.v;
       if (A.track) { A.yaw = 0; A.x += ((A.lane ? A.lane.lx : A.x) - A.x) * Math.min(1, k * 3); }
@@ -19551,6 +19983,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         }
         I2.gb = gb;
       }
+      I2.nos = T.go != null && ai.done == null;   // racers with a kit arm it at the third honk (their throttle and window switches fire it)
       const f0 = ai.x + ai.fA; physAs(ai.st, I2, ai.P, k); ai.st.v = Math.max(0, ai.st.v); ai.x += ai.st.v * k;
       const f1 = ai.x + ai.fA;
       if (T.go != null && ai.done == null && T.finX != null) {
@@ -19913,7 +20346,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       while (t < 60) {
         const sp = st.t.lit ? 1 : 0; seen += (sp - seen) * Math.min(1, h / lag);
         const tgt = seen > 0.5 ? 0.5 + 0.28 * (1 - sk) : 1; gas += (tgt - gas) * Math.min(1, h * (hr && sk > 0.75 && st.v < 15 ? 4 : 14));
-        I.gas = gas; I.brake = 0; physAs(st, I, P, h); t += h; x += Math.max(0, st.v) * h;
+        I.gas = gas; I.brake = 0; I.nos = true; physAs(st, I, P, h); t += h; x += Math.max(0, st.v) * h;
         if (t0 == null && x >= RO) t0 = t;
         if (trapT == null && x >= RO + D - 20.1168) trapT = t;
         if (x >= RO + D) { out.et = t - (t0 || 0); out.mph = trapT != null && t > trapT ? 20.1168 / (t - trapT) * 2.237 : st.v * 2.237; break; }
@@ -20727,7 +21160,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
-  window.__map = { CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
+  window.__map = { NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
