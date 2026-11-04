@@ -31,7 +31,7 @@ const CARS = (process.env.CARS || 'dodge_charger_srt_hellcat_widebody_2020,ford_
   for (let k = 0; k < 20; k++) { const ok = await ev(() => { const M = window.__map; if (M.foot.on) M.getIn(); const o = M.carObj(); return !!(o && o.userData.model); }); if (ok) break; await wait(1000); }
   await ev(() => { window.__yb.test.manual = true; const Y = window.__yb, M = window.__map;
     window.__t = { run(n, dt, cond) { for (let i = 0; i < n; i++) { if (window.__t.drive) window.__t.drive(dt); Y.test.tick(dt); if (cond && cond()) return i + 1; } return -1; } }; });
-  const runTo = async (cond, maxS = 120, dt = 1 / 60) => { for (let k = 0; k < maxS; k++) { const r = await ev(`window.__t.run(${Math.round(1 / dt)}, ${dt}, () => (${cond}))`); if (r > 0) return true; } return false; };
+  const runTo = async (cond, maxS = 120, dt = +(process.env.DT || 1 / 60)) => { for (let k = 0; k < maxS; k++) { const r = await ev(`window.__t.run(${Math.round(1 / dt)}, ${dt}, () => (${cond}))`); if (r > 0) return true; } return false; };
 
   if (ONLY.includes('race')) for (const [i, o] of RACES.entries()) {
     await ev(o => { const M = window.__map, Y = window.__yb, H = Y.roll, d = M.drvS(); if (H.on) H.close('left'); M.keys.ArrowUp = false;
