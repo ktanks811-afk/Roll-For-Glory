@@ -9199,7 +9199,10 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
         const up = 1400 + (red * (mode === 'tc' ? VDP.upTc : 0.96) - 1400) * Math.pow(clamp(thr, 0, 1), 1.3), dn = 1050 + (red * 0.45 - 1050) * thr * thr;
         const neNow = st.we * RPM;
         if (st.g < nA && (rpmIn(st.g) > up || (neNow > red * 0.95 && rpmIn(st.g) > up * 0.7)) && rpmIn(st.g + 1) > V.idle * 1.3 && !st.hold && !(brk > 0.3)) { st.g++; st.shT = V.shiftT; st.hold = 0.45; st.lock = false; if (mode === 'clutch') st.ce = 0; }
-        else if (st.g > 1 && rpmIn(st.g) < dn && rpmIn(st.g - 1) < up * 0.8 && !st.hold && !TIRE.lit) { st.g--; st.shT = V.shiftT * 0.8; st.hold = 0.4; st.lock = false; if (mode === 'clutch') st.ce = 0; }
+        // kickdown: floor it while it's lugging and a modern box skips straight to the lowest gear that stays under the
+        // shift point (an old 3- or 4-speed only drops one at a time); it takes a little longer than one step
+        else if (gas > 0.85 && thr > 0.5 && st.g > 2 && rpmIn(st.g) < 1050 + (red * 0.45 - 1050) * 0.85 && !st.hold && !TIRE.lit && V.modern && (() => { let k = st.g - 1; while (k > 1 && rpmIn(k - 1) < up * 0.82) k--; if (k < st.g - 1 && rpmIn(k) < up * 0.82) { st.kd = k; return true; } return false; })()) { st.g = st.kd; st.shT = V.shiftT * 1.25; st.hold = 0.5; st.lock = false; if (mode === 'clutch') st.ce = 0; }
+        else if (st.g > 1 && rpmIn(st.g) < dn && rpmIn(st.g - 1) < up * 0.8 && !st.hold && !TIRE.lit && !(gas > 0.85 && V.modern && st.g > 2)) { st.g--; st.shT = V.shiftT * 0.8; st.hold = 0.4; st.lock = false; if (mode === 'clutch') st.ce = 0; }
         if (Math.abs(u) < 1 && Math.abs(wIn) * V.R[2] < 1.5) st.g = 1;
         G = V.auto[st.g - 1] * V.fd;
       }
@@ -18959,6 +18962,13 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       #ybhud .tree i{width:9px;height:9px;border-radius:50%;background:#2a2a2e;display:block}
       #ybhud .msg{position:absolute;top:30%;left:0;right:0;text-align:center;font-family:Bungee,Impact,sans-serif;font-size:clamp(26px,7vw,58px);text-shadow:0 4px 18px #000}
       #ybhud .sub{position:absolute;top:calc(30% + clamp(36px,9vw,72px));left:8%;right:8%;text-align:center;font:600 17px "Barlow Condensed",sans-serif;text-shadow:0 2px 8px #000}
+      #ybhud .roll{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 82px);transform:translateX(-50%);width:min(400px,94vw);display:flex;flex-wrap:wrap;gap:4px 6px}#ybhud .roll[hidden]{display:none}
+      #ybhud .roll .rb{background:rgba(18,16,22,.82);border:1px solid #3a3244;border-radius:10px;padding:1px 8px;text-align:center;min-width:58px}#ybhud .roll .rb b{display:block;font-size:19px;line-height:1.1;font-variant-numeric:tabular-nums}
+      #ybhud .roll .rb span{font-size:10px;letter-spacing:.06em;color:#a89fb2;text-transform:uppercase;white-space:nowrap}#ybhud .roll .rb.ok{border-color:#3ad16a}#ybhud .roll .rb.ok b{color:#5df08a}#ybhud .roll .rb.sl{background:#c8221a;border-color:#ff5a3a}#ybhud .roll .rb.sl span{color:#fff}
+      #ybhud .roll .ro{flex:1 1 120px;display:flex;align-items:center;justify-content:center;background:rgba(18,16,22,.82);border:1px solid #3a3244;border-radius:10px;padding:2px 8px;font:600 14px "Barlow Condensed",sans-serif;text-align:center}#ybhud .roll .ro.ok{border-color:#3ad16a;color:#5df08a}
+      #ybhud .roll .rbar{position:relative;flex:1 1 100%;height:10px;margin-right:46px;background:rgba(18,16,22,.82);border:1px solid #3a3244;border-radius:6px}#ybhud .roll .rbar i{position:absolute;top:1px;width:10px;height:6px;border-radius:3px;margin-left:-5px}
+      #ybhud .roll .rbar i.me{background:#ffd23a;z-index:1}#ybhud .roll .rbar i.ai{background:#4aa8ff}#ybhud .roll .rbar em{position:absolute;left:100%;top:-3px;margin-left:4px;font:700 10px "Barlow Condensed",sans-serif;letter-spacing:.08em;color:#a89fb2;font-style:normal}#ybhud .roll .rbar em.hit{color:#ffd23a}
+      #ybhud.hr .msg{top:38%}#ybhud.hr .sub{top:calc(38% + clamp(36px,9vw,72px))}
       #ybhud .side{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:42%;display:flex;flex-direction:column;gap:8px;pointer-events:auto}
       #ybhud .side button{background:rgba(18,16,22,.85);color:#f1ece4;border:1px solid #3a3244;border-radius:10px;padding:8px 12px;font:700 15px "Barlow Condensed",sans-serif}
       #ybhud .side button[aria-pressed=true]{background:#ffd23a;color:#141414;border-color:#ffd23a}
@@ -18967,6 +18977,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       #ybhud .slip .hint{font:600 14px "Barlow Condensed",sans-serif;margin:8px 0 0;padding:6px 8px;background:#ece5cf;border-radius:4px}#ybhud .slip .res{font:700 20px "Barlow Condensed",sans-serif;text-align:center;margin:6px 0}
       #ybhud .slip button{width:100%;margin-top:6px;padding:8px;border-radius:8px;border:0;font:700 16px "Barlow Condensed",sans-serif;background:#141414;color:#f6f2e6}#ybhud .slip button+button{background:#d8d0b8;color:#141414}</style>
       <div class="hud"><div><b data-k="mph">0</b><span>mph</span></div><div><b data-k="time">0.000</b><span data-k="tl">et</span></div><div><b data-k="go">—</b><span data-k="gol">to stage</span></div><div data-k="tirebox"><b data-k="tire">—</b><span>tires °F</span></div><div class="tree" data-k="tree"></div></div>
+      <div class="roll" data-k="roll" hidden><div class="rb" data-k="rtb"><b data-k="rtgt">60</b><span data-k="rtl">target</span></div><div class="rb" data-k="rgb"><b data-k="rgear">1</b><span data-k="rrpm">0 rpm</span></div><div class="ro" data-k="ropp"></div><div class="rbar"><i class="me" data-k="rme"></i><i class="ai" data-k="rai"></i><em data-k="rfin">FINISH</em></div></div>
       <div class="msg" data-k="msg"></div><div class="sub" data-k="sub"></div>
       <div class="side"><button data-k="auto" aria-pressed="false">Auto stage</button><button data-k="leave">Leave the lanes</button></div><div class="slip" data-k="slip" hidden></div>`;
     document.body.appendChild(el);
@@ -19318,76 +19329,154 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   // is go; hit the gas before it and you jumped it. The finish is the 1/4 (the EXIT 463 gantry), the 1/2 (the
   // Wheatland Rd overpass) or the mile (the Union Pacific bridge). The other car is the racer's real built car on the
   // same physics (physAs) with their own reaction and pedalling: power, gearing, aero and grip settle it, not a roll.
-  const HR = YB.roll = { on: false, mode: 'roll60', cust: 80, dist: 804.67, zone0: 0, zone1: 0, ai: null };
-  const HR_MODES = { dig: { label: 'Dig', v: 0 }, roll40: { label: '40 roll', v: 40 }, roll60: { label: '60 roll', v: 60 }, custom: { label: 'Custom roll', v: null } };
-  const HR_DISTS = [[402.34, '1/4 mile', 'EXIT 463 gantry'], [804.67, '1/2 mile', 'Wheatland Rd overpass'], [1609.34, '1 mile', 'Union Pacific bridge']];
+  const HR = YB.roll = { on: false, mode: 'roll60', cust: 80, dist: 804.67, custD: 0.6, act: 'auto', zone0: 0, zone1: 0, ai: null, hist: false, rep: null };
+  // Phase 3D: every roll speed from 20 to 70 plus any number you call, and finishes from the 1/8 to a mile or your own
+  const HR_MODES = { dig: { label: 'Dig', v: 0 }, roll20: { label: '20 roll', v: 20 }, roll30: { label: '30 roll', v: 30 }, roll40: { label: '40 roll', v: 40 }, roll50: { label: '50 roll', v: 50 },
+    roll60: { label: '60 roll', v: 60 }, roll70: { label: '70 roll', v: 70 }, custom: { label: 'Custom roll', v: null } };
+  const HR_DISTS = [[201.17, '1/8 mile', 'finish banner'], [402.34, '1/4 mile', 'EXIT 463 gantry'], [804.67, '1/2 mile', 'Wheatland Rd overpass'], [1207.01, '3/4 mile', 'finish banner'],
+    [1609.34, '1 mile', 'Union Pacific bridge'], [-1, 'Custom distance', 'finish banner']];
+  const hrDist = () => HR.dist > 0 ? HR.dist : HR.custD * 1609.34;
+  const hrDistLabel = d => (d = d || hrDist(), (HR_DISTS.find(x => Math.abs(x[0] - d) < 0.5) || [0, `${(d / 1609.34).toFixed(2).replace(/0$/, '')} mile`])[1]);
   const hrV0 = () => { const m = HR_MODES[HR.mode]; return (m.v == null ? HR.cust : m.v) / 2.237; };
   const hrLabel = () => HR.mode === 'custom' ? `${HR.cust} roll` : HR_MODES[HR.mode].label;
+  // how good each racer is: it sets their reaction, how tight they hold the roll, how they feed it in and how they shift
+  const hrTier = s => s < 0.4 ? 'Beginner' : s < 0.6 ? 'Average' : s < 0.8 ? 'Experienced' : 'Pro';
+  const HR_MANUAL = { Twin: true };   // rows his own gears (the Camaro SS has a real 6-speed manual)
+  const HR_RPM = 30 / Math.PI;
   function hrStart(p, opp, again) {
     if (!S.car) return; if (!driving || foot.on) { toast(foot.on ? 'Get in your car first.' : 'Pull up in your car.', 'bad'); return; }
     if (S.car.fuel <= 0) { toast('No gas.', 'bad'); return; }
     if (R.on) ybClose('left');
     if (!spend(opp.wager, `${hrLabel()} vs ${opp.name} on I-20`)) return;
     closeMenu(); hrClear(); ybHud(); showCard(null);
-    const v0 = hrV0(), fA = frontAxle(car && car.userData.model);
+    const v0 = hrV0(), fA = frontAxle(car && car.userData.model), dist = hrDist(), man = HR.act === 'manual' && v0 > 0;
     // where you start: on the line for a dig; far enough back on a roll to pace up and settle before the honks land on the line
-    const x0 = v0 ? HW.S - (v0 * v0 / (2 * 2.2) + v0 * 5 + 40) : HW.S - fA - 0.05, zMe = HW.lanes[1], zAi = HW.lanes[0];
+    const x0 = v0 ? HW.S - (v0 * v0 / (2 * 2.2) + v0 * 5 + 40) - (man ? 140 : 0) : HW.S - fA - 0.05, zMe = HW.lanes[1], zAi = HW.lanes[0];
     Object.assign(drv, { x: x0, z: zMe, yaw: -Math.PI / 2, v: 0, steer: 0 }); physReset(); drv.px = x0; drv.pz = zMe; drv.pv = 0; drv.camYaw = -Math.PI / 2; drv.cam.set(x0 - 11.5, 4.2, zMe); WHEELIE.a = 0;
     car.position.set(drv.x, 0.12, drv.z); car.rotation.y = drv.yaw;
-    const c = racerCar(opp), ai = { r: opp, c, P: perfOf(c), x: x0, z: zAi, v: 0, fA: 1.4, st: null, rt: 0.12 + (1 - (opp.skill || 0.5)) * 0.3 + Math.random() * 0.08, done: null, top: 0, spinT: 0 };
-    ai.slot = putCar(scene, c.id, c.color, m => { m.position.y = 0; applyMotor(m, c); applyDrag(m, c); ai.m = m; ai.fA = frontAxle(m); });
+    const c = racerCar(opp), sk = opp.skill == null ? 0.5 : opp.skill, P = perfOf(c);
+    // their reaction to the third honk: better drivers are quicker and steadier, and a beginner sometimes just misses it
+    const rt = 0.12 + (1 - sk) * 0.3 + Math.random() * 0.08 + (Math.random() < (1 - sk) * 0.25 ? 0.2 + Math.random() * 0.25 : 0);
+    const ai = { r: opp, c, P, x: x0, z: zAi, v: 0, fA: 1.4, st: { v: 0, t: rollingTire(0) }, rt, done: null, top: 0, spinT: 0, sk, gb: null, miss: 0, missTo: 0, shifts: 0, missed: 0, pre: false, kd: false };
+    if (HR_MANUAL[opp.name] && P.veh && P.veh.man && !P.veh.ev) ai.gb = { man: true, g: 1, cut: 0, ev: false };
+    ai.slot = putCar(scene, c.id, c.color, m => { m.position.y = 0; applyMotor(m, c); applyDrag(m, c); ai.m = m; ai.fA = frontAxle(m); if (!v0) ai.x = HW.S - ai.fA - 0.05; });
+    if (!v0) ai.x = HW.S - ai.fA - 0.05;
     ai.slot.rotation.y = -Math.PI / 2; ai.slot.position.set(ai.x, 0.12, ai.z);
-    const dist = HR.dist;
-    Object.assign(HR, { on: true, p, opp, ai, v0, st: v0 ? 'pace' : 'set', t: 0, honks: 0, honkT: null, go: null, goX: null, finX: null, end: 0, shown: false, fA, zone0: x0 - 60, zone1: HW.S + dist + 700,
+    const V = carPerf().veh;
+    Object.assign(HR, { on: true, p, opp, ai, v0, man, dist, st: v0 ? 'pace' : 'set', t: 0, honks: 0, honkT: null, go: null, goX: null, finX: null, end: 0, shown: false, fA, zone0: x0 - 60, zone1: HW.S + dist + 700,
+      red: V ? V.red : 6500, okT: 0, gasT: 0, rec: [], recT: 0, rep: null, prevF: null,
       me: { done: null, rt: null, top: 0, spinT: 0, jump: false, dq: '' }, setT: v0 ? null : 1.4 + Math.random() * 1.2 });
-    // the eastbound side shuts down for the run
+    // the eastbound side shuts down for the run: barricade and barrels behind you, a finish banner at the line
     HT.cars = HT.cars.filter(t => !(t.dir > 0 && t.x > HR.zone0 - 300 && t.x < HR.zone1));
+    try { hrDecor(true, HR.zone0 - 20, HW.S + dist); } catch (e) { console.warn('roll race decor: ' + e.message); }
     window.__drvIn = hrIn;
-    const q = R.q; R.el.hidden = false; document.body.classList.add('yb-on'); q('slip').hidden = true; q('auto').hidden = true; q('leave').hidden = false; q('leave').textContent = 'Call it off'; q('tree').style.display = 'none'; q('tl').textContent = 'time';
-    q('gol').textContent = 'to go'; q('msg').textContent = `vs ${opp.name}`;
-    q('sub').textContent = v0 ? `${hrLabel()}, ${HR_DISTS.find(d => d[0] === dist)[1]}. It paces you up to ${Math.round(v0 * 2.237)} side by side; you steer. Stay off the gas till the third honk.` : `Dig, ${HR_DISTS.find(d => d[0] === dist)[1]}. Sit on the line. Three honks, go on the third.`;
+    const q = R.q; R.el.hidden = false; document.body.classList.add('yb-on'); q('slip').hidden = true; q('auto').hidden = true; q('leave').hidden = false; q('leave').textContent = 'Call it off'; q('tree').style.display = 'none'; q('tirebox').style.display = 'none'; q('tl').textContent = 'time';
+    q('roll').hidden = false; R.el.classList.add('hr'); q('gol').textContent = 'to go'; q('msg').textContent = `vs ${opp.name}`;
+    q('sub').textContent = !v0 ? `Dig, ${hrDistLabel()}. Sit on the line. Three honks, go on the third.`
+      : man ? `${hrLabel()}, ${hrDistLabel()}. You drive it: get on ${Math.round(v0 * 2.237)} side by side and hold it. The honks start when you're both on the number.`
+      : `${hrLabel()}, ${hrDistLabel()}. It paces you up to ${Math.round(v0 * 2.237)} side by side; you steer. Stay off the gas till the third honk.`;
     YB.leaveFn = () => hrClose('left');
-    ybEvent('roll-start', { opp: opp.name, mode: HR.mode, v0, dist });
+    ybEvent('roll-start', { opp: opp.name, mode: HR.mode, v0, dist, man });
   }
-  // the pace car in your right foot: holds the roll speed until the go, but your own gas is yours (and jumps it)
+  // the pace car in your right foot: holds the roll speed until the go, but your own gas is yours (and jumps it).
+  // With "you drive it" there's no pace: your pedals are yours the whole way, and jumping is getting on it early.
   function hrIn() {
     const I = input(); if (!HR.on) return I;
     if (HR.st === 'pace' || HR.st === 'honk' || HR.st === 'set') {
+      if (HR.man) return I;
       if ((I.gas || 0) > 0.5 && (HR.st === 'honk' || HR.st === 'set' && HR.t > 0.6 || HR.st === 'pace' && Math.abs(drv.v - HR.v0) < 3)) { HR.me.jump = true; return I; }
-      if (!HR.v0) return { gas: 0, brake: 0, steer: 0, hb: 0 };
+      if (!HR.v0) return Object.assign({}, I, { gas: 0, brake: 0, steer: 0, hb: 0 });
       const e = HR.v0 - drv.v;
-      return { gas: clamp(0.06 + e * 0.22, 0, drv.v < HR.v0 * 0.6 ? 0.75 : 0.5), brake: e < -1.2 && drv.v > 3 ? clamp(-e * 0.12, 0, 0.4) : 0, steer: I.steer, hb: 0 };
+      return Object.assign({}, I, { gas: clamp(0.06 + e * 0.22, 0, drv.v < HR.v0 * 0.6 ? 0.75 : 0.5), brake: e < -1.2 && drv.v > 3 ? clamp(-e * 0.12, 0, 0.4) : 0, hb: 0 });
     }
     return I;
   }
+  // the racer's feet before the go: hold a speed (their own pedals, their own gearbox)
+  const hrHold = (ai, vT) => { const e = vT - ai.st.v; return { gas: clamp(0.06 + e * 0.22, 0, ai.st.v < vT * 0.6 ? 0.75 : 0.5), brake: e < -1.2 && ai.st.v > 3 ? clamp(-e * 0.12, 0, 0.4) : 0, steer: 0, hb: 0 }; };
+  const hrAiRpm = ai => { const vd = ai.st.t.vd; return vd ? Math.abs(vd.we) * HR_RPM : 800; };
+  const hrAiGear = ai => ai.gb ? ai.gb.g : ai.st.t.vd ? ai.st.t.vd.g : 1;
+  // a manual racer's gear for a speed: the tallest that keeps it above lugging, or the shortest under the shift point
+  function hrGearFor(ai, v, kick) {
+    const V = ai.P.veh, n = V.man.length, rpm = g => v / V.R[2] * V.man[g - 1] * V.fdMan * HR_RPM;
+    if (kick) { for (let g = 1; g <= n; g++) if (rpm(g) < V.red * 0.82) return g; return n; }
+    let best = 1; for (let g = 1; g <= n; g++) if (rpm(g) > 1700) best = g; return best;
+  }
+  // one frame of the racer's car on the same physics as yours, in substeps; feet(t) gives their pedals at time t
+  function hrAiRun(ai, dt, feet) {
+    const T = HR, nS = Math.max(1, Math.ceil(dt / (1 / 240))), k = dt / nS, V = ai.P.veh;
+    for (let i = 0; i < nS; i++) {
+      const tt = T.t - dt + (i + 1) * k, I2 = feet(tt);
+      if (ai.gb) {   // their hands on the shifter: clutch time, shift points by feel, and now and then a missed gear
+        const gb = ai.gb; gb.cut = Math.max(0, gb.cut - k);
+        if (ai.miss > 0) { ai.miss -= k; if (ai.miss <= 0) { gb.g = ai.missTo; gb.cut = 0.15; } }
+        else if (T.go != null && tt - T.go > ai.rt && gb.cut === 0 && gb.g > 0 && ai.done == null) {
+          const vd = ai.st.t.vd, rpm = vd ? Math.abs(vdOmegaIn(V, vd)) * V.man[Math.min(gb.g, V.man.length) - 1] * V.fdMan * HR_RPM : 800;   // what the gear does to the motor once the clutch is in, not the flare mid-shift
+          if (!ai.kd && T.v0) { ai.kd = true; const g = hrGearFor(ai, ai.st.v, true); if (g < gb.g) { gb.g = g; gb.cut = 0.28 + (1 - ai.sk) * 0.2; } }
+          else if (gb.g < V.man.length && rpm > (ai.shR || (ai.shR = V.red - 120 - (1 - ai.sk) * Math.random() * 700))) {
+            ai.shifts++; ai.shR = 0;
+            if (Math.random() < (1 - ai.sk) * 0.3) { ai.missed++; ai.missTo = gb.g + 1; gb.g = 0; ai.miss = 0.3 + Math.random() * 0.3; }
+            else { gb.g++; gb.cut = 0.2 + (1 - ai.sk) * 0.22; }
+          }
+        } else if (T.go == null && gb.cut === 0) {
+          const want = hrGearFor(ai, ai.st.v, ai.pre); if (want !== gb.g) { gb.g = want; gb.cut = 0.3; }
+        }
+        I2.gb = gb;
+      }
+      const f0 = ai.x + ai.fA; physAs(ai.st, I2, ai.P, k); ai.st.v = Math.max(0, ai.st.v); ai.x += ai.st.v * k;
+      const f1 = ai.x + ai.fA;
+      if (T.go != null && ai.done == null && T.finX != null) {
+        ai.top = Math.max(ai.top, ai.st.v); if (ai.st.t.spin > 0.5) ai.spinT += k;
+        if (f1 >= T.finX) { ai.done = tt - k - T.go + clamp((T.finX - f0) / Math.max(1e-4, f1 - f0), 0, 1) * k; ai.mph = ai.st.v * 2.237; ybEvent('finish', { lane: 'ai', t: ai.done }); }
+      }
+    }
+    ai.v = ai.st.v;
+  }
   function hrClear() { if (HR.ai && HR.ai.slot) { HR.ai.slot.userData.dead = true; scene.remove(HR.ai.slot); } HR.ai = null; if (window.__drvIn === hrIn) window.__drvIn = null; }
   function hrClose(why) {
-    if (!HR.on) return; HR.on = false; if (window.__drvIn === hrIn) window.__drvIn = null;
+    if (!HR.on) return; if (HR.rep) hrReplayEnd(); HR.on = false; if (window.__drvIn === hrIn) window.__drvIn = null;
     // the racer keeps going down the road and gets off at the next exit
     if (HR.ai && why === 'drive') { HR.ghost = HR.ai; HR.ai = null; } else hrClear();
-    YB.leaveFn = null; if (R.el) { R.el.hidden = true; R.q('tree').style.display = ''; R.q('tl').textContent = 'et'; R.q('leave').textContent = 'Leave the lanes'; } document.body.classList.remove('yb-on');
+    try { hrDecor(false); } catch (e) {}
+    YB.leaveFn = null; if (R.el) { R.el.hidden = true; R.q('tree').style.display = ''; R.q('tirebox').style.display = ''; R.q('tl').textContent = 'et'; R.q('leave').textContent = 'Leave the lanes'; R.q('roll').hidden = true; R.el.classList.remove('hr'); } document.body.classList.remove('yb-on');
     ybEvent('roll-end', { why });
   }
   function hrStep(dt) {
     const T = HR, q = R.q, me = T.me, ai = T.ai; T.t += dt;
-    const front = drv.x + T.fA, v = Math.max(0, drv.v);
-    if (me.jump && (T.st === 'pace' || T.st === 'honk' || T.st === 'set')) { T.st = 'done'; T.end = T.t; T.goX = front; q('msg').textContent = 'YOU JUMPED IT'; }
-    // before the go: the racer rides even with you
-    if (ai && (T.st === 'pace' || T.st === 'honk' || T.st === 'set')) { ai.v = v; ai.x = front - ai.fA; if (ai.m) spinWheels(ai.m, v * dt); }
-    if (T.st === 'pace' && front >= HW.S - 1.25 * Math.max(v, 5) && (Math.abs(v - T.v0) < 2.5 || front > HW.S - 20)) { T.st = 'honk'; T.honkT = T.t; q('msg').textContent = ''; q('sub').textContent = ''; }
+    const front = drv.x + T.fA, v = Math.max(0, drv.v), pre = T.st === 'pace' || T.st === 'honk' || T.st === 'set', I = input();
+    // "you drive it": jumping is getting on it before the third honk (speed running away from the number, or holding the gas down)
+    if (T.man && T.st === 'honk') { T.gasT = (I.gas || 0) > 0.85 ? T.gasT + dt : 0; if (v > T.v0 + 2 || T.gasT > 0.35) me.jump = true; }
+    if (me.jump && pre) { T.st = 'done'; T.end = T.t; T.goX = front; q('msg').textContent = 'YOU JUMPED IT'; }
+    // before the go: the racer drives alongside on their own physics, holding the number and closing the gap to you
+    if (ai && pre && T.st !== 'done') {
+      const gap = front - (ai.x + ai.fA), kG = 0.3 + 0.5 * ai.sk;
+      if (T.v0) { const vT = clamp(v + clamp(gap * kG, -2.5, 2.5), 0, T.v0 + 2); hrAiRun(ai, dt, () => hrHold(ai, vT)); }
+      else { ai.st.v = 0; ai.v = 0; hrAiRun(ai, dt, () => ({ gas: 0, brake: 0.6, steer: 0, hb: 0 })); ai.x = Math.min(ai.x, HW.S - ai.fA - 0.05); }
+    }
+    const aiF = ai ? ai.x + ai.fA : front, ready = !ai || (!T.v0 ? true : Math.abs(ai.v - T.v0) < 0.9 && Math.abs(front - aiF) < 1.2);
+    if (T.st === 'pace' && !T.man && front >= HW.S - 1.25 * Math.max(v, 5) && (Math.abs(v - T.v0) < 2.5 || front > HW.S - 20)) { T.st = 'honk'; T.honkT = T.t; q('msg').textContent = ''; q('sub').textContent = ''; }
+    if (T.st === 'pace' && T.man) {
+      const on = Math.abs(v - T.v0) < 0.9 && ready && front > HW.S - 260;
+      T.okT = on ? T.okT + dt : 0;
+      if (T.okT > 0.8) { T.st = 'honk'; T.honkT = T.t; q('msg').textContent = ''; q('sub').textContent = 'Hold it…'; }
+      else if (front > HW.S + 320) {   // never settled on the number: nobody raced, nobody pays
+        earn(T.opp.wager, 'Roll race called off'); toast(`Never got on ${Math.round(T.v0 * 2.237)} together. Called off, money back.`, 'bad'); hrClose('left'); return;
+      }
+    }
     if (T.st === 'set' && T.t > T.setT) { T.st = 'honk'; T.honkT = T.t; q('sub').textContent = ''; }
     if (T.st === 'honk') {
       const a = T.t - T.honkT;
-      while (T.honks < 3 && a >= T.honks * 0.6) { honk(T.honks === 2 ? 0.42 : 0.22); T.honks++; q('msg').textContent = ['HONK', 'HONK', 'GO!'][T.honks - 1]; }
+      while (T.honks < 3 && a >= T.honks * 0.6) {
+        honk(T.honks === 2 ? 0.42 : 0.22); T.honks++; q('msg').textContent = ['HONK', 'HONK', 'GO!'][T.honks - 1];
+        if (T.honks === 2 && ai && ai.gb && ai.sk >= 0.6 && T.v0) ai.pre = true;   // a good manual driver grabs the gear before the go
+      }
       if (T.honks === 3) {
-        T.st = 'run'; T.go = T.t; T.goX = front; T.finX = front + T.dist0(); window.__drvIn = null;
-        if (ai) ai.st = { v: ai.v, t: rollingTire(ai.v) };
+        T.st = 'run'; T.go = T.t; T.goX = front; T.finX = front + T.dist; window.__drvIn = null;
+        try { hrDecor(true, null, T.finX); } catch (e) {}
         ybEvent('roll-go', { x: T.goX });
       }
     }
     if (T.st === 'run' || T.st === 'done') {
-      const I = input();
-      if (me.rt == null && T.go != null && (I.gas || 0) > 0.5) me.rt = T.t - T.go;
+      if (me.rt == null && T.go != null && (I.gas || 0) > 0.8) me.rt = T.t - T.go;
       if (me.done == null && T.go != null && !me.jump) {
         me.top = Math.max(me.top, v); if (TIRE.spin > 0.5) me.spinT += dt;
         const pf = T.prevF != null ? T.prevF : front;
@@ -19395,34 +19484,57 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         if (!me.dq && (drv.hitting || Math.abs(drv.z - HW.z) > 15)) me.dq = 'Put it in the wall';
         if (!me.dq && ai && Math.abs(drv.z - ai.z) < 1.95 && Math.abs(front - (ai.x + ai.fA)) < 4.6) { me.dq = 'Got into ' + T.opp.name + "'s lane and made contact"; wearDrive(0, 0, 8); }
       }
-      if (ai && ai.st) {
-        const since = T.t - T.go, nS = Math.max(1, Math.ceil(dt / (1 / 240))), k = dt / nS, spin = ai.st.t.spin > 0.5, skill = T.opp.skill || 0.5;
-        const gas = ai.done != null ? 0 : since < ai.rt ? (T.v0 ? 0.18 : 0) : spin ? 1 - 0.45 * skill : 1;
-        const I2 = { gas, brake: ai.done != null && ai.st.v > 27 ? 0.25 : 0, steer: 0, hb: 0 };
-        for (let i = 0; i < nS; i++) {
-          const f0 = ai.x + ai.fA; physAs(ai.st, I2, ai.P, k); ai.st.v = Math.max(0, ai.st.v); ai.x += ai.st.v * k;
-          const f1 = ai.x + ai.fA;
-          if (ai.done == null) { ai.top = Math.max(ai.top, ai.st.v); if (ai.st.t.spin > 0.5) ai.spinT += k; if (f1 >= T.finX) { ai.done = since - dt + (i + clamp((T.finX - f0) / Math.max(1e-4, f1 - f0), 0, 1)) * k; ai.mph = ai.st.v * 2.237; ybEvent('finish', { lane: 'ai', t: ai.done }); } }
-        }
-        ai.v = ai.st.v;
+      if (ai && T.go != null) {
+        const sk = ai.sk;
+        // after the go: they hold the number till they react, then floor it (a pro feeds it in when a slow roll would spin
+        // the tires, a beginner stabs it), and pedal it when it spins; shifting is the box's, or their own hand on a manual
+        hrAiRun(ai, dt, tt => {
+          const since = tt - T.go;
+          if (ai.done != null) return { gas: 0, brake: ai.st.v > 27 ? 0.25 : 0, steer: 0, hb: 0 };
+          if (since < ai.rt || me.jump && T.st === 'done' && since < 0.6) return T.v0 ? hrHold(ai, T.v0) : { gas: 0, brake: 0.6, steer: 0, hb: 0 };
+          const ramp = T.v0 > 15.6 ? 0.05 : 0.05 + 0.25 * sk;
+          let g = clamp((since - ai.rt) / ramp, 0, 1); if (ai.st.t.spin > 0.5) g = Math.min(g, 1 - 0.45 * sk);
+          return { gas: g, brake: 0, steer: 0, hb: 0 };
+        });
         if (ai.m) { spinWheels(ai.m, ai.v * dt); ai.m.rotation.z += (clamp(-ai.st.t.ax * 0.004, -0.04, 0.04) - ai.m.rotation.z) * Math.min(1, dt * 7); }
-      }
+      } else if (ai && T.v0) { hrAiRun(ai, dt, () => hrHold(ai, T.v0)); if (ai.m) spinWheels(ai.m, ai.v * dt); }
       if (T.st === 'run' && (me.done != null || me.dq)) { T.st = 'done'; T.end = T.t; }
       if (T.st === 'run' && ai && ai.done != null && T.t - T.go - ai.done > 10) { me.dq = me.dq || `${T.opp.name} was long gone`; T.st = 'done'; T.end = T.t; }
       if (T.st === 'done' && !T.shown && (T.t - T.end > 2.5 || (!ai || ai.done != null) && T.t - T.end > 0.6 || me.jump && T.t - T.end > 1.2)) hrEnd();
       // the gap, in car lengths
       if (T.st === 'run' && ai && T.go != null) { const lead = front - (ai.x + ai.fA); q('sub').textContent = Math.abs(lead) < 0.8 ? 'Dead even' : `${lead > 0 ? 'You' : T.opp.name} by ${(Math.abs(lead) / 4.9).toFixed(1)} car${Math.abs(lead) / 4.9 >= 1.05 ? 's' : ''}`; if (T.t - T.go > 0.9) q('msg').textContent = ''; }
-    }
+    } else if (ai && ai.m) spinWheels(ai.m, ai.v * dt);
     if (ai && ai.slot) ai.slot.position.set(ai.x, 0.12, ai.z);
+    // the replay tape: both cars, 30 times a second, from the honks to the end
+    if (T.st !== 'pace' && T.rec.length < 4000 && T.t - T.recT >= 1 / 30) { T.recT = T.t; T.rec.push([T.t, drv.x, drv.z, drv.yaw, ai ? ai.x : drv.x, ai ? ai.z : drv.z, v, ai ? ai.v : 0]); }
     T.prevF = front;
     q('mph').textContent = Math.round(v * 2.237);
     q('time').textContent = T.go == null ? '0.000' : (me.done != null ? me.done : T.t - T.go).toFixed(3);
     q('go').textContent = T.finX != null ? Math.max(0, Math.round((T.finX - front) * 3.281)) + ' ft' : Math.max(0, Math.round((HW.S - front) * 3.281)) + ' ft';
     q('gol').textContent = T.finX != null ? 'to go' : 'to the line';
+    hrHud(front, aiF, v, ready);
+    if (HRD.lamps.length) { const on = (T.t * 2) % 1 < 0.5; for (const l of HRD.lamps) l.visible = on; }
   }
-  HR.dist0 = () => HR.dist;
+  // the roll race strip under the scoreboard: the number, your gear and rpm (with a shift light), the other car, the run
+  function hrHud(front, aiF, v, ready) {
+    const T = HR, q = R.q, ai = T.ai, vd = TIRE.vd, I = input();
+    const rpm = vd ? Math.abs(vd.we) * HR_RPM : 0, g = I.gb && I.gb.man ? (I.gb.g > 0 ? I.gb.g : I.gb.g === -1 ? 'R' : 'N') : (TIRE.gA || 1);
+    q('rtgt').textContent = T.v0 ? Math.round(T.v0 * 2.237) : 'DIG';
+    q('rtl').textContent = T.v0 ? (T.go == null ? (Math.abs(v - T.v0) < 0.9 ? 'on it' : v < T.v0 ? 'get up to it' : 'too fast') : 'the roll') : 'from a stop';
+    q('rtb').classList.toggle('ok', !!T.v0 && T.go == null && Math.abs(v - T.v0) < 0.9);
+    q('rgear').textContent = g; q('rrpm').textContent = Math.round(rpm / 50) * 50 + ' rpm';
+    q('rgb').classList.toggle('sl', rpm > T.red * 0.92);
+    if (ai) {
+      const ag = hrAiGear(ai), amph = Math.round(ai.v * 2.237);
+      q('ropp').textContent = T.go == null ? `${T.opp.name} · ${hrTier(ai.sk)} · ${ready ? 'READY' : amph + ' mph'}` : ai.done != null ? `${T.opp.name} · finished ${ai.done.toFixed(3)}` : `${T.opp.name} · ${amph} mph · ${ag > 0 ? 'gear ' + ag : 'NEUTRAL'}`;
+      q('ropp').classList.toggle('ok', T.go == null && ready);
+    }
+    const base = T.goX != null ? T.goX : HW.S, D = T.dist, pc = x => clamp((x - base) / D, 0, 1) * 100 + '%';
+    q('rme').style.left = pc(front); q('rai').style.left = pc(aiF);
+    q('rfin').classList.toggle('hit', T.me.done != null || (ai && ai.done != null));
+  }
   function hrEnd() {
-    const T = HR, me = T.me, ai = T.ai, r = T.opp, q = R.q; if (T.shown) return; T.shown = true; T.st = 'done'; q('leave').hidden = true;
+    const T = HR, me = T.me, ai = T.ai, r = T.opp, q = R.q; if (T.shown) return; T.shown = true; T.st = 'done'; q('leave').hidden = true; q('roll').hidden = true;
     const won = !me.jump && !me.dq && me.done != null && (!ai || ai.done == null || me.done < ai.done);
     let res, rep = 0, cash = 0;
     if (me.jump) res = `You jumped it. ${r.name} keeps the money.`;
@@ -19431,38 +19543,107 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     else res = me.done == null ? `${r.name} takes it.` : `${r.name} by ${(me.done - ai.done).toFixed(3)}s`;
     if (won) { S.rep += rep; earn(cash, `${hrLabel()} win vs ${r.name} on I-20`); S.streetWins = (S.streetWins || 0) + 1; }
     S.streetRuns = (S.streetRuns || 0) + 1;
-    const key = (T.v0 ? Math.round(T.v0 * 2.237) : 0) + ':' + T.dist; S.rollBest = S.rollBest || {}; let pb = false;
+    const key = (T.v0 ? Math.round(T.v0 * 2.237) : 0) + ':' + Math.round(T.dist * 100) / 100; S.rollBest = S.rollBest || {}; let pb = false;
     if (!me.jump && !me.dq && me.done != null) { const b = S.rollBest[key]; if (!b || me.done < b.t) { S.rollBest[key] = { t: me.done, mph: me.mph }; pb = true; } }
+    // the record and the last 30 races
+    S.rollRec = S.rollRec || { w: 0, l: 0 }; if (won) S.rollRec.w++; else S.rollRec.l++;
+    S.rollHist = S.rollHist || []; S.rollHist.unshift({ day: S.day || (S.time && S.time.day) || 0, roll: T.v0 ? Math.round(T.v0 * 2.237) : 0, dist: hrDistLabel(T.dist), opp: r.name, car: S.car.id,
+      me: me.done != null ? +me.done.toFixed(3) : null, them: ai && ai.done != null ? +ai.done.toFixed(3) : null, rt: me.rt != null ? +me.rt.toFixed(3) : null, won, why: me.jump ? 'jump' : me.dq || '', man: T.man });
+    if (S.rollHist.length > 30) S.rollHist.length = 30;
     save(); refreshStats();
     q('msg').textContent = me.jump ? 'JUMPED' : won ? 'WIN' : 'LOST'; q('sub').textContent = '';
-    const mph = x => x ? Math.round(x * 2.237) + ' mph' : '—', row = (a, b, c) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`, d = HR_DISTS.find(x => x[0] === T.dist);
+    const mph = x => x ? Math.round(x * 2.237) + ' mph' : '—', row = (a, b, c) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`, dl = hrDistLabel(T.dist);
     const rows = [['Start', T.v0 ? mph(T.v0) : 'from a stop', T.v0 ? mph(T.v0) : 'from a stop'], ['Reaction', me.jump ? 'JUMPED' : me.rt != null ? me.rt.toFixed(3) : '—', ai ? ai.rt.toFixed(3) : '—'],
-      [`${d[1]} time`, me.done != null ? me.done.toFixed(3) : '—', ai && ai.done != null ? ai.done.toFixed(3) : '—'], ['At the line', me.mph ? me.mph.toFixed(1) + ' mph' : '—', ai && ai.mph ? ai.mph.toFixed(1) + ' mph' : '—'], ['Top speed', mph(me.top), ai ? mph(ai.top) : '—']];
+      [`${dl} time`, me.done != null ? me.done.toFixed(3) : '—', ai && ai.done != null ? ai.done.toFixed(3) : '—'], ['At the line', me.mph ? me.mph.toFixed(1) + ' mph' : '—', ai && ai.mph ? ai.mph.toFixed(1) + ' mph' : '—'], ['Top speed', mph(me.top), ai ? mph(ai.top) : '—']];
+    if (ai && ai.gb) rows.push(['Shifts', '—', `${ai.shifts}${ai.missed ? ` (${ai.missed} missed)` : ''}`]);
     const oc = racerCar(r), hpM = carHp(S.car), hpO = carHp(oc);
-    const hint = me.jump ? (T.v0 ? 'Wait for the third honk. The pace holds your speed till then.' : 'Wait for the third honk.')
+    const hint = me.jump ? (T.man ? 'Hold the number through all three honks; get on it on the third.' : T.v0 ? 'Wait for the third honk. The pace holds your speed till then.' : 'Wait for the third honk.')
       : me.dq ? (me.dq.startsWith('Wrecked') ? 'Traffic is shut down ahead of a race, but not behind you.' : 'Hold your lane: small steering at speed.')
       : me.spinT > 0.4 ? `Your tires spun for ${me.spinT.toFixed(1)}s off the hit. ${dragPack(S.car) ? 'Drop the rear pressure or soften the rear.' : 'A drag pack or a softer rear would hook it.'}`
       : me.rt != null && me.rt > 0.5 ? `Late on the third honk (${me.rt.toFixed(2)}s). ${r.name} got a jump on you.`
-      : !won && me.done != null ? (T.dist > 1000 || T.v0 > 26 ? `Up top it's power and aero: ${r.name} has ${hpO} hp to your ${hpM}. More motor, or taller gears so it doesn't run out of rpm.` : `${r.name} has ${hpO} hp to your ${hpM}, and gearing that keeps it in the meat of the powerband.`) : '';
+      : ai && ai.missed && won ? `${r.name} missed a shift.` : !won && me.done != null ? (T.dist > 1000 || T.v0 > 26 ? `Up top it's power and aero: ${r.name} has ${hpO} hp to your ${hpM}. More motor, or taller gears so it doesn't run out of rpm.` : `${r.name} has ${hpO} hp to your ${hpM}, and gearing that keeps it in the meat of the powerband.`) : '';
     const el = q('slip'); el.hidden = false;
-    el.innerHTML = `<h3>I-20 ROLL RACE · ${hrLabel().toUpperCase()} · ${d[1].toUpperCase()}</h3><table><tr><th></th><th>You</th><th>${r.name}</th></tr>${rows.map(x => row(...x)).join('')}</table>
+    el.innerHTML = `<h3>I-20 ROLL RACE · ${hrLabel().toUpperCase()} · ${dl.toUpperCase()}</h3><div class="sm">${r.name} · ${hrTier(T.ai ? T.ai.sk : r.skill)} · ${carLabel(carOf(oc.id))}</div><table><tr><th></th><th>You</th><th>${r.name}</th></tr>${rows.map(x => row(...x)).join('')}</table>
       ${hint ? `<div class="hint">${hint}</div>` : ''}<div class="res">${res}${pb ? ' · new best' : ''}${rep ? ` · +${rep} rep` : ''}${cash ? ` · +${money(cash)}` : ''}</div>
-      <button data-a="again">Run it back (${money(r.wager)})</button><button data-a="drive">Keep driving</button><button data-a="line">Back to the marker</button>`;
+      <button data-a="again">Run it back (${money(r.wager)})</button><button data-a="rep">Watch the replay</button><button data-a="drive">Keep driving</button><button data-a="line">Back to the marker</button>`;
     el.querySelector('[data-a="again"]').onclick = () => { const p = T.p; hrClose('again'); hrStart(p, r, true); };
+    el.querySelector('[data-a="rep"]').onclick = () => hrReplayStart();
     el.querySelector('[data-a="drive"]').onclick = () => hrClose('drive');
     el.querySelector('[data-a="line"]').onclick = () => { const p = T.p; hrClose('line'); hrPark(); openMenu(() => hrMenu(p)); };
-    ybEvent('roll-result', { won, me: { t: me.done, rt: me.rt, jump: me.jump }, ai: ai && { t: ai.done, rt: ai.rt } });
+    ybEvent('roll-result', { won, me: { t: me.done, rt: me.rt, jump: me.jump }, ai: ai && { t: ai.done, rt: ai.rt, shifts: ai.shifts, missed: ai.missed } });
+  }
+  // the replay: both cars off the tape, side-on from the median, then back to the slip (the physics waits)
+  function hrReplayStart() {
+    const T = HR; if (!T.rec || T.rec.length < 10) { toast('Nothing on the tape.', 'bad'); return; }
+    const q = R.q; T.rep = { t: T.rec[0][0], i: 0 }; q('slip').hidden = true; q('msg').textContent = ''; q('sub').textContent = 'REPLAY'; q('leave').hidden = false; q('leave').textContent = 'End replay'; YB.leaveFn = hrReplayEnd;
+    if (T.finX != null) try { hrDecor(true, null, T.finX); } catch (e) {}
+  }
+  function hrReplay(dt) {
+    const T = HR, r = T.rep, a = T.rec; r.t += dt;
+    while (r.i < a.length - 2 && a[r.i + 1][0] < r.t) r.i++;
+    const s0 = a[r.i], s1 = a[Math.min(a.length - 1, r.i + 1)], f = clamp((r.t - s0[0]) / Math.max(1e-6, s1[0] - s0[0]), 0, 1), L = j => s0[j] + (s1[j] - s0[j]) * f;
+    const mx = L(1), mz = L(2), ax = L(4), az = L(5);
+    car.position.set(mx, 0.12, mz); car.rotation.y = L(3); spinWheels(car.userData.model, L(6) * dt);
+    if (T.ai && T.ai.slot) { T.ai.slot.position.set(ax, 0.12, az); spinWheels(T.ai.m, L(7) * dt); }
+    const cx = (mx + ax) / 2 + T.fA;
+    camera.position.set(cx - 9, 4.2, HW.lanes[2] + 11); camera.lookAt(cx + 3, 0.8, (mz + az) / 2);   // up on the outside shoulder, over the rail camera.updateMatrixWorld();
+    const tg = T.go != null ? r.t - T.go : null; R.q('time').textContent = tg == null || tg < 0 ? '0.000' : tg.toFixed(3); R.q('mph').textContent = Math.round(L(6) * 2.237);
+    if (r.t >= a[a.length - 1][0]) hrReplayEnd();
+  }
+  function hrReplayEnd() {
+    const T = HR; if (!T.rep) return; T.rep = null; const q = R.q;
+    car.position.set(drv.x, 0.12, drv.z); car.rotation.y = drv.yaw; if (T.ai && T.ai.slot) T.ai.slot.position.set(T.ai.x, 0.12, T.ai.z);
+    q('slip').hidden = false; q('msg').textContent = T.me.jump ? 'JUMPED' : ''; q('leave').hidden = true; q('leave').textContent = 'Call it off'; YB.leaveFn = () => hrClose('left');
+  }
+  // the event closure: barrels and a ROAD CLOSED board across the eastbound lanes behind the start, amber lamps, and a
+  // checkered finish banner and line across the road at the finish (built once, shown during a race)
+  const HRD = { g: null, back: null, fin: null, lamps: [] };
+  function hrCanvas(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t; }
+  function hrDecorBuild() {
+    const g = HRD.g = new THREE.Group(), z0 = HW.lanes[0] - 2.2, z1 = HW.lanes[2] + 2.2, span = z1 - z0, zc = (z0 + z1) / 2;
+    const orange = new THREE.MeshStandardMaterial({ color: 0xff6a10, roughness: 0.6 }), white = new THREE.MeshStandardMaterial({ color: 0xf4f4f0, roughness: 0.5 }), post = new THREE.MeshStandardMaterial({ color: 0x9a9da3, metalness: 0.6, roughness: 0.4 });
+    // behind the start: barrels and a closure board, facing traffic coming from the west
+    const back = HRD.back = new THREE.Group(), bG = new THREE.CylinderGeometry(0.29, 0.31, 0.95, 14), rG = new THREE.CylinderGeometry(0.305, 0.305, 0.12, 14);
+    for (let z = z0 + 0.4; z <= z1 - 0.3; z += 1.45) { const b = new THREE.Mesh(bG, orange); b.position.set(-1.2, 0.6, z); back.add(b); for (const y of [0.42, 0.72]) { const r = new THREE.Mesh(rG, white); r.position.set(-1.2, 0.13 + y, z); back.add(r); } }
+    const sign = hrCanvas(1024, 160, (x, w, h) => { x.fillStyle = '#f4f4f0'; x.fillRect(0, 0, w, h); for (let i = -2; i < 22; i++) { x.fillStyle = i % 2 ? '#ff6a10' : '#f4f4f0'; x.beginPath(); x.moveTo(i * 56, 0); x.lineTo(i * 56 + 28, 0); x.lineTo(i * 56 - 12, h); x.lineTo(i * 56 - 40, h); x.fill(); }
+      x.fillStyle = '#141414'; x.fillRect(150, 26, w - 300, h - 52); x.fillStyle = '#ffd23a'; x.font = 'bold 66px Impact, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('ROAD CLOSED · RACE EVENT', w / 2, h / 2 + 3); });
+    const bm = new THREE.MeshStandardMaterial({ map: sign, roughness: 0.6 }), board = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, span * 0.92), [white, bm, white, white, white, white]);
+    board.position.set(0, 1.55, zc); back.add(board);
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.0, 0.1), post); p.position.set(0, 1.0, zc + s * span * 0.44); back.add(p);
+      const l = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffb020 })); l.position.set(-0.08, 2.12, zc + s * span * 0.44); back.add(l); HRD.lamps.push(l); }
+    g.add(back);
+    // the finish: two poles, a checkered banner and a checkered stripe on the road
+    const fin = HRD.fin = new THREE.Group(), chk = hrCanvas(512, 64, (x, w, h) => { for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#111' : '#f4f4f0'; x.fillRect(i * 32, j * 32, 32, 32); } });
+    const ban = hrCanvas(1024, 128, (x, w, h) => { x.fillStyle = '#111'; x.fillRect(0, 0, w, h); for (let i = 0; i < 32; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2) { x.fillStyle = '#f4f4f0'; x.fillRect(i * 32, j * 32, 32, 32); }
+      x.fillStyle = '#111'; x.fillRect(300, 14, 424, 100); x.fillStyle = '#ffd23a'; x.font = 'bold 76px Impact, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('FINISH', w / 2, h / 2 + 4); });
+    const banM = new THREE.MeshStandardMaterial({ map: ban, roughness: 0.6 }), banner = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, span), [banM, banM, white, white, white, white]);
+    banner.position.set(0, 6.2, zc); fin.add(banner);
+    for (const z of [z0 - 0.3, z1 + 0.3]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 6.8, 10), post); p.position.set(0, 3.4, z); fin.add(p); }
+    chk.wrapS = chk.wrapT = THREE.RepeatWrapping; chk.repeat.set(1, span / 6);
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(1.0, span), new THREE.MeshStandardMaterial({ map: chk, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    line.rotation.x = -Math.PI / 2; line.position.set(0, 0.135, zc); fin.add(line);
+    g.add(fin); g.visible = false; scene.add(g);
+  }
+  function hrDecor(on, xBack, xFin) {
+    if (!on) { if (HRD.g) HRD.g.visible = false; return; }
+    if (!HRD.g) hrDecorBuild();
+    HRD.g.visible = true; if (xBack != null) HRD.back.position.x = xBack; if (xFin != null) HRD.fin.position.x = xFin;
   }
   // back on the shoulder by the marker, stopped, facing east
   function hrPark() { const p = HW.place; Object.assign(drv, { x: p.x, z: HW.lanes[2] + 1.6, yaw: -Math.PI / 2, v: 0, steer: 0 }); physReset(); drv.px = drv.x; drv.pz = drv.z; drv.pv = 0; drv.camYaw = drv.yaw; drv.cam.set(drv.x - 11.5, 4.2, drv.z); car.position.set(drv.x, 0.12, drv.z); car.rotation.y = drv.yaw; }
   function hrMenu(p) {
     if (!S.car) return noCar(p);
-    const keys = Object.keys(HR_MODES), d = HR_DISTS.find(x => x[0] === HR.dist) || HR_DISTS[1], b = (S.rollBest || {})[(HR.mode === 'dig' ? 0 : Math.round(hrV0() * 2.237)) + ':' + HR.dist];
-    const rows = [{ t: HR.mode === 'dig' ? 'Dig · from a stop on the line' : `${hrLabel()} · pace up side by side, go on the third honk`, s: `Tap to switch: ${keys.map(k => k === 'custom' ? 'custom' : HR_MODES[k].label).join(', ')}`, btn: 'Switch', act: () => { HR.mode = keys[(keys.indexOf(HR.mode) + 1) % keys.length]; } }];
-    if (HR.mode === 'custom') rows.push({ t: `Roll speed · ${HR.cust} mph`, s: 'Call your number: 30 to 120', btn: '+10', act: () => { HR.cust = HR.cust >= 120 ? 30 : HR.cust + 10; } });
-    rows.push({ t: `Distance · ${d[1]}`, s: `Finish at the ${d[2]} · tap for 1/4, 1/2 or the mile`, btn: 'Switch', act: () => { const i = HR_DISTS.indexOf(d); HR.dist = HR_DISTS[(i + 1) % HR_DISTS.length][0]; } });
+    const keys = Object.keys(HR_MODES), di = HR_DISTS.findIndex(x => x[0] === HR.dist), dl = hrDistLabel(), b = (S.rollBest || {})[(HR.mode === 'dig' ? 0 : Math.round(hrV0() * 2.237)) + ':' + Math.round(hrDist() * 100) / 100];
+    const rows = [{ t: HR.mode === 'dig' ? 'Dig · from a stop on the line' : `${hrLabel()} · side by side, go on the third honk`, s: `Tap to switch: dig, 20, 30, 40, 50, 60, 70 or custom`, btn: 'Switch', act: () => { HR.mode = keys[(keys.indexOf(HR.mode) + 1) % keys.length]; } }];
+    if (HR.mode === 'custom') rows.push({ t: `Roll speed · ${HR.cust} mph`, s: 'Call your number: 20 to 120', btn: '+5', act: () => { HR.cust = HR.cust >= 120 ? 20 : HR.cust + 5; } });
+    if (HR.mode !== 'dig') rows.push({ t: `Start · ${HR.act === 'auto' ? 'Pace for me' : 'I drive it'}`, s: HR.act === 'auto' ? 'It holds the number for you side by side; you steer, the honks land on the line' : 'No pace: get on the number with them yourself; the honks start when you\'re both on it', btn: 'Switch', act: () => { HR.act = HR.act === 'auto' ? 'manual' : 'auto'; } });
+    rows.push({ t: `Distance · ${dl}`, s: di >= 0 && HR_DISTS[di][0] > 0 ? `Finish at the ${HR_DISTS[di][2]} · tap for 1/8, 1/4, 1/2, 3/4, the mile or your own` : 'Your own distance, on a finish banner', btn: 'Switch', act: () => { HR.dist = HR_DISTS[(Math.max(0, di) + 1) % HR_DISTS.length][0]; } });
+    if (HR.dist < 0) rows.push({ t: `Custom distance · ${(HR.custD).toFixed(2).replace(/0$/, '')} mile (${Math.round(HR.custD * 5280).toLocaleString()} ft)`, s: '0.1 to 1.2 miles', btn: '+0.1', act: () => { HR.custD = HR.custD >= 1.19 ? 0.1 : Math.round((HR.custD + 0.1) * 10) / 10; } });
     for (const r of STREET3D) { const locked = S.rep < r.need;
-      rows.push({ t: `${r.name} "${r.nick}" · ${carLabel(carOf(r.id))}`, s: locked ? `Needs ${r.need} rep` : `${racerBlurb(r)} · win +${r.rep} rep and ${money(r.wager * 2)}`, btn: locked ? 'Locked' : `Race ${money(r.wager)}`, off: locked, act: () => hrStart(p, r) }); }
+      rows.push({ t: `${r.name} "${r.nick}" · ${carLabel(carOf(r.id))}`, s: locked ? `Needs ${r.need} rep` : `${hrTier(r.skill)}${HR_MANUAL[r.name] ? ', rows his own gears' : ''} · ${racerBlurb(r)} · win +${r.rep} rep and ${money(r.wager * 2)}`, btn: locked ? 'Locked' : `Race ${money(r.wager)}`, off: locked, act: () => hrStart(p, r) }); }
+    const rec = S.rollRec || { w: 0, l: 0 }, H = S.rollHist || [];
+    rows.push({ t: `Your record · ${rec.w}-${rec.l}`, s: H.length ? `Last: ${H[0].won ? 'W' : 'L'} vs ${H[0].opp}, ${H[0].roll ? H[0].roll + ' roll' : 'dig'} ${H[0].dist}${H[0].me != null ? ' in ' + H[0].me.toFixed(3) : ''}` : 'No roll races yet', btn: HR.hist ? 'Hide' : 'History', off: !H.length, act: () => { HR.hist = !HR.hist; } });
+    if (HR.hist) for (const h of H.slice(0, 10)) rows.push({ t: `${h.won ? 'WIN' : 'LOSS'} · ${h.roll ? h.roll + ' roll' : 'Dig'} · ${h.dist} · vs ${h.opp}`, s: h.why === 'jump' ? 'Jumped it' : h.why ? h.why : `You ${h.me != null ? h.me.toFixed(3) : '—'} · them ${h.them != null ? h.them.toFixed(3) : '—'}${h.rt != null ? ` · RT ${h.rt.toFixed(3)}` : ''}`, btn: '', off: true });
     return { title: p.name, sub: `Rep ${S.rep} · you: ${carHp(S.car)} hp${b ? ` · your best here ${b.t.toFixed(3)}s` : ''} · eastbound gets shut down for the run`, rows };
   }
   const _hrMenuRace = MENUS.race;
@@ -19484,6 +19665,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   const _ybStepDrive = stepDrive;
   stepDrive = function (dt) {
     if (YB.test && YB.test.manual && !YB.test.inTick) return;
+    if (HR.rep) { try { hrReplay(dt); } catch (e) { console.warn('roll replay: ' + e.message); HR.rep = null; } return; }
     const s = YB.built && S.car ? ybSurf(drv.x, drv.z) : 0;
     if (s === 1) SURF.prep = 1; else if (s === 2) { SURF.mu = 0.45; SURF.box = 1; }
     R.acc = 0; window.__vdTap = meTap;
