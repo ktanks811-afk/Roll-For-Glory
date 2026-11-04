@@ -6941,6 +6941,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     if (c && engDefOf(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-lab="1">Engine Lab</button>`); el.querySelector('[data-lab]').onclick = () => { $('carpanel').hidden = true; labOpen(); }; }
     if (c && !isEV(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-nx="1">Nitrous</button>`); el.querySelector('[data-nx]').onclick = () => { $('carpanel').hidden = true; nxOpen(); }; }
     if (c && engDefOf(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-fi="1">Boost</button>`); el.querySelector('[data-fi]').onclick = () => { $('carpanel').hidden = true; fiOpen(); }; }
+    if (c && engDefOf(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-ecu="1">ECU</button>`); el.querySelector('[data-ecu]').onclick = () => { $('carpanel').hidden = true; ecuOpen(); }; }
   }
   function bindCarUI() {
     $('carbtn').onclick = () => { const el = $('carpanel'); el.hidden = !el.hidden; renderCarPanel(); };
@@ -7491,7 +7492,7 @@ registerProcessor('mw-engine', MWEngProc);`;
 #englab .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}#englab .s{background:#1b1622;border:1px solid var(--line);border-radius:9px;padding:5px 8px}#englab .s span{display:block;font-size:11px;color:var(--muted)}#englab .s b{font-size:16px}
 #englab canvas{width:100%;height:210px;background:#15111b;border:1px solid var(--line);border-radius:10px;display:block}#englab .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0}
 #englab .cat{border-top:1px solid var(--line);padding:7px 0}#englab .cat>b{display:block;margin-bottom:4px}#englab .why{font-size:12px;color:#e0a060;margin-top:3px}#englab .warn{color:#ff9a6a;font-size:13px;margin:3px 0}
-#englab .note{font-size:12px;color:var(--muted)}#englab input[type=range]{width:150px}#englab .lg i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin:0 4px 0 10px}`;
+#englab .note{font-size:12px;color:var(--muted)}#englab table.ecut{border-collapse:collapse;margin:6px 0}#englab .ecut th,#englab .ecut td{border:1px solid var(--line);padding:3px 4px;text-align:center;font-size:12px;min-width:62px}#englab .ecut td:first-child{color:var(--muted);min-width:52px}#englab .ecut td b{display:block;font-size:15px;margin:2px 0}#englab .ecut td button{padding:2px 6px;font-size:12px;width:100%}#englab .ecut td small{display:block;color:var(--muted);font-size:11px}#englab input[type=range]{width:150px}#englab .lg i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin:0 4px 0 10px}`;
     document.head.appendChild(st);
   }
   const labCar = b => Object.assign({}, S.car, { eb: b });
@@ -7517,7 +7518,7 @@ registerProcessor('mw-engine', MWEngProc);`;
     const lay = { sbc: 'cross-plane V8, 1-8-4-3-6-5-7-2', ls: 'cross-plane V8, 1-8-7-2-6-5-4-3', coyote: 'cross-plane V8, 1-5-4-8-6-3-7-2', m177: 'hot-vee V8, 1-5-4-8-6-3-7-2', flat8: 'flat-plane V8 (banks alternate)', v6: 'V6, 1-4-2-5-3-6', i4: 'inline-4, 1-3-4-2', i6: 'inline-6, 1-5-3-6-2-4', i3: 'inline-3', f6: 'flat-6', f4: 'flat-4', v10: 'V10', v12: 'V12', vtwin45: '45° V-twin', vtwin90: '90° V-twin', twin: 'parallel twin', single: 'single', v4: 'V4' }[D.fo] || D.fo;
     const price = labPrice(D, cur, Object.assign({}, cur, LAB.draft)), dirty = JSON.stringify(LAB.draft) !== JSON.stringify(c.eb || {});
     const ov = camOverlap(cs), stat = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`;
-    let h = `<div class="hd"><h2>Engine Lab · ${D.name}</h2><button data-tofi>Boost</button><button data-tonx>Nitrous</button><button data-x>Close</button></div>
+    let h = `<div class="hd"><h2>Engine Lab · ${D.name}</h2><button data-toecu>ECU</button><button data-tofi>Boost</button><button data-tonx>Nitrous</button><button data-x>Close</button></div>
 <div class="note">${D.note || ''}</div>
 <h3>Engine</h3><div class="g">${stat('Layout', lay)}${stat('Displacement', (Rd.disp).toFixed(1) + ' L · ' + D.cyl + ' cyl')}${stat('Bore x stroke', L)}${stat('Compression', Rd.cr.toFixed(1) + ':1')}${stat('Valvetrain', D.vt === 'ohv' ? 'Pushrod 2-valve' : 'DOHC 4-valve')}${stat('Fuel', { carb: 'Carburetor', port: 'Port injection', di: 'Direct injection', pfdi: 'Port + direct' }[D.fuel])}${stat('Air', Rd.boostKind ? { roots: 'Roots blower', twinscrew: 'Twin-screw', centri: 'Centrifugal', turbo: 'Turbo' }[Rd.boostKind] + ' ' + Rd.psi.toFixed(1) + ' psi' : 'Naturally aspirated')}${stat('Idle / redline', Rd.idle + ' / ' + Rd.red)}${stat('Inertia', Rd.Ie.toFixed(2) + ' kg·m²')}</div>
 <h3>Cam</h3><div class="g">${stat('Duration @ .050"', cs.dI.toFixed(0) + '° / ' + cs.dE.toFixed(0) + '°')}${stat('Lift', cs.lI.toFixed(3) + '" / ' + cs.lE.toFixed(3) + '"')}${stat('LSA / ICL', cs.lsa.toFixed(1) + '° / ' + cs.icl.toFixed(1) + '°')}${stat('Overlap @ .050"', ov.toFixed(0) + '°')}${stat('Idle vacuum', Rd.vac.toFixed(1) + ' inHg')}${stat('Idle spread (COV)', (Rd.cov * 100).toFixed(1) + '%')}</div>
@@ -7552,6 +7553,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     el.querySelector('[data-x]').onclick = labClose;
     el.querySelector('[data-tonx]').onclick = () => { labClose(); nxOpen(); };
     el.querySelector('[data-tofi]').onclick = () => { labClose(); fiOpen(); };
+    el.querySelector('[data-toecu]').onclick = () => { labClose(); ecuOpen(); };
     el.querySelector('[data-run]').onclick = () => { ENGLAB.prev = !ENGLAB.prev; ENGLAB.thr = 0; labRender(); };
     el.querySelector('[data-run]').textContent = ENGLAB.prev ? 'Shut it off' : 'Run it on the stand';
     const blip = el.querySelector('[data-blip]'); blip.onclick = () => { ENGLAB.thr = 1; setTimeout(() => { if (!LAB.hold) ENGLAB.thr = 0; }, 140); };
@@ -8861,7 +8863,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     D = D || engDefOf(c); const h = D ? engHubBuild(c, D) : {}, eb = c.eb || {};
     const b = Object.assign({}, ENG_STOCK_BUILD, h, eb);
     if (eb.power && eb.power !== h.power) { delete b.psi; delete b.dpsi; }   // a kit put on in the Engine Lab runs its own boost
-    b.hub = (h.hub || []).filter(k => !(k in eb)); return b;
+    b.hub = (h.hub || []).filter(k => !(k in eb)); delete b.ecu; const em = ecuMapOf(c); if (em) b.ecu = em; return b;
   }
   // the cam actually in it
   function camSpec(D, b) {
@@ -8903,6 +8905,46 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   const INTK = { 'dual-plane': { nr: 0.95, kin: 0.03 }, 'tunnel-ram': { nr: 1.15, kin: 0.015 }, blower: { nr: 1.0, kin: 0.02 }, 'ls-truck': { nr: 0.9, kin: 0.025 }, 'lt-stock': { nr: 1.0, kin: 0.025 }, lt2: { nr: 1.08, kin: 0.02 },
     lt6: { nr: 1.1, kin: 0.015 }, 'hemi-active': { nr: 1.0, kin: 0.022 }, coyote: { nr: 1.05, kin: 0.02 }, 'coyote-truck': { nr: 0.92, kin: 0.025 }, turbo: { nr: 1.0, kin: 0.02 }, stock: { nr: 1.0, kin: 0.025 } };
   const FUEL_OCT = { '93': 0, e85: 2.6, c16: 3.4 };
+  // ---------- Phase 4C: the ECU (handheld tuner or any shop tune unlocks it) ----------
+  // Spark and fuel are maps across rpm, wide open. The factory map sits a little short of best-torque timing (MBT) and
+  // right at the knock limit where the engine is knock limited; adding timing gains toward MBT and knocks past the
+  // limit, a richer mix cools the charge (more timing before it knocks) and a leaner one makes a touch more power until it
+  // knocks and burns. The knock sensors catch it and pull timing back out (more than it needed); switch them off and it
+  // just detonates. Boost by gear, the rev limiter, launch control, idle, the pedal map, shift points, nitrous activation
+  // and the cam phasers (VVT engines) live here too
+  const ECU_N = [1500, 2500, 3500, 4500, 5500, 6500, 7500];   // the map's rpm columns
+  const ECU_PED = { eco: { name: 'Eco', k: 1.6, r: 0.6 }, stock: { name: 'Stock', k: 1, r: 1 }, sport: { name: 'Sport', k: 0.72, r: 1.4 }, race: { name: 'Race', k: 0.5, r: 2 } };
+  const ecuHasVvt = D => !!D && !D.generic && (D.vt === 'dohc' || D.fam === 'lt' || D.fam === 'hemi');   // cam phasers from the factory
+  const ecuAt = (a, n) => { if (n <= ECU_N[0]) return a[0]; for (let i = 1; i < ECU_N.length; i++) if (n <= ECU_N[i]) { const f = (n - ECU_N[i - 1]) / (ECU_N[i] - ECU_N[i - 1]); return a[i - 1] + (a[i] - a[i - 1]) * f; } return a[a.length - 1]; };
+  const ecuSpk = r => r >= 0 ? 1 - 0.00045 * r * r : 1 - 0.0008 * r * r;   // torque vs degrees short of MBT (past it, it falls off faster) ~
+  const ecuLam = l => 1 - 1.6 * (l - 0.87) ** 2 - (l > 1 ? 1.5 * (l - 1) ** 2 : 0);   // torque vs lambda: best power near 0.87 (12.8:1 on gas)
+  // the ECU on this car, or null without a tuner. Until the ECU screen saves its own maps, the tuning laptop's old knobs
+  // are the map (one timing offset and one air/fuel across the rev range)
+  function ecuOf(c) {
+    if (!c || !hasPart(c, 'ecu')) return null; const e = c.eb && c.eb.ecu; if (e) return e;
+    const t = tuneOf(c), d = TUNE_DEF;
+    return { tm: ECU_N.map(() => t.timing - d.timing), lam: t.afr !== d.afr ? ECU_N.map(() => Math.round(t.afr / 14.7 * 1000) / 1000) : null, ks: 1, revD: t.rev - d.rev, lc: t.lc || 0, legacy: 1 };
+  }
+  // the part of it the engine model needs (null when it's the factory map, so a stock tune is the stock engine)
+  function ecuMapOf(c) {
+    const e = ecuOf(c); if (!e) return null; const tm = e.tm && e.tm.some(v => v) ? e.tm : null, vvt = e.vvt && (e.vvt[0] || e.vvt[1]) ? e.vvt : null;
+    if (!tm && !e.lam && !vvt) return null; return { tm, lam: e.lam || null, ks: e.ks === 0 ? 0 : 1, vvt };
+  }
+  // spark at rpm n: where the map puts it, where the knock limit is, what the knock sensors leave, and what that does to torque
+  function ecuSpark(X, n, crK, lim, kn) {
+    const E = X.ecu, adv = E.tm ? ecuAt(E.tm, n) : 0, lam = E.lam ? ecuAt(E.lam, n) : X.lam0;
+    const mbt = (X.power ? 2 : 3) + 4 * kn;   // degrees the factory map runs short of MBT (it retards ~4° per point past its knock limit) ~
+    // degrees you can add before it knocks: the margin left at the factory map (more up top, where the end gas has less time
+    // to light off on its own; least around peak torque), plus a richer mix's charge cooling ~
+    const kl = Math.max(0, 4 * Math.max(0, lim - crK) + clamp((n - 4000) / 1000 * 1.5, -3, 4.5)) + 18 * (X.lam0 - lam);
+    const ke = Math.max(0, adv - kl), pull = ke > 0 && E.ks ? ke + 3 : 0, eff = adv - pull;
+    const k = ecuSpk(mbt - eff) / ecuSpk(mbt) * ecuLam(lam) / ecuLam(X.lam0) * (!E.ks && ke > 4 ? 1 - 0.01 * (ke - 4) : 1);
+    return { adv, eff, pull, ke, lam, mbt, kl, k };
+  }
+  // the cam phasers: degrees of intake advance the ECU adds low (to ~45% of redline) and high (from ~70%); advance fills the low end
+  const ecuVvtAt = (X, n) => { const v = X.ecu.vvt, x = clamp((n / X.red - 0.45) / 0.25, 0, 1); return v[0] + (v[1] - v[0]) * x; };
+  // approximate absolute spark (° BTDC) for the screen: MBT climbs with rpm (slower burn per degree), boost needs less ~
+  const ecuMbtDeg = (n, pr) => 17 + 12 * clamp((n - 1000) / 4500, 0, 1) - 6 * Math.max(0, pr - 1);
   // every input of the model for this engine + build (+ fuel)
   function engInputs(D, b, fuel) {
     const cs = camSpec(D, b), cs0 = D.cam, H = ENG_PARTS.heads.opts[b.heads] || {}, I = ENG_PARTS.intake.opts[b.intake] || {}, T = ENG_PARTS.tb.opts[b.tb] || {}, Pi = ENG_PARTS.pistons.opts[b.pistons] || {}, Cr = ENG_PARTS.crank.opts[b.crank] || {}, Pw = ENG_PARTS.power.opts[b.power] || {};
@@ -8928,7 +8970,8 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       nrK: (I.runner || 1) * it.nr, kin: it.kin + (I.kin || 0) - (b.intake === 'hirpm' ? 0.006 : 0), kex: (exB ? ex0.kex + exB.kex : ex0.kex) + hd.kex,
       hb: hd.hb, nh: hd.nh || 1, hdrK, red: D.red + (Cr.red || 0) + (D.vt === 'ohv' ? (H.springs || 0) * 200 : 0), forged: !!(D.forged || Pi.forged), oct: FUEL_OCT[fuel] || 0,
       fuelHp: engFuelHp(D, b, fuel) };
-    X.hw = null; return X;
+    X.hw = null; X.ecu = b.ecu || null; X.lam0 = power ? 0.8 : 0.87; X.vvt = ecuHasVvt(D) && !!(X.ecu && X.ecu.vvt);   // factory WOT mixture: boosted engines run richer
+    return X;
   }
   // what the fuel system can feed (crank hp): injectors at 80% duty, pump flow, on gas (E85 needs ~30% more fuel)
   function engFuelHp(D, b, fuel) {
@@ -8990,9 +9033,9 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       const sz = p.ind ? p : fiSizeTurbo(X0, p, f.n && f.n !== (p.n || (D.cyl >= 6 ? 2 : 1)) ? f.n : H.n, va);
       H.ind = f.ind || sz.ind; H.ar = f.ar || sz.ar; H.ind0 = sz.ind; H.ar0 = sz.ar;
     } else if (k === 'centri') {
-      H.pk = p.eff || 0.75; H.imp = f.imp || p.imp || 108; H.ratio0 = p.ratio || fiSizeCentri(X0, p, p.imp || 108, va); H.ratio = H.ratio0 * (1 + (f.pul || 0) / 100); H.rmax = 60000;
+      H.cap = f.cap; H.pk = p.eff || 0.75; H.imp = f.imp || p.imp || 108; H.ratio0 = p.ratio || fiSizeCentri(X0, p, p.imp || 108, va); H.ratio = H.ratio0 * (1 + (f.pul || 0) / 100); H.rmax = 60000;
     } else {
-      H.pk = p.eff || 0.7; H.vb0 = p.vb || (k === 'roots' ? FI_ROOTS[1] : 2.3); H.vb = f.vb || H.vb0; H.pi = k === 'roots' ? 1 : 1.7; H.rmax = k === 'roots' ? 14000 : 18000;
+      H.cap = f.cap; H.pk = p.eff || 0.7; H.vb0 = p.vb || (k === 'roots' ? FI_ROOTS[1] : 2.3); H.vb = f.vb || H.vb0; H.pi = k === 'roots' ? 1 : 1.7; H.rmax = k === 'roots' ? 14000 : 18000;
       // a bigger rotor set on the same pulley moves more air; the pulley's the factory one unless you change it
       H.ratio0 = p.ratio || fiSizePD(X0, p, H.vb0, va); H.ratio = H.ratio0 * (1 + (f.pul || 0) / 100);
     }
@@ -9063,7 +9106,12 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const at = pr => { const etaV = clamp(1 - (H.kind === 'roots' ? 0.24 : 0.17) * Math.sqrt(Math.max(0, pr - 1)) * 4000 / Math.max(1500, Nb), 0.3, 0.98), s = fiCompPD(H, X, n, ve, pr); s.mb = FI_P1 * 1000 / (FI_R * FI_T1) * sw * etaV; s.etaV = etaV; return s; };
     let lo = 1, hi = 4.5; if (at(lo).mb <= at(lo).m) return Object.assign(at(1), { psi: 0, drive: 0, Nb });
     for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2, s = at(m); if (s.mb > s.m) lo = m; else hi = m; }
-    const s = at((lo + hi) / 2); s.psi = (s.P2 - FI_P1) / 6.895; s.Nb = Nb; s.over = Nb > H.rmax; s.drive = s.Wc / 0.93; s.tau = 0; return s;
+    let s = at((lo + hi) / 2); s.psi = (s.P2 - FI_P1) / 6.895; s.drive = s.Wc / 0.93;
+    if (H.cap != null && s.psi > H.cap) {   // the ECU opens the bypass valve: the rotors still pump it all to that pressure, the extra goes back to the inlet
+      const P2t = FI_P1 + H.cap * 6.895; let a = 1, z = s.pr; for (let i = 0; i < 22; i++) { const m = (a + z) / 2; if (at(m).P2 > P2t) z = m; else a = m; }
+      s = at((a + z) / 2); s.psi = (s.P2 - FI_P1) / 6.895; s.byp = clamp(1 - s.m / s.mb, 0, 1); s.drive = s.Wc * Math.max(1, s.mb / s.m) / 0.93;
+    }
+    s.Nb = Nb; s.over = Nb > H.rmax; s.tau = 0; return s;
   }
   function fiCompPD(H, X, n, ve, pr) {
     // roots: no internal compression, the outlet slams back into the rotor pockets; twin-screw squeezes it inside first (best near its built-in ratio)
@@ -9078,6 +9126,10 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     let pr = 1.2, s = null;
     for (let i = 0; i < 6; i++) { s = fiComp(H, X, n, ve, pr, mch); pr = Math.pow(1 + s.eta * dT0 / FI_T1, 3.5); if (s.phi > 1.05) pr = Math.min(pr, s.pr * 0.98); }
     s = fiComp(H, X, n, ve, pr, mch); s.Tc = FI_T1 + dT0; const c = fiIc(H, s.Tc, s.m); s.T2 = c.T2; s.Wc = s.m * FI_CP * dT0;
+    if (H.cap != null && (s.P2 - FI_P1) / 6.895 > H.cap) {   // bypass / blow-off held open by the ECU: it vents the rest
+      const P2t = FI_P1 + H.cap * 6.895; let a = 1, z = s.pr; for (let i = 0; i < 22; i++) { const m = (a + z) / 2; if (fiComp(H, X, n, ve, m, mch).P2 > P2t) z = m; else a = m; }
+      const W = s.Wc; s = fiComp(H, X, n, ve, (a + z) / 2, mch); s.Wc = W; s.byp = 1;
+    }
     s.psi = (s.P2 - FI_P1) / 6.895; s.Ni = Ni; s.over = Ni > H.rmax; s.choke = s.phi > 1; s.drive = s.Wc / 0.95; s.tau = 0; return s;
   }
   // what the hardware's doing wrong on this build, in words
@@ -9111,7 +9163,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   const fiKnockIdx = (X, pr, T2) => X.cr * Math.pow(pr, 0.4) + Math.max(0, T2 - 318) / 40;
   // volumetric efficiency at rpm n, wide open (the cam's window, the flow limits, runner and header tuning, inlet and exhaust losses)
   function engVe(X, cal, n) {
-    const nc = cal.nc * X.ncK, nch = cal.nch * X.nchK;
+    const nc = cal.nc * X.ncK * (X.vvt ? 1 - ecuVvtAt(X, n) * 0.007 : 1), nch = cal.nch * X.nchK;   // (phasers: same pull on the breathing peak as the cam's centerline)
     // the cam's breathing window: a log-normal bell, broad on the low side (where a longer duration costs the most) and steeper past the peak
     const x = Math.log(n / nc) / (n < nc ? cal.wl * X.wcK * X.wlK : cal.wh * X.wcK);
     let ve = x > 0 ? Math.exp(-0.5 * x * x) : 1 / (1 + 0.5 * x * x);   // below the peak the charge still fills well: a heavier tail
@@ -9138,7 +9190,9 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     // thermal efficiency from compression; past the knock limit the ECU pulls timing
     const crK = fiKnockIdx(X, pr, T2), lim = Math.max((D.di ? 13.4 : D.vt === 'dohc' ? 12.4 : 11.6), cal.crK || 0) + X.oct, kn = Math.max(0, crK - lim);
     const eta = (1 - Math.pow(X.cr, -0.26)) * (1 - Math.min(0.35, kn * 0.045));
-    const ti = cal.C * X.disp * ve * dens * eta;
+    // the ECU's spark and fuel maps (Phase 4C) against the factory map
+    let ek = 1; if (X.ecu) { const sp = ecuSpark(X, n, crK, lim, kn); ek = sp.k; if (out) out.ecu = sp; } else if (out) out.ecu = null;
+    const ti = cal.C * X.disp * ve * dens * eta * ek;
     const fr = X.disp * (0.62 + 0.09 * n / 1000 + 0.028 * (n / 1000) ** 2) * 100 / (4 * Math.PI) * 0.6 * 1.0;   // friction and pumping (FMEP, Heywood-style)
     if (out) { out.psi = fi ? fi.psi : 0; out.kn = kn; out.ve = ve; out.fi = fi; }
     return ti - fr - drive - pump;
@@ -9195,10 +9249,12 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const cal = engCal(D), X = engInputs(D, b, fuel), step = 100, tab = [], psiTab = [], o = {}, red = X.red;
     if (X.power) X.fiTab = fiTable(X, cal);
     let pk = 0, nT = 0, pw = 0, nP = 0, fuelCut = false, knock = 0, maxPsi = 0;
-    const fuelW = X.fuelHp * 745.7;
+    const fuelW = X.fuelHp * 745.7, ecuT = X.ecu ? [] : null;
     for (let n = 0; n <= red + 800; n += step) {
       let t = n < 400 ? 0 : engTq(X, cal, Math.max(600, n), o);
-      if (n >= 400 && t * _rpm(n) > fuelW) { t = fuelW / _rpm(n); fuelCut = true; }   // lean: the ECU holds it back to what the fuel system feeds
+      const fw = X.ecu && X.ecu.lam ? fuelW * ecuAt(X.ecu.lam, n) / X.lam0 : fuelW;   // a richer map burns more fuel per hp
+      if (ecuT) ecuT.push(n >= 400 ? Object.assign({ pr: o.fi ? o.fi.P2 / FI_P1 : 1 }, o.ecu) : null);
+      if (n >= 400 && t * _rpm(n) > fw) { t = fw / _rpm(n); fuelCut = true; }   // lean: the ECU holds it back to what the fuel system feeds
       tab.push(Math.max(0, t)); psiTab.push(n >= 400 ? o.psi || 0 : 0); if (n >= 800 && n <= red) { knock = Math.max(knock, o.kn || 0); maxPsi = Math.max(maxPsi, o.psi || 0); if (t > pk) { pk = t; nT = n; } if (t * _rpm(n) > pw) { pw = t * _rpm(n); nP = n; } }
     }
     // just off idle a real engine at full throttle still fills well (about 60% of its unboosted peak at 1100 rpm); the
@@ -9216,8 +9272,17 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     if (fuelCut) warn.push(`Fuel system maxed out at about ${Math.round(X.fuelHp)} hp: it runs lean up top, so the ECU holds it back. Bigger injectors / pump.`);
     if (knock > 0.05) warn.push('Knock limited: the ECU is pulling timing. Lower compression, less boost, a cooler charge (intercooler), or better fuel (E85 / race gas).');
     const fiW = X.hw ? fiWarn(X) : null; if (fiW) warn.push(...fiW);
+    let ecuKe = 0, ecuPull = 0, ecuLean = 0;
+    if (ecuT) {
+      const i0 = 15, i1 = Math.min(ecuT.length - 1, Math.round(red / 100)); let kAt = 0, lAt = 0, rich = 0;
+      for (let i = i0; i <= i1; i++) { const e = ecuT[i]; if (!e) continue; if (e.ke > ecuKe) { ecuKe = e.ke; ecuPull = e.pull; } if (e.ke > 0.05 && !kAt) kAt = i * 100; if (e.lam > (p ? 0.86 : 0.95) && !lAt) { lAt = i * 100; ecuLean = e.lam; } if (e.lam < 0.74) rich = e.lam; }
+      if (ecuKe > 0.05) warn.push(X.ecu.ks ? `Past the knock limit from ${kAt.toLocaleString()} rpm: the knock sensors catch it and pull ${ecuPull.toFixed(1)}° back out, so it loses power. Take timing out there, or richen it up.` : `Detonating from ${kAt.toLocaleString()} rpm with the knock sensors off (${ecuKe.toFixed(1)}° past the limit). That cracks pistons. Take timing out there, or richen it up.`);
+      if (lAt) warn.push(`Lean from ${lAt.toLocaleString()} rpm (lambda ${ecuLean.toFixed(2)}${p ? ' on boost' : ''}): it burns hot, hard on exhaust valves and pistons.`);
+      if (rich) warn.push(`Very rich (lambda ${rich.toFixed(2)}): it washes the oil off the cylinder walls and bogs.`);
+      if (X.vvt && X.ecu.vvt.some(v => Math.abs(v) > 10)) warn.push('Cam phasers near the end of their travel: big moves cost more than they give.');
+    }
     if (X.ov > 22 && !(b.cam === 'stock')) warn.push('Big overlap: low vacuum at idle. Power brakes and the converter will feel it.');
-    R = { key, D, b, X, cal, tab, psiTab, step, tq: pk, nT, hp: pw / 745.7, nP, red, idle, vac, res, ov, cov: clamp(0.01 + res * 0.35, 0.01, 0.16), psi: maxPsi, boostKind: p ? p.kind : null,
+    R = { key, D, b, X, cal, tab, psiTab, step, tq: pk, nT, hp: pw / 745.7, nP, red, idle, vac, res, ov, cov: clamp(0.01 + res * 0.35, 0.01, 0.16), psi: maxPsi, ecuT, ecuKe, ecuKs: X.ecu ? X.ecu.ks : 1, boostKind: p ? p.kind : null,
       turboShare: p && p.kind === 'turbo' ? 1 - 1 / (1 + p.psi / 14.7) : 0, fiH: X.hw, fiTab: X.fiTab, Ie: D.Ie * (b.crank === 'forged' ? 0.95 : 1), disp: X.disp, cr: X.cr, cam: X.cs, warn, fuelHp: X.fuelHp };
     if (X.hw) {   // per rpm: how long the turbo takes to spool, and how much of the torque rides on boost
       R.spTab = X.hw.kind === 'turbo' ? X.fiTab.map(f => f.tau) : null; R.shTab = X.fiTab.map(f => clamp(1 - f.T2 / (FI_T1 * f.P2 / FI_P1), 0, 0.85));
@@ -9230,7 +9295,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   // the engine in this car, as built (null for crate motors and EVs)
   const ENG_MEMO = new WeakMap();
   function engOf(c) {
-    if (!c) return null; const sig = [c.eng, c.swap ? 1 : 0, JSON.stringify(c.parts || 0), JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), c.tune && c.tune.fuel, (c.tparts || []).join()].join('|'), o = ENG_MEMO.get(c);
+    if (!c) return null; const sig = [c.eng, c.swap ? 1 : 0, JSON.stringify(c.parts || 0), JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), c.tune && c.tune.fuel, (c.tparts || []).join(), c.tune && [c.tune.timing, c.tune.afr].join()].join('|'), o = ENG_MEMO.get(c);
     if (o && o.sig === sig) return o.R;
     const D = engDefOf(c), R = D ? engModel(D, engBuild(c, D), engFuel(c)) : null; ENG_MEMO.set(c, { sig, R }); return R;
   }
@@ -9265,8 +9330,13 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const EM = !c.swap && !isEV(c) ? engOf(c) : null; if (EM) Object.assign(E, { tab: EM.tab, tstep: EM.step, tq: EM.tq, nT: EM.nT, hp: EM.hp, nP: EM.nP, red: EM.red, idle: EM.idle, Ie: EM.Ie, em: EM });
     // ECU: the rev limiter knob moves the limiter (the curve keeps falling past the factory redline, so it only pays
     // if the motor still makes power up there)
-    const revK = tuneKnob(c, t, 'rev'); if (hasPart(c, 'ecu') && revK !== TUNE_DEF.rev) E.red = Math.max(E.nP + 200, E.red + (revK - TUNE_DEF.rev));
+    const revK = tuneKnob(c, t, 'rev'), ecu = ecuOf(c);
+    if (EM && ecu) {   // Phase 4C: the ECU's rev limiter (the curve keeps going past the factory redline; past the valve springs it floats), its idle target
+      const rv = ecu.rev != null ? ecu.rev : E.red + (ecu.revD || 0); if (Math.abs(rv - E.red) > 1) E.red = clamp(rv, E.nP + 200, EM.red + 700);
+      if (ecu.idle) E.idle = clamp(ecu.idle, Math.max(500, EM.idle - 100), 1500);
+    } else if (hasPart(c, 'ecu') && revK !== TUNE_DEF.rev) E.red = Math.max(E.nP + 200, E.red + (revK - TUNE_DEF.rev));
     tqCurve(E);
+    if (EM && ecu && ecu.bst && EM.fiH) E.tabG = ecuGearTabs(c, EM, ecu, Math.max(tr.auto.length, (tr.man || []).length));
     const mass = kg + 80, L = geo.wb, rhF = tuneKnob(c, t, 'rhF') / 100, rhR = tuneKnob(c, t, 'rhR') / 100;
     const h = Math.max(0.25, geo.h + (rhF + rhR) / 2 * 0.85), b = geo.fw * L, a = L - b;   // a: CG to front axle, b: CG to rear axle
     const fd = hasPart(c, 'gears') ? sp.tr.fd * (tuneKnob(c, t, 'fd') / TUNE_DEF.fd) : tr.fd;
@@ -9310,10 +9380,27 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       tt: tr.type, auto: tr.auto, fd, man: tr.man || tr.auto.slice(0, 6), fdMan: tr.man ? (hasPart(c, 'gears') ? tr.fdMan * (tuneKnob(c, t, 'fd') / TUNE_DEF.fd) : tr.fdMan) : fd, rev: tr.rev, stall, K: stall ? (stall / RPM) / Math.sqrt(tqStall) : 0,
       TR0: 1.9, shiftT: tr.shiftT * shiftK, lockFrom: tr.lockFrom, modern: tr.modern, clutchCap: E.tq * 1.35 * capPart,
       bias: clamp(bias, 0.4, 0.85), brakeTot, abs: sp.abs, tcAvail: sp.tc !== false, lineLock: !!sp.lineLock || !!k, steerMax: sp.steerMax * (tuneKnob(c, t, 'angle') / TUNE_DEF.angle),
-      cdA: sp.aero.cdA, clF: sp.aero.clF, clR: sp.aero.clR, crr: ti.f === 'allterrain' ? 0.014 : 0.011, vmax: hasPart(c, 'ecu') ? 0 : sp.vmax, wbar: !!(d && d.wbar) };
+      cdA: sp.aero.cdA, clF: sp.aero.clF, clR: sp.aero.clR, crr: ti.f === 'allterrain' ? 0.014 : 0.011, vmax: hasPart(c, 'ecu') ? 0 : sp.vmax, wbar: !!(d && d.wbar),
+      ped: ecu && ECU_PED[ecu.ped] ? ECU_PED[ecu.ped].k : 1, thrR: ecu && ECU_PED[ecu.ped] ? ECU_PED[ecu.ped].r : 1, upW: EM && ecu && ecu.up ? Math.min(ecu.up, E.red) : 0, lcRet: EM && ecu && ecu.lcRet && EM.fiH && EM.fiH.kind === 'turbo' ? ecu.lcRet : 0 };
+    if (E.tabG) E.tab0 = E.tab;
     if (VEH_CACHE.size > 40) VEH_CACHE.clear(); VEH_CACHE.set(key, V); return V;
   }
   const partsPerfShift = c => PFX.transmission.shift[partLv(c, 'transmission')];
+  // boost by gear: a turbo's target per gear (the ECU drives the boost controller's solenoid), a blower's bypass valve
+  // held open to cap it. Each gear gets its own torque curve from the same hardware
+  function ecuGearPsi(H, f, p) {
+    if (p == null) return null;
+    if (H.kind === 'turbo') { if (!f.bc) return null; const v = clamp(p, 4, 45); return Math.abs(v - H.target) < 0.05 ? null : { target: v }; }
+    return { cap: Math.max(0, p) };
+  }
+  function ecuGearTabs(c, EM, ecu, nG) {
+    const out = [], f = (EM.b && EM.b.fi) || {}; let any = false;
+    for (let g = 1; g <= nG; g++) {
+      const o = ecuGearPsi(EM.fiH, f, ecu.bst[g - 1]); if (!o || (o.cap != null && o.cap >= EM.psi - 0.05)) continue;
+      const R2 = engModel(EM.D, Object.assign({}, EM.b, { fi: Object.assign({}, f, o) }), engFuel(c)); out[g] = R2.tab; any = true;
+    }
+    return any ? out : null;
+  }
   // top speed the physics can actually reach: the gear, the power and the air
   function vehTop(V, crankW) {
     if (V._tW === crankW) return V._t;
@@ -9368,7 +9455,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     }
     return st;
   }
-  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = TIRE.boost = TIRE.nosK = TIRE.nosT = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; TIRE.vd = null; TIRE.nx = null; TIRE.icw = null; }
+  function physReset() { TIRE.vx = TIRE.vz = TIRE.w = TIRE.ax = TIRE.ay = TIRE.wv = TIRE.spin = TIRE.slipR = TIRE.slipF = TIRE.lit = TIRE.shT = TIRE.shW = TIRE.thr = TIRE.axL = TIRE.boost = TIRE.nosK = TIRE.nosT = 0; TIRE.gA = 1; TIRE.re = 0.12; TIRE.marks = [null, null]; TIRE.vd = null; TIRE.nx = null; TIRE.icw = null; TIRE.lcT = 0; }
   // after a wall: the tires stop with the car
   function vdSync() { if (TIRE.vd) TIRE.vd.sync = true; }
   function carDims(m) {
@@ -9412,7 +9499,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     // launch hold: stopped with both feet in, the brakes hold the car while the motor loads the converter (or the clutch
     // waits open); launch control (factory or a 2-step) caps the revs at its launch rpm. Let go of the brake to leave
     const lcR = P.lc || V.lcRpm || 0, hold = !gb && !V.ev && !lineLock && gas > 0.3 && brk > 0.3 && Math.abs(u) < 0.6; st.lch = hold ? 1 : 0;
-    const thr = TIRE.thr += (gas - TIRE.thr) * Math.min(1, h * (gas > TIRE.thr ? 9 : 14));
+    const gq = V.ped === 1 ? gas : Math.pow(clamp(gas, 0, 1), V.ped), thr = TIRE.thr += (gq - TIRE.thr) * Math.min(1, h * (gq > TIRE.thr ? 9 * V.thrR : 14));   // the ECU's pedal map
     // steering: lots of lock when slow, less at speed; caster swings the fronts into a slide when you let the wheel go
     const betaF = u > 1 ? Math.atan2(v + V.a * r, u) : 0, cast = clamp((Math.abs(betaF) - 0.05) / 0.1, 0, 1) * betaF * 0.85 * (1 - 0.8 * Math.min(1, Math.abs(drv.steer)));   // hands on the wheel hold it
     // at speed a full press asks for about what the front tires can use: the angle that makes the car's grip-limit turn, plus
@@ -9435,7 +9522,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
         // a beat between shifts, and no kickdown while the tires are lit
         st.hold = Math.max(0, st.hold - h);
         const rpmIn = g => Math.abs(wIn) * V.auto[g - 1] * V.fd * RPM, red = V.red;
-        const up = 1400 + (red * (mode === 'tc' ? VDP.upTc : 0.96) - 1400) * Math.pow(clamp(thr, 0, 1), 1.3), dn = 1050 + (red * 0.45 - 1050) * thr * thr;
+        const up = 1400 + ((V.upW || red * (mode === 'tc' ? VDP.upTc : 0.96)) - 1400) * Math.pow(clamp(thr, 0, 1), 1.3), dn = 1050 + (red * 0.45 - 1050) * thr * thr;
         const neNow = st.we * RPM;
         if (st.g < nA && (rpmIn(st.g) > up || (neNow > red * 0.95 && rpmIn(st.g) > up * 0.7)) && rpmIn(st.g + 1) > V.idle * 1.3 && !st.hold && !(brk > 0.3)) { st.g++; st.shT = V.shiftT; st.hold = 0.45; st.lock = false; if (mode === 'clutch') st.ce = 0; }
         // kickdown: floor it while it's lugging and a modern box skips straight to the lowest gear that stays under the
@@ -9452,6 +9539,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
 
     // ---- the motor: torque from its curve at this rpm and throttle; engine braking off the gas; the limiter cuts fuel ----
     const E = V.E, crankW = Math.max(0, P.pw || 0) * (P.kg || V.kg) / 634 * 745.7, ks = crankW / E.pkW, alive = crankW > 0 && P.top !== 0;
+    if (E.tabG) E.tab = E.tabG[gb ? gb.g : st.g] || E.tab0;   // boost by gear: this gear's curve
     let ne = st.we * RPM;
     if (ne > V.red) st.cut = true; else if (ne < V.red - 180) st.cut = false;
     if (V.vmax && u > V.vmax) st.vcut = true; else if (u < V.vmax - 0.6) st.vcut = false;
@@ -9465,11 +9553,19 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     // (with the engine model, its curve already has boost vs rpm, so this is only the spool lag)
     // (Phase 4B: how fast it spools comes from the turbo itself: its rotors' energy at this boost over what the turbine can spare at this rpm)
     const fiI = Math.min(P.spT ? P.spT.length - 1 : 0, Math.max(0, Math.round(ne / 100)));
-    if (P.turbo) { const want = Math.max(thr * (P.tModel ? 1 : clamp((re0 - 0.25) / 0.4, 0, 1)), I.als ? 0.92 : 0), up = P.spT ? 1 / P.spT[fiI] : (0.4 + 1.3 * re0) / (P.tSize || 1); TIRE.boost += (want - TIRE.boost) * Math.min(1, h * (want > TIRE.boost ? up * (1 + 3 * (TIRE.nx ? TIRE.nx.sp || 0 : 0)) : 4)); }   // the spray's extra exhaust energy spools it sooner
+    // (launch retard on the 2-step: late spark, hot exhaust, so the turbo builds boost on the line)
+    if (P.turbo) { const want = Math.max(thr * (P.tModel ? 1 : clamp((re0 - 0.25) / 0.4, 0, 1)), I.als ? 0.92 : 0, hold && lcR && V.lcRet ? clamp(V.lcRet / 20, 0, 0.85) : 0), up = P.spT ? 1 / P.spT[fiI] : (0.4 + 1.3 * re0) / (P.tSize || 1); TIRE.boost += (want - TIRE.boost) * Math.min(1, h * (want > TIRE.boost ? up * (1 + 3 * (TIRE.nx ? TIRE.nx.sp || 0 : 0)) : 4)); }   // the spray's extra exhaust energy spools it sooner
     // (an engine-model curve already holds how much boost it makes at each rpm; off idle it runs on the motor alone, so
     // the spool lag only takes away the share of the torque that rides on boost at this rpm)
     const tShare = P.turbo ? (P.tModel ? (P.shT ? P.shT[fiI] : P.turbo * clamp((re0 - 0.12) / 0.3, 0, 1)) : P.turbo) : 0;
     let boostK = P.turbo ? 1 - tShare * (1 - TIRE.boost) : 1;
+    // launch retard on the 2-step (ECU): late spark, hot exhaust, so the turbo makes the boost of a higher rpm while it
+    // sits on the limiter; let go and that boost carries the launch until the revs catch up to it (it bleeds off in about a second)
+    if (P.turbo && V.lcRet && alive) {
+      const Tn = Math.max(1, tqAt(E, ne)), tgt = hold && lcR ? tqAt(E, ne * (1 + V.lcRet / 25)) : 0, cur = TIRE.lcT || 0;
+      TIRE.lcT = tgt > cur ? cur + (tgt - cur) * Math.min(1, h / (P.spT ? P.spT[fiI] : 0.5)) : cur * Math.max(0, 1 - h * 1.1);
+      if (TIRE.lcT > Tn) boostK *= Math.min(2, TIRE.lcT / Tn);
+    }
     // the intercooler right now: an air-to-air core cools less at a standstill; an air-to-water one soaks heat into its
     // water pass after pass (an ice tank holds it near freezing while the ice lasts). Hotter charge, thinner air, less torque
     if (P.fic) {
@@ -10382,12 +10478,14 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   const hasPart = (c, k) => !k || !!(c && c.tparts && c.tparts.includes(k));
   // the raw numbers a setup produces (before normalising against stock)
   function tuneRaw(t, c) {
-    const v = k => { for (const g of Object.values(TUNE_KNOBS)) for (const r of g) if (r[0] === k) return hasPart(c, r[5]) ? t[k] : TUNE_DEF[k]; return t[k]; };
+    const mdl = !!(c && !c.swap && engDefOf(c));   // (on engine-model motors the ECU maps do timing, mixture and the limiter for real)
+    const v = k => { if (mdl && (k === 'timing' || k === 'afr' || k === 'rev')) return TUNE_DEF[k]; for (const g of Object.values(TUNE_KNOBS)) for (const r of g) if (r[0] === k) return hasPart(c, r[5]) ? t[k] : TUNE_DEF[k]; return t[k]; };
     const fuelKey = hasPart(c, (FUELS[t.fuel] || {}).part) && FUELS[t.fuel] ? t.fuel : '93', F = FUELS[fuelKey];
     const timing = v('timing'), afr = v('afr'), rev = v('rev'), fd = v('fd'), built = !!(c && c.swap);
     // ---- engine ----
     let power = F.k * (1 + 0.011 * Math.min(timing, F.allow) - 0.012 * Math.max(0, timing - F.allow)) * (1 - 0.04 * (afr - 12.6) ** 2) * (1 + Math.max(0, rev - 6500) / 1000 * 0.025 - Math.max(0, 6500 - rev) / 1000 * 0.04);
     let knock = Math.max(0, timing - F.allow) * 0.22 + Math.max(0, afr - 13.3) * 0.55 + (built ? 0 : Math.max(0, rev - 7200) / 1300 * 0.5);
+    if (mdl) { const R = engOf(c); if (R && R.ecuKe > 0.05) knock += R.ecuKe * (R.ecuKs ? 0.03 : 0.2); }   // the ECU map past the knock limit (the sensors catch most of it)
     const topK = Math.min(1.15, Math.sqrt(rev / 6500)) * (3.42 / fd) ** 0.85, accK = (fd / 3.42) ** 0.75;
     // ---- suspension: roll balance, squat, grip ----
     const rhF = v('rhF'), rhR = v('rhR'), spF = v('spF'), spR = v('spR'), bF = v('bF'), bR = v('bR'), rF = v('rF'), rR = v('rR'), swF = v('swF'), swR = v('swR');
@@ -10418,7 +10516,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const open = diff === 'open' ? 0.3 : (40 - lock) / 100 * 0.4, spool = diff === 'spool' ? 1 : 0;
     if (spool) trac *= 1.06;
     const biasF = 0.5 + (v('bias') - 60) / 100;
-    const lc = hasPart(c, 'ecu') ? t.lc : 0;
+    const ec = c && ecuOf(c), lc = ec ? ec.lc || 0 : 0;
     return { power, knock, topK: topK * drag, accK, gripF, gripR, xfer, launch, damp, roll, trac, steer, open, spool, biasF, lc, burn: F.burn * (12.8 / afr), fuel: fuelKey, rideF: rhF / 100, rideR: rhR / 100 };
   }
   let TUNE_BASE = null;
@@ -10502,8 +10600,11 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const el = document.getElementById('tune'), c = S.car, t = tuneOf(c), rate = (TUI.place && TUI.place.rate) || 1, keep = el.querySelector('.body') ? el.querySelector('.body').scrollTop : 0;
     const knobs = TUNE_KNOBS[TUI.tab], parts = [...new Set(knobs.map(r => r[5]).filter(Boolean).concat(TUI.tab === 'Engine' ? ['e85', 'c16'] : []))];
     let body = '';
+    const ecuM = !c.swap && !!engDefOf(c);
+    if (ecuM && TUI.tab === 'Engine') body += `<div class="k lock"><div><b>ECU maps</b><small>Timing, air/fuel, rev limiter, launch control, boost by gear, pedal, shift points and nitrous live in the ECU${hasPart(c, 'ecu') ? '' : ' (needs the handheld tuner below)'}</small></div><button data-toecu>Open the ECU</button></div>`;
     for (const r of knobs) {
       const [k, label, mn, mx, step, part, unit, hint] = r, ok = hasPart(c, part);
+      if (ecuM && (k === 'timing' || k === 'afr' || k === 'rev' || k === 'lc')) continue;
       if (k === 'fuel') { body += `<div class="k"><div class="kl"><b>${label}</b><output>${FUELS[t.fuel] && hasPart(c, FUELS[t.fuel].part) ? FUELS[t.fuel].label : FUELS['93'].label}</output></div><small>${hint}</small><div class="row2" style="margin-top:6px">${Object.entries(FUELS).map(([fk, F]) => `<button data-fuel="${fk}" class="${t.fuel === fk ? 'on' : ''}" ${hasPart(c, F.part) ? '' : 'disabled'}>${F.label}</button>`).join('')}</div></div>`; continue; }
       if (k === 'diff') { body += `<div class="k"><div class="kl"><b>${label}</b><output>${DIFFS[ok ? t.diff : 'lsd']}</output></div><small>${hint}</small><div class="row2" style="margin-top:6px">${Object.entries(DIFFS).map(([dk, d]) => `<button data-diff="${dk}" class="${(ok ? t.diff : 'lsd') === dk ? 'on' : ''}" ${ok ? '' : 'disabled'}>${d}</button>`).join('')}</div></div>`; continue; }
       const val = ok ? t[k] : TUNE_DEF[k];
@@ -10521,6 +10622,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TUI.tab = b.dataset.tab; renderTune(); el.querySelector('.body').scrollTop = 0; });
     el.querySelectorAll('[data-pre]').forEach(b => b.onclick = () => { c.tune = Object.assign({}, TUNE_PRESETS[b.dataset.pre]); save(); toast(`${b.dataset.pre} setup loaded. Knobs whose parts you don't own stay stock.`, 'good'); renderTune(); });
     el.querySelectorAll('[data-fuel]').forEach(b => b.onclick = () => { setTune('fuel', b.dataset.fuel); renderTune(); });
+    el.querySelectorAll('[data-toecu]').forEach(b => b.onclick = () => { closeTune(); ecuOpen(); });
     el.querySelectorAll('[data-diff]').forEach(b => b.onclick = () => { setTune('diff', b.dataset.diff); renderTune(); });
     el.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => { const P = TUNE_PARTS[b.dataset.buy]; if (spend(Math.round(P.price * rate), P.name)) { c.tparts = (c.tparts || []).concat(b.dataset.buy); toast(`${P.name} installed.`, 'good'); save(); refreshStats(); } renderTune(); });
     el.querySelectorAll('input[data-k]').forEach(inp => inp.oninput = () => {
@@ -11285,7 +11387,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   function perfOf(c) { const mine = S.car; S.car = c; try { return carPerf(); } finally { S.car = mine; } }
   function racerBlurb(r) { const c = racerCar(r), k = dragPack(c); return `${carHp(c)} hp${c.tparts && c.tparts.includes('e85') ? ' on E85' : c.tparts && c.tparts.includes('c16') ? ' on race gas' : ''}${k ? ` · ${k.brand} ${k.tire === 'slick' ? 'slicks' : 'radials'}` : ''}${c.rims ? ` · ${c.rims.dia}s` : ''}`; }
   // run one physics step as another car: swap the shared tire state in, step, swap it back out
-  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv', 'vd', 'nx', 'icw', 'ice', 'iat'];
+  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv', 'vd', 'nx', 'icw', 'ice', 'iat', 'lcT'];
   function physAs(st, I, P, h) {
     const mine = { yaw: drv.yaw, v: drv.v, steer: drv.steer, wa: WHEELIE.a };
     for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
@@ -11583,7 +11685,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   const NX_SPEC = new WeakMap();
   function nxSpec(c) {
     const x = nxConf(c); if (!x) return null;
-    const fuel = engFuel(c), R = !c.swap ? engOf(c) : null, m = carOf(c.id), key = JSON.stringify(x) + fuel + (R ? R.key : c.swap ? 'swap' : c.id), o = NX_SPEC.get(c);
+    const fuel = engFuel(c), R = !c.swap ? engOf(c) : null, m = carOf(c.id), ecK = ecuOf(c), key = JSON.stringify(x) + fuel + (R ? R.key : c.swap ? 'swap' : c.id) + JSON.stringify(ecK ? [ecK.nos, ecK.tm] : 0), o = NX_SPEC.get(c);
     if (o && o.key === key) return o.X;
     const K = NX_KITS[x.kit], s = Object.assign({}, NX_SET, x.set), add = x.add || {}, cyl = R ? R.D.cyl : 8, cap = nxFuelCap(c), boosted = R ? !!R.boostKind : (m.asp === 'turbo' || m.asp === 'sc');
     const s2 = K.stage2 && add.prog ? x.s2 || 0 : 0, j1 = nxJet(K, x.s1, cyl), j2 = s2 ? nxJet(K, s2, cyl) : null;
@@ -11607,6 +11709,9 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       allow0: 0.28 + 0.1 * oct - 0.04 * Math.max(0, crk - 10.5) - (knk ? 0.08 : 0),
       ks: !(R && R.D.fuel === 'carb') && (m.y || 2005) >= 1996 && !(R && R.D.generic && (m.y || 2005) < 1996), legacy: !!x.legacy };
     if (!X.win) { X.on = 0; X.off = 99999; } else if (!s.off) X.off = (R ? R.red : 6500) - 200;
+    const en = ecuOf(c), eN = en && en.nos;
+    if (eN && eN.en) { X.win = true; X.on = eN.on || 0; X.off = eN.off || (R ? R.red : 6500) - 200; X.gl = true; X.g0 = eN.g0 || 1; X.g1 = eN.g1 || 9; X.wot = (eN.wot || 90) / 100; X.ret1 = eN.ret || 0; X.ecu = true; }
+    if (en && en.tm) X.allow0 -= 0.03 * Math.max(0, en.tm.reduce((a, v) => a + v, 0) / en.tm.length);   // timing you added is margin the spray can't use
     NX_SPEC.set(c, { key, X }); return X;
   }
   // a fresh runtime state for a kit: what's in the bottle (the player's car keeps its own between drives), the line, timers
@@ -11636,7 +11741,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     S0.psi = pb * 0.145038;
     // the switches and the controller
     if (S0.fpT > 0) S0.fpT -= h;
-    const req = !!I.nos && S0.m > 0.002, wot = thr >= X.wot, win = ne >= X.on && ne <= X.off, gOk = !X.prog || (gear >= X.g0 && gear <= X.g1);
+    const req = !!I.nos && S0.m > 0.002, wot = thr >= X.wot, win = ne >= X.on && ne <= X.off, gOk = !(X.prog || X.gl) || (gear >= X.g0 && gear <= X.g1);
     const fOk = !X.wet || X.pump || S0.fpT <= 0, lowOk = !X.lowP || S0.psi >= X.lowP, sOk = !(X.shiftCut && shifting);
     const on = req && alive && G > 0 && gear > 0 && wot && win && gOk && fOk && lowOk && sOk;
     S0.t1 = on ? S0.t1 + h : 0;
@@ -11890,7 +11995,7 @@ body.nos-ok #nosbtn,body.als-ok #alsbtn,body.pg-ok #pgbtn,body.lay-edit #nosbtn,
     const el = $('englab'), c = S.car; if (!el || !c) return;
     const x = nxConf(c), X = x ? nxSpec(c) : null, m = carOf(c.id), cap = nxFuelCap(c), stat = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`;
     const set = Object.assign({}, NX_SET, x && x.set), add = (x && x.add) || {};
-    let h = `<div class="hd"><h2>Nitrous · ${carLabel(m)}</h2>${engDefOf(c) ? '<button data-tolab>Engine Lab</button><button data-tofi>Boost</button>' : ''}<button data-x>Close</button></div>
+    let h = `<div class="hd"><h2>Nitrous · ${carLabel(m)}</h2>${engDefOf(c) ? '<button data-tolab>Engine Lab</button><button data-tofi>Boost</button><button data-toecu>ECU</button>' : ''}<button data-x>Close</button></div>
 <div class="note">What sprays is what the jets flow from the bottle's pressure right now, and the torque is what that oxygen and fuel make at this rpm. A 100 shot flows about 7 lb a minute at 950 psi.</div>`;
     // kit
     h += `<h3>Kit</h3><div class="row">`;
@@ -11945,6 +12050,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     el.querySelector('[data-x]').onclick = nxClose;
     const tl = el.querySelector('[data-tolab]'); if (tl) tl.onclick = () => { NXL.open = false; labOpen(); };
     const tf = el.querySelector('[data-tofi]'); if (tf) tf.onclick = () => { NXL.open = false; fiOpen(); };
+    const te = el.querySelector('[data-toecu]'); if (te) te.onclick = () => { NXL.open = false; ecuOpen(); };
     q('[data-kit]').forEach(b => b.onclick = () => {
       const id = b.dataset.kit;
       if (!id) { nxEdit(nx => { nx.kit = null; }); toast('Kit off. The bottle and add-ons stay with the car.'); return; }
@@ -12023,7 +12129,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     const el = $('englab'), c = S.car; if (!el || !c) return;
     const D = engDefOf(c), R = engOf(c), H = R && R.fiH, b = engBuild(c, D), f = (c.eb && c.eb.fi) || {}, m = carOf(c.id), red = R ? R.red : 6000;
     const stat = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`;
-    let h = `<div class="hd"><h2>Boost · ${carLabel(m)}</h2><button data-tolab>Engine Lab</button><button data-tonx>Nitrous</button><button data-x>Close</button></div>
+    let h = `<div class="hd"><h2>Boost · ${carLabel(m)}</h2><button data-tolab>Engine Lab</button><button data-toecu>ECU</button><button data-tonx>Nitrous</button><button data-x>Close</button></div>
 <div class="note">Boost is what this hardware makes at each rpm: a turbo needs exhaust to spin it and a wastegate to hold the target; a blower pumps air with every turn of the crank. All of it heats the air, and the intercooler takes some of that back out.</div>`;
     // the kits (the Engine Lab's power adders)
     const kits = Object.entries(ENG_PARTS.power.opts).filter(([, o]) => o.kit);
@@ -12046,7 +12152,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
       h += `<div class="note">A smaller housing spools sooner and chokes the top end (more back pressure); a bigger one breathes up top and lights later.</div>`;
       h += `<div class="row"><span class="note">Wastegate:</span>${Object.entries(FI_GATE).map(([k, g]) => `<button data-gate="${k}" class="${H.gate === k ? 'on' : ''}">${g.name}${H.gate === k || !g.price ? '' : ' · ' + money(g.price * n0)}</button>`).join('')}</div>`;
       const bc = !!f.bc, tg = H.target;
-      h += `<div class="row"><span class="note">Boost target:</span>${bc ? `<input type="range" data-tg min="5" max="45" step="0.5" value="${tg}"><output>${fiPsi(tg)}</output>` : [6, 8, 10, 12, 15, 18].map(v => `<button data-spring="${v}" class="${Math.abs(tg - v) < 0.1 ? 'on' : ''}">${v} psi spring</button>`).join('') + `<button data-spring="0" class="${!f.target ? 'on' : ''}">${kitId ? 'Kit' : 'Factory'} (${fiPsi(H.psi)})</button><button data-bc>Boost controller · ${money(FI_PR.bc)}</button>`}</div>`;
+      h += `<div class="row"><span class="note">${bc ? 'Base boost target (by gear in the ECU):' : 'Boost target:'}</span>${bc ? `<input type="range" data-tg min="5" max="45" step="0.5" value="${tg}"><output>${fiPsi(tg)}</output>` : [6, 8, 10, 12, 15, 18].map(v => `<button data-spring="${v}" class="${Math.abs(tg - v) < 0.1 ? 'on' : ''}">${v} psi spring</button>`).join('') + `<button data-spring="0" class="${!f.target ? 'on' : ''}">${kitId ? 'Kit' : 'Factory'} (${fiPsi(H.psi)})</button><button data-bc>Boost controller · ${money(FI_PR.bc)}</button>`}</div>`;
       h += `<div class="row"><button data-bov="${H.bov ? 0 : 1}" class="${H.bov ? 'on' : ''}">Blow-off valve ${H.bov ? 'on' : 'off'}</button><span class="note">${H.bov ? 'Lift on boost and it vents: pssh.' : 'No blow-off valve: lift on boost and the compressor surges (flutter). Hard on the turbo.'}</span></div>`;
     } else if (H.kind === 'centri') {
       h += `<h3>Head unit</h3><div class="row"><span class="note">Impeller:</span>${FI_IMP.map(d => `<button data-imp="${d}" class="${Math.abs(H.imp - d) < 0.5 ? 'on' : ''}">${d} mm${Math.abs(H.imp - d) < 0.5 ? '' : ' · ' + money(FI_PR.imp)}</button>`).join('')}</div>`;
@@ -12076,6 +12182,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     el.querySelector('[data-x]').onclick = fiClose;
     el.querySelector('[data-tolab]').onclick = () => { FIL.open = false; labOpen(); };
     el.querySelector('[data-tonx]').onclick = () => { FIL.open = false; nxOpen(); };
+    el.querySelector('[data-toecu]').onclick = () => { FIL.open = false; ecuOpen(); };
     on('[data-kit]', (b, d) => { const o = ENG_PARTS.power.opts[d.kit]; if (fiEdit(o.price, o.name, (fi, eb) => { eb.power = d.kit; for (const k of Object.keys(fi)) delete fi[k]; })) toast(`${o.name} on. It's sized for this engine: tune it below.`, 'good'); });
     on('[data-tn]', (b, d) => { const n = +d.tn; if (n === H.n) return; fiEdit(FI_PR.n, n === 1 ? 'Single turbo conversion' : 'Twin turbo conversion', fi => { fi.n = n; delete fi.ind; delete fi.ar; }); });
     on('[data-ind]', (b, d) => { const v = +d.ind; fiEdit(v ? FI_TPRICE(v) * H.n : 0, 'Turbo', fi => { if (v) fi.ind = v; else delete fi.ind; }); });
@@ -12143,6 +12250,165 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     const line = (fn, col, dash, yf) => { g.strokeStyle = col; g.setLineDash(dash ? [6, 5] : []); g.lineWidth = 2.2; g.beginPath(); pts.forEach((p, i) => { const y = (yf || Y)(fn(p)); i ? g.lineTo(Xp(p.n), y) : g.moveTo(Xp(p.n), y); }); g.stroke(); };
     line(p => p.hp0, '#888', true); line(p => p.tq0, '#888', true); line(p => p.hp, '#5aa0ff'); line(p => p.tq, '#5aa0ff'); line(p => p.p, '#ffb636', false, Yp);
     g.setLineDash([]); g.fillStyle = '#8a8394'; g.fillText('hp / lb-ft', pad + 4, 16); g.fillStyle = '#ffb636'; g.fillText('psi', W - 30, 16);
+  }
+
+  // ---------- the ECU screen (Phase 4C): spark and fuel maps against the knock limit, boost by gear, limits, launch, pedal, shifts, nitrous, cams ----------
+  const ECL = { open: false, tab: 'spark', run: null };
+  const ECU_TABS = { spark: 'Spark & fuel', boost: 'Boost by gear', limits: 'Limiter & launch', drive: 'Pedal & shifts', nos: 'Nitrous', cams: 'Cams (VVT)' };
+  const ECU_STOICH = { '93': 14.7, e85: 9.8, c16: 14.8 };
+  function ecuOpen() {
+    const c = S.car, D = c && engDefOf(c); if (!D) { toast(c && c.swap ? 'Crate motors tune on the tuning laptop.' : isEV(c) ? 'Electric: no ECU maps to tune.' : 'No engine to tune in this one.', 'bad'); return; }
+    labCss(); let el = $('englab'); if (!el) { el = document.createElement('div'); el.id = 'englab'; document.body.appendChild(el); }
+    if (LAB.open) labClose(); NXL.open = false; FIL.open = false; const tu = $('tune'); if (tu) tu.hidden = true;
+    ECL.open = true; ECL.run = null; el.hidden = false; ecuRender();
+  }
+  function ecuClose() { ECL.open = false; const el = $('englab'); if (el) el.hidden = true; save(); }
+  // the ECU as the screen edits it: every field filled in (the laptop's old knobs carried over the first time)
+  function ecuFull(c) {
+    const e = ecuOf(c) || {}, R = engOf(c), red0 = R ? R.red : 6500;
+    return { tm: (e.tm || ECU_N.map(() => 0)).slice(), lam: e.lam ? e.lam.slice() : null, ks: e.ks === 0 ? 0 : 1, rev: e.rev != null ? e.rev : e.revD ? red0 + e.revD : null, lc: e.lc || 0, lcRet: e.lcRet || 0,
+      idle: e.idle || 0, ped: e.ped || 'stock', up: e.up || 0, bst: (e.bst || []).slice(), vvt: (e.vvt || [0, 0]).slice(), nos: Object.assign({ en: 0, on: 3000, off: 0, g0: 1, g1: 9, wot: 90, ret: 0 }, e.nos || {}) };
+  }
+  function ecuEdit(fn) {
+    const c = S.car, e = ecuFull(c); fn(e); c.eb = Object.assign({}, c.eb || {}, { ecu: e });
+    VEH_CACHE.clear(); save(); ECL.run = null; ecuRender();
+  }
+  // the engine with the factory map but the ECU's numbers computed (where MBT and the knock limit are), for the charts
+  function ecuProbe(c, D, tm, lam, ks, vvt) {
+    const b = Object.assign({}, engBuild(c, D)); b.ecu = { tm: tm || ECU_N.map(() => 0), lam: lam || null, ks: ks === 0 ? 0 : 1, vvt: vvt && (vvt[0] || vvt[1]) ? vvt : null };
+    return engModel(D, b, engFuel(c));
+  }
+  const ecuDeg = v => (v > 0 ? '+' : '') + (Math.round(v * 10) / 10) + '°';
+  function ecuRender() {
+    const el = $('englab'), c = S.car; if (!el || !c) return;
+    const D = engDefOf(c), m = carOf(c.id), R = engOf(c), stat = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`, keep = el.scrollTop;
+    let h = `<div class="hd"><h2>ECU · ${carLabel(m)}</h2><button data-tolab>Engine Lab</button><button data-tofi>Boost</button><button data-tonx>Nitrous</button><button data-x>Close</button></div>`;
+    if (!hasPart(c, 'ecu')) {
+      const P = TUNE_PARTS.ecu; h += `<h3>No tuner on this car</h3><div class="note">The factory ECU is locked: it runs the factory spark and fuel maps, limiter and shift points. A tuner opens all of it.</div><div class="row"><button data-buyecu>${P.name} · ${money(P.price)}</button></div>`;
+      el.innerHTML = h; ecuWire(el, c, D, R, null); return;
+    }
+    const e = ecuFull(c), fuel = engFuel(c), V = vehOf(c, partsKg(c)), red = V.red, H = R.fiH;
+    const Rp = R.ecuT ? R : ecuProbe(c, D, e.tm, e.lam, e.ks, e.vvt), T = Rp.ecuT, i1 = Math.min(T.length - 1, Math.round(red / 100));
+    let ke = 0, pull = 0; for (let i = 15; i <= i1; i++) if (T[i]) { ke = Math.max(ke, T[i].ke); pull = Math.max(pull, T[i].pull); }
+    const kTxt = ke < 0.05 ? 'Safe' : e.ks ? `Sensors pulling ${pull.toFixed(1)}°` : `Detonating (${ke.toFixed(1)}° past)`;
+    h += `<div class="g">${stat('Power', `${Math.round(R.hp)} hp · ${Math.round(R.tq / 1.3558)} lb-ft`)}${stat('Knock', kTxt)}${stat('Limiter', `${Math.round(red).toLocaleString()} rpm`)}${stat('Fuel', FUELS[fuel] ? FUELS[fuel].label : fuel)}</div>`;
+    h += `<div class="row" style="margin-top:8px">${Object.entries(ECU_TABS).filter(([k]) => k !== 'cams' || ecuHasVvt(D)).map(([k, v]) => `<button data-tab="${k}" class="${ECL.tab === k ? 'on' : ''}">${v}</button>`).join('')}</div>`;
+    const cols = ECU_N.filter((n, i) => i === 0 || ECU_N[i - 1] < red);
+    if (ECL.tab === 'spark') {
+      const st = ECU_STOICH[fuel] || 14.7, lam = e.lam || ECU_N.map(() => R.X.lam0);
+      h += `<h3>Spark map (wide open)</h3><div class="row lg"><span><i style="background:#888"></i>Factory</span><span><i style="background:#3ddc84"></i>Best torque (MBT)</span><span><i style="background:#ff5a5a"></i>Knock limit</span><span><i style="background:#5aa0ff"></i>Your map</span><span><i style="background:#fff"></i>What it runs</span></div><canvas id="ecusp" width="720" height="260"></canvas>`;
+      h += `<div style="overflow-x:auto"><table class="ecut"><tr><th>rpm</th>${cols.map(n => `<th>${(n / 1000).toFixed(1)}k</th>`).join('')}</tr>`;
+      h += `<tr><td>Timing</td>${cols.map((n, i) => `<td><button data-cell="tm|${i}|0.5">▲</button><b>${ecuDeg(e.tm[i])}</b><button data-cell="tm|${i}|-0.5">▼</button><small>≈${Math.round(ecuMbtDeg(n, T[Math.round(n / 100)] ? T[Math.round(n / 100)].pr : 1) - T[Math.round(n / 100)].mbt + e.tm[i])}° BTDC</small></td>`).join('')}</tr>`;
+      h += `<tr><td>Lambda</td>${cols.map((n, i) => `<td><button data-cell="lam|${i}|-0.01">▲ rich</button><b>${lam[i].toFixed(2)}</b><button data-cell="lam|${i}|0.01">▼ lean</button><small>${(lam[i] * st).toFixed(1)}:1</small></td>`).join('')}</tr></table></div>`;
+      h += `<div class="row"><button data-all="1">All timing +1°</button><button data-all="-1">All timing −1°</button><button data-fsp>Factory spark</button><button data-ffu>Factory fuel</button><button data-ks class="${e.ks ? 'on' : ''}">Knock sensors ${e.ks ? 'on' : 'off'}</button></div>`;
+      h += `<div class="note">Timing is degrees against the factory map (BTDC numbers are approximate). The factory map runs a little short of MBT and right at the knock limit where the engine is knock limited (boosted motors on pump gas). More timing gains toward MBT and nothing past it; past the red line it knocks. The knock sensors catch it and pull timing back out, more than it needed, so it loses power. Switched off, it just detonates. A richer mix (lower lambda) cools the charge and buys timing; leaner makes a touch more power until it knocks and runs hot. Factory: lambda ${R.X.lam0.toFixed(2)} (${(R.X.lam0 * st).toFixed(1)}:1) wide open.</div>`;
+      h += `<h3>Dyno</h3><div class="row lg"><span><i style="background:#888;border-top:1px dashed #888"></i>Factory map</span><span><i style="background:#5aa0ff"></i>This tune (hp, lb-ft)</span></div><canvas id="ecudyno" width="720" height="260"></canvas>`;
+    } else if (ECL.tab === 'boost') {
+      if (!H) h += `<h3>No boost on this engine</h3><div class="note">Boost by gear needs a turbo or a blower. Add one on the Boost screen.</div>`;
+      else {
+        const nG = Math.max(V.auto.length, (V.man || []).length), f = (R.b && R.b.fi) || {}, turbo = H.kind === 'turbo', base = turbo ? H.target : R.psi;
+        h += `<h3>Boost by gear</h3><div class="note">${turbo ? `The ECU drives the boost controller's solenoid: each gear gets its own target. The base target is ${fiPsi(H.target)} (set on the Boost screen).` : `The ECU holds the blower's bypass valve open to cap boost in a gear (it can't make more than the blower does: ${fiPsi(R.psi)} peak).`} Less boost in the low gears hooks on street tires; full boost once it's hooked.</div>`;
+        if (turbo && !f.bc) h += `<div class="warn">⚠ Needs a boost controller (Boost screen) for the ECU to set boost by gear. On the wastegate spring alone it runs ${fiPsi(H.target)} in every gear.</div>`;
+        else for (let g = 1; g <= nG; g++) { const v = e.bst[g - 1], val = v == null ? base : v, mx = turbo ? 45 : Math.ceil(R.psi);
+          h += `<div class="row"><span class="note" style="width:52px">Gear ${g}</span><input type="range" data-bst="${g}" min="${turbo ? 4 : 0}" max="${mx}" step="0.5" value="${Math.min(val, mx)}"><output>${v == null ? 'Base · ' + fiPsi(base) : fiPsi(v)}</output>${v == null ? '' : `<button data-bstx="${g}">Base</button>`}</div>`; }
+      }
+    } else if (ECL.tab === 'limits') {
+      const mech = R.red, rv = e.rev || mech, lo = Math.round((R.nP + 200) / 100) * 100, hi = mech + 700;
+      h += `<h3>Rev limiter</h3><div class="row"><input type="range" data-rev min="${lo}" max="${hi}" step="100" value="${rv}"><output>${rv.toLocaleString()} rpm</output>${e.rev ? '<button data-revx>Factory</button>' : ''}</div>`;
+      h += `<div class="note">Factory limiter ${mech.toLocaleString()} rpm, where the valve springs are good to. Past it the valves start to float (4D adds what that breaks). It only pays to rev higher if the motor still makes power up there: it peaks at ${R.nP.toLocaleString()} rpm.</div>`;
+      const fl = LC_FACTORY[c.id];
+      h += `<h3>Launch control</h3><div class="row"><input type="range" data-lc min="0" max="6000" step="100" value="${e.lc}"><output>${e.lc ? e.lc.toLocaleString() + ' rpm' : 'Off'}</output></div><div class="note">Hold the brake and the gas on the line: it holds the motor at this rpm (a second rev limiter). ${fl ? `The factory system holds ${fl.toLocaleString()} rpm when this is off.` : ''} Too low bogs, too high spins.</div>`;
+      if (H && H.kind === 'turbo') h += `<h3>Launch timing retard (turbo)</h3><div class="row"><input type="range" data-lcret min="0" max="20" step="1" value="${e.lcRet}"><output>${e.lcRet ? e.lcRet + '°' : 'Off'}</output></div><div class="note">On the 2-step it fires late: hot exhaust spins the turbo, so it leaves the line with boost. Hard on the turbo and the exhaust valves.</div>`;
+      const idl = e.idle || R.idle;
+      h += `<h3>Idle</h3><div class="row"><input type="range" data-idle min="${Math.max(500, R.idle - 100)}" max="1500" step="25" value="${idl}"><output>${idl.toLocaleString()} rpm</output>${e.idle ? '<button data-idlex>Factory</button>' : ''}</div><div class="note">This build wants about ${R.idle.toLocaleString()} rpm (a bigger cam needs more to stay lit).</div>`;
+    } else if (ECL.tab === 'drive') {
+      h += `<h3>Pedal map (throttle response)</h3><div class="row">${Object.entries(ECU_PED).map(([k, o]) => `<button data-ped="${k}" class="${e.ped === k ? 'on' : ''}">${o.name}</button>`).join('')}</div><div class="note">How much throttle the pedal asks for and how fast the throttle opens. Race opens it with the first bit of pedal (hard to drive on street tires); Eco is soft.</div>`;
+      if (V.tt !== 'man' || !V.man) {
+        const up = e.up || 0, dflt = Math.round(red * (V.tt === 'dct' ? 0.96 : VDP.upTc) / 100) * 100;
+        h += `<h3>Shift points (automatic, wide open)</h3><div class="row"><input type="range" data-up min="3000" max="${Math.round(red)}" step="100" value="${up || dflt}"><output>${(up || dflt).toLocaleString()} rpm${up ? '' : ' (factory)'}</output>${up ? '<button data-upx>Factory</button>' : ''}</div><div class="note">Where the transmission upshifts at full throttle. Shift where the next gear lands back near peak power (${R.nP.toLocaleString()} rpm here).</div>`;
+      }
+    } else if (ECL.tab === 'nos') {
+      const x = nxConf(c), n = e.nos;
+      if (!x) h += `<h3>No nitrous on this car</h3><div class="note">Put a kit on at the Nitrous screen and the ECU can run its activation.</div>`;
+      else {
+        h += `<h3>Nitrous activation</h3><div class="row"><button data-nosen class="${n.en ? 'on' : ''}">ECU runs the nitrous: ${n.en ? 'on' : 'off'}</button></div><div class="note">With it on, the ECU is the window switch and the gear lockout (you don't need those parts), and it pulls the timing for the shot. ${n.en ? '' : 'Off, the Nitrous screen\'s own switches run it.'}</div>`;
+        if (n.en) {
+          const sl = (k, lab, mn, mx, st, v, f) => `<div class="row"><span class="note" style="width:120px">${lab}</span><input type="range" data-nos="${k}" min="${mn}" max="${mx}" step="${st}" value="${v}"><output>${f(v)}</output></div>`;
+          h += sl('on', 'On above', 1500, 6500, 100, n.on, v => v.toLocaleString() + ' rpm') + sl('off', 'Off above', 3000, Math.round(red), 100, n.off || Math.round(red - 200), v => v.toLocaleString() + ' rpm')
+            + sl('g0', 'First gear', 1, 6, 1, n.g0, v => 'gear ' + v) + sl('g1', 'Last gear', 1, 9, 1, Math.min(9, n.g1), v => v >= 9 ? 'all' : 'gear ' + v) + sl('wot', 'Throttle over', 50, 100, 5, n.wot, v => v + '%') + sl('ret', 'Timing retard', 0, 12, 0.5, n.ret, v => v + '°');
+          h += `<div class="note">About 2° of retard per 50 hp of shot on a street motor on 93. Too little and it knocks under the spray.</div>`;
+        }
+      }
+    } else if (ECL.tab === 'cams') {
+      const v = e.vvt;
+      h += `<h3>Cam phasers</h3><div class="row"><span class="note" style="width:120px">Low rpm (to ${Math.round(red * 0.45).toLocaleString()})</span><input type="range" data-vvt="0" min="-12" max="12" step="1" value="${v[0]}"><output>${ecuDeg(v[0])}</output></div>`;
+      h += `<div class="row"><span class="note" style="width:120px">High rpm (from ${Math.round(red * 0.7).toLocaleString()})</span><input type="range" data-vvt="1" min="-12" max="12" step="1" value="${v[1]}"><output>${ecuDeg(v[1])}</output></div>`;
+      h += `<div class="note">Degrees of intake cam advance against the factory schedule. Advance closes the intake valve sooner: more cylinder filling down low. Retard holds it open longer: more up top, less down low. The factory schedule is close to best for a stock motor; after a cam, heads or boost it can pay to move it.</div>`;
+      h += `<h3>Dyno</h3><div class="row lg"><span><i style="background:#888;border-top:1px dashed #888"></i>Factory map</span><span><i style="background:#5aa0ff"></i>This tune (hp, lb-ft)</span></div><canvas id="ecudyno" width="720" height="260"></canvas>`;
+    }
+    const w = R.warn.filter(x => /knock|Deton|Lean|rich|phaser|Knock|Fuel system/i.test(x)); if (w.length) h += w.map(x => `<div class="warn">⚠ ${x}</div>`).join('');
+    h += `<div class="row" style="margin-top:8px"><button data-test>Drag test it (quarter mile)</button><span class="note">${ECL.run || ''}</span><button data-reset>Everything back to factory</button></div>`;
+    h += `<div class="note">Verified: torque against spark advance peaks at MBT and falls off either side, best power near lambda 0.87 on gasoline, a richer mix cools the charge and resists knock, knock sensors retard and recover, boost-by-gear and bypass valves, cam phasing moves the torque curve. Approximated: how far the factory map sits from MBT, the knock margin in degrees (from compression, boost, charge heat, rpm and fuel), the torque-vs-lambda curve, how hard the sensors pull, the BTDC numbers.</div>`;
+    el.innerHTML = h; el.scrollTop = keep; ecuWire(el, c, D, R, e); ecuSparkChart(R, Rp, red, e); ecuDyno(c, D, R, red);
+  }
+  function ecuWire(el, c, D, R, e) {
+    const q = s => el.querySelectorAll(s), on = (s, fn) => q(s).forEach(b => b.onclick = () => fn(b, b.dataset)), sl = (s, fn, fmt) => q(s).forEach(i => { i.oninput = () => { if (fmt) i.nextElementSibling.textContent = fmt(+i.value, i.dataset); }; i.onchange = () => fn(+i.value, i.dataset); });
+    el.querySelector('[data-x]').onclick = ecuClose;
+    el.querySelector('[data-tolab]').onclick = () => { ECL.open = false; labOpen(); };
+    el.querySelector('[data-tofi]').onclick = () => { ECL.open = false; fiOpen(); };
+    el.querySelector('[data-tonx]').onclick = () => { ECL.open = false; nxOpen(); };
+    on('[data-buyecu]', () => { const P = TUNE_PARTS.ecu; if (!spend(P.price, P.name)) return; c.tparts = (c.tparts || []).concat('ecu'); VEH_CACHE.clear(); save(); refreshStats(); toast(`${P.name} on: the maps are open.`, 'good'); ecuRender(); });
+    if (!e) return;
+    on('[data-tab]', (b, d) => { ECL.tab = d.tab; ecuRender(); });
+    on('[data-cell]', (b, d) => { const [k, i, dv] = d.cell.split('|'); ecuEdit(x => {
+      if (k === 'tm') x.tm[+i] = clamp(Math.round((x.tm[+i] + +dv) * 10) / 10, -12, 15);
+      else { if (!x.lam) x.lam = ECU_N.map(() => R.X.lam0); x.lam[+i] = clamp(Math.round((x.lam[+i] + +dv) * 100) / 100, 0.68, 1.05); }
+    }); });
+    on('[data-all]', (b, d) => ecuEdit(x => { x.tm = x.tm.map(v => clamp(v + +d.all, -12, 15)); }));
+    on('[data-fsp]', () => ecuEdit(x => { x.tm = ECU_N.map(() => 0); }));
+    on('[data-ffu]', () => ecuEdit(x => { x.lam = null; }));
+    on('[data-ks]', () => ecuEdit(x => { x.ks = x.ks ? 0 : 1; if (!x.ks) toast('Knock sensors off: nothing saves it if it detonates.', 'bad'); }));
+    sl('[data-bst]', (v, d) => ecuEdit(x => { x.bst[+d.bst - 1] = v; }), v => fiPsi(v));
+    on('[data-bstx]', (b, d) => ecuEdit(x => { x.bst[+d.bstx - 1] = null; }));
+    sl('[data-rev]', v => ecuEdit(x => { x.rev = v === R.red ? null : v; }), v => v.toLocaleString() + ' rpm');
+    on('[data-revx]', () => ecuEdit(x => { x.rev = null; }));
+    sl('[data-lc]', v => ecuEdit(x => { x.lc = v < 1000 ? 0 : v; }), v => v < 1000 ? 'Off' : v.toLocaleString() + ' rpm');
+    sl('[data-lcret]', v => ecuEdit(x => { x.lcRet = v; }), v => v ? v + '°' : 'Off');
+    sl('[data-idle]', v => ecuEdit(x => { x.idle = v; }), v => v.toLocaleString() + ' rpm');
+    on('[data-idlex]', () => ecuEdit(x => { x.idle = 0; }));
+    on('[data-ped]', (b, d) => ecuEdit(x => { x.ped = d.ped; }));
+    sl('[data-up]', v => ecuEdit(x => { x.up = v; }), v => v.toLocaleString() + ' rpm');
+    on('[data-upx]', () => ecuEdit(x => { x.up = 0; }));
+    on('[data-nosen]', () => ecuEdit(x => { x.nos.en = x.nos.en ? 0 : 1; }));
+    sl('[data-nos]', (v, d) => ecuEdit(x => { x.nos[d.nos] = v; }), (v, d) => d.nos === 'wot' ? v + '%' : d.nos === 'ret' ? v + '°' : d.nos === 'g0' ? 'gear ' + v : d.nos === 'g1' ? (v >= 9 ? 'all' : 'gear ' + v) : v.toLocaleString() + ' rpm');
+    sl('[data-vvt]', (v, d) => ecuEdit(x => { x.vvt[+d.vvt] = v; }), v => ecuDeg(v));
+    on('[data-reset]', () => { const k = c.eb ? Object.assign({}, c.eb) : {}; delete k.ecu; c.eb = k; c.tune = Object.assign({}, c.tune || {}, { timing: TUNE_DEF.timing, afr: TUNE_DEF.afr, rev: TUNE_DEF.rev, lc: 0 }); VEH_CACHE.clear(); save(); ECL.run = null; toast('ECU back to the factory maps.', 'good'); ecuRender(); });
+    on('[data-test]', () => { const r = tuneRun(c, c.tune || {}, {}); ECL.run = r && r.et ? `${r.et.toFixed(2)} @ ${Math.round(r.trap)} mph, 60 ft-to-60 mph ${r.t60.toFixed(2)} s (a street launch, no prep)` : '-'; ecuRender(); });
+  }
+  // the spark chart: degrees against the factory map, with MBT and the knock limit at each rpm
+  function ecuSparkChart(R, Rp, red, e) {
+    const cv = $('ecusp'); if (!cv) return; const g = cv.getContext('2d'), W = cv.width, Ht = cv.height, pad = 34, T = Rp.ecuT, pts = [];
+    for (let n = 1200; n <= red; n += 100) { const x = T[Math.round(n / 100)]; if (x) pts.push({ n, mbt: x.mbt, kl: x.kl, adv: ecuAt(e.tm, n), eff: x.eff }); }
+    let lo = -4, hi = 6; for (const p of pts) { lo = Math.min(lo, p.adv - 1, p.eff - 1); hi = Math.max(hi, Math.min(16, p.mbt + 1), Math.min(16, p.kl + 1), p.adv + 1); }
+    const X = n => pad + (W - pad - 10) * n / (red + 300), Y = v => Ht - 22 - (Ht - 30) * (v - lo) / (hi - lo);
+    g.clearRect(0, 0, W, Ht); g.font = '13px sans-serif'; g.fillStyle = '#8a8394'; g.strokeStyle = '#2b2533'; g.lineWidth = 1;
+    for (let n = 1000; n < red + 300; n += 1000) { g.beginPath(); g.moveTo(X(n), 6); g.lineTo(X(n), Ht - 22); g.stroke(); g.fillText(n / 1000 + 'k', X(n) - 8, Ht - 6); }
+    for (let v = Math.ceil(lo / 2) * 2; v <= hi; v += 2) { g.beginPath(); g.moveTo(pad, Y(v)); g.lineTo(W - 10, Y(v)); g.stroke(); g.fillText((v > 0 ? '+' : '') + v, 2, Y(v) + 4); }
+    const line = (fn, col, dash) => { g.strokeStyle = col; g.setLineDash(dash || []); g.lineWidth = 2.2; g.beginPath(); pts.forEach((p, i) => { const y = Y(Math.min(hi, fn(p))); i ? g.lineTo(X(p.n), y) : g.moveTo(X(p.n), y); }); g.stroke(); };
+    line(() => 0, '#888', [6, 5]); line(p => p.mbt, '#3ddc84'); line(p => p.kl, '#ff5a5a'); line(p => p.adv, '#5aa0ff'); line(p => p.eff, '#ffffff', [3, 4]);
+    g.setLineDash([]); g.fillStyle = '#8a8394'; g.fillText('° vs factory', pad + 4, 16);
+  }
+  function ecuDyno(c, D, R, red) {
+    const cv = $('ecudyno'); if (!cv) return; const g = cv.getContext('2d'), W = cv.width, Ht = cv.height, pad = 34;
+    const b0 = Object.assign({}, R.b); delete b0.ecu; const R0 = engModel(D, b0, engFuel(c)), pts = []; let maxY = 100;
+    for (let n = 1200; n <= red; n += 100) { const t = engTqAt(R, n), t0 = engTqAt(R0, n); pts.push({ n, hp: t * n / 7120.9, tq: t / 1.3558, hp0: t0 * n / 7120.9, tq0: t0 / 1.3558 }); maxY = Math.max(maxY, t * n / 7120.9, t / 1.3558, t0 * n / 7120.9, t0 / 1.3558); }
+    maxY *= 1.1; const X = n => pad + (W - pad - 10) * n / (red + 300), Y = v => Ht - 22 - (Ht - 30) * v / maxY;
+    g.clearRect(0, 0, W, Ht); g.font = '13px sans-serif'; g.fillStyle = '#8a8394'; g.strokeStyle = '#2b2533'; g.lineWidth = 1;
+    for (let n = 1000; n < red + 300; n += 1000) { g.beginPath(); g.moveTo(X(n), 6); g.lineTo(X(n), Ht - 22); g.stroke(); g.fillText(n / 1000 + 'k', X(n) - 8, Ht - 6); }
+    for (let v = 100; v < maxY; v += 100) { g.beginPath(); g.moveTo(pad, Y(v)); g.lineTo(W - 10, Y(v)); g.stroke(); g.fillText(v, 2, Y(v) + 4); }
+    const line = (fn, col, dash) => { g.strokeStyle = col; g.setLineDash(dash ? [6, 5] : []); g.lineWidth = 2.2; g.beginPath(); pts.forEach((p, i) => { const y = Y(fn(p)); i ? g.lineTo(X(p.n), y) : g.moveTo(X(p.n), y); }); g.stroke(); };
+    line(p => p.hp0, '#888', true); line(p => p.tq0, '#888', true); line(p => p.hp, '#5aa0ff'); line(p => p.tq, '#5aa0ff');
+    g.setLineDash([]); g.fillStyle = '#8a8394'; g.fillText(`hp / lb-ft · ${Math.round(R.hp)} hp (factory map ${Math.round(R0.hp)})`, pad + 4, 16);
   }
 
   // ---------- the cockpit: a real gauge cluster (tach, speedo, odometer), gas and brake pedals, and a manual stick ----------
@@ -21528,7 +21794,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
-  window.__map = { FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
+  window.__map = { ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
