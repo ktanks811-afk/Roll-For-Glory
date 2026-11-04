@@ -74,7 +74,7 @@ const S = process.env.S, ONLY = (process.env.ONLY || 'beams,tree,ai,me,red,fps,b
     await ev(`(() => { const M = window.__map, Y = window.__yb, R = Y.race, d = M.drvS(), T = window.__t; const inp = { gas: 0, brake: 0, steer: 0, hb: 0 }; T.ph = 'out'; T.bt = 0; T.stT = 0; R.auto = false;
       T.drive = dt => { const me = R.me; if (!me) return; const lx = Y.LANES[me.side === 'L' ? 0 : 1], rz = d.z + 1.45;
         if (T.ph === 'out') { window.__drvIn = () => inp; if (R.ph === 'wait') { inp.gas = 0; inp.brake = 0; return; } inp.steer = Math.max(-1, Math.min(1, (d.x - lx) * 0.5 - d.yaw * 2.5)); inp.gas = d.v < 2.5 ? 0.25 : 0; inp.brake = 0; if (rz < Y.water.z0 + 8) T.ph = ${o.burn === 0 ? "'auto0'" : "'stop'"}; }
-        else if (T.ph === 'stop') { inp.gas = 0; inp.brake = d.v > 0.65 ? 0.8 : 0; inp.steer = 0; if (Math.abs(d.v) < 0.1) T.ph = 'burn'; }
+        else if (T.ph === 'stop') { inp.gas = 0; inp.brake = 0.8; inp.steer = 0; if (Math.abs(d.v) < 0.1) T.ph = 'burn'; }   // brake to a full stop (idle creep is about 1.5 mph)
         else if (T.ph === 'burn') { inp.gas = 1; inp.brake = 1; T.bt += dt; if (T.bt > ${o.burn || 2.6}) { inp.gas = 0; inp.brake = 0; T.ph = 'auto0'; } }
         else if (T.ph === 'auto0') { window.__drvIn = null; R.auto = true; T.ph = 'auto'; }
         else if (T.ph === 'auto') { const run = R.run; if (run && (${o.early ? 1 : 0} ? (run.lanes.every(L => L.pre && L.stg) && R.t > (T.stT = T.stT || R.t) + 0.3) : (run.gT != null && R.t >= run.gT + ${RTD} - 0.25))) { M.keys.ArrowUp = true; T.ph = 'run'; } }

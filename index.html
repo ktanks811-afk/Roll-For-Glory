@@ -18745,7 +18745,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       case 'staged': {   // the launch: on a pro tree they leave off the ambers; how early depends on what they know their car takes to roll out
         agSpeed(A, 0);
         if (run && run.ta != null && L.press == null) {
-          const roll = A.r.rollEst || 0.5, want = 0.012 + (1 - A.skill) * 0.16, sd = 0.012 + (1 - A.skill) * 0.045;
+          const roll = A.r.rollEst || (V && V.lcRpm && !V.ev ? 0.3 : 0.5), want = 0.012 + (1 - A.skill) * 0.16, sd = 0.012 + (1 - A.skill) * 0.045;
           const gauss = (Math.random() + Math.random() + Math.random() - 1.5) * 2 * sd;
           L.press = run.gT - roll + want + gauss;
         }
