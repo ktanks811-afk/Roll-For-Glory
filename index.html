@@ -7768,7 +7768,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   function lcbRpm() { const c = S.car; if (!c || isEV(c)) return 0; try { const P = carPerf(); return Math.round(P.lc || (P.veh && P.veh.lcRpm) || 0); } catch (e) { return 0; } }
   function lcbUi(show) {
     if (!LCB.el) {
-      const st = document.createElement('style'); st.textContent = `#lcbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 196px);right:calc(max(18px,env(safe-area-inset-right,0px)) + 82px);border-color:#3ddc84}#lcbtn.arm{background:#3ddc84;color:#0f1a12}#lcbtn.arm small{color:#123}#lcbtn.hold{animation:lcp .5s infinite alternate}@keyframes lcp{to{box-shadow:0 0 0 4px rgba(61,220,132,.6)}}
+      const st = document.createElement('style'); st.textContent = `#lcbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 196px);right:calc(max(18px,env(safe-area-inset-right,0px)) + 82px);border-color:#3ddc84}@media (orientation:landscape){#lcbtn{right:calc(max(18px,env(safe-area-inset-right,0px)) + 142px)}}#lcbtn.arm{background:#3ddc84;color:#0f1a12}#lcbtn.arm small{color:#123}#lcbtn.hold{animation:lcp .5s infinite alternate}@keyframes lcp{to{box-shadow:0 0 0 4px rgba(61,220,132,.6)}}
 body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.strip-on #lcbtn{z-index:26}@media (orientation:portrait){#lcbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 330px)}}`; document.head.append(st);
       const b = document.createElement('button'); b.id = 'lcbtn'; b.className = 'nosbtn'; b.innerHTML = 'LAUNCH<small>tap to arm</small>'; document.body.append(b); LCB.el = b;
       b.addEventListener('pointerdown', e => { e.preventDefault(); lcbTap(); }); b.addEventListener('contextmenu', e => e.preventDefault());
@@ -12378,7 +12378,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       const st = document.createElement('style');
       st.textContent = `.nosbtn{position:fixed;z-index:21;right:max(18px,env(safe-area-inset-right,0px));width:74px;height:58px;border-radius:14px;border:2px solid #3a3244;background:rgba(18,16,22,.82);color:#f1ece4;font:700 15px "Barlow Condensed","Arial Narrow",sans-serif;line-height:1.05;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;display:none;padding:0}
 .nosbtn small{display:block;font-size:12px;font-weight:600;color:#a89fb2}
-#nosbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 196px);border-color:#2a6fd1}#nosbtn.on{background:#2a6fd1;color:#fff}#nosbtn.on small{color:#dfeaff}#nosbtn.arm{box-shadow:0 0 0 3px rgba(42,111,209,.55)}#nosbtn.empty{opacity:.5}#nosbtn.det{border-color:#ff3d3d}#nosbtn.det small{color:#ff8a8a}
+#nosbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 196px);border-color:#2a6fd1}@media (orientation:landscape){.nosbtn{right:calc(max(18px,env(safe-area-inset-right,0px)) + 60px)}}#nosbtn.on{background:#2a6fd1;color:#fff}#nosbtn.on small{color:#dfeaff}#nosbtn.arm{box-shadow:0 0 0 3px rgba(42,111,209,.55)}#nosbtn.empty{opacity:.5}#nosbtn.det{border-color:#ff3d3d}#nosbtn.det small{color:#ff8a8a}
 #alsbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 262px);border-color:#e8651a}#alsbtn.on{background:#e8651a;color:#141014}#alsbtn.on small{color:#2a1608}
 #pgbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 328px);border-color:#b8c4d0}#pgbtn.on{background:#e8eef4;color:#141014}#pgbtn.on small{color:#333}
 body.nos-ok #nosbtn,body.als-ok #alsbtn,body.pg-ok #pgbtn,body.lay-edit #nosbtn,body.lay-edit #alsbtn{display:block}
@@ -12907,7 +12907,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
   }
   // after the physics: what the motor is doing, for the tach and the sound
   function gbAfter(dt, I, P) {
-    const c = S.car; GBX.ev = isEV(c); GBX.red = gbRed(c); GBX.live = performance.now();
+    const c = S.car; GBX.ev = isEV(c); GBX.red = gbRed(c); GBX.live = performance.now(); GBX.lastI = I;
     const reK = P.veh && !GBX.ev ? P.veh.red / GBX.red : 1;   // an ECU that moves the limiter moves the needle past the factory line
     if (GBX.cut > 0) GBX.cut = Math.max(0, GBX.cut - dt);
     const wv = Math.abs(TIRE.wv), u = drv.v, gas = I.gas || 0;
@@ -13065,9 +13065,10 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     clNeedle(g, w * 0.8, ty, R, mph / smax);
     // the middle: gear, shift lights, mode
     const mx = w * 0.5, gear = ev ? 'D' : GBX.man ? gbName(GBX.g) : 'D';
-    const leds = GBX.man && !ev ? rpm : 0;
-    for (let i = 0; i < 5; i++) { const on = leds > 0.78 + i * 0.04; g.beginPath(); g.arc(mx - 24 + i * 12, h * 0.17, 4, 0, Math.PI * 2); g.fillStyle = on ? (i < 2 ? '#3bdc6a' : i < 4 ? '#ffc93a' : '#ff3b3b') : '#25272c'; g.fill(); }
-    if (GBX.man && rpm > 0.97 && (performance.now() / 70 | 0) % 2) { g.fillStyle = 'rgba(255,40,40,0.25)'; g.fillRect(mx - 30, h * 0.1, 60, 14); }
+    const V = P.veh, spt = V && !ev ? (V.upW || Math.min(V.red * 0.985, V.E && V.E.nP ? Math.max(V.E.nP * 1.04, V.red * 0.9) : V.red * 0.97)) / red : 0.97, leds = GBX.man && !ev ? rpm / spt : 0;   // Phase 5B: the lights build to the shift point
+    if (leds >= 1 && (performance.now() / 90 | 0) % 2) for (let i = 0; i < 5; i++) { g.beginPath(); g.arc(mx - 24 + i * 12, h * 0.17, 4.6, 0, Math.PI * 2); g.fillStyle = '#4aa3ff'; g.fill(); }
+    else for (let i = 0; i < 5; i++) { const on = leds > 0.8 + i * 0.045; g.beginPath(); g.arc(mx - 24 + i * 12, h * 0.17, 4, 0, Math.PI * 2); g.fillStyle = on ? (i < 2 ? '#3bdc6a' : i < 4 ? '#ffc93a' : '#ff3b3b') : '#25272c'; g.fill(); }
+    if (GBX.man && rpm > Math.max(0.97, spt) && (performance.now() / 70 | 0) % 2) { g.fillStyle = 'rgba(255,40,40,0.25)'; g.fillRect(mx - 30, h * 0.1, 60, 14); }
     g.fillStyle = GBX.cut > 0 ? '#ffc93a' : '#f2efe6'; g.font = `800 ${Math.round(h * 0.3)}px system-ui, sans-serif`; g.fillText(gear, mx, h * 0.47);
     g.fillStyle = '#9aa0a8'; g.font = `700 ${Math.round(h * 0.09)}px system-ui, sans-serif`;
     g.fillText(ev ? 'EV' : GBX.man ? 'MANUAL' : 'AUTO ' + GBX.gA, mx, h * 0.68);
@@ -13076,14 +13077,104 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
   // every frame: draw the cluster when you're behind the wheel, poll the pad's bumpers for shifts, keep the radio above it all
   function cockpitFrame(dt) {
     const bc = document.body.classList, incar = bc.contains('incar');
-    if (!incar) return;
+    if (!incar) { if (bc.contains('hx-on')) bc.remove('hx-on', 'hd-on'); return; }
     if (S.gbMan != null && S.gbMan !== GBX.man) { GBX.man = S.gbMan; $('shifter').classList.toggle('auto', !GBX.man); $('sh-mode').textContent = GBX.man ? 'M' : 'A'; shKnobTo(GBX.g); }
     const ev = !!(S.car && isEV(S.car)); bc.toggle('evcar', ev);
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) { if (!p) continue; for (const [b, d] of [[5, 1], [4, -1]]) { const on = !!(p.buttons[b] && p.buttons[b].pressed); if (on && !GBX.pad[b]) gbSeq(d); GBX.pad[b] = on; } }
-    clDraw(); if (!SHF.drag && (frame & 7) === 0) shDraw();
+    clDraw(); hudxFrame(); if (!SHF.drag && (frame & 7) === 0) shDraw();
     if ((frame & 7) === 0) { const pad = $('pad'), r = pad.getBoundingClientRect(); if (r.height) $('radio').style.bottom = Math.round(innerHeight - r.top + 8) + 'px'; }
   }
+  // ---------- Phase 5B: the driving HUD. Side gauges (temperature, boost, nitrous, traction) next to the cluster, an optional
+  // diagnostics panel with the physics' own numbers (torque, loads, slip, drivetrain), all read from the simulation ----------
+  const HUDX = { el: null, dg: null, pk: 0, pkT: 0, n: 0 };
+  const HUD_DEF = { side: true, temp: true, boost: true, nos: true, slip: true, diag: false };
+  const hudOpt = () => Object.assign({}, HUD_DEF, S.hud || {});
+  function hudSet(k, v) { S.hud = Object.assign({}, S.hud || {}, { [k]: v }); save(); }
+  function hudxBuild() {
+    const st = document.createElement('style'); st.textContent = `#hudx{position:fixed;left:max(14px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 152px);width:138px;display:none;flex-direction:column;gap:4px;z-index:7;font:600 11px/1.15 system-ui,sans-serif;color:#f2efe6;cursor:pointer;-webkit-user-select:none;user-select:none}
+body.hx-on #hudx,body.lay-edit #hudx{display:flex}#hudx .hx{background:rgba(10,11,14,.72);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:3px 7px 4px;backdrop-filter:blur(4px)}#hudx .hx[hidden]{display:none}
+#hudx .t,#hudx .t2{display:flex;justify-content:space-between;align-items:baseline;gap:4px;color:#9aa0a8;font-size:9.5px;letter-spacing:.05em}#hudx .t b{color:#f2efe6;font-size:12px;letter-spacing:0}#hudx .t em{font-style:normal;margin-left:auto}#hudx .t2{margin-top:2px}#hudx .t2 b{font-size:10.5px;color:#cfd3d8}#hudx .bar{position:relative;height:4px;border-radius:3px;background:#25272c;margin-top:2px;overflow:hidden}#hudx .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px}#hudx .bar u{position:absolute;top:-1px;bottom:-1px;width:2px;background:#fff}
+#hudx .bar s{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.35)}#hudx .sp{display:flex;align-items:center;gap:8px}#hudx .car{position:relative;width:22px;height:32px;margin:0 4px;flex:none;border:1px solid rgba(255,255,255,.25);border-radius:9px 9px 6px 6px}#hudx .car i{position:absolute;width:6px;height:9px;border-radius:2px;background:#3bdc6a}
+#hudx .car i:nth-child(1){left:-4px;top:3px}#hudx .car i:nth-child(2){right:-4px;top:3px}#hudx .car i:nth-child(3){left:-4px;bottom:3px}#hudx .car i:nth-child(4){right:-4px;bottom:3px}#hudx .car i.air{background:transparent;border:1px solid #4aa3ff}#hudx .sp div{flex:1;min-width:0}#hudx .sp b{display:block;font-size:11px}#hudx .lt{display:inline-block;margin-top:2px;padding:0 4px;border-radius:4px;font-size:10px;background:#25272c;color:#555b63}#hudx .lt.on{background:#ffb020;color:#111}
+#hdiag{position:fixed;left:50%;translate:-50% 0;top:calc(env(safe-area-inset-top,0px) + 34px);display:none;grid-template-columns:repeat(4,auto);gap:1px 10px;z-index:7;padding:6px 10px;border-radius:10px;background:rgba(6,7,9,.78);border:1px solid rgba(255,255,255,.12);font:600 10.5px/1.25 ui-monospace,Menlo,monospace;color:#cfd3d8;pointer-events:none;white-space:nowrap}
+body.hd-on #hdiag{display:grid}#hdiag span{color:#7d848c}#hdiag b{color:#f2efe6;font-weight:600}@media (orientation:landscape) and (max-height:400px){#hudx{top:calc(env(safe-area-inset-top,0px) + 146px)}#hudx .t2{display:none}}@media (orientation:portrait){#hudx{top:calc(env(safe-area-inset-top,0px) + 196px)}#hdiag{grid-template-columns:repeat(2,auto);top:calc(env(safe-area-inset-top,0px) + 60px)}}`;
+    document.head.append(st);
+    const el = document.createElement('div'); el.id = 'hudx'; el.title = 'Tap for diagnostics';
+    el.innerHTML = `<div class="hx" data-h="temp"><div class="t">WATER<b></b><em>OIL</em><b></b></div><div class="bar"><s style="left:${(90 - 40) / 95 * 100}%"></s><i></i></div></div>
+<div class="hx" data-h="boost" hidden><div class="t"><span>BOOST</span><b></b></div><div class="bar"><s></s><i></i><u></u></div><div class="t2"><span></span><b></b></div></div>
+<div class="hx" data-h="nos" hidden><div class="t"><span>N2O</span><b></b></div><div class="bar"><s style="left:${(900 - 500) / 700 * 100}%"></s><s style="left:${(1000 - 500) / 700 * 100}%"></s><i></i></div><div class="t2"><span>LEFT</span><b></b></div></div>
+<div class="hx sp" data-h="slip"><div class="car"><i></i><i></i><i></i><i></i></div><div><b>GRIP</b><span class="lt" data-l="tc">TC</span> <span class="lt" data-l="wh">WHEELIE</span></div></div>`;
+    document.body.append(el); HUDX.el = el;
+    el.addEventListener('pointerdown', e => { if (document.body.classList.contains('lay-edit')) return; e.preventDefault(); const o = hudOpt(); hudSet('diag', !o.diag); toast(o.diag ? 'Diagnostics off.' : 'Diagnostics on: the physics live. Tap the gauges again to hide.', ''); });
+    const dg = document.createElement('div'); dg.id = 'hdiag'; document.body.append(dg); HUDX.dg = dg;
+    if (typeof layApply === 'function') layApply();
+  }
+  const hxCol = (x, a, b, c) => x < a ? '#4aa3ff' : x < b ? '#3bdc6a' : x < c ? '#ffb020' : '#ff3b3b';
+  function hudxFrame() {
+    const c = S.car, bc = document.body.classList, o = hudOpt();
+    if (!HUDX.el) hudxBuild();
+    const on = !!(c && o.side), dOn = !!(c && o.diag && TIRE.vd);
+    if (on !== bc.contains('hx-on')) bc.toggle('hx-on', on); if (dOn !== bc.contains('hd-on')) bc.toggle('hd-on', dOn);
+    if (!on && !dOn) return; if ((++HUDX.n & 3) && !(o.diag && (HUDX.n & 3) === 2)) return;
+    const el = HUDX.el, ev = isEV(c), vd = TIRE.vd, R = !ev && !c.swap ? engOf(c) : null, rpm = vd ? Math.abs(vd.we) * 30 / Math.PI : 0, thr = TIRE.thr || 0, P = carPerf();
+    const box = k => el.querySelector(`[data-h="${k}"]`), set = (b, show) => { if (b.hidden === show) b.hidden = !show; return show; };
+    // temperatures: the coolant the engine model heats, the oil the damage model tracks
+    const bt = box('temp');
+    if (set(bt, o.temp && !ev)) { const T = ENGT.id === c.id ? ENGT.T : c.engT || 25, oT = DMG.oilT != null ? DMG.oilT : T + 10, f = clamp((T - 40) / 95, 0, 1), b = bt.querySelectorAll('b');
+      b[0].textContent = Math.round(T) + '°'; b[0].style.color = hxCol(T, 70, 106, 115); b[1].textContent = Math.round(oT) + '°'; b[1].style.color = hxCol(oT, 60, 125, 140);
+      const i = bt.querySelector('i'); i.style.width = f * 100 + '%'; i.style.background = hxCol(T, 70, 106, 115); }
+    // boost: what the hardware makes at this rpm, how spooled the turbo is, how far the throttle's open; vacuum off throttle
+    const bb = box('boost'), H = R && R.fiH;
+    if (set(bb, !!(o.boost && H))) {
+      const f = fiTabAt(R.fiTab, rpm), sp = H.kind === 'turbo' ? TIRE.boost || 0 : 1, psi = vd ? f.psi * Math.min(1, thr * 1.4) * sp : 0, vac = vd && thr < 0.3 ? (R.vac || 18) * (1 - thr / 0.3) : 0;
+      const mx = Math.max(10, Math.ceil((R.psi || 10) * 1.3 / 5) * 5), now = performance.now(), b = bb.querySelectorAll('b'), z = 30 / (30 + mx);
+      if (psi >= HUDX.pk || now - HUDX.pkT > 2500) { HUDX.pk = psi; HUDX.pkT = now; }
+      b[0].textContent = vac > 0.5 ? Math.round(vac) + ' inHg' : psi.toFixed(1) + ' psi'; b[0].style.color = psi > (R.psi || 10) * 1.12 ? '#ff3b3b' : psi > 0.5 ? '#ffb020' : '#f2efe6';
+      bb.querySelector('.t span').textContent = H.kind === 'turbo' ? 'TURBO ' + Math.round(sp * 100) + '%' : 'BLOWER';
+      const i = bb.querySelector('i'), s0 = bb.querySelector('s'), u = bb.querySelector('u'); s0.style.left = z * 100 + '%';
+      if (vac > 0.5) { i.style.left = (z - z * vac / 30) * 100 + '%'; i.style.width = z * vac / 30 * 100 + '%'; i.style.background = '#4aa3ff'; } else { i.style.left = z * 100 + '%'; i.style.width = (1 - z) * Math.min(1, psi / mx) * 100 + '%'; i.style.background = '#ffb020'; }
+      u.style.left = (z + (1 - z) * Math.min(1, HUDX.pk / mx)) * 100 + '%'; bb.querySelector('.t2 span').textContent = 'PEAK ' + HUDX.pk.toFixed(1); b[1].textContent = 'IAT ' + Math.round((TIRE.iat || FI_T1) - 273.15) + '°'; }
+    // nitrous: bottle pressure (it lives on its temperature; 900-1000 psi sprays what the jets say) and what's left in it
+    const bn = box('nos'), X = P.nx;
+    if (set(bn, !!(o.nos && X))) {
+      const S0 = TIRE.nx && TIRE.nx.id === X.id ? TIRE.nx : null, psi = S0 ? S0.psi : nxPsi(nxTNow(c, X)), lb = S0 ? S0.m / 0.4536 : nxLb(c), cap = nxCap(nxConf(c)), b = bn.querySelectorAll('b'), i = bn.querySelector('i');
+      b[0].textContent = Math.round(psi) + ' psi'; b[0].style.color = psi < 800 ? '#4aa3ff' : psi < 1100 ? '#3bdc6a' : '#ff3b3b'; i.style.width = clamp((psi - 500) / 700, 0, 1) * 100 + '%'; i.style.background = b[0].style.color;
+      b[1].textContent = (TIRE.nosK > 0.02 ? 'SPRAY · ' : '') + lb.toFixed(1) + ' / ' + Math.round(cap) + ' lb'; b[1].style.color = TIRE.nosK > 0.02 ? '#4aa3ff' : lb < cap * 0.15 ? '#ff3b3b' : '#f2efe6'; }
+    // traction: each tire's slip against its own peak (green grips, amber at the limit, red spinning or locked), wheels in the air
+    const bs = box('slip');
+    if (set(bs, o.slip)) {
+      const W = bs.querySelectorAll('.car i'); let worst = 0;
+      for (let k = 0; k < 4; k++) { const air = vd && vd.lift && vd.lift[k] > 0.004, x = vd ? Math.abs(vd.kap[k] || 0) / ((vd.V.T[k] && vd.V.T[k].kp) || 0.1) : 0; worst = Math.max(worst, air ? 0 : x);
+        W[k].classList.toggle('air', !!air); if (!air) W[k].style.background = x < 0.75 ? '#3bdc6a' : x < 1.4 ? '#ffb020' : '#ff3b3b'; }
+      bs.querySelector('b').textContent = !vd ? 'GRIP' : worst > 1.4 ? (TIRE.wv > 0 && thr > 0.3 ? 'SPINNING' : 'SLIDING') : worst > 0.75 ? 'AT THE LIMIT' : 'HOOKED';
+      bs.querySelector('[data-l=tc]').classList.toggle('on', !!(vd && vd.tcK < 0.97)); const lf = vd && vd.lift ? (vd.lift[0] + vd.lift[1]) / 2 : 0;
+      const wl = bs.querySelector('[data-l=wh]'); wl.classList.toggle('on', lf > 0.01); wl.textContent = lf > 0.01 ? 'WHEELIE ' + Math.round(lf * 39.37) + '"' : 'WHEELIE'; }
+    if (dOn) hudDiag(c, vd, R, rpm, thr);
+  }
+  // diagnostics: the simulation's own state, nothing estimated for the screen
+  function hudDiag(c, vd, R, rpm, thr) {
+    const V = vd.V, lb = n => Math.round(n / 4.448), I = GBX.lastI || {}, gin = V.ev ? 0 : vdGin(V, vd, I), wIn = Math.abs(vdOmegaIn(V, vd) * gin), we = Math.abs(vd.we) || 1;
+    const Te = vd.Te || 0, hp = Te * we / 745.7, e = R && R.ecuT ? R.ecuT[Math.min(R.ecuT.length - 1, Math.round(rpm / 100))] : null, lam = e && e.lam ? e.lam : R ? (R.boostKind ? 0.8 : 0.87) : 0;
+    const g = Math.round(V.ev ? 1 : I.gb && I.gb.man ? I.gb.g : vd.g), slipD = V.ev || !gin ? 0 : clamp(1 - wIn / we, -1, 1), Fz = vd.Fz || [0, 0, 0, 0], k = vd.kap || [0, 0, 0, 0];
+    const rows = [['RPM', Math.round(rpm)], ['Throttle', Math.round(thr * 100) + '%'], ['Crank tq', Math.round(Te / 1.3558) + ' lb-ft'], ['Power', Math.round(hp) + ' hp'],
+      ['Gear', (g <= 0 ? (g < 0 ? 'R' : 'N') : g) + (gin ? ' · ' + gin.toFixed(2) + ':1' : '')], [V.tt === 'tc' ? 'Converter slip' : 'Clutch slip', Math.round(slipD * 100) + '%'], ['TC cut', Math.round((1 - (vd.tcK == null ? 1 : vd.tcK)) * 100) + '%'], ['Accel', (TIRE.ax / 9.81).toFixed(2) + ' g'],
+      ['AFR', lam ? (lam * 14.7).toFixed(1) + ':1' : '-'], ['Knock', e && e.ke > 0.02 ? (e.ke * 4).toFixed(1) + '° pulled' : 'none'], ['Load F', lb(Fz[0]) + ' / ' + lb(Fz[1]) + ' lb'], ['Load R', lb(Fz[2]) + ' / ' + lb(Fz[3]) + ' lb'],
+      ['Slip F', k[0].toFixed(2) + ' / ' + k[1].toFixed(2)], ['Slip R', k[2].toFixed(2) + ' / ' + k[3].toFixed(2)], ['Pitch', (vd.th * 57.3).toFixed(1) + '°'], ['Trans', Math.round(DMG.tt != null ? DMG.tt : c.trT || 70) + ' °C']];
+    HUDX.dg.innerHTML = rows.map(([a, b]) => `<span>${a}</span><b>${b}</b>`).join('');
+  }
+  // Settings → Driving HUD
+  const _hxPhoneApp = phoneApp;
+  phoneApp = function (id) {
+    const r = _hxPhoneApp.apply(this, arguments);
+    if (id === 'settings') {
+      const sc = document.querySelector('.ph-screen .ph-list'); if (!sc) return r; const o = hudOpt();
+      const L = [['side', 'HUD: side gauges'], ['temp', 'HUD: temperatures'], ['boost', 'HUD: boost gauge'], ['nos', 'HUD: nitrous gauge'], ['slip', 'HUD: traction'], ['diag', 'HUD: diagnostics']];
+      sc.insertAdjacentHTML('afterbegin', L.map(([k, n]) => `<button class="ph-row" data-hud="${k}"><b>${n}</b><span>${o[k] ? 'On' : 'Off'}</span></button>`).join(''));
+      sc.querySelectorAll('[data-hud]').forEach(b => b.onclick = () => { hudSet(b.dataset.hud, !hudOpt()[b.dataset.hud]); phoneApp('settings'); });
+    }
+    return r;
+  };
   function bindCockpit() {
     bindShifter();
     if (S.gbMan != null) GBX.man = S.gbMan;
@@ -13465,7 +13556,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
   const LAY_CTRLS = [
     ['radio', '#radio', 'Radio'], ['steer', '.pad .steer', 'Steering'], ['clus', '.pad .clus', 'Gauges'], ['side', '.pad .side', 'E-brake & Out'],
     ['shift', '#shifter', 'Shifter'], ['peds', '.pad .peds', 'Pedals'], ['stick', '#stick', 'Walk stick'], ['mini', '#mini', 'Minimap'],
-    ['phone', '#phonebtn', 'Phone'], ['car', '#carbtn', 'Car'], ['fob', '#fobbtn', 'Fob'], ['hud', '#hud', 'Speed & stats'], ['net', '#netpill', 'Online'], ['nos', '#nosbtn', 'NOS'], ['als', '#alsbtn', 'Anti-lag'], ['lc', '#lcbtn', 'Launch control'],
+    ['phone', '#phonebtn', 'Phone'], ['car', '#carbtn', 'Car'], ['fob', '#fobbtn', 'Fob'], ['hud', '#hud', 'Speed & stats'], ['net', '#netpill', 'Online'], ['nos', '#nosbtn', 'NOS'], ['als', '#alsbtn', 'Anti-lag'], ['lc', '#lcbtn', 'Launch control'], ['hudx', '#hudx', 'Side gauges'], ['diag', '#hdiag', 'Diagnostics'],
   ];
   const LAY = { all: {}, on: false, sel: null, el: null };
   try { LAY.all = JSON.parse(localStorage.getItem(LAY_KEY) || '{}') || {}; } catch (e) { LAY.all = {}; }
@@ -22319,7 +22410,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
-  window.__map = { PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
+  window.__map = { HUDX: { HUDX, hudOpt, hudSet, hudxFrame, hudDiag }, PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
