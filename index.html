@@ -226,7 +226,9 @@ body.phoning #phonebtn { background: var(--accent); }
 body.carnear:not(.creating):not(.phoning):not(.indoors) #carbtn { display: block; }
 #carpanel { position: fixed; right: calc(max(16px, env(safe-area-inset-right, 0px)) + 58px); top: calc(env(safe-area-inset-top, 0px) + 160px); z-index: 9; display: flex; flex-direction: column; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
 #carpanel[hidden], body:not(.carnear) #carpanel { display: none; }
-#carpanel .btn { white-space: nowrap; }
+#carpanel .btn { white-space: nowrap; flex: none; }
+/* the car menu scrolls when it's taller than the screen (phones, landscape) */
+#carpanel { box-sizing: border-box; max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 172px); max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 172px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; scrollbar-width: thin; }
 #fobbtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 222px); width: 50px; height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 22px; display: none; z-index: 8; padding: 0; cursor: pointer; }
 #fobbtn small { display: block; font: 600 10px var(--body); margin-top: 3px; }
 body.fobok:not(.creating):not(.phoning):not(.indoors) #fobbtn { display: block; }
@@ -269,7 +271,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 .ph-bar button { width: 130px; height: 6px; border-radius: 3px; background: #666; border: 0; cursor: pointer; padding: 0; }
 @media (orientation: landscape) and (max-height: 500px) {
   #phonebtn { top: calc(env(safe-area-inset-top, 0px) + 84px); width: 44px; height: 44px; font-size: 21px; }
-  #carbtn, #carpanel { top: calc(env(safe-area-inset-top, 0px) + 136px); } #fobbtn, #fobpanel { top: calc(env(safe-area-inset-top, 0px) + 192px); } #fobbtn { width: 44px; height: 50px; font-size: 19px; } #fobpanel { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 52px); } #carbtn { width: 44px; height: 50px; font-size: 19px; } #carpanel { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 52px); } #radio { bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  #carbtn, #carpanel { top: calc(env(safe-area-inset-top, 0px) + 136px); } #carpanel { max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 146px); max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 146px); } #fobbtn, #fobpanel { top: calc(env(safe-area-inset-top, 0px) + 192px); } #fobbtn { width: 44px; height: 50px; font-size: 19px; } #fobpanel { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 52px); } #carbtn { width: 44px; height: 50px; font-size: 19px; } #carpanel { right: calc(max(16px, env(safe-area-inset-right, 0px)) + 52px); } #radio { bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
   #garbtn { top: calc(env(safe-area-inset-top, 0px) + 136px); width: 44px; height: 50px; font-size: 19px; }
   .ph { width: min(640px, 100%); border-radius: 26px; }
   .ph-home { grid-template-columns: repeat(7, 1fr); }
@@ -1514,6 +1516,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     // the real vehicle the physics drives: the car's own sheet with everything bolted on and dialed in (cached), traction
     // control if it came with it (unless you switched it off), and the top speed its power, gears and drag really reach
     P.veh = vehOf(c, kg); P.tc = P.veh.tcAvail && !c.tcOff;
+    // Phase 4D: worn parts cost power, a worn clutch holds less, a failed transmission doesn't drive
+    const WP = wrPerf(c, P.veh); if (WP.pow < 1) { P.pw *= WP.pow; P.acc *= WP.pow; } P.clK = WP.clK; if (WP.dead) { P.top = 0; P.acc = 0; }
     if (P.top > 0) P.top = Math.max(8, vehTop(P.veh, P.pw * kg / 634 * 745.7));
     return P;
   }
@@ -1533,9 +1537,16 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   function repairCosts(rate) {
     const c = S.car, lux = carOf(c.id).msrp, k = rate || 1;
     const o = { body: (100 - c.cond.body) / 100 * (900 + lux * 0.03), lights: (100 - c.cond.lights) / 100 * (300 + lux * 0.006), tires: c.cond.tires < 99 ? (100 - c.cond.tires) / 100 * (500 + lux * 0.004) : 0, engine: (100 - c.cond.engine) / 100 * (1800 + lux * 0.05), trans: (100 - c.cond.trans) / 100 * (1400 + lux * 0.035) };
+    // Phase 4D: the parts that wore out on their own (a full job's price at 0%, less the healthier it is)
+    const W = c.wr || {}, wc = { pist: 2600 + lux * 0.012, valv: 1500 + lux * 0.008, gask: 1300 + lux * 0.006, brg: 2000 + lux * 0.01, fi: 2200 + lux * 0.01, clutch: 1200 + lux * 0.006 };
+    for (const x in wc) if (W[x] != null && W[x] < 99.5) o[x] = (100 - W[x]) / 100 * wc[x];
     for (const x in o) o[x] = Math.round(o[x] * k / 5) * 5; return o;
   }
   const PART_NAMES = { body: 'Body & paint', lights: 'Lights', tires: 'Tires (new set)', engine: 'Engine', trans: 'Transmission' };
+  // a part on the car: the old condition bars, or one of the Phase 4D wear parts
+  const partName = (c, k) => WR_NAMES[k] ? wrName(c, k) : PART_NAMES[k];
+  const partPct = (c, k) => k in c.cond ? c.cond[k] : wrGet(c, k);
+  function partFix(c, k) { if (k in c.cond) c.cond[k] = 100; else if (WR_NAMES[k]) wrOf(c)[k] = 100; if (k === 'trans') c.trT = DMG.tt = 75; }
   const UPGRADES = [['intake', 'Cold air intake + exhaust', 800, '+5% hp'], ['tune', 'ECU tune', 1200, '+8% hp'], ['turbo', 'Turbo kit', 6500, '+25% hp'], ['nitrous', 'Nitrous kit', 2500, '+10% hp']];
   const LOOT_VALUE = { 'Gold chain': 900, 'Rolex': 4200, 'Cash register drawer': 0, 'Laptop': 600, 'Jewelry tray': 2600, 'Phone': 300, 'Cigarette cartons': 180, 'Designer bag': 1400 };
   function propPrice(p) { if (!p.lot) return p.type === 'property' ? 180000 : 40000; const ac = (p.lot.x1 - p.lot.x0) * (p.lot.z1 - p.lot.z0) / 4047; return Math.round((p.type === 'property' ? 120000 + ac * 60000 : ac > 50 ? ac * 4200 : 18000 + ac * 26000) / 500) * 500; }
@@ -1559,11 +1570,11 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const MENUS = {
     repair(p) { if (!S.car) return noCar(p);
       const c = S.car, costs = repairCosts(p.rate), rows = [];
-      for (const k in costs) rows.push({ t: PART_NAMES[k], s: `${Math.round(c.cond[k])}%`, bar: c.cond[k], btn: costs[k] ? money(costs[k]) : 'OK', off: !costs[k], act: () => { if (spend(costs[k], 'Repair: ' + PART_NAMES[k])) c.cond[k] = 100; } });
+      for (const k in costs) rows.push({ t: partName(c, k), s: `${Math.round(partPct(c, k))}%`, bar: partPct(c, k), btn: costs[k] ? money(costs[k]) : 'OK', off: !costs[k], act: () => { if (spend(costs[k], 'Repair: ' + partName(c, k))) partFix(c, k); } });
       const oil = c.oil < 99 ? Math.round(79 * (p.rate || 1)) : 0;
       rows.push({ t: 'Oil change', s: `${Math.round(c.oil)}% oil life`, bar: c.oil, btn: oil ? money(oil) : 'OK', off: !oil, act: () => { if (spend(oil, 'Oil change')) c.oil = 100; } });
       const tot = Object.values(costs).reduce((a, b) => a + b, 0) + oil;
-      rows.push({ t: 'Fix everything', s: 'Good as new', btn: tot ? money(tot) : 'Nothing to fix', off: !tot, act: () => { if (spend(tot, 'Full repair')) { for (const k in c.cond) c.cond[k] = 100; c.oil = 100; toast('Good as new', 'good'); } } });
+      rows.push({ t: 'Fix everything', s: 'Good as new', btn: tot ? money(tot) : 'Nothing to fix', off: !tot, act: () => { if (spend(tot, 'Full repair')) { for (const k in c.cond) c.cond[k] = 100; if (c.wr) for (const k in c.wr) c.wr[k] = 100; c.trT = DMG.tt = 75; c.oil = 100; toast('Good as new', 'good'); } } });
       return { title: p.name, sub: `${carLabel(carOf(c.id))}${p.rate ? ` · prices ×${p.rate}` : ''}`, rows };
     },
     engine(p) { if (!S.car) return noCar(p);
@@ -6922,7 +6933,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   // the camera button goes chase -> far -> driver's seat -> chase
   function camCycle() { if (drv.fp) { drv.fp = false; drv.far = false; } else if (drv.far) { drv.far = false; drv.fp = true; } else drv.far = true; }
   function renderCarPanel() {
-    const el = $('carpanel'), m = car && car.userData.model; if (el.hidden) return;
+    const el = $('carpanel'), m = car && car.userData.model; if (el.hidden) return; const keepY = el.scrollTop;
     el.innerHTML = [['doors', 'Doors'], ['hood', 'Hood'], ['trunk', backName()]].map(([k, l]) => `<button class="btn${panelsOpen(m, k) ? ' go' : ''}" data-pk="${k}">${panelsOpen(m, k) ? 'Close' : 'Open'} ${l.toLowerCase()}</button>`).join('');
     el.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => { const k = b.dataset.pk; setPanels(car.userData.model, k, !panelsOpen(car.userData.model, k)); renderCarPanel(); });
     // cars with real lamps get signals, hazards and a headlight switch
@@ -6942,6 +6953,8 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     if (c && !isEV(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-nx="1">Nitrous</button>`); el.querySelector('[data-nx]').onclick = () => { $('carpanel').hidden = true; nxOpen(); }; }
     if (c && engDefOf(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-fi="1">Boost</button>`); el.querySelector('[data-fi]').onclick = () => { $('carpanel').hidden = true; fiOpen(); }; }
     if (c && engDefOf(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-ecu="1">ECU</button>`); el.querySelector('[data-ecu]').onclick = () => { $('carpanel').hidden = true; ecuOpen(); }; }
+    if (c) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-health="1">Health</button>`); el.querySelector('[data-health]').onclick = () => { $('carpanel').hidden = true; dmgOpen(); }; }
+    el.scrollTop = keepY;   // a re-render (a door, a light) keeps where you scrolled to
   }
   function bindCarUI() {
     $('carbtn').onclick = () => { const el = $('carpanel'); el.hidden = !el.hidden; renderCarPanel(); };
@@ -7341,7 +7354,9 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   const ENGT = { id: '', T: 25, add: 0, off: 0 };
   function stepEngTemp(dt, c, on, load) {
     if (!c) return; if (ENGT.id !== c.id) { ENGT.id = c.id; ENGT.T = c.engT != null ? c.engT : 25; }
-    if (on) ENGT.T = Math.min(90, ENGT.T + dt * (0.45 + 1.6 * load)); else ENGT.T = Math.max(25, ENGT.T - dt * 0.05);
+    // (Phase 4D: the thermostat holds 90 °C; past it only the radiator brings it down, worked out in dmgStep while driving)
+    if (on && ENGT.T > 90 && dmgOn()) { if (DMG.heatF < frame - 2) ENGT.T = Math.max(90, ENGT.T - dt * 0.3); }
+    else if (on) ENGT.T = Math.min(90, ENGT.T + dt * (0.45 + 1.6 * load)); else ENGT.T = Math.max(25, ENGT.T - dt * 0.05);
     c.engT = ENGT.T; const cold = clamp((70 - ENGT.T) / 45, 0, 1), R = !c.swap && engOf(c); ENGT.cold = cold;
     ENGT.add = on && R && R.D.fuel !== 'carb' ? cold * 380 : on && R ? cold * 250 : 0;   // EFI fast idle; a carb's choke
   }
@@ -7486,7 +7501,7 @@ registerProcessor('mw-engine', MWEngProc);`;
     if (document.getElementById('lab-css')) return;
     const st = document.createElement('style'); st.id = 'lab-css';
     st.textContent = `#englab{position:fixed;inset:0;z-index:32;background:rgba(12,10,16,.97);color:var(--fg);font-family:var(--body);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(env(safe-area-inset-top,0px) + 8px) calc(env(safe-area-inset-right,0px) + 12px) calc(env(safe-area-inset-bottom,0px) + 16px) calc(env(safe-area-inset-left,0px) + 12px);font-size:14px}
-#englab[hidden]{display:none}#englab h2{font-family:var(--display);font-weight:400;font-size:19px;margin:0;flex:1;min-width:0}#englab h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
+#englab[hidden]{display:none}#englab .dmparts{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}#englab .dmp{background:#1d1824;border:1px solid var(--line);border-radius:10px;padding:8px 10px}#englab .dmt{display:flex;justify-content:space-between;gap:8px;font-size:13px}#englab .dmb{height:6px;background:#2a2433;border-radius:3px;margin:6px 0 4px;overflow:hidden}#englab .dmb i{display:block;height:100%}#englab .dmp small{color:var(--muted);font-size:12px}#englab h2{font-family:var(--display);font-weight:400;font-size:19px;margin:0;flex:1;min-width:0}#englab h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
 #englab .hd{display:flex;gap:8px;align-items:center;position:sticky;top:-8px;background:rgba(12,10,16,.97);padding:4px 0 6px;z-index:2}
 #englab button{font:inherit;color:var(--fg);background:#2a2433;border:1px solid var(--line);border-radius:9px;padding:6px 10px;cursor:pointer;touch-action:manipulation}#englab button.on{background:var(--accent);color:#1a1208;border-color:var(--accent)}#englab button[disabled]{opacity:.4}
 #englab .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}#englab .s{background:#1b1622;border:1px solid var(--line);border-radius:9px;padding:5px 8px}#englab .s span{display:block;font-size:11px;color:var(--muted)}#englab .s b{font-size:16px}
@@ -9472,6 +9487,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   function physStep(I, P, h) {
     const n = Math.max(1, Math.ceil(h / VD_H - 1e-6)), k = h / n;
     for (let i = 0; i < n; i++) vdStep(I, P, k);
+    if (!DMG.mute) dmgStep(I, P, h);   // Phase 4D: the player's car wears from what it just went through
   }
   const _esc = [0, 0, 0, 0], _vs = [0, 0, 0, 0], _dI = [0, 0, 0, 0], _w0 = [0, 0, 0, 0], _mu = [0, 0, 0, 0], _fl = [0, 0, 0, 0], _fg = [0, 0, 0, 0], _F0x = [0, 0, 0, 0], _F0y = [0, 0, 0, 0], _kx = [0, 0, 0, 0], _dw = [0, 0, 0, 0], _tb = [0, 0, 0, 0], _lng = [0, 0, 0, 0], _lat = [0, 0, 0, 0], _den = [0, 0, 0, 0], _cd = [0, 0, 0, 0], _sd = [0, 0, 0, 0], _zi = [0, 0, 0, 0];
   function vdStep(I, P, h) {
@@ -9723,7 +9739,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     // slipping off the line it eases the clutch instead (that's how a dual-clutch launch control holds wheelspin)
     st.tcE = mode === 'clutch' && !locked ? 1 : st.tcK;
     if (locked) { Tsrc = Te; A = eta * V.Ie * Gs * Gs; }
-    else if (mode === 'clutch') { const cap = V.clutchCap * st.ce * st.tcK; Tsrc = cap * Math.sign(st.we - Gs * wIn || 1); }
+    else if (mode === 'clutch') { const cap = V.clutchCap * (P.clK || 1) * st.ce * st.tcK; Tsrc = cap * Math.sign(st.we - Gs * wIn || 1); }
     else if (mode === 'free') Tsrc = 0;
     A += 0.02 * Gs * Gs;   // driveshaft / gearbox
     // the implicit solve (Sherman-Morrison on diag(d) + A s sᵀ)
@@ -9756,7 +9772,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     else if (locked) {
       st.we = Gs * wIn2;
       const Treq = Te - V.Ie * (st.we - weOld) / h;
-      if (mode === 'clutch' && Math.abs(Treq) > V.clutchCap * st.ce * 1.02) st.lock = false;   // more torque than the clutch holds: it slips
+      if (mode === 'clutch' && Math.abs(Treq) > V.clutchCap * (P.clK || 1) * st.ce * 1.02) st.lock = false;   // more torque than the clutch holds: it slips
       st.Tc = Treq;
     } else if (mode === 'tc') { st.we = Math.max(0, (st.we + h / V.Ie * (Te - Tp + kp * st.we)) / (1 + h * kp / V.Ie)); st.Tc = Tp; }
     else if (mode === 'clutch') {
@@ -10537,9 +10553,114 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     if (!S.car || !P.knock || I.gas < 0.7 || Math.abs(drv.v) < 4) { KNOCK.t = Math.max(0, KNOCK.t - dt); return; }
     KNOCK.t += dt * P.knock;
     if (KNOCK.t > 0.8) {
-      S.car.cond.engine = Math.max(0, S.car.cond.engine - dt * P.knock * 2.2);
-      if (performance.now() - KNOCK.told > 9000) { KNOCK.told = performance.now(); toast(P.engWhy && P.engWhy.r >= P.knock * 0.5 ? `${S.car.cond.engine < 25 ? 'The motor is coming apart. ' : 'Knock! '}${P.engWhy.text} Fix: ${P.engWhy.fix}.` : S.car.cond.engine < 25 ? 'The motor is knocking itself apart. Pull timing or richen it up now.' : 'Knock! The motor is pinging. Pull timing, richen the air/fuel or run better fuel.', 'bad'); }
+      // (Phase 4D: it wears the pistons, and only with damage on; the ECU map's own knock is worn per rpm in dmgStep)
+      if (dmgOn()) wrHit(S.car, 'pist', dt * Math.max(0, P.knock - (DMG.ctx && DMG.ctx.c === S.car ? DMG.ctx.legK : 0)) * 2.2, 'det');
+      if (performance.now() - KNOCK.told > 9000) { KNOCK.told = performance.now(); toast(P.engWhy && P.engWhy.r >= P.knock * 0.5 ? `${wrGet(S.car, 'pist') < 25 ? 'The motor is coming apart. ' : 'Knock! '}${P.engWhy.text} Fix: ${P.engWhy.fix}.` : wrGet(S.car, 'pist') < 25 ? 'The motor is knocking itself apart. Pull timing or richen it up now.' : 'Knock! The motor is pinging. Pull timing, richen the air/fuel or run better fuel.', 'bad'); }
     }
+  }
+  // ---------- Phase 4D: wear and damage from accumulated stress (Settings → Car damage turns it off) ----------
+  // Every part has a health from 100 (new) to 0 (failed). Nothing is random: each one wears only while something is
+  // actually stressing it (detonation, a lean mixture, valve float, more cylinder pressure than the parts are built for,
+  // a turbo past its limits, heat, tired oil, a slipping clutch or a cooked converter), and the harder the stress the faster.
+  // A worn part costs power or holds less; a failed one stops the car. Mechanics fix each part, or the whole motor.
+  const DMG = { mute: 0, ctx: null, ctxF: -1, tt: null, oilT: null, la: 0, warnT: 0, warnK: '', g: 0, thr: 0, now: {}, heatF: -1, bf: 0 };
+  const WR_KEYS = ['pist', 'valv', 'gask', 'brg', 'fi', 'clutch'];
+  const WR_NAMES = { pist: 'Pistons and rings', valv: 'Valves and springs', gask: 'Head gaskets', brg: 'Rod and main bearings', fi: 'Turbo / blower', clutch: 'Clutch' };
+  const WR_WHY = { det: 'Detonation', lean: 'Running lean', rev: 'Over-rev (valve float)', cyl: 'More cylinder pressure than the parts take', boost: 'Turbo or blower past its limits', heat: 'Overheating', oil: 'Tired or hot oil', slip: 'Clutch slip', conv: 'Converter heat', trq: 'More torque than the transmission takes', tire: 'Wheelspin and burnouts', als: 'Anti-lag heat' };
+  const dmgOn = () => !(S && S.dmgOff);
+  const wrGet = (c, k) => c && c.wr && c.wr[k] != null ? c.wr[k] : 100;
+  function wrOf(c) { if (!c.wr) c.wr = {}; for (const k of WR_KEYS) if (c.wr[k] == null) c.wr[k] = 100; return c.wr; }
+  const wrConv = c => { const V = vehOf(c, partsKg(c)); return !(V && (V.tt === 'man' || V.tt === 'dct')); };
+  const wrName = (c, k) => k === 'clutch' && c && !isEV(c) && wrConv(c) ? 'Torque converter' : k === 'fi' && c ? (engOf(c) && engOf(c).fiH && engOf(c).fiH.kind !== 'turbo' ? 'Supercharger' : 'Turbo') : WR_NAMES[k];
+  // a failed bottom end, top end or head gasket: the motor won't run until it's fixed
+  const engDead = c => !!c && (c.cond.engine <= 0 || wrGet(c, 'pist') <= 0 || wrGet(c, 'valv') <= 0 || wrGet(c, 'brg') <= 0 || wrGet(c, 'gask') <= 0);
+  const WR_FAIL = { pist: 'Hole in a piston. The motor is done until it\'s rebuilt.', valv: 'The valves floated into the pistons: bent valves. It won\'t run until the heads are fixed.', gask: 'Blew a head gasket: coolant in the cylinders. It won\'t run until it\'s fixed.', brg: 'Spun a rod bearing. The motor is locked up until it\'s rebuilt.', fi: 'The turbo let go: no boost until it\'s rebuilt.', clutch: 'The clutch is gone: it just slips.', trans: 'The transmission let go. It won\'t move until it\'s fixed.' };
+  // take health off a part and remember what did it
+  function wrHit(c, k, amt, why) {
+    if (!(amt > 0)) return; const inCond = k === 'trans' || k === 'tires', w = inCond ? c.cond : wrOf(c), was = w[k];
+    w[k] = Math.max(0, was - amt); if (!c.wrWhy) c.wrWhy = {}; c.wrWhy[why] = (c.wrWhy[why] || 0) + (was - w[k]);
+    DMG.now[why] = (DMG.now[why] || 0) + amt;
+    if (was > 0 && w[k] <= 0 && WR_FAIL[k]) { toast(WR_FAIL[k], 'bad'); DMG.warnT = performance.now(); }
+    else for (const t of [50, 25]) if (was > t && w[k] <= t && k !== 'tires') { toast(`${wrName(c, k)} at ${t}%: ${WR_WHY[why] || why}. Back off, and get it looked at.`, 'bad'); DMG.warnT = performance.now(); }
+  }
+  // the car's limits, worked out once a frame: factory torque, what the parts are built for, the valve springs
+  function dmgCtx(c, P) {
+    if (DMG.ctx && DMG.ctxF === frame && DMG.ctx.c === c) return DMG.ctx;
+    const R = !c.swap ? engOf(c) : null, m = carOf(c.id), V = P.veh, b = R ? R.b || {} : {};
+    const tq0 = R ? R.D.tq * 1.3558 : (m.hp || 300) * 745.7 / ((V ? V.red : 6000) * 0.7 / RPM) * 1.2;
+    const p0 = R ? R.D.hp * 745.7 : (m.hp || 300) * 745.7;
+    const forged = R ? !!R.X.forged : false, crank = R ? b.crank && b.crank !== 'stock' : false;
+    const H = R ? R.fiH : null, psi = R ? R.psi || 0 : 0;
+    DMG.ctx = { c, R, V, tq0, p0, float: R ? R.red : (V ? V.red : 6500), sPist: forged ? 1.9 : 1.4, sGask: 1.6, sBrg: crank ? 2.3 : 1.7, sTr: 1.6,
+      H, bShare: H ? 1 - 1 / (1 + psi / 14.7) : 0, conv: !(V && (V.tt === 'man' || V.tt === 'dct')), dct: !!(V && V.tt === 'dct'),
+      legK: R && R.ecuKe > 0.05 ? R.ecuKe * (R.ecuKs ? 0.03 : 0.2) : 0 };
+    DMG.ctxF = frame; return DMG.ctx;
+  }
+  // one physics step of the player's car: what's stressing it right now, and the wear that adds up to
+  function dmgStep(I, P, h) {
+    const c = S && S.car; if (!c || DMG.mute || !dmgOn() || isEV(c)) return;
+    const st = TIRE.vd, V = P.veh; if (!st || !V || st.V !== V || P.top === 0 || engDead(c)) return;
+    const X = dmgCtx(c, P), R = X.R, ne = Math.max(0, st.we * RPM), thr = TIRE.thr || 0, Te = Math.max(0, st.Te || 0), ld = Te / X.tq0;
+    const spd = Math.hypot(TIRE.vx, TIRE.vz), N = TIRE.nx, spray = N && N.md > 0 && N.Tn > 0;
+    // detonation: the ECU's spark map past the knock limit (the sensors catch most of it, unless they're off), and the spray
+    if (R && R.ecuT && thr > 0.6) { const e = R.ecuT[Math.min(R.ecuT.length - 1, Math.round(ne / 100))]; if (e && e.ke > 0.05) { const k = e.ke * thr * (R.ecuKs ? 0.02 : 1); wrHit(c, 'pist', h * 0.45 * Math.pow(k, 1.3), 'det'); wrHit(c, 'gask', h * 0.12 * k, 'det'); }
+      // a lean map under load: hot pistons and exhaust valves
+      if (e && thr > 0.8) { const lim = X.bShare > 0 ? 0.88 : 0.97, ln = (e.lam - lim) / 0.08; if (ln > 0) { wrHit(c, 'pist', h * 0.8 * ln * (0.4 + X.bShare * 2), 'lean'); wrHit(c, 'valv', h * 0.3 * ln, 'lean'); } } }
+    if (spray) { if (N.det > 0) { wrHit(c, 'pist', h * Math.pow(N.det, 1.5), 'det'); wrHit(c, 'gask', h * 0.35 * N.det, 'det'); } if (N.lean > 0) { wrHit(c, 'pist', h * 8 * N.lean, 'lean'); wrHit(c, 'valv', h * 2 * N.lean, 'lean'); } }
+    if (N && N.bf && N.bf !== DMG.bf) { if (DMG.bf != null && N.bf > DMG.bf) wrHit(c, 'gask', 6, 'det'); DMG.bf = N.bf; }   // a nitrous backfire lifts the heads
+    // over-rev: past what the valve springs are good for, the valves float (a missed shift way past it and they hit the pistons)
+    const x = ne / X.float - 1; if (x > 0.01) { wrHit(c, 'valv', h * 500 * x * x * (x > 0.16 ? 6 : 1), 'rev'); wrHit(c, 'brg', h * 40 * x * x, 'rev'); }
+    // cylinder pressure: torque (boost and the spray included) against what the pistons, gaskets and crank are built for
+    if (ld > X.sPist) wrHit(c, 'pist', h * 1.2 * Math.pow(ld / X.sPist - 1, 1.5) * 10, 'cyl');
+    if (ld > X.sGask) wrHit(c, 'gask', h * 0.8 * Math.pow(ld / X.sGask - 1, 1.5) * 10, 'cyl');
+    if (ld > X.sBrg) wrHit(c, 'brg', h * 0.6 * Math.pow(ld / X.sBrg - 1, 1.5) * 10, 'cyl');
+    // the boost hardware: a turbo at its shaft speed limit, a blower past its rotor speed, surge, a flutter with no blow-off valve
+    if (X.H && R.fiTab && thr > 0.5) {
+      const f = fiTabAt(R.fiTab, ne), b = X.H.kind === 'turbo' ? TIRE.boost || 0 : 1;
+      if (f.over || (X.H.kind === 'turbo' && f.pr > f.prMax * 0.985)) wrHit(c, 'fi', h * 1.2 * b, 'boost');
+      if (f.surge) wrHit(c, 'fi', h * 0.4 * b, 'boost');
+      if (f.creep) wrHit(c, 'gask', h * 0.25 * b, 'boost');
+    }
+    if (X.H && X.H.kind === 'turbo' && !X.H.bov && DMG.thr - thr > 0.5 && (TIRE.boost || 0) > 0.5) wrHit(c, 'fi', 0.35, 'boost');
+    if (I.als && X.H && X.H.kind === 'turbo') wrHit(c, 'fi', h * 0.15, 'als');
+    DMG.thr = thr;
+    // heat: the motor makes about as much heat for the coolant as it does power; the radiator sheds what it can (the fan at a
+    // standstill, much more with air through it). A blown gasket pushes combustion gas into the coolant
+    const Pw = Te * Math.max(0, st.we), gk = wrGet(c, 'gask'), Qin = Pw * 0.9 * (1 + Math.max(0, 50 - gk) / 50 * 0.8) + (I.als ? 0.08 * X.p0 : 0);
+    const T = ENGT.id === c.id ? ENGT.T : (c.engT || 25), cap = X.p0 * 0.62 * (0.35 + 0.65 * Math.min(1, spd / 25)) * (1 + Math.max(0, T - 90) / 12);
+    if (T >= 89.5) { ENGT.T = Math.max(90, T + h * (Qin - cap) / 130000); c.engT = ENGT.T; DMG.heatF = frame; }
+    if (ENGT.T > 112) { wrHit(c, 'gask', h * (ENGT.T - 112) * 0.12, 'heat'); if (ENGT.T > 118) wrHit(c, 'pist', h * (ENGT.T - 118) * 0.08, 'heat'); }
+    DMG.la += (Pw / X.p0 - DMG.la) * Math.min(1, h / 20);
+    DMG.oilT = ENGT.T + 10 + 35 * clamp(DMG.la, 0, 1.5);
+    // the oil: tired oil and oil cooked past ~135 °C let the bearings (and the turbo's) touch; cold oil at high revs too
+    const ol = clamp((20 - (c.oil == null ? 100 : c.oil)) / 20, 0, 1), rr = ne / X.float;
+    let ob = 0.15 * ol * ol + (DMG.oilT > 135 ? (DMG.oilT - 135) / 20 * 0.3 : 0) + (ENGT.T < 45 && rr > 0.75 ? 0.15 : 0);
+    if (ob > 0) { wrHit(c, 'brg', h * ob * rr * rr * (0.3 + thr), 'oil'); if (X.H && X.H.kind === 'turbo') wrHit(c, 'fi', h * ob * 0.6 * (TIRE.boost || 0), 'oil'); }
+    // the transmission: converter or clutch slip turns power into heat; the fluid sheds it through the cooler
+    const Gin = vdGin(V, st, I), wt = Math.abs(Gin * vdOmegaIn(V, st)), slip = Math.max(0, st.we - wt), Ps = st.lock ? 0 : Math.abs(st.Tc || 0) * slip;
+    if (DMG.tt == null) DMG.tt = c.trT != null ? c.trT : 70;
+    if (X.conv) DMG.tt += h * (Ps * 0.9 + Pw * 0.03 - 160 * (1 + spd / 12) * (DMG.tt - 75)) / 18000;
+    else { DMG.tt += h * (Pw * 0.025 - 140 * (1 + spd / 12) * (DMG.tt - 75)) / 18000; if (Ps > 0 && Gin) wrHit(c, 'clutch', h * Ps / (X.dct ? 400000 : 250000), 'slip'); }
+    c.trT = DMG.tt;
+    if (DMG.tt > 120) { wrHit(c, 'trans', h * (DMG.tt - 120) * 0.06, 'conv'); if (X.conv && DMG.tt > 130) wrHit(c, 'clutch', h * (DMG.tt - 130) * 0.1, 'conv'); }
+    if (ld > X.sTr && Gin) { const o = ld / X.sTr - 1; wrHit(c, 'trans', h * 0.5 * Math.pow(o, 1.5) * 10, 'trq'); if (TIRE.gA !== DMG.g) wrHit(c, 'trans', 0.6 * o, 'trq'); }
+    DMG.g = TIRE.gA;
+    // the tires: the heat from slip is rubber coming off (a hot tire wears faster)
+    if (st.tQ) { let q = 0, tt = 0; for (let i = 0; i < 4; i++) { q += st.tQ[i]; tt = Math.max(tt, st.tT ? st.tT[i] : 0); } if (q > 4000) wrHit(c, 'tires', h * q / 450000 * (1 + Math.max(0, tt - 110) / 40), 'tire'); }
+  }
+  // what the wear costs on the road: power from a tired top or bottom end, a sick turbo, a slipping converter or box; a clutch that holds less
+  function wrPerf(c, V) {
+    const o = { pow: 1, clK: 1, dead: false }; if (!c) return o;
+    const g = k => wrGet(c, k), R = !c.swap && engOf(c), H = R && R.fiH, bs = H ? 1 - 1 / (1 + (R.psi || 0) / 14.7) : 0;
+    if (g('pist') < 60) o.pow *= 1 - 0.12 * (60 - g('pist')) / 60;   // blow-by
+    if (g('valv') < 50) o.pow *= 1 - 0.15 * (50 - g('valv')) / 50;   // a misfire on a bent or burnt valve
+    if (g('gask') < 40) o.pow *= 1 - 0.08 * (40 - g('gask')) / 40;
+    if (bs && g('fi') < 60) o.pow *= 1 - bs * (g('fi') <= 0 ? 0.85 : 0.6 * (60 - g('fi')) / 60);   // shaft play, a worn seal: less boost
+    if (!(V && (V.tt === 'man' || V.tt === 'dct'))) { if (g('clutch') < 30) o.pow *= 1 - 0.2 * (30 - g('clutch')) / 30; }
+    else o.clK = g('clutch') <= 0 ? 0.15 : 0.55 + 0.45 * Math.min(1, g('clutch') / 50);
+    if (c.cond.trans < 35) o.pow *= 1 - 0.25 * (35 - c.cond.trans) / 35;
+    o.dead = c.cond.trans <= 0;
+    return o;
   }
   // what a setup does, from a quick straight-line run with the same tire numbers the physics uses
   function tuneRun(c, t, opt) {
@@ -10548,6 +10669,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const saveT = Object.assign({}, TIRE), saveD = { yaw: drv.yaw, v: drv.v, steer: drv.steer }, saveW = WHEELIE.a;
     physReset(); drv.yaw = 0; drv.v = 0; drv.steer = 0; WHEELIE.a = 0;
     let x = 0, time = 0, t60 = 0, et = 0, trap = 0, spin = 0, nos = null, fi = null; const h = 1 / 120, I = { gas: 1, brake: 0, steer: 0, hb: 0, nos: !!(opt && opt.nos) };
+    DMG.mute++;   // a test pull wears nothing
     try {
       while (time < 30 && (!et || !t60)) {
         physStep(I, P, h);
@@ -10557,7 +10679,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
         if (!et && x >= 402.3) { et = time; trap = u; }
       }
       fi = TIRE.icw != null ? { icw: TIRE.icw, ice: TIRE.ice || 0, iat: TIRE.iat } : null;   // where the intercooler water ended up
-    } finally { Object.assign(TIRE, saveT); Object.assign(drv, saveD); WHEELIE.a = saveW; }
+    } finally { DMG.mute--; Object.assign(TIRE, saveT); Object.assign(drv, saveD); WHEELIE.a = saveW; }
     return { t60, et, trap: trap * 2.237, top: P.top * 2.237, hp: Math.round(carHp(c) * tunePerf(Object.assign({}, c, { tune: t })).pow), spin, P, nos, fi };
   }
   // ---------- the tuning laptop: sliders for every knob, live numbers from a test run ----------
@@ -11392,7 +11514,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const mine = { yaw: drv.yaw, v: drv.v, steer: drv.steer, wa: WHEELIE.a };
     for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
     drv.yaw = 0; drv.v = st.v; drv.steer = 0; WHEELIE.a = 0;
-    physStep(I, P, h);
+    DMG.mute++; try { physStep(I, P, h); } finally { DMG.mute--; }   // another car: its wear isn't yours
     st.v = drv.v; for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
     Object.assign(drv, { yaw: mine.yaw, v: mine.v, steer: mine.steer }); WHEELIE.a = mine.wa;
   }
@@ -11886,7 +12008,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     // anti-lag: pops and flames off the gas, and the turbo cooks
     if (on && NOSI.als) {
       TIRE.boost += (0.92 - TIRE.boost) * Math.min(1, dt * 3);   // spooled while you cruise up to the honks too
-      c.cond.engine = Math.max(0, c.cond.engine - dt * 0.03);
+      // (Phase 4D: the heat wears the turbo in dmgStep, with damage on)
       if (drv.gas < 0.3 && (NOSI.popT -= dt) <= 0) {
         NOSI.popT = 0.06 + Math.random() * 0.18;
         if (au) noisePop(ctx, ctx.currentTime, 700 + Math.random() * 900, 0.16 + Math.random() * 0.1, 0.09, ctx.destination);
@@ -11895,6 +12017,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     nosButtons(on, X, S0, turbo);
     if (NXL.open && (NOSI.live += dt) > 0.4) { NOSI.live = 0; nxLive(); }
     if (FIL.open && (FIL.live += dt) > 0.4) { FIL.live = 0; fiLive(); }
+    if (DHL.open && (DHL.live += dt) > 0.4) { DHL.live = 0; dmgLive(); }
   }
   // the hiss of the shot (pulsing when the controller runs it below full duty) and the purge's louder blast
   function nosNoise(ctx, len) { const buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; return s; }
@@ -12282,7 +12405,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
   function ecuRender() {
     const el = $('englab'), c = S.car; if (!el || !c) return;
     const D = engDefOf(c), m = carOf(c.id), R = engOf(c), stat = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`, keep = el.scrollTop;
-    let h = `<div class="hd"><h2>ECU · ${carLabel(m)}</h2><button data-tolab>Engine Lab</button><button data-tofi>Boost</button><button data-tonx>Nitrous</button><button data-x>Close</button></div>`;
+    let h = `<div class="hd"><h2>ECU · ${carLabel(m)}</h2><button data-tolab>Engine Lab</button><button data-tofi>Boost</button><button data-tonx>Nitrous</button><button data-tohl>Health</button><button data-x>Close</button></div>`;
     if (!hasPart(c, 'ecu')) {
       const P = TUNE_PARTS.ecu; h += `<h3>No tuner on this car</h3><div class="note">The factory ECU is locked: it runs the factory spark and fuel maps, limiter and shift points. A tuner opens all of it.</div><div class="row"><button data-buyecu>${P.name} · ${money(P.price)}</button></div>`;
       el.innerHTML = h; ecuWire(el, c, D, R, null); return;
@@ -12357,6 +12480,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     el.querySelector('[data-tolab]').onclick = () => { ECL.open = false; labOpen(); };
     el.querySelector('[data-tofi]').onclick = () => { ECL.open = false; fiOpen(); };
     el.querySelector('[data-tonx]').onclick = () => { ECL.open = false; nxOpen(); };
+    const th = el.querySelector('[data-tohl]'); if (th) th.onclick = () => { ECL.open = false; dmgOpen(); };
     on('[data-buyecu]', () => { const P = TUNE_PARTS.ecu; if (!spend(P.price, P.name)) return; c.tparts = (c.tparts || []).concat('ecu'); VEH_CACHE.clear(); save(); refreshStats(); toast(`${P.name} on: the maps are open.`, 'good'); ecuRender(); });
     if (!e) return;
     on('[data-tab]', (b, d) => { ECL.tab = d.tab; ecuRender(); });
@@ -15082,7 +15206,7 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
   const TOW_HOOK = 85, TOW_PER_KM = 6;
   const twQuote = (m, pickup) => ({ fee: Math.round(TOW_HOOK + m / 1000 * TOW_PER_KM), minutes: Math.round(10 + (pickup || 0) / 1000 * 0.5 + m / 1000 * 1.4) });
   const twSev = p => p >= 97 ? 'Good' : p >= 75 ? 'Worn' : p >= 45 ? 'Damaged' : p >= 15 ? 'Bad' : 'Wrecked';
-  const TW_LABOR = { body: 1.5, lights: 0.25, tires: 0.5, engine: 1.5, trans: 2, oil: 0.25, fuel: 0.1 };
+  const TW_LABOR = { body: 1.5, lights: 0.25, tires: 0.5, engine: 1.5, trans: 2, oil: 0.25, fuel: 0.1, pist: 8, valv: 5, gask: 4, brg: 7, fi: 3, clutch: 4 };
   function twCarSpot() { if (!S.car) return null; if (driving && !foot.on) return { x: drv.x, z: drv.z }; if (foot.on && foot.park) return { x: foot.park.x, z: foot.park.z }; return null; }
   function twBlock() {
     if (!S.car) return 'You don\'t have a car out to tow.';
@@ -15093,10 +15217,10 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
     return '';
   }
   function twReport(c, rate) {
-    const costs = repairCosts(rate), items = Object.entries(costs).filter(([k, v]) => v > 0).map(([k, v]) => { const pct = Math.round(c.cond[k]); return { k, name: PART_NAMES[k], pct, note: twSev(pct), cost: v, must: k === 'engine' && pct < 12, rec: pct < 75, hours: TW_LABOR[k] }; });
+    const costs = repairCosts(rate), items = Object.entries(costs).filter(([k, v]) => v > 0).map(([k, v]) => { const pct = Math.round(partPct(c, k)); return { k, name: partName(c, k), pct, note: twSev(pct), cost: v, must: (k === 'engine' && pct < 12) || (pct <= 0 && /^(pist|valv|gask|brg|trans)$/.test(k)), rec: pct < 75, hours: TW_LABOR[k] }; });
     if (c.oil < 99) items.push({ k: 'oil', name: 'Oil change', pct: Math.round(c.oil), note: c.oil < 20 ? 'Overdue' : c.oil < 45 ? 'Due soon' : 'Fine for now', cost: Math.round(79 * (rate || 1)), rec: c.oil < 45, hours: TW_LABOR.oil });
     if (c.fuel < 0.15) items.push({ k: 'fuel', name: isEV(c) ? 'Charge it up' : 'Fill the tank', pct: Math.round(c.fuel * 100), note: c.fuel <= 0 ? 'Empty: won\'t run' : 'Almost empty', cost: Math.round((1 - c.fuel) * (isEV(c) ? 75 : tankGal(c)) * (G.gas[isEV(c) ? 'kwh' : 'regular'] || 3.2) * 1.15), must: c.fuel <= 0, rec: true, hours: TW_LABOR.fuel });
-    const drivable = c.fuel > 0 && c.cond.engine > 0;
+    const drivable = c.fuel > 0 && !engDead(c) && c.cond.trans > 0;
     return { items, drivable, total: items.reduce((a, it) => a + it.cost, 0) };
   }
   // the truck hauls you and the car to p; you hop out next to it
@@ -15112,7 +15236,7 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
     if (job && (!shop || !at || Math.hypot(at.x - shop.x, at.z - shop.z) > 90)) { S.towJob = null; GO.tw = null; save(); }
     if (S.towJob && c) return towReport(sc, c, goPlace(S.towJob.shop));
     const block = twBlock(), hq = goPlace('hook_haul');
-    const status = !c ? '' : c.fuel <= 0 ? '<span class="go-bad">Out of gas</span>' : c.cond.engine < 12 ? '<span class="go-bad">Won\'t run</span>' : Math.min(...Object.values(c.cond)) < 45 ? '<span class="go-bad">Banged up</span>' : 'Runs fine';
+    const status = !c ? '' : c.fuel <= 0 ? '<span class="go-bad">Out of gas</span>' : c.cond.engine < 12 || engDead(c) ? '<span class="go-bad">Won\'t run</span>' : Math.min(...Object.values(c.cond)) < 45 ? '<span class="go-bad">Banged up</span>' : 'Runs fine';
     let shops = [];
     if (!block) {
       const st = goState(at.x, at.z), pick = hq && goState(hq.x, hq.z) === st ? Math.hypot(hq.x - at.x, hq.z - at.z) * 1.3 : 3000;
@@ -15151,7 +15275,7 @@ body.go-compass.busy:not(.indoors):not(.phoning) #gocompass { display: block; }
     sc.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; GO.tw.has(k) ? GO.tw.delete(k) : GO.tw.add(k); towReport(sc, c, shop); });
     const fx = sc.querySelector('[data-a="fix"]'); if (fx) fx.onclick = () => {
       if (!spend(cost, `${shop.name}: repairs (tow-in)`)) return;
-      for (const it of sel) { if (it.k === 'oil') c.oil = 100; else if (it.k === 'fuel') c.fuel = 1; else c.cond[it.k] = 100; }
+      for (const it of sel) { if (it.k === 'oil') c.oil = 100; else if (it.k === 'fuel') c.fuel = 1; else partFix(c, it.k); }
       S.hunger = Math.max(0, S.hunger - time / 60 * 3); GO.tw = null; save(); refreshStats();
       toast(`Fixed in ${goHrs(time)}. ${twReport(c, 1).drivable ? 'It runs.' : 'It still won\'t run.'}`, 'good'); towReport(sc, c, shop);
     };
@@ -18638,6 +18762,75 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     window.__real = { RL, RL_LOOK, rlApply, rlSetPref, rlSkyAt, RL_SKY, RL_HDR, sun, scene, renderer, camera, SUN_DIR };
   })();
   // ==== realism (end) ====
+  // ---------- the car health screen (Phase 4D): every wear part, what's hurting it now, what wore it, the temperatures ----------
+  const DHL = { open: false, live: 0 };
+  function dmgOpen() {
+    const c = S.car; if (!c) { toast('No car out.', 'bad'); return; }
+    labCss(); let el = $('englab'); if (!el) { el = document.createElement('div'); el.id = 'englab'; document.body.appendChild(el); }
+    if (LAB.open) labClose(); NXL.open = false; FIL.open = false; ECL.open = false; const tu = $('tune'); if (tu) tu.hidden = true;
+    DHL.open = true; el.hidden = false; dmgRender();
+  }
+  function dmgClose() { DHL.open = false; const el = $('englab'); if (el) el.hidden = true; save(); }
+  const dmgTone = p => p > 70 ? '#3ddc84' : p > 40 ? '#f5c542' : p > 0 ? '#ff7a45' : '#ff4040';
+  const dmgState = p => p >= 99.5 ? 'New' : p > 75 ? 'Good' : p > 50 ? 'Worn' : p > 25 ? 'Bad' : p > 0 ? 'About to go' : 'Failed';
+  // what a part's wear is doing to the car right now (the same numbers wrPerf uses)
+  function dmgEffect(c, k, p, V) {
+    const R = !c.swap && engOf(c), bs = R && R.fiH ? 1 - 1 / (1 + (R.psi || 0) / 14.7) : 0, man = V && (V.tt === 'man' || V.tt === 'dct'), pc = x => `-${Math.round(x * 100)}% power`;
+    if (p <= 0) return { pist: 'The motor won\'t run', valv: 'The motor won\'t run', gask: 'The motor won\'t run', brg: 'The motor won\'t run', fi: 'No boost', clutch: man ? 'Slips under any load' : 'Slips badly', trans: 'Won\'t drive', tires: 'Bald' }[k] || '';
+    if (k === 'pist' && p < 60) return pc(0.12 * (60 - p) / 60) + ' (blow-by), blue smoke' + (p < 35 ? '' : ' soon');
+    if (k === 'valv' && p < 50) return pc(0.15 * (50 - p) / 50) + ' (misfire)';
+    if (k === 'gask' && p < 40) return pc(0.08 * (40 - p) / 40) + ', runs hot, white smoke';
+    if (k === 'brg' && p < 50) return 'Knocking: no power lost yet, but it spins a bearing at 0';
+    if (k === 'fi' && p < 60 && bs) return pc(bs * 0.6 * (60 - p) / 60) + ' (less boost)';
+    if (k === 'clutch' && man && p < 50) return `Holds ${Math.round((0.55 + 0.45 * p / 50) * 100)}% of its torque`;
+    if (k === 'clutch' && !man && p < 30) return pc(0.2 * (30 - p) / 30) + ' (converter slipping)';
+    if (k === 'trans' && p < 35) return pc(0.25 * (35 - p) / 35) + ' (slipping)';
+    if (k === 'tires' && p < 30) return 'Less grip';
+    return p < 99.5 ? 'No effect yet' : '';
+  }
+  function dmgRender() {
+    const el = $('englab'), c = S.car; if (!el || !c) return;
+    const m = carOf(c.id), D = !c.swap && engDefOf(c), R = D ? engOf(c) : null, V = vehOf(c, partsKg(c)), ev = isEV(c), keep = el.scrollTop;
+    let h = `<div class="hd"><h2>Car health · ${carLabel(m)}</h2>${D ? '<button data-tolab>Engine Lab</button><button data-toecu>ECU</button>' : ''}<button data-x>Close</button></div>`;
+    h += `<div class="row"><button data-dm="on" class="${dmgOn() ? 'on' : ''}">Damage: Realistic</button><button data-dm="off" class="${dmgOn() ? '' : 'on'}">Damage: Off</button></div>`;
+    h += `<div class="note">${dmgOn() ? 'Parts wear only from real stress: detonation, a lean map, revving past the valve springs, more cylinder pressure than the pistons, gaskets and crank are built for, a turbo past its limits, heat, tired oil, clutch slip, a cooked converter and wheelspin. The harder you push past a limit, the faster it goes. Nothing breaks at random.' : 'Off: nothing wears from stress (oil, fuel and tread still get used, and crashes still dent the body). What\'s already worn stays worn until a mechanic fixes it.'}</div>`;
+    h += `<h3>Right now</h3><div class="g" id="dmlive"></div>`;
+    const parts = ev ? ['tires', 'trans'] : ['pist', 'valv', 'gask', 'brg'].concat(R && R.fiH ? ['fi'] : [], ['clutch', 'trans', 'tires']);
+    h += `<h3>Parts</h3><div class="dmparts">`;
+    for (const k of parts) { const p = partPct(c, k), fx = dmgEffect(c, k, p, V); h += `<div class="dmp"><div class="dmt"><b>${esc(partName(c, k))}</b><span style="color:${dmgTone(p)}">${dmgState(p)} · ${Math.round(p)}%</span></div><div class="dmb"><i style="width:${Math.max(0, p)}%;background:${dmgTone(p)}"></i></div>${fx ? `<small>${esc(fx)}</small>` : ''}</div>`; }
+    h += `</div>`;
+    const why = Object.entries(c.wrWhy || {}).filter(([, v]) => v >= 0.05).sort((a, b) => b[1] - a[1]);
+    h += `<h3>What wore it (since new)</h3>` + (why.length ? `<div class="g">${why.map(([k, v]) => `<div class="s"><span>${esc(WR_WHY[k] || k)}</span><b>${v.toFixed(1)}%</b></div>`).join('')}</div>` : '<div class="note">Nothing yet.</div>');
+    h += `<div class="note" style="margin-top:10px">Any mechanic fixes each part on its own, or everything at once (Repair). Broken down? The Hook &amp; Haul app tows it in.</div>`;
+    if (why.length) h += `<div class="row"><button data-clrwhy>Clear the history</button></div>`;
+    el.innerHTML = h; el.scrollTop = keep;
+    el.querySelector('[data-x]').onclick = dmgClose;
+    const tl = el.querySelector('[data-tolab]'); if (tl) tl.onclick = () => { DHL.open = false; labOpen(); };
+    const te = el.querySelector('[data-toecu]'); if (te) te.onclick = () => { DHL.open = false; ecuOpen(); };
+    el.querySelectorAll('[data-dm]').forEach(b => b.onclick = () => { dmgSet(b.dataset.dm === 'on'); dmgRender(); });
+    const cw = el.querySelector('[data-clrwhy]'); if (cw) cw.onclick = () => { c.wrWhy = {}; save(); dmgRender(); };
+    dmgLive();
+  }
+  function dmgSet(on) { S.dmgOff = !on; save(); toast(on ? 'Car damage: Realistic. Parts wear from real stress.' : 'Car damage off. Nothing wears from stress.', on ? 'bad' : 'good'); }
+  function dmgLive() {
+    const el = $('dmlive'), c = S.car; if (!el || !c) return;
+    const s = (k, v, hot) => `<div class="s"><span>${k}</span><b${hot ? ' style="color:#ff7a45"' : ''}>${v}</b></div>`, ev = isEV(c);
+    const T = ENGT.id === c.id ? ENGT.T : c.engT || 25, oT = DMG.oilT != null ? DMG.oilT : T + 10, tT = DMG.tt != null ? DMG.tt : c.trT || 70;
+    const now = Object.entries(DMG.now).filter(([, v]) => v > 0.002).sort((a, b) => b[1] - a[1]).map(([k]) => WR_WHY[k] || k); DMG.now = {};
+    el.innerHTML = (ev ? '' : s('Coolant', Math.round(T) + ' °C', T > 108) + s('Oil', Math.round(oT) + ' °C', oT > 135) + s('Oil life', Math.round(c.oil == null ? 100 : c.oil) + '%', c.oil < 20)) + s('Transmission', Math.round(tT) + ' °C', tT > 115)
+      + s('Wearing it now', !dmgOn() ? 'Damage off' : now.length ? now.slice(0, 2).join(', ') : 'Nothing', now.length > 0);
+  }
+  // Settings → Car damage
+  const _dmPhoneApp = phoneApp;
+  phoneApp = function (id) {
+    const r = _dmPhoneApp.apply(this, arguments);
+    if (id === 'settings') {
+      const sc = document.querySelector('.ph-screen .ph-list'); if (!sc) return r;
+      sc.insertAdjacentHTML('afterbegin', `<button class="ph-row" data-dmg="1"><b>Car damage</b><span>${dmgOn() ? 'Realistic' : 'Off'}</span></button>`);
+      sc.querySelector('[data-dmg]').onclick = () => { dmgSet(!dmgOn()); phoneApp('settings'); };
+    }
+    return r;
+  };
   // ==== city streets (begin) ====
   (() => {
   // ---------- city streets: nothing left in the road, real Stop Six streets, curbs + sidewalks, crosswalks, signals, stop signs, street furniture, parks ----------
@@ -21794,7 +21987,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
-  window.__map = { ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
+  window.__map = { DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
@@ -22659,6 +22852,11 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       E.acc = (E.acc || 0) + dt; if (E.acc < 0.16) continue; E.acc = 0;
       let p = E.p; if (E.car) { if (!car || !car.visible || !S.car || S.car.cond.engine > 0) continue; p = car.localToWorld(_t.copy(E.local)); }
       puff(_v().copy(p).add(_t.set(_r() * 0.3, 0, _r() * 0.3)), E.n++ % 3 ? 0x3a3a3c : 0xd8dade, 1.4, 2.4, 1.3);
+    }
+    // Phase 4D: a blown head gasket steams white out the back, tired rings smoke blue-grey (more on the gas)
+    if (S && S.car && S.car.wr && car && car.visible && !engDead(S.car) && (wrGet(S.car, 'gask') < 40 || wrGet(S.car, 'pist') < 35)) {
+      DMG.smk = (DMG.smk || 0) + dt * (0.3 + 1.5 * (drv.gas || 0)); if (DMG.smk > 0.5) { DMG.smk = 0; const wg = wrGet(S.car, 'gask') < 40;
+        puff(car.localToWorld(_v().set(_r() * 0.5, 0.35, 2.3)), wg ? 0xe6e8ec : 0x8a93a8, 1.1, 1.8, 1.0); }
     }
     if (FX3.smokers.length > 8) FX3.smokers.splice(1, 1);
     // brass
@@ -23594,12 +23792,12 @@ body.g-armed #walkhint { display: none !important; }
   const _stepDrive = stepDrive;
   stepDrive = function (dt) {
     _stepDrive(dt); laserOff(); driveLook(dt); stepFx(dt);   // the laser goes off with the gun when you get in
-    if (S && S.car && S.car.cond.engine <= 0 && (frame % 300) === 1) toast('Engine is shot. Get it fixed at a mechanic.', 'bad');
+    if (S && S.car && engDead(S.car) && (frame % 300) === 1) toast('Engine is shot. Get it fixed at a mechanic.', 'bad');
   };
   const _carPerf = carPerf;
-  carPerf = function () { const p = _carPerf(); if (S.car && S.car.cond.engine <= 0) { p.top = 0; p.acc = 0; } return p; };
+  carPerf = function () { const p = _carPerf(); if (S.car && engDead(S.car)) { p.top = 0; p.acc = 0; } return p; };
   const _stepEngineSound = stepEngineSound;
-  stepEngineSound = function (dt, on, ...r) { return _stepEngineSound(dt, on && !(S && S.car && S.car.cond.engine <= 0), ...r); };
+  stepEngineSound = function (dt, on, ...r) { return _stepEngineSound(dt, on && !(S && S.car && engDead(S.car)), ...r); };
   const _getIn = getIn;
   getIn = function () { if (foot.on) gunHolsterNow(); return _getIn(); };
   const _pullIn = pullIn;
