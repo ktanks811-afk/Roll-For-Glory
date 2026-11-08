@@ -6953,6 +6953,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     if (c && !isEV(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-nx="1">Nitrous</button>`); el.querySelector('[data-nx]').onclick = () => { $('carpanel').hidden = true; nxOpen(); }; }
     if (c && engDefOf(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-fi="1">Boost</button>`); el.querySelector('[data-fi]').onclick = () => { $('carpanel').hidden = true; fiOpen(); }; }
     if (c && engDefOf(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-ecu="1">ECU</button>`); el.querySelector('[data-ecu]').onclick = () => { $('carpanel').hidden = true; ecuOpen(); }; }
+    if (c && !isEV(c)) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-pcb="1">Parts</button>`); el.querySelector('[data-pcb]').onclick = () => { $('carpanel').hidden = true; pcOpen(); }; }
     if (c) { el.insertAdjacentHTML('beforeend', `<button class="btn" data-health="1">Health</button>`); el.querySelector('[data-health]').onclick = () => { $('carpanel').hidden = true; dmgOpen(); }; }
     el.scrollTop = keepY;   // a re-render (a door, a light) keeps where you scrolled to
   }
@@ -7324,9 +7325,13 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   const HDR_SND = { manifold: { f: 420, q: 0.7, db: 2, t: 1.25 }, shorty: { f: 300, q: 1.0, db: 4, t: 1.0 }, longtube: { f: 165, q: 1.4, db: 6, t: 0.85 }, turbo: { f: 380, q: 0.6, db: 0, t: 1.45 }, downpipe: { f: 360, q: 0.7, db: 1.5, t: 1.3 } };
   // the exhaust as it's built (factory system plus the part), and the valve: 0 closed, 1 auto (opens on load), 2 open
   function exhSnd(D, b) {
-    const base = Object.assign({ x: 0.15, lp: 700, g: 0.55, notch: -8, o: 0.15 }, EXH_SND[D.exh] || EXH_SND.dual), part = (ENG_PARTS.exh.opts[b.exh] || {}).exh, P = part ? EXH_SND[part] : null;
+    const base = Object.assign({ x: 0.15, lp: 700, g: 0.55, notch: -8, o: 0.15 }, EXH_SND[D.exh] || EXH_SND.dual), Xo = partOpt(b, 'exh'), part = Xo.exh, P = part ? EXH_SND[part] : null;
     const shut = Object.assign({}, base), open = Object.assign({}, base, P || {});
     if (P) { if (P.g) open.g = base.g * P.g; if (part === 'resdel' || part === 'mufdel') open.x = base.x; }
+    // Phase 5A: the brand's own sound (Borla ATAK screams, Corsa kills the drone, Flowmaster barks), a bigger pipe goes deeper, the cats
+    const xs = Xo.snd, cs = partOpt(b, 'cats').snd; if (xs) { open.lp = open.lp * xs.lp; open.g *= xs.g; open.notch = xs.notch; open.o = Math.min(1, open.o * 0.5 + xs.o); }
+    if (Xo.dia) { open.lp *= 1 - (Xo.dia - 2.5) * 0.12; open.g *= 1 + (Xo.dia - 2.5) * 0.12; }
+    if (cs) for (const o of [open, shut]) { o.g *= cs.g; o.o = Math.min(1, o.o + cs.o); }
     if (D.cyl <= 4 || /^i\d|single|twin/.test(D.fo) || D.exh === 'single-cat') { open.x = Math.max(open.x, 0.5); shut.x = Math.max(shut.x, 0.5); }   // one collector: both "banks" are one pipe
     const valved = !!(open.valved || base.valved) && part !== 'straight' && part !== 'mufdel';
     if (valved) { const v = Object.assign({}, open, { lp: Math.max(open.lp, 2200), g: open.g * 1.5, notch: 0, o: Math.max(open.o, 0.6) }); return { shut: part ? open : shut, open: v, valved: true }; }
@@ -7342,7 +7347,8 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       R = engModel(D, b, '93');
     }
     if (!D || !R) return { ev: true, key: 'ev' };
-    const hk = R.X.hdrK, H = HDR_SND[hk] || HDR_SND.manifold, ex = exhSnd(D, b), cylL = R.disp / D.cyl, pw = R.X.power;
+    const hk = R.X.hdrK, Hs = partOpt(b, 'hdr').snd, H = Object.assign({}, HDR_SND[hk] || HDR_SND.manifold); if (Hs) { H.t *= Hs.t || 1; H.db += Hs.db || 0; H.f = Math.max(90, H.f + (Hs.f || 0)); }   // thin-wall stainless rings (raspier), coatings soak it up, bigger primaries go deeper
+    const ex = exhSnd(D, b), cylL = R.disp / D.cyl, pw = R.X.power;
     const fuelF = D.fuel === 'carb' ? 1 : D.fuel === 'port' ? 0.6 : 0.5, pop = 0.3 * Math.max(ex.open.o, ex.shut.o) * fuelF * (pw && pw.kind === 'turbo' ? 0.6 : 1);
     const fr = R.disp * (0.62 + 0.09 * R.idle / 1000) * 100 / (4 * Math.PI) * 0.6;
     const sc = pw && pw.kind !== 'turbo' ? (pw.kind === 'roots' ? 1.15 * 6 : pw.kind === 'centri' ? 40 : 2.4 * 8) : 0;
@@ -7501,7 +7507,7 @@ registerProcessor('mw-engine', MWEngProc);`;
     if (document.getElementById('lab-css')) return;
     const st = document.createElement('style'); st.id = 'lab-css';
     st.textContent = `#englab{position:fixed;inset:0;z-index:32;background:rgba(12,10,16,.97);color:var(--fg);font-family:var(--body);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(env(safe-area-inset-top,0px) + 8px) calc(env(safe-area-inset-right,0px) + 12px) calc(env(safe-area-inset-bottom,0px) + 16px) calc(env(safe-area-inset-left,0px) + 12px);font-size:14px}
-#englab[hidden]{display:none}#englab .dmparts{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}#englab .dmp{background:#1d1824;border:1px solid var(--line);border-radius:10px;padding:8px 10px}#englab .dmt{display:flex;justify-content:space-between;gap:8px;font-size:13px}#englab .dmb{height:6px;background:#2a2433;border-radius:3px;margin:6px 0 4px;overflow:hidden}#englab .dmb i{display:block;height:100%}#englab .dmp small{color:var(--muted);font-size:12px}#englab h2{font-family:var(--display);font-weight:400;font-size:19px;margin:0;flex:1;min-width:0}#englab h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
+#englab[hidden]{display:none}#englab .pcchips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none}#englab .pcchips::-webkit-scrollbar{display:none}#englab .pcchips button{flex:0 0 auto;white-space:nowrap}#englab .pcl{display:flex;flex-direction:column;gap:6px;margin-top:6px}#englab .pcr{background:#1d1824;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer}#englab .pcr.sel{border-color:var(--accent)}#englab .pcr.no{opacity:.6}#englab .pct{display:flex;justify-content:space-between;gap:10px}#englab .pct span{white-space:nowrap;color:var(--accent)}#englab .pcv{margin:6px 0;color:var(--fg)}#englab .dmparts{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}#englab .dmp{background:#1d1824;border:1px solid var(--line);border-radius:10px;padding:8px 10px}#englab .dmt{display:flex;justify-content:space-between;gap:8px;font-size:13px}#englab .dmb{height:6px;background:#2a2433;border-radius:3px;margin:6px 0 4px;overflow:hidden}#englab .dmb i{display:block;height:100%}#englab .dmp small{color:var(--muted);font-size:12px}#englab h2{font-family:var(--display);font-weight:400;font-size:19px;margin:0;flex:1;min-width:0}#englab h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
 #englab .hd{display:flex;gap:8px;align-items:center;position:sticky;top:-8px;background:rgba(12,10,16,.97);padding:4px 0 6px;z-index:2}
 #englab button{font:inherit;color:var(--fg);background:#2a2433;border:1px solid var(--line);border-radius:9px;padding:6px 10px;cursor:pointer;touch-action:manipulation}#englab button.on{background:var(--accent);color:#1a1208;border-color:var(--accent)}#englab button[disabled]{opacity:.4}
 #englab .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}#englab .s{background:#1b1622;border:1px solid var(--line);border-radius:9px;padding:5px 8px}#englab .s span{display:block;font-size:11px;color:var(--muted)}#englab .s b{font-size:16px}
@@ -7524,7 +7530,8 @@ registerProcessor('mw-engine', MWEngProc);`;
     LAB.tmpSig = sig; LAB.tmpOf = c; return (LAB.tmp = LAB.hear === 'stock' ? Object.assign({}, c, { eb: Object.assign({}, ENG_STOCK_BUILD, { valve: LAB.draft.valve }), parts: {}, mods: {} }) : LAB.hear === 'installed' ? c : labCar(LAB.draft));
   }
   function labPrice(D, cur, draft) {   // new parts in the draft that aren't on the car yet
-    let p = 0; for (const k of ENG_CATS) { const id = draft[k]; if (!id || id === 'stock' || id === cur[k]) continue; p += k === 'cam' ? CAMS[id].price : ENG_PARTS[k].opts[id].price; } return p;
+    let p = 0; for (const k of ENG_CATS) { const id = draft[k], ds = (draft.sku || {})[k], cs = (cur.sku || {})[k]; if (!id || id === 'stock' || (id === cur[k] && ds === cs)) continue; const sk = ds && PC_BY.get(ds);
+      p += sk && sk.base === id ? sk.price : k === 'cam' ? CAMS[id].price : ENG_PARTS[k].opts[id].price; } return p;
   }
   function labRender() {
     const el = $('englab'), c = S.car; if (!el || !c) return;
@@ -7533,7 +7540,7 @@ registerProcessor('mw-engine', MWEngProc);`;
     const lay = { sbc: 'cross-plane V8, 1-8-4-3-6-5-7-2', ls: 'cross-plane V8, 1-8-7-2-6-5-4-3', coyote: 'cross-plane V8, 1-5-4-8-6-3-7-2', m177: 'hot-vee V8, 1-5-4-8-6-3-7-2', flat8: 'flat-plane V8 (banks alternate)', v6: 'V6, 1-4-2-5-3-6', i4: 'inline-4, 1-3-4-2', i6: 'inline-6, 1-5-3-6-2-4', i3: 'inline-3', f6: 'flat-6', f4: 'flat-4', v10: 'V10', v12: 'V12', vtwin45: '45° V-twin', vtwin90: '90° V-twin', twin: 'parallel twin', single: 'single', v4: 'V4' }[D.fo] || D.fo;
     const price = labPrice(D, cur, Object.assign({}, cur, LAB.draft)), dirty = JSON.stringify(LAB.draft) !== JSON.stringify(c.eb || {});
     const ov = camOverlap(cs), stat = (k, v) => `<div class="s"><span>${k}</span><b>${v}</b></div>`;
-    let h = `<div class="hd"><h2>Engine Lab · ${D.name}</h2><button data-toecu>ECU</button><button data-tofi>Boost</button><button data-tonx>Nitrous</button><button data-x>Close</button></div>
+    let h = `<div class="hd"><h2>Engine Lab · ${D.name}</h2><button data-topc>Parts catalog</button><button data-toecu>ECU</button><button data-tofi>Boost</button><button data-tonx>Nitrous</button><button data-x>Close</button></div>
 <div class="note">${D.note || ''}</div>
 <h3>Engine</h3><div class="g">${stat('Layout', lay)}${stat('Displacement', (Rd.disp).toFixed(1) + ' L · ' + D.cyl + ' cyl')}${stat('Bore x stroke', L)}${stat('Compression', Rd.cr.toFixed(1) + ':1')}${stat('Valvetrain', D.vt === 'ohv' ? 'Pushrod 2-valve' : 'DOHC 4-valve')}${stat('Fuel', { carb: 'Carburetor', port: 'Port injection', di: 'Direct injection', pfdi: 'Port + direct' }[D.fuel])}${stat('Air', Rd.boostKind ? { roots: 'Roots blower', twinscrew: 'Twin-screw', centri: 'Centrifugal', turbo: 'Turbo' }[Rd.boostKind] + ' ' + Rd.psi.toFixed(1) + ' psi' : 'Naturally aspirated')}${stat('Idle / redline', Rd.idle + ' / ' + Rd.red)}${stat('Inertia', Rd.Ie.toFixed(2) + ' kg·m²')}</div>
 <h3>Cam</h3><div class="g">${stat('Duration @ .050"', cs.dI.toFixed(0) + '° / ' + cs.dE.toFixed(0) + '°')}${stat('Lift', cs.lI.toFixed(3) + '" / ' + cs.lE.toFixed(3) + '"')}${stat('LSA / ICL', cs.lsa.toFixed(1) + '° / ' + cs.icl.toFixed(1) + '°')}${stat('Overlap @ .050"', ov.toFixed(0) + '°')}${stat('Idle vacuum', Rd.vac.toFixed(1) + ' inHg')}${stat('Idle spread (COV)', (Rd.cov * 100).toFixed(1) + '%')}</div>
@@ -7548,8 +7555,9 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
 <h3>Parts</h3><div class="note">Pick parts to try them (free on the draft). Greyed parts say what they need. ${b.hub && b.hub.length ? 'Parts marked PartsHub came from parts you bought there.' : ''}</div>`;
     for (const k of ENG_CATS) {
       const opts = k === 'cam' ? CAMS : ENG_PARTS[k].opts, label = k === 'cam' ? 'Camshaft' : ENG_PARTS[k].label, on = b[k] || 'stock';
-      h += `<div class="cat"><b>${label}${(b.hub || []).includes(k) ? ' <span class="note">(PartsHub)</span>' : ''}</b><div class="row">`;
-      for (const [id, o] of Object.entries(opts)) {
+      const sk = pcOf(b, k), nB = PC.filter(x => x.cat === k).length;
+      h += `<div class="cat"><b>${label}${(b.hub || []).includes(k) ? ' <span class="note">(PartsHub)</span>' : ''}</b>${sk ? `<div class="note">Brand part: ${esc(sk.name)} · ${money(sk.price)}</div>` : ''}<div class="row"><button data-pcat="${k}">Brands (${nB}) ›</button>`;
+      for (const [id, o] of Object.entries(opts)) { if (o.hide && on !== id) continue;
         const why = engFits(D, Object.assign({}, b, { [k]: on === id ? 'stock' : on }), k, id), inst = cur[k] === id;
         h += `<button data-cat="${k}" data-id="${id}" class="${on === id ? 'on' : ''}" ${why && on !== id ? 'disabled title="' + why.replace(/"/g, '') + '"' : ''}>${o.name}${o.price ? ' · ' + money(o.price) : ''}${inst && id !== 'stock' ? ' ✓' : ''}</button>`;
       }
@@ -7569,13 +7577,15 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     el.querySelector('[data-tonx]').onclick = () => { labClose(); nxOpen(); };
     el.querySelector('[data-tofi]').onclick = () => { labClose(); fiOpen(); };
     el.querySelector('[data-toecu]').onclick = () => { labClose(); ecuOpen(); };
+    el.querySelector('[data-topc]').onclick = () => { labClose(); pcOpen(); };
     el.querySelector('[data-run]').onclick = () => { ENGLAB.prev = !ENGLAB.prev; ENGLAB.thr = 0; labRender(); };
     el.querySelector('[data-run]').textContent = ENGLAB.prev ? 'Shut it off' : 'Run it on the stand';
     const blip = el.querySelector('[data-blip]'); blip.onclick = () => { ENGLAB.thr = 1; setTimeout(() => { if (!LAB.hold) ENGLAB.thr = 0; }, 140); };
     const hold = el.querySelector('[data-hold]'); hold.addEventListener('pointerdown', e => { e.preventDefault(); LAB.hold = true; ENGLAB.thr = 1; }); const up = () => { LAB.hold = false; ENGLAB.thr = 0; }; hold.addEventListener('pointerup', up); hold.addEventListener('pointerleave', up); hold.addEventListener('pointercancel', up);
     el.querySelectorAll('[data-hear]').forEach(x => x.onclick = () => { LAB.hear = x.dataset.hear; labRender(); });
     el.querySelectorAll('[data-valve]').forEach(x => x.onclick = () => { LAB.draft.valve = +x.dataset.valve; labRender(); });
-    el.querySelectorAll('[data-cat]').forEach(x => x.onclick = () => { const k = x.dataset.cat, id = x.dataset.id; LAB.draft[k] = id; if (k === 'cam' && id === 'custom' && !LAB.draft.camC) LAB.draft.camC = Object.assign({}, camSpec(D, engBuild(labCar(LAB.draft), D))); LAB.run = null; labRender(); });
+    el.querySelectorAll('[data-pcat]').forEach(x => x.onclick = () => pcOpen(x.dataset.pcat));
+    el.querySelectorAll('[data-cat]').forEach(x => x.onclick = () => { const k = x.dataset.cat, id = x.dataset.id; LAB.draft[k] = id; if (LAB.draft.sku && LAB.draft.sku[k]) { LAB.draft.sku = Object.assign({}, LAB.draft.sku); delete LAB.draft.sku[k]; } if (k === 'cam' && id === 'custom' && !LAB.draft.camC) LAB.draft.camC = Object.assign({}, camSpec(D, engBuild(labCar(LAB.draft), D))); LAB.run = null; labRender(); });
     el.querySelectorAll('[data-cc]').forEach(x => x.oninput = () => { LAB.draft.camC = Object.assign({}, D.cam, LAB.draft.camC || {}, { [x.dataset.cc]: +x.value }); x.nextElementSibling.textContent = x.value; clearTimeout(LAB.ccT); LAB.ccT = setTimeout(labRender, 250); });
     el.querySelector('[data-pull]').onclick = () => { const keep = c.eb; c.eb = LAB.draft; const r = tuneRun(c, c.tune || {}); c.eb = keep; VEH_CACHE.clear(); LAB.run = r ? `${r.hp} hp · 0-60 ${r.t60 ? r.t60.toFixed(2) : '-'} s · ¼ mile ${r.et ? r.et.toFixed(2) : '-'} s @ ${r.trap ? Math.round(r.trap) : '-'} mph` : 'No result'; labRender(); };
     el.querySelector('[data-inst]').onclick = () => { if (price && !spend(price, 'engine parts')) return; c.eb = Object.assign({}, LAB.draft); VEH_CACHE.clear(); save(); toast(`Installed. ${carHp(c)} hp.`, 'good'); labRender(); };
@@ -7651,6 +7661,131 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     if (ok !== bc.contains('fobok')) { bc.toggle('fobok', ok); if (!ok) { $('fobpanel').hidden = true; FOB.rev = false; } }
   }
 
+  // ---------- the parts catalog screen (Phase 5A): every brand part, search, brands, sort, a dyno preview, buy and install ----------
+  const PCL = { open: false, cat: 'hdr', q: '', brand: '', sort: 'price', n: 40, sel: null };
+  const PC_TIP = { hdr: 'Long tubes pull hardest; primaries sized for the motor make the most power (bigger moves it up the rpm). Thin stainless rings raspier, coatings run cooler and a touch quieter.', exh: 'Each brand has its own sound: muffler tone, drone, how loud. A bigger pipe flows a little more and sounds deeper.', cats: 'High-flow cats and off-road pipes free up flow and get louder.',
+    cam: 'More duration and lift move the power up and add lope; a tighter LSA chops the idle. Big cams need springs (and forged pistons for the biggest).', intake: 'Cold air intakes free a little flow and sound off; manifolds trade low end for top end.', tb: 'More throttle area for engines that can use it (carbs on carbureted motors).', heads: 'More flow is more power everywhere; smaller chambers add compression.',
+    inj: 'Injector size sets how much fuel the motor (and the spray) can get: the fuel limit.', pump: 'Pump flow is the other half of the fuel limit.', fpr: 'More fuel pressure pushes more through the same injectors (port injection).', ign: 'A stronger spark holds on at high rpm and boost.', plugs: 'Colder plugs hold off detonation: a little more timing or boost before it knocks.',
+    springs: 'Stiffer springs raise where the valves float: a higher safe rev limit.', pistons: 'Forged pistons take boost and spray; compression trades knock margin for power.', rods: 'Forged rods let the bottom end take far more torque before it spins a bearing.', crank: 'Forged and billet cranks rev higher; strokers add displacement (torque).',
+    power: 'Real hardware: blower size, impeller, turbo inducer and housing. Boost is what it makes on this engine.', cool: 'More radiator and fan: it runs cooler on the line and in burnouts.', oil: 'Cooler, steadier oil: the bearings live longer when it\'s hot or worked.', tcool: 'The transmission fluid stays cooler holding it on the brakes.',
+    conv: 'A higher stall lets the motor flash into its power before the car moves.', clutch: 'More clamp holds more torque without slipping, and lasts longer.' };
+  const pcLabel = k => k === 'cam' ? 'Camshafts' : SUS_LABEL[k] || ENG_PARTS[k].label;
+  const isSus = k => SUS_CATS.includes(k);
+  Object.assign(PC_TIP, { coil: 'Coilovers set the spring rate, damping and ride height. Drag setups let the front rise and the rear squat into the tires; track setups stay flat.', shock: 'Drag shocks: a loose front lets the nose come up so weight goes back; a soft rear lets it squat and plant. Too loose and it wheelies or unloads.',
+    sspr: 'Drag-launch springs let the front rise; lowering springs drop the car (a lower center of gravity transfers less weight) and stiffen it.', tbar: 'More anti-squat drives the launch straight into the rear tires: harder hit, less squat, more nose lift. Too much and it unloads the tires.', arb: 'Stiffer bars roll less in corners. A stiff rear bar on a drag car hurts the launch; stiff front makes it push.' });
+  function pcFits(c, D, b, s) {
+    if (isSus(s.cat)) return '';
+    if (!D) return 'This car\'s engine isn\'t in the Engine Lab';
+    if (s.cat === 'tb' && s.tags === 'carb' && D.fuel !== 'carb') return 'Carbureted engines only';
+    if (s.cat === 'tb' && s.tags === 'efi' && D.fuel === 'carb') return 'Fuel-injected engines only';
+    const V = vehOf(c, partsKg(c)); if (s.cat === 'conv' && V.tt !== 'tc') return 'Automatics with a torque converter only'; if (s.cat === 'clutch' && V.tt === 'tc') return 'Manual and dual-clutch cars only';
+    return engFits(D, Object.assign({}, b, { [s.cat]: b[s.cat] === s.base ? 'stock' : b[s.cat], sku: Object.assign({}, b.sku, { [s.cat]: s.id }) }), s.cat, s.base);
+  }
+  function pcList() {
+    const q = PCL.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let L = PC.filter(s => s.cat === PCL.cat && (!PCL.brand || s.brand === PCL.brand) && q.every(w => (s.name + ' ' + s.tags).toLowerCase().includes(w)));
+    if (PCL.sort === 'price') L.sort((a, b) => a.price - b.price); else if (PCL.sort === 'price-') L.sort((a, b) => b.price - a.price); else L.sort((a, b) => a.name.localeCompare(b.name));
+    return L;
+  }
+  function pcOpen(cat) {
+    const c = S.car; if (!c) { toast('No car out.', 'bad'); return; }
+    labCss(); let el = $('englab'); if (!el) { el = document.createElement('div'); el.id = 'englab'; document.body.appendChild(el); }
+    if (LAB.open) labClose(); NXL.open = false; FIL.open = false; ECL.open = false; DHL.open = false; const tu = $('tune'); if (tu) tu.hidden = true;
+    if (cat) { PCL.cat = cat; PCL.brand = ''; PCL.q = ''; PCL.n = 40; PCL.sel = null; }
+    PCL.open = true; el.hidden = false; pcRender();
+  }
+  function pcClose() { PCL.open = false; const el = $('englab'); if (el) el.hidden = true; }
+  // a launch on the real physics, muted (no wear): how far the rear squats and the nose comes up (in), and the 60 ft
+  function susSquat(c) {
+    const was = S.car; S.car = c; const P = carPerf(), saveT = Object.assign({}, TIRE), saveD = { yaw: drv.yaw, v: drv.v, steer: drv.steer }, h = 1 / 240; DMG.mute++;
+    let sq = 0, nose = 0, x = 0, t60 = 0;
+    try { physReset(); drv.yaw = 0; drv.v = 0; drv.steer = 0;
+      for (let t = 0; t < 3 && !t60; t += h) { physStep({ gas: 1, brake: 0, steer: 0, hb: 0 }, P, h); const u = Math.max(0, drv.v); x += u * h; TIRE.vx = 0; TIRE.vz = -u; TIRE.w = 0; const v = TIRE.vd;
+        if (v) { sq = Math.max(sq, v.zc + v.V.b * v.th); nose = Math.max(nose, v.V.a * v.th - v.zc); } if (x >= 18.29) t60 = t; }
+    } finally { DMG.mute--; Object.assign(TIRE, saveT); drv.yaw = saveD.yaw; drv.v = saveD.v; drv.steer = saveD.steer; S.car = was; }
+    return { sq: sq * 39.37, nose: nose * 39.37, t60: t60 || 3 };
+  }
+  // what a part does on this engine: the dyno against what's on the car
+  function pcPreview(c, D, b, s) {
+    if (isSus(s.cat)) {   // the springs, dampers and geometry against what's on the car, and a launch on the real physics
+      const was = c.sus, V0 = vehOf(c, partsKg(c)), sq0 = susSquat(c); c.sus = Object.assign({}, was, { [s.cat]: s.id }); const V1 = vehOf(c, partsKg(c)), sq1 = susSquat(c); c.sus = was;
+      const pc = (a, b) => { const d = Math.round((b / a - 1) * 100); return d ? (d > 0 ? '+' : '') + d + '%' : 'same'; }, hz = (k, m) => Math.sqrt(k / m) / (2 * Math.PI);
+      return `springs F ${pc(V0.ks[0], V1.ks[0])} R ${pc(V0.ks[2], V1.ks[2])} · rear squat damping ${pc(V0.cB[2], V1.cB[2])} · front rise damping ${pc(V0.cR[0], V1.cR[0])} · anti-squat ${Math.round(V1.AS * 100)}% · sway F ${pc(V0.arb[0] || 1, V1.arb[0] || 1)} R ${V0.arb[1] ? pc(V0.arb[1], V1.arb[1]) : V1.arb[1] ? 'new' : 'none'} · ride ${(V1.h - V0.h) * 39.37 >= 0 ? '+' : ''}${((V1.h - V0.h) * 39.37).toFixed(1)} in · launch: rear squats ${sq1.sq.toFixed(1)} in (was ${sq0.sq.toFixed(1)}), nose up ${sq1.nose.toFixed(1)} in, 60 ft ${sq1.t60.toFixed(2)} s (was ${sq0.t60.toFixed(2)})`;
+    }
+    const nb = Object.assign({}, b, { [s.cat]: s.base, sku: Object.assign({}, b.sku, { [s.cat]: s.id }) }); if (s.cat === 'power') delete nb.fi;
+    const R0 = engModel(D, b, engFuel(c)), R1 = engModel(D, nb, engFuel(c)), lb = n => Math.round(n / 1.3558), dh = Math.round(R1.hp - R0.hp), dt = lb(R1.tq) - lb(R0.tq);
+    return `${Math.round(R1.hp)} hp (${dh >= 0 ? '+' : ''}${dh}) · ${lb(R1.tq)} lb-ft (${dt >= 0 ? '+' : ''}${dt}) · peak ${R1.nP.toLocaleString()} rpm · redline ${R1.red.toLocaleString()}${R1.psi ? ` · ${R1.psi.toFixed(1)} psi` : ''}${R1.warn.length ? ' · ⚠ ' + R1.warn[0].slice(0, 90) : ''}`;
+  }
+  function pcRender() {
+    const el = $('englab'), c = S.car; if (!el || !c) return;
+    const D = !c.swap && engDefOf(c), b = D ? engBuild(c, D) : {}, keep = el.scrollTop, L = pcList(), brands = [...new Set(PC.filter(s => s.cat === PCL.cat).map(s => s.brand))].sort();
+    let h = `<div class="hd"><h2>Parts catalog · ${PC.length.toLocaleString()} parts</h2>${D ? '<button data-tolab>Engine Lab</button>' : ''}<button data-x>Close</button></div>`;
+    if (!D) h += `<div class="warn">${c.swap ? 'Crate motors are built on the Engine Build page.' : isEV(c) ? 'Electric: no engine parts.' : 'This car\'s engine isn\'t in the Engine Lab yet.'}</div>`;
+    h += `<div class="row pcchips">${ENG_CATS.concat(SUS_CATS).map(k => `<button data-pc="${k}" class="${PCL.cat === k ? 'on' : ''}">${pcLabel(k)} <span class="note">${PC.filter(s => s.cat === k).length}</span></button>`).join('')}</div>`;
+    const SU = isSus(PCL.cat), inst = SU ? (c.sus && PC_BY.get(c.sus[PCL.cat])) || null : pcOf(b, PCL.cat);
+    h += `<div class="note">${PC_TIP[PCL.cat] || ''}</div><div class="note" style="margin-top:4px">On the car: <b>${inst ? esc(inst.name) : SU ? 'Factory' : PCL.cat === 'cam' ? esc((CAMS[b.cam] || CAMS.stock).name) : esc((ENG_PARTS[PCL.cat].opts[b[PCL.cat]] || ENG_PARTS[PCL.cat].opts.stock).name)}</b></div>`;
+    h += `<div class="row"><input data-q placeholder="Search ${esc(pcLabel(PCL.cat).toLowerCase())}" value="${esc(PCL.q)}" style="flex:1;min-width:160px;font:inherit;padding:6px 8px;border-radius:9px;border:1px solid var(--line);background:#1b1622;color:var(--fg)">
+<select data-brand style="font:inherit;padding:6px;border-radius:9px;background:#1b1622;color:var(--fg);border:1px solid var(--line)"><option value="">All brands (${brands.length})</option>${brands.map(x => `<option ${PCL.brand === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+<select data-sort style="font:inherit;padding:6px;border-radius:9px;background:#1b1622;color:var(--fg);border:1px solid var(--line)">${[['price', 'Price: low to high'], ['price-', 'Price: high to low'], ['name', 'Name']].map(([v, l]) => `<option value="${v}" ${PCL.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
+    h += `<div class="note">${L.length.toLocaleString()} ${L.length === 1 ? 'part' : 'parts'}</div><div class="pcl">`;
+    for (const s of L.slice(0, PCL.n)) {
+      const why = SU || D ? pcFits(c, D, b, s) : 'No engine model', on = inst && inst.id === s.id;
+      h += `<div class="pcr${PCL.sel === s.id ? ' sel' : ''}${why ? ' no' : ''}" data-sel="${s.id}"><div class="pct"><b>${esc(s.name)}</b><span>${money(s.price)}${on ? ' · on the car ✓' : ''}</span></div>`;
+      if (why) h += `<div class="why">${esc(why)}</div>`;
+      if (PCL.sel === s.id && (D || SU) && !why) h += `<div class="note pcv">${pcPreview(c, D, b, s)}</div><div class="row"><button data-buy="${s.id}" class="on" ${on ? 'disabled' : ''}>Buy &amp; install · ${money(s.price)}</button>${SU ? (on ? `<button data-unsus="${s.cat}">Put the factory part back</button>` : '') : `<button data-try="${s.id}">Try it in the Engine Lab</button>`}</div>`;
+      h += `</div>`;
+    }
+    h += `</div>${L.length > PCL.n ? `<div class="row"><button data-more>Show more (${(L.length - PCL.n).toLocaleString()} left)</button></div>` : ''}`;
+    const chipX = el.querySelector('.pcchips') ? el.querySelector('.pcchips').scrollLeft : null;
+    el.innerHTML = h; el.scrollTop = keep;
+    const q = s => el.querySelector(s), ch = q('.pcchips'); if (ch) { if (chipX != null) ch.scrollLeft = chipX; else { const on = ch.querySelector('.on'); if (on) ch.scrollLeft = on.offsetLeft - 16; } }
+    q('[data-x]').onclick = pcClose; if (q('[data-tolab]')) q('[data-tolab]').onclick = () => { PCL.open = false; labOpen(); };
+    el.querySelectorAll('[data-pc]').forEach(x => x.onclick = () => { PCL.cat = x.dataset.pc; PCL.brand = ''; PCL.q = ''; PCL.n = 40; PCL.sel = null; el.scrollTop = 0; pcRender(); });
+    const qi = q('[data-q]'); qi.oninput = () => { PCL.q = qi.value; PCL.n = 40; clearTimeout(PCL.t); PCL.t = setTimeout(() => { pcRender(); const e2 = q('[data-q]'); if (e2) { e2.focus(); e2.setSelectionRange(e2.value.length, e2.value.length); } }, 250); };
+    q('[data-brand]').onchange = e => { PCL.brand = e.target.value; PCL.n = 40; pcRender(); };
+    q('[data-sort]').onchange = e => { PCL.sort = e.target.value; pcRender(); };
+    if (q('[data-more]')) q('[data-more]').onclick = () => { PCL.n += 60; pcRender(); };
+    el.querySelectorAll('[data-sel]').forEach(x => x.onclick = e => { if (e.target.closest('button')) return; PCL.sel = PCL.sel === x.dataset.sel ? null : x.dataset.sel; pcRender(); });
+    el.querySelectorAll('[data-buy]').forEach(x => x.onclick = () => pcBuy(c, PC_BY.get(x.dataset.buy)));
+    el.querySelectorAll('[data-unsus]').forEach(x => x.onclick = () => { const n = Object.assign({}, c.sus); delete n[x.dataset.unsus]; c.sus = n; VEH_CACHE.clear(); save(); toast('Factory part back on.', ''); pcRender(); });
+    el.querySelectorAll('[data-try]').forEach(x => x.onclick = () => { const s = PC_BY.get(x.dataset.try); PCL.open = false; labOpen(); LAB.draft[s.cat] = s.base; LAB.draft.sku = Object.assign({}, LAB.draft.sku, { [s.cat]: s.id }); LAB.run = null; labRender(); });
+  }
+  function pcBuy(c, s) {
+    if (!s || !spend(s.price, s.name)) return;
+    if (isSus(s.cat)) { c.sus = Object.assign({}, c.sus, { [s.cat]: s.id }); VEH_CACHE.clear(); save(); toast(`${s.name} installed. Drive it.`, 'good'); pcRender(); return; }
+    const eb = Object.assign({}, c.eb || {}); eb[s.cat] = s.base; eb.sku = Object.assign({}, eb.sku, { [s.cat]: s.id }); if (s.cat === 'power') delete eb.fi;
+    c.eb = eb; VEH_CACHE.clear(); save(); toast(`${s.name} installed. ${carHp(c)} hp.`, 'good'); pcRender();
+  }
+  // ---------- launch control button (Phase 5A): arm it, floor it (the brakes hold it on the launch rpm), tap it again to go ----------
+  const LCB = { arm: false, el: null, go: 0 };
+  function lcbInput(I) { I.lca = LCB.arm; return I; }
+  function lcbTap() {
+    const st = TIRE.vd, u = drv ? Math.abs(drv.v || 0) : 0;
+    if (!LCB.arm) { LCB.arm = true; toast(`Launch control armed${lcbRpm() ? ` at ${lcbRpm().toLocaleString()} rpm` : ''}. Floor it, then tap LAUNCH to go.`, ''); }
+    else { LCB.arm = false; LCB.go = performance.now(); if (u > 2 || !st) toast('Launch control off.', ''); }
+    lcbUi();
+  }
+  function lcbRpm() { const c = S.car; if (!c || isEV(c)) return 0; try { const P = carPerf(); return Math.round(P.lc || (P.veh && P.veh.lcRpm) || 0); } catch (e) { return 0; } }
+  function lcbUi(show) {
+    if (!LCB.el) {
+      const st = document.createElement('style'); st.textContent = `#lcbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 196px);right:calc(max(18px,env(safe-area-inset-right,0px)) + 82px);border-color:#3ddc84}#lcbtn.arm{background:#3ddc84;color:#0f1a12}#lcbtn.arm small{color:#123}#lcbtn.hold{animation:lcp .5s infinite alternate}@keyframes lcp{to{box-shadow:0 0 0 4px rgba(61,220,132,.6)}}
+body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.strip-on #lcbtn{z-index:26}@media (orientation:portrait){#lcbtn{bottom:calc(env(safe-area-inset-bottom,0px) + 330px)}}`; document.head.append(st);
+      const b = document.createElement('button'); b.id = 'lcbtn'; b.className = 'nosbtn'; b.innerHTML = 'LAUNCH<small>tap to arm</small>'; document.body.append(b); LCB.el = b;
+      b.addEventListener('pointerdown', e => { e.preventDefault(); lcbTap(); }); b.addEventListener('contextmenu', e => e.preventDefault());
+      addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.code === 'KeyK' && !e.repeat && document.body.classList.contains('lc-ok')) lcbTap(); });
+    }
+    if (show != null) document.body.classList.toggle('lc-ok', !!show);
+    const st = TIRE.vd, holding = LCB.arm && st && st.lch, r = lcbRpm();
+    LCB.el.classList.toggle('arm', LCB.arm); LCB.el.classList.toggle('hold', !!holding);
+    LCB.el.firstChild.textContent = LCB.arm ? (holding ? 'LAUNCH!' : 'ARMED') : 'LAUNCH';
+    LCB.el.lastChild.textContent = LCB.arm ? (holding ? 'tap to go' : r ? r.toLocaleString() + ' rpm' : 'brake hold') : 'tap to arm';
+  }
+  // each frame in the car: show it, keep it current, switch it off once you're gone
+  function lcbFrame(on) {
+    const c = S.car, ok = !!(on && c && !isEV(c)); if (!ok) { if (LCB.el) document.body.classList.remove('lc-ok'); LCB.arm = false; return; }
+    if (LCB.arm && Math.abs(drv.v || 0) > 9) LCB.arm = false;
+    lcbUi(true);
+  }
   // ---------- the Engine Build page, opened over the shop; Install puts that motor in your car ----------
   function openEngineBuild(p) {
     if (!S.car) return;
@@ -8791,6 +8926,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     chop: { name: 'Chop cam (240/250, 108 LSA)', price: 820, abs: { dI: 240, dE: 250, lsa: 108 }, l: 0.07, blurb: 'Built to sound mean: deep, uneven, rough idle' },
     race: { name: 'Race cam', price: 1350, d: [46, 46], l: 0.12, lsa: -9, blurb: 'Drag only: no bottom end, screams up top, needs everything' },
     custom: { name: 'Custom grind', price: 1100, custom: true, blurb: 'Your numbers: duration, lift, LSA, centerline' },
+    cat: { name: 'Catalog cam', price: 0, cat: true, hide: true, blurb: 'A brand grind from the parts catalog' },
   };
   const ENG_PARTS = {
     intake: { label: 'Intake manifold', opts: {
@@ -8852,8 +8988,20 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       turbo: { name: 'Twin turbo kit (12 psi)', price: 9800, kit: { kind: 'turbo', psi: 12, ic: 0.8, eff: 0.72, on: 2400, full: 3600 }, fit: d => !d.power, why: 'Already boosted' },
       turbo1: { name: 'Single turbo kit (14 psi)', price: 7900, kit: { kind: 'turbo', psi: 14, ic: 0.8, eff: 0.76, on: 2800, full: 4000, n: 1 }, fit: d => !d.power, why: 'Already boosted' },
     } },
+    // Phase 5A: more of the engine and drivetrain (the catalog fills each with brands and sizes)
+    cats: { label: 'Catalytic converters', opts: { stock: { name: 'Factory cats', price: 0 }, hfc: { name: 'High-flow cats', price: 650, kexA: -0.006, snd: { g: 1.08, o: 0.05 } }, off: { name: 'Off-road pipes (no cats)', price: 260, kexA: -0.011, snd: { g: 1.22, o: 0.15 } } } },
+    fpr: { label: 'Fuel pressure regulator', opts: { stock: { name: 'Factory regulator (43.5 psi)', price: 0 }, adj: { name: 'Adjustable regulator (58 psi)', price: 190, fp: 58, fit: d => d.fuel === 'port', why: 'Port-injected engines only' } } },
+    ign: { label: 'Ignition coils', opts: { stock: { name: 'Factory coils', price: 0 }, coils: { name: 'High-output coil packs', price: 420, ign: 1 } } },
+    plugs: { label: 'Spark plugs', opts: { stock: { name: 'Factory plugs', price: 0 }, cold: { name: 'Iridium plugs, one step colder', price: 100, knA: 0.5, coldPlug: 1 } } },
+    springs: { label: 'Valve springs', opts: { stock: { name: 'Factory springs', price: 0 }, up: { name: 'Dual valve springs + retainers', price: 520, red: 450 } } },
+    rods: { label: 'Connecting rods', opts: { stock: { name: 'Factory rods', price: 0 }, forged: { name: 'Forged H-beam rods', price: 900, rodK: 0.35, red: 100 } } },
+    cool: { label: 'Radiator / fans', opts: { stock: { name: 'Factory radiator', price: 0 }, up: { name: 'Aluminum radiator', price: 450, coolK: 1.2 } } },
+    oil: { label: 'Oiling', opts: { stock: { name: 'Factory oiling', price: 0 }, up: { name: 'Oil cooler', price: 420, oilK: 0.6, oilT: -15 } } },
+    tcool: { label: 'Transmission cooler', opts: { stock: { name: 'Factory cooler', price: 0 }, up: { name: 'Transmission cooler', price: 260, tcK: 1.8 } } },
+    conv: { label: 'Torque converter (automatics)', opts: { stock: { name: 'Factory converter', price: 0 }, stall: { name: '3,200 rpm stall converter', price: 850, stall: 3200 } } },
+    clutch: { label: 'Clutch (manual / dual-clutch)', opts: { stock: { name: 'Factory clutch', price: 0 }, up: { name: 'Stage 2 clutch', price: 650, clK: 1.35 } } },
   };
-  const ENG_CATS = ['cam', 'intake', 'tb', 'heads', 'hdr', 'exh', 'inj', 'pump', 'pistons', 'crank', 'power'];
+  const ENG_CATS = ['cam', 'intake', 'tb', 'heads', 'hdr', 'cats', 'exh', 'inj', 'pump', 'fpr', 'ign', 'plugs', 'springs', 'pistons', 'rods', 'crank', 'power', 'cool', 'oil', 'tcool', 'conv', 'clutch'];
   // the build on this car (saved with it): part id per category, a custom cam, the valved exhaust state
   // PartsHub parts (stages from the 2D game) and the old one-tap mods become real parts here, so they change the physics
   // instead of multiplying horsepower. Anything set in the Engine Lab (c.eb) wins.
@@ -8882,8 +9030,9 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   }
   // the cam actually in it
   function camSpec(D, b) {
-    const s = D.cam, k = CAMS[b.cam] || CAMS.stock;
+    const s = D.cam; let k = CAMS[b.cam] || CAMS.stock;
     if (k.custom) return Object.assign({}, s, b.camC || {});
+    if (k.cat) { const g = pcOf(b, 'cam'); if (!g) return Object.assign({}, s); k = g.o; }   // a catalog grind: more duration, lift, tighter LSA than the factory cam
     if (k.abs && D.vt === 'dohc') return { dI: s.dI + 14, dE: s.dE + 16, lI: s.lI + k.l * 0.6, lE: s.lE + k.l * 0.6, lsa: Math.min(s.lsa, k.abs.lsa + 2), icl: k.abs.lsa - 2 };   // a DOHC "chop" set: more duration, cams phased tight
     if (k.abs) return { dI: k.abs.dI, dE: k.abs.dE, lI: s.lI + k.l, lE: s.lE + k.l, lsa: k.abs.lsa, icl: k.abs.lsa - 4 };
     const lsa = k.lsa == null ? s.lsa : Math.max(104, s.lsa + k.lsa);
@@ -8902,16 +9051,171 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       if (id === 'race' && springs < 2) return 'A race cam needs CNC or race heads';
       return '';
     }
-    const P = ENG_PARTS[cat], o = P && P.opts[id]; if (!o) return 'Unknown part'; if (id === 'stock') return '';
+    const P = ENG_PARTS[cat], o0 = P && P.opts[id]; if (!o0) return 'Unknown part'; if (id === 'stock') return '';
+    const sk = b.sku && b.sku[cat] && PC_BY.get(b.sku[cat]), o = sk && sk.base === id ? Object.assign({}, o0, sk.o) : o0;   // a catalog part: its own boost, compression
     if (o.fit && !o.fit(D)) return o.why || 'Does not fit this engine';
     if (o.fitB && !o.fitB(b)) return o.why || 'Needs another part first';
     if ((cat === 'inj' || cat === 'pump') && /^di$/.test(D.fuel)) return 'Direct injection: the factory high-pressure pump and injectors stay (add port injection in a later phase)';
     if (cat === 'inj' && D.fuel === 'carb') return 'Carbureted: fuel comes through the carb (see throttle body / carb)';
     if (cat === 'power' && o.kit && b.pistons === 'stock' && !D.forged && o.kit.psi > 8) return 'This much boost on cast pistons cracks ring lands: install forged low-compression pistons first';
-    if (cat === 'pistons' && id === 'forged' && (D.power || b.power !== 'stock') && D.cr + 0.8 > 10) return 'High-compression pistons and boost: knock city. Use the low-compression forged set';
+    if (cat === 'pistons' && (o.cr || 0) > 0 && (D.power || b.power !== 'stock') && D.cr + (o.cr || 0) > 10) return 'High-compression pistons and boost: knock city. Use the low-compression forged set';
     return '';
   }
   const ENG_STOCK_BUILD = { cam: 'stock', intake: 'stock', tb: 'stock', heads: 'stock', hdr: 'stock', exh: 'stock', inj: 'stock', pump: 'stock', pistons: 'stock', crank: 'stock', power: 'stock', valve: 1 };
+  // ---------- Phase 5A: the parts catalog (real brands, sizes and finishes; every one changes the engine model) ----------
+  // Each catalog part is one of the Engine Lab's part types (a long-tube header, a cat-back, an injector...) made by a
+  // brand in a size: it carries its own numbers (primary tube size, pipe diameter, lb/hr, lph, compression, cam grind,
+  // turbo inducer, blower liters...) over the type's. Installed parts live in c.eb[type] plus c.eb.sku[type].
+  // Brand names are the real makers; the part numbers, prices and the small brand-to-brand differences are approximations ~
+  const PC = [], PC_BY = new Map();
+  const pcAdd = (cat, base, brand, name, price, o, tags) => { const id = (cat + '-' + brand + '-' + name).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 90); if (PC_BY.has(id)) return; const s = { id, cat, base, brand, name, price: Math.round(price / 5) * 5, o: o || {}, tags: tags || '' }; PC.push(s); PC_BY.set(id, s); };
+  const IN8 = x => { const w = Math.floor(x), f = Math.round((x - w) * 8); return f ? `${w}-${f / 2 % 1 ? f : f / 2}/${f / 2 % 1 ? 8 : 4}`.replace('-2/4', '-1/2') : '' + w; };
+  (function pcBuild() {
+    // headers: brand (price, wall rasp: thin stainless rings brighter), type, primary size, finish
+    const HB = [['Kooks', 1.7, 0.9, '304 stainless'], ['American Racing Headers', 1.6, 0.9, '304 stainless'], ['Stainless Works', 1.4, 0.92, '304 stainless'], ['Schoenfeld', 1.45, 0.94, 'mild steel'], ['Texas Speed', 1.0, 0.93, '304 stainless'], ['Hooker', 0.85, 0.97, 'mild steel'],
+      ['BBK', 0.8, 0.95, '409 stainless'], ['JBA', 0.85, 0.94, '409 stainless'], ["Doug's Headers", 0.95, 0.96, 'mild steel'], ['Hedman', 0.65, 0.98, 'mild steel'], ['Speed Engineering', 0.5, 0.95, '304 stainless'], ['Flowtech', 0.55, 0.99, 'mild steel'], ['Lethal Performance', 1.2, 0.91, '321 stainless'], ['Long Tube Labs', 0.9, 0.93, '304 stainless']];
+    const HF = [['raw', 'polished / raw', 1, 0, 0], ['cer-blk', 'black ceramic coat', 1.18, -0.6, 0.03], ['cer-ti', 'titanium ceramic coat', 1.22, -0.5, 0.03], ['cer-sil', 'silver ceramic coat', 1.2, -0.6, 0.03]];
+    for (const [br, pk, wall, mat] of HB) for (const [ty, sizes, p0, tn] of [['longtube', [1.625, 1.75, 1.875, 2], 1500, 'long-tube headers'], ['shorty', [1.5, 1.625, 1.75], 650, 'shorty headers']])
+      for (const pr of sizes) for (const [fk, fn, fp, fdb, ft] of HF)
+        pcAdd('hdr', ty, br, `${br} ${IN8(pr)}" ${tn}, ${mat}, ${fn}`, p0 * pk * fp * (1 + (pr - 1.625) * 0.6), { prim: pr, snd: { t: wall + ft, db: fdb + (mat.includes('stainless') ? 0.6 : 0), f: -(pr - 1.625) * 120 } }, `${mat} ${fn}`);
+    for (const [br, pk] of [['Kooks', 1.4], ['Stainless Works', 1.2], ['Texas Speed', 1], ['Speed Engineering', 0.6], ['Cobb', 1.3], ['Mountune', 1.2], ['AWE', 1.5]]) for (const [cat_, cn, kx, g] of [['catless', 'catless', -0.012, 1], ['hfc', 'high-flow cat', -0.007, 0.92]])
+      for (const d of [3, 3.5, 4]) pcAdd('hdr', 'downpipe', br, `${br} ${d}" ${cn} downpipe${pk > 1.1 ? 's' : ''}`, 900 * pk * (cat_ === 'hfc' ? 1.35 : 1) * (1 + (d - 3) * 0.2), { kexA: kx - 0.012 + (d - 3) * -0.004, snd: { db: (cat_ === 'hfc' ? 0.6 : 1.5) * g, t: 1 - (d - 3) * 0.05 } });
+    // cat-backs: brand lines with their own sound (muffler cutoff, level, drone notch, how open), each type, pipe diameter
+    const XL = [['Borla', 'Touring', 1.6, 0.95, 0.95, -6, 0.2], ['Borla', 'S-Type', 1.7, 1.05, 1.08, -4, 0.35], ['Borla', 'ATAK', 1.8, 1.2, 1.22, -2, 0.55], ['MagnaFlow', 'Street', 1.2, 0.85, 1.0, -7, 0.2], ['MagnaFlow', 'Competition', 1.3, 1.05, 1.15, -4, 0.4], ['MagnaFlow', 'xMOD', 1.35, 1.1, 1.2, -3, 0.45],
+      ['Flowmaster', 'American Thunder', 1.0, 0.8, 1.05, -5, 0.35], ['Flowmaster', 'Outlaw', 1.05, 0.9, 1.3, 0, 0.7], ['Flowmaster', 'FlowFX', 0.9, 0.95, 1.1, -3, 0.45], ['Corsa', 'Sport', 1.9, 1.0, 1.0, -10, 0.3], ['Corsa', 'Xtreme', 2.0, 1.1, 1.18, -9, 0.45], ['Gibson', 'Black Elite', 1.1, 0.95, 1.05, -5, 0.3],
+      ['Stainless Works', 'Chambered', 1.5, 0.9, 1.12, -3, 0.45], ['Stainless Works', 'Turbo', 1.5, 0.85, 1.0, -6, 0.25], ['Kooks', 'Header-back', 1.9, 1.1, 1.2, -3, 0.5], ['Roush', 'Active', 1.6, 1.0, 1.1, -5, 0.35], ['Solo Performance', 'Mach Xtreme', 1.7, 1.25, 1.35, 0, 0.8], ['AWE', 'Track Edition', 2.0, 1.15, 1.2, -2, 0.5],
+      ['AWE', 'Touring Edition', 1.9, 0.95, 1.0, -7, 0.25], ['Akrapovic', 'Evolution (titanium)', 4.5, 1.2, 1.2, -3, 0.5], ['Milltek', 'Race', 2.1, 1.15, 1.2, -2, 0.5], ['Ford Performance', 'Active Valve', 1.5, 1.0, 1.1, -5, 0.35], ['Mopar', 'Performance', 1.3, 0.9, 1.05, -6, 0.3], ['Billy Boat', 'Fusion', 2.2, 1.1, 1.15, -3, 0.45]];
+    const XT = [['perf', 'cat-back', 1], ['xpipe', 'cat-back with X-pipe', 1.3], ['hpipe', 'cat-back with H-pipe', 1.28], ['valved', 'valved cat-back', 1.6]];
+    for (const [br, ln, pk, lp, g, nt, op] of XL) for (const [ty, tn, tk] of XT) for (const d of [2.5, 3, 3.5])
+      pcAdd('exh', ty, br, `${br} ${ln} ${d}" ${tn}`, 900 * pk * tk * (1 + (d - 2.5) * 0.15), { dia: d, snd: { lp, g, notch: nt, o: op } });
+    for (const br of ['Stainless Works', 'Kooks', 'Speed Engineering', 'Texas Speed', 'MagnaFlow', 'Flowmaster']) for (const d of [2.5, 3, 3.5]) {
+      pcAdd('exh', 'mufdel', br, `${br} ${d}" muffler delete pipes`, 300 * (1 + (d - 2.5) * 0.2), { dia: d });
+      pcAdd('exh', 'straight', br, `${br} ${d}" straight pipes (no cats, no mufflers)`, 600 * (1 + (d - 2.5) * 0.2), { dia: d });
+      pcAdd('exh', 'resdel', br, `${br} ${d}" resonator delete`, 250 * (1 + (d - 2.5) * 0.2), { dia: d });
+    }
+    // cold air intakes and manifolds
+    for (const [br, pk, k, s] of [['K&N', 1, -0.012, 1.4], ['AEM', 1.0, -0.012, 1.45], ['aFe', 1.05, -0.013, 1.5], ['Roush', 1.15, -0.013, 1.5], ['JLT', 0.95, -0.014, 1.55], ['Airaid', 0.95, -0.012, 1.4], ['Injen', 1.0, -0.012, 1.6], ['Volant', 0.9, -0.011, 1.35],
+      ['Spectre', 0.6, -0.009, 1.3], ['S&B', 1.05, -0.013, 1.45], ['Corsa', 1.1, -0.012, 1.4], ['Mishimoto', 0.95, -0.012, 1.45], ['Steeda', 1.0, -0.013, 1.5], ['Mopar', 0.9, -0.011, 1.3], ['Cobb', 1.15, -0.013, 1.55], ['Holley', 0.9, -0.012, 1.4]])
+      for (const [f, fn, fk] of [['oil', 'oiled cotton filter', 0], ['dry', 'dry synthetic filter', 0.0006]]) pcAdd('intake', 'cai', br, `${br} cold air intake, ${fn}`, 380 * pk * (f === 'dry' ? 1.05 : 1), { kin: k + fk, snd: { intake: s } });
+    for (const [br, n, ty, pk, fl, ru] of [['Holley', 'Hi-Ram', 'hirpm', 1.4, 1.14, 1.25], ['Holley', 'Sniper EFI', 'hirpm', 1.0, 1.1, 1.18], ['FAST', 'LSXR 102 mm', 'hirpm', 1.0, 1.11, 1.15], ['Edelbrock', 'Victor Jr.', 'hirpm', 0.85, 1.12, 1.22], ['Edelbrock', 'Performer RPM', 'lowrpm', 0.75, 1.03, 0.9],
+      ['Edelbrock', 'Pro-Flo XT', 'lowrpm', 0.9, 1.04, 0.88], ['Weiand', 'Stealth', 'lowrpm', 0.6, 1.02, 0.86], ['Brodix', 'Tunnel Ram', 'hirpm', 1.5, 1.16, 1.3], ['Dart', 'Single Plane', 'hirpm', 0.8, 1.12, 1.2], ['Trick Flow', 'R-Series', 'hirpm', 1.0, 1.12, 1.18], ['Texas Speed', 'Ported', 'ported', 1.1, 1.07, 1],
+      ['Granatelli', 'Ported', 'ported', 1.0, 1.06, 1], ['Mast Motorsports', 'Ported', 'ported', 1.2, 1.08, 1], ['Kaase', 'Ported', 'ported', 1.25, 1.08, 1], ['Ford Performance', 'Cobra Jet', 'hirpm', 1.2, 1.12, 1.16], ['GM Performance', 'LSA-style', 'lowrpm', 0.9, 1.02, 0.92]])
+      pcAdd('intake', ty, br, `${br} ${n} intake manifold`, (ty === 'ported' ? 650 : ty === 'lowrpm' ? 900 : 1100) * pk, { flow: fl, runner: ru });
+    // throttle bodies (mm over stock) and carbs (cfm)
+    for (const [br, pk] of [['Nick Williams', 1.6], ['BBK', 0.8], ['FAST', 1.2], ['Holley', 1.0], ['Granatelli', 0.9], ['Steeda', 1.0], ['Accufab', 1.5], ['Wilson Manifolds', 1.4]])
+      for (const mm of [4, 6, 8, 10, 12, 16]) pcAdd('tb', mm <= 8 ? 'big' : 'huge', br, `${br} +${mm} mm throttle body`, (mm <= 8 ? 420 : 950) * pk * (0.8 + mm * 0.03), { tb: ((80 + mm) / 80) ** 2 }, 'efi');
+    for (const [br, pk] of [['Holley', 1], ['Demon', 1.1], ['Quick Fuel', 1.05], ['Edelbrock', 0.9], ['Barry Grant', 1.2]]) for (const cfm of [650, 750, 850, 950, 1050, 1150, 1250])
+      pcAdd('tb', cfm <= 850 ? 'big' : 'huge', br, `${br} ${cfm} cfm ${cfm >= 1050 ? 'Dominator ' : ''}carburetor`, (cfm <= 850 ? 420 : 950) * pk * (cfm / 800), { tb: cfm / 650 }, 'carb');
+    // heads: brand quality (flow), stage, chamber size
+    for (const [br, pk, q] of [['Trick Flow', 1, 1.0], ['AFR', 1.15, 1.03], ['Brodix', 1.1, 1.02], ['Edelbrock', 0.9, 0.98], ['Dart', 1.0, 1.0], ['Mast Motorsports', 1.25, 1.04], ['Frankenstein', 1.1, 1.02], ['Kaase', 1.3, 1.05],
+      ['PRC', 1.05, 1.01], ['Total Engine Airflow', 1.2, 1.04], ['Texas Speed', 1.1, 1.02], ['ETP', 0.95, 1.0], ['Livernois', 1.2, 1.03], ['Cylinder Head Innovations', 1.25, 1.04]])
+      for (const [ty, tn] of [['ported', 'ported'], ['cnc', 'CNC-ported'], ['race', 'race']]) for (const cc of [-2, 0, 4])
+        pcAdd('heads', ty, br, `${br} ${tn} heads${cc ? `, ${cc > 0 ? '+' : ''}${cc} cc chambers` : ''}`, ENG_PARTS.heads.opts[ty].price * pk, { flow: ENG_PARTS.heads.opts[ty].flow * q, cc: (ENG_PARTS.heads.opts[ty].cc || 0) + cc });
+    // cams: grinds relative to the factory cam (more duration, more lift, tighter LSA), so they fit any engine
+    for (const [br, pk] of [['Comp Cams', 1], ['Brian Tooley Racing', 1.05], ['Cam Motion', 1.15], ['Lunati', 0.9], ['Crane', 0.85], ['Howards', 0.85], ['Texas Speed', 1.0], ['Elgin', 0.8], ['Isky', 0.95], ['Bullet Racing', 1.1], ['Katech', 1.4], ['VMP', 1.1]])
+      for (let d = 6; d <= 46; d += 4) for (const ls of [0, -2, -4, -6, -8]) {
+        if (ls < -2 - d / 6) continue; const l = Math.round((0.012 + d * 0.0022) * 1000) / 1000, st = d < 14 ? 'Street' : d < 24 ? 'Stage 1' : d < 32 ? 'Stage 2' : d < 40 ? 'Stage 3' : 'Race';
+        pcAdd('cam', 'cat', br, `${br} ${st} cam +${d}°/+${d + 2}°, +.${String(Math.round(l * 1000)).padStart(3, '0')}" lift, ${ls ? ls + '° LSA' : 'factory LSA'}`, (450 + d * 14) * pk, { d: [d, d + 2], l, lsa: ls });
+      }
+    // injectors (lb/hr) and pumps (lph), fuel pressure regulators
+    for (const [br, pk] of [['Injector Dynamics', 1.6], ['Bosch EV14', 1.0], ['FIC', 1.2], ['Siemens Deka', 0.85], ['DeatschWerks', 0.9], ['ASNU', 1.1], ['Holley EFI', 1.0], ['Fuel Injector Clinic', 1.25]])
+      for (const lb of [36, 39, 42, 47, 52, 55, 60, 65, 72, 80, 95, 120, 150, 210, 220]) pcAdd('inj', lb <= 60 ? 'i60' : lb <= 80 ? 'i80' : 'i120', br, `${br} ${lb} lb/hr injectors`, (380 + lb * 4.5) * pk, { inj: lb });
+    for (const [br, pk] of [['Walbro / TI Automotive', 0.8], ['Aeromotive', 1.4], ['DeatschWerks', 1.0], ['Fuelab', 1.5], ['AEM', 0.9], ['Holley', 1.1], ['Bosch Motorsport', 1.3]])
+      for (const [n, l] of [['255', 255], ['265', 265], ['340', 340], ['400', 400], ['450', 450], ['525', 525], ['600', 600], ['dual 340', 680], ['dual 450', 900], ['dual 525', 1050], ['triple 450', 1350], ['brushless 1,000', 1000]])
+        pcAdd('pump', l <= 340 ? 'p340' : l <= 525 ? 'p450' : 'dual', br, `${br} ${n} lph fuel pump${/dual|triple/.test(n) ? 's' : ''}`, (120 + l * 0.55) * pk, { pump: l });
+    for (const [br, pk] of [['Aeromotive', 1.2], ['Fuelab', 1.3], ['Holley', 0.9], ['Radium', 1.1], ['Turbosmart', 1.15], ['DeatschWerks', 0.9]]) for (const p of [50, 58, 65, 72])
+      pcAdd('fpr', 'adj', br, `${br} adjustable regulator, ${p} psi base`, 190 * pk, { fp: p });
+    // pistons (all forged), rods, cranks, valve springs
+    for (const [br, pk] of [['JE', 1.1], ['Wiseco', 1.0], ['Mahle', 1.05], ['Diamond', 1.15], ['CP-Carrillo', 1.2], ['Ross', 1.1], ['Icon', 0.8], ['Manley', 1.1]])
+      for (const cr of [-2.5, -2, -1.5, -1.3, -1, -0.5, 0, 0.5, 0.8, 1, 1.5]) pcAdd('pistons', cr <= -0.5 ? 'boost' : cr === 0 ? 'forged0' : 'forged', br, `${br} forged pistons, ${cr ? (cr > 0 ? '+' : '') + cr + ' compression' : 'factory compression'}`, 1500 * pk + Math.abs(cr) * 60, { cr, forged: true });
+    for (const [br, pk] of [['Callies', 1.3], ['Eagle', 0.8], ['Scat', 0.85], ['Lunati', 0.9], ['Ohio Crankshaft', 1.0], ['K1', 0.85], ['Manley', 1.1], ['Bryant', 1.6]]) {
+      pcAdd('crank', 'forged', br, `${br} forged 4340 crank`, 1900 * pk, { red: 400 }); pcAdd('crank', 'forged', br, `${br} billet crank`, 3600 * pk, { red: 600, billet: 1 });
+      for (const st of [0.125, 0.25, 0.375]) pcAdd('crank', 'stroker', br, `${br} stroker rotating assembly, +${st}" stroke`, (3600 + st * 2400) * pk, { stroke: st, red: 250 - st * 300 });
+    }
+    for (const [br, pk] of [['Manley', 1], ['Carrillo', 1.8], ['Oliver', 1.5], ['Eagle', 0.6], ['K1', 0.65], ['Callies', 1.4], ['Molnar', 0.8], ['Scat', 0.7], ['Crower', 1.2]])
+      for (const [ty, tn, s, p] of [['h', 'H-beam', 0.35, 900], ['i', 'I-beam', 0.4, 1000], ['billet', 'billet', 0.6, 1800]]) pcAdd('rods', 'forged', br, `${br} ${tn} rods`, p * pk, { rodK: s, red: ty === 'billet' ? 150 : 100 });
+    for (const [br, pk] of [['PAC Racing', 1.1], ['Comp Cams', 1.0], ['Brian Tooley Racing', 1.0], ['Manley', 1.05], ['Crower', 1.0], ['Isky', 0.9], ['Texas Speed', 1.0], ['Supertech', 1.2]])
+      for (const [ty, tn, r, p] of [['bee', 'beehive springs', 250, 350], ['dual', 'dual valve springs + chromoly retainers', 450, 520], ['ti', 'dual springs + titanium retainers', 650, 780]]) pcAdd('springs', 'up', br, `${br} ${tn}`, p * pk, { red: r });
+    // ignition: coils (a stronger spark under boost) and plugs (colder ones hold off knock)
+    for (const [br, pk] of [['MSD', 1.0], ['Granatelli', 0.9], ['ICM', 0.6], ['Holley', 0.9], ['AEM', 1.0], ['Accel', 0.8], ['IGN-1A', 1.5]]) pcAdd('ign', 'coils', br, `${br} high-output coil packs`, 420 * pk, { ign: 1 });
+    for (const [br, pk] of [['NGK', 1], ['Brisk', 1.1], ['Autolite', 0.7], ['Denso', 0.9], ['Bosch', 0.85]]) for (const [h, hn, k] of [[1, 'one step colder', 0.5], [2, 'two steps colder', 0.9], [3, 'three steps colder', 1.2]])
+      pcAdd('plugs', 'cold', br, `${br} iridium plugs, ${hn}`, 90 * pk + h * 10, { knA: k, coldPlug: h });
+    // cats, cooling, oiling, converter, clutch
+    for (const [br, pk] of [['Kooks', 1.4], ['American Racing Headers', 1.35], ['Stainless Works', 1.1], ['MagnaFlow', 0.8], ['Catco', 0.7], ['Lethal Performance', 1.0]]) {
+      for (const [cells, k] of [[200, -0.008], [300, -0.006], [400, -0.004]]) pcAdd('cats', 'hfc', br, `${br} ${cells}-cell high-flow cats`, 650 * pk * (1 + (400 - cells) / 600), { kexA: k, snd: { g: 1.05 + (400 - cells) / 1000, o: 0.05 } });
+      pcAdd('cats', 'off', br, `${br} off-road pipes (no cats)`, 260 * pk, { kexA: -0.011, snd: { g: 1.22, o: 0.15 } });
+    }
+    for (const [br, pk] of [['Mishimoto', 1], ['C&R Racing', 1.8], ['Griffin', 1.3], ['Be Cool', 1.2], ['Fluidyne', 1.1], ['Champion', 0.6], ['DeWitts', 1.5], ['Ron Davis', 1.6], ['Spal', 0.7]])
+      for (const [ty, tn, k, p] of [['rad', '2-row aluminum radiator', 1.2, 450], ['rad3', '3-row aluminum radiator', 1.35, 620], ['fan', 'dual electric fans + shroud', 1.15, 380], ['pkg', 'radiator + dual fans package', 1.5, 980]]) pcAdd('cool', 'up', br, `${br} ${tn}`, p * pk, { coolK: k, fanK: ty === 'fan' || ty === 'pkg' ? 1.8 : 1 });
+    for (const [br, pk] of [['Mishimoto', 1], ['Canton Racing', 1.1], ['Moroso', 1.2], ['Setrab', 1.4], ['Derale', 0.8], ['Earl\'s', 1.3]]) {
+      for (const [tn, k, p] of [['oil cooler', 0.6, 420], ['baffled oil pan', 0.85, 650], ['high-volume oil pump', 0.8, 280], ['dry-sump system', 0.45, 3800]]) pcAdd('oil', 'up', br, `${br} ${tn}`, p * pk, { oilK: k, oilT: tn.includes('cooler') ? -15 : tn.includes('dry') ? -12 : -2 });
+      for (const [tn, k, p] of [['transmission cooler', 1.8, 260], ['stacked-plate trans cooler + fan', 2.6, 520]]) pcAdd('tcool', 'up', br, `${br} ${tn}`, p * pk, { tcK: k });
+    }
+    for (const [br, pk] of [['Circle D', 1.3], ['Yank', 1.2], ['FTI', 1.25], ['Precision Industries', 1.1], ['Pro Torque', 1.0], ['TCI', 0.8], ['Hughes', 0.9], ['ATI', 1.1], ['Neal Chance', 1.4]])
+      for (const st of [2400, 2800, 3000, 3200, 3500, 3800, 4200, 4500, 5000]) pcAdd('conv', 'stall', br, `${br} ${st.toLocaleString()} rpm stall converter`, (650 + (st - 2400) * 0.25) * pk, { stall: st });
+    for (const [br, pk] of [['McLeod', 1], ['Mantic', 1.4], ['Exedy', 0.9], ['South Bend', 0.95], ['Spec', 0.8], ['Centerforce', 0.9], ['Tilton', 1.6], ['ACT', 0.85], ['Dodson (dual-clutch packs)', 2.2]])
+      for (const [tn, k, p] of [['stage 2 clutch', 1.35, 650], ['stage 3 clutch', 1.6, 900], ['twin-disc clutch', 2.0, 1900], ['triple-disc clutch', 2.6, 3200]]) pcAdd('clutch', 'up', br, `${br} ${tn}`, p * pk, { clK: k });
+    // superchargers and turbo kits: the real hardware (rotor liters, impeller size, turbo inducer and housing)
+    for (const [br, n, kind, vb, pk] of [['Whipple', 'Gen 5 3.0L', 'twinscrew', 3.0, 1.05], ['Whipple', 'Gen 5 3.8L', 'twinscrew', 3.8, 1.2], ['Whipple', 'Gen 6 4.5L', 'twinscrew', 4.5, 1.4], ['Whipple', '2.9L', 'twinscrew', 2.9, 1.0], ['Kenne Bell', '2.8L Mammoth', 'twinscrew', 2.8, 0.95],
+      ['Kenne Bell', '3.6L Mammoth', 'twinscrew', 3.6, 1.1], ['Kenne Bell', '4.2L Mammoth', 'twinscrew', 4.2, 1.3], ['Magnuson', 'TVS2300', 'twinscrew', 2.3, 0.9], ['Magnuson', 'TVS2650', 'twinscrew', 2.65, 0.95], ['Magnuson', 'TVS2650R Heartbeat', 'twinscrew', 2.65, 0.85],
+      ['Edelbrock', 'E-Force Stage 1', 'twinscrew', 2.3, 0.9], ['Edelbrock', 'E-Force Stage 2', 'twinscrew', 2.65, 1.0], ['Roush', 'TVS2650 Phase 2', 'twinscrew', 2.65, 1.0], ['Harrop', 'TVS2650', 'twinscrew', 2.65, 0.95], ['Weiand', '6-71', 'roots', 3.2, 0.7],
+      ['Weiand', '8-71', 'roots', 4.0, 0.8], ['BDS', '8-71', 'roots', 4.0, 0.95], ['BDS', '10-71', 'roots', 4.9, 1.1], ['BDS', '14-71', 'roots', 6.2, 1.35], ['Littlefield', '14-71', 'roots', 6.2, 1.5], ['The Blower Shop', '8-71', 'roots', 4.0, 0.9]])
+      for (const psi of kind === 'roots' ? [6, 8, 10, 12, 15] : [8, 10, 12, 14, 16]) pcAdd('power', kind === 'roots' ? 'roots' : 'twinscrew', br, `${br} ${n} supercharger kit, ${psi} psi pulley`, (kind === 'roots' ? 7600 : 8200) * pk + psi * 60, { kit: { kind, psi, ic: kind === 'roots' ? 0 : 0.75, eff: kind === 'roots' ? 0.5 : 0.7, vb } });
+    for (const [br, n, imp, eff, pk] of [['ProCharger', 'P-1SC-1', 98, 0.76, 0.95], ['ProCharger', 'P-1X', 101, 0.77, 1.0], ['ProCharger', 'D-1SC', 108, 0.77, 1.05], ['ProCharger', 'D-1X', 112, 0.78, 1.12], ['ProCharger', 'F-1A-94', 118, 0.78, 1.3], ['ProCharger', 'F-1C', 124, 0.78, 1.5],
+      ['ProCharger', 'F-1X', 130, 0.79, 1.7], ['ProCharger', 'F-1R', 138, 0.8, 2.0], ['Vortech', 'V-3 Si', 100, 0.76, 0.95], ['Vortech', 'V-7 YSi', 112, 0.78, 1.15], ['Vortech', 'V-30', 125, 0.79, 1.5], ['Paxton', 'NOVI 2200', 104, 0.76, 1.0], ['Paxton', 'NOVI 2500', 112, 0.77, 1.12]])
+      for (const psi of [8, 10, 12, 14, 18]) pcAdd('power', 'centri', br, `${br} ${n} kit, ${psi} psi at redline`, 6900 * pk + psi * 50, { kit: { kind: 'centri', psi, ic: 0.7, eff, imp } });
+    for (const [br, n, ind, eff, pk, nT] of [['Precision', '6266', 62, 0.76, 0.9, 1], ['Precision', '6466', 64, 0.77, 0.95, 1], ['Precision', '6766', 67, 0.77, 1.0, 1], ['Precision', '7275', 72, 0.77, 1.1, 1], ['Precision', '7685', 76, 0.78, 1.2, 1], ['Precision', '8085', 80, 0.78, 1.35, 1], ['Precision', '88 mm', 88, 0.78, 1.6, 1],
+      ['BorgWarner', 'S366 SX-E', 66, 0.76, 0.85, 1], ['BorgWarner', 'S372 SX-E', 72, 0.76, 0.95, 1], ['BorgWarner', 'S475 SX-E', 75, 0.77, 1.05, 1], ['BorgWarner', 'S480', 80, 0.77, 1.15, 1], ['BorgWarner', 'EFR 9180', 80, 0.8, 1.6, 1], ['Garrett', 'G35-1050', 68, 0.79, 1.25, 1],
+      ['Garrett', 'G40-1150', 72, 0.79, 1.35, 1], ['Garrett', 'G42-1450', 80, 0.8, 1.6, 1], ['Garrett', 'GTX3582R Gen II', 62, 0.78, 1.0, 1], ['Hellion', 'twin 62 mm', 62, 0.76, 1.2, 2], ['Hellion', 'twin 67 mm', 67, 0.77, 1.35, 2], ['On3 Performance', 'twin 66 mm', 66, 0.74, 0.8, 2],
+      ['On3 Performance', 'single 88 mm', 88, 0.74, 0.85, 1], ['Garrett', 'twin GT3582R', 58, 0.77, 1.4, 2], ['Precision', 'twin 6266', 62, 0.76, 1.5, 2], ['Precision', 'twin 6766', 67, 0.77, 1.65, 2], ['Turbonetics', 'twin T-66', 66, 0.75, 1.1, 2]])
+      for (const ar of [0.82, 0.96, 1.15]) for (const psi of [10, 14, 18, 22]) pcAdd('power', nT > 1 ? 'turbo' : 'turbo1', br, `${br} ${n} turbo kit, ${ar} A/R, ${psi} psi`, (nT > 1 ? 9800 : 7900) * pk + psi * 40, { kit: { kind: 'turbo', psi, ic: 0.8, eff, n: nT, ind, ar: ar * (nT > 1 ? 0.62 : 0.8) } });
+  })();
+  // ---- Phase 5A suspension catalog: coilovers, drag shocks, springs, traction / anti-squat, sway bars. Saved in c.sus
+  // { cat: part id }; each part scales the car's real spring rates, dampers, anti-squat and ride height in vehOf ----
+  const SUS_CATS = ['coil', 'shock', 'sspr', 'tbar', 'arb'];
+  const SUS_LABEL = { coil: 'Coilovers', shock: 'Drag shocks', sspr: 'Springs', tbar: 'Traction / anti-squat', arb: 'Sway bars' };
+  const IN1 = m => Math.round(-m * 39.37 * 2) / 2;   // a drop in metres -> inches
+  (function susBuild() {
+    // coilovers: brand (price), which setups it comes in
+    const CO = [['BC Racing', 'BR Series', 1.0, 'st'], ['Fortune Auto', '500 Series', 1.3, 'st'], ['KW', 'V1', 1.6, 's'], ['KW', 'V3', 2.4, 'st'], ['KW', 'Clubsport', 3.0, 't'], ['Bilstein', 'B16', 2.0, 'st'], ['Öhlins', 'Road & Track', 2.8, 'st'],
+      ['Tein', 'Flex Z', 0.95, 's'], ['H&R', 'Street Performance', 1.5, 's'], ['Eibach', 'Pro-Street', 1.6, 's'], ['Ridetech', 'HQ Series', 1.9, 'sd'], ['Ridetech', 'TQ Series', 2.6, 'td'], ['QA1', 'Pro Coil', 1.7, 'sd'], ['Viking', 'Crusader', 1.4, 'd'],
+      ['Strange Engineering', 'S-Series', 2.0, 'd'], ['AFCO', 'Eliminator', 1.5, 'd'], ['Pedders', 'eXtreme XA', 1.3, 'st'], ['ST Suspensions', 'XTA', 1.4, 's'], ['Stance', 'XR1', 1.0, 's'], ['MCS', 'RR2', 4.0, 't'], ['Penske', '8300 Series', 3.5, 'td'], ['Menscer', 'Double Adjustable', 2.2, 'd']];
+    const SET = { s: ['street', 1.15, 1.15, 1.1, 1, 1, -0.025], t: ['track', 1.6, 1.5, 1.35, 1, 1, -0.035], d: ['drag', 0.8, 0.85, 1, 0.55, 0.6, -0.01] };
+    for (const [br, ln, pk, sets] of CO) for (const k of sets) { const [nm, kF, kR, z, ext, comp, rh] = SET[k];
+      for (const dr of [0, 0.5, 1]) { const drop = rh * (dr + 0.5), inch = IN1(drop);
+        pcAdd('coil', 'x', br, `${br} ${ln} coilovers, ${nm} setup${inch ? `, ${inch}" lower` : ''}`, 1100 * pk * (k === 't' ? 1.2 : 1), { kF, kR, zF: z, zR: z, ext, comp, rh: drop }, nm); } }
+    // drag shocks: front extension (lower = the nose comes up easy, weight goes back) and rear compression (lower = it squats and plants)
+    const SH = [['Viking', 'Warrior double-adjustable', 1.0], ['Viking', 'Crusader', 1.3], ['QA1', 'Stocker Star', 1.0], ['QA1', 'Pro Drag', 1.2], ['Strange Engineering', 'single-adjustable', 1.1], ['Strange Engineering', 'double-adjustable', 1.5],
+      ['AFCO', '1290 drag', 0.9], ['Santhuff', 'drag', 1.4], ['Menscer', 'double-adjustable', 1.8], ['Calvert Racing', 'Racing shocks', 0.9], ['Lakewood', '90/10 & 50/50', 0.55], ['Competition Engineering', '90/10 & 50/50', 0.5], ['BMR', 'drag shocks', 0.8], ['UMI', 'drag shocks', 0.8], ['Koni', 'Drag Race', 1.2]];
+    for (const [br, ln, pk] of SH) for (const [nm, ext, comp] of [['loose front, soft rear', 0.4, 0.5], ['mid valving', 0.6, 0.7], ['firm (big tire, lots of hook)', 0.8, 0.9]])
+      pcAdd('shock', 'x', br, `${br} ${ln} shocks, ${nm}`, 780 * pk, { ext, comp }, 'drag');
+    // springs: drag fronts let the nose rise, lowering springs drop and stiffen
+    const SP = [['Eibach', 1.0], ['H&R', 1.0], ['BMR', 0.8], ['UMI', 0.8], ['Spohn', 0.75], ['Moroso', 0.7], ['Hotchkis', 0.95], ['Steeda', 0.85], ['Lakewood', 0.6], ['Belltech', 0.65], ['Vogtland', 0.9], ['Swift', 1.3], ['Lowering Labs', 0.7], ['Pedders', 0.85]];
+    for (const [br, pk] of SP) for (const [nm, kF, kR, rh, p0] of [['drag-launch springs (soft front, hooks hard)', 0.72, 0.9, 0, 320], ['sport lowering springs', 1.2, 1.2, -0.025, 300], ['super-sport lowering springs', 1.35, 1.35, -0.04, 330], ['tow / heavy-duty rear springs', 1, 1.5, 0.01, 260]])
+      pcAdd('sspr', 'x', br, `${br} ${nm}${rh < 0 ? `, ${IN1(rh)}" lower` : ''}`, p0 * pk, { kF, kR, rh, zF: 1, zR: 1 });
+    // traction: anti-squat (how much of the launch goes straight into the tires through the links) and axle wrap / hop
+    const TB = [['Calvert Racing', 'CalTracs traction bars', 1.0], ['Lakewood', 'traction bars', 0.45], ['Competition Engineering', 'slide-a-link traction bars', 0.55], ['BMR', 'adjustable lower control arms + relocation brackets', 0.8], ['UMI', 'adjustable lower control arms + relocation brackets', 0.8],
+      ['Spohn', 'del-sphere control arms', 0.9], ['Hotchkis', 'TVS control arms', 0.85], ['Ridetech', 'StrongArm control arms', 1.0], ['Steeda', 'IRS anti-hop kit', 0.6], ['Whiteline', 'anti-lift / anti-hop kit', 0.55], ['BMR', 'IRS cradle bushing lockout', 0.5], ['Moroso', 'anti-squat brackets', 0.45]];
+    for (const [br, ln, pk] of TB) for (const [nm, as] of [['low anti-squat', 0.1], ['mid anti-squat', 0.25], ['high anti-squat (hits the tires hard)', 0.45]])
+      pcAdd('tbar', 'x', br, `${br} ${ln}, ${nm}`, 650 * pk, { as, hop: 1 }, 'drag');
+    // sway bars: roll stiffness, front and rear
+    const AB = [['Hellwig', 0.9], ['Eibach', 1.0], ['Whiteline', 0.95], ['BMR', 0.8], ['Hotchkis', 1.0], ['Addco', 0.75], ['ST Suspensions', 0.85], ['Steeda', 0.85], ['Cusco', 1.1], ['Progress', 0.8]];
+    for (const [br, pk] of AB) for (const [w, f, r, p0] of [['front', 1, 0, 260], ['rear', 0, 1, 230], ['front + rear', 1, 1, 450]]) for (const [nm, x] of [['soft', 1.2], ['medium', 1.45], ['stiff', 1.8]])
+      pcAdd('arb', 'x', br, `${br} ${w} sway bar${f && r ? 's' : ''}, ${nm} setting`, p0 * pk * (1 + (x - 1.2) * 0.3), { arbF: f ? x : 1, arbR: r ? x : 1 });
+  })();
+  // what the car's suspension parts add up to (all 1 / 0 on a factory car)
+  function susOf(c) {
+    const o = { kF: 1, kR: 1, zF: 1, zR: 1, ext: 1, comp: 1, as: 0, arbF: 1, arbR: 1, rh: 0, hop: 0 }, m = c && c.sus; if (!m) return o;
+    for (const k of SUS_CATS) { const s = m[k] && PC_BY.get(m[k]); if (!s || s.cat !== k) continue; const q = s.o;
+      for (const f of ['kF', 'kR', 'zF', 'zR', 'ext', 'comp', 'arbF', 'arbR']) if (q[f] != null) o[f] *= q[f]; o.as += q.as || 0; o.rh += q.rh || 0; o.hop = Math.max(o.hop, q.hop || 0); }
+    return o;
+  }
+  // a part type's numbers on this build, with the catalog part's own over them
+  function partOpt(b, cat) {
+    const P = ENG_PARTS[cat], base = (P && P.opts[b[cat]]) || {}, id = b.sku && b.sku[cat], s = id && PC_BY.get(id);
+    return s && s.cat === cat && s.base === b[cat] ? Object.assign({}, base, s.o, { name: s.name, price: s.price }) : base;
+  }
+  const pcOf = (b, cat) => { const id = b && b.sku && b.sku[cat], s = id && PC_BY.get(id); return s && s.base === b[cat] ? s : null; };
 
   // ---- the model ----
   const HDR = { manifold: { hb: 0, kex: 0.03 }, shorty: { hb: 0.018, kex: 0.018, nh: 1.15 }, longtube: { hb: 0.045, kex: 0.01, nh: 0.95 }, turbo: { hb: 0, kex: 0.0 }, downpipe: { hb: 0, kex: -0.012 } };
@@ -8962,9 +9266,14 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   const ecuMbtDeg = (n, pr) => 17 + 12 * clamp((n - 1000) / 4500, 0, 1) - 6 * Math.max(0, pr - 1);
   // every input of the model for this engine + build (+ fuel)
   function engInputs(D, b, fuel) {
-    const cs = camSpec(D, b), cs0 = D.cam, H = ENG_PARTS.heads.opts[b.heads] || {}, I = ENG_PARTS.intake.opts[b.intake] || {}, T = ENG_PARTS.tb.opts[b.tb] || {}, Pi = ENG_PARTS.pistons.opts[b.pistons] || {}, Cr = ENG_PARTS.crank.opts[b.crank] || {}, Pw = ENG_PARTS.power.opts[b.power] || {};
+    const cs = camSpec(D, b), cs0 = D.cam, H = partOpt(b, 'heads'), I = partOpt(b, 'intake'), T = partOpt(b, 'tb'), Pi = partOpt(b, 'pistons'), Cr = partOpt(b, 'crank'), Pw = partOpt(b, 'power');
+    const Ho = partOpt(b, 'hdr'), Xo = partOpt(b, 'exh'), Co = partOpt(b, 'cats'), Sp = partOpt(b, 'springs'), Ro = partOpt(b, 'rods'), Ig = partOpt(b, 'ign'), Pl = partOpt(b, 'plugs');
     const stroke = D.stroke + (Cr.stroke || 0), disp = D.cyl * Math.PI / 4 * D.bore * D.bore * stroke / 61.024, disp0 = D.cyl * Math.PI / 4 * D.bore * D.bore * D.stroke / 61.024;
-    const hdrK = (ENG_PARTS.hdr.opts[b.hdr] || {}).hdr || D.hdr, hd = HDR[hdrK] || HDR.manifold, ex0 = EXH[D.exh] || EXH.dual, exB = EXH[(ENG_PARTS.exh.opts[b.exh] || {}).exh] || null;
+    const hdrK = Ho.hdr || D.hdr, hd = Object.assign({}, HDR[hdrK] || HDR.manifold), ex0 = EXH[D.exh] || EXH.dual, exB = EXH[Xo.exh] || null;
+    // header primaries sized for this engine pull hardest; a bigger tube moves the power up, a smaller one fills the low end ~
+    if (Ho.prim) { const ideal = 1.35 + disp * 61.024 / D.cyl * 0.01 + (D.power || Pw.kit ? 0.12 : 0), r = Ho.prim - ideal; hd.nh = (hd.nh || 1) * (1 + r * 0.22); hd.hb *= Math.max(0.55, 1 - 2.2 * r * r); }
+    if (Ho.kexA) hd.kex += Ho.kexA;
+    const pipeK = (Xo.dia ? -(Xo.dia - 2.5) * 0.004 * Math.min(1, disp / 5) : 0) + (Co.kexA || 0);   // pipe diameter (a big pipe on a small motor buys little) and the cats
     const it = INTK[D.intake] || INTK.stock;
     let power = D.power ? Object.assign({}, D.power) : null;
     if (Pw.kit) power = Object.assign({}, Pw.kit); if (b.psi && power) power.psi = b.psi; if (Pw.dpsi && power) power.psi += Pw.dpsi + (b.dpsi || 0); if (b.ic && power) power.ic = Math.min(0.92, (power.ic || 0) + b.ic); if (Pw.bigger && power) { power.on = (power.on || 2000) * Pw.bigger; power.full = (power.full || 3000) * Pw.bigger; }
@@ -8982,18 +9291,18 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       ncK: (1 + (dur - dur0) * 0.0055) * (1 + (cs.icl - cs0.icl) * 0.007) * Math.pow(strokeK, 0.5),
       wcK: (1 + (cs.lsa - cs0.lsa) * 0.022) * (1 - (dur - dur0) * 0.0018), wlK: 1 - Math.max(-10, dur - dur0) * 0.0025,
       nchK: (q / q0) * Math.pow(disp0 / disp, 0.8) * (1 + (dur - dur0) * 0.0075),
-      nrK: (I.runner || 1) * it.nr, kin: it.kin + (I.kin || 0) - (b.intake === 'hirpm' ? 0.006 : 0), kex: (exB ? ex0.kex + exB.kex : ex0.kex) + hd.kex,
-      hb: hd.hb, nh: hd.nh || 1, hdrK, red: D.red + (Cr.red || 0) + (D.vt === 'ohv' ? (H.springs || 0) * 200 : 0), forged: !!(D.forged || Pi.forged), oct: FUEL_OCT[fuel] || 0,
+      nrK: (I.runner || 1) * it.nr, kin: it.kin + (I.kin || 0) - (b.intake === 'hirpm' ? 0.006 : 0), kex: (exB ? ex0.kex + exB.kex : ex0.kex) + hd.kex + pipeK,
+      hb: hd.hb, nh: hd.nh || 1, hdrK, red: D.red + (Cr.red || 0) + Math.max(D.vt === 'ohv' ? (H.springs || 0) * 200 : 0, Sp.red ? Sp.red * (D.vt === 'ohv' ? 1 : 0.6) : 0) + (Ro.red || 0), forged: !!(D.forged || Pi.forged), oct: (FUEL_OCT[fuel] || 0) + (Pl.knA || 0) * 0.4, ign: !!Ig.ign, rodK: Ro.rodK || 0, billet: !!Cr.billet,
       fuelHp: engFuelHp(D, b, fuel) };
     X.hw = null; X.ecu = b.ecu || null; X.lam0 = power ? 0.8 : 0.87; X.vvt = ecuHasVvt(D) && !!(X.ecu && X.ecu.vvt);   // factory WOT mixture: boosted engines run richer
     return X;
   }
   // what the fuel system can feed (crank hp): injectors at 80% duty, pump flow, on gas (E85 needs ~30% more fuel)
   function engFuelHp(D, b, fuel) {
-    const ij = (ENG_PARTS.inj.opts[b.inj] || {}).inj, pp = (ENG_PARTS.pump.opts[b.pump] || {}).pump, boosted = !!(D.power || b.power !== 'stock'), bsfc = boosted ? 0.6 : 0.5, fk = fuel === 'e85' ? 1.32 : 1;
+    const ij = partOpt(b, 'inj').inj, pp = partOpt(b, 'pump').pump, fpK = D.fuel === 'port' ? Math.sqrt((partOpt(b, 'fpr').fp || 43.5) / 43.5) : 1, boosted = !!(D.power || b.power !== 'stock'), bsfc = boosted ? 0.6 : 0.5, fk = fuel === 'e85' ? 1.32 : 1;
     if (D.fuel === 'di' || D.fuel === 'pfdi') return (D.fuelHp || D.hp * 1.25) / fk * (D.fuel === 'pfdi' && (ij || pp) ? 1 + ((ij || 0) > 0 ? 0.25 : 0) + ((pp || 0) > 0 ? 0.1 : 0) : 1);
-    const kit = (ENG_PARTS.power.opts[b.power] || {}).kit, inj = Math.max(ij || D.inj, kit && D.fuel === 'port' ? 60 : 0), pump = pp || D.pump;   // blower and turbo kits come with injectors sized for them
-    const fromInj = inj ? inj * D.cyl * 0.8 / bsfc : 1e9, fromPump = pump ? pump * 0.264 * 6.0 / bsfc * (D.fuel === 'carb' ? 1 : 0.85) : 1e9;   // lph -> gal/h -> lb/h
+    const kit = partOpt(b, 'power').kit, inj = Math.max(ij || D.inj, kit && D.fuel === 'port' ? 60 : 0), pump = pp || D.pump;   // blower and turbo kits come with injectors sized for them
+    const fromInj = inj ? inj * fpK * D.cyl * 0.8 / bsfc : 1e9, fromPump = pump ? pump * 0.264 * 6.0 / bsfc * (D.fuel === 'carb' ? 1 : 0.85) : 1e9;   // lph -> gal/h -> lb/h
     return Math.min(fromInj, fromPump) / fk;
   }
   const _rpm = n => n * Math.PI / 30;
@@ -9207,7 +9516,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const eta = (1 - Math.pow(X.cr, -0.26)) * (1 - Math.min(0.35, kn * 0.045));
     // the ECU's spark and fuel maps (Phase 4C) against the factory map
     let ek = 1; if (X.ecu) { const sp = ecuSpark(X, n, crK, lim, kn); ek = sp.k; if (out) out.ecu = sp; } else if (out) out.ecu = null;
-    const ti = cal.C * X.disp * ve * dens * eta * ek;
+    const ti = cal.C * X.disp * ve * dens * eta * ek * (X.ign && n > 4500 ? 1 + (X.power ? 0.012 : 0.005) * Math.min(1, (n - 4500) / 1500) : 1);
     const fr = X.disp * (0.62 + 0.09 * n / 1000 + 0.028 * (n / 1000) ** 2) * 100 / (4 * Math.PI) * 0.6 * 1.0;   // friction and pumping (FMEP, Heywood-style)
     if (out) { out.psi = fi ? fi.psi : 0; out.kn = kn; out.ve = ve; out.fi = fi; }
     return ti - fr - drive - pump;
@@ -9338,7 +9647,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   const LC_FACTORY = { dodge_charger_srt_hellcat_widebody_2020: 1700, dodge_charger_scat_pack_2015: 1600, dodge_challenger_rt_scat_pack_widebody_2019: 1600,
     ram_1500_trx_2021: 1700, ford_mustang_gt_2019: 1700, chevrolet_corvette_stingray_c8_2020: 3200, mercedes_amg_g63_2019: 2000 };
   function vehOf(c, kg) {
-    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0, c.eng || '', JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0)].join('|');
+    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0, c.eng || '', JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), JSON.stringify(c.sus || 0)].join('|');
     let V = VEH_CACHE.get(key); if (V) return V;
     const sp = vspecOf(c.id, m, red0), E = Object.assign({}, sp.eng), tr = sp.tr, geo = sp.geo, su = sp.susp, ti = sp.tire;
     // the engine as it's built (Phase 2): its own torque curve, redline, idle and rotating inertia from the engine model
@@ -9352,17 +9661,17 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     } else if (hasPart(c, 'ecu') && revK !== TUNE_DEF.rev) E.red = Math.max(E.nP + 200, E.red + (revK - TUNE_DEF.rev));
     tqCurve(E);
     if (EM && ecu && ecu.bst && EM.fiH) E.tabG = ecuGearTabs(c, EM, ecu, Math.max(tr.auto.length, (tr.man || []).length));
-    const mass = kg + 80, L = geo.wb, rhF = tuneKnob(c, t, 'rhF') / 100, rhR = tuneKnob(c, t, 'rhR') / 100;
+    const SO = susOf(c), mass = kg + 80, L = geo.wb, rhF = tuneKnob(c, t, 'rhF') / 100 + SO.rh, rhR = tuneKnob(c, t, 'rhR') / 100 + SO.rh;   // Phase 5A: catalog suspension parts (SO)
     const h = Math.max(0.25, geo.h + (rhF + rhR) / 2 * 0.85), b = geo.fw * L, a = L - b;   // a: CG to front axle, b: CG to rear axle
     const fd = hasPart(c, 'gears') ? sp.tr.fd * (tuneKnob(c, t, 'fd') / TUNE_DEF.fd) : tr.fd;
     // ---- suspension: wheel rates from the ride frequency, the coilover knobs scale them; bars scale with their knob ----
     const mcF = mass * 0.88 * (b / L) / 2, mcR = mass * 0.88 * (a / L) / 2, sc = x => Math.pow(1.32, x - 5), zc = x => Math.pow(1.22, x - 5);
-    const kF = mcF * (2 * Math.PI * su.fF) ** 2 * sc(tuneKnob(c, t, 'spF')), kR = mcR * (2 * Math.PI * su.fR) ** 2 * sc(tuneKnob(c, t, 'spR'));
+    const kF = mcF * (2 * Math.PI * su.fF) ** 2 * sc(tuneKnob(c, t, 'spF')) * SO.kF, kR = mcR * (2 * Math.PI * su.fR) ** 2 * sc(tuneKnob(c, t, 'spR')) * SO.kR;
     const d = k && c.drag.susp, ext = d && d.shocks ? [0.5, 1, 1.6][d.ext] : 1, comp = d && d.shocks ? [0.55, 1, 1.5][d.comp] : 1;
     const cc = (kk, mc) => 2 * Math.sqrt(kk * mc);
-    const cBF = cc(kF, mcF) * su.z * zc(tuneKnob(c, t, 'bF')), cBR = cc(kR, mcR) * su.z * zc(tuneKnob(c, t, 'bR')) * comp;
-    const cRF = cc(kF, mcF) * su.z * 1.6 * zc(tuneKnob(c, t, 'rF')) * ext, cRR = cc(kR, mcR) * su.z * 1.6 * zc(tuneKnob(c, t, 'rR'));
-    const arbF = kF * su.arbF * sc(tuneKnob(c, t, 'swF')), arbR = kR * su.arbR * (su.arbR ? sc(tuneKnob(c, t, 'swR')) : (hasPart(c, 'sway') ? 0.25 * sc(tuneKnob(c, t, 'swR')) : 0));
+    const cBF = cc(kF, mcF) * su.z * zc(tuneKnob(c, t, 'bF')) * SO.zF, cBR = cc(kR, mcR) * su.z * zc(tuneKnob(c, t, 'bR')) * comp * SO.zR * SO.comp;
+    const cRF = cc(kF, mcF) * su.z * 1.6 * zc(tuneKnob(c, t, 'rF')) * ext * SO.zF * SO.ext, cRR = cc(kR, mcR) * su.z * 1.6 * zc(tuneKnob(c, t, 'rR')) * SO.zR;
+    const arbF = kF * su.arbF * sc(tuneKnob(c, t, 'swF')) * SO.arbF, arbR = kR * (su.arbR ? su.arbR * sc(tuneKnob(c, t, 'swR')) : (hasPart(c, 'sway') ? 0.25 * sc(tuneKnob(c, t, 'swR')) : SO.arbR > 1 ? 0.2 : 0)) * SO.arbR;
     // ---- tires: the compound, the pressure, wear; a drag pack swaps the rears for radials or slicks and the fronts for skinnies ----
     const tF = TIRES[k ? 'skinny' : ti.f], tR = TIRES[k ? (k.tire === 'slick' ? 'slick' : 'radial') : ti.r];
     const psiF = t.psiF, psiR = t.psiR, wear = 0.82 + 0.18 * clamp(c.cond.tires / 100, 0, 1);
@@ -9382,18 +9691,19 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const brakeTot = sp.brakeG * mass * G9 * PFX.brakes.force[partLv(c, 'brakes')];
     const camF = tuneKnob(c, t, 'camF'), camR = tuneKnob(c, t, 'camR'), toeF = tuneKnob(c, t, 'toeF') * Math.PI / 180, toeR = tuneKnob(c, t, 'toeR') * Math.PI / 180;
     // a high-stall converter (drag pack part) lets the motor flash higher before the car moves, into more of its torque
-    const stall = (tr.stall || 0) + (d && d.conv && tr.type === 'tc' ? [500, 1000, 1600][d.stall == null ? 1 : d.stall] : 0), tqStall = stall ? tqAt(E, stall) : 1;
+    const cvP = EM && tr.type === 'tc' ? partOpt(EM.b, 'conv').stall || 0 : 0, clP = EM && tr.type !== 'tc' ? partOpt(EM.b, 'clutch').clK || 1 : 1;   // Phase 5A: a catalog converter or clutch
+    const stall = Math.max((tr.stall || 0) + (d && d.conv && tr.type === 'tc' ? [500, 1000, 1600][d.stall == null ? 1 : d.stall] : 0), cvP), tqStall = stall ? tqAt(E, stall) : 1;
     // launch control from the factory (where the car has it) or the drag tune's launch rpm; the brakes have to hold it
     const lc0 = LC_FACTORY[c.id] || (d && d.twostep ? 1500 : 0), lcRpm = lc0 ? Math.max(1000, lc0 + (d ? [0, -300, 300, 600][d.lcr || 0] : 0)) : 0;
     V = { key, sp, id: c.id, m: mass, kg, L, a, b, h, tf: geo.tf, tr: geo.tr, Iz: mass * a * b, Iyy: mass * 0.88 * (0.42 * L) ** 2, Ixx: mass * 0.88 * (0.38 * (geo.tf + geo.tr) / 2) ** 2 + mass * 0.1 * h * h,
-      ms: mass * 0.88, hrcF: Math.max(0.01, geo.hrcF + rhF * 0.7), hrcR: Math.max(0.01, geo.hrcR + rhR * 0.7), AS: geo.as + (d && d.bars ? [0.15, 0.3, 0.5][d.asT == null ? 1 : d.asT] : 0), AD: geo.ad, lcRpm,
+      ms: mass * 0.88, hrcF: Math.max(0.01, geo.hrcF + rhF * 0.7), hrcR: Math.max(0.01, geo.hrcR + rhR * 0.7), AS: geo.as + Math.max(d && d.bars ? [0.15, 0.3, 0.5][d.asT == null ? 1 : d.asT] : 0, SO.as), AD: geo.ad, lcRpm,
       wx: [a, a, -b, -b], wy: [geo.tf / 2, -geo.tf / 2, geo.tr / 2, -geo.tr / 2], R: [rF, rF, rR, rR], Iw: [mwF * rF * rF * 0.62, mwF * rF * rF * 0.62, mwR * rR * rR * 0.62, mwR * rR * rR * 0.62],
       T: [tF, tF, tR, tR], mu: [muF, muF, muR, muR], Fn: (() => { const wF = k ? 120 : ti.wf, wR = k ? Math.max(ti.wr, 300) : ti.wr, wa = (wF + wR) / 2; return [wF, wF, wR, wR].map(w => mass * G9 / 4 * w / wa); })(), cam: [camF, camF, camR, camR], toe: [-toeF, toeF, -toeR, toeR],
       ks: [kF, kF, kR, kR], cB: [cBF, cBF, cBR, cBR], cR: [cRF, cRF, cRR, cRR], arb: [arbF, arbR], travC: [0.08 + rhF * 0.9, 0.08 + rhF * 0.9, 0.09 + rhR * 0.9, 0.09 + rhR * 0.9].map(x => Math.max(0.015, x)), travE: 0.11,
       drive: D, s, split, diff, lock, center: sp.center || 0.4, eta: (tr.type === 'tc' ? 0.89 : 0.91) - (D === 'A' ? 0.03 : 0),
       E, idle: E.idle, red: E.red, Ie: E.Ie + (tr.type === 'tc' ? 0.06 : 0), ev: isEV(c),
       tt: tr.type, auto: tr.auto, fd, man: tr.man || tr.auto.slice(0, 6), fdMan: tr.man ? (hasPart(c, 'gears') ? tr.fdMan * (tuneKnob(c, t, 'fd') / TUNE_DEF.fd) : tr.fdMan) : fd, rev: tr.rev, stall, K: stall ? (stall / RPM) / Math.sqrt(tqStall) : 0,
-      TR0: 1.9, shiftT: tr.shiftT * shiftK, lockFrom: tr.lockFrom, modern: tr.modern, clutchCap: E.tq * 1.35 * capPart,
+      TR0: 1.9, shiftT: tr.shiftT * shiftK, lockFrom: tr.lockFrom, modern: tr.modern, clutchCap: E.tq * 1.35 * capPart * clP,
       bias: clamp(bias, 0.4, 0.85), brakeTot, abs: sp.abs, tcAvail: sp.tc !== false, lineLock: !!sp.lineLock || !!k, steerMax: sp.steerMax * (tuneKnob(c, t, 'angle') / TUNE_DEF.angle),
       cdA: sp.aero.cdA, clF: sp.aero.clF, clR: sp.aero.clR, crr: ti.f === 'allterrain' ? 0.014 : 0.011, vmax: hasPart(c, 'ecu') ? 0 : sp.vmax, wbar: !!(d && d.wbar),
       ped: ecu && ECU_PED[ecu.ped] ? ECU_PED[ecu.ped].k : 1, thrR: ecu && ECU_PED[ecu.ped] ? ECU_PED[ecu.ped].r : 1, upW: EM && ecu && ecu.up ? Math.min(ecu.up, E.red) : 0, lcRet: EM && ecu && ecu.lcRet && EM.fiH && EM.fiH.kind === 'turbo' ? ecu.lcRet : 0 };
@@ -9507,6 +9817,8 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
       else st.revT = 0;
       if (!st.rev && gas > 0.05 && u < -0.8) { brk = Math.max(brk, gas); gas = 0; }
     }
+    // the launch control button: armed and stopped, the brakes hold it while you floor it (tap it again to let go)
+    if (I.lca && !gb && gas > 0.3 && Math.abs(u) < 0.6) brk = Math.max(brk, 1);
     // auto hold: stopped with your feet off the pedals, the brakes hold it (no idle creep off a stop)
     if (gas < 0.02 && brk < 0.02 && Math.abs(u) < 0.25) brk = 0.5;
     // line lock (gas + brake holds only the fronts): in a strip's water box anyone can power-brake a burnout; cars with a
@@ -9952,6 +10264,24 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || !document.body.classList.contains('incar')) return; if (e.code === 'BracketLeft') setBlink('L'); if (e.code === 'BracketRight') setBlink('R'); if (e.code === 'Backslash') setBlink('H'); if (e.code === 'KeyC') camCycle(); });
   // smoke, rubber, squeal, body lean and the rims, once per frame after the physics
   const _wp = new THREE.Vector3();
+  // Phase 5A: the body moves on its springs over the wheels, the wheels stay on the road. The body heaves by the
+  // simulation's own travel (squats down at the back on a launch, the nose comes up, it dives on the brakes, rolls in a
+  // turn) and each wheel is put back where the road holds it, so you see the fender gap open and close like a real car
+  const _sp = { a: null, b: null, c: null, d: null, v: null, q: null, e: null, p: null };
+  function susPlant(m, vd, T) {
+    if (!m.userData.wheels) return; if (!_sp.a) { _sp.a = new THREE.Matrix4(); _sp.b = new THREE.Matrix4(); _sp.v = new THREE.Vector3(); _sp.q = new THREE.Quaternion(); _sp.e = new THREE.Euler(); _sp.p = new THREE.Vector3(); }
+    const W = m.userData.wheels;
+    for (const w of W) { const u = w.userData; if (u.px0 == null) { u.px0 = w.position.x; u.pz0 = w.position.z; } w.position.x = u.px0; w.position.z = u.pz0; }
+    if (!vd) return;
+    const zc = clamp(vd.zc || 0, -0.12, 0.12) * 1.25; m.position.y -= zc;   // heave: compressed springs sit the body lower
+    m.updateMatrix(); _sp.e.set(0, m.rotation.y, 0, m.rotation.order); _sp.q.setFromEuler(_sp.e); _sp.p.copy(m.position); _sp.p.y += zc;
+    _sp.a.compose(_sp.p, _sp.q, m.scale); _sp.b.copy(m.matrix).invert();   // where the body sits at rest, and the inverse of where it is now
+    if (!_sp.c) { _sp.c = new THREE.Matrix4(); _sp.d = new THREE.Matrix4(); }
+    for (const w of W) { const u = w.userData, y = w.position.y; let o = w.parent; _sp.c.identity();   // the wheel's parent frame inside the model (models nest them a level or two down)
+      while (o && o !== m) { o.updateMatrix(); _sp.c.premultiply(o.matrix); o = o.parent; } if (!o) continue;
+      _sp.d.copy(_sp.c).invert(); _sp.v.set(u.px0, y, u.pz0).applyMatrix4(_sp.c).applyMatrix4(_sp.a).applyMatrix4(_sp.b).applyMatrix4(_sp.d);
+      w.position.x = u.px0 + clamp(_sp.v.x - u.px0, -0.05, 0.05); w.position.y = y + clamp(_sp.v.y - y, -0.16, 0.16); w.position.z = u.pz0 + clamp(_sp.v.z - u.pz0, -0.05, 0.05); }
+  }
   function driveFx(dt, on) {
     stepSmoke(dt); stepSqueal(Math.max(TIRE.slipR, TIRE.slipF * 0.8), on);
     const m = car && car.userData.model; dragPose(m, dt, on); if (!m || !on) return;
@@ -9960,8 +10290,8 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     // the body's pitch and roll come straight from the suspension simulation (springs, dampers, bars, geometry), with a
     // little extra so you can see it from the chase cam; the ride height knobs still rake the car
     const T = tunePose(m), vd = TIRE.vd;
-    if (vd) { m.rotation.x = clamp((vd.th - WHEELIE.a) * 1.25, -0.09, 0.09) + (T ? (T.rideR - T.rideF) * 0.25 : 0); m.rotation.z = clamp(-vd.ph * 1.25, -0.11, 0.11); }
-    else { const pitch = clamp(TIRE.ax * 0.0045, -0.06, 0.06) + (T ? (T.rideR - T.rideF) * 0.25 : 0), roll = clamp(-TIRE.ay * 0.0055, -0.09, 0.09); m.rotation.x += (pitch - m.rotation.x) * Math.min(1, dt * 7); m.rotation.z += (roll - m.rotation.z) * Math.min(1, dt * 7); }
+    if (vd) { m.rotation.x = clamp((vd.th - WHEELIE.a) * 1.25, -0.09, 0.09) + (T ? (T.rideR - T.rideF) * 0.25 : 0); m.rotation.z = clamp(-vd.ph * 1.25, -0.11, 0.11); susPlant(m, vd, T); }
+    else { susPlant(m, null, T); const pitch = clamp(TIRE.ax * 0.0045, -0.06, 0.06) + (T ? (T.rideR - T.rideF) * 0.25 : 0), roll = clamp(-TIRE.ay * 0.0055, -0.09, 0.09); m.rotation.x += (pitch - m.rotation.x) * Math.min(1, dt * 7); m.rotation.z += (roll - m.rotation.z) * Math.min(1, dt * 7); }
     // rims: each one turns at its own simulated wheel speed (a peeling inside tire spins faster than the other side)
     const r = m.userData.r || 0.34, V = vd && vd.V;
     const dF = TIRE.drv !== 'R', dR = TIRE.drv !== 'F';
@@ -10591,7 +10921,9 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     const p0 = R ? R.D.hp * 745.7 : (m.hp || 300) * 745.7;
     const forged = R ? !!R.X.forged : false, crank = R ? b.crank && b.crank !== 'stock' : false;
     const H = R ? R.fiH : null, psi = R ? R.psi || 0 : 0;
-    DMG.ctx = { c, R, V, tq0, p0, float: R ? R.red : (V ? V.red : 6500), sPist: forged ? 1.9 : 1.4, sGask: 1.6, sBrg: crank ? 2.3 : 1.7, sTr: 1.6,
+    const pk = k => R ? partOpt(b, k) : {};   // Phase 5A cooling, oiling, rods, clutch parts
+    DMG.ctx = { c, R, V, tq0, p0, float: R ? R.red : (V ? V.red : 6500), sPist: forged ? 1.9 : 1.4, sGask: 1.6, sBrg: (crank ? 2.3 : 1.7) + (R ? R.X.rodK || 0 : 0), sTr: 1.6,
+      coolK: pk('cool').coolK || 1, fanK: pk('cool').fanK || 1, oilK: pk('oil').oilK || 1, oilT: pk('oil').oilT || 0, tcK: pk('tcool').tcK || 1, clK: pk('clutch').clK || 1,
       H, bShare: H ? 1 - 1 / (1 + psi / 14.7) : 0, conv: !(V && (V.tt === 'man' || V.tt === 'dct')), dct: !!(V && V.tt === 'dct'),
       legK: R && R.ecuKe > 0.05 ? R.ecuKe * (R.ecuKs ? 0.03 : 0.2) : 0 };
     DMG.ctxF = frame; return DMG.ctx;
@@ -10627,20 +10959,20 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
     // heat: the motor makes about as much heat for the coolant as it does power; the radiator sheds what it can (the fan at a
     // standstill, much more with air through it). A blown gasket pushes combustion gas into the coolant
     const Pw = Te * Math.max(0, st.we), gk = wrGet(c, 'gask'), Qin = Pw * 0.9 * (1 + Math.max(0, 50 - gk) / 50 * 0.8) + (I.als ? 0.08 * X.p0 : 0);
-    const T = ENGT.id === c.id ? ENGT.T : (c.engT || 25), cap = X.p0 * 0.62 * (0.35 + 0.65 * Math.min(1, spd / 25)) * (1 + Math.max(0, T - 90) / 12);
+    const T = ENGT.id === c.id ? ENGT.T : (c.engT || 25), cap = X.p0 * 0.62 * X.coolK * (0.35 * X.fanK + 0.65 * Math.min(1, spd / 25)) * (1 + Math.max(0, T - 90) / 12);
     if (T >= 89.5) { ENGT.T = Math.max(90, T + h * (Qin - cap) / 130000); c.engT = ENGT.T; DMG.heatF = frame; }
     if (ENGT.T > 112) { wrHit(c, 'gask', h * (ENGT.T - 112) * 0.12, 'heat'); if (ENGT.T > 118) wrHit(c, 'pist', h * (ENGT.T - 118) * 0.08, 'heat'); }
     DMG.la += (Pw / X.p0 - DMG.la) * Math.min(1, h / 20);
-    DMG.oilT = ENGT.T + 10 + 35 * clamp(DMG.la, 0, 1.5);
+    DMG.oilT = ENGT.T + 10 + 35 * clamp(DMG.la, 0, 1.5) + X.oilT;
     // the oil: tired oil and oil cooked past ~135 °C let the bearings (and the turbo's) touch; cold oil at high revs too
     const ol = clamp((20 - (c.oil == null ? 100 : c.oil)) / 20, 0, 1), rr = ne / X.float;
     let ob = 0.15 * ol * ol + (DMG.oilT > 135 ? (DMG.oilT - 135) / 20 * 0.3 : 0) + (ENGT.T < 45 && rr > 0.75 ? 0.15 : 0);
-    if (ob > 0) { wrHit(c, 'brg', h * ob * rr * rr * (0.3 + thr), 'oil'); if (X.H && X.H.kind === 'turbo') wrHit(c, 'fi', h * ob * 0.6 * (TIRE.boost || 0), 'oil'); }
+    if (ob > 0) { ob *= X.oilK; wrHit(c, 'brg', h * ob * rr * rr * (0.3 + thr), 'oil'); if (X.H && X.H.kind === 'turbo') wrHit(c, 'fi', h * ob * 0.6 * (TIRE.boost || 0), 'oil'); }
     // the transmission: converter or clutch slip turns power into heat; the fluid sheds it through the cooler
     const Gin = vdGin(V, st, I), wt = Math.abs(Gin * vdOmegaIn(V, st)), slip = Math.max(0, st.we - wt), Ps = st.lock ? 0 : Math.abs(st.Tc || 0) * slip;
     if (DMG.tt == null) DMG.tt = c.trT != null ? c.trT : 70;
-    if (X.conv) DMG.tt += h * (Ps * 0.9 + Pw * 0.03 - 160 * (1 + spd / 12) * (DMG.tt - 75)) / 18000;
-    else { DMG.tt += h * (Pw * 0.025 - 140 * (1 + spd / 12) * (DMG.tt - 75)) / 18000; if (Ps > 0 && Gin) wrHit(c, 'clutch', h * Ps / (X.dct ? 400000 : 250000), 'slip'); }
+    if (X.conv) DMG.tt += h * (Ps * 0.9 + Pw * 0.03 - 160 * X.tcK * (1 + spd / 12) * (DMG.tt - 75)) / 18000;
+    else { DMG.tt += h * (Pw * 0.025 - 140 * X.tcK * (1 + spd / 12) * (DMG.tt - 75)) / 18000; if (Ps > 0 && Gin) wrHit(c, 'clutch', h * Ps / (X.dct ? 400000 : 250000) / X.clK, 'slip'); }
     c.trT = DMG.tt;
     if (DMG.tt > 120) { wrHit(c, 'trans', h * (DMG.tt - 120) * 0.06, 'conv'); if (X.conv && DMG.tt > 130) wrHit(c, 'clutch', h * (DMG.tt - 130) * 0.1, 'conv'); }
     if (ld > X.sTr && Gin) { const o = ld / X.sTr - 1; wrHit(c, 'trans', h * 0.5 * Math.pow(o, 1.5) * 10, 'trq'); if (TIRE.gA !== DMG.g) wrHit(c, 'trans', 0.6 * o, 'trq'); }
@@ -11789,8 +12121,8 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   function nxFuelCap(c) {
     const R = !c.swap ? engOf(c) : null, lbh = x => x * 0.4536 / 3600;
     if (!R) { const hp = carHp(c) * 1.35 * 0.5; return { pump: lbh(hp), inj: lbh(hp), di: false, carb: false }; }
-    const D = R.D, b = R.b, ij = (ENG_PARTS.inj.opts[b.inj] || {}).inj, pp = (ENG_PARTS.pump.opts[b.pump] || {}).pump;
-    const kit = (ENG_PARTS.power.opts[b.power] || {}).kit, inj = Math.max(ij || D.inj || 0, kit && D.fuel === 'port' ? 60 : 0), pump = pp || D.pump || 0;
+    const D = R.D, b = R.b, ij = partOpt(b, 'inj').inj && partOpt(b, 'inj').inj * (D.fuel === 'port' ? Math.sqrt((partOpt(b, 'fpr').fp || 43.5) / 43.5) : 1), pp = partOpt(b, 'pump').pump;
+    const kit = partOpt(b, 'power').kit, inj = Math.max(ij || D.inj || 0, kit && D.fuel === 'port' ? 60 : 0), pump = pp || D.pump || 0;
     const di = D.fuel === 'di' || D.fuel === 'pfdi', bsfc = R.boostKind ? 0.6 : 0.5, fb = (D.fuelHp || D.hp * 1.25) * bsfc;
     const fromInj = di || !inj ? fb * 1.1 : inj * D.cyl, fromPump = pump ? pump * 0.264 * 6.0 * (D.fuel === 'carb' ? 1 : 0.85) : fb * 1.1;
     return { pump: lbh(fromPump), inj: lbh(Math.min(fromInj, fromPump)), di, carb: D.fuel === 'carb' };
@@ -11969,7 +12301,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
   // what goes into the physics input this frame for the player's car
   function nosInput(I) {
     const c = S.car, x = c && nxConf(c);
-    I.nos = !!x && (nxMode(c) === 'auto' ? NOSI.arm : NOSI.hold); I.purge = !!x && NOSI.purge; I.als = NOSI.als && hasTurbo(c); return I;
+    I.nos = !!x && (nxMode(c) === 'auto' ? NOSI.arm : NOSI.hold); I.purge = !!x && NOSI.purge; I.als = NOSI.als && hasTurbo(c); return lcbInput(I);
   }
   // after the physics: the bottle carries over to the save, the sounds, the purge cloud, backfires, warnings, the buttons
   function stepNos(dt, on) {
@@ -12014,7 +12346,7 @@ ${exhSnd(D, b).valved ? `<div class="row"><span class="note">Exhaust valves:</sp
         if (au) noisePop(ctx, ctx.currentTime, 700 + Math.random() * 900, 0.16 + Math.random() * 0.1, 0.09, ctx.destination);
       }
     }
-    nosButtons(on, X, S0, turbo);
+    nosButtons(on, X, S0, turbo); lcbFrame(on);
     if (NXL.open && (NOSI.live += dt) > 0.4) { NOSI.live = 0; nxLive(); }
     if (FIL.open && (FIL.live += dt) > 0.4) { FIL.live = 0; fiLive(); }
     if (DHL.open && (DHL.live += dt) > 0.4) { DHL.live = 0; dmgLive(); }
@@ -12265,7 +12597,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     }
     const T = R.fiTab, i1 = Math.min(T.length - 1, Math.round(red / 100)); let pk = 0, pkN = 0, hot = 0; for (let i = 15; i <= i1; i++) { if (T[i].psi > pk) { pk = T[i].psi; pkN = i * 100; } hot = Math.max(hot, T[i].T2); }
     const kitId = b.power !== 'stock' && ENG_PARTS.power.opts[b.power] && ENG_PARTS.power.opts[b.power].kit ? b.power : null;
-    h += `<h3>${FI_KIND[H.kind]}${kitId ? ' · ' + ENG_PARTS.power.opts[kitId].name : ' · factory'}</h3><div class="g">${stat('Peak boost', `${fiPsi(pk)} at ${pkN.toLocaleString()}`)}${stat('Power', `${Math.round(R.hp)} hp · ${Math.round(R.tq / 1.3558)} lb-ft`)}${stat('Hottest charge', `${Math.round(hot - 273.15)} °C`)}${H.kind === 'turbo' ? stat('Full boost by', fiFullAt(T, H, red)) : stat('Blower takes', Math.round(T[i1].drive / 745.7) + ' hp at redline')}</div>`;
+    h += `<h3>${FI_KIND[H.kind]}${kitId ? ' · ' + partOpt(b, 'power').name : ' · factory'}</h3><div class="g">${stat('Peak boost', `${fiPsi(pk)} at ${pkN.toLocaleString()}`)}${stat('Power', `${Math.round(R.hp)} hp · ${Math.round(R.tq / 1.3558)} lb-ft`)}${stat('Hottest charge', `${Math.round(hot - 273.15)} °C`)}${H.kind === 'turbo' ? stat('Full boost by', fiFullAt(T, H, red)) : stat('Blower takes', Math.round(T[i1].drive / 745.7) + ' hp at redline')}</div>`;
     h += `<h3>Live</h3><div class="g" id="filive"></div>`;
     if (H.kind === 'turbo') {
       const n0 = H.n, sz = FI_TURBOS.filter(d => d >= 36 && d <= 92), cur = H.ind;
@@ -12306,7 +12638,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     el.querySelector('[data-tolab]').onclick = () => { FIL.open = false; labOpen(); };
     el.querySelector('[data-tonx]').onclick = () => { FIL.open = false; nxOpen(); };
     el.querySelector('[data-toecu]').onclick = () => { FIL.open = false; ecuOpen(); };
-    on('[data-kit]', (b, d) => { const o = ENG_PARTS.power.opts[d.kit]; if (fiEdit(o.price, o.name, (fi, eb) => { eb.power = d.kit; for (const k of Object.keys(fi)) delete fi[k]; })) toast(`${o.name} on. It's sized for this engine: tune it below.`, 'good'); });
+    on('[data-kit]', (b, d) => { const o = ENG_PARTS.power.opts[d.kit]; if (fiEdit(o.price, o.name, (fi, eb) => { eb.power = d.kit; if (eb.sku) { eb.sku = Object.assign({}, eb.sku); delete eb.sku.power; } for (const k of Object.keys(fi)) delete fi[k]; })) toast(`${o.name} on. It's sized for this engine: tune it below.`, 'good'); });
     on('[data-tn]', (b, d) => { const n = +d.tn; if (n === H.n) return; fiEdit(FI_PR.n, n === 1 ? 'Single turbo conversion' : 'Twin turbo conversion', fi => { fi.n = n; delete fi.ind; delete fi.ar; }); });
     on('[data-ind]', (b, d) => { const v = +d.ind; fiEdit(v ? FI_TPRICE(v) * H.n : 0, 'Turbo', fi => { if (v) fi.ind = v; else delete fi.ind; }); });
     on('[data-ar]', (b, d) => { const v = +d.ar; fiEdit(v ? FI_PR.ar * H.n : 0, 'Turbine housing', fi => { if (v) fi.ar = v; else delete fi.ar; }); });
@@ -13133,7 +13465,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
   const LAY_CTRLS = [
     ['radio', '#radio', 'Radio'], ['steer', '.pad .steer', 'Steering'], ['clus', '.pad .clus', 'Gauges'], ['side', '.pad .side', 'E-brake & Out'],
     ['shift', '#shifter', 'Shifter'], ['peds', '.pad .peds', 'Pedals'], ['stick', '#stick', 'Walk stick'], ['mini', '#mini', 'Minimap'],
-    ['phone', '#phonebtn', 'Phone'], ['car', '#carbtn', 'Car'], ['fob', '#fobbtn', 'Fob'], ['hud', '#hud', 'Speed & stats'], ['net', '#netpill', 'Online'], ['nos', '#nosbtn', 'NOS'], ['als', '#alsbtn', 'Anti-lag'],
+    ['phone', '#phonebtn', 'Phone'], ['car', '#carbtn', 'Car'], ['fob', '#fobbtn', 'Fob'], ['hud', '#hud', 'Speed & stats'], ['net', '#netpill', 'Online'], ['nos', '#nosbtn', 'NOS'], ['als', '#alsbtn', 'Anti-lag'], ['lc', '#lcbtn', 'Launch control'],
   ];
   const LAY = { all: {}, on: false, sel: null, el: null };
   try { LAY.all = JSON.parse(localStorage.getItem(LAY_KEY) || '{}') || {}; } catch (e) { LAY.all = {}; }
@@ -21987,7 +22319,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
-  window.__map = { DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
+  window.__map = { PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
