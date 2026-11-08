@@ -9698,7 +9698,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   const LC_FACTORY = { dodge_charger_srt_hellcat_widebody_2020: 1700, dodge_charger_scat_pack_2015: 1600, dodge_challenger_rt_scat_pack_widebody_2019: 1600,
     ram_1500_trx_2021: 1700, ford_mustang_gt_2019: 1700, chevrolet_corvette_stingray_c8_2020: 3200, mercedes_amg_g63_2019: 2000, bmw_m5_g90_2025: 2600, jeep_grand_cherokee_trackhawk_2018: 2000 };
   function vehOf(c, kg) {
-    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0, c.eng || '', JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), JSON.stringify(c.sus || 0), c.xd || '', c.st || ''].join('|');
+    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0, c.eng || '', JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), JSON.stringify(c.sus || 0), c.xd || '', c.st || '', JSON.stringify(c.rims || 0), c.tubs || 0].join('|');
     let V = VEH_CACHE.get(key); if (V) return V;
     const sp = vspecOf(c.id, m, red0), E = Object.assign({}, sp.eng), tr = sp.tr, geo = sp.geo, su = sp.susp, ti = sp.tire;
     // the engine as it's built (Phase 2): its own torque curve, redline, idle and rotating inertia from the engine model
@@ -9713,7 +9713,13 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     tqCurve(E);
     if (EM && ecu && ecu.bst && EM.fiH) E.tabG = ecuGearTabs(c, EM, ecu, Math.max(tr.auto.length, (tr.man || []).length));
     const SO = susOf(c), mass = kg + 80, L = geo.wb, rhF = tuneKnob(c, t, 'rhF') / 100 + SO.rh, rhR = tuneKnob(c, t, 'rhR') / 100 + SO.rh;   // Phase 5A: catalog suspension parts (SO)
-    const h = Math.max(0.25, geo.h + (rhF + rhR) / 2 * 0.85), b = geo.fw * L, a = L - b;   // a: CG to front axle, b: CG to rear axle
+    // wheels and tires (2026-11-08): the rim size you run (street rims) or the rear drag tire size (drag pack)
+    const RP = !k ? rimPhys(c, ti.rf, ti.rr, ti.mwt) : null, DT = k ? DRAG_TIRE(c.drag.size) : null;
+    const rF = k ? ti.rf * 1.02 : RP ? RP.rF : ti.rf, rR = DT ? DT.dia * 0.0127 : k ? Math.max(ti.rr, 0.37) : RP ? RP.rR : ti.rr;   // drag radials and slicks are taller (28-34.5 in)
+    const wRef = Math.max(ti.wr, 300), wK = DT ? DT.w / wRef : 1;   // a drag tire's tread vs the old fixed drag tire (or the stock width)
+    const mwF = k ? 12 : RP ? RP.mwF : ti.mwt, mwR = DT ? 25 * wK ** 0.7 * (rR / 0.37) ** 1.2 : k ? 25 : RP ? RP.mwR : ti.mwt, iK = RP ? RP.iK : 0.62;
+    const hUp = Math.max(0, ((rF - ti.rf) + (rR - ti.rr)) / 2);   // bigger tires put the whole car (and its CG) higher
+    const h = Math.max(0.25, geo.h + (rhF + rhR) / 2 * 0.85 + hUp), b = geo.fw * L, a = L - b;   // a: CG to front axle, b: CG to rear axle
     const fd = hasPart(c, 'gears') ? sp.tr.fd * (tuneKnob(c, t, 'fd') / TUNE_DEF.fd) : tr.fd;
     // ---- suspension: wheel rates from the ride frequency, the coilover knobs scale them; bars scale with their knob ----
     const mcF = mass * 0.88 * (b / L) / 2, mcR = mass * 0.88 * (a / L) / 2, sc = x => Math.pow(1.32, x - 5), zc = x => Math.pow(1.22, x - 5);
@@ -9724,12 +9730,15 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const cRF = cc(kF, mcF) * su.z * 1.6 * zc(tuneKnob(c, t, 'rF')) * ext * SO.zF * SO.ext, cRR = cc(kR, mcR) * su.z * 1.6 * zc(tuneKnob(c, t, 'rR')) * SO.zR;
     const arbF = kF * su.arbF * sc(tuneKnob(c, t, 'swF')) * SO.arbF, arbR = kR * (su.arbR ? su.arbR * sc(tuneKnob(c, t, 'swR')) : (hasPart(c, 'sway') ? 0.25 * sc(tuneKnob(c, t, 'swR')) : SO.arbR > 1 ? 0.2 : 0)) * SO.arbR;
     // ---- tires: the compound, the pressure, wear; a drag pack swaps the rears for radials or slicks and the fronts for skinnies ----
-    const tF = TIRES[k ? 'skinny' : ti.f], tR = TIRES[k ? (k.tire === 'slick' ? 'slick' : 'radial') : ti.r];
+    const tF0 = TIRES[k ? 'skinny' : ti.f], tR0 = TIRES[k ? (k.tire === 'slick' ? 'slick' : 'radial') : ti.r];
+    // sidewall: a rubber-band tire on a big rim answers the wheel quicker (smaller slip angle to its peak); a tall one is softer
+    const apT = (T, kk) => { if (Math.abs(kk - 1) < 0.002) return T; const o = Object.assign({}, T, { ap: T.ap * kk }); o.tap = Math.tan(o.ap); return o; };
+    const tF = RP ? apT(tF0, RP.apF) : tF0, tR = RP ? apT(tR0, RP.apR) : tR0;
     const psiF = t.psiF, psiR = t.psiR, wear = 0.82 + 0.18 * clamp(c.cond.tires / 100, 0, 1);
     const psiK = (T, p) => T === TIRES.radial || T === TIRES.slick ? 1 - ((p - 16) / 22) ** 2 * 0.3 : 1 - ((p - 32) / 22) ** 2 * 0.25;
-    const muF = tF.mu * psiK(tF, psiF) * wear, muR = tR.mu * psiK(tR, psiR) * wear;
-    const rF = k ? ti.rf * 1.02 : ti.rf, rR = k ? Math.max(ti.rr, 0.37) : ti.rr;   // drag radials and slicks are taller (28-30 in)
-    const mwF = k ? 12 : ti.mwt, mwR = k ? 25 : ti.mwt;
+    // a wider drag tire: more rubber on the road (mu up with the contact patch) and less grip lost to load (Fn below);
+    // a tall sidewall wrinkles and hooks a little better, a thin one skates a little more
+    const muF = tF0.mu * psiK(tF0, psiF) * wear, muR = tR0.mu * psiK(tR0, psiR) * wear * wK ** 0.25 * (RP ? RP.hook : 1);
     // ---- drivetrain ----
     // M xDrive modes (cars that have them): 2WD sends everything to the back, 4WD Sport most of it
     // Selec-Track (cars that have it) sets the front share of the torque by mode
@@ -9750,8 +9759,8 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const lc0 = LC_FACTORY[c.id] || (d && d.twostep ? 1500 : 0), lcRpm = lc0 ? Math.max(1000, lc0 + (d ? [0, -300, 300, 600][d.lcr || 0] : 0)) : 0;
     V = { key, sp, id: c.id, m: mass, kg, L, a, b, h, tf: geo.tf, tr: geo.tr, Iz: mass * a * b, Iyy: mass * 0.88 * (0.42 * L) ** 2, Ixx: mass * 0.88 * (0.38 * (geo.tf + geo.tr) / 2) ** 2 + mass * 0.1 * h * h,
       ms: mass * 0.88, hrcF: Math.max(0.01, geo.hrcF + rhF * 0.7), hrcR: Math.max(0.01, geo.hrcR + rhR * 0.7), AS: geo.as + Math.max(d && d.bars ? [0.15, 0.3, 0.5][d.asT == null ? 1 : d.asT] : 0, SO.as), AD: geo.ad, lcRpm,
-      wx: [a, a, -b, -b], wy: [geo.tf / 2, -geo.tf / 2, geo.tr / 2, -geo.tr / 2], R: [rF, rF, rR, rR], Iw: [mwF * rF * rF * 0.62, mwF * rF * rF * 0.62, mwR * rR * rR * 0.62, mwR * rR * rR * 0.62],
-      T: [tF, tF, tR, tR], mu: [muF, muF, muR, muR], Fn: (() => { const wF = k ? 120 : ti.wf, wR = k ? Math.max(ti.wr, 300) : ti.wr, wa = (wF + wR) / 2; return [wF, wF, wR, wR].map(w => mass * G9 / 4 * w / wa); })(), cam: [camF, camF, camR, camR], toe: [-toeF, toeF, -toeR, toeR],
+      wx: [a, a, -b, -b], wy: [geo.tf / 2, -geo.tf / 2, geo.tr / 2, -geo.tr / 2], R: [rF, rF, rR, rR], Iw: [mwF * rF * rF * iK, mwF * rF * rF * iK, mwR * rR * rR * iK, mwR * rR * rR * iK],
+      T: [tF, tF, tR, tR], mu: [muF, muF, muR, muR], Fn: (() => { const wF = k ? 120 : ti.wf, wR = k ? wRef : ti.wr, wa = (wF + wR) / 2; return [wF, wF, wR * wK, wR * wK].map(w => mass * G9 / 4 * w / wa); })(), cam: [camF, camF, camR, camR], toe: [-toeF, toeF, -toeR, toeR],
       ks: [kF, kF, kR, kR], cB: [cBF, cBF, cBR, cBR], cR: [cRF, cRF, cRR, cRR], arb: [arbF, arbR], travC: [0.08 + rhF * 0.9, 0.08 + rhF * 0.9, 0.09 + rhR * 0.9, 0.09 + rhR * 0.9].map(x => Math.max(0.015, x)), travE: 0.11,
       drive: D, s, split, diff, lock, center: sp.center || 0.4, eta: (tr.type === 'tc' ? 0.89 : 0.91) - (D === 'A' ? 0.03 : 0),
       E, idle: E.idle, red: E.red, Ie: E.Ie + (tr.type === 'tc' ? 0.06 : 0), ev: isEV(c),
@@ -10811,7 +10820,32 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   })();
   const RIM_FIN = { chrome: ['Chrome', '#eef0f3'], polish: ['Brushed, chrome lip', '#c9ced6'], black: ['Gloss black', '#0c0c0f'], milled: ['Black milled', '#18181b'], gun: ['Gunmetal', '#4a4d53'], bronze: ['Bronze', '#8a5a2b'],
     gold: ['Gold', '#d8a93a'], blkgold: ['Black and gold', '#1a1408'], red: ['Candy red', '#9a0612'], blue: ['Candy blue', '#0b2f9a'], purple: ['Candy purple', '#4a0f8a'], white: ['White', '#f2f2f0'] };
-  const RIM_SIZES = { 15: 0.6, 17: 0.7, 18: 0.8, 20: 1, 22: 1.25, 24: 1.6, 26: 2.1 };
+  const RIM_SIZES = { 15: 0.6, 16: 0.65, 17: 0.7, 18: 0.8, 19: 0.9, 20: 1, 21: 1.12, 22: 1.25, 23: 1.42, 24: 1.6, 25: 1.85, 26: 2.1, 28: 2.9, 30: 3.9 };
+  // the real tire on a rim: plus-sizing keeps the car's overall tire height until the rim gets so big there's only a
+  // rubber-band sidewall left (about 2.6 in, a 25-30 series tire); past that the tire has to get taller (donk sizes),
+  // so the car sits higher. Returns the tire radius in metres for a rim of dia inches on a car whose stock tire is r0.
+  const RIM_SIDE = 0.065, rimTireR = (dia, r0) => Math.max(r0, dia * 0.0127 + RIM_SIDE);
+  // what a rim does to the car (the physics in vehOf reads this): overall tire radius per axle, wheel + tire mass,
+  // how much of the mass sits out at the rim (inertia), how stiff the sidewall is (cornering response, launch hook)
+  function rimPhys(c, rf0, rr0, mw0) {
+    const r = rimOf(c); if (!r) return null;
+    const dia = c.rims.dia, rimR = dia * 0.0127, rF = rimTireR(dia, rf0), rR = rimTireR(dia, rr0);
+    const add = (rr) => (dia - 19) * 1.05 + (rr - rr0) * 85 + (r.wire ? 1.5 : -1.5);   // forged is lighter than cast; bigger and taller is heavier
+    const prof = rr => (rr - rimR) / rr;   // sidewall height / tire radius
+    return { dia, rF, rR, mwF: Math.max(mw0 * 0.7, mw0 + add(rF)), mwR: Math.max(mw0 * 0.7, mw0 + add(rR)), iK: 0.62 + 0.12 * clamp(rimR / rR - 0.6, 0, 0.4),
+      apF: clamp(1 + (prof(rF) - 0.3) * 0.45, 0.9, 1.08), apR: clamp(1 + (prof(rR) - 0.3) * 0.45, 0.9, 1.08), hook: clamp(1 + (prof(rR) - 0.3) * 0.1, 0.985, 1.015), side: (rR - rimR) / 0.0254 };
+  }
+  // bigger tires lift the car: the body goes up by the average, each wheel sits on the road under its own tire
+  // (u.rv is the radius the wheel was built with; stock wheels have none)
+  function wheelLift(m) {
+    const U = m && m.userData; if (!U || !U.wheels || !U.wheels.length) return;
+    const xs = U.wheels.map(w => w.userData.px0 != null ? w.userData.px0 : w.position.x), mid = (Math.max(...xs) + Math.min(...xs)) / 2;
+    const dR = w => { const u = w.userData; return u.rv && u.stock ? u.rv - u.stock.scale.x : 0; }, isF = (w, i) => xs[i] > mid;
+    let f = 0, nf = 0, r = 0, nr = 0; U.wheels.forEach((w, i) => { if (isF(w, i)) { f += dR(w); nf++; } else { r += dR(w); nr++; } });
+    const b = ((nf ? f / nf : 0) + (nr ? r / nr : 0)) / 2, dy = b - (U.lb || 0);
+    if (Math.abs(dy) > 1e-6) { m.position.y += dy; if (U.y0 != null) U.y0 += dy; } U.lb = b;
+    for (const w of U.wheels) { const u = w.userData, off = dR(w) - b, d = off - (u.lo || 0); if (Math.abs(d) > 1e-6) { w.position.y += d; if (u.y0 != null) u.y0 += d; } u.lo = off; }
+  }
   // tires for the swangas: vogues (whitewall with a gold or red pinstripe), plain whitewalls or black walls
   const RIM_TIRES = { gold: ['Vogues, gold stripe', '#c99a2e'], red: ['Vogues, red stripe', '#a60d16'], white: ['Plain whitewalls', '#f3f1ea'], black: ['Black walls', '#141316'] };
   const tireOf = c => c && c.rims && RIM_TIRES[c.rims.tire] ? c.rims.tire : (rimOf(c) && rimOf(c).wire ? 'gold' : 'black');
@@ -10825,7 +10859,8 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   }
   // put a car's rims on its model (drag packs win: their wheels own the corners while they're on)
   const rimLive = new Set();
-  function applyRims(m, c) {
+  function applyRims(m, c) { applyRims0(m, c); if (m && m.userData.wheels) wheelLift(m); }
+  function applyRims0(m, c) {
     if (!m || !m.userData.wheels) return;
     rimLive.add(m); m.userData.rimCar = c;
     const U = m.userData; if (c && c.drag) { U.rimKey = ''; return; }
@@ -10834,8 +10869,9 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     for (const w of U.wheels) {
       const st = w.userData.stock || (w.userData.stock = { kids: w.children.slice(), scale: w.scale.clone() });
       for (const o of w.children.slice()) w.remove(o);
-      if (!r) { st.kids.forEach(o => w.add(o)); w.scale.copy(st.scale); continue; }
-      const tr = st.scale.x, g = rimWheel(c.rims.id, c.rims.fin, c.rims.dia, tr, tireOf(c));
+      if (!r) { st.kids.forEach(o => w.add(o)); w.scale.copy(st.scale); delete w.userData.rv; continue; }
+      const tr = st.scale.x, rv = rimTireR(c.rims.dia, tr), g = rimWheel(c.rims.id, c.rims.fin, c.rims.dia, rv, tireOf(c));
+      w.userData.rv = rv > tr + 1e-4 ? rv : 0;
       w.scale.set(1, 1, 1); if (w.position.z < 0) g.rotation.y = Math.PI; w.add(g);
     }
   }
@@ -10876,7 +10912,10 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const c = S.car, r = rimOf(c), rows = [], set = (v, msg) => { c.rims = v; save(); rimRefresh(c); toast(msg, 'good'); };
     if (c.drag) rows.push({ t: 'Drag pack on this car', s: 'Pull the drag pack at a mechanic to run street rims', btn: '—', off: true, act: () => {} });
     if (!RIMUI.line) {
-      for (const [dia, k] of Object.entries(RIM_SIZES)) rows.push({ t: `Size: ${dia} in`, s: dia >= 24 ? 'Big rims, thin rubber' : +dia === 15 ? 'Classic swanga size, fat sidewall for vogues' : dia <= 18 ? 'More sidewall, rides softer' : 'Street size', btn: +dia === RIMUI.dia ? 'Picked' : 'Pick', off: +dia === RIMUI.dia, act: () => { RIMUI.dia = +dia; } });
+      const t0 = (() => { try { return vspecOf(c.id, carOf(c.id), gbRed(c)).tire; } catch (e) { return { rr: 0.34, mwt: 24 }; } })();
+      for (const dia of Object.keys(RIM_SIZES).map(Number)) { const P = rimPhys({ rims: { id: FORGED.ALL[0].id, dia } }, t0.rf || t0.rr, t0.rr, t0.mwt || 24), tall = P.rR * 2 / 0.0254, up = (P.rR - t0.rr) / 0.0254, lb = (P.mwR - (t0.mwt || 24)) * 2.2046;
+        const feel = dia >= 28 ? 'Donk size: tall tires, heavy, slow off the line, sits way up' : dia >= 24 ? 'Big rims, thin rubber: sharp steering, heavier, harder to hook' : dia === 15 ? 'Classic swanga size, fat sidewall for vogues' : dia <= 18 ? 'More sidewall: rides softer, hooks a little better' : 'Street size';
+        rows.push({ t: `Size: ${dia} in${dia === c.rims?.dia && r ? ' (on your car)' : ''}`, s: `${feel} · ${tall.toFixed(1)} in tall tires, ${P.side.toFixed(1)} in sidewall${up > 0.1 ? ` · sits ${up.toFixed(1)} in higher` : ''} · ${lb >= 0 ? '+' : ''}${Math.round(lb)} lb a corner`, btn: dia === RIMUI.dia ? 'Picked' : 'Pick', off: dia === RIMUI.dia, act: () => { RIMUI.dia = dia; } }); }
       for (const [id, [label, sw]] of Object.entries(RIM_FIN)) rows.push({ sw, t: `Finish: ${label}`, s: r ? 'For your next set, or refinish the set you run' : 'For your next set', btn: id === RIMUI.fin ? 'Picked' : 'Pick', off: id === RIMUI.fin, act: () => { RIMUI.fin = id; } });
       for (const L of FORGED.LINES) rows.push({ t: L.name, s: L.wire ? `Houston swangas: 84s, 83s, elbows · on vogues · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4` : `10 designs · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4`, btn: money(rimPrice(L, RIMUI.dia, p)), act: () => { RIMUI.line = L.key; } });
       if (r && c.rims.fin !== RIMUI.fin) rows.push({ t: `Refinish your ${r.name} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()}`, s: 'Strip and refinish the set', btn: money(Math.round(450 * (p.rate || 1))), act: () => { if (spend(Math.round(450 * (p.rate || 1)), 'Rim refinish')) set(Object.assign({}, c.rims, { fin: RIMUI.fin }), 'Refinished.'); } });
@@ -11518,6 +11557,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       { id: 'convo', name: 'Center Line Convo Pro', price: 1300, fprice: 780, n: 5, fork: 0.15, forkAt: 0.5, w0: 0.15, w1: 0.065, dish: 0.06 },
       { id: 'streetlite', name: 'Billet Specialties Street Lite', price: 1600, fprice: 950, n: 5, sweep: 0.45, bow: 0.08, w0: 0.12, w1: 0.07, dish: 0.06 },
       { id: 'belak', name: 'Belak Series 2', price: 2600, fprice: 1500, bead: 1, n: 5, split: 0.07, w0: 0.065, w1: 0.05, dish: 0.08, cap: 'dome' },
+      { id: 'rs63', name: 'Race Star 63 Pro Star', price: 1100, fprice: 640, bead: 1, n: 5, w0: 0.13, w1: 0.075, dish: 0.07 },
     ];
     // the 2D parts counter's drag packs: [id, brand, name, part price, stage, install hours, wheels, finish, rear tire, front tire]
     const FX = { launch: [0, 0.45, 0.6, 0.8, 1.0], corner: [1, 0.95, 0.92, 0.88, 0.85], transfer: [0, 0.12, 0.2, 0.26, 0.32] };
@@ -11534,8 +11574,16 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       ['strange', 'Strange Engineering', 'Drag Pack: Slicks + Double-Adjustable Shocks', 4200, 3, 6, 'bogart', 'blackout', HO + ' QUICK TIME PRO', HO + ' DRAG FRONT'],
       ['vser', 'Weld Racing', 'V-Series Beadlock Pro Drag Pack + M&H Slicks', 5600, 4, 8, 'vser', 'polish', MH + ' DRAG SLICK', MH + ' FRONT RUNNER'],
       ['santhuff', "Santhuff's", 'Pro Drag Pack: Slicks + Coilover Drag Shocks', 6200, 4, 8, 'streetlite', 'gold', MT + ' ET DRAG', MTF],
-      ['menscer', 'Menscer Motorsports', 'Pro Mod Drag Pack: Slicks + Triple-Adjustable Shocks', 7400, 4, 8, 'belak', 'black', HO + ' DRAG SLICK', HO + ' DRAG FRONT'],
-    ].map(([id, brand, name, part, stage, hrs, rim, fin, tl, fl]) => ({ id, brand, name, stage, rim, fin, tl, fl, price: Math.round(part * 1.1 / 5) * 5 + hrs * 125,
+      ['menscer', 'Menscer Motorsports', 'Pro Mod Drag Pack: Slicks + Triple-Adjustable Shocks', 7400, 4, 8, 'belak', 'black', HO + ' DRAG SLICK', HO + ' DRAG FRONT', 's33'],
+      // added 2026-11-08 (Kimari: "add more drag packs")
+      ['bfg', 'BFGoodrich', 'g-Force Drag Radial Street Pack + Skinnies', 1450, 1, 2, 'draglite', 'blackout', 'BFGOODRICH G-FORCE DRAG RADIAL', 'BFGOODRICH FRONT', 'r275'],
+      ['hoosierb', 'Hoosier', 'Bracket Pack: 29.5x10.5 Slicks + Front Runners', 2700, 2, 3, 'aluma', 'polish', HO + ' QUICK TIME SLICK', HO + ' DRAG FRONT', 's29'],
+      ['nittor', 'Nitto', 'NT555R Extreme Drag Radials + Drag Shocks', 2600, 2, 4, 'rs63', 'polish', 'NITTO NT555R EXTREME DRAG', 'NITTO NT555 G2 FRONT', 'r315'],
+      ['hoosierr', 'Hoosier', 'Quick Time Pro D.O.T. Radials + Beadlocks', 3600, 3, 5, 'rs63', 'black', HO + ' QUICK TIME PRO RADIAL', HO + ' DRAG FRONT', 'r315'],
+      ['x275', 'Mickey Thompson', 'X275 Small-Tire Pack: Pro Drag Radial 275 + Beadlocks', 4800, 4, 7, 'bogart', 'blackout', MT + ' PRO DRAG RADIAL 275', MTF, 'r275'],
+      ['rvr', 'M&H Racemaster', 'Radial vs Radial Pack: Pro Mod Drag Radials + Beadlocks', 6900, 4, 8, 'belak', 'polish', MH + ' PRO MOD DRAG RADIAL', MH + ' FRONT RUNNER', 'r355'],
+      ['bigtire', 'Mickey Thompson', 'Pro Mod Big-Tire Pack: ET Drag 34.5x17 Slicks (needs tubs)', 8200, 4, 10, 'vser', 'black', MT + ' ET DRAG', MTF, 's345'],
+    ].map(([id, brand, name, part, stage, hrs, rim, fin, tl, fl, size]) => ({ id, brand, name, stage, rim, fin, tl, fl, size, price: Math.round(part * 1.1 / 5) * 5 + hrs * 125,
       tire: /slick/i.test(name) ? 'slick' : 'radial', bead: stage >= 3, shocks: stage >= 2, bars: id === 'calvert',
       launch: FX.launch[stage], corner: FX.corner[stage], transfer: FX.transfer[stage] }));
 
@@ -11691,9 +11739,44 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     if (d.bead == null) d.bead = k.bead && !!dragRim(d.rim).bead;
     if (!DRAG_FIN[d.fin]) d.fin = k.fin;
     d.susp = Object.assign({ shocks: k.shocks, bars: k.bars, wbar: false, ext: 1, comp: 1 }, d.susp);
+    const T0 = DRAG_TIRE(d.size); if (!T0 || T0.kind !== k.tire) d.size = dragSizeFor(c, k);
     return k;
   }
-  const dragKey = c => { const k = dragFix(c); return k ? [k.id, c.drag.rim, c.drag.front, c.drag.fin, c.drag.bead ? 1 : 0].join('|') : ''; };
+  const dragKey = c => { const k = dragFix(c); return k ? [k.id, c.drag.rim, c.drag.front, c.drag.fin, c.drag.bead ? 1 : 0, c.drag.size].join('|') : ''; };
+  // ---- rear drag tire sizes (2026-11-08, Kimari: "with drag packs you can make the tire wider for better grip to make your car hook") ----
+  // w = tread you put on the road (mm, slicks counted the same way as radial section widths), dia = how tall (in),
+  // rw = the rim width it goes on. Wider = a bigger contact patch: more grip and less of it lost to load (the physics
+  // reads it in vehOf); taller = longer gearing and more weight on a heavier, slower-to-spin wheel. Radial and slick
+  // packs pick from their own kind. Past what the stock wheel wells take you need mini-tubs, then a back-half.
+  const DRAG_TIRES = [
+    { id: 'r275', kind: 'radial', name: '275/60R15', w: 275, dia: 28.0, rw: 10 },
+    { id: 'r295', kind: 'radial', name: '295/65R15', w: 295, dia: 30.1, rw: 10 },
+    { id: 'r315', kind: 'radial', name: '315/60R15', w: 315, dia: 29.9, rw: 12 },
+    { id: 'r325', kind: 'radial', name: '325/50R15', w: 325, dia: 27.8, rw: 12 },
+    { id: 'r355', kind: 'radial', name: '355/50R15', w: 355, dia: 29.0, rw: 14 },
+    { id: 'r33', kind: 'radial', name: '33x17.0R15 Pro Mod radial', w: 432, dia: 33.0, rw: 16 },
+    { id: 's28', kind: 'slick', name: '28x10.5-15', w: 292, dia: 28.0, rw: 10 },
+    { id: 's29', kind: 'slick', name: '29.5x10.5-15', w: 292, dia: 29.5, rw: 10 },
+    { id: 's30', kind: 'slick', name: '30x12.5-15', w: 343, dia: 30.0, rw: 12 },
+    { id: 's32', kind: 'slick', name: '32x14-15', w: 381, dia: 32.0, rw: 14 },
+    { id: 's33', kind: 'slick', name: '33x16.5-15', w: 444, dia: 33.0, rw: 15 },
+    { id: 's345', kind: 'slick', name: '34.5x17-16', w: 457, dia: 34.5, rw: 16 },
+  ];
+  const DRAG_TIRE = id => DRAG_TIRES.find(t => t.id === id);
+  const TUBS = [['Stock wheel wells', 0, ''], ['Mini-tubs', 3200, 'Moves the inner wheel wells in about 2 in a side for wider rears'], ['Back-half + big tubs', 14500, 'New rear frame rails and big tubs: room for Pro Mod tires']];
+  const stockRearW = c => { try { return vspecOf(c.id, carOf(c.id), gbRed(c)).tire.wr || 225; } catch (e) { return 225; } };
+  const tubsOf = c => (c && c.tubs) || 0;
+  const tireFitW = (c, tubs = tubsOf(c)) => { const b = Math.max(stockRearW(c) + 40, 295); return [b, b + 75, 470][tubs] || b; };
+  const tireFits = (c, T, tubs) => T.w <= tireFitW(c, tubs);
+  // the pack's own size if it fits, else the widest of the same kind that does
+  function dragSizeFor(c, k) {
+    const kind = k.tire, want = DRAG_TIRE(k.size) || DRAG_TIRE(kind === 'slick' ? 's29' : 'r295');   // the older packs: about the 29 in tire they always had
+    if (want && want.kind === kind && tireFits(c, want)) return want.id;
+    const ok = DRAG_TIRES.filter(t => t.kind === kind && tireFits(c, t)).sort((a, b) => b.w - a.w);
+    return (ok[0] || DRAG_TIRES.find(t => t.kind === kind)).id;
+  }
+  const dragTire = c => { const k = dragFix(c); return k ? DRAG_TIRE(c.drag.size) : null; };
+  const dragTirePrice = T => Math.round(((T.w - 200) * 7 + 520) * (T.kind === 'slick' ? 1.15 : 1) / 10) * 10;
   // ---- the drag suspension: how much weight goes to the rear tires on the hit, and how hard they plant ----
   // front shock extension: loose lets the nose rise (more weight back, more wheelie), stiff holds it down.
   // rear compression: soft lets the rear squat into the tires (more bite), firm makes it skate.
@@ -11756,15 +11839,18 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     for (const w of U.wheels) {
       const st = w.userData.stock || (w.userData.stock = { kids: w.children.slice(), scale: w.scale.clone() });
       for (const o of w.children.slice()) w.remove(o);
-      if (!k) { st.kids.forEach(o => w.add(o)); w.scale.copy(st.scale); continue; }
-      const front = w.position.x > mid, tr = st.scale.x, stockW = st.scale.z * 0.7, d = c.drag;
-      const f17 = front && dragRim(d.front).f17, width = front ? (f17 ? 0.14 : 0.12) : clamp(stockW * 1.06, 0.27, 0.36);
-      const Ri = clamp((f17 ? 0.216 : 0.19) / tr, 0.4, 0.66);   // 15 in rims (17 in V-Series fronts), tall sidewalls
-      w.scale.set(tr, tr, width / 0.7);
+      if (!k) { st.kids.forEach(o => w.add(o)); w.scale.copy(st.scale); delete w.userData.rv; continue; }
+      const front = w.position.x > mid, tr0 = st.scale.x, stockW = st.scale.z * 0.7, d = c.drag, TT = DRAG_TIRE(d.size);
+      // rears: the real size (radius from how tall it is, width from the tread); fronts keep the skinny on the stock radius
+      const tr = front || !TT ? tr0 : TT.dia * 0.0127, f17 = front && dragRim(d.front).f17;
+      const width = front ? (f17 ? 0.14 : 0.12) : TT ? Math.max(0.24, TT.w / 1000 * 1.02) : clamp(stockW * 1.06, 0.27, 0.36);
+      const Ri = clamp((f17 ? 0.216 : TT && TT.id === 's345' ? 0.203 : 0.19) / tr, 0.4, 0.66);   // 15 in rims (17 in V-Series fronts, 16 in under the 34.5s), tall sidewalls
+      w.scale.set(tr, tr, width / 0.7); w.userData.rv = front ? 0 : tr;
       const hold = DRAGW.wheel(front ? d.front : d.rim, d.fin, front ? 'front' : k.tire, !front && d.bead, Ri, front ? k.fl : k.tl);
-      // left-side wheels face the other way; skinnies sit tucked in behind the fender
+      // left-side wheels face the other way; skinnies sit tucked in behind the fender; wide rears grow inward into the tubs
       if (w.position.z < 0) hold.rotation.y = Math.PI;
       if (front) hold.position.z = -Math.sign(w.position.z) * Math.max(0, (stockW - width) / 2 - 0.03) / (width / 0.7);
+      else if (width > stockW * 1.06) hold.position.z = -Math.sign(w.position.z) * (width - stockW * 1.06) / 2 / (width / 0.7);
       w.add(hold);
     }
     applyRims(m, c);
@@ -11808,8 +11894,19 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const c = S.car, rate = p.rate || 1, k = dragFix(c), d = c.drag, rows = [], set = (nd, msg) => { c.drag = nd; save(); dragRefresh(c); toast(msg, 'good'); };
     const need = 'Needs a drag pack first', P = dragPerf(c);
     for (const x of DRAG_PACKS) rows.push({ t: `${x.brand} ${x.name}`, s: `Stage ${x.stage} · ${x.tire === 'slick' ? 'slicks (most grip on prep, need heat, no tread for rain)' : 'drag radials (grip on prep, street-safe)'} on ${dragRim(x.rim).name}${x.bead ? ' beadlocks' : ''}${x.shocks ? ' · drag shocks' : ''}`, btn: k === x ? 'Installed' : money(x.price * rate), off: k === x,
-      act: () => { if (spend(x.price * rate, x.name)) set({ pack: x.id, rim: x.rim, front: x.rim, fin: x.fin, bead: x.bead && !!dragRim(x.rim).bead, susp: { shocks: x.shocks || !!(d && d.susp && d.susp.shocks), bars: x.bars || !!(d && d.susp && d.susp.bars), wbar: !!(d && d.susp && d.susp.wbar), ext: 1, comp: 1 } }, `${x.brand} drag pack on, rears aired down to 18 psi.`); if (dragPsi(c) > 18) c.tune = Object.assign({}, c.tune, { psiR: 18 }); } });
-    for (const r of DRAG_RIMS) rows.push({ t: `Rears: ${r.name} 15x10`, s: k ? (r.bead ? 'Beadlock version available' : 'No beadlock version') : need, btn: !k ? '—' : d.rim === r.id ? 'On the car' : money(r.price * rate), off: !k || d.rim === r.id,
+      act: () => { if (spend(x.price * rate, x.name)) set({ pack: x.id, rim: x.rim, front: x.rim, fin: x.fin, size: dragSizeFor(c, x), bead: x.bead && !!dragRim(x.rim).bead, susp: { shocks: x.shocks || !!(d && d.susp && d.susp.shocks), bars: x.bars || !!(d && d.susp && d.susp.bars), wbar: !!(d && d.susp && d.susp.wbar), ext: 1, comp: 1 } }, `${x.brand} drag pack on, rears aired down to 18 psi.`); if (dragPsi(c) > 18) c.tune = Object.assign({}, c.tune, { psiR: 18 }); } });
+    // rear tire size: wider hooks harder, taller gears it longer; the wheel wells decide what fits
+    if (k) {
+      const cur = DRAG_TIRE(d.size), sw = stockRearW(c);
+      for (const T of DRAG_TIRES.filter(t => t.kind === k.tire)) { const on = d.size === T.id, fits = tireFits(c, T), need = T.w <= tireFitW(c, 1) ? 1 : 2, gain = Math.round(((T.w / cur.w) ** 0.25 - 1) * 100);
+        rows.push({ t: `Rear tires: ${T.name} on 15x${T.rw}`, s: `${(T.w / 25.4).toFixed(1)} in of tread, ${T.dia.toFixed(1)} in tall · ${Math.round((T.w / sw - 1) * 100) >= 0 ? '+' : ''}${Math.round((T.w / sw - 1) * 100)}% wider than stock${on ? '' : ` · ${gain >= 0 ? '+' : ''}${gain}% grip vs what you run`}${T.dia > cur.dia + 0.4 ? ' · taller: longer gearing' : T.dia < cur.dia - 0.4 ? ' · shorter: quicker gearing' : ''}${fits ? '' : ` · needs ${TUBS[need][0].toLowerCase()}`}`,
+          btn: on ? 'On the car' : !fits ? 'Won\'t fit' : money(dragTirePrice(T) * rate), off: on || !fits,
+          act: () => { if (spend(dragTirePrice(T) * rate, T.name + ' rears')) set(Object.assign({}, d, { size: T.id }), `${T.name} ${k.tire === 'slick' ? 'slicks' : 'radials'} mounted on 15x${T.rw}s.`); } }); }
+    }
+    for (let i = 1; i < TUBS.length; i++) { const [n, pr, desc] = TUBS[i], have = tubsOf(c) >= i;
+      rows.push({ t: `Chassis: ${n}`, s: `${desc} · fits rears up to ${(tireFitW(c, i) / 25.4).toFixed(1)} in of tread (stock wells: ${(tireFitW(c, 0) / 25.4).toFixed(1)} in)`, btn: have ? 'Installed' : money(pr * rate), off: have,
+        act: () => { if (spend(pr * rate, n)) { c.tubs = i; save(); toast(`${n} done. Wider rears fit now.`, 'good'); } } }); }
+    for (const r of DRAG_RIMS) rows.push({ t: `Rears: ${r.name} 15x${k && DRAG_TIRE(d.size) ? DRAG_TIRE(d.size).rw : 10}`, s: k ? (r.bead ? 'Beadlock version available' : 'No beadlock version') : need, btn: !k ? '—' : d.rim === r.id ? 'On the car' : money(r.price * rate), off: !k || d.rim === r.id,
       act: () => { if (spend(r.price * rate, r.name + ' rears')) set(Object.assign({}, d, { rim: r.id, bead: d.bead && !!r.bead }), `${r.name} rears on.`); } });
     if (k) rows.push({ t: `Beadlocks: ${dragRim(d.rim).name} beadlock rings`, s: dragRim(d.rim).bead ? 'Clamps the slick to the rim so it can\'t spin on the bead at low pressure' : 'This wheel has no beadlock version', btn: d.bead ? 'Installed' : !dragRim(d.rim).bead ? '—' : money(900 * rate), off: d.bead || !dragRim(d.rim).bead,
       act: () => { if (spend(900 * rate, 'Beadlock rings')) set(Object.assign({}, d, { bead: true }), 'Beadlocks bolted on.'); } });
@@ -11834,7 +11931,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
         act: () => { const i = DRAG_PSI.indexOf(psi); c.tune = Object.assign({}, c.tune, { psiR: DRAG_PSI[(i + 1) % DRAG_PSI.length] }); save(); } });
       rows.push({ t: 'Pull the drag pack', s: 'Stock wheels and tires back on', btn: 'Swap back', act: () => set(null, 'Stock wheels back on.') });
     }
-    return { title: 'Drag packs', sub: k ? `${k.brand} ${k.tire === 'slick' ? 'slicks' : 'drag radials'} · ${dragPsi(c)} psi${d.susp.bars ? ' · traction bars' : ''}${d.susp.wbar ? ' · wheelie bars' : ''}. Grip comes from the tire, its heat and the load on it` : 'Skinnies up front, drag radials or slicks out back', rows };
+    return { title: 'Drag packs', sub: k ? `${k.brand} ${DRAG_TIRE(d.size).name} ${k.tire === 'slick' ? 'slicks' : 'drag radials'} · ${dragPsi(c)} psi${d.susp.bars ? ' · traction bars' : ''}${d.susp.wbar ? ' · wheelie bars' : ''}. Grip comes from the tire, its heat and the load on it` : 'Skinnies up front, drag radials or slicks out back', rows };
   };
   // a wall of drag wheels in the shop: a beadlock rear, a skinny and a slick, with the sign over them
   function dragWall(x, z) {
@@ -14022,7 +14119,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     const c = S.car; if (!c) return null;
     const b = {}, r = c.rims && FORGED.RIM(c.rims.id);
     if (r) b.r = r.wire ? [c.rims.id, c.rims.fin, c.rims.dia, tireOf(c)] : [c.rims.id, c.rims.fin, c.rims.dia];
-    if (c.drag && DRAG_PACKS.some(k => k.id === c.drag.pack)) { const d = c.drag; b.d = [d.pack, d.rim, d.front, d.fin, d.bead ? 1 : 0]; }
+    if (c.drag && DRAG_PACKS.some(k => k.id === c.drag.pack)) { const d = c.drag; b.d = [d.pack, d.rim, d.front, d.fin, d.bead ? 1 : 0, d.size || '']; }
     if (c.eng) b.e = c.eng;
     try { const T = tunePerf(c), rh = (T.rideF + T.rideR) / 2; if (Math.abs(rh) > 0.004) b.h = Math.round(rh * 1000) / 1000; } catch (e) {}
     return b;
@@ -14040,7 +14137,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   function cleanBuild(b) {
     const o = {}; if (!b || typeof b !== 'object') return o;
     if (Array.isArray(b.r) && FORGED.RIM(b.r[0]) && RIM_FIN[b.r[1]] && RIM_SIZES[b.r[2]]) { o.rims = { id: b.r[0], fin: b.r[1], dia: +b.r[2] }; if (RIM_TIRES[b.r[3]]) o.rims.tire = b.r[3]; }
-    if (Array.isArray(b.d) && DRAG_PACKS.some(k => k.id === b.d[0])) o.drag = { pack: b.d[0], rim: String(b.d[1]), front: String(b.d[2]), fin: String(b.d[3]), bead: !!b.d[4] };
+    if (Array.isArray(b.d) && DRAG_PACKS.some(k => k.id === b.d[0])) { o.drag = { pack: b.d[0], rim: String(b.d[1]), front: String(b.d[2]), fin: String(b.d[3]), bead: !!b.d[4] }; if (DRAG_TIRE(b.d[5])) o.drag.size = b.d[5]; }
     if (typeof b.e === 'string' && /^\w{1,32}$/.test(b.e)) o.eng = b.e;
     if (typeof b.h === 'number' && isFinite(b.h)) o.rh = clamp(b.h, -0.2, 0.2);
     return o;
