@@ -13978,7 +13978,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   const hXid = s => `x:${HNET.pid}:${s}${HNET.xn++}`;
   const hToNet = g => g === 'own' ? 'o:' + (S.uid || netMe().uid) : g;
   const hFromNet = g => S && g === 'o:' + S.uid ? 'own' : g;
-  const H_MODES = ['idle', 'aim', 'fight', 'cruise', 'hang', 'slide', 'flee', 'leave', 'ride', 'down'];
+  const H_MODES = ['idle', 'aim', 'fight', 'cruise', 'hang', 'slide', 'flee', 'leave', 'ride', 'down', 'war'];
   function hS() {
     const h = S.hood || (S.hood = {});
     h.set = h.set || null; h.own = h.own || null; h.respect = h.respect || 0; h.turf = h.turf || {}; h.beef = h.beef || {}; h.regs = h.regs || {};
@@ -14278,6 +14278,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   };
   function hShotAt(e, dmg) {
     const h = hS();
+    if (e.war && e.war.role !== 'def' && e.war.ev) e.war.ev.mad = true;
     if (e.own && e.own !== 'me') {
       if (e.kind === 'member' && e.gang) hBeef(e.gang, 20); else if (e.kind === 'reg') hRegBeef(e, dmg ? 30 : 15);
       if (dmg) hSay(e, hPick(HL.hit)); HNET.hits.push([e.id, Math.round(dmg), e.own]); return;
@@ -14297,7 +14298,9 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   function hHitAny(e, dmg) { if (e.own && e.own !== 'me') { if (hOn()) HNET.hits.push([e.id, Math.round(dmg), e.own]); return; } hClaim(e); hApplyHit(e, dmg, 'me'); }
   // down for everyone; the credit (respect, jobs, heat) goes to whoever dropped them
   function hDrop(e, by = 'me') {
-    if (e.down) return; e.down = true; e.dead = true; e.mode = 'down'; e.gd = 0; e.t = 0; e.inCar = false;
+    if (e.down) return;
+    if (e.wcar && e.inCar) { e.parked = { x: e.x, z: e.z, yaw: e.yaw }; e.x += Math.cos(e.yaw) * 1.9; e.z -= Math.sin(e.yaw) * 1.9; e.sp = 0; e.wo = 0; }
+    e.down = true; e.dead = true; e.mode = 'down'; e.gd = 0; e.t = 0; e.inCar = false;
     e.by = by === 'me' ? (hOn() ? NET.id : 'me') : by;
     if (by !== 'net' && hDeadMark(e) && hOn()) { const d = HNET.dead[e.id]; HNET.ddOut.push([e.id, d[0], d[1], d[2]]); }
     if (e.kind === 'member' && e.blk && e.blk.crew.every(m => m.down)) e.blk.down = hNow() + 240000;
@@ -14378,7 +14381,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   function hHomie(e, dt, mx, mz) {
     const d = Math.hypot(mx - e.x, mz - e.z);
     let tgt = null, td = 45;
-    for (const o of HOOD.ents) if (!o.gone && !o.down && !o.inCar && o.mode === 'fight' && o.kind !== 'homie') { const dd = Math.hypot(o.x - e.x, o.z - e.z); if (dd < td) { td = dd; tgt = o; } }
+    for (const o of HOOD.ents) if (!o.gone && !o.down && (!o.inCar || o.wcar) && (o.mode === 'fight' || (o.war && o.war.role !== 'def' && o.war.ev.def === hS().set)) && o.kind !== 'homie') { const dd = Math.hypot(o.x - e.x, o.z - e.z); if (dd < td) { td = dd; tgt = o; } }
     if (tgt) { e.gd = 1; hFace(e, tgt.x, tgt.z, dt); e.shotT -= dt; if (e.shotT <= 0) { e.shotT = 0.5 + Math.random() * 0.6; hHomieFire(e, tgt, td); } if (d > 10) hFootMove(e, mx, mz, dt, true); return; }
     e.gd = 0;
     if (hInCar()) { e.g.visible = false; e.x = mx; e.z = mz; return; }
@@ -14680,6 +14683,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     const h = hS();
     for (const k of Object.keys(h.beef)) h.beef[k] = Math.max(0, h.beef[k] - 8);
     for (const R of Object.values(h.regs)) if (!R.opp) R.heat = Math.max(0, R.heat - 10);
+    if (h.war) { for (const k of Object.keys(h.war.heat || {})) h.war.heat[k] = Math.max(0, h.war.heat[k] - 10); for (const id of Object.keys(h.turf)) if (HOOD_SETS[h.turf[id]] && h.turf[id] !== h.set && Math.random() < 0.2) delete h.turf[id]; }
     if (h.set && HOOD.ready) {
       const mine = HOOD.blocks.filter(b => hOwner(b) === h.set), lost = [];
       for (const b of mine) if (b.own0 && b.own0 !== h.set && Math.random() < 0.12) { delete h.turf[b.id]; lost.push(b.name); h.stats.lost++; }
@@ -14705,6 +14709,10 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       const g = HOOD_SETS[id], b = h.beef[id] || 0, rel = id === h.set ? 'Your set' : hHostile(id) ? (b >= 80 ? 'War' : 'Beef · shoots on sight') : b >= 25 ? 'Tension' : 'Cool';
       rows.push({ t: `${g.name} · ${counts[id] || 0} blocks`, s: `${rel} · ${g.boss}`, sw: g.color, btn: 'GPS', act: () => { let best = null, bd = 1e9; for (const bb of HOOD.blocks) if (hOwner(bb) === id) { const d = Math.hypot(bb.cx - mx, bb.cz - mz); if (d < bd) { bd = d; best = bb; } } if (best) { setPin(best.name, best.corner.x, best.corner.z); toast(`GPS: ${best.name} (${g.short})`, 'good'); } } });
     }
+    { const w = wS(), pairs = Object.entries(w.heat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      rows.push({ t: `Street wars: ${['Off', 'On', 'Heavy'][w.on]}`, s: 'Sets talk down each other\'s corners, walk up and slide on each other', btn: 'Change', act: () => { w.on = (w.on + 1) % 3; WAR.t = w.on === 2 ? 8 : 30; save(); toast(`Street wars: ${['off', 'on', 'heavy'][w.on]}.`); } });
+      if (pairs.length) rows.push({ t: 'Beef on the streets', s: pairs.map(([k, v]) => k.split('|').map(g => HOOD_SETS[g] ? HOOD_SETS[g].short : g).join(' vs ') + ` ${v}/100`).join(' · '), btn: 'OK', act: () => {} });
+      for (const n of w.log.slice(0, 4)) rows.push({ t: n.text, s: `🚨 Street news · ${Math.max(1, Math.round((Date.now() - n.t) / 60000))} min ago`, btn: 'OK', act: () => {} }); }
     const opps = Object.values(h.regs).filter(R => R.opp);
     if (opps.length) rows.push({ t: `Opps: ${opps.map(R => R.name).join(', ')}`, s: 'They pull up when they see you', btn: 'OK', act: () => {} });
     if (s) rows.push({ t: h.set === 'own' ? 'Shut your set down' : `Leave ${s.short}`, s: h.set === 'own' ? '' : 'They\'ll want smoke after', btn: 'Leave', act: hLeave });
@@ -14772,7 +14780,8 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     }
     const dx = r.x - e.x, dz = r.z - e.z, k = Math.min(1, dt * 8);
     if (dx * dx + dz * dz > 900) { e.x = r.x; e.z = r.z; e.yaw = r.yaw; } else { e.x += dx * k; e.z += dz * k; e.yaw += hNorm(r.yaw - e.yaw) * Math.min(1, dt * 8); }
-    e.inCar = r.inCar; e.sp = r.sp; e.gd = r.gd; e.ge = r.ge; e.hide = r.hide; e.parked = r.p; if (r.ab) { e.a = r.ab[0]; e.b = r.ab[1]; e.u = r.ab[2]; }
+    e.inCar = r.inCar; e.sp = r.sp; e.gd = r.gd; e.ge = r.ge; e.hide = r.hide; e.parked = r.p;
+    if (e.wcar) { const o = r.wo; e.wo = (e.wo || 0) + ((o ? o[0] / 100 : 0) - (e.wo || 0)) * Math.min(1, dt * 8); if (o) { e.wseat = o[1]; e.wy += hNorm(o[2] / 100 - e.wy) * Math.min(1, dt * 10); } } if (r.ab) { e.a = r.ab[0]; e.b = r.ab[1]; e.u = r.ab[2]; }
     if (!r.down && !e.down) e.mode = r.m;
     if (!e.inCar && !e.down && r.sp > 0.4) { e.walk += dt * r.sp * Math.PI * 2 / (r.sp > 4 ? 3.8 : 1.55); e.moving = r.sp > 4 ? 2 : 1; }
     if (r.down && !e.down) {
@@ -14790,6 +14799,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if (e.down && e.by) x.by = e.by;
     if (e.gd) x.ge = Math.round(clamp(e.ge || 0, -1, 1) * 100);
     if (e.id[0] === 'x') x.d = e.desc;
+    if (e.wcar && e.wo > 0.02) x.wo = [Math.round(e.wo * 100), e.wseat || 0, Math.round(hNorm(e.wy || 0) * 100)];
     const walk = !e.inCar && performance.now() - (e.mvT || 0) < 250 ? (e.mvR ? 6 : 2.2) : 0;
     return [e.id, Math.round(e.x * 10), Math.round(e.z * 10), Math.round(hNorm(e.yaw) * 100), Math.round((e.inCar ? e.sp : walk) * 10), Math.max(0, H_MODES.indexOf(e.mode)), (e.inCar ? 1 : 0) | (e.down ? 2 : 0) | (e.gd ? 4 : 0) | (e.kind === 'homie' && hInCar() ? 8 : 0), e.ct || 0, x];
   }
@@ -14801,6 +14811,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if ((m = /^r:(.+):(\d+)$/.exec(id))) return m[1] === HNET.seed && +m[2] < hRoutes().list.length ? hRegSched(+m[2]) : null;
     if ((m = /^h:(\d+):([\w-]+)$/.exec(id))) { const sp = hSpots().find(p => p.id === m[2]); return sp ? hRegHang(id, sp) : null; }
     if (id[0] !== 'x' || !d || typeof d !== 'object') return null;
+    if (d.k === 'wcar') { const g = typeof d.g === 'string' ? hFromNet(d.g) : ''; return HOOD_SETS[g] ? wCarEnt(id, g, d) : null; }
     if (d.k === 'reg') return typeof d.key === 'string' && d.key.length <= 40 ? hReg(d.key, { id, desc: d, mode: 'cruise', inCar: true }) : null;
     const gid = typeof d.g === 'string' ? hFromNet(d.g) : ''; if (!(HOOD_SETS[gid] || gid === 'own' || /^o:\w{1,24}$/.test(gid)) || (d.k !== 'member' && d.k !== 'homie')) return null;
     const B = hBase(gid, [0, 1, 2].includes(d.v) ? d.v : 0); if (!B) return null;
@@ -14819,7 +14830,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     e.own = p.id; e.ct = ct; e.seen = now;
     const P = Array.isArray(ext.p) && ext.p.length === 3 && ext.p.every(v => hNum(v, -3e5, 3e5)) ? { x: ext.p[0] / 10, z: ext.p[1] / 10, yaw: ext.p[2] / 100 } : null;
     const N = gpsGraph().nx.length, ab = ext.ab, AB = Array.isArray(ab) && ab.length === 3 && Number.isInteger(ab[0]) && Number.isInteger(ab[1]) && ab[0] >= 0 && ab[0] < N && ab[1] >= 0 && ab[1] < N && hNum(ab[2], 0, 1e5) ? [ab[0], ab[1], ab[2] / 10] : null;
-    e.rt = { x: X, z: Z, yaw: y100 / 100, sp: sp10 / 10, m: H_MODES[mi] || 'idle', inCar: !!(fl & 1), down: !!(fl & 2), gd: fl & 4 ? 1 : 0, hide: !!(fl & 8), ge: hNum(ext.ge, -100, 100) ? ext.ge / 100 : 0, p: P, ab: AB, by: typeof ext.by === 'string' && ext.by.length <= 16 ? ext.by : '' };
+    e.rt = { x: X, z: Z, yaw: y100 / 100, sp: sp10 / 10, m: H_MODES[mi] || 'idle', inCar: !!(fl & 1), down: !!(fl & 2), gd: fl & 4 ? 1 : 0, hide: !!(fl & 8), ge: hNum(ext.ge, -100, 100) ? ext.ge / 100 : 0, p: P, ab: AB, by: typeof ext.by === 'string' && ext.by.length <= 16 ? ext.by : '', wo: Array.isArray(ext.wo) && ext.wo.length === 3 && hNum(ext.wo[0], 0, 100) && (ext.wo[1] === 0 || ext.wo[1] === 2) && hNum(ext.wo[2], -400, 400) ? ext.wo : null };
   }
   function hShotOut(e, t, k) { if (hOn() && HNET.shots.length < 24) HNET.shots.push([e.id, Math.round(t.x * 10), Math.round(t.y * 10), Math.round(t.z * 10), k]); }
   function hShotIn(s) {
@@ -14830,7 +14841,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   function hHitIn(p, a) {
     if (!Array.isArray(a) || a[2] !== NET.id || !hNum(a[1], 0, 200)) return;
     const e = HOOD.byEnt.get(a[0]); if (!e || e.own !== 'me' || e.down) return;
-    hApplyHit(e, Math.min(80, a[1]), p.id);
+    hApplyHit(e, Math.min(80, a[1]), a[3] === 'w' ? 'war' : p.id);
   }
   function hTurfIn(list) {
     if (HNET.turfRoom !== NET.room) { HNET.turf = {}; HNET.turfRoom = NET.room; }
@@ -14891,6 +14902,325 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   // riding with one of the regulars: you're in their car, not walking next to it
   NET_HOOK.draw.push((p, v) => { if (p.hr) v.g.visible = false; });
 
+  // ==== street wars (begin) ====
+  // The sets don't wait on you. Rival crews come through and talk down each other's corners, walk up on them, and slide by
+  // in a car with somebody hanging out the window. Every shot is a real shot (tracers, hits, drops, bodies, the same as
+  // yours), people on the street call 911 and the police roll up and break it up, and the beef between two sets builds
+  // (whoever got hit last wants it back most). Online it's the same shootout for everybody: whoever's game started it
+  // runs it, like any other AI somebody is dealing with, and the street news goes out to the whole server.
+  const WAR = { ev: null, t: 45, seq: 0, out: [] };
+  const WL = {
+    talkA: ['yall on the wrong block', 'this {set} now, tell your homies', 'who yall think yall is', 'yall soft over here', 'heard yall was talkin', 'yall aint built like that', 'where yall big homie at?'],
+    talkD: ['you lost? this {set}', 'get off the block fr', 'say it again', 'yall wanna die over here?', 'walk away while you can', 'keep talkin', 'yall got the wrong one'],
+    calm: ['aight. we gon see', 'next time its smoke', 'yall lucky', 'its on sight after this'],
+    pop: ['its up', 'say less', 'run it then', 'thats what you wanted?'],
+    slide: ['spin the block!', 'its on sight', 'yall caught lackin', 'tell em who did it'],
+    back: ['get down!', 'its a slide!', 'they shootin!', 'shoot back!', 'spin back on em'],
+    won: ['and stay gone', 'thats what yall get', 'who next?', 'tell your homies'],
+    lost: ['we coming back', 'this aint over', 'fall back fall back'],
+    call: ['yeah 911, shots fired!', 'they shootin on the corner!', 'somebody call the police!', 'yeah 911? its a drive by'],
+  };
+  const W_CARS = ['#111114', '#18181c', '#26262b', '#2d2f33', '#3b0f12', '#0f1b2b'];
+  function wS() { const h = hS(), w = h.war || (h.war = {}); w.heat = w.heat || {}; w.log = w.log || []; if (w.on == null) w.on = 1; return w; }
+  const wKey = (a, b) => a < b ? a + '|' + b : b + '|' + a;
+  const wHeatOf = (a, b) => wS().heat[wKey(a, b)] || 0;
+  function wHeat(a, b, n) { if (!HOOD_SETS[a] || !HOOD_SETS[b] || a === b) return; const w = wS(), k = wKey(a, b); w.heat[k] = clamp(Math.round((w.heat[k] || 0) + n), 0, 100); }
+  const wShort = g => { const s = setOf(g); return s ? s.short : 'a set'; };
+  // what happened goes in the Hood app's street news, on Throttle sometimes, and out to everybody on the server
+  function wNews(text, x, z, fromNet) {
+    const w = wS(); if (w.log[0] && w.log[0].text === text) return;
+    w.log.unshift({ t: Date.now(), text }); w.log.length = Math.min(w.log.length, 12);
+    const [mx, mz] = hMe(); if (x != null && Math.hypot(x - mx, z - mz) < 450) toast('🚨 ' + text, 'bad');
+    if (typeof addGossip === 'function' && hRnd() < 0.4) try { addGossip({ kind: 'news', icon: '🚨', text }); } catch (er) {}
+    if (!fromNet && hOn() && WAR.out.length < 4) WAR.out.push([text.slice(0, 140), Math.round((x || 0) * 10), Math.round((z || 0) * 10)]);
+  }
+  // a car the set rides in, with a shooter who climbs up on the door (the hang-out poses) when it's time
+  function wCarEnt(id, gid, d) {
+    const B = hBase(gid, [0, 1, 2].includes(d.v) ? d.v : 0); if (!B) return null;
+    const carId = BUILT.includes(d.c) ? d.c : BUILT[0], color = /^#[0-9a-fA-F]{6}$/.test(d.col) ? d.col : '#18181c';
+    const e = hEnt({ id, desc: d, kind: 'member', gang: gid, blk: null, slider: true, wcar: true, name: nName(d.n, 'Shooter'), gunId: d.gn === 'arp' ? 'arp' : 'g19', inCar: true, mode: 'war', carId, color, wo: 0, wseat: 0, wy: 0, hp: 130 });
+    hDress(e, hClone(B)); hLabel(e); e.root0 = e.view.P.root.position.clone();
+    e.slot = lodCar(putCar(e.g, carId, color, m => { m.position.y = 0; e.model = m; try { applyMotor(m); } catch (er) {} }));
+    return e;
+  }
+  // a road spot ~60 m up one of the streets out of the corner's intersection (walk-ups come straight down the street)
+  function wStreetSpot(b, dist) {
+    const g = gpsGraph(), adj = (g.adj[b.node] || []).slice(); if (!adj.length) return null;
+    for (let k = 0; k < adj.length; k++) {
+      const n = adj[Math.floor(hRnd() * adj.length)][0], L = Math.hypot(g.nx[n] - g.nx[b.node], g.nz[n] - g.nz[b.node]); if (L < 25) continue;
+      const f = Math.min(dist, L - 4) / L, x = g.nx[b.node] + (g.nx[n] - g.nx[b.node]) * f, z = g.nz[b.node] + (g.nz[n] - g.nz[b.node]) * f;
+      if (!solids.at(x, z).some(o => x > o.x0 - 0.5 && x < o.x1 + 0.5 && z > o.z0 - 0.5 && z < o.z1 + 0.5)) return [x, z];
+    }
+    return null;
+  }
+  function wPickBlock(mx, mz) {
+    const out = [], peers = hOn() ? [...NET.peers.values()] : [];
+    for (const b of HOOD.blocks) {
+      if (!b.crew.length || hNow() < b.down || !hOwner(b)) continue;
+      const d = Math.hypot(b.corner.x - mx, b.corner.z - mz); if (d < 28 || d > 185) continue;
+      const up = b.crew.filter(m => !m.down && !m.gone); if (up.length < 2 || up.some(m => (m.own && m.own !== 'me') || m.mode !== 'idle' || m.war)) continue;
+      // two players by the same corner: the lowest id starts things there, so it only happens once
+      if (peers.some(p => p.id < NET.id && Math.hypot(p.x - b.corner.x, p.z - b.corner.z) < 260)) continue;
+      out.push(b);
+    }
+    return out.length ? hPick(out) : null;
+  }
+  function wPickAtk(def) {
+    const pool = (HOOD_SETS[def] ? HOOD_SETS[def].rivals : HOOD_IDS).filter(g => g !== def && HOOD_SETS[g]);
+    let best = null, bw = -1; for (const g of pool) { const w = 1 + wHeatOf(g, def) / 20 + hRnd() * 2; if (w > bw) { bw = w; best = g; } }
+    return best;
+  }
+  // start something on a corner near you: a talk-down, a walk-up, or a drive-by (hotter beef, more bullets)
+  function wStart(mx, mz, force) {
+    const b = force && force.b || wPickBlock(mx, mz); if (!b) return null;
+    const def = hOwner(b), atk = force && force.atk || wPickAtk(def); if (!atk || atk === def) return null;
+    const bases = [0, 1, 2].map(v => hBase(atk, v)); if (bases.some(x => !x)) return null;
+    const heat = HOOD_SETS[def] ? wHeatOf(atk, def) : 50, r = hRnd();
+    const kind = force && force.kind || (heat >= 60 ? (r < 0.55 ? 'slide' : r < 0.9 ? 'walk' : 'talk') : heat >= 25 ? (r < 0.4 ? 'slide' : r < 0.72 ? 'walk' : 'talk') : (r < 0.25 ? 'slide' : r < 0.45 ? 'walk' : 'talk'));
+    const ev = { id: ++WAR.seq, kind, b, atk, def, t: 0, ents: [], phase: 'in', x: b.corner.x, z: b.corner.z, shots: 0, called: false, hot: false, sayT: 0, lines: 0, d0: 0, a0: 0 };
+    if (kind === 'slide') {
+      const a = hRnd() * Math.PI * 2, name = H_NICKS[(hHash(atk) + WAR.seq * 7) % H_NICKS.length];
+      const d = { k: 'wcar', g: hToNet(atk), n: name, gn: hRnd() < 0.5 ? 'arp' : 'g19', v: WAR.seq % 3, c: BUILT[Math.floor(hRnd() * BUILT.length)], col: hRnd() < 0.35 ? hColor(atk) : hPick(W_CARS) };
+      const e = wCarEnt(hXid('w'), atk, d); if (!e) return null;
+      Object.assign(e, { own: 'me', ct: hNow(), war: { ev, role: 'car', t: 0, st: 0 }, want: 17, sp: 12, shotT: 0.4 });
+      let ok = false;
+      for (let k = 0; k < 4 && !ok; k++) { const aa = a + k * 1.6; if (!hPlaceOnRoad(e, b.corner.x + Math.cos(aa) * 300, b.corner.z + Math.sin(aa) * 300)) continue; const p = hRoute(e.b, b.node); if (p && p.length) { e.path = p; ok = true; } }
+      if (!ok) { hKill(e); return null; }
+      ev.ents.push(e);
+    } else {
+      const n = kind === 'talk' ? 1 + (hRnd() < 0.4 ? 1 : 0) : 2 + (hRnd() < 0.5 ? 1 : 0), sp = wStreetSpot(b, kind === 'talk' ? 45 : 70); if (!sp) return null;
+      for (let k = 0; k < n; k++) {
+        const x = sp[0] + (k % 2 ? 1.4 : -1.4) * Math.ceil(k / 2), z = sp[1] + k * 1.1, name = H_NICKS[(hHash(atk) + WAR.seq * 5 + k * 3) % H_NICKS.length], gunId = k === 0 && kind === 'walk' && hRnd() < 0.6 ? 'arp' : 'g19';
+        const e = hEnt({ id: hXid('s'), own: 'me', ct: hNow(), desc: { k: 'member', g: hToNet(atk), n: name, gn: gunId, v: k % 3 }, kind: 'member', gang: atk, blk: null, slider: true, name, x, z, hx: x, hz: z, mode: 'war', gunId, war: { ev, role: 'atk', t: 0, stop: 13 + hRnd() * 9 + k * 2, rd: 0.3 + hRnd() * 0.6 } });
+        hDress(e, hClone(bases[k % 3])); hLabel(e); ev.ents.push(e);
+      }
+    }
+    hClaim(b.crew[0]);   // the whole corner: we run them for everybody while it's going on
+    for (const m of b.crew) if (!m.down && !m.gone) { m.war = { ev, role: 'def', rd: 0.4 + hRnd() * 0.9 }; m.mode = 'war'; }
+    ev.d0 = b.crew.filter(m => m.down).length; WAR.ev = ev;
+    const h = hS();
+    if (h.set && h.set === def) toast(`${wShort(atk)} are coming through ${b.name}. That's your set's block.`, 'bad');
+    else if (h.set && h.set === atk) toast(`Your set is pulling up on ${b.name} (${wShort(def)}).`, 'good');
+    return ev;
+  }
+  // the 911 calls: somebody on the street picks up the phone, or ShotSpotter catches it
+  function wHeard(ev) {
+    if (ev.called || ev.shots < 2) return; ev.called = true;
+    const C = window.__cops; if (!C || !C.copReport) return;
+    let c = null; try { c = C.copWitnessCall(ev.x, ev.z, 'shots fired', 160, false, 0.6, { units: 2, pri: 2, npc: true, lines: WL.call }); } catch (er) {}
+    if (!c && hRnd() < 0.6) try { C.copReport(ev.x, ev.z, 'shots fired', { units: 2, pri: 2, npc: true, who: 'ShotSpotter picked up', delay: 14 + hRnd() * 10 }); } catch (er) {}
+  }
+  function wHit(t, dmg) {
+    if (t.down || t.gone) return;
+    if (t.own && t.own !== 'me') { if (hOn()) HNET.hits.push([t.id, Math.round(dmg), t.own, 'w']); return; }
+    hClaim(t); hApplyHit(t, dmg, 'war');
+  }
+  // one shot from e at a person (or a car), from o: same tracer/sound/blood as everybody's guns, and it goes online
+  const _wo = new THREE.Vector3(), _wsp = new THREE.Vector3();
+  function wShoot(e, tgt, o, ev) {
+    const G = window.__guns; if (!G || !G.pv) return;
+    const dist = Math.hypot(tgt.x - o.x, tgt.z - o.z);
+    if (tgt.me) { hFire(e, tgt.x, tgt.z, dist); ev.shots++; wHeard(ev); return; }
+    const ch = clamp(0.46 - dist * 0.011, 0.06, 0.4) * (e.inCar ? 0.55 : 1) * (tgt.inCar ? 0.7 : 1) * (tgt.wcar && tgt.sp > 8 ? 0.6 : 1);
+    const hit = Math.random() < ch, gy = tgt.gy || 0, k = hit ? (tgt.inCar ? 3 : 4) : 1;
+    const t = new THREE.Vector3(tgt.x + (hit ? 0 : (Math.random() - 0.5) * 3.2), (tgt.inCar ? 0.95 : gy + 1.15) + (hit ? 0 : (Math.random() - 0.5) * 1.4), tgt.z + (hit ? 0 : (Math.random() - 0.5) * 3.2));
+    try { G.pv.fxInit(); G.pv.pvPlay({ p: { view: e.view, gun: { id: e.gunId }, name: e.name }, o: o.clone(), h: t, k }); } catch (er) {}
+    hShotOut(e, t, k); ev.shots++; wHeard(ev);
+    const dmg = H_GUN_DMG[e.gunId] || 24;
+    if (hit) { if (tgt.inCar) { tgt.hits = (tgt.hits || 0) + 1; if (Math.random() < 0.35) wHit(tgt, dmg * 0.55); } else wHit(tgt, dmg * (Math.random() < 0.1 ? 2 : 0.85)); return; }
+    // strays: standing right where it went is a bad place to be
+    const [px, pz] = hMe(); if (!hInCar() && Math.hypot(t.x - px, t.z - pz) < 1.4 && G.pv.PV.down <= 0) try { G.pv.pvHurt({ name: e.name, x: o.x, z: o.z }, { pd: dmg * 0.6, hd: 0, x: o.x, z: o.z }); } catch (er) {}
+  }
+  function wNear(e, list, R) { let best = null, bd = R; for (const o of list) { if (!o || o.gone || o.down) continue; const d = Math.hypot(o.x - e.x, o.z - e.z); if (d < bd) { bd = d; best = o; } } return best; }
+  function wMove(e, tx, tz, dt, run) {
+    if (hFootMove(e, tx, tz, dt, run)) return true;
+    const dx = tx - e.x, dz = tz - e.z;   // walked into a wall: slide along it
+    return hFootMove(e, e.x + Math.sign(dx) * 2, e.z, dt, run) || hFootMove(e, e.x, e.z + Math.sign(dz) * 2, dt, run);
+  }
+  // somebody with a gun out shooting at tgt every so often, from their own hand
+  function wGun(e, tgt, dt, ev, rate) {
+    e.gd = 1; hFace(e, tgt.x, tgt.z, dt); const d = Math.hypot(tgt.x - e.x, tgt.z - e.z);
+    e.ge = clamp(((tgt.inCar ? 0.95 : 1.15) - 1.4) / Math.max(4, d), -0.5, 0.5);
+    e.shotT -= dt; if (e.shotT <= 0 && d < 62) { e.shotT = (e.gunId === 'arp' ? 0.22 : 0.45) * rate + Math.random() * 0.6; _wo.set(e.x, (e.gy || 0) + 1.4, e.z); wShoot(e, tgt, _wo, ev); }
+  }
+  const wMe = () => { const [x, z] = hMe(); return { me: true, x, z }; };
+  function wMeTarget(e, ev, R) {   // you: if you shot at them, or it's your set they came for
+    const [mx, mz] = hMe(), d = Math.hypot(mx - e.x, mz - e.z), G = window.__guns;
+    if (d > R || (G && G.pv && G.pv.PV.down > 0) || inside) return null;
+    return ev.mad || hS().set === ev.def ? wMe() : null;
+  }
+  function wCar(e, dt, ev, mx, mz, d) {
+    const w = e.war, dc = Math.hypot(e.x - ev.x, e.z - ev.z); w.t += dt;
+    if (ev.phase === 'in') { e.want = dc < 80 ? 7 : 17; if (dc < 46) { ev.phase = 'hot'; wAlarm(ev); hSay(e, hPick(WL.slide)); } }
+    if (ev.phase === 'hot' && w.st != null) {
+      w.st += dt; e.want = 5;
+      const tgt = wMeTarget(e, ev, 45) || wNear(e, ev.b.crew, 55);
+      if (tgt) {
+        const rx = Math.cos(e.yaw), rz = -Math.sin(e.yaw); e.wseat = (tgt.x - e.x) * rx + (tgt.z - e.z) * rz >= 0 ? 0 : 2;
+        e.wo = Math.min(1, e.wo + dt / 0.55);
+        wSpot(e, _wsp); e.wy = Math.atan2(-(tgt.x - _wsp.x), -(tgt.z - _wsp.z)); e.ge = clamp(((tgt.inCar ? 0.95 : 1.15) - (_wsp.y + 0.55)) / Math.max(4, Math.hypot(tgt.x - _wsp.x, tgt.z - _wsp.z)), -0.5, 0.5);
+        if (e.wo >= 1) { e.gd = 1; e.shotT -= dt; if (e.shotT <= 0) { e.shotT = (e.gunId === 'arp' ? 0.12 : 0.26) + Math.random() * 0.18; _wo.set(_wsp.x, _wsp.y + 0.55, _wsp.z); wShoot(e, tgt, _wo, ev); } }
+      }
+      if (w.st > 6.5 || (dc > 60 && w.st > 2) || (!tgt && w.st > 2.5) || e.hits > 14) { w.st = null; w.peel = true; }
+    }
+    if (w.peel || ev.phase === 'out') {
+      w.peel = true; e.want = 23; e.path = null; e.wo = Math.max(0, e.wo - dt / 0.5); if (e.wo < 0.5) e.gd = 0;
+      if ((dc > 240 && d > 200) || w.t > 95) { hKill(e); return; }
+    }
+    hDrive(e, dt, e.want);
+  }
+  function wAtk(e, dt, ev, mx, mz, d) {
+    const w = e.war, dc = Math.hypot(e.x - ev.x, e.z - ev.z); w.t += dt;
+    if (ev.phase === 'out') {   // done: run back up the street and gone
+      e.gd = 0; const k = Math.max(1, dc), tx = e.x + (e.x - ev.x) / k * 30, tz = e.z + (e.z - ev.z) / k * 30;
+      wMove(e, tx, tz, dt, true); if (dc > 110 || w.t > 90 || d > 240) hKill(e); return;
+    }
+    const me = wMeTarget(e, ev, 50);
+    if (me && ev.hot) { wGun(e, me, dt, ev, 1.2); if (d > 16) wMove(e, mx, mz, dt, true); return; }
+    if (ev.phase === 'in') {
+      e.gd = 0;
+      if (ev.kind === 'talk') { const m = wNear(e, ev.b.crew, 400); if (m) { if (Math.hypot(m.x - e.x, m.z - e.z) > 3.4) wMove(e, m.x, m.z, dt, false); else if (e === ev.ents[0]) { ev.phase = 'talk'; ev.sayT = 0.6; ev.dm = m; } else hFace(e, m.x, m.z, dt); } else ev.phase = 'out'; }
+      else { if (dc > w.stop && w.t < 30) wMove(e, ev.x, ev.z, dt, dc > 34); else { ev.phase = 'hot'; wAlarm(ev); hSay(e, hPick(HL.fight)); } }
+      return;
+    }
+    if (ev.phase === 'talk') { e.gd = 0; const m = ev.dm; if (m && !m.gone) hFace(e, m.x, m.z, dt); return; }
+    // hot: find somebody on that corner and let it go, stepping in closer if they're behind something
+    const tgt = wNear(e, ev.b.crew, 70);
+    if (tgt) { w.rd -= dt; if (w.rd <= 0) wGun(e, tgt, dt, ev, 1); else { e.gd = 1; hFace(e, tgt.x, tgt.z, dt); } if (dc > w.stop + 6) wMove(e, ev.x, ev.z, dt, true); }
+    else e.gd = 0;
+  }
+  function wDef(e, dt, ev, mx, mz, d) {
+    const w = e.war;
+    if (e.mode === 'fight') { e.war = null; return; }   // you shot at them: now it's you they want (hMember takes it from here)
+    if (ev.phase === 'out' || ev.phase === 'done') { e.gd = 0; if (Math.hypot(e.hx - e.x, e.hz - e.z) > 0.8) wMove(e, e.hx, e.hz, dt, false); return; }
+    if (!ev.hot) {   // nothing yet: posted up, watching whoever is walking up
+      e.gd = 0; const a = wNear(e, ev.ents, 40); if (a) hFace(e, a.x, a.z, dt);
+      if (ev.phase === 'talk' && ev.dm === e && ev.ents[0]) hFace(e, ev.ents[0].x, ev.ents[0].z, dt);
+      return;
+    }
+    const tgt = wNear(e, ev.ents, 75);
+    if (!tgt) { e.gd = 0; return; }
+    w.rd -= dt; if (w.rd > 0) { if (w.rd < 0.4) { e.gd = 1; hFace(e, tgt.x, tgt.z, dt); } return; }   // ducking first, then shooting back
+    wGun(e, tgt, dt, ev, 1.1);
+    // spread out a little off the corner instead of standing in a bunch
+    if (!w.cx) { const a = hRnd() * Math.PI * 2; w.cx = e.hx + Math.cos(a) * 4; w.cz = e.hz + Math.sin(a) * 4; }
+    if (Math.hypot(w.cx - e.x, w.cz - e.z) > 0.6) wMove(e, w.cx, w.cz, dt, true);
+  }
+  function wAlarm(ev) {
+    if (ev.hot) return; ev.hot = true; ev.phase = 'hot'; ev.t0 = ev.t;
+    const up = ev.b.crew.filter(m => !m.down && !m.gone); if (up.length) hSay(hPick(up), hPick(ev.kind === 'slide' ? WL.back : HL.fight));
+  }
+  function wBrain(e, dt, mx, mz, d) {
+    const w = e.war, ev = w.ev;
+    if (!ev || ev.done) { e.war = null; e.gd = 0; e.wo = 0; if (e.kind === 'member' && e.blk) e.mode = 'idle'; else hKill(e); return; }
+    if (w.role === 'car') wCar(e, dt, ev, mx, mz, d); else if (w.role === 'atk') wAtk(e, dt, ev, mx, mz, d); else wDef(e, dt, ev, mx, mz, d);
+  }
+  // the event itself: the talk, who's still up, how it ends, the police showing up
+  function wEnd(ev, why) {
+    if (ev.done) return; ev.done = true; ev.phase = 'done'; if (WAR.ev === ev) WAR.ev = null;
+    for (const m of ev.b.crew) if (m.war && m.war.ev === ev) { m.war = null; m.gd = 0; if (!m.down && m.mode !== 'fight') m.mode = 'idle'; }
+    for (const e of ev.ents) if (!e.gone && !e.down && why === 'far') hKill(e);
+  }
+  function wStep(dt) {
+    const ev = WAR.ev; if (!ev) return;
+    ev.t += dt;
+    const [mx, mz] = hMe();
+    if (Math.hypot(ev.x - mx, ev.z - mz) > 330 || !ev.b.crew.length) { wEnd(ev, 'far'); return; }
+    const atkUp = ev.ents.filter(e => !e.gone && !e.down), defUp = ev.b.crew.filter(m => !m.gone && !m.down && m.war && m.war.ev === ev);
+    const A = wShort(ev.atk), D = wShort(ev.def), B = ev.b.name;
+    if (ev.phase === 'talk') {
+      ev.sayT -= dt;
+      const a = ev.ents[0], m = ev.dm;
+      if (!a || a.gone || a.down || !m || m.gone || m.down) { ev.phase = 'out'; }
+      else if (ev.sayT <= 0) {
+        ev.sayT = 2.3 + hRnd() * 0.8;
+        if (ev.lines < 4 + (ev.id % 3)) { hSay(ev.lines % 2 ? m : a, hPick(ev.lines % 2 ? WL.talkD : WL.talkA)); ev.lines++; }
+        else {
+          const heat = HOOD_SETS[ev.def] ? wHeatOf(ev.atk, ev.def) : 40;
+          if (hRnd() < 0.3 + heat / 220) { hSay(a, hPick(WL.pop)); wAlarm(ev); for (const e of ev.ents) e.war.rd = 0.15; }
+          else { hSay(a, hPick(WL.calm)); wHeat(ev.atk, ev.def, 10); wNews(`${A} came through ${B} talking down ${D}. It's getting tense over there.`, ev.x, ev.z); ev.phase = 'out'; ev.quiet = true; }
+        }
+      }
+    }
+    if (ev.phase === 'hot') {
+      if (!defUp.length && atkUp.length) {
+        const dd = ev.b.crew.filter(m => m.down).length - ev.d0;
+        hSay(atkUp[0], hPick(WL.won)); wHeat(ev.atk, ev.def, 25);
+        let took = false;
+        if (ev.kind !== 'slide' && HOOD_SETS[ev.def] && ev.def !== hS().set && hRnd() < 0.45) { wFlip(ev.b, ev.atk); took = true; }
+        wNews(took ? `${A} ran down on ${B} and took the block from ${D}. ${dd} down.` : `${A} ${ev.kind === 'slide' ? 'slid on' : 'shot up'} ${B} (${D}). ${dd} down.`, ev.x, ev.z);
+        ev.phase = 'out';
+      } else if (!atkUp.length && (ev.kind !== 'slide' || ev.ents.some(e => e.down))) {
+        const ad = ev.ents.filter(e => e.down).length, dd = ev.b.crew.filter(m => m.down).length - ev.d0;
+        if (defUp[0]) hSay(defUp[0], hPick(WL.won)); wHeat(ev.atk, ev.def, 20);
+        wNews(`${D} held down ${B}. ${A} lost ${ad}${dd ? `, ${D} lost ${dd}` : ''}.`, ev.x, ev.z);
+        ev.phase = 'out';
+      } else if (ev.kind === 'slide' && ev.ents.every(e => e.gone || (e.war && e.war.peel)) && !ev.told) {
+        ev.told = true; const dd = ev.b.crew.filter(m => m.down).length - ev.d0; wHeat(ev.atk, ev.def, 20);
+        wNews(`Drive-by on ${B}: ${A} slid on ${D}${dd ? `, ${dd} down` : ', nobody hit'}.`, ev.x, ev.z); ev.phase = 'out';
+      } else if (ev.t - (ev.t0 || 0) > 55) { wNews(`Shootout at ${B} between ${A} and ${D}. Everybody scattered.`, ev.x, ev.z); ev.phase = 'out'; }
+      // the police roll up: everybody's gone
+      const C = window.__cops;
+      if (ev.phase === 'hot' && C && C.COP && ((C.COP.call && C.COP.call.on && Math.hypot(C.COP.call.x - ev.x, C.COP.call.z - ev.z) < 160) || C.COP.units.some(u => !u.gone && u.lights && Math.hypot(u.x - ev.x, u.z - ev.z) < 90))) {
+        wNews(`FWPD rolled up on the shootout at ${B}. ${A} and ${D} scattered.`, ev.x, ev.z); ev.phase = 'out';
+        for (const m of defUp) { m.war = null; m.gd = 0; m.mode = 'idle'; }
+      }
+    }
+    if (ev.phase === 'out') {
+      ev.outT = (ev.outT || 0) + dt;
+      if (ev.outT > 4) for (const m of ev.b.crew) if (m.war && m.war.ev === ev) { m.war = null; m.gd = 0; if (!m.down && m.mode !== 'fight') m.mode = 'idle'; }
+      if (ev.outT > 4 && ev.ents.every(e => e.gone || e.down)) wEnd(ev);
+      if (ev.outT > 100) { for (const e of ev.ents) if (!e.gone && !e.down) hKill(e); wEnd(ev); }
+    }
+  }
+  // a set that wins a walk-up holds the corner: the block is theirs (for the server online)
+  function wFlip(b, gid) {
+    const h = hS(), t = hNow();
+    if (hOn()) { HNET.turf[b.id] = [gid, t]; HNET.tfOut.push([b.id, gid, t]); } else { h.turf[b.id] = gid; h.turfAt[b.id] = t; }
+    b.down = t + 70000; if (BM.open) bmDirty();
+  }
+  function wTick(dt) {
+    const w = wS();
+    wStep(dt);
+    if (WAR.ev || !w.on) return;
+    WAR.t -= dt; if (WAR.t > 0) return;
+    WAR.t = w.on === 2 ? 25 + hRnd() * 30 : 60 + hRnd() * 70;
+    const G = window.__guns;
+    if ((G && G.pv && G.pv.PV.down > 0) || inside || ROLL.on || HOOD.hold || HOOD.ents.some(e => !e.gone && !e.down && (e.mode === 'fight' || e.mode === 'slide'))) { WAR.t = 15; return; }
+    const [mx, mz] = hMe(); if (!wStart(mx, mz)) WAR.t = 10;
+  }
+  // the shooter on the door: same climb-out and lean as a player hanging out of a window
+  function wDrawCar(e, dt, now) {
+    const P = e.view.P; if (!P) return; const H = window.__hang, G = window.__guns;
+    const k = e.inCar && !e.down ? (e.wo || 0) : 0;
+    if (k < 0.02 || !H || !H.hangLegs || !e.model) {
+      if (e.wg && H) H.hangGlass(e.wg, null);
+      if (e.wSet) { e.wSet = false; P.wrap.position.set(0, 0, 0); P.root.position.copy(e.root0); P.root.rotation.y = Math.PI; P.upper.rotation.set(0, 0, 0); for (const l of P.legs) l.rotation.set(0, 0, 0); if (P.knees) for (const l of [...P.knees, ...P.ankles]) l.rotation.set(0, 0, 0); }
+      if (e.inCar) P.wrap.visible = false; return;
+    }
+    const w = wSpot(e, _wsp); e.wSet = true; P.wrap.visible = true;
+    P.wrap.position.set(_wsp.x - e.x, 0, _wsp.z - e.z); P.wrap.rotation.y = e.wy;
+    P.upper.rotation.set(e.hux || 0, 0, 0); H.hangLegs(P, k); P.root.position.y += _wsp.y - 0.07;
+    H.hangGlass(e.wg || (e.wg = { glass: null }), k > 0.05 && w ? w.glass : null);
+    if (!e.gun) e.gun = hGun(e.gunId);
+    const ic = e.inCar; e.inCar = false; try { if (G && G.pv) G.pv.pvDrawGun(e, e.view, dt, now); } catch (er) {} e.inCar = ic;
+    e.hux = P.upper.rotation.x;
+    if (w) { H.hangHips(P, Math.PI, e.wy, H.hangOutYaw({ yaw: e.yaw }, w)); const s = Math.sign(w.z) || 1; H.hangRoll(P, Math.cos(e.yaw) * s, -Math.sin(e.yaw) * s, 0.45 * k); }
+  }
+  function wSpot(e, out) {
+    const H = window.__hang, R = { m: e.model, x: e.x, y: 0.12, z: e.z, yaw: e.yaw };
+    if (H && H.hangSpot && e.model) { const w = H.hangWin(e.model, e.wseat || 0); H.hangSpot(R, w, e.wo || 0, out); return w; }
+    const s = (e.wseat || 0) === 2 ? -1 : 1; out.set(e.x + Math.cos(e.yaw) * s * 0.9, 0.95, e.z - Math.sin(e.yaw) * s * 0.9); return null;
+  }
+  // the server's street news
+  NET_HOOK.state.push(() => WAR.out.length ? { hwn: WAR.out.splice(0, 4) } : {});
+  NET_HOOK.urgent.push(() => WAR.out.length > 0);
+  NET_HOOK.recv.push((p, m) => {
+    if (m.k !== 's' || !Array.isArray(m.hwn) || !S || !HOOD.ready) return;
+    for (const a of m.hwn.slice(0, 4)) if (Array.isArray(a) && typeof a[0] === 'string' && hNum(a[1], -3e5, 3e5) && hNum(a[2], -3e5, 3e5)) wNews(nText(a[0]).slice(0, 140), a[1] / 10, a[2] / 10, true);
+  });
+  // ==== street wars (end) ====
+
   // ---------- every frame in the world (riding on stepStreet) ----------
   function hoodTick(dt) {
     if (!S || !DATA || !worldOn) return;
@@ -14919,12 +15249,13 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       const d = Math.hypot(e.x - mx, e.z - mz);
       if (e.own && e.own !== 'me' && !e.down) hRemote(e, dt, now);   // another player is running this one
       else if (e.down) { if (e.own && e.own !== 'me') hRemote(e, dt, now); e.t += dt; e.deadAt = now; if (e.t > 50 || d > 360) { hKill(e); continue; } }
+      else if (e.war) wBrain(e, dt, mx, mz, d);
       else if (e.kind === 'member') { hMember(e, dt, mx, mz, d, aiming && d < 40); if (!e.own && e.mode !== 'idle') hClaim(e); }
       else if (e.kind === 'homie') hHomie(e, dt, mx, mz);
       else if (!e.own && e.mode === 'cruise' && e.sn != null) hRegAmbient(e, dt, mx, mz, d);
       else { hRegBrain(e, dt, mx, mz, d); if (!e.own && !/cruise|hang/.test(e.mode)) hClaim(e); }
       if (e.gone) continue;
-      if (e.kind === 'member' && e.slider && !e.down && d > 260) { hKill(e); continue; }
+      if (e.kind === 'member' && e.slider && !e.down && d > (e.wcar ? 520 : 260)) { hKill(e); continue; }
       // a hold-it-down job is done once the sliders are dropped
       const vis = d < (e.inCar ? 420 : 170); e.g.visible = vis && !e.hide && !(e.kind === 'homie' && e.own === 'me' && hInCar());
       if (!e.g.visible) continue;
@@ -14943,11 +15274,12 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
           else { P.wrap.rotation.x = e.down ? -Math.PI / 2 : 0; P.wrap.position.y = e.down ? 0.12 : 0; }
         }
       }
+      if (e.wcar) wDrawCar(e, dt, now);
       if (e.label) { const on = d < 34 && !e.down; e.label.visible = on; if (on) { e.label.position.set(0, e.inCar ? 2.3 : 2.25, 0); const k = 0.032; e.label.scale.set(k * e.label.userData.aspect, k, 1); } }
       if (e.bub) { e.bubT -= dt; if (e.bubT <= 0 || d > 70) { e.g.remove(e.bub); e.bub.material.map.dispose(); e.bub.material.dispose(); e.bub = null; } else { e.bub.position.set(0, e.inCar ? 2.75 : 2.62, 0); const k = 0.04; e.bub.scale.set(k * e.bub.userData.aspect, k, 1); } }
       if (HOOD.ambT <= 0 && e.kind === 'reg' && !e.opp && d < 45 && Math.random() < 0.3) { HOOD.ambT = 14 + Math.random() * 16; hSay(e, hPick(RL.amb)); }
       // who you can talk to: on foot right next to them, or pulled up beside them in your car
-      if (!e.down && e.kind !== 'homie' && e.mode !== 'fight' && e.mode !== 'slide' && !HOOD.ride) {
+      if (!e.down && e.kind !== 'homie' && e.mode !== 'fight' && e.mode !== 'slide' && e.mode !== 'war' && !HOOD.ride) {
         const carMe = hInCar(); if (carMe ? (e.kind === 'reg' && Math.abs(drv.v) < 6 && Math.abs(e.sp) < 6) : !e.inCar || e.kind === 'reg') if (d < nd) { nd = d; near = e; }
       }
     }
@@ -14957,11 +15289,12 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if (h.job && h.job.kind === 'hold' && h.job.live && !HOOD.ents.some(e => e.slider && !e.down && e.own === 'me')) { h.job.live = false; hJobDone(); }
     HOOD.near = (foot.on || hInCar()) ? near : null;
     hHoldStep(dt, mx, mz);
+    wTick(dt);
     if ((frame & 3) === 0 || HOOD.ride || HOOD.near !== HOOD.pillNear || HOOD.hold) { HOOD.pillNear = HOOD.near; hPill(); }
   }
   const _hStepStreet = stepStreet;
   stepStreet = function (t) { _hStepStreet.apply(this, arguments); const n = performance.now(), dt = Math.min(0.05, (n - (HOOD.last || n)) / 1000); HOOD.last = n; try { hoodTick(dt); } catch (er) { if (!HOOD.err) { HOOD.err = 1; console.error('hood', er); } } };
-  window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire, HNET, hClaim, hSched, hRoutes, hNow, hDeadIn, hDeadList, hDrop };
+  window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire, HNET, hClaim, hSched, hRoutes, hNow, hDeadIn, hDeadList, hDrop, WAR, wS, wStart, wStep, wTick, wEnd, wHeat, wNews };
 
   // ---------- your homes online: one owner per house on a server, inviting people over, knocking on doors ----------
   // Deeds are the 2D game's (supabase/rfg_servers.sql, js/net/deeds.js): on a server, a house or lot a real player
@@ -18486,10 +18819,10 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function copReport(x, z, why, o = {}) {
     if (COP.phase === 'chase') return null;
     const at = cNow() + (o.delay != null ? o.delay : 12), units = o.units || 1, pri = o.pri || 0;
-    if (COP.call && Math.hypot(COP.call.x - x, COP.call.z - z) < 150) { COP.call.units = Math.max(COP.call.units, units); return COP.call; }
+    if (COP.call && Math.hypot(COP.call.x - x, COP.call.z - z) < 150) { COP.call.units = Math.max(COP.call.units, units); if (!o.npc) COP.call.npc = false; return COP.call; }
     const old = COP.calls.find(c => Math.hypot(c.x - x, c.z - z) < 150);
-    if (old) { old.at = Math.min(old.at, at); old.units = Math.max(old.units, units); if (pri > old.pri) { old.why = why; old.pri = pri; old.who = o.who || old.who; } return old; }
-    const c = { x, z, why, at, units, pri, who: o.who || '911 caller reports', street: copStreet(x, z) };
+    if (old) { old.at = Math.min(old.at, at); old.units = Math.max(old.units, units); if (!o.npc) old.npc = false; if (pri > old.pri) { old.why = why; old.pri = pri; old.who = o.who || old.who; } return old; }
+    const c = { x, z, why, at, units, pri, who: o.who || '911 caller reports', street: copStreet(x, z), npc: !!o.npc };
     COP.calls.push(c); return c;
   }
   // somebody saw it (or heard it): most people duck first, then call. Nobody around, nobody calls.
@@ -18708,7 +19041,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     } else if (COP.phase === 'search' && COP.call) {
       const c = COP.call; c.t += dt; COP.chaseT = (COP.chaseT || 0) + dt;
       copRespond(c.x, c.z, c.units);
-      if (seen && (armed || Math.hypot(mx - c.x, mz - c.z) < 80 || (S.heat || 0) >= 2)) { if (!((S.heat || 0) >= 1)) copHeat(1); copChase('Suspect matches the caller\'s description.'); }
+      if (seen && (armed || (!c.npc && Math.hypot(mx - c.x, mz - c.z) < 80) || (S.heat || 0) >= 2)) { if (!((S.heat || 0) >= 1)) copHeat(1); copChase('Suspect matches the caller\'s description.'); }
       else {
         if (COP.units.some(u => u.mode === 'chase' && Math.hypot(u.x - c.x, u.z - c.z) < 70)) { if (!c.on) { c.on = true; copSay(`Dispatch: units on scene, ${c.street}.`); } COP.unseenT += dt; }
         if (COP.unseenT > 22 || c.t > 120) copEnd('cleared');
@@ -22413,6 +22746,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   window.__map = { HUDX: { HUDX, hudOpt, hudSet, hudxFrame, hudDiag }, PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
+    snap(cx, cy, cz, tx, ty, tz) { camera.position.set(cx, cy, cz); camera.lookAt(tx, ty, tz); renderer.render(scene, camera); return renderer.domElement.toDataURL('image/jpeg', 0.88); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, buckets: buckets.size, dt: DOWNTOWN }; },
     places() { return DATA.P; }, enter(id) { enterInterior(DATA.P.find(p => p.id === id || p.type === id)); }, use(name) { const st = IN.stations.find(s => s.name.startsWith(name)); if (st) { IN.pos.set(st.x, 0, st.z); IN.near = st; showPrompt(st); if (st.menu) openMenu(st.menu); } return IN.stations.map(s => s.name); }, click(i) { document.querySelectorAll('#menu [data-i]')[i].click(); }, get S() { return S; }, leave: () => leaveInterior(), card: () => [cardMode, cardPlace && cardPlace.name], showCard, getOut, getIn, foot, openCreator, CR, closeCreator, street: () => [STREET.key, CROWD.length, STREET.list.map(q => q.P.wrap.position.toArray().map(Math.round))], people: () => (IN.people || []).map(q => [q.kind, !!q.P]), openMenu, MENUS, get ME() { return ME; }, newCar, storeCar, takeOut, deliverCar, phoneApp, openPhone, hustlePay, sleep, get car() { return car; }, setPanels, RADIO, get IN() { return IN; },
@@ -23885,7 +24219,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     hangHips(v.P, Math.PI, v.P.wrap.rotation.y, hangOutYaw(hg.R, hg.w));
     const s = Math.sign(hg.w.z) || 1; hangRoll(v.P, Math.cos(hg.R.yaw) * s, -Math.sin(hg.R.yaw) * s, 0.45 * smooth01(hg.k));
   }
-  window.__hang = { HANG, hangToggle, hangReset, hangRide, hangWin, hangFollow, active: () => HANG.k > 0 };
+  window.__hang = { HANG, hangToggle, hangReset, hangRide, hangWin, hangFollow, hangSpot, hangLegs, hangHips, hangRoll, hangGlass, hangOutYaw, active: () => HANG.k > 0 };
   // ==== hang out (end) ====
   const _T = _v(), _T2 = _v(), _m4 = new THREE.Matrix4();
   function stepGuns(dt) {
