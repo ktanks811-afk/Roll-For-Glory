@@ -1586,7 +1586,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     },
     engine(p) { if (!S.car) return noCar(p);
       const c = S.car, rate = p.rate || 1;
-      return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: [{ t: 'Parts counter', s: `Real brands, stages 1-4: internals, turbos, blowers, intake, exhaust, fuel, tunes, nitrous, trans and more · ${Object.keys(c.parts || {}).length} on your car`, btn: 'Open', act: () => { closeMenu(); openParts(p); } }].concat(nosRefillRow(p), motorRows(p)) };
+      return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: (PRO_SHOPS[p.id] ? [{ t: `Pro tuner: ${PRO_SHOPS[p.id].who}`, s: 'Pay for a custom dyno tune, or drop it off and have them build the engine. Every job comes out different', btn: 'Open', act: () => openMenu(() => MENUS.protune(p)) }] : []).concat([{ t: 'Parts counter', s: `Real brands, stages 1-4: internals, turbos, blowers, intake, exhaust, fuel, tunes, nitrous, trans and more · ${Object.keys(c.parts || {}).length} on your car`, btn: 'Open', act: () => { closeMenu(); openParts(p); } }]).concat(nosRefillRow(p), motorRows(p)) };
     },
     dyno(p) { if (!S.car) return noCar(p); const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
     paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: (c.id === 'ford_mustang_gt_2019' ? FORD_PAINTS.map(([n, h]) => ['Ford ' + n, h]) : c.id === 'chevrolet_nova_1972' ? NOVA_PAINTS.map(([n, h]) => ['Chevy ' + n, h]) : c.id === 'dodge_challenger_rt_scat_pack_widebody_2019' ? DODGE_PAINTS.map(([n, h]) => ['Dodge ' + n, h]) : c.id === 'mercedes_amg_g63_2019' ? MB_PAINTS.map(([n, h]) => ['Mercedes ' + n, h]) : c.id === 'mercedes_maybach_gls600_2021' ? MAYBACH_PAINTS.map(([n, h]) => ['Maybach ' + n, h]) : c.id === 'bmw_m5_g90_2025' ? BMW_PAINTS.map(([n, h]) => ['BMW ' + n, h]) : c.id === 'jeep_grand_cherokee_trackhawk_2018' ? JEEP_PAINTS.map(([n, h]) => ['Jeep ' + n, h]) : []).concat(PAINTS).map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; c.matte = BMW_MATTE.has(hex); if (car) car.userData.body.color.copy(lin(hex)); dragRefresh(c); toast(c.matte ? `${n}. Satin, no shine.` : `${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) { c.tint = true; dragRefresh(c); } } }], lookRows(c, rate)) }; },
@@ -3974,6 +3974,7 @@ uniform mat3 normalMatrix;
       counter(W / 2 - 6, 2.5, W / 2 - 1, 3.3, '#3a3d44'); station('Service desk', W / 2 - 3.5, 4.4, () => p.type === 'perf' ? MENUS.engine(p) : p.type === 'visual' ? MENUS.paint(p) : p.type === 'rims' ? MENUS.rims(p) : p.type === 'chop' ? MENUS.chop(p) : MENUS.repair(p));
       if (p.type === 'repair') station('Engine bay', -W / 2 + 2.2, 4, () => MENUS.engine(p));
       if (p.type === 'repair' || p.type === 'perf') station('Parts counter', 0, -D / 2 + 2.4, () => { openParts(p); return null; });
+      if (PRO_SHOPS[p.id]) { desk(-3.5, 3.2); chair(-3.5, 2.2); station('Pro tuner: ' + PRO_SHOPS[p.id].who.split(' ')[0], -3.5, 4.6, () => MENUS.protune(p)); }   // Phase 5: tunes and drop-off engine builds
       if (p.type === 'repair' || p.type === 'perf') { rbox(W / 2 - 8.6, 0, 2.6, W / 2 - 7.2, 1.05, 3.4, '#2a2a2e'); station('Tuning laptop', W / 2 - 7.9, 4.3, () => { openTune(p); return null; }); }
       if (p.type === 'repair' || p.type === 'perf') { subWall(-W / 2 + 0.2, -6.6); station('Car audio', -W / 2 + 2.2, -5.6, () => MENUS.audio(p)); }
       if (p.type === 'repair' || p.type === 'perf') { dragWall(W / 2, -3.5); station('Drag packs', W / 2 - 2, -3.5, () => MENUS.drag(p)); }
@@ -9345,7 +9346,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       nrK: (I.runner || 1) * it.nr, kin: it.kin + (I.kin || 0) - (b.intake === 'hirpm' ? 0.006 : 0), kex: (exB ? ex0.kex + exB.kex : ex0.kex) + hd.kex + pipeK,
       hb: hd.hb, nh: hd.nh || 1, hdrK, red: D.red + (Cr.red || 0) + Math.max(D.vt === 'ohv' ? (H.springs || 0) * 200 : 0, Sp.red ? Sp.red * (D.vt === 'ohv' ? 1 : 0.6) : 0) + (Ro.red || 0), forged: !!(D.forged || Pi.forged), oct: (FUEL_OCT[fuel] || 0) + (Pl.knA || 0) * 0.4, ign: !!Ig.ign, rodK: Ro.rodK || 0, billet: !!Cr.billet,
       fuelHp: engFuelHp(D, b, fuel) };
-    X.hw = null; X.ecu = b.ecu || null; X.lam0 = power ? 0.8 : 0.87; X.vvt = ecuHasVvt(D) && !!(X.ecu && X.ecu.vvt);   // factory WOT mixture: boosted engines run richer
+    X.hw = null; X.bq = b.bq || null; X.ecu = b.ecu || null; X.lam0 = power ? 0.8 : 0.87; X.vvt = ecuHasVvt(D) && !!(X.ecu && X.ecu.vvt);   // factory WOT mixture: boosted engines run richer
     return X;
   }
   // what the fuel system can feed (crank hp): injectors at 80% duty, pump flow, on gas (E85 needs ~30% more fuel)
@@ -9567,8 +9568,8 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const eta = (1 - Math.pow(X.cr, -0.26)) * (1 - Math.min(0.35, kn * 0.045));
     // the ECU's spark and fuel maps (Phase 4C) against the factory map
     let ek = 1; if (X.ecu) { const sp = ecuSpark(X, n, crK, lim, kn); ek = sp.k; if (out) out.ecu = sp; } else if (out) out.ecu = null;
-    const ti = cal.C * X.disp * ve * dens * eta * ek * (X.ign && n > 4500 ? 1 + (X.power ? 0.012 : 0.005) * Math.min(1, (n - 4500) / 1500) : 1);
-    const fr = X.disp * (0.62 + 0.09 * n / 1000 + 0.028 * (n / 1000) ** 2) * 100 / (4 * Math.PI) * 0.6 * 1.0;   // friction and pumping (FMEP, Heywood-style)
+    const ti = cal.C * X.disp * ve * dens * eta * ek * (X.bq ? X.bq.k : 1) * (X.ign && n > 4500 ? 1 + (X.power ? 0.012 : 0.005) * Math.min(1, (n - 4500) / 1500) : 1);
+    const fr = X.disp * (0.62 + 0.09 * n / 1000 + 0.028 * (n / 1000) ** 2) * 100 / (4 * Math.PI) * 0.6 * (X.bq ? X.bq.fr : 1);   // (Phase 5 pro builds: how the shop's machine work came out)   // friction and pumping (FMEP, Heywood-style)
     if (out) { out.psi = fi ? fi.psi : 0; out.kn = kn; out.ve = ve; out.fi = fi; }
     return ti - fr - drive - pump;
   }
@@ -11117,7 +11118,8 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const forged = R ? !!R.X.forged : false, crank = R ? b.crank && b.crank !== 'stock' : false;
     const H = R ? R.fiH : null, psi = R ? R.psi || 0 : 0;
     const pk = k => R ? partOpt(b, k) : {};   // Phase 5A cooling, oiling, rods, clutch parts
-    DMG.ctx = { c, R, V, tq0, p0, float: R ? R.red : (V ? V.red : 6500), sPist: forged ? 1.9 : 1.4, sGask: 1.6, sBrg: (crank ? 2.3 : 1.7) + (R ? R.X.rodK || 0 : 0), sTr: 1.6,
+    const bqD = (b.bq && b.bq.dur) || 1;   // a pro build's machine work: tight clearances take more abuse, a loose one less
+    DMG.ctx = { c, R, V, tq0, p0, float: R ? R.red : (V ? V.red : 6500), sPist: (forged ? 1.9 : 1.4) * bqD, sGask: 1.6 * bqD, sBrg: ((crank ? 2.3 : 1.7) + (R ? R.X.rodK || 0 : 0)) * bqD, sTr: 1.6,
       coolK: pk('cool').coolK || 1, fanK: pk('cool').fanK || 1, oilK: pk('oil').oilK || 1, oilT: pk('oil').oilT || 0, tcK: pk('tcool').tcK || 1, clK: pk('clutch').clK || 1,
       H, bShare: H ? 1 - 1 / (1 + psi / 14.7) : 0, conv: !(V && (V.tt === 'man' || V.tt === 'dct')), dct: !!(V && V.tt === 'dct'),
       legK: R && R.ecuKe > 0.05 ? R.ecuKe * (R.ecuKs ? 0.03 : 0.2) : 0 };
@@ -13152,6 +13154,274 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     line(p => p.hp0, '#888', true); line(p => p.tq0, '#888', true); line(p => p.hp, '#5aa0ff'); line(p => p.tq, '#5aa0ff');
     g.setLineDash([]); g.fillStyle = '#8a8394'; g.fillText(`hp / lb-ft · ${Math.round(R.hp)} hp (factory map ${Math.round(R0.hp)})`, pad + 4, 16);
   }
+
+  // ---------- Phase 5: pro tune shops. Pay a professional to tune the car on their dyno, or drop it off and have them build the
+  // engine. Every tuner has their own skill, style and price, and no two jobs come out the same: a tune lands a little
+  // short of the knock limit or a hair past it, a build's machine work comes out tight or loose (power, friction and how
+  // much abuse the bottom end takes). Everything they do goes through the same engine model, ECU maps and parts as the
+  // Engine Lab, the ECU screen and the catalog, so you can open their work up and see it ----------
+  // sk = skill (0-1: how close a tune lands to what's in the motor, how tight the machine work is), sd = how much one
+  // job differs from the next on top of skill, lab = labor rate against the shop's area, kit = the power adder an all-out
+  // build gets on a motor with none, brands = the parts they buy
+  const PRO_SHOPS = {
+    torque_temple: { who: 'Rosa Vega', sk: 0.83, style: 'street', lab: 1, tune: 650, kit: 'centri', brands: ['Texas Speed', 'Trick Flow', 'Comp Cams', 'Kooks', 'Wiseco', 'Manley', 'Injector Dynamics', 'Aeromotive'], line: 'Stop Six born. Clean street tunes that hold up.' },
+    big_d_customs: { who: 'Dre Vega', sk: 0.86, style: 'drag', lab: 1.1, tune: 800, kit: 'roots', brands: ['Brodix', 'Brian Tooley Racing', 'Callies', 'JE', 'Carrillo', 'Fuel Injector Clinic', 'Aeromotive', 'American Racing Headers'], line: 'Drag cars. Launch control, low-gear boost, quick 60 fts.' },
+    north_star_perf: { who: 'Tee Mosley', sk: 0.9, style: 'safe', lab: 1.15, tune: 900, kit: 'twinscrew', brands: ['Mast Motorsports', 'Katech', 'Callies', 'Mahle', 'Oliver', 'Bosch EV14', 'Fuelab', 'Kooks'], line: 'Track motors. Leaves a little in it, never blows one up.' },
+    frisco_perf: { who: 'Jaylen Ross', sk: 0.94, style: 'e85', lab: 1.4, tune: 1400, kit: 'turbo', brands: ['Total Engine Airflow', 'Cam Motion', 'Bryant', 'CP-Carrillo', 'Carrillo', 'Injector Dynamics', 'Fuelab', 'Kooks'], line: 'The best in DFW, and priced like it. Flex fuel and big turbos.' },
+    ed_perf: { who: 'Quan Tran', sk: 0.9, style: 'boost', lab: 1.05, tune: 950, kit: 'turbo1', brands: ['Total Engine Airflow', 'Brian Tooley Racing', 'Manley', 'CP-Carrillo', 'Carrillo', 'Injector Dynamics', 'DeatschWerks', 'Texas Speed'], line: 'Boost tunes. Turns the turbos up as far as they go safe.' },
+    weatherford_perf: { who: 'Marcus Hale', sk: 0.7, style: 'old', lab: 0.75, tune: 450, kit: 'roots', brands: ['Edelbrock', 'Lunati', 'Crane', 'Eagle', 'Scat', 'Holley', 'Walbro / TI Automotive', 'Hooker'], line: 'Old-school carb guy. Cheap, and every motor comes out different.' },
+    mineral_wells_perf: { who: 'Ray Dunn', sk: 0.56, style: 'wild', lab: 0.6, tune: 350, kit: 'turbo1', brands: ['ETP', 'Elgin', 'Howards', 'Icon', 'K1', 'Eagle', 'Siemens Deka', 'Speed Engineering'], line: 'Cheapest in Texas. Sometimes it\'s a monster, sometimes it\'s a grenade.' },
+    atl_perf: { who: 'Kel Brooks', sk: 0.81, style: 'aggr', lab: 1, tune: 750, kit: 'twinscrew', brands: ['AFR', 'Comp Cams', 'Callies', 'Diamond', 'Manley', 'Fuel Injector Clinic', 'Aeromotive', 'Kooks'], line: 'Hellcats and LS swaps. Tunes them right to the edge.' },
+    la_perf: { who: 'Nori Sato', sk: 0.91, style: 'rpm', lab: 1.25, tune: 1100, kit: 'turbo1', brands: ['Kaase', 'Cam Motion', 'Bryant', 'CP-Carrillo', 'Carrillo', 'Injector Dynamics', 'Bosch Motorsport', 'Kooks'], line: 'High-rpm builds. Cam phasing, revs and a clean top end.' },
+    mia_perf: { who: 'Rafa Ortiz', sk: 0.79, style: 'aggr', lab: 1.05, tune: 800, kit: 'centri', brands: ['Frankenstein', 'Lunati', 'Eagle', 'Wiseco', 'Molnar', 'DeatschWerks', 'Aeromotive', 'Stainless Works'], line: 'Coyote swaps and nitrous. Tunes hot.' },
+    co_perf: { who: 'Dez Archuleta', sk: 0.85, style: 'boost', lab: 1.05, tune: 850, kit: 'turbo', brands: ['Livernois', 'Brian Tooley Racing', 'Manley', 'Mahle', 'Manley', 'Bosch EV14', 'Fuelab', 'Texas Speed'], line: 'Turbo cars at altitude. Knows boost.' },
+    deep_ellum_motor: { who: 'Lil Ant', sk: 0.66, style: 'street', lab: 0.9, tune: 500, kit: 'centri', brands: ['Texas Speed', 'Edelbrock', 'Comp Cams', 'BBK', 'Icon', 'Eagle', 'DeatschWerks', 'Hooker'], line: 'The tuner in the back of a full-service shop. Fair, a little hit or miss.' },
+  };
+  // how each style tunes: degrees short of the limit (m), mixture against best power (lam), how much one tune differs from
+  // the next (sd), how often it takes a risk (risk), psi a turbo gets turned up (psi), pedal, launch control and shift points
+  const PRO_STYLE = {
+    safe: { name: 'Safe and smooth', m: 1.6, lam: 0.02, sd: 0.7, risk: 0, psi: 1, ped: 'stock', lc: 0, up: 0 },
+    street: { name: 'Street', m: 1.0, lam: 0.01, sd: 1, risk: 0.15, psi: 2, ped: 'sport', lc: 1, up: 0 },
+    drag: { name: 'Drag', m: 0.6, lam: 0, sd: 1, risk: 0.3, psi: 2.5, ped: 'race', lc: 1, up: 1, gear: 1 },
+    aggr: { name: 'Right to the edge', m: 0.15, lam: -0.005, sd: 1.1, risk: 0.55, psi: 3.5, ped: 'sport', lc: 1, up: 1 },
+    rpm: { name: 'High rpm', m: 0.7, lam: 0, sd: 0.9, risk: 0.3, psi: 2, ped: 'sport', lc: 1, up: 1, vvt: 1 },
+    boost: { name: 'Boost', m: 0.8, lam: -0.005, sd: 0.9, risk: 0.3, psi: 4, ped: 'sport', lc: 1, up: 1, gear: 1 },
+    e85: { name: 'Flex fuel', m: 0.6, lam: 0, sd: 0.9, risk: 0.2, psi: 3.5, ped: 'sport', lc: 1, up: 1, vvt: 1, gear: 1 },
+    old: { name: 'Old school', m: 1.4, lam: 0.025, sd: 1.4, risk: 0.3, psi: 1, ped: 'sport', lc: 0, up: 0 },
+    wild: { name: 'Send it', m: 0.1, lam: -0.01, sd: 1.5, risk: 0.9, psi: 5, ped: 'race', lc: 1, up: 1 },
+    canned: { name: 'Canned', m: 1.8, lam: 0.02, sd: 0, risk: 0, psi: 0, ped: 'sport', lc: 0, up: 0 },
+    ideal: { name: 'Ideal', m: 0, lam: 0, sd: 0, risk: 0, psi: 0, ped: 'stock', lc: 0, up: 0, vvt: 1 },
+  };
+  // the engine builds you can drop the car off for: labor hours, real minutes it takes (or ready the next day), parts level
+  const PRO_PKG = {
+    fresh: { name: 'Fresh rebuild', lv: 0, hrs: 16, min: 6, blurb: 'Torn down, machined, balanced, new bearings, rings and gaskets. Your same parts, built by them.' },
+    street: { name: 'Street build', lv: 1, hrs: 24, min: 10, blurb: 'Ported heads, a street cam, springs, intake, headers, exhaust and fuel, then tuned.' },
+    strip: { name: 'Strip build', lv: 2, hrs: 36, min: 16, blurb: 'Forged bottom end, CNC heads, a bigger cam, more fuel, ignition, cooling, a stall or clutch, then tuned.' },
+    allout: { name: 'All-out build', lv: 3, hrs: 52, min: 25, blurb: 'Stroker, race heads, the biggest cam it can live with, a power adder, the whole fuel system, then tuned.' },
+  };
+  const PRO_HOLD = new Set(['pistons', 'rods', 'crank', 'springs', 'plugs', 'ign', 'cool', 'oil', 'tcool', 'conv', 'clutch', 'cats']);
+  const PRO = { jobs: () => S.proJobs || (S.proJobs = []), last: null, plan: null, told: {} };
+  const proGz = () => { let u = 0; while (!u) u = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random()); };
+  const proFirst = P => P.who.split(' ')[0];
+  const proStars = sk => '★★★★★'.slice(0, Math.max(1, Math.round((sk - 0.45) / 0.1))) + '☆☆☆☆☆'.slice(0, 5 - Math.max(1, Math.round((sk - 0.45) / 0.1)));
+  const proRate = p => (p && p.rate) || 1;
+  // why the shop can't touch this car ('' if it can)
+  function proNo(c) {
+    if (!c) return 'No car'; if (isEV(c)) return 'Electric: nothing to tune or build in the motor.';
+    if (c.swap) return 'Crate motor: it comes tuned from the Engine Build page.'; if (!engDefOf(c)) return 'No engine they can work on in this one.'; return '';
+  }
+
+  // ---- the tune: the tuner's own spark and fuel maps, limiter, launch, pedal, shifts, boost and cam phasing ----
+  // From the engine model they find where best torque (MBT) and the knock limit sit at each rpm on this fuel, put the map
+  // short of that by their safety margin, and miss it by their skill (one bias for the whole tune plus a little per cell).
+  // A factory map already at the knock limit (boosted motors on pump gas) stays where it is: nobody pulls timing to be safe
+  function proTuneMake(c, P, styleK, fiForce) {
+    const D = engDefOf(c), ST = PRO_STYLE[styleK || P.style], ideal = styleK === 'ideal', canned = styleK === 'canned';
+    const sk = ideal || canned ? 1 : P.sk, sdK = ideal || canned ? 0 : Math.max(0.08, (1 - sk) * ST.sd), R0 = engOf(c), m = carOf(c.id), notes = [];
+    const e = ecuFull(c), boosted = !!(R0.fiH || R0.X.power), turbo = R0.fiH && R0.fiH.kind === 'turbo';
+    // boost first (it moves the knock limit): a turbo gets turned up until the turbo or the fuel says no
+    let fiT = fiForce || null; const f = (R0.b && R0.b.fi) || {};
+    if (turbo && ST.psi && !canned && !fiForce) {
+      const base = R0.fiH.target, want = Math.max(0, ST.psi * (0.6 + 0.4 * sk) + proGz() * sdK * 1.5), warn0 = R0.warn.length;
+      for (let d = Math.round(want * 2) / 2; d > 0.4; d -= 1) {
+        const b = Object.assign({}, engBuild(c, D)); b.fi = Object.assign({}, f, { target: base + d }); const R = engModel(D, b, engFuel(c));
+        if (R.warn.length <= warn0 || (ST.risk && Math.random() < ST.risk * (1 - sk) * 0.5)) { fiT = base + d; break; }
+      }
+      if (fiT) notes.push(`Turned the turbo${R0.fiH.n > 1 ? 's' : ''} up ${(fiT - base).toFixed(1)} psi (${fiPsi(fiT)}).`);
+    }
+    const probe = (lam, vvt) => { const keep = c.eb; c.eb = Object.assign({}, c.eb || {}); if (fiT) c.eb.fi = Object.assign({}, f, { target: fiT }); const R = ecuProbe(c, D, ECU_N.map(() => 0), lam, 1, vvt); c.eb = keep; return R; };
+    // mixture: best power near lambda 0.87 NA, richer on boost (cooler charge, safer), their style, their miss
+    const lamB = (boosted ? 0.8 : 0.87) + ST.lam, lb = proGz() * 0.02 * sdK, lam = ECU_N.map(() => Math.round(clamp(lamB + lb + proGz() * 0.01 * sdK, 0.72, 0.95) * 100) / 100);
+    // cam phasers: the good ones sweep them on the dyno, the rest guess
+    let vvt = [0, 0];
+    if (ecuHasVvt(D) && !canned) {
+      if (ST.vvt || sk >= 0.85) { const hp = v => probe(lam, v).hp; let best = hp(vvt);
+        for (const i of [0, 1]) for (const d of [-6, -3, 3, 6]) { const v = vvt.slice(); v[i] = d; const h = hp(v); if (h > best + 0.5) { best = h; vvt = v; } }
+        if (vvt[0] || vvt[1]) notes.push(`Swept the cam phasers: ${ecuDeg(vvt[0])} low, ${ecuDeg(vvt[1])} up top.`);
+      } else if (sdK > 0.15) vvt = [Math.round(proGz() * 3), Math.round(proGz() * 3)];
+    }
+    const Rp = probe(lam, vvt), T = Rp.ecuT, red = Rp.red, bias = proGz() * 1.7 * sdK;
+    const tm = ECU_N.map(n => {
+      const x = T[Math.min(T.length - 1, Math.round(Math.min(n, red) / 100))]; if (!x) return 0;
+      const opt = Math.min(x.mbt, x.kl), aim = opt <= 0 ? opt - 0.3 : Math.max(0, opt - ST.m);
+      return clamp(Math.round((aim + bias + proGz() * 0.8 * sdK) * 2) / 2, -12, 15);
+    });
+    let ks = 1; if (styleK === undefined && P.style === 'wild' && Math.random() < 0.25) { ks = 0; notes.push(`${proFirst(P)} unplugged the knock sensors "so it stops pulling timing".`); }
+    // the limiter: the springs say where it floats; a risky tuner runs it past that
+    let rev = null; if (!ideal && !canned && ST.risk && Math.random() < ST.risk * (1 - sk) * 1.2) { rev = Math.round((red + 200 + Math.random() * 300) / 100) * 100; notes.push(`Raised the limiter to ${rev.toLocaleString()} rpm, past where the valve springs are good.`); }
+    // launch control, launch retard on a turbo, pedal, shift points, boost in the low gears
+    const awd = m.drive === 'AWD', V = vehOf(c, partsKg(c));
+    let lc = e.lc, lcRet = e.lcRet;
+    if (ST.lc) { lc = Math.round(((awd ? (turbo ? 3800 : 3000) : turbo ? 3200 : boosted ? 1800 : m.drive === 'FWD' ? 2600 : 2300) + proGz() * 250 * sdK) / 100) * 100; lcRet = turbo && ST.gear ? 8 : 0; notes.push(`Launch control at ${lc.toLocaleString()} rpm${lcRet ? `, ${lcRet}° retard on the 2-step to build boost` : ''}.`); }
+    const up = ST.up && V.tt !== 'man' ? Math.round(Math.min(red * 0.985, Rp.nP * 1.12) / 100) * 100 : e.up;
+    let bst = e.bst; if (ST.gear && turbo && f.bc && !awd) { const t0 = fiT || R0.fiH.target; bst = [Math.round(t0 * 0.6 * 2) / 2, Math.round(t0 * 0.82 * 2) / 2]; notes.push(`Less boost in 1st and 2nd (${fiPsi(bst[0])}, ${fiPsi(bst[1])}) so it hooks.`); }
+    const ecu = Object.assign({}, e, { tm, lam, ks, rev, lc, lcRet, idle: 0, ped: ideal ? e.ped : ST.ped, up, bst, vvt });
+    return { ecu, fiT, notes, bias };
+  }
+  // put a tune on a car (the tuner's flash unlocks the ECU)
+  function proTuneApply(c, t) {
+    if (!hasPart(c, 'ecu')) c.tparts = (c.tparts || []).concat('ecu');
+    c.eb = Object.assign({}, c.eb || {}, { ecu: t.ecu }); if (t.fiT) c.eb.fi = Object.assign({}, c.eb.fi || {}, { target: t.fiT });
+    VEH_CACHE.clear();
+  }
+  // a car's crank hp for a tune without keeping it
+  function proHpWith(c, t) { const keep = { eb: c.eb, tp: c.tparts }; proTuneApply(c, t); const R = engOf(c), hp = carHp(c), ke = R ? R.ecuKe : 0, ks = R ? R.ecuKs : 1; c.eb = keep.eb; c.tparts = keep.tp; VEH_CACHE.clear(); return { hp, ke, ks }; }
+  // the job: before and after on their dyno (and a street quarter mile), how close it came to all that's in it, what they said
+  function proTuneJob(c, P, p, canned) {
+    const before = carHp(c), et0 = (tuneRun(c, c.tune || {}, {}) || {}).et;
+    const t = proTuneMake(c, P, canned ? 'canned' : undefined), id = proHpWith(c, proTuneMake(c, P, 'ideal', t.fiT)).hp;
+    const fac = (() => { const keep = c.eb; const k = Object.assign({}, c.eb || {}); delete k.ecu; c.eb = k; VEH_CACHE.clear(); const h = carHp(c); c.eb = keep; VEH_CACHE.clear(); return h; })();
+    proTuneApply(c, t); const R = engOf(c), hp = carHp(c), r = tuneRun(c, c.tune || {}, {}) || {};
+    const q = id - fac > 3 ? clamp((hp - fac) / (id - fac), 0, 1.1) : hp >= id - 2 ? 1 : 0.9;
+    if (R.ecuKe > 0.05) t.notes.unshift(R.ecuKs ? `Leaned on it a little hard: the knock sensors pull up to ${R.ecuPull ? R.ecuPull.toFixed(1) : (R.ecuKe + 3).toFixed(1)}° back out.` : `It's detonating (${R.ecuKe.toFixed(1)}° past the limit) with no knock sensors. That eats pistons.`);
+    else if (t.bias < -0.9) t.notes.unshift(`${canned ? 'The canned file' : proFirst(P)} left some timing on the table to keep it safe.`);
+    else if (q >= 0.97) t.notes.unshift(`Dialed: that's about all it has on ${FUELS[engFuel(c)] ? FUELS[engFuel(c)].label : 'this fuel'}.`);
+    const grade = q >= 0.98 ? 'A+' : q >= 0.94 ? 'A' : q >= 0.88 ? 'B' : q >= 0.78 ? 'C' : 'D';
+    const res = { kind: canned ? 'Canned tune' : 'Custom dyno tune', shop: p.name, who: canned ? 'off-the-shelf file' : P.who, day: S.day, before, hp, ideal: id, fac, q, grade, et0, et: r.et, trap: r.trap, notes: t.notes, knock: R.ecuKe > 0.05 };
+    c.proTune = { shop: p.name, who: res.who, day: S.day, hp, grade, canned: !!canned };
+    PRO.last = res; save(); refreshStats(); return res;
+  }
+
+  // ---- the engine build: the parts they put in, their machine work, and their tune on top ----
+  // their parts list for this motor at this level: real parts that fit (the Engine Lab's rules), brands they buy, never a
+  // downgrade of something better you already have. Each plan comes out a little different (which grind, which brand)
+  function proPlan(c, P, pk, noPow) {
+    const D = engDefOf(c), lv = PRO_PKG[pk].lv, cur = Object.assign({}, ENG_STOCK_BUILD, engHubBuild(c, D), c.eb || {}), eb = JSON.parse(JSON.stringify(c.eb || {}));
+    delete eb.bq; delete eb.ecu; delete cur.ecu; delete cur.bq; eb.sku = Object.assign({}, eb.sku || {}); const b = Object.assign({}, cur, eb), got = [];
+    const hasP = !!D.power || (b.power && b.power !== 'stock'), addKit = lv >= 3 && !hasP && !noPow, boost = hasP || addKit, V = vehOf(c, partsKg(c)), man = V.tt === 'man' || V.tt === 'dct';
+    const priceOf = (cat, id, sk) => { const s = sk && PC_BY.get(sk); return s ? s.price : cat === 'cam' ? (CAMS[id] || {}).price || 0 : ((ENG_PARTS[cat] || { opts: {} }).opts[id] || {}).price || 0; };
+    const pickSku = (cat, id, f) => { const all = PC.filter(s => s.cat === cat && s.base === id && (!f || f(s))); if (!all.length) return null; const fav = all.filter(s => P.brands.includes(s.brand)), L = fav.length ? fav : all; return L[Math.floor(Math.random() * L.length)].id; };
+    const put = (cat, id, f) => {
+      if (!id) return; const curId = b[cat], curSk = b.sku && b.sku[cat], sk = cat === 'cam' && id !== 'cat' ? null : pickSku(cat, id, f);
+      if (curId && curId !== 'stock' && priceOf(cat, curId, curSk) >= priceOf(cat, id, sk) && !(cat === 'pistons' && boost && curId === 'forged')) return;   // already better
+      for (const s of sk ? [sk, null] : [null]) { const t = Object.assign({}, b, { [cat]: id, sku: Object.assign({}, b.sku, { [cat]: s || undefined }) }); if (!s) delete t.sku[cat]; if (engFits(D, t, cat, id)) continue;
+        // a pro doesn't bolt on what loses power (smaller injectors than the factory ones, a pump that can't keep up); the
+        // strength, cooling and drivetrain parts go in for what they hold, not for power
+        if (!PRO_HOLD.has(cat) && engModel(D, t, fuelB).hp < hpOf(b) * 0.995) continue;
+        b[cat] = eb[cat] = id; if (s) b.sku[cat] = eb.sku[cat] = s; else { delete b.sku[cat]; delete eb.sku[cat]; } got.push(cat); return; }
+    };
+    const fuelB = engFuel(c), hpOf = x => engModel(D, x, fuelB).hp;
+    if (lv >= 2) { put('pistons', boost ? 'boost' : 'forged', s => boost ? s.o.cr <= -1 && s.o.cr >= -2 : s.o.cr > 0 && s.o.cr <= 1); put('rods', 'forged'); put('crank', lv >= 3 ? 'stroker' : 'forged'); if (!b.crank || b.crank === 'stock') put('crank', 'forged'); }
+    if (lv >= 1) { put('heads', ['', 'ported', 'cnc', 'race'][lv]); put('springs', 'up'); }
+    if (lv >= 1) {   // the grind: a stage for the level, milder on boost, a touch different every time
+      const lo = [0, 12, 20, 28][lv] - (boost ? 6 : 0) + (P.style === 'rpm' || P.style === 'drag' ? 4 : 0), hi = lo + 8;
+      put('cam', 'cat', s => s.o.d[0] >= lo && s.o.d[0] <= hi); if (b.cam === 'stock') put('cam', ['', 'mild', 's1', 's2'][lv]);
+    }
+    if (noPow) {} else if (addKit) put('power', P.kit); else if (lv >= 3 || (lv >= 2 && (P.style === 'boost' || P.style === 'aggr' || P.style === 'wild'))) { if (D.power && D.power.kind === 'turbo') put('power', 'tune'); else if (hasP) put('power', 'pulley'); }
+    if (lv >= 1 && !(boost && b.power !== 'stock' && (ENG_PARTS.power.opts[b.power] || {}).kit && (ENG_PARTS.power.opts[b.power].kit.kind === 'roots' || ENG_PARTS.power.opts[b.power].kit.kind === 'twinscrew'))) put('intake', lv >= 2 ? 'hirpm' : 'ported'), b.intake === 'stock' && put('intake', 'ported');
+    if (lv >= 2) put('tb', lv >= 3 ? 'huge' : 'big');
+    if (lv >= 1) put('hdr', D.hdr === 'turbo' ? 'downpipe' : 'longtube');
+    if (lv >= 1) put('exh', lv >= 3 && (P.style === 'drag' || P.style === 'wild') ? 'straight' : 'xpipe');
+    if (lv >= 2) put('cats', lv >= 3 && P.style !== 'safe' ? 'off' : 'hfc');
+    if (lv >= 1) { put('inj', ['', 'i60', 'i80', 'i120'][lv]); put('pump', ['', 'p340', 'p450', 'dual'][lv]); }
+    if (lv >= 2) { put('ign', 'coils'); put('plugs', 'cold'); put('cool', 'up'); put('oil', 'up'); put(man ? 'clutch' : 'conv', man ? 'up' : 'stall'); }
+    if (lv >= 3) put('tcool', 'up');
+    if (eb.power && eb.power !== cur.power) { delete eb.psi; delete eb.dpsi; delete eb.fi; }
+    const e85 = lv >= 3 && P.style === 'e85' && !hasPart(c, 'e85');
+    const parts = labPrice(D, cur, eb), labor = Math.round(PRO_PKG[pk].hrs * PLABOR * P.lab / 5) * 5, tparts = e85 ? TUNE_PARTS.e85.price : 0;
+    // what the shop expects it to make: their parts with average machine work and their usual tune
+    const tmp = Object.assign({}, c, { eb: Object.assign({}, eb), tparts: (c.tparts || []).concat('ecu', e85 ? ['e85'] : []), tune: Object.assign({}, c.tune || {}, e85 ? { fuel: 'e85' } : {}) });
+    VEH_CACHE.clear(); const tt = proTuneMake(tmp, P, 'ideal'); tmp.eb.ecu = tt.ecu; if (tt.fiT) tmp.eb.fi = Object.assign({}, tmp.eb.fi || {}, { target: tt.fiT }); const est = carHp(tmp); VEH_CACHE.clear();
+    // a power adder the motor can't use (a direct-injected motor runs out of fuel on boost): they build it without one
+    if (!noPow && got.includes('power')) { const alt = proPlan(c, P, pk, true); if (alt.est >= est) return alt; }
+    return { pk, shopId: null, eb, got, e85, parts, labor, tparts, price: parts + labor + tparts, est, names: got.map(k => partOpt(b, k).name || (k === 'cam' ? (CAMS[b.cam] || {}).name : k)) };
+  }
+  // their machine work on this one: a good shop is tight and repeatable; a bad one varies, now and then a lemon or a gem.
+  // k scales combustion work (ring seal, port match, deck and squish), fr the friction (bearing and piston clearances, how
+  // it was honed), dur how much cylinder pressure the bottom end and gaskets take before they wear ~
+  function proRoll(P, lv) {
+    const sk = P.sk, sd = 0.006 + (1 - sk) * 0.05, r = Math.random();
+    let k = 1 + (sk - 0.78) * 0.06 + proGz() * sd, fr = 1 - (sk - 0.78) * 0.06 + proGz() * sd * 0.8, dur = 1 + (sk - 0.78) * 0.6 + proGz() * (1 - sk) * 0.4, tag = '';
+    if (r < (1 - sk) * 0.2) { k -= 0.025 + 0.03 * Math.random(); fr += 0.03; dur *= 0.72; tag = 'lemon'; }
+    else if (r > 1 - sk * 0.09) { k += 0.02 + 0.02 * Math.random(); fr -= 0.02; dur *= 1.08; tag = 'gem'; }
+    return { k: Math.round(clamp(k, 0.9, 1.07) * 1000) / 1000, fr: Math.round(clamp(fr, 0.9, 1.12) * 1000) / 1000, dur: Math.round(clamp(dur, 0.55, 1.3) * 100) / 100, tag };
+  }
+  // drop it off: the car stays at the shop until it's done (or the next day)
+  function proDrop(p, P, plan, rush) {
+    const c = S.car; if (!c) return; const price = Math.round(plan.price * (rush ? 1.5 : 1));
+    if (!spend(price, `${PRO_PKG[plan.pk].name} at ${p.name}`)) return;
+    const mins = PRO_PKG[plan.pk].min * (rush ? 0.4 : 1) * (0.85 + Math.random() * 0.3);
+    const pl = Object.assign({}, plan); delete pl.car;
+    PRO.jobs().push({ shop: p.id, pk: plan.pk, car: c, plan: pl, roll: proRoll(P, PRO_PKG[plan.pk].lv), at: Date.now(), ready: Date.now() + mins * 60000, day: S.day, paid: price, hp0: carHp(c) });
+    S.car = null; foot.park = null; if (car) car.visible = false; PRO.plan = null;
+    toast(`${proFirst(P)} has your ${carOf(c.id).model}. Ready in about ${Math.round(mins)} min, or tomorrow.`, 'good'); save(); refreshStats();
+  }
+  const proReady = j => Date.now() >= j.ready || S.day > j.day;
+  const proLeft = j => Math.max(1, Math.round((j.ready - Date.now()) / 60000));
+  // finish the job: their parts, their machine work, their tune; fresh internals
+  function proFinish(j) {
+    const c = j.car, P = PRO_SHOPS[j.shop], pl = j.plan, D = engDefOf(c);
+    c.eb = Object.assign({}, pl.eb, { bq: { k: j.roll.k, fr: j.roll.fr, dur: j.roll.dur } });
+    if (pl.e85) { if (!hasPart(c, 'e85')) c.tparts = (c.tparts || []).concat('e85'); c.tune = Object.assign({}, c.tune || {}, { fuel: 'e85' }); }
+    VEH_CACHE.clear(); const t = proTuneMake(c, P); proTuneApply(c, t);
+    const w = wrOf(c); for (const k of ['pist', 'valv', 'gask', 'brg']) w[k] = 100; if (pl.got.includes('power')) w.fi = 100; c.cond.engine = 100; c.oil = 100; c.engT = 25;
+    const R = engOf(c), hp = carHp(c), b0 = Object.assign({}, R.b); delete b0.bq; const nom = Math.round(engModel(D, b0, engFuel(c)).hp * (hp / Math.max(1, R.hp)));
+    const d = hp / Math.max(1, nom) - 1, grade = d > 0.025 ? 'A+' : d > 0.01 ? 'A' : d > -0.01 ? 'B' : d > -0.03 ? 'C' : 'D';
+    const notes = t.notes.slice();
+    notes.unshift(j.roll.tag === 'gem' ? 'Everything lined up on this one: rings sealed, ports matched, it\'s strong.' : j.roll.tag === 'lemon' ? 'Something\'s off: it\'s down on power and the bottom end won\'t take much abuse.' : j.roll.dur >= 1.08 ? 'Tight, clean machine work. The bottom end will take a beating.' : j.roll.dur <= 0.88 ? 'Loose clearances. It runs, but don\'t lean on it too hard.' : 'Built straight. Nothing special, nothing wrong.');
+    if (R.ecuKe > 0.05) notes.push(`The tune knocks a little: the sensors pull up to ${(R.ecuKe + 3).toFixed(1)}° back out.`);
+    c.proBuild = { shop: (DATA.P.find(q => q.id === j.shop) || {}).name || j.shop, who: P.who, pk: j.pk, day: S.day, hp, est: pl.est, grade, k: j.roll.k, dur: j.roll.dur, tag: j.roll.tag };
+    c.proTune = { shop: c.proBuild.shop, who: P.who, day: S.day, hp, grade: '-', canned: false };
+    return { kind: PRO_PKG[j.pk].name, shop: c.proBuild.shop, who: P.who, before: j.hp0, hp, est: pl.est, nom, grade, dur: j.roll.dur, notes, names: pl.names };
+  }
+  // pick it up: it comes out front, the car you're in goes to your garage
+  function proPickup(p, i) {
+    const J = PRO.jobs(), j = J[i]; if (!j || !proReady(j)) return;
+    if (S.car && garageRoom() <= 0) { fullGarageMsg(); return; }
+    const res = proFinish(j); J.splice(i, 1);
+    if (S.car) S.garage.push(S.car); S.car = j.car; syncCarModel(); if (car) { if (inside) parkAt(p); else deliverCar(); car.userData.body.color.copy(lin(S.car.color)); }
+    VEH_CACHE.clear(); PRO.last = res; save(); refreshStats(); toast(`${res.hp} hp. Grade ${res.grade}. It's out front.`, 'good');
+  }
+  // a toast when a car you dropped off is done (checked every few seconds)
+  setInterval(() => { if (!S || !S.proJobs) return; for (const j of S.proJobs) { const k = j.shop + j.at; if (proReady(j) && !PRO.told[k]) { PRO.told[k] = 1; const q = DATA.P.find(x => x.id === j.shop); toast(`Your ${carOf(j.car.id).model} is ready at ${q ? q.name : 'the shop'}.`, 'good'); } } }, 5000);
+
+  // ---- the menus ----
+  function proResultMenu(p, res) {
+    const rows = [{ t: 'Back', s: '', btn: 'Back', act: () => openMenu(() => MENUS.protune(p)) }];
+    rows.push({ t: `${res.before} hp → ${res.hp} hp`, s: `${res.hp - res.before >= 0 ? '+' : ''}${res.hp - res.before} hp at the crank, about ${Math.round(res.hp * 0.85)} at the wheels`, btn: res.grade, off: true, act: () => {} });
+    if (res.ideal) rows.push({ t: `Tune quality ${Math.round(res.q * 100)}%`, s: `A perfect tune on this motor and fuel makes about ${res.ideal} hp (factory map ${res.fac} hp)`, bar: res.q * 100, btn: res.knock ? 'Knocks' : 'Safe', off: true, act: () => {} });
+    if (res.est) rows.push({ t: `They quoted about ${res.est} hp`, s: res.dur ? `Machine work: ${res.dur >= 1.08 ? 'tight' : res.dur <= 0.88 ? 'loose' : 'average'} (bottom end ${Math.round(res.dur * 100)}% of normal strength)` : '', btn: res.hp >= res.est ? 'Beat it' : 'Short', off: true, act: () => {} });
+    if (res.et) rows.push({ t: `Street quarter mile ${res.et.toFixed(2)} @ ${Math.round(res.trap)} mph`, s: res.et0 ? `Was ${res.et0.toFixed(2)} (no prep, street tires)` : '', btn: res.et0 ? (res.et0 - res.et >= 0 ? '−' : '+') + Math.abs(res.et0 - res.et).toFixed(2) + ' s' : '—', off: true, act: () => {} });
+    for (const n of res.notes || []) rows.push({ t: `${res.who === 'off-the-shelf file' ? 'Note' : proFirst({ who: res.who })}:`, s: n, btn: '—', off: true, act: () => {} });
+    if (res.names && res.names.length) rows.push({ t: 'What went in', s: res.names.join(' · '), btn: '—', off: true, act: () => {} });
+    rows.push({ t: 'See the maps they wrote', s: 'The ECU screen: spark, fuel, limiter, launch, shifts', btn: 'ECU', act: () => { closeMenu(); ecuOpen(); } });
+    return { title: `${res.kind} · ${res.shop}`, sub: `By ${res.who} · day ${res.day || S.day}`, rows };
+  }
+  function proPlanMenu(p, pk) {
+    const P = PRO_SHOPS[p.id], c = S.car, no = proNo(c); if (no) return { title: p.name, sub: no, rows: [] };
+    if (!PRO.plan || PRO.plan.pk !== pk || PRO.plan.car !== c || PRO.plan.shop !== p.id) { const pl = proPlan(c, P, pk); PRO.plan = Object.assign(pl, { car: c, shop: p.id }); }
+    const pl = PRO.plan, K = PRO_PKG[pk], hp = carHp(c);
+    const rows = [{ t: 'Back', s: '', btn: 'Back', act: () => { PRO.plan = null; openMenu(() => MENUS.protune(p)); } }];
+    rows.push({ t: `${hp} hp now → about ${pl.est} hp`, s: `${proFirst(P)}'s guess. The real number depends on how the machine work comes out (${proStars(P.sk)})`, btn: '—', off: true, act: () => {} });
+    rows.push({ t: 'Parts', s: pl.names.length ? pl.names.join(' · ') : 'Your same parts', btn: money(pl.parts), off: true, act: () => {} });
+    if (pl.e85) rows.push({ t: TUNE_PARTS.e85.name, s: 'Runs E85: more timing before it knocks', btn: money(pl.tparts), off: true, act: () => {} });
+    rows.push({ t: 'Labor and machine work', s: `${K.hrs} hours at ${money(PLABOR * P.lab)}/hr, tune included`, btn: money(pl.labor), off: true, act: () => {} });
+    rows.push({ t: `Drop it off · ${money(pl.price)}`, s: `Ready in about ${K.min} min of play, or tomorrow. Get around on foot or in another car meanwhile.`, btn: 'Drop off', act: () => { proDrop(p, P, pl, false); openMenu(() => MENUS.protune(p)); } });
+    rows.push({ t: `Rush it · ${money(pl.price * 1.5)}`, s: `They stay late: about ${Math.round(K.min * 0.4)} min`, btn: 'Rush', act: () => { proDrop(p, P, pl, true); openMenu(() => MENUS.protune(p)); } });
+    rows.push({ t: 'Different parts list', s: 'Ask them to spec it again (cam grind and brands change)', btn: 'Respec', act: () => { PRO.plan = null; openMenu(() => proPlanMenu(p, pk)); } });
+    return { title: `${K.name} · ${p.name}`, sub: K.blurb, rows };
+  }
+  MENUS.protune = function (p) {
+    const P = PRO_SHOPS[p.id]; if (!P) return { title: p.name, sub: 'No tuner here', rows: [] };
+    const c = S.car, J = PRO.jobs(), rows = [], ST = PRO_STYLE[P.style], rate = proRate(p);
+    J.forEach((j, i) => { if (j.shop !== p.id) return; const m = carOf(j.car.id), ok = proReady(j);
+      rows.push({ t: `Your ${carLabel(m)}`, s: `${PRO_PKG[j.pk].name} · ${ok ? 'done, ready to go' : `on the stand, about ${proLeft(j)} min (or tomorrow)`}`, btn: ok ? 'Pick up' : 'Waiting', off: !ok, act: () => { proPickup(p, i); if (PRO.last) openMenu(() => proResultMenu(p, PRO.last)); } }); });
+    rows.push({ t: `${P.who} · ${proStars(P.sk)}`, s: `${ST.name} style. ${P.line}`, btn: '—', off: true, act: () => {} });
+    const no = proNo(c);
+    if (!c) rows.push({ t: 'Bring a car', s: 'Pull your car in to get it tuned or drop it off for a build', btn: '—', off: true, act: () => {} });
+    else if (no) rows.push({ t: carLabel(carOf(c.id)), s: no, btn: '—', off: true, act: () => {} });
+    else {
+      const unlock = hasPart(c, 'ecu') ? 0 : 150, ct = Math.round((P.tune * rate + unlock) / 5) * 5, cn = 399 + unlock;
+      rows.push({ t: carLabel(carOf(c.id)), s: `${carHp(c)} hp now${c.proTune ? ` · tune by ${c.proTune.who}${c.proTune.grade && c.proTune.grade !== '-' ? ' (' + c.proTune.grade + ')' : ''}` : hasPart(c, 'ecu') ? ' · your own tune' : ' · factory tune'}${c.proBuild ? ` · built by ${c.proBuild.who} (${c.proBuild.grade})` : ''}`, btn: '—', off: true, act: () => {} });
+      rows.push({ t: `Custom dyno tune by ${proFirst(P)}`, s: `Spark, fuel, limiter, launch control, shifts${ecuHasVvt(engDefOf(c)) ? ', cam phasing' : ''}${engOf(c).fiH && engOf(c).fiH.kind === 'turbo' ? ', boost' : ''}. Every tune comes out a little different.${unlock ? ' Includes the ECU unlock.' : ''}`, btn: money(ct), act: () => { if (!spend(ct, `Dyno tune at ${p.name}`)) return; toast(`${proFirst(P)} straps it down...`, ''); setTimeout(() => { const r = proTuneJob(c, P, p, false); openMenu(() => proResultMenu(p, r)); }, 60); } });
+      rows.push({ t: 'Canned tune', s: 'An off-the-shelf file for this motor: the same safe map every time, no dyno', btn: money(cn), act: () => { if (!spend(cn, `Canned tune at ${p.name}`)) return; const r = proTuneJob(c, P, p, true); openMenu(() => proResultMenu(p, r)); } });
+      for (const [k, K] of Object.entries(PRO_PKG)) rows.push({ t: `${K.name} (drop it off)`, s: K.blurb, btn: 'Quote', act: () => openMenu(() => proPlanMenu(p, k)) });
+      if (PRO.last && PRO.last.shop === p.name) rows.push({ t: 'Last dyno sheet', s: `${PRO.last.kind}: ${PRO.last.hp} hp, grade ${PRO.last.grade}`, btn: 'Open', act: () => openMenu(() => proResultMenu(p, PRO.last)) });
+    }
+    const away = J.filter(j => j.shop !== p.id); if (away.length) rows.push({ t: 'At other shops', s: away.map(j => `${carOf(j.car.id).model} at ${(DATA.P.find(q => q.id === j.shop) || {}).name || j.shop}${proReady(j) ? ' (ready)' : ''}`).join(' · '), btn: '—', off: true, act: () => {} });
+    return { title: `${p.name} · pro tuner`, sub: `${P.who} · tunes ${money(P.tune * rate)} · labor ${money(PLABOR * P.lab)}/hr`, rows };
+  };
+
 
   // ---------- the cockpit: a real gauge cluster (tach, speedo, odometer), gas and brake pedals, and a manual stick ----------
   // the gearbox: six forward gears and reverse on an H gate. In manual, each gear tops out at the rev limiter and a
@@ -23032,7 +23302,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
-  window.__map = { HUDX: { HUDX, hudOpt, hudSet, hudxFrame, hudDiag }, PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
+  window.__map = { PRO: { PRO, PRO_SHOPS, PRO_STYLE, PRO_PKG, proTuneMake, proTuneJob, proPlan, proRoll, proDrop, proFinish, proPickup, proReady, proResultMenu, proPlanMenu }, HUDX: { HUDX, hudOpt, hudSet, hudxFrame, hudDiag }, PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     snap(cx, cy, cz, tx, ty, tz) { camera.position.set(cx, cy, cz); camera.lookAt(tx, ty, tz); renderer.render(scene, camera); return renderer.domElement.toDataURL('image/jpeg', 0.88); },
