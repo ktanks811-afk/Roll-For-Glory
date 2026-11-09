@@ -9866,12 +9866,12 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   const _tf = { x: 0, y: 0 };
   // past the peak, rubber loses grip with how fast it's sliding over the road (vs, m/s): a tire that's barely
   // spinning at walking pace still holds most of its peak, one that's smoking at 30 mph holds the Pacejka tail
-  function tireF(T, mu, Fz, kap, tanA, out, vs) {
+  function tireF(T, mu, Fz, kap, tanA, out, vs, ky) {
     const sx = kap / T.kp, sy = tanA / T.tap, rho = Math.sqrt(sx * sx + sy * sy);
     if (rho < 1e-7 || Fz <= 0) { out.x = 0; out.y = 0; return; }
     const wx = sx * sx / (rho * rho), C = T.cx * wx + T.cy * (1 - wx), B = T.bx * wx + T.by * (1 - wx);
     let f = Math.sin(C * Math.atan(B * rho)); if (rho > 1) f = 1 - (1 - f) * Math.min(1, (vs || 0) / 9);
-    const F = mu * (1 + T.lx * wx) * Fz * f;   // tires grip harder pushing than turning (the friction ellipse is long)
+    const F = mu * (1 + T.lx * wx) * (ky ? wx + (1 - wx) * ky : 1) * Fz * f;   // tires grip harder pushing than turning (the friction ellipse is long)
     out.x = F * sx / rho; out.y = -F * sy / rho;
   }
   // the road under the car: pavement, grass and dirt, or a prepped drag strip
@@ -9889,6 +9889,13 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   // the rear bumper is (it's what catches a car without bars); idleMax: how far the idle valve may open to hold idle
   const VDP = { tcT: 1.1, tcCut: 5, tcRec: 7, tcMin: 0.35, revHold: 0.3, revHoldPrep: 1.0, idleMax: 0.5, wbL: 1.45, wbGap: 0.075, wbK: 3.5e5, tailL: 1.0, tailGap: 0.35, upTc: 0.95 };
   window.__vdp = VDP;
+  // grip and slides (2026-11-09): lsy: extra cornering load sensitivity (lateral only, so launches are untouched); ky0:
+  // the lateral grip scale that keeps the published skidpad g with that in; cs: how much of the front axle's direction of
+  // travel a full countersteer winds on; escUp / escDn: how fast stability control builds and lets go of its brake (smooth,
+  // so it doesn't saw the tail back and forth); escCut: how hard it pulls torque with it; tcLat: how much less wheelspin
+  // traction control allows at full lateral g
+  const GRIP = { lsy: 0.12, ky0: 1.04, cs: 1, escUp: 18, escDn: 5, escCut: 7, tcLat: 0.6 };
+  window.__grip = GRIP;
   function tireGripT(T, temp) {
     if (T.prep > 1.2) { const x = (temp - 72) / 40; return clamp(1.06 - 0.11 * x * x, 0.72, 1.06); }
     return clamp(1 + 0.03 * clamp((temp - TT_AMB) / 30, 0, 1) - 0.004 * Math.max(0, temp - 110), 0.75, 1.03);
@@ -9896,7 +9903,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   function vdInit(V, u) {
     const st = { id: V.id, w: [0, 0, 0, 0], we: V.idle / RPM, g: 1, lock: false, ce: 0, zc: 0, th: 0, ph: 0, zcv: 0, thv: 0, phv: 0, absK: [1, 1, 1, 1], cut: false, vcut: false, shT: 0, hold: 0, ax: 0, ay: 0,
       Fz: [0, 0, 0, 0], kap: [0, 0, 0, 0], al: [0, 0, 0, 0], Te: 0, Tc: 0, rev: false, sync: false, lit: 0, tcK: 1,
-      tT: [TT_AMB, TT_AMB, TT_AMB, TT_AMB], wet: [0, 0, 0, 0], tK: [1, 1, 1, 1], tQ: [0, 0, 0, 0], revT: 0, lift: [0, 0, 0, 0], bar: 0, lch: 0 };
+      fx: [0, 0, 0, 0], fy: [0, 0, 0, 0], tT: [TT_AMB, TT_AMB, TT_AMB, TT_AMB], wet: [0, 0, 0, 0], tK: [1, 1, 1, 1], tQ: [0, 0, 0, 0], revT: 0, lift: [0, 0, 0, 0], bar: 0, lch: 0 };
     for (let i = 0; i < 4; i++) st.w[i] = u / V.R[i];
     if (Math.abs(u) > 1 && !V.ev) {   // rolling start: pick the gear the box would be in and lock it up
       let g = 1; for (let i = 0; i < V.auto.length; i++) { const rpm = u / V.R[2] * V.auto[i] * V.fd * RPM; if (rpm < V.red * 0.82) { g = i + 1; break; } }
@@ -9923,7 +9930,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     for (let i = 0; i < n; i++) vdStep(I, P, k);
     if (!DMG.mute) dmgStep(I, P, h);   // Phase 4D: the player's car wears from what it just went through
   }
-  const _esc = [0, 0, 0, 0], _vs = [0, 0, 0, 0], _dI = [0, 0, 0, 0], _w0 = [0, 0, 0, 0], _mu = [0, 0, 0, 0], _fl = [0, 0, 0, 0], _fg = [0, 0, 0, 0], _F0x = [0, 0, 0, 0], _F0y = [0, 0, 0, 0], _kx = [0, 0, 0, 0], _dw = [0, 0, 0, 0], _tb = [0, 0, 0, 0], _lng = [0, 0, 0, 0], _lat = [0, 0, 0, 0], _den = [0, 0, 0, 0], _cd = [0, 0, 0, 0], _sd = [0, 0, 0, 0], _zi = [0, 0, 0, 0];
+  const _esc = [0, 0, 0, 0], _vs = [0, 0, 0, 0], _dI = [0, 0, 0, 0], _w0 = [0, 0, 0, 0], _mu = [0, 0, 0, 0], _fl = [0, 0, 0, 0], _fg = [0, 0, 0, 0], _F0x = [0, 0, 0, 0], _F0y = [0, 0, 0, 0], _kx = [0, 0, 0, 0], _dw = [0, 0, 0, 0], _tb = [0, 0, 0, 0], _lng = [0, 0, 0, 0], _lat = [0, 0, 0, 0], _den = [0, 0, 0, 0], _cd = [0, 0, 0, 0], _sd = [0, 0, 0, 0], _zi = [0, 0, 0, 0], _ky = [1, 1, 1, 1];
   function vdStep(I, P, h) {
     const V = P.veh; if (!V) return;
     const sy = Math.sin(drv.yaw), cy = Math.cos(drv.yaw), fx = -sy, fz = -cy, lx = -cy, lz = sy;
@@ -9957,7 +9964,15 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     // at speed a full press asks for about what the front tires can use: the angle that makes the car's grip-limit turn, plus
     // a bit of the front tire's peak slip angle (a real driver doesn't dial 10 degrees of lock at 75 mph)
     const dLim = Math.atan(V.L * V.mu[0] * SURF.mu * G9 / Math.max(1, u * u)) + 0.55 * V.T[0].ap;
-    const delta = clamp(drv.steer * Math.min(V.steerMax / (1 + Math.abs(u) / 22), dLim) + cast, -V.steerMax * 1.15, V.steerMax * 1.15); TIRE.delta = delta;
+    // countersteer: that speed-sensitive limit is about turning in. When the tail steps out past the rear tires' peak and
+    // you steer the other way, a driver winds on as much lock as it takes to point the front wheels where the front of the
+    // car is actually going, plus the bite of the tire's peak slip angle. So in a slide a full press of countersteer means
+    // that, not a fixed angle off the nose (without this you can't catch a tail that steps out at speed)
+    const capS = Math.min(V.steerMax / (1 + Math.abs(u) / 22), dLim), dIn = drv.steer * capS;
+    const betaR = u > 1 ? Math.atan2(v - V.b * r, u) : 0, apR = V.T[2].ap, sg = Math.sign(betaR);
+    const fade = drv.steer * betaR > 0 ? clamp((Math.abs(betaR) - 0.6 * apR) / (0.8 * apR), 0, 1) : 0;
+    const dCs = fade > 0 ? sg * Math.abs(drv.steer) * (Math.max(0, betaF * sg) * GRIP.cs + Math.min(capS, V.T[0].ap)) : 0;
+    const delta = clamp(dIn + fade * (dCs - dIn) + cast * (1 - fade * Math.min(1, Math.abs(drv.steer))), -V.steerMax * 1.15, V.steerMax * 1.15); TIRE.delta = delta;
 
     // ---- the gearbox ----
     const nA = V.auto.length; let G = 0, ratio = 0, mode;   // mode: 'clutch' (manual / DCT), 'tc' (converter), 'ev'
@@ -10056,8 +10071,10 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       for (let i = 0; i < 4; i++) if (V.s[i] > 0) sl = Math.max(sl, (st.w[i] * V.R[i] * Math.sign(G) - Math.abs(u - r * V.wy[i])) / ref);
       // it trims torque in proportion to how far the spin is past the tire's peak and hands it back as the spin
       // settles, so it rides the edge of grip (a launch with it on bogs a little, it doesn't fall on its face)
-      const tgt = V.T[i0].kp * VDP.tcT, e = (sl - tgt) / tgt; st.tcSl = sl;
-      st.tcK = clamp(st.tcK + h * (e > 0 ? -e * VDP.tcCut : -e * VDP.tcRec), VDP.tcMin, 1);
+      // mid-corner it allows less spin: a tire using its grip to turn has little left to push with (real systems lower
+      // the slip threshold with lateral g), so a corner exit with it on squirts out instead of kicking the tail
+      const latU = clamp(Math.abs(st.ay) / (V.mu[i0] * SURF.mu * G9), 0, 1), tgt = V.T[i0].kp * VDP.tcT * (1 - GRIP.tcLat * latU * latU), e = (sl - tgt) / tgt; st.tcSl = sl;
+      st.tcK = clamp(st.tcK + h * (e > 0 ? -e * VDP.tcCut : -e * VDP.tcRec * (1 - 0.6 * latU)), VDP.tcMin, 1);   // (and hands it back gently)
     } else st.tcK = Math.min(1, st.tcK + h * 4);
 
     // ---- wheel loads: static + springs/dampers (heave, pitch, roll) + anti-squat/dive geometry + roll centers + air ----
@@ -10104,8 +10121,12 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       const Fn = V.Fn[i], mu = V.mu[i] * SURF.mu * (SURF.prep ? (V.T[i].prep) : 1) * clamp(1 - 0.1 * (st.Fz[i] / Fn - 1), 0.75, 1.12) * (st.tK ? st.tK[i] : 1);
       const kap = (st.w[i] * V.R[i] - lng) / den, tA = lat / Math.max(Math.abs(lng), latDen);
       const vs = Math.hypot(st.w[i] * V.R[i] - lng, lat); _vs[i] = vs;
-      tireF(V.T[i], mu, st.Fz[i], kap, tA, _tf, vs); _F0x[i] = _tf.x * fl; _F0y[i] = _tf.y * fg; _mu[i] = mu; _fl[i] = fl; _fg[i] = fg;
-      tireF(V.T[i], mu, st.Fz[i], kap + 0.004, tA, _tf, vs); _kx[i] = Math.max(0, (_tf.x * fl - _F0x[i]) / 0.004) * V.R[i] / den;
+      // cornering grip is degressive with load: the loaded outside tire gives back more than the light inside one gains,
+      // so the end of the car that carries more of the roll (and the weight) lets go first, a little at a time (ky0 puts
+      // the lateral grip back where the published skidpad numbers are once that transfer loss is in)
+      const ky = _ky[i] = GRIP.ky0 * clamp(1 - GRIP.lsy * (st.Fz[i] / Fn - 1), 0.7, 1.12);
+      tireF(V.T[i], mu, st.Fz[i], kap, tA, _tf, vs, ky); _F0x[i] = _tf.x * fl; _F0y[i] = _tf.y * fg; _mu[i] = mu; _fl[i] = fl; _fg[i] = fg;
+      tireF(V.T[i], mu, st.Fz[i], kap + 0.004, tA, _tf, vs, ky); _kx[i] = Math.max(0, (_tf.x * fl - _F0x[i]) / 0.004) * V.R[i] / den;
       st.kap[i] = kap; st.al[i] = Math.atan(tA);
     }
 
@@ -10117,11 +10138,13 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       // it watches the yaw rate against the reference and the car's side slip (tail out = slip against the yaw)
       const beta = Math.atan2(v, u), tail = beta * r < 0 ? Math.abs(beta) : 0;
       const over = Math.max(Math.abs(r) - Math.abs(rRef) - 0.03, (tail - 0.05) * 1.6);
-      if (over > 0 && r !== 0) {
-        const i = r > 0 ? 1 : 0; _esc[i] = Math.min(V.brakeTot * 0.3 * V.R[i], over * 16000); st.esc = over;
-        st.tcK = Math.max(0.1, st.tcK - h * over * 40);
+      // it builds its brake quickly and lets it go gently (real ESC modulates; an on/off one saws the tail back and forth)
+      const e = Math.max(0, over); st.escF = (st.escF || 0) + (e - (st.escF || 0)) * Math.min(1, h * (e > (st.escF || 0) ? GRIP.escUp : GRIP.escDn));
+      if (st.escF > 0.002 && r !== 0) {
+        const i = r > 0 ? 1 : 0; _esc[i] = Math.min(V.brakeTot * 0.3 * V.R[i], st.escF * 16000); st.esc = st.escF;
+        st.tcK = Math.min(st.tcK, clamp(1 - st.escF * GRIP.escCut, 0.2, 1));   // and holds the torque down while it works
       }
-    }
+    } else st.escF = 0;
     // ---- brakes: pedal, bias, handbrake on the rears, line lock holds only the fronts, ABS where the car has it ----
     // (ABS dumps a wheel's pressure fast when it starts to lock and builds it back slowly, about 10-15 cycles a second)
     for (let i = 0; i < 4; i++) {
@@ -10223,9 +10246,10 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     for (let i = 0; i < 4; i++) {
       // the force at the end of the step, at the spin the wheel actually reached (push and turn share one budget)
       const kap = (st.w[i] * V.R[i] - _lng[i]) / _den[i], tA = _lat[i] / Math.max(Math.abs(_lng[i]), latDen);
-      tireF(V.T[i], _mu[i], st.Fz[i], kap, tA, _tf, Math.hypot(st.w[i] * V.R[i] - _lng[i], _lat[i])); st.kap[i] = kap;
+      tireF(V.T[i], _mu[i], st.Fz[i], kap, tA, _tf, Math.hypot(st.w[i] * V.R[i] - _lng[i], _lat[i]), _ky[i]); st.kap[i] = kap;
       const fxw = _tf.x * _fl[i], fyw = _tf.y * _fg[i], bx = fxw * _cd[i] - fyw * _sd[i], by = fxw * _sd[i] + fyw * _cd[i];
       Fx += bx; Fy += by; Mz += V.wx[i] * by - V.wy[i] * bx; if (V.s[i] > 0) FxD += bx;
+      if (st.fx) { st.fx[i] = fxw; st.fy[i] = fyw; }
       if (st.tT) {   // the tread: heat in from the slip, out to the air; water rolls and spins off
         const sl = st.w[i] * V.R[i] - _lng[i], Q = Math.abs(fxw * sl) + (spd > 2 ? Math.abs(fyw * _lat[i]) : 0);
         st.tQ[i] = Q; st.wJ = (st.wJ || 0) + h * Q; st.tT[i] += h * (Q - TT_COOL * (1 + 0.05 * Math.abs(u)) * (st.tT[i] - TT_AMB)) / TT_C;
