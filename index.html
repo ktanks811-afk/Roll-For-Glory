@@ -125,6 +125,14 @@ body.evcar #shifter { display: none; }
 #menu .ml { overflow-y: auto; padding: 6px 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 #menu .mr { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid rgba(255,255,255,0.06); }
 #menu .mr i { flex: 0 0 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.35); }
+#menu .mr img.rp { flex: 0 0 64px; width: 64px; height: 64px; border-radius: 10px; background: radial-gradient(circle at 50% 40%, #3a3f4a, #15171c 72%); cursor: zoom-in; object-fit: contain; }
+#menu .mr img.rp:not(.on) { background: radial-gradient(circle at 50% 40%, #3a3f4a, #15171c 72%); animation: rpwait 1s ease-in-out infinite alternate; }
+@keyframes rpwait { from { opacity: 0.45; } to { opacity: 0.9; } }
+#rimbig { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; padding: 16px; }
+#rimbig[hidden] { display: none; }
+#rimbig .rb { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 360px; text-align: center; color: #fff; }
+#rimbig img { width: min(72vmin, 300px); height: min(72vmin, 300px); border-radius: 18px; background: radial-gradient(circle at 50% 40%, #454b58, #121419 72%); }
+#rimbig b { font-size: 18px; margin-top: 6px; } #rimbig span { font-size: 13px; color: #b9c0cc; } #rimbig em { font-size: 12px; color: #8a919c; font-style: normal; margin-top: 4px; }
 #menu .mt { flex: 1 1 auto; min-width: 0; }
 #menu .mt b { display: block; font-size: 16px; font-weight: 700; }
 #menu .mt span { display: block; font-size: 13px; color: var(--muted); }
@@ -1721,10 +1729,11 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const el = document.getElementById('menu'); if (!menuFn) { el.hidden = true; return; }
     const m = menuFn(); if (!m) { menuFn = null; el.hidden = true; return; }
     const old = el.querySelector('.ml'), keep = old && el.dataset.title === m.title ? old.scrollTop : 0; el.dataset.title = m.title;
-    el.innerHTML = `<div class="mh"><div><b>${esc(m.title)}</b><span>${esc(m.sub || '')}</span></div><button class="x" data-x="1" aria-label="Close">✕</button></div><div class="ml">${m.rows.map((r, i) => `<div class="mr">${r.sw ? `<i style="background:${r.sw}"></i>` : ''}<div class="mt"><b>${esc(r.t)}</b>${r.s ? `<span>${esc(r.s)}</span>` : ''}${r.bar !== undefined ? `<em><u style="width:${Math.max(2, Math.min(100, r.bar))}%;background:${r.bar < 40 ? '#e0483a' : r.bar < 70 ? '#e8b43a' : '#5ec26a'}"></u></em>` : ''}</div><button class="btn" data-i="${i}" ${r.off ? 'disabled' : ''}>${esc(r.btn)}</button></div>`).join('') || '<p class="muted">Nothing here yet.</p>'}</div>`;
+    el.innerHTML = `<div class="mh"><div><b>${esc(m.title)}</b><span>${esc(m.sub || '')}</span></div><button class="x" data-x="1" aria-label="Close">✕</button></div><div class="ml">${m.rows.map((r, i) => `<div class="mr">${r.img ? `<img class="rp${r.img.u ? ' on' : ''}" data-rp="${esc(r.img.k)}" data-ri="${i}" src="${r.img.u || RIMPIC_BLANK}" alt="">` : ''}${r.sw ? `<i style="background:${r.sw}"></i>` : ''}<div class="mt"><b>${esc(r.t)}</b>${r.s ? `<span>${esc(r.s)}</span>` : ''}${r.bar !== undefined ? `<em><u style="width:${Math.max(2, Math.min(100, r.bar))}%;background:${r.bar < 40 ? '#e0483a' : r.bar < 70 ? '#e8b43a' : '#5ec26a'}"></u></em>` : ''}</div><button class="btn" data-i="${i}" ${r.off ? 'disabled' : ''}>${esc(r.btn)}</button></div>`).join('') || '<p class="muted">Nothing here yet.</p>'}</div>`;
     el.hidden = false; if (keep) el.querySelector('.ml').scrollTop = keep;
     el.querySelector('[data-x]').onclick = closeMenu;
     el.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { const r = m.rows[+b.dataset.i]; r.act(); save(); refreshStats(); if (menuFn) renderMenu(); });
+    el.querySelectorAll('img[data-ri]').forEach(im => im.onclick = () => { const r = m.rows[+im.dataset.ri]; rimPicBig(im.dataset.rp, r.t, r.s); });
   }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   // ---------- the real cars: each one we built by hand, baked to cars/<id>.json and painted your color ----------
@@ -10692,12 +10701,12 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     function faceShape(R, o) {
       const sh = new THREE.Shape(); sh.absarc(0, 0, R * 0.88, 0, Math.PI * 2, false);
       const hub = new THREE.Path(); hub.absarc(0, 0, R * 0.2, 0, Math.PI * 2, true); sh.holes.push(hub);
-      for (let i = 0; i < o.n; i++) {
-        const a = i / o.n * Math.PI * 2 + (o.offset || 0), pts = [];
+      for (const w of (o.rows || [o])) for (let i = 0; i < w.n; i++) {   // rows: rings of windows (billet faces)
+        const a = i / w.n * Math.PI * 2 + (w.offset || 0), pts = [];
         for (let j = 0; j < 28; j++) {   // superellipse window, long axis along the radius
-          const u = j / 28 * Math.PI * 2, c = Math.cos(u), s = Math.sin(u), p = o.round ? 2 : 4;
-          const x = Math.sign(c) * Math.pow(Math.abs(c), 2 / p) * R * o.ww, y = Math.sign(s) * Math.pow(Math.abs(s), 2 / p) * R * o.wl;
-          const yy = y + R * o.wr, xx = x + (o.tear ? (y / (R * o.wl)) * R * o.tear : 0);
+          const u = j / 28 * Math.PI * 2, c = Math.cos(u), s = Math.sin(u), p = w.round ? 2 : 4;
+          const x = Math.sign(c) * Math.pow(Math.abs(c), 2 / p) * R * w.ww, y = Math.sign(s) * Math.pow(Math.abs(s), 2 / p) * R * w.wl;
+          const yy = y + R * w.wr, xx = x + (w.tear ? (y / (R * w.wl)) * R * w.tear : 0);
           pts.push(V2(xx * Math.cos(a) + yy * Math.sin(a), -xx * Math.sin(a) + yy * Math.cos(a)));
         }
         sh.holes.push(new THREE.Path(pts));
@@ -10749,6 +10758,11 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       let c;
       if (cap === 'dome') { c = new THREE.Mesh(new THREE.SphereGeometry(R * 0.11, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), f.hub); c.rotation.x = Math.PI / 2; c.position.z = z + 0.05; }
       else if (cap === 'hex') { c = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.1, R * 0.1, 0.05, 6), capMat); c.rotation.x = Math.PI / 2; c.position.z = z + 0.07; }
+      else if (cap === 'moon' || cap === 'dish') {   // a polished hubcap dome: baby moon (big) or dog dish (small)
+        const rs = R * (cap === 'moon' ? 0.9 : 0.5), th = cap === 'moon' ? 0.6 : 0.7;
+        c = new THREE.Mesh(new THREE.SphereGeometry(rs, 40, 8, 0, Math.PI * 2, 0, th), f.hub); c.rotation.x = Math.PI / 2; c.position.z = z + 0.03 - rs * Math.cos(th);
+        g.add(c); return;
+      }
       else if (cap === 'tall') { c = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.09, R * 0.13, 0.12, 32), f.hub); c.rotation.x = Math.PI / 2; c.position.z = z + 0.09; }
       else { c = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.085, R * 0.085, 0.03, 32), capMat); c.rotation.x = Math.PI / 2; c.position.z = z + 0.065; }
       g.add(c);
@@ -10757,6 +10771,11 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     }
     // Lip: flat forged lip, or a stepped deep lip that pushes the face back.
     function forgedLip(g, R, f, d) {
+      if (d.bead) {   // beadlock: a bolted ring clamped over the outer lip
+        const bm = f.b.clone(); bm.side = THREE.DoubleSide;
+        g.add(lathe([V2(R * 0.83, 0.33), V2(R * 0.835, 0.395), V2(R * 0.99, 0.4), V2(R * 1.01, 0.36), V2(R * 0.99, 0.33)], bm, 56));
+        boltRing(g, R * 0.915, 0.405, d.bead);
+      }
       if (!d.deep) { g.add(lip(R, f.lip)); if (d.bolts) boltRing(g, R * 0.875, 0.355, d.bolts); return; }
       const rf = R * 0.86, fz = d.fz;
       const lm = f.lip.clone(); lm.side = THREE.DoubleSide;
@@ -10821,6 +10840,28 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       ring(r0, r1, wwMat, 0.352);
       if (STRIPE[kind]) { const w = r1 - r0; ring(r0 + w * 0.56, r0 + w * 0.7, STRIPE[kind], 0.354); }
     }
+    // ---------------------------------------------------------------------
+    // Spinners: a blade plate on a bearing in front of the face. Built in
+    // metres; wheelM names it 'spinner' so the car can let it free-spin
+    // (it spins up with the wheel and keeps going after you stop).
+    // ---------------------------------------------------------------------
+    function spinnerM(Rm, zS, d, f) {
+      const s = d.spin, g = new THREE.Group(), Rs = Rm * (s.r || 0.8), th = 0.012, z0 = 0.37 * zS + 0.012;
+      const bladeMat = s.gold ? goldMat : f.a, ringMat = s.gold ? goldMat : f.b, list = [], rl = [];
+      if (s.disc) list.push({ geo: extrude([faceShape(Rs / 0.88, s.disc)], th, 0.003), m4: new THREE.Matrix4() });
+      if (s.n) { const geo = extrude(spokeShapes(Rs, { w0: s.w0, w1: s.w1, sweep: s.sweep, bow: s.bow, r1: s.ring ? 1 - s.ring / 2 : 0.98, hole: s.hole, fork: s.fork, forkAt: s.forkAt }), th, 0.003);
+        for (let i = 0; i < s.n; i++) list.push({ geo, m4: new THREE.Matrix4().makeRotationZ(i / s.n * Math.PI * 2) }); }
+      const ringAt = (ro, w) => { const sh = new THREE.Shape(); sh.absarc(0, 0, ro, 0, Math.PI * 2, false); const h = new THREE.Path(); h.absarc(0, 0, ro - w, 0, Math.PI * 2, true); sh.holes.push(h); rl.push({ geo: extrude([sh], th * 1.3, 0.003), m4: new THREE.Matrix4() }); };
+      if (s.ring) ringAt(Rs, Rs * s.ring);
+      if (s.ring2) ringAt(Rs * s.ring2, Rs * 0.06);
+      if (list.length) { const m = new THREE.Mesh(mergeGeos(list), bladeMat); m.castShadow = true; g.add(m); }
+      if (rl.length) { const m = new THREE.Mesh(mergeGeos(rl), ringMat); m.castShadow = true; g.add(m); }
+      // the bearing cap the plate turns on
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(Rs * 0.2, Rs * 0.24, 0.03, 32), f.hub); hub.rotation.x = Math.PI / 2; hub.position.z = 0.01; g.add(hub);
+      const badge = disc(Rs * 0.13, 0.026, s.gold ? capMat : goldMat, 28); g.add(badge);
+      g.position.z = z0; g.name = 'spinner';
+      return g;
+    }
     function buildForged(R, d, f, bare) {
       const g = new THREE.Group();
       const barrel = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.93, R * 0.93, 0.56, 40, 1, true), barrelMat);
@@ -10883,11 +10924,60 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
         { nick: 'Flat Wire 100s', n: 100, poke: 0, cross: 0.4 }, { nick: 'Cross-Lace 72s', poke: 0.12, cross: 0.5 },
         { nick: 'Gold Nipple Elbows', nip: 'gold', poke: 0.22, badge: 'red' }, { nick: 'Gold Long Pokes', mix: 'gold', nip: 'gold', ears: 3, poke: 0.29 },
         { nick: 'Hex Knock 84s', ears: 'hex', poke: 0.17 }]) },
+      // spinners: the blade plate rides a bearing, spins up with the wheel and keeps spinning after you stop
+      { key: 'sp', name: 'Dub City Spinners', code: 'SP', price: 6400, kg: 2.5, blurb: 'Spinners: keep spinning after you stop', designs: Bx({ dish: 0.16, fz: 0.06, n: 6, w0: 0.1, w1: 0.07, bolts: 0, cap: 'flat' }, [
+        { nick: 'Classic 5-Blade', n: 5, spin: { n: 5, w0: 0.16, w1: 0.12, ring: 0.1 } },
+        { nick: 'Twister', spin: { n: 6, w0: 0.1, w1: 0.05, sweep: 0.9, bow: 0.2 } },
+        { nick: 'Tri-Star', n: 5, spin: { n: 3, w0: 0.22, w1: 0.08 } },
+        { nick: 'Halo', n: 10, w0: 0.06, w1: 0.045, spin: { n: 4, w0: 0.08, w1: 0.06, ring: 0.14 } },
+        { nick: 'Blade Runner', n: 7, spin: { n: 8, w0: 0.07, w1: 0.03, sweep: 1.2, bow: 0.3 } },
+        { nick: 'Windmill', n: 5, spin: { n: 4, w0: 0.3, w1: 0.22, hole: 1 } },
+        { nick: 'Star Disc', n: 10, w0: 0.06, w1: 0.045, spin: { disc: { n: 5, ww: 0.13, wl: 0.22, wr: 0.54 }, r: 0.78 } },
+        { nick: 'Y-Spinner', spin: { n: 5, fork: 0.14, w0: 0.14, w1: 0.06, ring: 0.08 } },
+        { nick: 'Gold Twist', n: 5, spin: { n: 6, w0: 0.1, w1: 0.05, sweep: -0.9, bow: -0.2, ring: 0.08, gold: 1 } },
+        { nick: 'Triple Ring', n: 8, w0: 0.07, w1: 0.05, spin: { n: 3, w0: 0.06, w1: 0.05, ring: 0.06, ring2: 0.55 } }]) },
+      // old school: mags, steelies, moons and fan wheels for the box Chevys, Novas and muscle cars
+      { key: 'cc', name: 'Cowtown Classics', code: 'CC', price: 3900, kg: -0.5, blurb: 'Old school mags, steelies, moons and fans', designs: Bx({ dish: 0.08, fz: 0.12, n: 0, w0: 0.1, w1: 0.08, bolts: 0, cap: 'flat' }, [
+        { nick: '5-Slot Mag', face: { n: 5, ww: 0.075, wl: 0.2, wr: 0.56, round: 1 }, cap: 'exposed' },
+        { nick: '8-Slot Mag', face: { n: 8, ww: 0.06, wl: 0.2, wr: 0.56, round: 1 }, cap: 'exposed' },
+        { nick: 'Torque 5', n: 5, w0: 0.22, w1: 0.09, dish: 0.14, cap: 'exposed' },
+        { nick: 'Rally', face: { n: 6, ww: 0.085, wl: 0.085, wr: 0.6, round: 1 }, cap: 'dome' },
+        { nick: 'Dog Dish Steelie', face: { n: 8, ww: 0.035, wl: 0.035, wr: 0.7, round: 1 }, cap: 'dish' },
+        { nick: 'Baby Moon', face: { n: 0 }, cap: 'moon' },
+        { nick: 'Daisy 12', face: { n: 12, ww: 0.05, wl: 0.18, wr: 0.56, tear: 0.05 }, cap: 'dome' },
+        { nick: 'Turbine Fan', n: 14, w0: 0.08, w1: 0.07, sweep: 0.5, bow: 0.08, dish: 0.04, cap: 'dome' },
+        { nick: 'Pro 5', n: 5, w0: 0.1, w1: 0.1, dish: 0.2, cap: 'hex' },
+        { nick: 'Gasser 6', face: { n: 6, ww: 0.08, wl: 0.12, wr: 0.6, round: 1 }, cap: 'tall' }]) },
+      // donk billet: big faces milled with rings of windows, deep concave
+      { key: 'pb', name: 'Polytechnic Billet', code: 'PB', price: 8400, kg: 0.5, blurb: 'Donk billet faces, milled windows, deep concave', designs: Bx({ dish: 0, fz: 0.06, n: 0, w0: 0.1, w1: 0.08, bolts: 0, cap: 'flat', deep: 1 }, [
+        { nick: 'Bolo', face: { rows: [{ n: 10, ww: 0.05, wl: 0.14, wr: 0.68, round: 1 }, { n: 10, ww: 0.04, wl: 0.08, wr: 0.4, round: 1, offset: Math.PI / 10 }] } },
+        { nick: 'Spiral 12', face: { rows: [{ n: 12, ww: 0.045, wl: 0.25, wr: 0.55, tear: 0.12 }] }, cap: 'dome' },
+        { nick: 'Honeycomb', face: { rows: [{ n: 12, ww: 0.05, wl: 0.06, wr: 0.74, round: 1 }, { n: 12, ww: 0.05, wl: 0.06, wr: 0.56, round: 1, offset: Math.PI / 12 }, { n: 6, ww: 0.05, wl: 0.06, wr: 0.38, round: 1 }] } },
+        { nick: 'Diamond Cut', face: { rows: [{ n: 8, ww: 0.09, wl: 0.12, wr: 0.68 }, { n: 8, ww: 0.06, wl: 0.08, wr: 0.42, offset: Math.PI / 8 }] }, cap: 'hex' },
+        { nick: 'Comet', face: { rows: [{ n: 6, ww: 0.07, wl: 0.26, wr: 0.55, tear: -0.14 }] } },
+        { nick: 'Petals', face: { rows: [{ n: 8, ww: 0.12, wl: 0.18, wr: 0.6, round: 1 }, { n: 8, ww: 0.035, wl: 0.035, wr: 0.33, round: 1, offset: Math.PI / 8 }] }, cap: 'dome' },
+        { nick: 'Razor 20', face: { rows: [{ n: 20, ww: 0.022, wl: 0.24, wr: 0.56, tear: 0.08 }] } },
+        { nick: 'Twin Ring', face: { rows: [{ n: 16, ww: 0.035, wl: 0.08, wr: 0.75 }, { n: 16, ww: 0.035, wl: 0.08, wr: 0.5, tear: 0.03 }] } },
+        { nick: 'Crown', face: { rows: [{ n: 5, ww: 0.16, wl: 0.16, wr: 0.6, round: 1 }, { n: 5, ww: 0.035, wl: 0.035, wr: 0.81, round: 1, offset: Math.PI / 5 }] }, cap: 'tall' },
+        { nick: 'Mesh Billet', face: { rows: [{ n: 18, ww: 0.03, wl: 0.03, wr: 0.76, round: 1 }, { n: 18, ww: 0.03, wl: 0.03, wr: 0.64, round: 1, offset: Math.PI / 18 }, { n: 18, ww: 0.03, wl: 0.03, wr: 0.52, round: 1 }, { n: 9, ww: 0.03, wl: 0.03, wr: 0.4, round: 1, offset: Math.PI / 9 }] } }]) },
+      // trucks and SUVs: beadlock rings with real bolts, chunky spokes, tall caps
+      { key: 'bo', name: 'Brazos Off-Road', code: 'BO', price: 5800, kg: 1.5, blurb: 'Truck and SUV wheels with bolted beadlock rings', designs: Bx({ dish: 0.16, fz: 0.08, w0: 0.14, w1: 0.1, bolts: 0, bead: 20, cap: 'tall' }, [
+        { nick: 'Ranch Hand 6', n: 6 },
+        { nick: 'Beadlock 8', n: 8, w0: 0.1, w1: 0.08 },
+        { nick: 'Lattice', layers: [{ n: 8, sweep: 0.35 }, { n: 8, sweep: -0.35, dz: 0.012 }], w0: 0.08, w1: 0.07 },
+        { nick: 'Split Six', n: 6, split: 0.1, w0: 0.09, w1: 0.07 },
+        { nick: 'Hammer 5', n: 5, hole: 1, w0: 0.2, w1: 0.16 },
+        { nick: 'Tread', n: 0, face: { n: 8, ww: 0.08, wl: 0.18, wr: 0.56 } },
+        { nick: 'Y Rock', n: 5, fork: 0.14, w0: 0.16, w1: 0.07 },
+        { nick: 'Twist Lock', n: 6, sweep: 0.5, bow: 0.1 },
+        { nick: 'Hex Eight', n: 8, w0: 0.12, w1: 0.1, bead: 24, dish: 0.3, fz: 0.04, cap: 'hex' },
+        { nick: 'Mud Dog', n: 10, w0: 0.07, w1: 0.06, bead: 30 }]) },
     ];
     const ALL = [];
     LINES.forEach(L => L.designs.forEach((d, i) => {
       d.id = L.key + (i + 1); d.line = L; d.name = L.name + ' ' + L.code + '-' + String(i + 1).padStart(2, '0');
       d.spokes = d.face ? d.face.n + ' windows' : d.layers ? 'mesh' : d.n + (d.split ? ' split' : d.fork ? ' Y' : '') + ' spoke';
+      if (d.nick && !d.wire) { d.name = L.name + ' ' + d.nick; if (d.face && d.face.rows) d.spokes = d.face.rows.reduce((a, w) => a + w.n, 0) + ' windows'; if (d.face && !d.face.n && !d.face.rows) d.spokes = 'solid face'; if (d.spin) d.spokes = (d.spin.disc ? 'disc' : d.spin.n + ' blade') + ' spinner'; if (d.bead) d.spokes += ` · ${d.bead}-bolt beadlock`; }
       if (d.wire) { d.name = L.name + ' ' + d.nick; d.spokes = `${d.n} spoke wire${d.poke ? ` · ${Math.round(d.poke / 0.0254)} in poke` : ' · flat'}${d.ears === 3 ? ' · 3-ear' : d.ears === 'hex' ? ' · hex knock' : ' · 2-ear'}${d.mix === 'gold' ? ' · gold' : ''}`; }
       ALL.push(d);
     }));
@@ -10924,6 +11014,11 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       const zS = (widthIn(dia) * 0.0254 + 0.06) / 0.7;
       inner.scale.set(Rt, Rt, zS);
       if (d.wire) wireWheel(g, (Ri - 0.005) * Rt, zS, d, FIN[fk]);
+      if (d.spin) {   // spinner: a stem from the hub out to the plate, then the plate itself
+        const Rm = (Ri - 0.005) * Rt, z1 = (d.fz + 0.1) * zS, z2 = 0.37 * zS + 0.012;
+        const st = new THREE.Mesh(new THREE.CylinderGeometry(Rm * 0.09, Rm * 0.12, z2 - z1, 24), FIN[fk].hub); st.rotation.x = Math.PI / 2; st.position.z = (z1 + z2) / 2; g.add(st);
+        g.add(spinnerM(Rm, zS, d, FIN[fk]));
+      }
       return g;
     }
     function bake(g) {   // every mesh (and instance) in g → one mesh per material
@@ -10952,7 +11047,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   function rimPhys(c, rf0, rr0, mw0) {
     const r = rimOf(c); if (!r) return null;
     const dia = c.rims.dia, rimR = dia * 0.0127, rF = rimTireR(dia, rf0), rR = rimTireR(dia, rr0);
-    const add = (rr) => (dia - 19) * 1.05 + (rr - rr0) * 85 + (r.wire ? 1.5 : -1.5);   // forged is lighter than cast; bigger and taller is heavier
+    const add = (rr) => (dia - 19) * 1.05 + (rr - rr0) * 85 + (r.wire ? 1.5 : r.line.kg != null ? r.line.kg : -1.5);   // forged is lighter than cast; bigger and taller is heavier
     const prof = rr => (rr - rimR) / rr;   // sidewall height / tire radius
     return { dia, rF, rR, mwF: Math.max(mw0 * 0.7, mw0 + add(rF)), mwR: Math.max(mw0 * 0.7, mw0 + add(rR)), iK: 0.62 + 0.12 * clamp(rimR / rR - 0.6, 0, 0.4),
       apF: clamp(1 + (prof(rF) - 0.3) * 0.45, 0.9, 1.08), apR: clamp(1 + (prof(rR) - 0.3) * 0.45, 0.9, 1.08), hook: clamp(1 + (prof(rR) - 0.3) * 0.1, 0.985, 1.015), side: (rR - rimR) / 0.0254 };
@@ -10976,8 +11071,14 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   const RIMG = new Map();
   function rimWheel(id, fin, dia, tr, tire) {
     const key = [id, fin, dia, tr.toFixed(3), tire || ''].join('|');
-    if (!RIMG.has(key)) RIMG.set(key, FORGED.bake(FORGED.wheelM(FORGED.RIM(id), fin, dia, tr, true, tire)));
-    const g = new THREE.Group(); for (const m of RIMG.get(key).children) { const k = new THREE.Mesh(m.geometry, m.material); k.castShadow = true; g.add(k); } return g;
+    if (!RIMG.has(key)) {   // spinners bake in two pieces: the wheel, and the plate that turns on its own
+      const w = FORGED.wheelM(FORGED.RIM(id), fin, dia, tr, true, tire), sp = w.getObjectByName('spinner'); if (sp) sp.parent.remove(sp);
+      RIMG.set(key, { base: FORGED.bake(w), spin: sp ? FORGED.bake(sp) : null });
+    }
+    const B = RIMG.get(key), copy = (src, to) => { for (const m of src.children) { const k = new THREE.Mesh(m.geometry, m.material); k.castShadow = true; to.add(k); } };
+    const g = new THREE.Group(); copy(B.base, g);
+    if (B.spin) { const sg = new THREE.Group(); sg.name = 'spinner'; copy(B.spin, sg); g.add(sg); }
+    return g;
   }
   // put a car's rims on its model (drag packs win: their wheels own the corners while they're on)
   const rimLive = new Set();
@@ -10995,6 +11096,24 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       const tr = st.scale.x, rv = rimTireR(c.rims.dia, tr), g = rimWheel(c.rims.id, c.rims.fin, c.rims.dia, rv, tireOf(c));
       w.userData.rv = rv > tr + 1e-4 ? rv : 0;
       w.scale.set(1, 1, 1); if (w.position.z < 0) g.rotation.y = Math.PI; w.add(g);
+      const sg = g.getObjectByName('spinner'); if (sg) SPIN.add({ w, g, s: sg, sgn: g.rotation.y ? -1 : 1, th: w.rotation.z, om: 0, ph: 0 });
+    }
+  }
+  // spinners: the plate spins up with the wheel (fast) and coasts on its bearing (slow), so it keeps going after you stop
+  const SPIN = new Set();
+  let spinChk = 0;
+  function stepSpinners(dt) {
+    if (!SPIN.size || !(dt > 0)) return;
+    const chk = (spinChk += dt) > 2; if (chk) spinChk = 0;
+    for (const e of SPIN) {
+      if (e.g.parent !== e.w) { SPIN.delete(e); continue; }
+      if (chk) { let o = e.w; while (o.parent) o = o.parent; if (o.type !== 'Scene') { SPIN.delete(e); continue; } }
+      const th = e.w.rotation.z, ow = (th - e.th) / dt; e.th = th;
+      const up = Math.abs(ow) > Math.abs(e.om) && (Math.sign(ow) === Math.sign(e.om) || Math.abs(e.om) < 0.5);
+      e.om += (ow - e.om) * (1 - Math.exp(-dt * (up ? 3 : 0.09)));
+      if (Math.abs(e.om) < 0.02 && Math.abs(ow) < 0.02) e.om = 0;
+      e.ph = (e.ph + e.om * dt) % (Math.PI * 2);
+      e.s.rotation.z = ((e.ph - th) % (Math.PI * 2)) * e.sgn;
     }
   }
   function rimRefresh(c) { for (const m of rimLive) { let o = m; while (o.parent) o = o.parent; if (o.type !== 'Scene') { rimLive.delete(m); continue; } if (m.userData.rimCar === c) applyRims(m, c); } }
@@ -11027,6 +11146,77 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       LM.byB.set(bi, S2); LM.spots.push(S2);
     }
   }
+  // ---------- rim pictures: every design rendered from its real 3D model for the rim menu ----------
+  // A small offscreen renderer (its own canvas, a studio light box) draws one wheel at a time, three quarters on,
+  // in the finish, size and tires you picked. Pictures are cached; the renderer is freed after a few idle seconds.
+  const RIMPIC_BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  const RIMPIC = { cache: new Map(), q: [], want: new Set(), r: null, sc: null, cam: null, timer: 0, idle: 0, px: 256 };
+  const rimPicKey = (id, fin, dia, tire) => [id, fin, dia, tire || ''].join('|');
+  function rimPicSetup() {
+    if (RIMPIC.r) return true;
+    try {
+      const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      r.setPixelRatio(1); r.setSize(RIMPIC.px, RIMPIC.px, false); r.setClearColor(0x000000, 0);
+      r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+      const sc = new THREE.Scene(), room = new THREE.Scene(), gg = new THREE.SphereGeometry(50, 32, 16), cc = [], P = gg.attributes.position;
+      for (let i = 0; i < P.count; i++) { const y = P.getY(i) / 50, t = Math.max(0, y); const c = new THREE.Color(0x2b2f38).lerp(new THREE.Color(0xf4f6fa), Math.pow(t, 0.5)).multiplyScalar(y < -0.1 ? 0.25 : 1); cc.push(c.r, c.g, c.b); }
+      gg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
+      room.add(new THREE.Mesh(gg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+      for (const [x, y, z, k] of [[25, 30, 30, 1.6], [-30, 15, 25, 1.0], [0, -10, 40, 0.5]]) { const b = new THREE.Mesh(new THREE.PlaneGeometry(26, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(k), side: THREE.DoubleSide })); b.position.set(x, y, z); b.lookAt(0, 0, 0); room.add(b); }
+      const pm = new THREE.PMREMGenerator(r); sc.environment = pm.fromScene(room, 0.03).texture; pm.dispose();
+      sc.add(new THREE.HemisphereLight(0xeef3ff, 0x30302c, 0.55));
+      const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(1.2, 1.6, 2.2); sc.add(key);
+      const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 20); cam.position.set(0, 0.05, 2.4); cam.lookAt(0, 0, 0);
+      Object.assign(RIMPIC, { r, sc, cam }); return true;
+    } catch (e) { console.warn('rim pictures: ' + e.message); RIMPIC.r = null; return false; }
+  }
+  function rimPicFree() {
+    const R = RIMPIC; if (!R.r) return;
+    try { R.sc.environment && R.sc.environment.dispose(); R.r.dispose(); R.r.forceContextLoss(); } catch (e) {}
+    R.r = R.sc = R.cam = null;
+  }
+  function rimPicDraw(k) {
+    const [id, fin, dia0, tire] = k.split('|'), d = FORGED.RIM(id), dia = +dia0; if (!d || !rimPicSetup()) return '';
+    const tr = rimTireR(dia, 0.34), w = FORGED.wheelM(d, fin, dia, tr, true, tire || undefined);
+    w.rotation.y = -0.38; w.rotation.x = 0.05;
+    const sp = w.getObjectByName('spinner'); if (sp) sp.rotation.z = 0.35;
+    RIMPIC.sc.add(w); w.updateMatrixWorld(true);
+    // frame the tire's outline tight so the rim face fills the picture
+    const cam = RIMPIC.cam, ctr = new THREE.Vector3(0, 0, 0.06), dist = tr * 1.1 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+    cam.position.set(ctr.x, ctr.y + 0.02, ctr.z + dist); cam.near = dist / 10; cam.far = dist * 3; cam.updateProjectionMatrix(); cam.lookAt(ctr);
+    RIMPIC.r.render(RIMPIC.sc, cam);
+    let url = ''; try { url = RIMPIC.r.domElement.toDataURL('image/png'); } catch (e) {}
+    RIMPIC.sc.remove(w); w.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+    return url;
+  }
+  function rimPicPump() {
+    const R = RIMPIC; R.timer = 0;
+    const t0 = performance.now();
+    while (R.q.length && performance.now() - t0 < 40) {
+      const k = R.q.shift(); R.want.delete(k); if (R.cache.has(k)) continue;
+      const url = rimPicDraw(k); R.cache.set(k, url);
+      document.querySelectorAll('img.rp').forEach(im => { if (im.dataset.rp === k && url) { im.src = url; im.classList.add('on'); } });
+    }
+    if (R.q.length) R.timer = setTimeout(rimPicPump, 16);
+    else { clearTimeout(R.idle); R.idle = setTimeout(rimPicFree, 8000); }
+  }
+  // the picture for a rim (a data URL), or '' while it's queued to draw
+  function rimPic(id, fin, dia, tire) {
+    const k = rimPicKey(id, fin, dia, tire), R = RIMPIC;
+    if (R.cache.has(k)) return { k, u: R.cache.get(k) };
+    if (!R.want.has(k)) { R.want.add(k); R.q.push(k); }
+    clearTimeout(R.idle); if (!R.timer) R.timer = setTimeout(rimPicPump, 30);
+    return { k, u: '' };
+  }
+  // tap a picture: the big view of that rim
+  function rimPicBig(k, title, sub) {
+    let el = document.getElementById('rimbig');
+    if (!el) { el = document.createElement('div'); el.id = 'rimbig'; document.body.appendChild(el); el.addEventListener('click', () => { el.hidden = true; }); }
+    const u = RIMPIC.cache.get(k) || '';
+    el.innerHTML = `<div class="rb"><img data-rp="${esc(k)}" class="rp${u ? ' on' : ''}" src="${u || RIMPIC_BLANK}" alt=""><b>${esc(title)}</b><span>${esc(sub || '')}</span><em>Tap to close</em></div>`;
+    el.hidden = false;
+  }
+
   // ---------- the rim menu: pick a line, a design, a size and a finish ----------
   const RIMUI = { line: null, dia: 20, fin: 'chrome', tire: 'gold' };
   const rimPrice = (L, dia, p) => Math.round(L.price * RIM_SIZES[dia] * (p.rate || 1) / 10) * 10;
@@ -11039,7 +11229,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
         const feel = dia >= 28 ? 'Donk size: tall tires, heavy, slow off the line, sits way up' : dia >= 24 ? 'Big rims, thin rubber: sharp steering, heavier, harder to hook' : dia === 15 ? 'Classic swanga size, fat sidewall for vogues' : dia <= 18 ? 'More sidewall: rides softer, hooks a little better' : 'Street size';
         rows.push({ t: `Size: ${dia} in${dia === c.rims?.dia && r ? ' (on your car)' : ''}`, s: `${feel} · ${tall.toFixed(1)} in tall tires, ${P.side.toFixed(1)} in sidewall${up > 0.1 ? ` · sits ${up.toFixed(1)} in higher` : ''} · ${lb >= 0 ? '+' : ''}${Math.round(lb)} lb a corner`, btn: dia === RIMUI.dia ? 'Picked' : 'Pick', off: dia === RIMUI.dia, act: () => { RIMUI.dia = dia; } }); }
       for (const [id, [label, sw]] of Object.entries(RIM_FIN)) rows.push({ sw, t: `Finish: ${label}`, s: r ? 'For your next set, or refinish the set you run' : 'For your next set', btn: id === RIMUI.fin ? 'Picked' : 'Pick', off: id === RIMUI.fin, act: () => { RIMUI.fin = id; } });
-      for (const L of FORGED.LINES) rows.push({ t: L.name, s: L.wire ? `Houston swangas: 84s, 83s, elbows · on vogues · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4` : `10 designs · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4`, btn: money(rimPrice(L, RIMUI.dia, p)), act: () => { RIMUI.line = L.key; } });
+      for (const L of FORGED.LINES) rows.push({ img: rimPic(L.designs[0].id, RIMUI.fin, RIMUI.dia, L.wire ? RIMUI.tire : ''), t: L.name, s: L.wire ? `Houston swangas: 84s, 83s, elbows · on vogues · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4` : L.blurb ? `${L.blurb} · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4` : `10 designs · ${RIMUI.dia} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()} · set of 4`, btn: money(rimPrice(L, RIMUI.dia, p)), act: () => { RIMUI.line = L.key; } });
       if (r && c.rims.fin !== RIMUI.fin) rows.push({ t: `Refinish your ${r.name} in ${RIM_FIN[RIMUI.fin][0].toLowerCase()}`, s: 'Strip and refinish the set', btn: money(Math.round(450 * (p.rate || 1))), act: () => { if (spend(Math.round(450 * (p.rate || 1)), 'Rim refinish')) set(Object.assign({}, c.rims, { fin: RIMUI.fin }), 'Refinished.'); } });
       if (r) rows.push({ t: 'Stock wheels back on', s: `Sell your ${c.rims.dia} in ${r.name} back for ${money(Math.round(rimPrice(r.line, c.rims.dia, { rate: 1 }) * 0.4))}`, btn: 'Sell', act: () => { S.money += Math.round(rimPrice(r.line, c.rims.dia, { rate: 1 }) * 0.4); set(null, 'Stock wheels back on.'); } });
       return { title: p.name || 'Rims', sub: r ? `On your car: ${r.name} · ${c.rims.dia} in · ${RIM_FIN[c.rims.fin][0]}` : 'Pick a size and finish, then a line', rows };
@@ -11052,7 +11242,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
           act: () => { RIMUI.tire = k; if (r && r.wire && !mine && spend(600, 'Vogue tires')) set(Object.assign({}, c.rims, { tire: k }), `${label} on.`); } }); }
     }
     for (const d of L.designs) { const on = r === d && c.rims.dia === RIMUI.dia && c.rims.fin === RIMUI.fin;
-      rows.push({ sw: RIM_FIN[RIMUI.fin][1], t: d.name, s: `${d.spokes}${d.deep ? ' · deep lip' : ''}${d.dish > 0.35 ? ' · deep concave' : ''} · ${RIMUI.dia} in`, btn: on ? 'On the car' : money(cost), off: on || !!c.drag,
+      rows.push({ img: rimPic(d.id, RIMUI.fin, RIMUI.dia, d.wire ? RIMUI.tire : ''), t: d.name, s: `${d.spokes}${d.deep ? ' · deep lip' : ''}${d.dish > 0.35 ? ' · deep concave' : ''} · ${RIMUI.dia} in`, btn: on ? 'On the car' : money(cost), off: on || !!c.drag,
         act: () => { if (spend(cost, d.name)) set(Object.assign({ id: d.id, fin: RIMUI.fin, dia: RIMUI.dia }, d.wire ? { tire: RIMUI.tire } : {}), d.wire ? `${d.name} on ${RIM_TIRES[RIMUI.tire][0].toLowerCase()}. Swang it.` : `${d.name} on. Look at it on the lift.`); } }); }
     return { title: L.name, sub: `${RIMUI.dia} in · ${RIM_FIN[RIMUI.fin][0]} · ${money(cost)} a set`, rows };
   };
@@ -23361,7 +23551,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function loop(now) {
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
-    netTick(dt); HOME.stepOut(dt); homeNetTick(dt);
+    netTick(dt); HOME.stepOut(dt); homeNetTick(dt); stepSpinners(dt);
     stepNos(dt, (driving && !foot.on) || ROLL.on || STRIP.on);
     if ((frame & 15) === 0) syncCarModel();
     if (car) stepPanels(car.userData.model, dt); if (car && driving) stepCarAudio();
@@ -23439,7 +23629,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = { PRO: { PRO, PRO_SHOPS, PRO_STYLE, PRO_PKG, proTuneMake, proTuneJob, proPlan, proRoll, proDrop, proFinish, proPickup, proReady, proResultMenu, proPlanMenu }, HUDX: { HUDX, hudOpt, hudSet, hudxFrame, hudDiag }, PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
-    ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, rimPic, rimPicDraw, RIMPIC, SPIN, RIMUI, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     snap(cx, cy, cz, tx, ty, tz) { camera.position.set(cx, cy, cz); camera.lookAt(tx, ty, tz); renderer.render(scene, camera); return renderer.domElement.toDataURL('image/jpeg', 0.88); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
