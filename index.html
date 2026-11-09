@@ -14687,6 +14687,7 @@ body.lay-edit .pad{display:grid!important}body.lay-edit #radio{display:flex!impo
       foot.x = p.x; foot.z = p.z; foot.target = null; if (foot.holder) { foot.holder.visible = false; foot.holder.position.x = p.x; foot.holder.position.z = p.z; }
       // the camera rides behind their car; drag to look around, it swings back behind after a moment
       const yaw = -p.h;
+      if (window.__passCam && window.__passCam(dt)) { rideUI(); return; }   // the driver's chase camera + free look (riding shotgun section)
       if (performance.now() - LOOK.dragAt > 1500) foot.camYaw += Math.atan2(Math.sin(yaw - foot.camYaw), Math.cos(yaw - foot.camYaw)) * Math.min(1, dt * 2.5);
       const pt = clamp(LOOK.pitch, -0.1, 1.0), d = 6.8, cy = foot.camYaw;
       _rlook.set(p.x, 1.3, p.z); _rcam.set(p.x + Math.sin(cy) * Math.cos(pt) * d, Math.max(0.6, 1.3 + Math.sin(pt) * d + 0.6), p.z + Math.cos(cy) * Math.cos(pt) * d);
@@ -14720,7 +14721,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     let inv = null; for (const v of RIDE.inbox.values()) inv = v;
     if (RIDE.with) {
       const p = NET.peers.get(RIDE.with.id), mph = p ? Math.round(Math.abs(p.sp) * 2.237) : 0;
-      html = `<span>🚗 Riding with <b>${esc2(RIDE.with.name)}</b> · ${mph} mph</span><button data-a="out">GET OUT</button>`; act.out = () => rideGetOut(false);
+      html = `<span>🚗 Riding with <b>${esc2(RIDE.with.name)}</b> · ${mph} mph</span><button class="no" data-a="cam">🎥</button><button data-a="out">GET OUT</button>`; act.out = () => rideGetOut(false); act.cam = () => window.__pcam && window.__pcam.passCamCycle();
     } else if (inv) {
       html = `<span>🚗 ${esc2(inv.name)} ${inv.kind === 'ask' ? 'wants to ride with you' : 'is offering you a ride'}</span><button data-a="yes">${inv.kind === 'ask' ? 'LET IN' : 'HOP IN'}</button><button class="no" data-a="no">NO</button>`;
       act.yes = () => rideAnswer(true); act.no = () => rideAnswer(false);
@@ -15516,6 +15517,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     if (!e.path || !e.path.length) { const dd = e.dest ? Math.hypot(e.dest[0] - e.x, e.dest[1] - e.z) : 0; if (dd < 30 || r.t > 400) { e.want = 0; if (Math.abs(e.sp) < 0.5) { toast(`${e.name} dropped you off at ${r.where}.`, 'good'); hRideOut(true); return; } } }
     if (performance.now() - LOOK.dragAt > 1500) foot.camYaw += hNorm(e.yaw - foot.camYaw) * Math.min(1, dt * 2.5);
     if (hg) return;
+    if (window.__passCam && window.__passCam(dt)) return;
     const pt = clamp(LOOK.pitch, -0.1, 1.0), d = 7, cy = foot.camYaw;
     _hlook.set(e.x, 1.3, e.z); _hcam.set(e.x + Math.sin(cy) * Math.cos(pt) * d, Math.max(0.6, 1.3 + Math.sin(pt) * d + 0.6), e.z + Math.cos(cy) * Math.cos(pt) * d);
     camera.position.lerp(_hcam, Math.min(1, dt * 10)); camera.lookAt(_hlook);
@@ -15570,7 +15572,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     }
     const esc2 = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
     let html = '', act = {};
-    if (HOOD.ride) { const e = HOOD.ride.e; html = `<span>🚗 Riding with <b>${esc2(e.name)}</b> · ${Math.round(Math.abs(e.sp) * 2.237)} mph</span><button data-a="out">GET OUT</button>`; act.out = () => hRideOut(false); }
+    if (HOOD.ride) { const e = HOOD.ride.e; html = `<span>🚗 Riding with <b>${esc2(e.name)}</b> · ${Math.round(Math.abs(e.sp) * 2.237)} mph</span><button class="no" data-a="cam">🎥</button><button data-a="out">GET OUT</button>`; act.out = () => hRideOut(false); act.cam = () => window.__pcam && window.__pcam.passCamCycle(); }
     else if (HOOD.hold) html = `<span>🏴 Holding <b>${esc2(HOOD.hold.b.name)}</b> · ${Math.floor(HOOD.hold.t)}/30s</span>`;
     else if (HOOD.near) { const e = HOOD.near, col = e.gang ? hColor(e.gang) : '#ffd23f'; html = `<span><i style="background:${col}"></i>${esc2(e.name)}${e.gang ? ' · ' + esc2(setOf(e.gang).short) : ''}</span><button data-a="talk">TALK <small>Y</small></button>`; act.talk = () => openMenu(hTalkMenu(e)); }
     HOOD.act = act; HOOD.first = act.out || act.talk || null;
@@ -25475,6 +25477,83 @@ body.g-armed #walkhint { display: none !important; }
     camera.position.set(_dL.x + Math.sin(yaw) * Math.cos(pt) * r, Math.max(0.6, _dL.y + Math.sin(pt) * r), _dL.z + Math.cos(yaw) * Math.cos(pt) * r);
     _dT.copy(drv.look).lerp(_dL, Math.min(1, off * 2)); camera.lookAt(_dT);
   }
+  // ---------- riding shotgun: the same camera as driving ----------
+  // a passenger (a friend's car online or a regular's) gets the driver's chase camera: it trails the car the way it's going,
+  // drag anywhere (or the right stick) to look all the way round, and it only eases back behind once the car is moving.
+  // 🎥 / C / right stick click cycles chase, far and your own seat. Hanging out of the window hands the camera to the gun.
+  const PCAM = { ready: false, yaw: 0, pitch: 0, id: null, lx: 0, ly: 0, at: -1e9, camYaw: 0, px: 0, pz: 0, cam: new THREE.Vector3(), look: new THREE.Vector3(), mode: 0, lens0: null, padR3: false };
+  function passRide() {
+    if (typeof RIDE !== 'undefined' && RIDE.with) { const p = NET.peers.get(RIDE.with.id); return p ? { m: p.view && p.view.model, x: p.x, z: p.z, yaw: -p.h, sp: Math.abs(p.sp || 0) } : null; }
+    if (typeof HOOD !== 'undefined' && HOOD.ride) { const e = HOOD.ride.e; return { m: e.model, x: e.x, z: e.z, yaw: e.yaw, sp: Math.abs(e.sp || 0) }; }
+    return null;
+  }
+  const pcamOn = () => foot.on && !inside && !menuFn && !(PH && PH.open) && !(HANG.k > 0) && !!passRide();
+  function passLens(on) {
+    if (on === !!PCAM.lens0) return;
+    if (on) { PCAM.lens0 = [camera.near, camera.fov]; camera.near = 0.04; camera.fov = 66; } else { camera.near = PCAM.lens0[0]; camera.fov = PCAM.lens0[1]; PCAM.lens0 = null; }
+    camera.updateProjectionMatrix();
+  }
+  function passCamCycle() { const R = passRide(); if (!R) return; PCAM.mode = (PCAM.mode + 1) % 3; if (PCAM.mode === 2 && !(R.m && R.m.userData && R.m.userData.inner)) PCAM.mode = 0; toast(['Chase cam', 'Far cam', 'Seat view'][PCAM.mode]); }
+  (function bindPassLook(el) {
+    el.addEventListener('pointerdown', e => { if (!pcamOn() || PCAM.id !== null) return; PCAM.id = e.pointerId; PCAM.lx = e.clientX; PCAM.ly = e.clientY; });
+    el.addEventListener('pointermove', e => {
+      if (e.pointerId !== PCAM.id || !pcamOn()) return;
+      const dx = e.clientX - PCAM.lx, dy = e.clientY - PCAM.ly; PCAM.lx = e.clientX; PCAM.ly = e.clientY;
+      PCAM.yaw -= dx * 0.0065; PCAM.pitch = clamp(PCAM.pitch + dy * 0.0045, PCAM.mode === 2 ? -0.6 : -0.3, 0.9); PCAM.at = performance.now();
+    });
+    const up = e => { if (e.pointerId === PCAM.id) PCAM.id = null; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  })(renderer.domElement);
+  addEventListener('keydown', e => { if (e.code === 'KeyC' && !e.repeat && e.target.tagName !== 'INPUT' && passRide()) passCamCycle(); });
+  const _pT = new THREE.Vector3(), _pL = new THREE.Vector3(), _pO = new THREE.Vector3();
+  // returns true when it placed the camera this frame
+  function passCam(dt) {
+    const R = passRide();
+    if (!R || HANG.k > 0 || inside) { passLens(false); PCAM.ready = false; PCAM.id = null; return false; }
+    if (!PCAM.ready) { PCAM.ready = true; PCAM.camYaw = R.yaw; PCAM.px = R.x; PCAM.pz = R.z; PCAM.yaw = PCAM.pitch = 0; PCAM.cam.copy(camera.position); PCAM.look.set(R.x, 1.4, R.z); }
+    // which way the car is really going, so you see a slide like the driver does
+    const mx = R.x - PCAM.px, mz = R.z - PCAM.pz, md = Math.hypot(mx, mz); PCAM.px = R.x; PCAM.pz = R.z;
+    let head = R.yaw;
+    if (R.sp > 4 && md > 0.02 && md < 8) { const h = Math.atan2(-mx, -mz); if (Math.abs(angDiff(h, R.yaw)) < Math.PI / 2) head = h; }
+    const dyaw = angDiff(head, R.yaw);
+    PCAM.camYaw += angDiff(R.yaw + clamp(dyaw, -0.9, 0.9) * 0.55, PCAM.camYaw) * (1 - Math.exp(-dt * 4));
+    // free look: drag or the right stick, R3 changes the view
+    for (const p of (navigator.getGamepads ? navigator.getGamepads() : [])) {
+      if (!p) continue; const ax = p.axes[2] || 0, ay = p.axes[3] || 0;
+      if (Math.abs(ax) > 0.15 || Math.abs(ay) > 0.15) { PCAM.yaw -= ax * dt * 2.6; PCAM.pitch = clamp(PCAM.pitch + ay * dt * 1.6, PCAM.mode === 2 ? -0.6 : -0.3, 0.9); PCAM.at = performance.now(); }
+      const r3 = !!(p.buttons[11] && p.buttons[11].pressed); if (r3 && !PCAM.padR3) passCamCycle(); PCAM.padR3 = r3;
+    }
+    if (PCAM.id !== null && !pcamOn()) PCAM.id = null;
+    PCAM.yaw = Math.atan2(Math.sin(PCAM.yaw), Math.cos(PCAM.yaw));
+    if (PCAM.id === null && performance.now() - PCAM.at > 1500 && R.sp > 3) { const k = 1 - Math.exp(-dt * 2.2); PCAM.yaw -= PCAM.yaw * k; PCAM.pitch -= PCAM.pitch * k; }
+    // your own seat: the driver's eye moved over to your side (front right, back right, back left)
+    const inn = R.m && R.m.userData && R.m.userData.inner, eye = R.m && R.m.userData && R.m.userData.eye;
+    if (PCAM.mode === 2 && inn && eye) {
+      passLens(true);
+      const seat = typeof hangSeat === 'function' ? hangSeat() : 0, ex = eye[0] - (seat ? 0.95 : 0), ez = Math.abs(eye[2]) * (seat === 2 ? -1 : 1), ey = eye[1] + (seat ? 0.03 : 0);
+      inn.updateWorldMatrix(true, false); camera.position.copy(inn.localToWorld(_pO.set(ex, ey, ez)));
+      const ly = PCAM.yaw, lp = -PCAM.pitch;   // yaw left/right round your head, pitch up/down
+      camera.lookAt(inn.localToWorld(_pT.set(ex + Math.cos(ly) * Math.cos(lp) * 8, ey - 0.75 + Math.sin(lp) * 8, ez - Math.sin(ly) * Math.cos(lp) * 8)));
+      PCAM.cam.copy(camera.position); PCAM.look.set(R.x, 1.4, R.z);
+      return true;
+    }
+    passLens(false);
+    const far = PCAM.mode === 1, back = far ? 26 : 11.5, upY = far ? 12 : 4.2;
+    PCAM.cam.lerp(_pT.set(R.x + Math.sin(PCAM.camYaw) * back, upY, R.z + Math.cos(PCAM.camYaw) * back), 1 - Math.exp(-dt * 5));
+    PCAM.look.set(R.x - Math.sin(PCAM.camYaw) * 8, 1.6, R.z - Math.cos(PCAM.camYaw) * 8);
+    const off = Math.abs(PCAM.yaw) + Math.abs(PCAM.pitch);
+    if (off < 0.002) { camera.position.copy(PCAM.cam); camera.lookAt(PCAM.look); return true; }
+    // swing the chase camera round the car by the look offset, same as the driver's look-around
+    _pL.set(R.x, 1.4, R.z); _pO.copy(PCAM.cam).sub(_pL);
+    const r = _pO.length(), yaw0 = Math.atan2(_pO.x, _pO.z), p0 = Math.asin(clamp(_pO.y / r, -1, 1));
+    const yaw = yaw0 + PCAM.yaw, pt = clamp(p0 + PCAM.pitch, -0.05, 1.35);
+    camera.position.set(_pL.x + Math.sin(yaw) * Math.cos(pt) * r, Math.max(0.6, _pL.y + Math.sin(pt) * r), _pL.z + Math.cos(yaw) * Math.cos(pt) * r);
+    _pT.copy(PCAM.look).lerp(_pL, Math.min(1, off * 2)); camera.lookAt(_pT);
+    return true;
+  }
+  window.__passCam = passCam; window.__pcam = { PCAM, passCamCycle, passRide, pcamOn };
+  const _stepFootPC = stepFoot;
+  stepFoot = function (dt) { _stepFootPC(dt); if (PCAM.lens0 && (!passRide() || HANG.k > 0 || PCAM.mode !== 2)) passLens(false); if (!passRide() || HANG.k > 0) PCAM.ready = false; };
   const _stepDrive = stepDrive;
   stepDrive = function (dt) {
     _stepDrive(dt); laserOff(); driveLook(dt); stepFx(dt);   // the laser goes off with the gun when you get in
