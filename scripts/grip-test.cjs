@@ -6,11 +6,12 @@
 //   power: steady 30 mph corner, floor it with traction control off until the tail is out CAT degrees, then lift and
 //          countersteer like a driver (power10/20/30: SPUN means it couldn't be caught)
 //   corner / corneroff: full gas + full lock at 40 mph with traction control on / off
+//   pull: straight-line pulls from 20/40/60 mph, TC on and off (NZ=1 adds a phone player's tiny steering taps, PW= scales power)
 //   lift: lift off mid-corner at 50 mph; hb: handbrake turn at 40 mph then catch it
 // CARS=id,id ONLY=skid,step,... LN=log every N steps; G='{"lsy":0.12}' overrides window.__grip; FO=1 adds per-tire loads/forces.
 // Each log row: [t s, mph, body slip °, yaw °/s, lateral g, front wheel angle °, tire slip angles, wheel spin ratios, ESC, rpm, gear, lockup, throttle, TC torque, ESC level]
 const { chromium } = require('playwright');
-const S = process.env.S, CARS = (process.env.CARS || 'dodge_charger_srt_hellcat_widebody_2020').split(','), ONLY = (process.env.ONLY || 'skid,step,power,corner,lift').split(',');
+const S = process.env.S, CARS = (process.env.CARS || 'dodge_charger_srt_hellcat_widebody_2020').split(','), ONLY = (process.env.ONLY || 'skid,step,power,corner,pull').split(',');
 (async () => {
   const b = await chromium.launch(); const pg = await b.newPage({ viewport: { width: 844, height: 390 } });
   const errs = []; pg.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 600)));
@@ -23,9 +24,9 @@ const S = process.env.S, CARS = (process.env.CARS || 'dodge_charger_srt_hellcat_
   for (const car of CARS) {
     await ev(car => { const M = window.__map; M.S.car = M.newCar(car); M.S.car.fuel = 100; M.foot.on = false; M.gbMode(false); M.startDrive(7056.5, 1300); }, car);
     await pg.waitForTimeout(1000);
-    const res = await ev(({ car, ONLY, TC, LN, FO, CAT }) => {
+    const res = await ev(({ car, ONLY, TC, LN, FO, CAT, PW, NZ }) => {
       const M = window.__map, d = M.drvS(), T = M.TIRE, Sf = M.SURF; if (M.foot.on) M.getIn();
-      const h = 1 / 240, LOGN = LN, process_FORCES = FO, process_CAT = CAT; const P0 = Object.assign({}, M.carPerf()); if (TC === '0') P0.tc = false;
+      const h = 1 / 240, LOGN = LN, process_FORCES = FO, process_CAT = CAT, PWK = PW, NOISE = NZ; const P0 = Object.assign({}, M.carPerf()); if (TC === '0') P0.tc = false;
       const st = () => { const u = d.v, sy = Math.sin(d.yaw), cy = Math.cos(d.yaw), v = T.vx * -cy + T.vz * sy; return { u, v, r: T.w, beta: Math.atan2(v, Math.max(0.5, Math.abs(u))) * 57.3, ay: T.ay }; };
       const reset = (u0) => { Object.assign(d, { x: 7056.5, z: 1300, yaw: 0, v: 0, steer: 0 }); M.physReset(); Sf.prep = 0; Sf.mu = 1; Sf.box = 0; T.vx = 0; T.vz = -u0; d.v = u0; };
       const run = (P, sec, ctl, log) => { let t = 0; const out = []; let k = 0;
@@ -47,12 +48,18 @@ const S = process.env.S, CARS = (process.env.CARS || 'dodge_charger_srt_hellcat_
         const out = run(P0, 40, (t, s) => { const want = Math.max(10, 10 + t * 0.35), err = s.u / 30.5 - s.r; sI = Math.max(-1, Math.min(1, sI + err * 0.02)); acc.push(Math.abs(s.u * s.u / 30.5 * 0 + s.ay)); if (acc.length > 240) acc.shift();
           if (Math.abs(err) < 0.03 && acc.length === 240) best = Math.max(best, acc.reduce((a, b) => a + b, 0) / 240 / 9.81); tEnd = t; return Object.assign(spdCtl(want, s), { steer: sI }); }, !!process_FORCES);
         R.skid = [['max steady g on a 200 ft skidpad', +best.toFixed(3)]].concat(out); }
+      // straight-line pulls: rolling at V0 mph, floor it with the wheel straight; a phone player taps tiny corrections (noise)
+      for (const v0 of [20, 40, 60]) for (const tc of [1, 0]) if (ONLY.includes('pull')) { const P = Object.assign({}, P0, { tc: tc ? P0.tc : false }); P.pw *= +(PWK || 1); reset(v0 / 2.237);
+        let mb = 0, mr = 0, my = 0, y = 0, sp = 0, seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        const out = run(P, 7, (t, s) => { mb = Math.max(mb, Math.abs(s.beta)); mr = Math.max(mr, Math.abs(s.r * 57.3)); y += s.v * h; my = Math.max(my, Math.abs(y)); if (T.lit) sp += h;
+          return { gas: 1, steer: NOISE ? (rnd() - 0.5) * 0.15 : 0 }; }, !!process_FORCES);
+        R['pull' + v0 + (tc ? 'tc' : 'off')] = [['max body slip', +mb.toFixed(1), 'max yaw', +mr.toFixed(0), 'sideways drift m', +my.toFixed(2), 'wheelspin s', +sp.toFixed(2), 'mph', +(d.v * 2.237).toFixed(0)]].concat(out); }
       if (ONLY.includes('corner')) { reset(18); R.corner = run(P0, 6, (t, s) => t < 4 ? { gas: 1, steer: 1 } : { gas: 0.3, steer: 0 }, true); }
       if (ONLY.includes('corneroff')) { reset(18); R.corneroff = run(Object.assign({}, P0, { tc: false }), 6, (t, s) => t < 4 ? { gas: 1, steer: 1 } : { gas: 0.3, steer: 0 }, true); }
       if (ONLY.includes('lift')) { reset(22); R.lift = run(P0, 5, (t, s) => t < 2.5 ? Object.assign(spdCtl(22 + t, s), { steer: 0.7 }) : { gas: 0, steer: 0.7 }, true); }
       if (ONLY.includes('hb')) { reset(18); R.hb = run(P0, 5, (t, s) => t < 0.8 ? { gas: 0.3, steer: 0.7 } : t < 1.4 ? { gas: 0, steer: 1, hb: 1 } : { gas: 0.4, steer: Math.max(-1, Math.min(1, s.beta / 10 - s.r * 57.3 / 50)) }, true); }
       return R;
-    }, { car, ONLY, TC: process.env.TC, LN: +(process.env.LN || 24), FO: !!process.env.FO, CAT: process.env.CAT ? process.env.CAT.split(',').map(Number) : null });
+    }, { car, ONLY, TC: process.env.TC, LN: +(process.env.LN || 24), FO: !!process.env.FO, CAT: process.env.CAT ? process.env.CAT.split(',').map(Number) : null, PW: process.env.PW || 1, NZ: !!process.env.NZ });
     console.log('=== ' + car);
     for (const k in res) { console.log('-- ' + k + '  [t, mph, beta°, yaw°/s, ay g, delta°, slipAngles, kappas, esc]'); for (const r of res[k]) console.log(JSON.stringify(r)); }
   }
