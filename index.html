@@ -20619,11 +20619,11 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         g.addColorStop(0, hsl(hue, 30, lit + 6 + up * 10)); g.addColorStop(0.7, hsl(hue, 34, lit + up * 6)); g.addColorStop(1, hsl(hue, 36, lit - 6 + up * 5, 0));
         x.fillStyle = g; x.beginPath(); x.arc(px, py, sz, 0, TAU); x.fill(); }
     };
-    at(10, () => { twig(128, 256, 126, 150, 13, '#4a3a2c'); twig(126, 175, 92, 120, 6, '#4a3a2c'); twig(127, 165, 166, 110, 6, '#4a3a2c'); crownMass(128, 96, 92, 82, 70, 92, 24, 34); });
-    at(11, () => { twig(128, 256, 124, 188, 16, '#4a3a2c'); twig(124, 196, 50, 150, 8, '#4a3a2c'); twig(124, 196, 206, 146, 8, '#4a3a2c'); crownMass(128, 128, 122, 64, 80, 96, 23, 32); });
+    at(10, () => { twig(128, 256, 126, 150, 13, '#4a3a2c'); twig(126, 175, 92, 120, 6, '#4a3a2c'); twig(127, 165, 166, 110, 6, '#4a3a2c'); crownMass(128, 96, 92, 82, 120, 92, 22, 34); });
+    at(11, () => { twig(128, 256, 124, 188, 16, '#4a3a2c'); twig(124, 196, 50, 150, 8, '#4a3a2c'); twig(124, 196, 206, 146, 8, '#4a3a2c'); crownMass(128, 128, 122, 64, 130, 96, 21, 32); });
     at(12, () => { twig(128, 256, 128, 40, 8, '#4a3a2c'); for (let i = 0; i < 90; i++) { const t = sr(), w = (1 - t) * 92 + 8, px = 128 + sra(-w, w), py = 240 - t * 226; x.fillStyle = hsl(130 + sra(-10, 10), 30, 16 + sra(0, 14) + (1 - Math.abs(px - 128) / (w + 1)) * 4); x.beginPath(); x.arc(px, py, sra(10, 18), 0, TAU); x.fill(); } });
     at(13, () => { twig(128, 256, 118, 70, 9, '#7a6a56'); for (let i = 0; i < 16; i++) { const a = -Math.PI * (0.02 + i / 15 * 0.96); x.save(); x.translate(118, 70); x.rotate(a); x.fillStyle = hsl(92, 32, 28 + sra(-4, 6)); x.beginPath(); x.moveTo(0, 0); x.quadraticCurveTo(50, -18, 100, 12 + Math.abs(Math.cos(a)) * 30); x.quadraticCurveTo(50, 6, 0, 0); x.fill(); x.restore(); } });
-    at(14, () => crownMass(128, 128, 104, 104, 60, 94, 24, 36));
+    at(14, () => crownMass(128, 128, 104, 104, 110, 94, 22, 36));
     at(15, () => { x.fillStyle = hsl(110, 36, 18); x.beginPath(); x.arc(128, 128, 112, 0, TAU); x.fill(); for (let i = 0; i < 1100; i++) { const a = sra(0, TAU), r = Math.sqrt(sr()) * 120; leaf(128 + Math.cos(a) * r, 128 + Math.sin(a) * r, sra(7, 11), sra(2.6, 3.6), sra(0, TAU), hsl(108 + sra(-10, 10), 38 + sra(-8, 8), 20 + sra(0, 14))); } });
     return cv;
   }
@@ -20758,9 +20758,9 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function farCards(g, H, W, cell, topY, topR, topCell = 14) {
     for (let k = 0; k < 3; k++) {
       const a = k / 3 * Math.PI, R = [Math.cos(a) * W, 0, Math.sin(a) * W], U = [0, H / 2, 0], C = [0, H / 2, 0];
-      gcard(g, C, R, U, cell, [0, 1, 0], 0.62, 0.6, 1.0);
+      gcard(g, C, R, U, cell, [0, 1, 0], 0.5, 0.6, 0.82);
     }
-    if (topR) gcard(g, [0, topY, 0], [topR, 0, 0], [0, 0, topR], topCell, [0, 1, 0], 0.95, 0.8, 0.95);
+    if (topR) gcard(g, [0, topY, 0], [topR, 0, 0], [0, 0, topR], topCell, [0, 1, 0], 0.8, 0.8, 0.8);
   }
 
   // ================= tree species (built at the old unit size so every spot keeps its clearance) =================
@@ -20785,7 +20785,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     }
     const cells = o.cells;
     if (lod === 0) { crownCards(g, [0, cy, 0], o.rx, o.ry, o.rz, o.cards, o.card, cells, 0.45, 0.4); crownCards(g, [0, cy - o.ry * 0.15, 0], o.rx * 0.6, o.ry * 0.55, o.rz * 0.6, Math.round(o.cards * 0.18), o.card * 1.1, cells, 0.2, 0.3); }
-    else crownCards(g, [0, cy, 0], o.rx, o.ry, o.rz, Math.round(o.cards * 0.22), o.card * 2.05, cells, 0.55, 0.4);
+    else crownCards(g, [0, cy, 0], o.rx, o.ry, o.rz, Math.round(o.cards * 0.4), o.card * 1.9, cells, 0.45, 0.4);
     return gGeo(g);
   }
   // multi-trunk small tree (crape myrtle): 3-5 smooth pale stems, an umbrella crown with blossoms
@@ -20825,7 +20825,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     snS = seed; const g = new GB2(), H = o.H;
     if (lod === 2) { farCards(g, H, o.R, 12, H * 0.45, o.R * 0.6); return gGeo(g); }
     gtube(g, [0, -0.1, 0], [0, H * 0.5, 0], o.tr, o.tr * 0.5, lod ? 4 : 6, 8, 0, 0.3, 0.55, 0.7);
-    const n = lod ? Math.round(o.cards * 0.25) : o.cards;
+    const n = lod ? Math.round(o.cards * 0.45) : o.cards;
     for (let i = 0; i < n; i++) {
       const t = Math.pow(sr(), 0.8), y = o.y0 + t * (H - o.y0), r = o.R * (1 - t) * Math.sqrt(sra(0.55, 1.05)), a = sr() * TAU;
       const P = [Math.cos(a) * r, y, Math.sin(a) * r], d = vnorm([Math.cos(a), 0.45, Math.sin(a)]);
@@ -21285,7 +21285,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
           float t = position.x, sag = instanceColor.r, r = instanceColor.g;
           vec3 c = A + D * t - vec3(0.0, sag * 4.0 * t * (1.0 - t), 0.0);
           float dist = -(viewMatrix * vec4(c, 1.0)).z;
-          float rr = max(r, dist * uPx);
+          float rr = max(r, dist * uPx * 0.7);
           vec3 w = c + vec3(0.0, position.y * rr, 0.0) + S * (position.z * rr);
           vec4 mvPosition = viewMatrix * vec4(w, 1.0);
           gl_Position = projectionMatrix * mvPosition;
