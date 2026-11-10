@@ -180,6 +180,18 @@ body.creating > .top, body.creating > .dock, body.creating #hud, body.creating #
 #cr-oblurb[hidden], #cr-origin-row[hidden] { display: none; }
 #cr-go { background: var(--accent); color: var(--bg); border-color: var(--accent); font-size: 17px; padding: 10px 14px; width: 100%; }
 #cr-top h1 span { color: var(--accent); }
+#cr-view { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 74px); display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+#cr-view .btn { background: rgba(18,16,22,0.72); min-width: 58px; font-size: 13px; padding: 7px 8px; }
+#cr-view .btn[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+#cr-view .btn:disabled { opacity: 0.4; }
+.crs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+.crs label { display: flex; flex-direction: column; gap: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.crs label b { display: flex; justify-content: space-between; font-weight: 700; }
+.crs label b i { font-style: normal; color: var(--fg); opacity: 0.8; }
+.crs input[type=range] { width: 100%; height: 30px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
+.crs .wide { grid-column: 1 / -1; }
+#cr-fshape[hidden] { display: none; }
+@media (orientation: landscape) and (max-height: 560px) { #cr-view { right: auto; left: max(10px, env(safe-area-inset-left, 0px)); top: auto; bottom: 12px; flex-direction: row; } .crs { grid-template-columns: 1fr 1fr; } }
 @media (orientation: landscape) and (max-height: 560px) {
   #cr-dock { top: 0; left: auto; right: 0; width: min(48vw, 440px); flex-direction: column; justify-content: flex-end; align-items: stretch; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); padding-left: 14px; background: linear-gradient(to left, var(--bg) 80%, rgba(18,16,22,0)); }
   #cr-dock > .panel { flex: 0 1 auto; overflow-y: auto; }
@@ -353,10 +365,12 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 </div>
 <div id="create" hidden>
   <div class="top" id="cr-top"><h1>Make your <span>character</span></h1><p id="cr-info"></p></div>
+  <div id="cr-view"><button class="btn chip" data-v="full">Body</button><button class="btn chip" data-v="bust">Chest</button><button class="btn chip" data-v="head">Face</button><button class="btn chip" data-r="-1" aria-label="Turn left">⟲</button><button class="btn chip" data-r="1" aria-label="Turn right">⟳</button><button class="btn chip" id="cr-undo" aria-label="Undo">Undo</button></div>
   <div class="dock" id="cr-dock">
     <div class="panel" id="cr-p-you">
       <div class="row"><input class="name" id="cr-name" maxlength="20" placeholder="Your street name" autocomplete="off" spellcheck="false"><button class="btn" id="cr-random">Randomize</button></div>
       <div class="row" id="cr-body"></div>
+      <div class="crs" id="cr-bodysl"></div>
       <div id="cr-origin-row"><div class="row scroll" id="cr-origin"></div></div>
       <p id="cr-oblurb"></p>
     </div>
@@ -368,6 +382,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     <div class="panel" id="cr-p-face" hidden>
       <div class="row scroll" id="cr-fsub"></div>
       <div class="row list" id="cr-fopt"></div>
+      <div class="crs list" id="cr-fshape" hidden></div>
     </div>
     <div class="panel" id="cr-p-extras" hidden><div class="row scroll" id="cr-xsub"></div><div class="row list" id="cr-extras"></div></div>
     <div class="panel" id="cr-p-ink" hidden><div class="row scroll" id="cr-ink"></div><div class="row list" id="cr-tats"></div></div>
@@ -1654,7 +1669,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       return { title: 'Your look', sub: 'Your character in the game', rows: [
         row('Body', cur('body') === 'f' ? 'Woman' : 'Man', 'body'), row('Skin tone', '', 'skin', cur('skin')), row('Hairstyle', nm(GM.HAIRSTYLES, cur('hairStyle')), 'hairStyle'), row('Hair color', '', 'hair', cur('hair')),
         row('Facial hair', nm(GM.FACIAL_HAIR, cur('facialHair')), 'facialHair'), row('Eyes', '', 'eyes', cur('eyes')), row('Brows', nm(GM.BROWS, cur('brows')), 'brows'),
-        row('Extras', (cur('extras') || []).map(id => nm(GM.EXTRAS, id)).join(', ') || 'None', 'extras'), row('Ink', (cur('tats') || []).map(id => nm(GM.TATTOOS, id)).join(', ') || 'None', 'ink'), row('Build', BUILDS[cur('build')], 'build'), row('Height', HEIGHTS[cur('height')], 'height'),
+        row('Extras', (cur('extras') || []).map(id => nm(GM.EXTRAS, id)).join(', ') || 'None', 'extras'), row('Ink', (cur('tats') || []).map(id => nm(GM.TATTOOS, id)).join(', ') || 'None', 'ink'), row('Build', BUILDS[Math.round(+cur('build'))] || 'Average', 'build'), row('Height', HEIGHTS[Math.round(+cur('height'))] || 'Average', 'height'),
         { t: 'Your clothes', s: 'Wear what you own', btn: 'Closet', act: () => openMenu(() => MENUS.mirror(p)) },
       ] };
     },
@@ -2213,15 +2228,20 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const browTaper = (look, v) => browArch(look) ? (v < 0.12 ? 0.7 + v * 2.5 : 1 - 0.8 * smooth(0.45, 1, v)) : (v < 0.15 ? 0.85 + v : 1 - 0.55 * smooth(0.5, 1, v));
   let JAW = 1;   // 1: a man's square jaw, 0: a woman's
   /*REAL4*/
-  let FS = { nose: 1, nw: 1, lip: 1, cheek: 1, chin: 1, jaw: 1, brow: 1 };
+  /*REAL5*/
+  let FS = { nose: 1, nw: 1, lip: 1, cheek: 1, chin: 1, jaw: 1, brow: 1, eye: 1, fw: 1 };
+  // each face slider (look.fs[k], 0..1) maps onto this range; 0.5 sits near the middle
+  const FS_RANGE = { nose: [0.72, 1.3], nw: [0.75, 1.4], lip: [0.65, 1.5], cheek: [0.4, 1.75], chin: [0.45, 1.55], jaw: [0.3, 1.65], brow: [0.5, 1.5], eye: [0.88, 1.16], fw: [0.92, 1.08] };
   // a face for a look: look.face (a seed the creator can reroll) or one taken from the look itself
   function faceShape(look) {
     let sd = look.face != null ? (+look.face % 2147483646) + 1 : [...(look.skin + look.eyes + (look.body || 'm') + look.brows)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 2147483646, 7) + 1;
     const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647, v = (a, b) => lerp(a, b, (R() + R()) / 2);
-    return { nose: v(0.8, 1.22), nw: v(0.82, 1.3), lip: v(0.75, 1.35), cheek: v(0.5, 1.6), chin: v(0.55, 1.45), jaw: v(0.4, 1.5), brow: v(0.6, 1.4) };
+    const o = { nose: v(0.8, 1.22), nw: v(0.82, 1.3), lip: v(0.75, 1.35), cheek: v(0.5, 1.6), chin: v(0.55, 1.45), jaw: v(0.4, 1.5), brow: v(0.6, 1.4), eye: v(0.95, 1.07), fw: v(0.97, 1.03) };
+    const F = look.fs; if (F && typeof F === 'object') for (const k in FS_RANGE) if (typeof F[k] === 'number' && isFinite(F[k])) o[k] = lerp(FS_RANGE[k][0], FS_RANGE[k][1], clamp(F[k], 0, 1));
+    return o;
   }
   function headPoint(dx, dy, dz) {
-    let x = dx * HX, y = dy * HY, z = dz * HZ;
+    let x = dx * HX * lerp(1, FS.fw, smooth(0.45, -0.1, dy)), y = dy * HY, z = dz * HZ;
     if (dy < 0) {
       const t = -dy;
       x *= 1 - 0.26 * t * t * (0.55 + 0.45 * Math.max(0, dz));      // jaw narrows to the chin
@@ -2353,7 +2373,11 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         let sh = 0;
         // eye sockets, the lid crease and under the eyes
         const ex = ax - EYE_X, ey = y - EYE_Y;
-        sh += 0.16 * Math.exp(-(ex * ex + (ey - 0.004) ** 2 * 1.4) / 0.00028);
+        sh += 0.22 * Math.exp(-(ex * ex + (ey - 0.004) ** 2 * 1.4) / 0.00028);
+        sh += 0.09 * Math.exp(-(((ax - 0.047) / 0.011) ** 2) - (((y + 0.034) / 0.013) ** 2)) * (0.7 + 0.6 * JAW);   // under the cheekbones
+        sh += 0.07 * Math.exp(-(((ax - 0.06) / 0.01) ** 2) - (((y - 0.03) / 0.02) ** 2));   // temples
+        sh += 0.06 * Math.exp(-((p[0] / 0.02) ** 2) - (((y + 0.078) / 0.004) ** 2));   // chin crease
+        sh += 0.05 * Math.exp(-(((ax - 0.0205) / 0.0025) ** 2) - (((y + 0.051) / 0.003) ** 2));   // mouth corners
         sh += 0.1 * Math.exp(-((ex / 0.016) ** 2) - (((ey - 0.0135 + 0.002 * ex / 0.016 * ex / 0.016) / 0.0022) ** 2));
         sh += 0.07 * Math.exp(-((ex / 0.014) ** 2) - (((ey + 0.0135) / 0.004) ** 2)) * (0.6 + deep);
         // the nose's sides and the shadow under it, the lip's shadow, the smile lines
@@ -2384,7 +2408,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         if (ax < 0.026 && y < -0.036 && y > -0.068) {
           const t = lipTop(ax), bo = lipBot(ax), ml = -0.0508 + 0.0012 * smooth(0.006, 0.022, ax);
           const inLip = smooth(t + 0.0007, t - 0.0007, y) * smooth(bo - 0.0008, bo + 0.0008, y);
-          const up = y > ml, k = inLip * (0.3 + 0.14 * deep);
+          const up = y > ml, k = inLip * (0.42 + 0.16 * deep);
           const lr = up ? 0.8 - 0.06 * deep : 0.84, lg = up ? 0.55 - 0.05 * deep : 0.6, lb = up ? 0.58 - 0.02 * deep : 0.62;
           r *= lerp(1, lr, k); g *= lerp(1, lg, k); b *= lerp(1, lb, k);
           const edge = Math.exp(-(((y - t) / 0.0007) ** 2)) * smooth(0.024, 0.01, ax) * 0.12;
@@ -2520,7 +2544,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   HT.strand.repeat.set(10, 2.5); HT.coil.repeat.set(9, 5); HT.wave.repeat.set(1, 3.2); HT.braid.repeat.set(1, 6); HT.loc.repeat.set(1, 3);
   const HAIRMAT = {};
   for (const [k, t, r] of [['strand', 'strand', 0.55], ['gloss', 'strand', 0.34], ['coil', 'coil', 0.86], ['wave', 'wave', 0.5], ['braid', 'braid', 0.66], ['loc', 'loc', 0.85]])
-    HAIRMAT[k] = new THREE.MeshStandardMaterial({ map: HT[t], roughness: r, metalness: 0, envMapIntensity: 0.55, side: THREE.DoubleSide });
+    HAIRMAT[k] = new THREE.MeshStandardMaterial({ map: HT[t], bumpMap: HT[t], bumpScale: 0.0012, roughness: Math.max(0.42, r), metalness: 0, envMapIntensity: 0.45, side: THREE.DoubleSide });
   const beadMat = new THREE.MeshStandardMaterial({ color: col('#e8c060'), metalness: 1, roughness: 0.25 });
   const tieMat = new THREE.MeshStandardMaterial({ color: col('#1c1c1e'), roughness: 0.5 });
 
@@ -3089,7 +3113,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   const lipMat = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0 });
   const innerMat = new THREE.MeshStandardMaterial({ roughness: 0.7 });
   const lidMat = skinMat;
-  const scleraMat = new THREE.MeshStandardMaterial({ color: col('#e6ddd2'), roughness: 0.06, envMapIntensity: 1.1 });
+  const scleraMat = new THREE.MeshStandardMaterial({ color: col('#d6ccbf'), roughness: 0.12, envMapIntensity: 0.75 });
   // iris: x goes round, y from the pupil (top) out to the dark ring at the edge (bottom)
   const irisTex = ctex(128, 64, (x, W, H) => {
     x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
@@ -3099,7 +3123,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   });
   const irisMat = new THREE.MeshStandardMaterial({ map: irisTex, roughness: 0.08, envMapIntensity: 1.2 });
   const pupilMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.1 });
-  const browMat = new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+  const browMat = new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide });
   const gold = new THREE.MeshStandardMaterial({ color: col('#f0c25a'), metalness: 1, roughness: 0.2, envMapIntensity: 1.3 });
   const plat = new THREE.MeshStandardMaterial({ color: col('#e8ebf0'), metalness: 1, roughness: 0.16, envMapIntensity: 1.5 });
   const metalOf = id => GAME.PLATINUM.includes(id) ? plat : gold;
@@ -3249,15 +3273,15 @@ uniform mat3 normalMatrix;
   function buildFace(look, g, hideLower, hideAll, lids) {
     const skin = look.skin;
     const gloss = look.extras.includes('lipgloss');
-    lipMat.color.copy(col(gloss ? mixHex(shadeHex(skin, -0.1), '#c4566e', 0.45) : mixHex(shadeHex(skin, -0.18), '#8a3e3e', 0.28))); lipMat.roughness = gloss ? 0.12 : 0.42; lipMat.envMapIntensity = gloss ? 1.4 : 1;
+    lipMat.color.copy(col(gloss ? mixHex(shadeHex(skin, -0.1), '#c4566e', 0.45) : mixHex(shadeHex(skin, -0.26), '#7c3a44', 0.32))); lipMat.roughness = gloss ? 0.12 : 0.42; lipMat.envMapIntensity = gloss ? 1.4 : 1;
     innerMat.color.copy(col(shadeHex(skin, -0.35)));
     // eyes
     irisMat.color.copy(col(look.eyes));
     for (const s of [-1, 1]) {
       const p = surf(s * EYE_X, EYE_Y), c = [s * EYE_X, EYE_Y, p[2] - 0.0068];
-      const eye = new THREE.Group(); eye.position.set(...c); eye.rotation.y = s * 0.06; eye.scale.set(1.1, 1, 1); g.add(eye);
+      const eye = new THREE.Group(); eye.position.set(...c); eye.rotation.y = s * 0.06; eye.scale.set(1.1 * 1.05 * FS.eye, 1.05 * FS.eye, 1.05 * FS.eye); g.add(eye);
       eye.add(mesh(new THREE.SphereGeometry(0.0115, 24, 16), scleraMat, false));
-      const iris = new THREE.SphereGeometry(0.01158, 24, 8, 0, Math.PI * 2, 0, 0.55); iris.rotateX(Math.PI / 2); iris.scale(1 / 1.1, 1, 1); eye.add(mesh(iris, irisMat, false));
+      const iris = new THREE.SphereGeometry(0.01158, 24, 8, 0, Math.PI * 2, 0, 0.6); iris.rotateX(Math.PI / 2); iris.scale(1 / 1.1, 1, 1); eye.add(mesh(iris, irisMat, false));
       const pup = new THREE.SphereGeometry(0.01164, 16, 4, 0, Math.PI * 2, 0, 0.21); pup.rotateX(Math.PI / 2); pup.scale(1 / 1.1, 1, 1); eye.add(mesh(pup, pupilMat, false));
       if (!hideAll) {
         const up = new THREE.SphereGeometry(0.0124, 24, 12, 0, Math.PI * 2, 0, 1.28); const lid = mesh(up, lidMat, false); lid.rotation.x = -0.04; eye.add(lid); lids.push(lid);
@@ -3296,7 +3320,7 @@ uniform mat3 normalMatrix;
     if (look.extras.includes('lip_ring')) ringAt(-0.011, -0.062, 0.0038, 0.0007, 1.2, 0, 0);
     // brows
     browMat.color.copy(col(look.hair)).multiplyScalar(0.9);
-    const bw = browW(look) * 1.0625 * 0.62;
+    const bw = browW(look) * 1.0625 * 0.5;
     const bg = [];
     for (const s of [-1, 1]) {
       const pts = [];
@@ -3425,7 +3449,9 @@ uniform mat3 normalMatrix;
   // The body and the fit. Feet at y 0, facing +z. W is the build.
   // ---------------------------------------------------------------------
   const BUILD_W = [0.9, 1, 1.13], HEIGHTS = [0.95, 1, 1.05];
-  let FEM = false;
+  let FEM = false, MUS = 0.5;
+  // build and height are 0..2 (0 slim/short, 1 average, 2 big/tall); in-between values blend
+  const lerp3 = (A, v) => { v = clamp(isFinite(+v) && v !== '' && v != null ? +v : 1, 0, 2); const i = Math.min(1, Math.floor(v)); return lerp(A[i], A[i + 1], v - i); };
   // relaxed fingers, curling in toward the body (s = side, hp = palm centre)
 /*REAL3*/
   const FINGERS = [[0.025, 0.077, 0.0094, 0.95], [0.0085, 0.085, 0.0097, 1], [-0.0085, 0.08, 0.0092, 1.08], [-0.0235, 0.064, 0.0081, 1.2]];   // z, length, radius, curl
@@ -3477,6 +3503,10 @@ uniform mat3 normalMatrix;
         const waist = Math.exp(-(((y - 1.06) / 0.07) ** 2)), bust = Math.exp(-(((y - 1.26) / 0.06) ** 2)), hip = Math.exp(-(((y - 0.88) / 0.06) ** 2));
         fx = (1 - 0.11 * smooth(1.3, 1.42, y)) * (1 - 0.15 * waist) * (1 + 0.08 * hip) * (1 - 0.06 * bust); fz = 1 - 0.07 * waist + 0.1 * bust; fo = 0.005 * bust;
       }
+      { const m = MUS - 0.5, chest = Math.exp(-(((y - 1.31) / 0.075) ** 2)), lat = Math.exp(-(((y - 1.2) / 0.07) ** 2)), waist = Math.exp(-(((y - 1.04) / 0.07) ** 2)), q = FEM ? 0.35 : 1;
+        fx *= 1 + q * ((FEM ? 0 : 0.04) + 0.07 * m) * chest + q * (0.02 + 0.04 * m) * lat - q * ((FEM ? 0 : 0.025) + 0.03 * m) * waist;
+        fz *= 1 + q * ((FEM ? 0 : 0.035) + 0.06 * m) * chest - q * 0.015 * waist;
+        fo += q * ((FEM ? 0 : 0.004) + 0.006 * m) * chest; }
       out.push({ y, rx: rx * k * fx + inflate, rz: rz * lerp(1, W, 0.6) * fz + inflate * 0.9, zo: zo + fo, n: FEM ? lerp(n, 2, 0.5) : n });
     }
     out.unshift({ y: hem, rx: out[0].rx, rz: out[0].rz, zo: out[0].zo, n: out[0].n });
@@ -3505,8 +3535,8 @@ uniform mat3 normalMatrix;
     return gridGeo(nu, nv, (u, v) => at(u, lerp(y0, cut(-Math.PI + 2 * Math.PI * u), v)), (u, v) => [u, v * 0.5]);
   }
   function buildPerson(look) {
-    FEM = look.body === 'f'; JAW = FEM ? 0 : 1; FS = faceShape(look);
-    const W = BUILD_W[+look.build] ?? 1, Hs = (HEIGHTS[+look.height] ?? 1) * (FEM ? 0.95 : 1), Wl = Math.pow(W, 0.75) * (FEM ? 0.9 : 1);
+    FEM = look.body === 'f'; JAW = FEM ? 0 : 1; FS = faceShape(look); MUS = clamp(typeof look.mus === 'number' && isFinite(look.mus) ? look.mus : 0.5, 0, 1);
+    const W = lerp3(BUILD_W, look.build), Hs = lerp3(HEIGHTS, look.height) * (FEM ? 0.95 : 1), Wl = Math.pow(W, 0.75) * (FEM ? 0.9 : 1), Ml = 1 + (MUS - 0.5) * (FEM ? 0.1 : 0.2) + (FEM ? 0 : 0.03);
     skinMat.color.copy(col(look.skin)); headMat.color.copy(col(look.skin)); neckMat.color.copy(col(look.skin));
     const sk3 = hex3(look.skin), lum = sk3[0] * 0.3 + sk3[1] * 0.59 + sk3[2] * 0.11, sheen = smooth(0.75, 0.15, lum);
     for (const m of [skinMat, neckMat]) { m.roughness = lerp(0.56, 0.44, sheen); m.envMapIntensity = lerp(0.45, 0.85, sheen); }
@@ -3583,7 +3613,7 @@ uniform mat3 normalMatrix;
     // --- neck and head
     { const n0 = 0.068 * lerp(1, W, 0.5) * (FEM ? 0.88 : 1), n1 = 0.054 * lerp(1, W, 0.3) * (FEM ? 0.86 : 1);
       upper.add(mesh(limbP([0, U(1.4), -0.008], [0, U(1.62), 0.006], t => ({ r: lerp(n0, n1, smooth(0, 0.55, t)) + (FEM ? 0 : 0.002 * bump(t, 0.5, 0.15)), sq: 0.9 + 0.04 * t, zo: -0.004 * (1 - t) }), true, 28, 10), neckMat)); }
-    const head = new THREE.Group(); head.position.set(0, U(1.648 - (FEM ? 0.016 : 0.01)), 0.014); head.scale.setScalar(1.08); upper.add(head);
+    const head = new THREE.Group(); head.position.set(0, U(1.648 - (FEM ? 0.016 : 0.01)), 0.014); head.scale.setScalar(FEM ? 1.04 : 1.05); /*REAL5C: a touch smaller, no bobble-heads on the fuller frame*/ upper.add(head);
     const mask = CLOTH[look.mask], hat = CLOTH[look.hat];
     const skimask = mask?.style === 'skimask', bandana = mask?.style === 'bandana';
     const hatOn = hat && hat.style !== 'none', durag = !hatOn && look.extras.includes('durag');
@@ -3647,11 +3677,11 @@ uniform mat3 normalMatrix;
     const sleeveLong = ts !== 'tee' && ts !== 'crop' && ts !== 'tank';
     const sleeveMat = /varsity/.test(top.id) ? clothMat('#e9e2cf', 'leather', { r: 0.55 }) : tm; sleeveMatOf = sleeveMat;
     for (const s of [-1, 1]) {
-      const arm = new THREE.Group(); arm.position.set(s * (FEM ? 0.152 : 0.168) * W, U(1.405), -0.004); upper.add(arm); arms.push(arm);
+      const arm = new THREE.Group(); arm.position.set(s * (FEM ? 0.152 : 0.168 * (1.025 + 0.04 * (MUS - 0.5))) * W, U(1.405), -0.004); upper.add(arm); arms.push(arm);
       const el = [s * 0.03, -0.285, -0.008], wr = [s * 0.042, -0.545, 0.024];
       const fore = new THREE.Group(); fore.position.set(...el); arm.add(fore); fores.push(fore); const toF = g => g.translate(-el[0], -el[1], -el[2]);
-      const ra = 0.046 * Wl, re = 0.036 * Wl, rw = 0.027 * Wl;
-      const skinG = [limbP([0, -0.014, 0], el, UPARM(ra, re), false, 22)], handG = [limbP(el, wr, FOREARM(re * 0.96, rw), false, 22)];
+      const ra = 0.046 * Wl * Ml, re = 0.036 * Wl * lerp(1, Ml, 0.7), rw = 0.027 * Wl;
+      /*REAL5B*/ const skinG = [limbP([0, -0.03, 0], el, UPARM(ra, re), false, 22)], handG = [limbP(el, wr, FOREARM(re * 0.96, rw), false, 22)];
       // hand: palm, curled fingers, thumb
       const hp = [wr[0] + s * 0.004, wr[1] - 0.052, wr[2] + 0.004];
       handG.push(...handGeos(s, hp, wr));
@@ -3665,17 +3695,17 @@ uniform mat3 normalMatrix;
       arm.add(mesh(mergeGeos(skinG.map(prep)), upInk ? inkMat(look, r ? 11 : 23) : skinMat));
       const inf = ts === 'jacket' ? 0.017 : ts === 'hoodie' ? 0.014 : 0.012;
       const capR = (sleeveLong ? UPARM(ra, re, 0.45, inf)(0) : UPARM(ra, re, 0.6, inf * 0.7)(0)).r + 0.0015;
-      const fg = [], sg = ts === 'tank' ? [] : [ellipsoid([s * -0.006, -0.002, 0], [capR, 0.041 * Wl + inf * 0.3, capR * 0.98], 22)];
+      const fg = [], sg = ts === 'tank' ? [] : [ellipsoid([s * -0.004, -0.028, 0], [capR * 1.0, capR * 1.06 + inf * 0.2, capR * 0.9], 22)];
       if (sleeveLong) {
-        sg.push(limbP([0, 0.004, 0], el, UPARM(ra, re, 0.45, inf), true, 22));
+        sg.push(limbP([0, -0.02, 0], el, UPARM(ra, re, 0.45, inf), true, 22));
         fg.push(limbP(el, [wr[0] - s * 0.002, wr[1] + 0.03, wr[2] - 0.002], FOREARM(re, rw, 0.35, inf + 0.003), true, 22));
         fg.push(new THREE.SphereGeometry(re + inf, 22, 12).translate(...el));
       } else if (ts === 'tank') {
         // a bare shoulder cap where the sleeve would be
-        arm.add(mesh(ellipsoid([s * -0.006, -0.002, 0], [ra + 0.0045, 0.042 * Wl, ra * 0.98 + 0.002], 22), upInk ? inkMat(look, r ? 13 : 27) : skinMat));
+        arm.add(mesh(ellipsoid([s * -0.007, -0.024, 0], [ra + 0.004, ra * 1.12 + 0.004, ra * 0.98 + 0.002], 22), upInk ? inkMat(look, r ? 13 : 27) : skinMat));
       } else {
         const mid = el.map(v => v * 0.46);
-        sg.push(limbP([0, 0.004, 0], mid, t => { const q = UPARM(ra, re, 0.6, inf * 0.7)(t * 0.46); return { ...q, r: q.r + 0.002 * t }; }, true, 22, 8));
+        sg.push(limbP([0, -0.02, 0], mid, t => { const q = UPARM(ra, re, 0.6, inf * 0.7)(t * 0.46); return { ...q, r: q.r + 0.002 * t }; }, true, 22, 8));
       }
       if (sg.length) arm.add(mesh(mergeGeos(sg.map(prep)), sleeveMat));
       if (fg.length) fore.add(mesh(mergeGeos(fg.map(prep).map(toF)), sleeveMat));
@@ -3730,7 +3760,7 @@ uniform mat3 normalMatrix;
     for (const s of [-1, 1]) {
       const hip = [s * 0.084 * lerp(1, W, 0.7) * hipK, 0.85, 0], kn = [s * 0.092 * lerp(1, W, 0.5), 0.5, 0.012], an = [s * 0.096, 0.095, -0.004];
       const mus = bs === 'skirt' ? 1 : bs === 'leggings' ? 0.85 : bs === 'jeans' ? 0.4 : bs === 'track' ? 0.3 : 0.2, bare = bs === 'skirt';
-      const g1 = limbP(hip, kn, THIGH(0.074 * Wl + loose, 0.054 * Wl + loose, mus), false, 26), g2 = limbP(kn, an, SHIN(0.054 * Wl + loose, bare ? 0.034 : 0.047 + (bs === 'track' ? -0.002 : loose), mus), true, 26);
+      const g1 = limbP(hip, kn, THIGH(0.074 * Wl * lerp(1, Ml, 0.5) + loose, 0.054 * Wl + loose, mus), false, 26), g2 = limbP(kn, an, SHIN(0.054 * Wl + loose, bare ? 0.034 : 0.047 + (bs === 'track' ? -0.002 : loose), mus), true, 26);
       g2.attributes.uv.array.forEach((v, i, a) => { if (i % 2 === 0 && s > 0) a[i] = v + 0.5; });
       g1.attributes.uv.array.forEach((v, i, a) => { if (i % 2 === 0 && s > 0) a[i] = v + 0.5; });
       legGs[s < 0 ? 0 : 1].push(g1); shinGs[s < 0 ? 0 : 1].push(g2, new THREE.SphereGeometry(0.0515 * Wl + loose, 22, 12).translate(...kn)); joints[s < 0 ? 0 : 1] = { kn, an };
@@ -3813,7 +3843,13 @@ uniform mat3 normalMatrix;
     return P;
   }
   function dispose(P) { if (!P) return; const mats = new Set(); P.root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); mats.add(o.material); } }); for (const m of mats) { if (SHARED.includes(m)) continue; if (m.map && m.map.image && m.map.image.tagName === 'CANVAS' && !Object.values(CT).includes(m.map)) m.map.dispose(); m.dispose(); } }
-  return { GAME, build, dispose, randomLook, HAIR_BY: Object.fromEntries(GAME.HAIRSTYLES.map(h => [h.id, h])) };
+  /*CREATOR5*/
+  // a look's face as slider positions (0..1): its saved sliders, or where its seeded face sits
+  function faceSliders(look) { const F = faceShape({ ...GAME.DEFAULT, ...look, fs: null }), o = {}; for (const k in FS_RANGE) { const [a, b] = FS_RANGE[k]; o[k] = look.fs && typeof look.fs[k] === 'number' ? clamp(look.fs[k], 0, 1) : clamp((F[k] - a) / (b - a), 0, 1); } return o; }
+  for (const c of ['#fbe6d6', '#f3d2bd', '#d9a882', '#c99a76', '#a8714a', '#8a5a3c', '#74462a', '#4a2e1c', '#36231a']) if (!GAME.SKIN_TONES.includes(c)) GAME.SKIN_TONES.push(c);
+  for (const c of ['#8a6a3a', '#b07a2a', '#5d8f5a', '#7fa9d1', '#9aa4ad', '#1a1410']) if (!GAME.EYE_COLORS.includes(c)) GAME.EYE_COLORS.push(c);
+  GAME.SKIN_TONES.sort((a, b) => { const L = h => { const v = hex3(h); return v[0] * 0.3 + v[1] * 0.59 + v[2] * 0.11; }; return L(b) - L(a); });
+  return { GAME, build, dispose, randomLook, faceSliders, FS_RANGE, HAIR_BY: Object.fromEntries(GAME.HAIRSTYLES.map(h => [h.id, h])) };
   })();
 
   // ---------- walk-in interiors: pull in, walk around, use the counters ----------
@@ -8057,7 +8093,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     } else setCarEngine(m, c.eng || '', null);
   }
   // ---------- character creation: the first screen a new player sees ----------
-  const CR = { on: false, scene: null, cam: null, stand: null, P: null, look: null, name: '', origin: 'fresh', tab: 'you', hgroup: 'black', xsub: 'jewelry', fsub: 'skin', csub: 'top', yaw: 0.35, frame: 'full', fy: 0.95, fh: 1.95, drag: null, first: false, dirty: false };
+  const CR = { on: false, scene: null, cam: null, stand: null, P: null, look: null, name: '', origin: 'fresh', tab: 'you', hgroup: 'black', xsub: 'jewelry', fsub: 'shape', csub: 'top', yaw: 0.35, frame: 'full', fy: 0.95, fh: 1.95, drag: null, first: false, dirty: false };
   let creating = false;
   const ORIGIN_DO = {
     fresh: s => { s.cash = 4500; },
@@ -8068,31 +8104,41 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     gearhead: s => { s.rep += 40; s.cash += 1000; },
   };
   const CR_FRAMES = { full: [0.95, 1.95], bust: [1.42, 0.75], head: [1.64, 0.52] };
-  const CR_SLOTS = [['build', 'Build'], ['height', 'Height'], ['top', 'Top'], ['bottom', 'Bottoms'], ['shoes', 'Shoes'], ['hat', 'Hat'], ['bag', 'Purse'], ['mask', 'Mask']];
+  const CR_SLOTS = [['top', 'Top'], ['bottom', 'Bottoms'], ['shoes', 'Shoes'], ['hat', 'Hat'], ['bag', 'Purse'], ['mask', 'Mask']];
   const STARTER_MAX = 150;   // fits you can pick for free here; the rest are in the stores
   function buildCreateScene() {
-    const s = new THREE.Scene(); s.background = new THREE.Color(0x15111b); s.environment = ENV.night;
-    s.add(new THREE.HemisphereLight(0xd8d0ff, 0x30283a, 0.55));
-    const key = new THREE.DirectionalLight(0xfff0dc, 1.9); key.position.set(2.2, 4.2, 3.2); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
+    const s = new THREE.Scene(); s.background = new THREE.Color(0x17171b); s.environment = ENV.night;
+    s.add(new THREE.HemisphereLight(0xeef0ff, 0x3a3634, 0.6));
+    const key = new THREE.DirectionalLight(0xfff4e8, 1.75); key.position.set(1.8, 3.6, 3.4); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
     const sc = key.shadow.camera; sc.left = -1.2; sc.right = 1.2; sc.top = 2.2; sc.bottom = -0.3; sc.near = 1; sc.far = 10; key.shadow.bias = -0.0003; key.shadow.normalBias = 0.012;
     key.target.position.set(0, 0.9, 0); s.add(key); s.add(key.target);
-    const fill = new THREE.DirectionalLight(0xb8c8ff, 0.5); fill.position.set(-3, 2, 2); s.add(fill);
-    const rimA = new THREE.DirectionalLight(0xffb636, 1.2); rimA.position.set(-2.5, 2.6, -2.8); s.add(rimA);
-    const rimB = new THREE.DirectionalLight(0x9a6cff, 0.9); rimB.position.set(2.8, 1.8, -2.5); s.add(rimB);
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshBasicMaterial({ map: ctex(256, 256, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, '#2a2233'); g.addColorStop(0.15, '#1f1927'); g.addColorStop(0.5, '#15111b'); g.addColorStop(1, '#15111b'); x.fillStyle = g; x.fillRect(0, 0, w, h); }) }));
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7); fill.position.set(-3, 1.6, 2.4); s.add(fill);
+    const rimA = new THREE.DirectionalLight(0xffe2b8, 0.9); rimA.position.set(-2.5, 2.6, -2.8); s.add(rimA);
+    const rimB = new THREE.DirectionalLight(0xe8eeff, 0.8); rimB.position.set(2.8, 1.8, -2.5); s.add(rimB);
+    const bounce = new THREE.DirectionalLight(0xfff0e0, 0.25); bounce.position.set(0, -1, 2); s.add(bounce);
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshBasicMaterial({ map: ctex(256, 256, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, '#2c2c31'); g.addColorStop(0.15, '#222226'); g.addColorStop(0.5, '#17171b'); g.addColorStop(1, '#17171b'); x.fillStyle = g; x.fillRect(0, 0, w, h); }) }));
     floor.rotation.x = -Math.PI / 2; s.add(floor);
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.88, 0.04, 64), new THREE.MeshStandardMaterial({ color: 0x1e1826, roughness: 0.8 })); disc.position.y = 0.02; disc.receiveShadow = true; s.add(disc);
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.88, 0.04, 64), new THREE.MeshStandardMaterial({ color: 0x121214, roughness: 0.9 })); disc.position.y = 0.02; disc.receiveShadow = true; s.add(disc);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.865, 0.006, 8, 100), new THREE.MeshBasicMaterial({ color: 0xffb636 })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; s.add(ring);
-    const back = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 6, 48, 1, true, Math.PI * 0.6, Math.PI * 0.8), new THREE.MeshBasicMaterial({ side: THREE.BackSide, map: ctex(16, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0e0b12'); g.addColorStop(0.55, '#231b2c'); g.addColorStop(1, '#15111b'); x.fillStyle = g; x.fillRect(0, 0, w, h); }) }));
+    const back = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 6, 48, 1, true, Math.PI * 0.6, Math.PI * 0.8), new THREE.MeshBasicMaterial({ side: THREE.BackSide, map: ctex(16, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0f0f12'); g.addColorStop(0.55, '#26262b'); g.addColorStop(1, '#17171b'); x.fillStyle = g; x.fillRect(0, 0, w, h); }) }));
     back.position.y = 2.96; s.add(back);
     CR.stand = new THREE.Group(); CR.stand.position.y = 0.04; s.add(CR.stand);
     CR.scene = s; CR.cam = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
     // drag anywhere on the preview to spin your character
     const el = renderer.domElement;
-    el.addEventListener('pointerdown', e => { if (creating) CR.drag = { x: e.clientX, yaw: CR.yaw }; });
-    el.addEventListener('pointermove', e => { if (creating && CR.drag) CR.yaw = CR.drag.yaw + (e.clientX - CR.drag.x) * 0.012; });
-    const up = () => { CR.drag = null; }; el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    const tp = new Map();
+    el.addEventListener('pointerdown', e => { if (!creating) return; tp.set(e.pointerId, [e.clientX, e.clientY]); if (tp.size === 1) CR.drag = { x: e.clientX, yaw: CR.yaw }; else { const [a, b] = [...tp.values()]; CR.pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: CR.zoom || 1 }; CR.drag = { x: e.clientX, yaw: CR.yaw, hold: true }; } });
+    el.addEventListener('pointermove', e => { if (!creating) return; if (tp.has(e.pointerId)) tp.set(e.pointerId, [e.clientX, e.clientY]);
+      if (CR.pinch && tp.size > 1) { const [a, b] = [...tp.values()]; CR.zoom = clamp(CR.pinch.z * CR.pinch.d / Math.max(20, Math.hypot(a[0] - b[0], a[1] - b[1])), 0.45, 1.6); }
+      else if (CR.drag && !CR.drag.hold) CR.yaw = CR.drag.yaw + (e.clientX - CR.drag.x) * 0.012; });
+    const up = e => { tp.delete(e.pointerId); if (tp.size < 2) CR.pinch = null; if (!tp.size) CR.drag = null; }; el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    el.addEventListener('wheel', e => { if (!creating) return; e.preventDefault(); CR.zoom = clamp((CR.zoom || 1) * Math.exp(e.deltaY * 0.0015), 0.45, 1.6); }, { passive: false });
   }
+  // undo: every change pushes the look it replaced
+  function crPush() { const j = JSON.stringify(CR.look); if (!CR.hist) CR.hist = []; if (CR.hist[CR.hist.length - 1] !== j) CR.hist.push(j); if (CR.hist.length > 40) CR.hist.shift(); }
+  function crUndo() { if (!CR.hist || !CR.hist.length) return; CR.look = JSON.parse(CR.hist.pop()); CR.hgroup = (PEOPLE.HAIR_BY[CR.look.hairStyle] || { group: CR.hgroup }).group; crRebuild(); crFill(); }
+  // sliders rebuild at most every ~quarter second while you drag, and once more when you let go
+  function crSoon() { if (CR.soon) { CR.again = true; return; } crRebuild(); crInfo(); CR.soon = setTimeout(() => { CR.soon = 0; if (CR.again) { CR.again = false; crSoon(); } }, 260); }
   function crRebuild() {
     if (CR.P) { CR.stand.remove(CR.P.root); PEOPLE.dispose(CR.P); }
     CR.P = PEOPLE.build(CR.look, 0); CR.stand.add(CR.P.root); crInfo();
@@ -8109,11 +8155,13 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const needH = fh * (h / Math.max(120, freeH)), needW = fh * 0.62 * (w / Math.max(120, freeW)) / CR.cam.aspect;
     CR.dist = Math.max(needH, needW) / 2 / Math.tan(vfov / 2) * 1.08; CR.fyT = fy;
   }
-  function crFrame() { CR.frame = CR.tab === 'hair' || CR.tab === 'face' ? 'head' : CR.tab === 'extras' ? 'bust' : 'full'; crLayout(); }
+  function crFrame() { CR.frame = CR.tab === 'hair' || CR.tab === 'face' ? 'head' : CR.tab === 'extras' ? 'bust' : 'full'; CR.zoom = 1; crLayout(); crViewBar(); }
+  function crViewBar() { document.querySelectorAll('#cr-view [data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === CR.frame))); const u = crEl('cr-undo'); if (u) u.disabled = !(CR.hist && CR.hist.length); }
   function crStep(dt) {
     if (!CR.P) return;
-    CR.fy = lerp(CR.fy, CR.fyT, 1 - Math.exp(-dt * 6)); CR.d = lerp(CR.d || CR.dist, CR.dist, 1 - Math.exp(-dt * 6));
-    if (!CR.drag) CR.yaw += dt * 0.12;
+    CR.fy = lerp(CR.fy, CR.fyT, 1 - Math.exp(-dt * 6)); CR.d = lerp(CR.d || CR.dist, CR.dist * (CR.zoom || 1), 1 - Math.exp(-dt * 6));
+    if (CR.spin) { const k = Math.min(1, dt * 8); CR.yaw += CR.spin * k; CR.spin *= 1 - k; if (Math.abs(CR.spin) < 0.002) CR.spin = 0; }
+    else if (!CR.drag && !CR.still) CR.yaw += dt * 0.12;
     CR.P.root.rotation.y = CR.yaw;
     CR.cam.position.set(0, CR.fy + 0.06, CR.d); CR.cam.lookAt(0, CR.fy, 0);
     idlePerson(CR.P, performance.now() / 1000);
@@ -8132,15 +8180,30 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     row.innerHTML = '';
     list.forEach((c, i) => { const b = document.createElement('button'); b.className = 'sw'; b.style.background = c; b.setAttribute('aria-label', label + ' ' + (i + 1)); b.setAttribute('aria-pressed', String(c === cur)); b.onclick = () => pick(c); row.appendChild(b); });
   }
-  const crSet = (k, v) => { CR.look[k] = v; crRebuild(); crFill(); };
+  const crSet = (k, v) => { crPush(); CR.look[k] = v; crRebuild(); crFill(); };
+  function crSlider(box, label, val, ends, onIn, wide) {
+    const l = document.createElement('label'); if (wide) l.className = 'wide';
+    const b = document.createElement('b'); b.textContent = label; const i = document.createElement('i'); b.appendChild(i); l.appendChild(b);
+    const r = document.createElement('input'); r.type = 'range'; r.min = 0; r.max = 1000; r.value = Math.round(val * 1000); r.setAttribute('aria-label', label);
+    const show = () => { const v = r.value / 1000; i.textContent = v < 0.2 ? ends[0] : v > 0.8 ? ends[1] : ''; }; show();
+    r.addEventListener('pointerdown', () => crPush()); r.addEventListener('keydown', () => crPush());
+    r.addEventListener('input', () => { show(); onIn(r.value / 1000); crSoon(); });
+    r.addEventListener('change', () => { onIn(r.value / 1000); crSoon(); crViewBar(); });
+    l.appendChild(r); box.appendChild(l);
+  }
+  const FACE_SL = [['fw', 'Face width', ['Narrow', 'Wide']], ['cheek', 'Cheekbones', ['Soft', 'High']], ['jaw', 'Jaw', ['Soft', 'Square']], ['chin', 'Chin', ['Small', 'Strong']], ['nose', 'Nose length', ['Button', 'Long']], ['nw', 'Nose width', ['Narrow', 'Wide']], ['lip', 'Lips', ['Thin', 'Full']], ['brow', 'Brow ridge', ['Flat', 'Deep']], ['eye', 'Eye size', ['Small', 'Big']]];
   function crFill() {
     const GM = PEOPLE.GAME, L = CR.look;
     // you
     crButtons(crEl('cr-body'), [{ id: 'm', name: 'Man' }, { id: 'f', name: 'Woman' }], L.body, id => {
-      L.body = id;
+      crPush(); L.body = id;
       if (id === 'f') { if (!L.extras.includes('lashes')) L.extras.push('lashes'); L.facialHair = 'none'; } else L.extras = L.extras.filter(e => e !== 'lashes' && e !== 'lipgloss' && e !== 'nails');
       crRebuild(); crFill();
     });
+    { const bs = crEl('cr-bodysl'); bs.innerHTML = '';
+      crSlider(bs, 'Height', clamp(+L.height || (L.height === 0 ? 0 : 1), 0, 2) / 2, ['Short', 'Tall'], v => { L.height = Math.round(v * 200) / 100; });
+      crSlider(bs, 'Weight', clamp(+L.build || (L.build === 0 ? 0 : 1), 0, 2) / 2, ['Slim', 'Big'], v => { L.build = Math.round(v * 200) / 100; });
+      crSlider(bs, 'Muscle', typeof L.mus === 'number' ? L.mus : 0.5, ['Soft', 'Cut'], v => { L.mus = Math.round(v * 100) / 100; }, true); }
     crButtons(crEl('cr-origin'), GM.ORIGINS, CR.origin, id => { CR.origin = id; crFill(); crInfo(); }, true);
     crEl('cr-oblurb').textContent = (GM.ORIGINS.find(o => o.id === CR.origin) || {}).blurb || '';
     // hair
@@ -8148,10 +8211,19 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     crButtons(crEl('cr-hgroup'), GM.HAIR_GROUPS, CR.hgroup, id => { CR.hgroup = id; crFill(); }, true);
     crButtons(crEl('cr-hstyle'), GM.HAIRSTYLES.filter(h => h.group === CR.hgroup), L.hairStyle, id => crSet('hairStyle', id));
     // face
-    const FS = [{ id: 'skin', name: 'Skin' }, { id: 'eyes', name: 'Eyes' }, { id: 'brows', name: 'Brows' }, { id: 'facialHair', name: 'Facial hair' }];
+    const FS = [{ id: 'shape', name: 'Shape' }, { id: 'skin', name: 'Skin' }, { id: 'eyes', name: 'Eyes' }, { id: 'brows', name: 'Brows' }, { id: 'facialHair', name: 'Facial hair' }];
     crButtons(crEl('cr-fsub'), FS, CR.fsub, id => { CR.fsub = id; crFill(); }, true);
     const fo = crEl('cr-fopt');
-    if (CR.fsub === 'skin') crSwatches(fo, GM.SKIN_TONES, L.skin, c => crSet('skin', c), 'Skin');
+    const fsh = crEl('cr-fshape'); fsh.hidden = CR.fsub !== 'shape'; fo.hidden = CR.fsub === 'shape'; fsh.innerHTML = '';
+    if (CR.fsub === 'shape') {
+      fo.innerHTML = '';
+      const nb = document.createElement('div'); nb.className = 'row wide';
+      const nf = document.createElement('button'); nf.className = 'btn'; nf.textContent = 'New face'; nf.onclick = () => { crPush(); L.face = Math.floor(Math.random() * 2147483000); delete L.fs; crRebuild(); crFill(); };
+      const md = document.createElement('button'); md.className = 'btn chip'; md.textContent = 'Middle'; md.onclick = () => { crPush(); L.fs = {}; for (const [k] of FACE_SL) L.fs[k] = 0.5; crRebuild(); crFill(); };
+      nb.append(nf, md); fsh.appendChild(nb);
+      const cur = PEOPLE.faceSliders(L);
+      for (const [k, name, ends] of FACE_SL) crSlider(fsh, name, cur[k], ends, v => { if (!L.fs) L.fs = PEOPLE.faceSliders(L); L.fs[k] = Math.round(v * 1000) / 1000; });
+    } else if (CR.fsub === 'skin') crSwatches(fo, GM.SKIN_TONES, L.skin, c => crSet('skin', c), 'Skin');
     else if (CR.fsub === 'eyes') crSwatches(fo, GM.EYE_COLORS, L.eyes, c => crSet('eyes', c), 'Eyes');
     else if (CR.fsub === 'brows') crButtons(fo, GM.BROWS, L.brows, id => crSet('brows', id));
     else crButtons(fo, GM.FACIAL_HAIR, L.facialHair, id => crSet('facialHair', id));
@@ -8161,7 +8233,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     for (const e of GM.EXTRAS.filter(e => (e.group || 'face') === CR.xsub)) {
       const b = document.createElement('button'); b.className = 'btn'; b.textContent = e.name; b.setAttribute('aria-pressed', String(L.extras.includes(e.id)));
       // one of each kind: one pendant, one choker, one rope, one grill, shades or glasses
-      b.onclick = () => { const s = new Set(L.extras); if (s.has(e.id)) s.delete(e.id); else { s.add(e.id); if (e.pick) for (const o of GM.EXTRAS) if (o.pick === e.pick && o.id !== e.id) s.delete(o.id); } L.extras = [...s]; crRebuild(); crFill(); };
+      b.onclick = () => { crPush(); const s = new Set(L.extras); if (s.has(e.id)) s.delete(e.id); else { s.add(e.id); if (e.pick) for (const o of GM.EXTRAS) if (o.pick === e.pick && o.id !== e.id) s.delete(o.id); } L.extras = [...s]; crRebuild(); crFill(); };
       ex.appendChild(b);
     }
     // ink: shows wherever skin does (a wife beater shows sleeves and the chest)
@@ -8169,18 +8241,16 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const tl = crEl('cr-tats'); tl.innerHTML = '';
     for (const t of GM.TATTOOS) {
       const b = document.createElement('button'); b.className = 'btn'; b.textContent = t.name; b.setAttribute('aria-pressed', String((L.tats || []).includes(t.id)));
-      b.onclick = () => { const s = new Set(L.tats || []); if (s.has(t.id)) s.delete(t.id); else s.add(t.id); L.tats = [...s]; crRebuild(); crFill(); };
+      b.onclick = () => { crPush(); const s = new Set(L.tats || []); if (s.has(t.id)) s.delete(t.id); else s.add(t.id); L.tats = [...s]; crRebuild(); crFill(); };
       tl.appendChild(b);
     }
     // fit
     crButtons(crEl('cr-csub'), CR_SLOTS.map(([id, name]) => ({ id, name })), CR.csub, id => { CR.csub = id; crFill(); }, true);
     const co = crEl('cr-copt');
-    if (CR.csub === 'build') crButtons(co, ['Slim', 'Average', 'Big'].map((n, i) => ({ id: i, name: n })), +L.build, i => crSet('build', i));
-    else if (CR.csub === 'height') crButtons(co, ['Short', 'Average', 'Tall'].map((n, i) => ({ id: i, name: n })), +L.height, i => crSet('height', i));
-    else crButtons(co, GM.CLOTHES.filter(c => c.slot === CR.csub && c.price <= STARTER_MAX).map(c => ({ id: c.id, name: c.name, dot: c.style === 'none' ? null : c.color })), L[CR.csub], id => crSet(CR.csub, id));
+    crButtons(co, GM.CLOTHES.filter(c => c.slot === CR.csub && c.price <= STARTER_MAX).map(c => ({ id: c.id, name: c.name, dot: c.style === 'none' ? null : c.color })), L[CR.csub], id => crSet(CR.csub, id));
     for (const p of ['you', 'hair', 'face', 'extras', 'ink', 'fit']) crEl('cr-p-' + p).hidden = p !== CR.tab;
     document.querySelectorAll('#cr-tabs .tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === CR.tab)));
-    crLayout();
+    crLayout(); crViewBar();
   }
   function crInfo() {
     const GM = PEOPLE.GAME, L = CR.look, o = GM.ORIGINS.find(o => o.id === CR.origin), hs = GM.HAIRSTYLES.find(h => h.id === L.hairStyle);
@@ -8193,7 +8263,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     if (first) for (const k of ['top', 'bottom', 'shoes', 'hat', 'bag']) { const it = PEOPLE.GAME.CLOTHES.find(c => c.id === base[k]); if (it && it.price > STARTER_MAX) base[k] = PEOPLE.GAME.DEFAULT[k]; }
     else { const w = S.wear || {}; Object.assign(base, S.look || {}); for (const k of ['top', 'bottom', 'shoes', 'hat', 'mask', 'bag']) if (w[k]) base[k] = w[k]; }
     base.extras = [...(base.extras || [])]; base.tats = [...(base.tats || [])]; base.ink = base.ink || 'bw';
-    CR.look = base; CR.first = first; CR.name = S.name || ''; CR.origin = S.origin || 'fresh'; CR.tab = 'you';
+    CR.look = base; CR.first = first; CR.name = S.name || ''; CR.origin = S.origin || 'fresh'; CR.tab = 'you'; CR.hist = []; CR.zoom = 1; CR.still = false; CR.spin = 0; if (first) CR.fsub = 'shape'; if (CR.csub === 'build' || CR.csub === 'height') CR.csub = 'top';
     CR.hgroup = (PEOPLE.HAIR_BY[base.hairStyle] || { group: 'black' }).group;
     crEl('cr-name').value = CR.name; crEl('cr-go').textContent = first ? 'Start in Murda Worth' : 'Done';
     crEl('cr-origin-row').hidden = !first; crEl('cr-oblurb').hidden = !first;
@@ -8203,6 +8273,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   function closeCreator() {
     const L = CR.look, first = CR.first;
     S.look = { body: L.body, skin: L.skin, hair: L.hair, hairStyle: L.hairStyle, eyes: L.eyes, brows: L.brows, facialHair: L.facialHair, extras: [...L.extras], tats: [...(L.tats || [])], ink: L.ink || 'bw', build: L.build, height: L.height };
+    if (typeof L.mus === 'number') S.look.mus = L.mus; if (typeof L.face === 'number') S.look.face = L.face; if (L.fs) S.look.fs = { ...L.fs };
     for (const k of ['top', 'bottom', 'shoes', 'hat', 'mask', 'bag']) { const v = L[k]; S.wear[k] = !v || /^no_/.test(v) ? '' : v; if (S.wear[k] && !S.owned.includes(v)) S.owned.push(v); }
     S.name = CR.name.trim() || S.name || 'Rookie';
     if (first) { S.origin = CR.origin; (ORIGIN_DO[CR.origin] || (() => {}))(S); S.made = true; }
@@ -8217,9 +8288,14 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       toast(`Welcome to Murda Worth, ${S.name}.`, 'good');
     } else toast('Look saved.', 'good');
   }
+  // test hook (scripts render the creator's stand at fixed angles)
+  window.__crTest = { CR, set(L) { CR.look = JSON.parse(JSON.stringify(L)); crRebuild(); }, view(fr, yaw) { CR.frame = fr; crLayout(); CR.drag = { x: 0, yaw }; CR.yaw = yaw; CR.d = CR.dist; CR.fy = CR.fyT; }, tris() { let t = 0, m = 0; CR.P.root.traverse(o => { if (o.isMesh) { m++; const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; } }); return { meshes: m, tris: Math.round(t) }; } };
   function crWire() {
     crEl('cr-name').addEventListener('input', e => { CR.name = e.target.value.slice(0, 20); crInfo(); });
-    crEl('cr-random').onclick = () => { Object.assign(CR.look, PEOPLE.randomLook(Math.random, Math.random() < 0.5), { mask: 'no_mask' }); CR.look.extras = [...CR.look.extras]; CR.look.tats = [...(CR.look.tats || [])]; for (const k of ['top', 'bottom', 'shoes', 'hat', 'bag']) { const c = PEOPLE.GAME.CLOTHES.find(c => c.id === CR.look[k]); if (c && c.price > STARTER_MAX) CR.look[k] = PEOPLE.GAME.DEFAULT[k] || ''; } CR.hgroup = (PEOPLE.HAIR_BY[CR.look.hairStyle] || { group: 'black' }).group; crRebuild(); crFill(); };
+    document.querySelectorAll('#cr-view [data-v]').forEach(b => b.onclick = () => { CR.frame = b.dataset.v; CR.zoom = 1; crLayout(); crViewBar(); });
+    document.querySelectorAll('#cr-view [data-r]').forEach(b => b.onclick = () => { CR.spin = (CR.spin || 0) + (+b.dataset.r) * Math.PI / 4; CR.still = true; });
+    crEl('cr-undo').onclick = crUndo;
+    crEl('cr-random').onclick = () => { crPush(); delete CR.look.fs; CR.look.face = Math.floor(Math.random() * 2147483000); CR.look.mus = Math.round(Math.random() * 100) / 100; Object.assign(CR.look, PEOPLE.randomLook(Math.random, Math.random() < 0.5), { mask: 'no_mask' }); CR.look.extras = [...CR.look.extras]; CR.look.tats = [...(CR.look.tats || [])]; for (const k of ['top', 'bottom', 'shoes', 'hat', 'bag']) { const c = PEOPLE.GAME.CLOTHES.find(c => c.id === CR.look[k]); if (c && c.price > STARTER_MAX) CR.look[k] = PEOPLE.GAME.DEFAULT[k] || ''; } CR.hgroup = (PEOPLE.HAIR_BY[CR.look.hairStyle] || { group: 'black' }).group; crRebuild(); crFill(); };
     crEl('cr-go').onclick = closeCreator;
     document.querySelectorAll('#cr-tabs .tab').forEach(t => t.onclick = () => { CR.tab = t.dataset.tab; crFill(); crFrame(); });
   }
@@ -14436,7 +14512,10 @@ body.hd-on #hdiag{display:grid}#hdiag span{color:#7d848c}#hdiag b{color:#f2efe6;
     for (const k of LOOK_KEYS) if (typeof L[k] === 'string' && /^[#\w\-]{1,24}$/.test(L[k])) o[k] = L[k];
     if (Array.isArray(L.extras)) o.extras = L.extras.filter(x => typeof x === 'string' && /^\w{1,16}$/.test(x)).slice(0, 16);
     if (Array.isArray(L.tats)) o.tats = L.tats.filter(x => typeof x === 'string' && /^\w{1,16}$/.test(x)).slice(0, 12);
-    o.build = nNum(L.build, 0.6, 1.6, 1); o.height = nNum(L.height, 0.85, 1.15, 1);
+    o.build = nNum(+L.build, 0, 2, 1); o.height = nNum(+L.height, 0, 2, 1);
+    if (typeof L.mus === 'number') o.mus = nNum(L.mus, 0, 1, 0.5);
+    if (typeof L.face === 'number') o.face = nNum(Math.round(L.face), 0, 2147483646, 0);
+    if (L.fs && typeof L.fs === 'object') { o.fs = {}; for (const k of ['nose', 'nw', 'lip', 'cheek', 'chin', 'jaw', 'brow', 'eye', 'fw']) if (typeof L.fs[k] === 'number') o.fs[k] = nNum(L.fs[k], 0, 1, 0.5); }
     return o;
   }
 
