@@ -69,7 +69,7 @@ const log = o => console.log(JSON.stringify(o));
     return out; }, SCAT));
 
   // 7. swap tab: a crate swap and back to the factory motor
-  log(await ev(SCAT => { const M = window.__map, E = M.ELAB, c = window.__car(SCAT), out = { test: 'swap tab' }; c.eb = { hdr: 'longtube' }; E.elOpen('swap'); const el = document.getElementById('englab');
+  log(await ev(SCAT => { const M = window.__map, E = M.ELAB, c = window.__car(SCAT), out = { test: 'swap tab' }; c.eb = { hdr: 'longtube' }; E.SWL.q = 'hellephant'; E.elOpen('swap'); const el = document.getElementById('englab');
     let bt = el.querySelector('[data-sw="x:hellephant"]'); bt.click(); bt = el.querySelector('[data-sw="x:hellephant"]'); out.ask = bt.textContent; bt.click(); out.cash = M.S.cash; out.sameCar = M.S.car === c;
     out.after = `${c.engX} ${M.carHp(c)} hp, eb ${JSON.stringify(c.eb)}, hd ${(el.querySelector('.elsum') || {}).textContent}`;
     const k = el.querySelector('[data-sw^="k:"]'); if (k) { k.click(); el.querySelector(`[data-sw="${k.dataset.sw}"]`).click(); out.back = `${c.eng} engX ${c.engX || '-'} ${M.carHp(c)} hp`; } return out; }, SCAT));
