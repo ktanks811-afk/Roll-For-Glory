@@ -55,6 +55,7 @@ const S = process.env.S, SLOW = +(process.env.SLOW || 4), SCENES = (process.env.
     await ev(`(() => { const M = window.__map, d = M.drvS(); Object.assign(d, { x: ${x}, z: ${z}, yaw: ${yaw}, v: 0 }); M.physReset(); ${extra || ''} })()`);
   };
   if (SCENES.includes('world')) await sample('open world, Stop Six at night', () => drive(1516, -560, 0));
+  if (SCENES.includes('day')) await sample('open world, Stop Six by day (trees, bushes, power lines, birds)', async () => { await drive(1505, -700, 0); await ev(() => { window.__map.setTime('day'); const d = window.__map.drvS(); d.v = 12; }); });
   if (SCENES.includes('yb')) await sample('Yello Belly staging lanes, a pair racing', async () => { await drive(7056.5, 1162, 0); await wait(1500); await ev(() => { const Y = window.__yb; if (!Y.race.run) Y.test.startFill(); }); });
   if (SCENES.includes('ybev')) await sample('Yello Belly event night (full crowd), a pair racing', async () => { await drive(7056.5, 1162, 0); await ev(() => { const Y = window.__yb, E = Y.ev; E.EV.cur = { def: Object.values(E.DEFS).find(d => d.where === 'yb'), over: false, round: 0, field: [] }; if (!Y.race.run) Y.test.startFill(); }); });
   if (SCENES.includes('hr')) await sample('I-20 roll race under way', async () => { await ev(() => { const E = window.__yb.ev; if (E) E.EV.cur = null; }); await drive(5600, 1363, -Math.PI / 2); await ev(() => { const M = window.__map, H = window.__yb.roll; Object.assign(H, { mode: 'roll60', act: 'auto', dist: 804.67 }); H.start(M.places().find(q => q.id === 'i20roll'), M.STREET3D[3]); }); });
