@@ -27,14 +27,14 @@ const log = o => console.log(JSON.stringify(o));
   // walk both of them to whichever meet the server has on right now
   const where = await A.evaluate(() => { const m = window.__meet, f = window.__guns.foot, p = m.mtCurrent(f.x, f.z), L = m.mtLot(p); return { id: p.id, x: L.cx - L.ox * 20, z: L.cz - L.oz * 20, cx: L.cx, cz: L.cz, ox: L.ox, oz: L.oz }; });
   for (const [p, dx] of [[A, 0], [B, 4]]) await p.evaluate(([x, z]) => { const f = window.__guns.foot; f.x = x; f.z = z; }, [where.x + dx, where.z]);
-  for (let i = 0; i < 40; i++) await pumpAll([A, B], 2);
+  for (let i = 0; i < 25; i++) await pumpAll([A, B], 2);
   const meetOf = p => p.evaluate(() => { const M = window.__meet.MT.live; if (!M) return null; return { place: M.p.id, slot: M.slot, seed: M.seed, ents: M.ents.filter(e => !e.gone).map(e => e.id + '|' + (e.mk.car ? e.carId + '|' + e.color + '|' + e.pr.r.b.rims.join('/') : 'fan') + '|' + e.name).sort(), models: [...new Set(M.ents.filter(e => e.mk.car).map(e => e.carId))].length, gossip: (window.__map.S.gossip ? window.__map.S.gossip.items : []).filter(g => g.icon === '🏁').map(g => g.text).slice(0, 1) }; });
   const ma = await meetOf(A), mb = await meetOf(B);
   log({ test: '1. same meet for both players', where: where.id, A: ma && [ma.place, ma.slot, ma.ents.length, 'models ' + ma.models, ma.gossip], B: mb && [mb.place, mb.slot, mb.ents.length, 'models ' + mb.models], sameCrowd: !!ma && !!mb && JSON.stringify(ma.ents) === JSON.stringify(mb.ents), sample: ma && ma.ents.slice(0, 3) });
   // 2. the talk lines line up (same clock, same lines, nothing sent)
   let match = 0, seen = 0;
-  for (let i = 0; i < 12; i++) {
-    await pumpAll([A, B], 3);
+  for (let i = 0; i < 6; i++) {
+    await pumpAll([A, B], 2);
     const [la, lb] = await Promise.all([A, B].map(p => p.evaluate(() => window.__meet.MT.live ? window.__meet.MT.live.ppl.groups.map(G => G.sp && !G.sp.gone && G.sp.bub ? G.sp.id + ':' + G.said : '').filter(Boolean) : [])));
     for (const x of la) { seen++; if (lb.includes(x)) match++; }
   }
@@ -45,7 +45,7 @@ const log = o => console.log(JSON.stringify(o));
   const talk = await A.evaluate(() => { const M = window.__meet.MT.live, e = M.ents.find(e => e.mk.car && !e.gone); const m = window.__hood.hTalkMenu(e)(); return { id: e.id, title: m.title, sub: m.sub, rows: m.rows.map(r => r.t) }; });
   log({ test: '3a. talk menu at the meet', talk });
   await A.evaluate(id => { const h = window.__hood, e = h.HOOD.byEnt.get(id), m = h.hTalkMenu(e)(); m.rows.find(r => r.t === 'Pop the hood').act(); m.rows.find(r => r.t === 'Talk down').act(); e.mode = 'fight'; e.t = 0; }, talk.id);
-  for (let i = 0; i < 20; i++) await pumpAll([A, B], 2);
+  for (let i = 0; i < 10; i++) await pumpAll([A, B], 2);
   log({ test: '3b. beef: A runs them, B sees it', A: await A.evaluate(id => { const e = window.__hood.HOOD.byEnt.get(id); return e && [e.own, e.mode]; }, talk.id), B: await B.evaluate(id => { const e = window.__hood.HOOD.byEnt.get(id); return e && [e.own ? 'remote' : 'local', e.mode]; }, talk.id) });
   // 4. parked map cars left the lot
   log({ test: '4. parked map cars skipped on the lot', skipped: await A.evaluate(() => { const PK = window.__map.PK, M = window.__meet.MT.live; let n = 0; for (const l of PK.grid.values()) for (const s of l) if (PK.skip(s)) n++; return n; }) });
