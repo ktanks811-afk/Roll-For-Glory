@@ -17543,7 +17543,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   function mtTick(dt) {
     if (!HOOD.ready || !driving || !DATA) { if (MT.chip && !MT.chip.hidden) MT.chip.hidden = true; return; }
     const [mx, mz] = hMe(), slot = mtSlot(), cur = mtCurrent(mx, mz);
-    if (cur && slot !== MT.lastSlot) { MT.lastSlot = slot; mtAnnounce(cur, slot); }
+    if (cur) mtAnnounce(cur, slot);   // once per server + slot + area (joining a server can change the pick)
     let M = MT.live;
     // a meet stays up while you're at it, even past its slot; it packs up once you leave
     if (M && (M.seed !== HNET.seed || Math.hypot(M.lot.cx - mx, M.lot.cz - mz) > 460 || (M.slot < slot - 1 && Math.hypot(M.lot.cx - mx, M.lot.cz - mz) > 120))) { mtClose(); M = null; }
