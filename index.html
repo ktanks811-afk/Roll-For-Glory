@@ -1459,7 +1459,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const money = v => (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString();
   const carOf = id => G.cars.find(c => c.id === id) || G.cars[0];
   // only the cars we have built in 3D, one by one; the rest come back as each model is finished
-  const BUILT = ['chevrolet_caprice_classic_box_chevy_1986', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_camaro_ss_2016', 'ford_f_150_regular_cab_2021', 'chevrolet_corvette_stingray_c8_2020', 'ram_1500_trx_2021', 'dodge_charger_scat_pack_2015', 'chevrolet_tahoe_2021', 'ford_mustang_gt_2019', 'chevrolet_nova_1972', 'dodge_challenger_rt_scat_pack_widebody_2019', 'mercedes_amg_g63_2019', 'mercedes_maybach_gls600_2021', 'bmw_m5_g90_2025', 'jeep_grand_cherokee_trackhawk_2018', 'dodge_copperhead_1997', 'chevrolet_corvette_z06_c7_2019'];
+  const BUILT = ['chevrolet_caprice_classic_box_chevy_1986', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_camaro_ss_2016', 'ford_f_150_regular_cab_2021', 'chevrolet_corvette_stingray_c8_2020', 'ram_1500_trx_2021', 'dodge_charger_scat_pack_2015', 'chevrolet_tahoe_2021', 'ford_mustang_gt_2019', 'chevrolet_nova_1972', 'dodge_challenger_rt_scat_pack_widebody_2019', 'mercedes_amg_g63_2019', 'mercedes_maybach_gls600_2021', 'bmw_m5_g90_2025', 'jeep_grand_cherokee_trackhawk_2018', 'dodge_copperhead_1997', 'chevrolet_corvette_z06_c7_2019', 'kia_stinger_gt2_2022'];
   function builtCars(all) {
     const by = id => all.find(c => c.id === id);
     const extra = {
@@ -1473,6 +1473,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       jeep_grand_cherokee_trackhawk_2018: { ...by('jeep_grand_cherokee_trackhawk_2018'), trim: 'Trackhawk', y: 2018, years: [2018, 2021], cls: 'SUV', msrp: 86995, market: null, hp: 707, tq: 645, kg: 2433, drive: 'AWD', engine: '6.2L Supercharged HEMI V8', body: 'suv', color: '#08090b', asp: 'sc', lim: 180 },
       dodge_copperhead_1997: { ...by('dodge_viper_acr_2016'), id: 'dodge_copperhead_1997', model: 'Copperhead', trim: 'Concept', y: 1997, cls: 'Exotic', msrp: 30000, market: null, hp: 220, tq: 188, kg: 1295, drive: 'RWD', engine: '2.7L DOHC 24v V6', body: 'exotic', color: '#9c3a10', asp: 'na', lim: 0 },
       chevrolet_corvette_z06_c7_2019: { ...by('chevrolet_corvette_z06_c6_2006'), id: 'chevrolet_corvette_z06_c7_2019', model: 'Corvette', trim: 'Z06 (C7)', y: 2019, years: [2015, 2019], cls: 'Exotic', msrp: 80000, market: null, hp: 650, tq: 650, kg: 1598, drive: 'RWD', engine: '6.2L LT4 Supercharged V8', redline: 6600, grip: 1.1, body: 'exotic', color: '#8e0c15', asp: 'sc', lim: 0 },
+      kia_stinger_gt2_2022: { ...by('kia_stinger_gt2_awd_2018'), id: 'kia_stinger_gt2_2022', model: 'Stinger', trim: 'GT2', y: 2022, years: [2022, 2023], cls: 'Sedan', msrp: 52000, market: null, hp: 368, tq: 376, kg: 1763, drive: 'RWD', engine: '3.3L Twin-Turbo V6', redline: 6500, grip: 1.0, body: 'sedan', color: '#4b4f55', asp: 'turbo', lim: 0 },
       ford_mustang_gt_2019: { ...by('ford_mustang_gt_s650_2024'), id: 'ford_mustang_gt_2019', model: 'Mustang', trim: 'GT 5.0 Fastback', y: 2019, msrp: 36000, market: null, hp: 460, kg: 1705, drive: 'RWD', engine: '5.0L Coyote V8', body: 'muscle', color: '#0b0c0f', asp: 'na' },
     };
     return BUILT.map(id => extra[id] || by(id)).filter(Boolean);
@@ -1573,6 +1574,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const COPPER_PAINTS = [['Copper Fire Orange Metallic', '#9c3a10'], ['Viper Red', '#a50d12'], ['Viper Black', '#060607'], ['Viper Blue Pearl', '#13368f'], ['Viper Bright White', '#eceeee'], ['Sapphire Blue Metallic', '#1b2c55'], ['Deep Amethyst Pearl', '#3a1838'], ['Emerald Green Pearl', '#0f3b2a'], ['Bright Platinum Metallic', '#a6a9ad'], ['Flame Red', '#b5121b'], ['Light Cypress Green', '#5f7c5a'], ['Copper Penny', '#b8643a']];
   // the 2019 Corvette Z06 colours, offered first in its paint booth
   const VETTE_PAINTS = [['Long Beach Red Metallic Tintcoat', '#8e0c15'], ['Torch Red', '#c4121b'], ['Arctic White', '#eef0ef'], ['Black', '#060607'], ['Blade Silver Metallic', '#a5a9ad'], ['Ceramic Matrix Gray Metallic', '#5b6168'], ['Shadow Gray Metallic', '#3a3d42'], ['Watkins Glen Gray Metallic', '#4b5056'], ['Elkhart Lake Blue Metallic', '#1b3f8f'], ['Admiral Blue Metallic', '#1a2c5a'], ['Sebring Orange Tintcoat', '#d2531a'], ['Corvette Racing Yellow Tintcoat', '#e8c21a']];
+  // the 2022 Kia Stinger colours, offered first in its paint booth
+  const KIA_PAINTS = [['Interstellar Gray', '#4b4f55'], ['Panthera Metal', '#3a3e44'], ['Aurora Black Pearl', '#0b0c0e'], ['Snow White Pearl', '#eeeeea'], ['Ceramic Silver', '#b4b8bc'], ['Wolf Gray', '#6b6e72'], ['HiChroma Red', '#a50f1a'], ['Micro Blue', '#1f4fa8'], ['Deep Chroma Blue', '#1a2a55'], ['Ascot Green', '#1f3a32']];
   const BMW_PAINTS = [['Black Sapphire', '#0a0b0e'], ['Carbon Black', '#0d1018'], ['Alpine White', '#eceeec'], ['Brooklyn Grey', '#7d8287'], ['Sophisto Grey', '#2d3034'], ['Isle of Man Green', '#0f4a3a'], ['Marina Bay Blue', '#1c4fa8'], ['Fire Red', '#8c1016'], ['Frozen Deep Grey (matte)', '#4a4c51'], ['Frozen Pure Grey (matte)', '#8d9197'], ['Frozen Portimao Blue (matte)', '#2a4f8b'], ['Frozen Deep Green (matte)', '#24382f']];
   const BMW_MATTE = new Set(['#4a4c51', '#8d9197', '#2a4f8b', '#24382f']);
   const PAINTS = [['Candy red', '#b3121b'], ['Midnight black', '#121214'], ['Pearl white', '#ece9e2'], ['Cowtown blue', '#1f4fa8'], ['Lime green', '#7ac224'], ['Royal purple', '#5a2a8a'], ['Orange crush', '#e8651a'], ['Gold flake', '#c9a23a'], ['Gunmetal', '#4a4e54'], ['Baby blue', '#7ab8e0'], ['Pink champagne', '#e0a8b8'], ['Forest green', '#24502e']];
@@ -1624,7 +1627,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       return { title: 'Engine bay', sub: `${carHp(c)} hp now · ${c.swap ? c.swap.label : motorLabel(c)}`, rows: (PRO_SHOPS[p.id] ? [{ t: `Pro tuner: ${PRO_SHOPS[p.id].who}`, s: 'Pay for a custom dyno tune, or drop it off and have them build the engine. Every job comes out different', btn: 'Open', act: () => openMenu(() => MENUS.protune(p)) }] : []).concat([{ t: 'Engine Lab', s: `Build, ${(PC.length).toLocaleString()} brand parts, boost, nitrous, ECU and health in one place`, btn: 'Open', act: () => { closeMenu(); elOpen('build'); } }, { t: 'Motor swap', s: `Factory motors and ${CRATES.length} crate motors on the same engine model`, btn: 'Open', act: () => { closeMenu(); elOpen('swap'); } }]).concat(nosRefillRow(p)) };
     },
     dyno(p) { if (!S.car) return noCar(p); const c = S.car, hp = carHp(c); return { title: 'Dyno', sub: 'Strap it down and pull', rows: [{ t: 'Make a pull', s: `Last pull: ${c.dyno ? c.dyno + ' whp' : 'none yet'}`, btn: money(150), act: () => { if (spend(150, 'Dyno pull')) { c.dyno = Math.round(hp * (0.82 + Math.random() * 0.04) * (0.6 + 0.4 * c.cond.engine / 100)); toast(`${c.dyno} whp at the wheels.`, 'good'); } } }] }; },
-    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: (c.id === 'ford_mustang_gt_2019' ? FORD_PAINTS.map(([n, h]) => ['Ford ' + n, h]) : c.id === 'chevrolet_nova_1972' ? NOVA_PAINTS.map(([n, h]) => ['Chevy ' + n, h]) : c.id === 'dodge_challenger_rt_scat_pack_widebody_2019' ? DODGE_PAINTS.map(([n, h]) => ['Dodge ' + n, h]) : c.id === 'mercedes_amg_g63_2019' ? MB_PAINTS.map(([n, h]) => ['Mercedes ' + n, h]) : c.id === 'mercedes_maybach_gls600_2021' ? MAYBACH_PAINTS.map(([n, h]) => ['Maybach ' + n, h]) : c.id === 'bmw_m5_g90_2025' ? BMW_PAINTS.map(([n, h]) => ['BMW ' + n, h]) : c.id === 'jeep_grand_cherokee_trackhawk_2018' ? JEEP_PAINTS.map(([n, h]) => ['Jeep ' + n, h]) : c.id === 'dodge_copperhead_1997' ? COPPER_PAINTS.map(([n, h]) => ['Dodge ' + n, h]) : c.id === 'chevrolet_corvette_z06_c7_2019' ? VETTE_PAINTS.map(([n, h]) => ['Corvette ' + n, h]) : []).concat(PAINTS).map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; c.matte = BMW_MATTE.has(hex); if (car) car.userData.body.color.copy(lin(hex)); dragRefresh(c); toast(c.matte ? `${n}. Satin, no shine.` : `${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) { c.tint = true; dragRefresh(c); } } }], lookRows(c, rate)) }; },
+    paint(p) { if (!S.car) return noCar(p); const c = S.car, rate = p.rate || 1; return { title: 'Paint booth', sub: 'Full respray, 2 coats + clear', rows: (c.id === 'ford_mustang_gt_2019' ? FORD_PAINTS.map(([n, h]) => ['Ford ' + n, h]) : c.id === 'chevrolet_nova_1972' ? NOVA_PAINTS.map(([n, h]) => ['Chevy ' + n, h]) : c.id === 'dodge_challenger_rt_scat_pack_widebody_2019' ? DODGE_PAINTS.map(([n, h]) => ['Dodge ' + n, h]) : c.id === 'mercedes_amg_g63_2019' ? MB_PAINTS.map(([n, h]) => ['Mercedes ' + n, h]) : c.id === 'mercedes_maybach_gls600_2021' ? MAYBACH_PAINTS.map(([n, h]) => ['Maybach ' + n, h]) : c.id === 'bmw_m5_g90_2025' ? BMW_PAINTS.map(([n, h]) => ['BMW ' + n, h]) : c.id === 'jeep_grand_cherokee_trackhawk_2018' ? JEEP_PAINTS.map(([n, h]) => ['Jeep ' + n, h]) : c.id === 'dodge_copperhead_1997' ? COPPER_PAINTS.map(([n, h]) => ['Dodge ' + n, h]) : c.id === 'chevrolet_corvette_z06_c7_2019' ? VETTE_PAINTS.map(([n, h]) => ['Corvette ' + n, h]) : c.id === 'kia_stinger_gt2_2022' ? KIA_PAINTS.map(([n, h]) => ['Kia ' + n, h]) : []).concat(PAINTS).map(([n, hex]) => ({ t: n, sw: hex, btn: c.color === hex ? 'On it now' : money(1500 * rate), off: c.color === hex, act: () => { if (spend(1500 * rate, 'Paint: ' + n)) { c.color = hex; c.matte = BMW_MATTE.has(hex); if (car) car.userData.body.color.copy(lin(hex)); dragRefresh(c); toast(c.matte ? `${n}. Satin, no shine.` : `${n}. Looks wet.`, 'good'); } } })).concat([{ t: 'Window tint (20%)', btn: c.tint ? 'Done' : money(300 * rate), off: c.tint, act: () => { if (spend(300 * rate, 'Window tint')) { c.tint = true; dragRefresh(c); } } }], lookRows(c, rate)) }; },
     chop(p) { if (!S.car) return noCar(p); return { title: p.name, sub: 'No questions asked', rows: [{ t: 'Hot engine tune', s: '+8% hp, off the books. Heat +1', btn: S.car.mods.hot ? 'Installed' : money(600), off: !!S.car.mods.hot, act: () => { if (spend(600, 'Hot tune')) { S.car.mods.hot = true; S.heat = Math.min(5, S.heat + 1); } } }, { t: 'Swap the VIN', s: 'Clears 1 heat', btn: money(900), off: !S.heat, act: () => { if (spend(900, 'VIN swap')) S.heat--; } }] }; },
     fuel(p) { if (!S.car) return noCar(p);
       const c = S.car, ev = isEV(c), grade = ev ? 'kwh' : carHp(c) > 300 ? 'premium' : 'regular', price = G.gas[grade], need = (1 - c.fuel) * (ev ? 75 : tankGal(c)), cost = need * price;
@@ -1878,7 +1881,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const SCR = (T.screens || []).map(sc => { const g = new THREE.BufferGeometry(), c = sc.c; g.setAttribute('position', new THREE.Float32BufferAttribute([...c[0], ...c[1], ...c[2], ...c[0], ...c[2], ...c[3]], 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], 2));
       const mm = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide })); mm.visible = false; inner.add(mm); return { k: sc.k, m: mm, cv: null }; });
     const ANIM = {}; for (const a of T.anim || []) { const hold = new THREE.Group(); hold.matrixAutoUpdate = false; hold.matrix.fromArray(a.pm); (a.pn && panels[a.pn] ? panels[a.pn].g : inner).add(hold); const g = new THREE.Group(); g.position.fromArray(a.pos); g.rotation.set(a.rot[0], a.rot[1], a.rot[2]); hold.add(g); for (const q of a.parts) { const mm = new THREE.Mesh(q.geo, matOf(q.mat)); mm.castShadow = false; g.add(mm); } if (a.kit) (KITS[a.kit] || (KITS[a.kit] = [])).push(g); (ANIM[a.name] || (ANIM[a.name] = [])).push({ g, axis: a.axis, k: a.k, min: a.min, max: a.max, base: g.rotation[a.axis], tr: a.tr, p0: g.position[a.axis] }); }
-    root.userData = { bay, eng: ENG, audio: AU, panels, wheels, paint: myPaint, roles: ROLES, kits: T.kits ? KITS : null, screens: SCR.length ? SCR : null, lampFx: !!(LAMPS.drl || LAMPS.high || SCR.length || ANIM.win), lamps: T.lamps ? LAMPS : null, anim: T.anim && T.anim.length ? ANIM : null, inner, eye: T.eye || [(T.box[0][0] + T.box[1][0]) / 2 - 0.15, T.box[1][1] - 0.26, -0.37], len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
+    root.userData = { bay, eng: ENG, audio: AU, panels, wheels, paint: myPaint, roles: ROLES, kits: T.kits ? KITS : null, screens: SCR.length ? SCR : null, lampFx: !!(LAMPS.drl || LAMPS.high || SCR.length || ANIM.win || ANIM.sun), lamps: T.lamps ? LAMPS : null, anim: T.anim && T.anim.length ? ANIM : null, inner, eye: T.eye || [(T.box[0][0] + T.box[1][0]) / 2 - 0.15, T.box[1][1] - 0.26, -0.37], len: T.box[1][0] - T.box[0][0], front: T.box[1][0], wid: T.box[1][2] - T.box[0][2], r: T.wheels.length ? T.wheels[0].pos[1] : 0.34 };
     return root;
   }
   // drop a car into any group; the model streams in, the slot is ready right away
@@ -1996,7 +1999,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const PK_CELL = 100;
   // what tends to be parked where: cars in normal spots, trucks and SUVs in the long ones
   const PK_CARS = [['chevrolet_caprice_classic_box_chevy_1986', 4], ['dodge_charger_scat_pack_2015', 2], ['dodge_charger_srt_hellcat_widebody_2020', 1.5], ['chevrolet_camaro_ss_2016', 2], ['chevrolet_corvette_stingray_c8_2020', 1], ['chevrolet_tahoe_2021', 1.5], ['ford_f_150_regular_cab_2021', 1.5], ['ram_1500_trx_2021', 0.7], ['ford_mustang_gt_2019', 2], ['chevrolet_nova_1972', 1.2], ['dodge_challenger_rt_scat_pack_widebody_2019', 1.6]];
-  PK_CARS.push(['bmw_m5_g90_2025', 1.2], ['dodge_copperhead_1997', 0.5], ['chevrolet_corvette_z06_c7_2019', 1]);
+  PK_CARS.push(['bmw_m5_g90_2025', 1.2], ['dodge_copperhead_1997', 0.5], ['chevrolet_corvette_z06_c7_2019', 1], ['kia_stinger_gt2_2022', 1.2]);
   const PK_TRUCKS = [['ford_f_150_regular_cab_2021', 3], ['ram_1500_trx_2021', 2], ['chevrolet_tahoe_2021', 3], ['mercedes_amg_g63_2019', 1.4], ['mercedes_maybach_gls600_2021', 1.2], ['jeep_grand_cherokee_trackhawk_2018', 1.6]];
   const pkPick = (L, h) => { const tot = L.reduce((s, x) => s + x[1], 0); let r = h * tot; for (const [id, w] of L) { if ((r -= w) < 0) return id; } return L[0][0]; };
   // called by the world builder for each parked-car box; false means it isn't car shaped (a rig, a trailer) and keeps its block
@@ -7053,6 +7056,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       if (m.userData.lamps.high) { el.insertAdjacentHTML('beforeend', `<button class="btn${LFX.high ? ' go' : ''}" data-hb="1">High beams ${LFX.high ? 'off' : 'on'}</button>`); el.querySelector('[data-hb]').onclick = () => { LFX.high = !LFX.high; if (LFX.high) BLINK.lights = true; renderCarPanel(); }; }
     }
     if (m && m.userData.anim && m.userData.anim.win) { el.insertAdjacentHTML('beforeend', `<button class="btn${LFX.win ? ' go' : ''}" data-win="1">Windows ${LFX.win ? 'up' : 'down'}</button>`); el.querySelector('[data-win]').onclick = () => { LFX.win = !LFX.win; renderCarPanel(); }; }
+    if (m && m.userData.anim && m.userData.anim.sun) { el.insertAdjacentHTML('beforeend', `<button class="btn${LFX.sun ? ' go' : ''}" data-sun="1">Sunroof ${LFX.sun ? 'close' : 'open'}</button>`); el.querySelector('[data-sun]').onclick = () => { LFX.sun = !LFX.sun; renderCarPanel(); }; }
     // traction and stability control, on cars that came with it: switch it off to spin the tires and slide it yourself
     const c = S.car, V = c && vehOf(c, partsKg(c));
     if (V && V.tcAvail && !V.ev) {
@@ -7075,6 +7079,13 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     const txsp = c && VSPEC[c.id] && VSPEC[c.id].txAT;
     if (txsp) { const at = c.tx === 'at'; el.insertAdjacentHTML('beforeend', `<button class="btn go" data-tx="1">Gearbox: ${at ? '8-speed automatic' : '7-speed manual'}</button>`);
       el.querySelector('[data-tx]').onclick = () => { if (driving && Math.abs(drv.v) > 1) { toast('Stop the car first.'); return; } c.tx = at ? '' : 'at'; toast(c.tx ? '8-speed automatic (8L90) with paddles: quicker shifts, launch control.' : '7-speed manual with Active Rev Match.'); save(); renderCarPanel(); }; }
+    // the Stinger's drive mode dial: Comfort, Sport, Sport+ (the dampers, and the AWD split when it has AWD)
+    const dmsp = c && VSPEC[c.id] && VSPEC[c.id].dm;
+    if (dmsp) { const md = c.dm || 'comfort', lab = { comfort: 'Comfort', sport: 'Sport', sportp: 'Sport+' }, nx = { comfort: 'sport', sport: 'sportp', sportp: 'comfort' }; el.insertAdjacentHTML('beforeend', `<button class="btn go" data-dm="1">Drive mode: ${lab[md]}</button>`);
+      el.querySelector('[data-dm]').onclick = () => { c.dm = nx[md]; toast({ comfort: 'Comfort: soft dampers, early shifts.', sport: 'Sport: firmer dampers, sharper throttle, more torque to the rear.', sportp: 'Sport+: stiffest dampers, most of the torque to the rear.' }[c.dm]); save(); renderCarPanel(); }; }
+    const awsp = c && VSPEC[c.id] && VSPEC[c.id].awd;
+    if (awsp) { const aw = c.dr === 'awd'; el.insertAdjacentHTML('beforeend', `<button class="btn go" data-dr="1">Drivetrain: ${aw ? 'AWD' : 'RWD'}</button>`);
+      el.querySelector('[data-dr]').onclick = () => { if (driving && Math.abs(drv.v) > 1) { toast('Stop the car first.'); return; } c.dr = aw ? '' : 'awd'; toast(c.dr ? 'AWD with Dynamic Torque Vectoring: rear biased, grips off the line.' : 'RWD with the mechanical limited-slip diff.'); save(); renderCarPanel(); }; }
     // the Engine Lab: specs, dyno, parts and the engine on the stand
     // the Engine Lab: everything motor in one place (build, parts, boost, nitrous, ECU, swaps, health)
     if (c) { el.insertAdjacentHTML('beforeend', `<button class="btn go" data-lab="1">Engine Lab</button>`); el.querySelector('[data-lab]').onclick = () => { $('carpanel').hidden = true; elOpen(engDefOf(c) ? 'build' : 'parts'); }; }
@@ -7221,6 +7232,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     jeep_grand_cherokee_trackhawk_2018: { hc: { base: 36, lfo: 7.4, lg: 0.06, lp: 600, drive: 2.1, o: 0.5, peak: 4.1, whine: ['sine', 950, 0.024, 0.06] }, rd: { base: 37, lfo: 7.4, lg: 0.07, lp: 760, drive: 2.7, o: 0.6, peak: 4.2, whine: ['sine', 1080, 0.034, 0.08] } },
     dodge_copperhead_1997: { v6: { base: 44, lfo: 11, lg: 0.03, lp: 820, drive: 1.9, o: 0.46, peak: 4.8 }, vn: { base: 45, lfo: 11, lg: 0.04, lp: 900, drive: 2.4, o: 0.56, peak: 4.8, whine: ['sawtooth', 520, 0.014, 0.05] } },
     chevrolet_corvette_z06_c7_2019: { lt4: { base: 34, lfo: 7.2, lg: 0.09, lp: 680, drive: 2.3, o: 0.52, peak: 4.3, whine: ['sine', 1250, 0.026, 0.07] }, lt4s2: { base: 35, lfo: 7.4, lg: 0.1, lp: 860, drive: 2.9, o: 0.62, peak: 4.4, whine: ['sine', 1420, 0.038, 0.095] } },
+    kia_stinger_gt2_2022: { g6dp: { base: 42, lfo: 9.8, lg: 0.035, lp: 720, drive: 1.9, o: 0.46, peak: 4.6, whine: ['sine', 2600, 0.006, 0.035], turbo: true }, g6dps2: { base: 43, lfo: 10, lg: 0.045, lp: 900, drive: 2.5, o: 0.58, peak: 4.7, whine: ['sine', 2900, 0.011, 0.05], turbo: true } },
     ford_mustang_gt_2019: { coyote: { base: 37, lfo: 7.8, lg: 0.055, lp: 760, peak: 4.4, drive: 2.0 }, coyote_sc: { base: 39, lfo: 8.0, lg: 0.05, lp: 880, peak: 4.4, drive: 2.3, whine: ['triangle', 900, 0.01, 0.05], o: 0.5 } },
     chevrolet_corvette_stingray_c8_2020: { lt2: { base: 34, lfo: 7.0, lg: 0.1, lp: 560 }, lt6: { base: 50, lfo: 13, lg: 0.05, lp: 1300, peak: 5.2, o: 0.6 } },
   };
@@ -9275,6 +9287,13 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       susp: { fF: 1.9, fR: 2.05, arbF: 0.8, arbR: 0.3, z: 0.32 }, mr: { tour: 0.82, sport: 1.0, track: 1.28 }, diff: 'lsd', lock: 50, drive: 'R',
       tire: { f: 'summer', r: 'summer', rf: 0.327, rr: 0.338, wf: 285, wr: 335, mwt: 26 }, aero: { cdA: 0.95, clF: -0.06, clR: -0.1 },
       z07: { aero: { cdA: 1.04, clF: -0.16, clR: -0.24 }, tire: { f: 'track', r: 'track' }, brakeG: 1.32 }, abs: true, biasF: 0.6, brakeG: 1.24, steerMax: 0.58, vmax: 0 },
+    kia_stinger_gt2_2022: { note: '2022 Kia Stinger GT2: 3.3 T-GDi twin-turbo V6 (G6DP, 368 hp @ 5800 ✓, 376 lb-ft @ 1300-4500 ✓), 8-speed automatic with paddles ✓ 3.665/2.396/1.610/1.190/1.000/0.826/0.643/0.556 ✓ R 3.393 ~, 3.73 final ~, RWD + mechanical LSD ✓ or AWD with Dynamic Torque Vectoring ✓, 225/40R19 F + 255/35R19 R ✓, 114.4 in wb ✓, 62.8 / 64.8 in track ✓, 3,887 lb RWD ✓, 52/48 ~, Electronic Controlled Suspension (drive modes) ✓, Brembo 4/4-piston ✓, 167 mph ✓, launch control ✓',
+      eng: { tq: 510, nT: 1300, hp: 368, nP: 5800, red: 6500, idle: 650, kl: 0.4, Ie: 0.2, fam: 'g6dp' },
+      tr: { type: 'tc', auto: [3.665, 2.396, 1.61, 1.19, 1.0, 0.826, 0.643, 0.556], fd: 3.73, rev: 3.393, stall: 2200, shiftT: 0.16, lockFrom: 2, modern: true, man: null, fdMan: null },
+      geo: { wb: 2.905, tf: 1.596, tr: 1.647, fw: 0.52, h: 0.5, hrcF: 0.06, hrcR: 0.1, as: 0.3, ad: 0.25 },
+      susp: { fF: 1.6, fR: 1.75, arbF: 1.0, arbR: 0.55, z: 0.32 }, diff: 'lsd', lock: 35, drive: 'R',
+      awd: { split: 0.4, center: 0.45 }, dm: { comfort: { z: 0.85, split: 0.4 }, sport: { z: 1.0, split: 0.3 }, sportp: { z: 1.15, split: 0.2 } },
+      tire: { f: 'summer', r: 'summer', rf: 0.331, rr: 0.331, wf: 225, wr: 255, mwt: 24 }, aero: { cdA: 0.66, clF: 0.05, clR: 0.04 }, abs: true, biasF: 0.62, brakeG: 1.08, steerMax: 0.6, vmax: 74.7 },
   };
   // anything without a sheet (bikes, ATVs, a car in an old save): a reasonable sheet built from its catalog numbers
   function vspecGeneric(m, red) {
@@ -9405,6 +9424,12 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     s68s2: { name: 'BMW S68 Stage 2 (turbos, intake, tune)', fam: 's68', vt: 'dohc', cyl: 8, bore: 3.504, stroke: 3.476, cr: 10.5, fo: 'm177', red: 7200, idle: 700, Ie: 0.24, di: true, forged: true,
       cam: { dI: 226, dE: 220, lI: 0.43, lE: 0.41, lsa: 116, icl: 112 }, head: 270, valve: 1.3, tb: 1500, fuel: 'di', inj: 0, pump: 0, fuelHp: 1050, intake: 'turbo', exh: 'valved-race', hdr: 'turbo',
       power: { kind: 'turbo', psi: 29, ic: 0.88, eff: 0.75, on: 1400, full: 2100 }, hp: 820, nP: 6000, tq: 1100, nT: 2200, note: 'Stage 2: hybrid turbos, intakes, downpipes, tune ~' },
+    g6dp: { name: 'Kia / Hyundai G6DP 3.3 T-GDi twin-turbo V6 (Stinger GT)', fam: 'lambda', vt: 'dohc', cyl: 6, bore: 3.622, stroke: 3.299, cr: 10.0, fo: 'lh', red: 6500, idle: 650, Ie: 0.2, di: true,
+      cam: { dI: 222, dE: 220, lI: 0.40, lE: 0.38, lsa: 114, icl: 110 }, head: 225, valve: 1.38, tb: 1000, fuel: 'di', inj: 0, pump: 0, fuelHp: 520, intake: 'turbo', exh: 'dual-valved', hdr: 'turbo',
+      power: { kind: 'turbo', psi: 14.5, ic: 0.85, eff: 0.72, on: 1300, full: 1700 }, hp: 368, nP: 5800, tq: 510, nT: 1300, note: 'G6DP ✓ 368 hp / 376 lb-ft, twin Garrett-style turbos, one per bank ✓, ~14.5 psi peak ~' },
+    g6dps2: { name: 'G6DP 3.3TT Stage 2 (downpipes, intakes, charge pipes, upgraded low-pressure pump, E30 tune)', fam: 'lambda', vt: 'dohc', cyl: 6, bore: 3.622, stroke: 3.299, cr: 10.0, fo: 'lh', red: 6700, idle: 700, Ie: 0.2, di: true,
+      cam: { dI: 222, dE: 220, lI: 0.40, lE: 0.38, lsa: 114, icl: 110 }, head: 225, valve: 1.38, tb: 1100, fuel: 'di', inj: 0, pump: 0, fuelHp: 700, intake: 'turbo', exh: 'valved-race', hdr: 'turbo',
+      power: { kind: 'turbo', psi: 21, ic: 0.88, eff: 0.74, on: 1500, full: 2000 }, hp: 510, nP: 6000, tq: 750, nT: 2400, note: 'a common Stinger GT Stage 2 bolt-on + E30 build on the stock turbos; output ~' },
     // crate motors for the Engine Lab's Swap tab (any of these, or any engine above, can go in any car)
     lm7: { name: 'GM 5.3 LS (junkyard truck motor)', fam: 'ls', vt: 'ohv', cyl: 8, bore: 3.78, stroke: 3.622, cr: 9.5, fo: 'ls', red: 6000, idle: 650, Ie: 0.21,
       cam: { dI: 190, dE: 191, lI: 0.466, lE: 0.457, lsa: 116, icl: 114 }, head: 225, valve: 1.89, tb: 900, fuel: 'port', inj: 28, pump: 190, intake: 'ls-truck', exh: 'dual', hdr: 'manifold',
@@ -9956,12 +9981,12 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
     dodge_challenger_rt_scat_pack_widebody_2019: { n392: 'hemi392', hc: 'hemi62sc' }, ram_1500_trx_2021: { hc: 'hemi62sc', n392: 'hemi392' },
     chevrolet_camaro_ss_2016: { n392: 'lt1', hc: 'lt4' }, chevrolet_tahoe_2021: { n392: 'l84', hc: 'l87sc' },
     ford_f_150_regular_cab_2021: { v8: 'coyote3f', eb: 'eb35' }, chevrolet_corvette_stingray_c8_2020: { lt2: 'lt2', lt6: 'lt6' },
-    ford_mustang_gt_2019: { coyote: 'coyote3', coyote_sc: 'coyote3sc' }, mercedes_amg_g63_2019: { m177: 'm177', b800: 'm177b' }, bmw_m5_g90_2025: { s68: 's68', s68s2: 's68s2' }, jeep_grand_cherokee_trackhawk_2018: { hc: 'hemi62sc', rd: 'hemi62rd' }, dodge_copperhead_1997: { v6: 'lh27', vn: 'lh27vn' }, chevrolet_corvette_z06_c7_2019: { lt4: 'lt4', lt4s2: 'lt4s2' },
+    ford_mustang_gt_2019: { coyote: 'coyote3', coyote_sc: 'coyote3sc' }, mercedes_amg_g63_2019: { m177: 'm177', b800: 'm177b' }, bmw_m5_g90_2025: { s68: 's68', s68s2: 's68s2' }, jeep_grand_cherokee_trackhawk_2018: { hc: 'hemi62sc', rd: 'hemi62rd' }, dodge_copperhead_1997: { v6: 'lh27', vn: 'lh27vn' }, chevrolet_corvette_z06_c7_2019: { lt4: 'lt4', lt4s2: 'lt4s2' }, kia_stinger_gt2_2022: { g6dp: 'g6dp', g6dps2: 'g6dps2' },
     chevrolet_nova_1972: { sbc350: 'sbc350', sbc383: 'sbc383', bbc454: 'bbc454', bbc496: 'bbc496', ls3: 'ls3', lssc: 'ls3sc' },
   };
   const STOCK_ENG = { chevrolet_caprice_classic_box_chevy_1986: 'sbc305', dodge_charger_srt_hellcat_widebody_2020: 'hemi62sc', chevrolet_camaro_ss_2016: 'lt1', ford_f_150_regular_cab_2021: 'coyote3f',
     chevrolet_corvette_stingray_c8_2020: 'lt2', ram_1500_trx_2021: 'hemi62sc', dodge_charger_scat_pack_2015: 'hemi392', chevrolet_tahoe_2021: 'l84', ford_mustang_gt_2019: 'coyote3',
-    chevrolet_nova_1972: 'sbc350', dodge_challenger_rt_scat_pack_widebody_2019: 'hemi392', mercedes_amg_g63_2019: 'm177', bmw_m5_g90_2025: 's68', jeep_grand_cherokee_trackhawk_2018: 'hemi62sc', dodge_copperhead_1997: 'lh27', chevrolet_corvette_z06_c7_2019: 'lt4' };
+    chevrolet_nova_1972: 'sbc350', dodge_challenger_rt_scat_pack_widebody_2019: 'hemi392', mercedes_amg_g63_2019: 'm177', bmw_m5_g90_2025: 's68', jeep_grand_cherokee_trackhawk_2018: 'hemi62sc', dodge_copperhead_1997: 'lh27', chevrolet_corvette_z06_c7_2019: 'lt4', kia_stinger_gt2_2022: 'g6dp' };
   // every other car and ride: an engine built from its catalog entry (layout, displacement, aspiration, output)
   const GEN_ENG = {};
   function engGeneric(m) {
@@ -10803,19 +10828,23 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
   // factory launch control (rpm it holds on the brake), for the cars that came with it. These are approximations: the
   // real systems let you set the rpm, so this is a sensible street-tire default each car's brakes can hold
   const LC_FACTORY = { dodge_charger_srt_hellcat_widebody_2020: 1700, dodge_charger_scat_pack_2015: 1600, dodge_challenger_rt_scat_pack_widebody_2019: 1600,
-    ram_1500_trx_2021: 1700, ford_mustang_gt_2019: 1700, chevrolet_corvette_stingray_c8_2020: 3200, mercedes_amg_g63_2019: 2000, bmw_m5_g90_2025: 2600, jeep_grand_cherokee_trackhawk_2018: 2000, dodge_copperhead_1997: 3800, chevrolet_corvette_z06_c7_2019: 3000 };
+    ram_1500_trx_2021: 1700, ford_mustang_gt_2019: 1700, chevrolet_corvette_stingray_c8_2020: 3200, mercedes_amg_g63_2019: 2000, bmw_m5_g90_2025: 2600, jeep_grand_cherokee_trackhawk_2018: 2000, dodge_copperhead_1997: 3800, chevrolet_corvette_z06_c7_2019: 3000, kia_stinger_gt2_2022: 2400 };
   // per-car variants of a sheet: the C7 Z06's 8-speed automatic option (c.tx), its Magnetic Ride modes (c.mr scales
   // the damping) and the Z07 package (its aero, the Cup 2 tires and the carbon-ceramic brakes come with the kit)
   function vspecVar(c, sp) {
-    if (!sp || (!sp.txAT && !sp.mr && !sp.z07)) return sp;
+    if (!sp || (!sp.txAT && !sp.mr && !sp.z07 && !sp.awd && !sp.dm)) return sp;
     const o = Object.assign({}, sp);
     if (sp.txAT && c.tx === 'at') o.tr = sp.txAT;
     if (sp.mr) o.susp = Object.assign({}, sp.susp, { z: sp.susp.z * (sp.mr[c.mr] || sp.mr.tour) });
     if (sp.z07 && c.kits && c.kits.z07) { o.aero = sp.z07.aero; o.tire = Object.assign({}, sp.tire, sp.z07.tire); o.brakeG = sp.z07.brakeG || sp.brakeG; }
+    // the Stinger: drive modes (damping, and how much the AWD system sends forward) and the AWD option (c.dr)
+    const dm = sp.dm && (sp.dm[c.dm] || sp.dm.comfort);
+    if (dm) o.susp = Object.assign({}, sp.susp, { z: sp.susp.z * dm.z });
+    if (sp.awd && c.dr === 'awd') { o.drive = 'A'; o.split = dm ? dm.split : sp.awd.split; o.center = sp.awd.center; }
     return o;
   }
   function vehOf(c, kg) {
-    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0, c.eng || '', c.engX || '', JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), JSON.stringify(c.sus || 0), c.xd || '', c.st || '', c.tx || '', c.mr || '', c.kits && c.kits.z07 ? 1 : 0, JSON.stringify(c.rims || 0), c.tubs || 0].join('|');
+    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0, c.eng || '', c.engX || '', JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), JSON.stringify(c.sus || 0), c.xd || '', c.st || '', c.tx || '', c.mr || '', c.kits && c.kits.z07 ? 1 : 0, c.dr || '', c.dm || '', JSON.stringify(c.rims || 0), c.tubs || 0].join('|');
     let V = VEH_CACHE.get(key); if (V) return V;
     const sp = vspecVar(c, vspecOf(c.id, m, red0)), E = Object.assign({}, sp.eng), tr = sp.tr, geo = sp.geo, su = sp.susp, ti = sp.tire;
     // the engine as it's built (Phase 2): its own torque curve, redline, idle and rotating inertia from the engine model
@@ -11477,7 +11506,7 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
   // sequential turn signals: [ and ] (or the Car panel) left / right, \\ hazards; they cancel themselves after the turn
   const BLINK = { mode: '', t: 0, peak: 0, lights: false };
   // high beams (H or the Car panel; only with the headlights on) and the power windows (the Car panel)
-  const LFX = { high: false, win: false };
+  const LFX = { high: false, win: false, sun: false };
   function setBlink(m) { BLINK.mode = BLINK.mode === m ? '' : m; BLINK.t = 0; BLINK.peak = 0; }
   function carLive(m, dt, on) {
     const U = m && m.userData; if (!U || (!U.lamps && !U.anim)) return;
@@ -11519,6 +11548,7 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
     const doorOpen = Object.entries(U.panels || {}).some(([n, p]) => /door/.test(n) && p.t > 0.05);
     if (L.amb) for (const g of L.amb) g.visible = on || doorOpen;
     if (A.win) { X.win = clamp(X.win + (LFX.win ? dt : -dt) * 0.3, 0, 1); for (const w of A.win) w.g.position[w.axis] = w.p0 + lerp(w.min, w.max, X.win); }
+    if (A.sun) { X.sun = clamp((X.sun || 0) + (LFX.sun ? dt : -dt) * 0.25, 0, 1); for (const w of A.sun) w.g.rotation[w.axis] = w.base + lerp(w.min, w.max, X.sun * X.sun * (3 - 2 * X.sun)); }
     if (U.screens) {
       for (const k of ['tach', 'speedo']) if (A[k]) for (const n of A[k]) n.g.visible = !on;   // the screen draws its own gauges
       const thr = on ? drv.gas || 0 : 0; X.soc = clamp(X.soc + dt * (on ? (drv.brk > 0.1 && spd > 2 ? 0.012 : thr < 0.1 ? 0.002 : -0.006 * thr) : 0), 0.08, 0.98);
@@ -11619,9 +11649,62 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
     }
     sc.tex.needsUpdate = true;
   }
+  // Kia Stinger GT2: the cluster (the speedometer and the tach either side of the 7 in. display with the gear, drive
+  // mode and boost) and the 10.25 in. head unit (the GT page: power, torque, boost, g, oil temperature)
+  function stingerDraw(sc, X, spd, thr) {
+    const big = sc.k !== 'cluster', W = big ? 480 : 600, H = big ? 180 : 176;
+    if (!sc.cv) { sc.cv = document.createElement('canvas'); sc.cv.width = W; sc.cv.height = H; sc.tex = new THREE.CanvasTexture(sc.cv); sc.m.material.map = sc.tex; sc.m.material.color.setRGB(0.85, 0.85, 0.85); sc.m.material.needsUpdate = true; }
+    const g = sc.cv.getContext('2d'), st = TIRE.vd, c = S.car, V = st && st.V, rpm = st ? st.we * RPM : 0, red = V ? V.red : 6500, psi = st ? Math.max(0, st.psi || 0) : 0;
+    const still = drv.v === 0 && !(drv.gas > 0.05), gear = st ? (st.rev ? 'R' : still ? 'P' : (GBX.man ? 'M' : 'D') + st.g) : 'P', mph = Math.round(spd * 2.237);
+    const md = ({ comfort: 'COMFORT', sport: 'SPORT', sportp: 'SPORT+' })[(c && c.dm) || 'comfort'], col = md === 'COMFORT' ? '#3d9bff' : '#ff3a2a', awd = c && c.dr === 'awd';
+    if (X.oil == null) X.oil = 150; if (!big) X.oil += (205 + 40 * clamp(thr, 0, 1) * clamp(rpm / red, 0, 1) - 6 * clamp(spd / 40, 0, 1) - X.oil) * 0.004;
+    const fuel = c ? clamp(c.fuel, 0, 1) : 0;
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#05070b'); bg.addColorStop(1, '#0c0f16'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.textBaseline = 'middle'; g.textAlign = 'center';
+    const dial = (cx, v, mx, step, lab, red0, val) => { const cy = 92, R = 76, a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
+      g.lineWidth = 3; g.strokeStyle = '#2a3142'; g.beginPath(); g.arc(cx, cy, R, a0, a1); g.stroke();
+      if (red0) { g.lineWidth = 5; g.strokeStyle = '#a0121a'; g.beginPath(); g.arc(cx, cy, R - 2, a0 + (a1 - a0) * red0 / mx, a1); g.stroke(); }
+      g.fillStyle = '#b8c0d0'; g.font = 'bold 12px sans-serif'; for (let k = 0; k <= mx; k += step) { const a = a0 + (a1 - a0) * k / mx; g.fillText(lab(k), cx + Math.cos(a) * (R - 16), cy + Math.sin(a) * (R - 16)); g.strokeStyle = '#8a93a6'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx + Math.cos(a) * (R - 6), cy + Math.sin(a) * (R - 6)); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke(); }
+      const a = a0 + (a1 - a0) * clamp(v / mx, 0, 1.02); g.strokeStyle = col; g.lineWidth = 3; g.beginPath(); g.moveTo(cx - Math.cos(a) * 10, cy - Math.sin(a) * 10); g.lineTo(cx + Math.cos(a) * (R - 4), cy + Math.sin(a) * (R - 4)); g.stroke();
+      g.fillStyle = '#1a1f2b'; g.beginPath(); g.arc(cx, cy, 9, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.font = 'bold 15px sans-serif'; g.fillText(val, cx, cy + 40); };
+    if (!big) {
+      dial(92, mph, 180, 20, k => k, 0, mph + ' mph');
+      dial(508, rpm / 1000, 8, 1, k => k, red / 1000, 'x1000 rpm');
+      // the centre display: gear, speed, the drive mode bar, boost and the drivetrain
+      g.fillStyle = '#0a0d14'; g.fillRect(190, 8, 220, 160); g.strokeStyle = col; g.lineWidth = 2; g.strokeRect(190, 8, 220, 160);
+      g.fillStyle = col; g.fillRect(190, 8, 220, 18); g.fillStyle = '#fff'; g.font = 'bold 12px sans-serif'; g.fillText(md + (awd ? '  ·  AWD' : '  ·  RWD'), 300, 17);
+      g.fillStyle = '#fff'; g.font = 'bold 50px sans-serif'; g.fillText(mph, 270, 74); g.font = '12px sans-serif'; g.fillStyle = '#8a93a6'; g.fillText('MPH', 270, 106);
+      g.strokeStyle = '#3a4256'; g.strokeRect(332, 48, 58, 50); g.fillStyle = '#f5f7fa'; g.font = 'bold 30px sans-serif'; g.fillText(gear, 361, 74);
+      // boost bar (0-25 psi) and fuel / oil along the bottom
+      g.fillStyle = '#1a1f2b'; g.fillRect(204, 124, 192, 8); g.fillStyle = psi > 18 ? '#ff3a2a' : '#3d9bff'; g.fillRect(204, 124, 192 * clamp(psi / 25, 0, 1), 8);
+      g.fillStyle = '#8a93a6'; g.font = '11px sans-serif'; g.textAlign = 'left'; g.fillText('BOOST ' + psi.toFixed(1) + ' psi', 204, 144); g.textAlign = 'right'; g.fillText('OIL ' + Math.round(X.oil) + '°F', 396, 144);
+      g.textAlign = 'left'; g.fillText('FUEL', 204, 160); g.fillStyle = '#1a1f2b'; g.fillRect(236, 156, 80, 7); g.fillStyle = fuel < 0.15 ? '#ff8a1a' : '#c9d2e3'; g.fillRect(236, 156, 80 * fuel, 7); g.textAlign = 'center';
+      if (c && c.tcOff) { g.fillStyle = '#ff8a1a'; g.font = 'bold 11px sans-serif'; g.fillText('ESC OFF', 360, 160); }
+      // shift light row over the tach, the turn signals and the high beam
+      for (let k = 0; k < 6; k++) { const on = rpm > red * (0.8 + k * 0.03); g.fillStyle = on ? (k < 4 ? '#ffb020' : '#ff2a2a') : '#141a26'; g.fillRect(470 + k * 13, 4, 10, 5); }
+      if (BLINK.mode) { const on = (BLINK.t % 0.8) < 0.5; g.fillStyle = on ? '#2aff6a' : '#0e2a18'; g.font = 'bold 18px sans-serif'; if (BLINK.mode !== 'R') g.fillText('◀', 170, 16); if (BLINK.mode !== 'L') g.fillText('▶', 430, 16); }
+      if (LFX.high && BLINK.lights) { g.fillStyle = '#3d8bff'; g.font = 'bold 11px sans-serif'; g.fillText('HIGH', 170, 160); }
+    } else {
+      g.textAlign = 'left'; g.font = 'bold 15px sans-serif'; g.fillStyle = '#e3262f'; g.fillText('GT', 14, 16); g.fillStyle = '#c9d2e3'; g.fillText('Performance', 40, 16);
+      g.textAlign = 'right'; g.fillStyle = '#8a93a6'; g.font = '12px sans-serif'; g.fillText(md + (awd ? ' · AWD' : ' · RWD'), W - 12, 16); g.textAlign = 'left';
+      // g-force circle
+      const gx = 72, gy = 100, gr = 54; g.strokeStyle = '#2a3346'; g.lineWidth = 1.5; for (const k of [1, 0.5]) { g.beginPath(); g.arc(gx, gy, gr * k, 0, Math.PI * 2); g.stroke(); }
+      g.beginPath(); g.moveTo(gx - gr, gy); g.lineTo(gx + gr, gy); g.moveTo(gx, gy - gr); g.lineTo(gx, gy + gr); g.stroke();
+      const ax = clamp((TIRE.ay || 0) / 9.81 / 1.2, -1, 1), az = clamp((TIRE.ax || 0) / 9.81 / 1.2, -1, 1); g.fillStyle = col; g.beginPath(); g.arc(gx + ax * gr, gy - az * gr, 6, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#8a93a6'; g.font = '11px sans-serif'; g.fillText(`${Math.abs((TIRE.ay || 0) / 9.81).toFixed(2)} g lat`, 30, 168);
+      const hpPk = (V && V.E && V.E.hp) || 368, tqPk = (V && V.E && V.E.tq) || 510, load = clamp(thr, 0, 1), f = clamp(rpm / red, 0, 1);
+      const hpNow = Math.round(hpPk * load * clamp(f * 1.05, 0, 1)), tqNow = Math.round(tqPk * 0.7376 * load * clamp(0.75 + 0.5 * f - 0.4 * f * f, 0, 1));
+      const bar = (y, lab, v, mx, cl) => { g.fillStyle = '#c9d2e3'; g.font = '13px sans-serif'; g.fillText(lab, 150, y); g.strokeStyle = '#2a3346'; g.strokeRect(150, y + 8, 300, 11); g.fillStyle = cl; g.fillRect(152, y + 10, 296 * clamp(v / mx, 0, 1), 7); g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.textAlign = 'right'; g.fillText(String(v), 450, y); g.textAlign = 'left'; };
+      bar(40, 'Power (hp)', hpNow, hpPk, '#e3262f'); bar(74, 'Torque (lb-ft)', tqNow, Math.round(tqPk * 0.7376), '#ffb020'); bar(108, 'Boost (psi)', +psi.toFixed(1), 25, '#3d9bff');
+      g.fillStyle = '#c9d2e3'; g.font = '13px sans-serif'; g.fillText(`${Math.round(rpm)} rpm · ${gear} · ${mph} mph · Oil ${Math.round(X.oil || 150)}°F`, 150, 148);
+      g.fillStyle = col; g.font = 'bold 12px sans-serif'; g.fillText((c && c.tcOff ? 'ESC OFF · ' : '') + 'Fuel ' + Math.round(fuel * 100) + '%', 150, 168);
+    }
+    sc.tex.needsUpdate = true;
+  }
   function scrDraw(sc, X, spd, thr) {
     if (S.car && S.car.id === 'jeep_grand_cherokee_trackhawk_2018') return srtDraw(sc, X, spd, thr);
     if (S.car && S.car.id === 'chevrolet_corvette_z06_c7_2019') return vetteDraw(sc, X, spd, thr);
+    if (S.car && S.car.id === 'kia_stinger_gt2_2022') return stingerDraw(sc, X, spd, thr);
     if (!sc.cv) { sc.cv = document.createElement('canvas'); sc.cv.width = 512; sc.cv.height = 200; sc.tex = new THREE.CanvasTexture(sc.cv); sc.m.material.map = sc.tex; sc.m.material.color.setRGB(0.85, 0.85, 0.85); sc.m.material.needsUpdate = true; }
     const g = sc.cv.getContext('2d'), W = 512, H = 200, st = TIRE.vd, c = S.car, rpm = st ? st.we * RPM : 0, red = st && st.V ? st.V.red : 7200;
     const gear = st ? (st.rev ? 'R' : drv.v === 0 && !(drv.gas > 0.05) ? 'P' : (GBX.man ? 'M' : 'D') + st.g) : 'P', mph = Math.round(spd * 2.237);
@@ -13243,7 +13326,13 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
     amb: [['Red', '#ff2a2a'], ['Ice white', '#dfe9ff'], ['Blue', '#2f6bff'], ['Orange', '#ff7a1a']],
     kits: { z07: ['Z07 Performance Package: carbon wing, splitter, rocker extensions, Cup 2 tires, carbon-ceramic brakes', 7995], croof: ['Visible carbon fiber roof panel', 2495] },
     def: { cal: '#c0121a', leather: 'Jet Black', amb: '#ff2a2a' } };
-  const LOOK_CARS = new Set(['bmw_m5_g90_2025', 'jeep_grand_cherokee_trackhawk_2018', 'dodge_copperhead_1997', 'chevrolet_corvette_z06_c7_2019']);
+  // the Kia Stinger GT2: leather is [name, bolsters, stitching, quilted inserts]
+  LOOK_SETS.kia_stinger_gt2_2022 = { cal: [['Brembo Red', '#c0121a'], ['Black', '#111114'], ['Yellow', '#e0b012'], ['Silver', '#a9adb2'], ['Blue', '#1c4fa8'], ['Orange', '#d2531a']],
+    leather: [['Black Nappa, red stitch', '#0c0c0d', '#c8102e', '#09090a'], ['Red Nappa', '#6a0c12', '#111111', '#5a0a10'], ['Sienna Brown', '#5a3522', '#e0d6c4', '#4a2a1a'], ['Gray Nappa', '#4a4c50', '#c8102e', '#3a3c40'], ['Black Nappa, silver stitch', '#0c0c0d', '#a9adb2', '#09090a']],
+    amb: [['Red', '#ff2a2a'], ['Ice white', '#dfe9ff'], ['Blue', '#2f6bff'], ['Orange', '#ff7a1a'], ['Purple', '#9a3cff'], ['Green', '#2aff7a'], ['Pink', '#ff4fb8']],
+    kits: { lip: ['Carbon front splitter', 1400], skirt: ['Carbon side skirt extensions', 1200], diff: ['Carbon rear diffuser', 1600], duck: ['Carbon ducktail spoiler', 900], chood: ['Vented carbon hood', 2800], caps: ['Carbon mirror caps', 600], black: ['Blackout trim (gloss black window surrounds)', 450] },
+    def: { cal: '#c0121a', leather: 'Black Nappa, red stitch', amb: '#ff2a2a' } };
+  const LOOK_CARS = new Set(['bmw_m5_g90_2025', 'jeep_grand_cherokee_trackhawk_2018', 'dodge_copperhead_1997', 'chevrolet_corvette_z06_c7_2019', 'kia_stinger_gt2_2022']);
   function applyLook(m, c) {
     const U = m && m.userData; if (!U || !c) return; const L = c.look || {};
     if (U.paint && U.paint.isMeshPhysicalMaterial) { const P = U.paint; if (P.userData.r0 == null) P.userData.r0 = P.roughness; P.roughness = c.matte ? 0.6 : P.userData.r0; P.clearcoat = c.matte ? 0.12 : 1; P.clearcoatRoughness = c.matte ? 0.65 : 0.03; }
@@ -15193,7 +15282,7 @@ body.hd-on #hdiag{display:grid}#hdiag span{color:#7d848c}#hdiag b{color:#f2efe6;
     return { x: st.x + Math.sin(hm) * vm * age, z: st.z - Math.cos(hm) * vm * age, h: st.h + r * age, v };
   }
   // our 3D-only builds go out as the 2D car they come from, so 2D players can draw them
-  const TO_2D = { ford_f_150_regular_cab_2021: 'ford_f_150_xlt_5_0_2015', chevrolet_tahoe_2021: 'chevrolet_tahoe_lt_2007', ford_mustang_gt_2019: 'ford_mustang_gt_s650_2024', chevrolet_nova_1972: 'chevrolet_chevelle_ss_454_1970', dodge_challenger_rt_scat_pack_widebody_2019: 'dodge_challenger_r_t_2015', bmw_m5_g90_2025: 'bmw_m5_competition_f90_2019', mercedes_maybach_gls600_2021: 'mercedes_amg_g63_2019', dodge_copperhead_1997: 'dodge_viper_acr_2016', chevrolet_corvette_z06_c7_2019: 'chevrolet_corvette_z06_c6_2006' };
+  const TO_2D = { ford_f_150_regular_cab_2021: 'ford_f_150_xlt_5_0_2015', chevrolet_tahoe_2021: 'chevrolet_tahoe_lt_2007', ford_mustang_gt_2019: 'ford_mustang_gt_s650_2024', chevrolet_nova_1972: 'chevrolet_chevelle_ss_454_1970', dodge_challenger_rt_scat_pack_widebody_2019: 'dodge_challenger_r_t_2015', bmw_m5_g90_2025: 'bmw_m5_competition_f90_2019', mercedes_maybach_gls600_2021: 'mercedes_amg_g63_2019', dodge_copperhead_1997: 'dodge_viper_acr_2016', chevrolet_corvette_z06_c7_2019: 'chevrolet_corvette_z06_c6_2006', kia_stinger_gt2_2022: 'kia_stinger_gt2_awd_2018' };
   // a 2D player's car we haven't built in 3D yet shows as the closest one we have
   function model3d(id, m3) {
     if (m3 && BUILT.includes(m3)) return m3;
@@ -15205,6 +15294,7 @@ body.hd-on #hdiag{display:grid}#hdiag span{color:#7d848c}#hdiag b{color:#f2efe6;
     if (/maybach|gls/.test(s)) return 'mercedes_maybach_gls600_2021';
     if (/trackhawk|grand_cherokee/.test(s)) return 'jeep_grand_cherokee_trackhawk_2018';
     if (/copperhead/.test(s)) return 'dodge_copperhead_1997';
+    if (/kia_stinger|stinger_gt/.test(s)) return 'kia_stinger_gt2_2022';
     if (/corvette.*c7|c7.*corvette|corvette_z06_c7|corvette_grand_sport/.test(s)) return 'chevrolet_corvette_z06_c7_2019';
     if (/tahoe|suburban|yukon|escalade|durango|jeep|navigator|expedition|bronco|4runner|land_cruiser|range_rover|g_class|g_wagon|urus|cullinan|bentayga|explorer|highlander|x5|x7|gle|gls|q7|q8|rivian_r1s|model_x|lx/.test(s)) return 'chevrolet_tahoe_2021';
     if (/^bmw_/.test(s)) return 'bmw_m5_g90_2025';
@@ -25836,6 +25926,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       requestAnimationFrame(loop);
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
+  setTimeout(() => { if (window.__map) Object.assign(window.__map, { LFX, carPanel: renderCarPanel }); }, 0);
   window.__map = { ELAB: { XENG, XENG_BY, SWL, genMotor, swVis, THREE, EL, EL_TABS, elOpen, elGo, elInstall, elDraft, elOverlay, swRender, CRATES, ENG_DB, engMigrate, crateCfg, LAB, PT_CATS }, PRO: { PRO, PRO_SHOPS, PRO_STYLE, PRO_PKG, proTuneMake, proTuneJob, proPlan, proRoll, proDrop, proFinish, proPickup, proReady, proResultMenu, proPlanMenu }, HUDX: { HUDX, hudOpt, hudSet, hudxFrame, hudDiag }, PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
     ready: false, CARS3D, BUILT, syncCarModel, MEM, memStep, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, rimPic, rimPicDraw, RIMPIC, SPIN, RIMUI, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
