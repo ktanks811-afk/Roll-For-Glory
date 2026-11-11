@@ -2076,7 +2076,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
       for (let i = ci - c; i <= ci + c; i++) for (let j = cj - c; j <= cj + c; j++) {
         const l = PK.grid.get(i * 100003 + j); if (!l) continue;
         for (const s of l) {
-          const d = Math.hypot(s.x - cp.x, s.z - cp.z, up); if (d > R.tiny || !T[s.id]) continue;
+          const d = Math.hypot(s.x - cp.x, s.z - cp.z, up); if (d > R.tiny || !T[s.id] || (PK.skip && PK.skip(s))) continue;
           _psph.center.set(s.x, 1, s.z); if (d > 8 && !frustum.intersectsSphere(_psph)) continue;
           near.push([d, s]);
         }
@@ -16098,7 +16098,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   const hDeadAge = id => { const d = HNET.dead[id]; return d ? hNow() - d[0] : 1e12; };
   const hGoneDead = id => { const a = hDeadAge(id); return a > H_BODY_MS && a < H_DEAD_MS; };
   function hDeadMark(e, t) {
-    if (!/^[mrh]:/.test(e.id)) return false;
+    if (!/^[mrhv]:/.test(e.id)) return false;
     t = t || hNow(); const d = HNET.dead[e.id]; if (d && hNow() - d[0] < H_DEAD_MS) return false;
     HNET.dead[e.id] = [t, Math.round(e.x * 10), Math.round(e.z * 10)]; return true;
   }
@@ -16109,7 +16109,7 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   }
   function hDeadIn(list) {
     for (const it of list.slice(0, 80)) {
-      if (!Array.isArray(it) || typeof it[0] !== 'string' || it[0].length > 48 || !/^[mrh]:/.test(it[0]) || !hNum(it[1], 1e12, 1e14) || !hNum(it[2], -3e5, 3e5) || !hNum(it[3], -3e5, 3e5)) continue;
+      if (!Array.isArray(it) || typeof it[0] !== 'string' || it[0].length > 48 || !/^[mrhv]:/.test(it[0]) || !hNum(it[1], 1e12, 1e14) || !hNum(it[2], -3e5, 3e5) || !hNum(it[3], -3e5, 3e5)) continue;
       const [id, t, x10, z10] = it, cur = HNET.dead[id]; if (cur && cur[0] >= t - 1000) continue;
       const age = hNow() - t; if (age > H_DEAD_MS || age < -60000) continue;
       HNET.dead[id] = [t, x10, z10];
@@ -16744,7 +16744,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     const room = hOn() ? NET.room : '';
     if (room === HNET.room) return;
     HNET.room = room; HNET.seed = room || 'solo'; HNET.routes = null; HNET.shots = []; HNET.hits = []; HNET.tfOut = []; HNET.dead = {}; HNET.ddOut = []; HNET.says = []; if (!room) HNET.clk = 0;
-    for (const e of HOOD.ents.slice()) { if (e.gone) continue; if ((e.id[0] === 'r' || e.id[0] === 'h') && e.own !== 'me') hKill(e); else if (e.own && e.own !== 'me') e.seen = -99; }
+    for (const e of HOOD.ents.slice()) { if (e.gone) continue; if ((e.id[0] === 'r' || e.id[0] === 'h' || e.id[0] === 'v') && e.own !== 'me') hKill(e); else if (e.own && e.own !== 'me') e.seen = -99; }
     if (HNET.turfRoom !== room) { HNET.turf = {}; HNET.turfRoom = room; }
     const h = hS(); for (const id of Object.keys(h.turf)) { const t = h.turfAt[id] || 1, cur = HNET.turf[id]; if (!cur || cur[1] < t) HNET.turf[id] = [h.turf[id], t]; }
     if (room) HNET.tfOut.push(...Object.keys(h.turf).map(id => [id, h.turf[id] ? hToNet(h.turf[id]) : null, h.turfAt[id] || 1]).slice(0, 20));
@@ -16797,6 +16797,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if ((m = /^m:(\d+,\d+):\d$/.exec(id))) { const b = HOOD.byId.get(m[1]); if (b && !b.crew.length) hCrew(b); return HOOD.byEnt.get(id) || null; }
     if (hGoneDead(id)) return null;
     if ((m = /^r:(.+):(\d+)$/.exec(id))) return m[1] === HNET.seed && +m[2] < hRoutes().list.length ? hRegSched(+m[2]) : null;
+    if ((m = /^v:(\d+):([\w-]+):(\d+)$/.exec(id))) { const M = MT.live; if (!M || M.slot !== +m[1] || M.p.id !== m[2] || M.seed !== HNET.seed) return null; const o = M.ppl.out.find(q => q.k === +m[3]); return o ? mtEnt(M, o) : null; }
     if ((m = /^h:(\d+):([\w-]+)$/.exec(id))) { const sp = hSpots().find(p => p.id === m[2]); return sp ? hRegHang(id, sp) : null; }
     if (id[0] !== 'x' || !d || typeof d !== 'object') return null;
     if (d.k === 'wcar') { const g = typeof d.g === 'string' ? hFromNet(d.g) : ''; return HOOD_SETS[g] ? wCarEnt(id, g, d) : null; }
@@ -17245,7 +17246,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       if (e.gone) continue;
       if (e.kind === 'member' && e.slider && !e.down && d > (e.wcar ? 520 : 260)) { hKill(e); continue; }
       // a hold-it-down job is done once the sliders are dropped
-      const vis = d < (e.inCar ? 420 : 170); e.g.visible = vis && !e.hide && !(e.kind === 'homie' && e.own === 'me' && hInCar());
+      const vis = d < (e.inCar ? 420 : e.meet ? 260 : 170); e.g.visible = vis && !e.hide && !(e.kind === 'homie' && e.own === 'me' && hInCar());
       if (!e.g.visible) continue;
       e.gy = gnd && !e.inCar ? gnd(e.x, e.z) : 0;
       e.g.position.set(e.x, e.inCar ? 0 : e.gy, e.z);
@@ -17265,7 +17266,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       if (e.wcar) wDrawCar(e, dt, now);
       if (e.label) { const on = d < 34 && !e.down; e.label.visible = on; if (on) { e.label.position.set(0, e.inCar ? 2.3 : 2.25, 0); const k = 0.032; e.label.scale.set(k * e.label.userData.aspect, k, 1); } }
       if (e.bub) { e.bubT -= dt; if (e.bubT <= 0 || d > 70) { e.g.remove(e.bub); e.bub.material.map.dispose(); e.bub.material.dispose(); e.bub = null; } else { e.bub.position.set(0, e.inCar ? 2.75 : 2.62, 0); const k = 0.04; e.bub.scale.set(k * e.bub.userData.aspect, k, 1); } }
-      if (HOOD.ambT <= 0 && e.kind === 'reg' && !e.opp && d < 45 && Math.random() < 0.3) { HOOD.ambT = 14 + Math.random() * 16; hSay(e, hPick(RL.amb)); }
+      if (HOOD.ambT <= 0 && e.kind === 'reg' && !e.opp && !e.meet && d < 45 && Math.random() < 0.3) { HOOD.ambT = 14 + Math.random() * 16; hSay(e, hPick(RL.amb)); }
       // who you can talk to: on foot right next to them, or pulled up beside them in your car
       if (!e.down && e.kind !== 'homie' && e.mode !== 'fight' && e.mode !== 'slide' && e.mode !== 'war' && !HOOD.ride) {
         const carMe = hInCar(); if (carMe ? (e.kind === 'reg' && Math.abs(drv.v) < 6 && Math.abs(e.sp) < 6) : !e.inCar || e.kind === 'reg') if (d < nd) { nd = d; near = e; }
@@ -17278,10 +17279,302 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     HOOD.near = (foot.on || hInCar()) ? near : null;
     hHoldStep(dt, mx, mz);
     wTick(dt);
+    try { mtTick(dt); } catch (er) { if (!MT.err) { MT.err = 1; console.error('meet', er); } }
     if ((frame & 3) === 0 || HOOD.ride || HOOD.near !== HOOD.pillNear || HOOD.hold) { HOOD.pillNear = HOOD.near; hPill(); }
   }
   const _hStepStreet = stepStreet;
   stepStreet = function (t) { _hStepStreet.apply(this, arguments); const n = performance.now(), dt = Math.min(0.05, (n - (HOOD.last || n)) / 1000); HOOD.last = n; try { hoodTick(dt); } catch (er) { if (!HOOD.err) { HOOD.err = 1; console.error('hood', er); } } };
+  // ==== live car meets (begin) ====
+  // A car meet runs at one meet lot per area at a time, on the server's shared clock (15-minute slots), so everybody on the server
+  // gets the same announcement and pulls up to the same meet. When you get close, the lot is already full: AI regulars with built
+  // cars (forged rims, drag packs, hoods up, subs in the trunk) parked hood to hood, standing in groups and actually talking to
+  // each other, and they notice you when you pull up. They are hood regulars (kind 'reg', ids v:<slot>:<place>:<k>), so talking,
+  // racing, beef, guns and the online sync all work on them like on any regular; the talking is worked out from the shared clock,
+  // so every player sees the same lines without sending anything.
+  // Memory: every car goes through putCar + lodCar (the iPhone model freeing still works), and a meet only uses a few different
+  // models (3 on a phone), so a full lot costs about as much as three hero cars.
+  const MT = { slotMs: 15 * 60000, live: null, lots: {}, told: {}, chip: null, chipKey: '', arrived: null, lastSlot: -1 };
+  const MT_CAP = phone ? { cars: 10, models: 3, fans: 4 } : { cars: 16, models: 6, fans: 7 };
+  // the lighter models first on a phone (their files are a quarter of the newest hero cars')
+  const MT_LIGHT = ['chevrolet_caprice_classic_box_chevy_1986', 'chevrolet_camaro_ss_2016', 'dodge_charger_scat_pack_2015', 'dodge_charger_srt_hellcat_widebody_2020', 'chevrolet_corvette_stingray_c8_2020', 'ford_f_150_regular_cab_2021', 'chevrolet_tahoe_2021', 'ram_1500_trx_2021', 'ford_mustang_gt_2019'];
+  const MT_TRUCK = /tahoe|f_150|ram_1500|g63|gls600|trackhawk/;
+  const mtSlot = () => Math.floor(hNow() / MT.slotMs);
+  const mtRegion = p => p.city || p.state || 'fw';
+  function mtRand(key) { let sd = hHash(key) || 1; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647; R(); return R; }
+  function mtPlaces() { return MT.places || (MT.places = DATA.P.filter(p => (p.type === 'meet' || p.type === 'carshow') && /^[\w-]{1,30}$/.test(p.id))); }
+  // the meet in an area for a slot: same pick on every phone on the server
+  function mtPick(region, slot) {
+    const L = mtPlaces().filter(p => mtRegion(p) === region); if (!L.length) return null;
+    return L[hHash(HNET.seed + ':meet:' + slot + ':' + region) % L.length];
+  }
+  function mtNearRegion(x, z) {
+    let best = null, bd = 1e9; for (const p of mtPlaces()) { const d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = p; } }
+    return best && bd < 9000 ? mtRegion(best) : null;
+  }
+  function mtCurrent(x, z) { const r = mtNearRegion(x, z); return r ? mtPick(r, mtSlot()) : null; }
+  const mtLeft = () => Math.max(0, Math.ceil(((mtSlot() + 1) * MT.slotMs - hNow()) / 60000));
+
+  // ---------- the lot: two rows parked hood to hood with the crowd in the aisle between them ----------
+  function mtOnRoad(x, z, m) {
+    for (const e of streets.at(x, z)) {
+      const vx = e.bx - e.ax, vz = e.bz - e.az, L2 = vx * vx + vz * vz || 1, t = clamp(((x - e.ax) * vx + (z - e.az) * vz) / L2, 0, 1);
+      if (Math.hypot(e.ax + vx * t - x, e.az + vz * t - z) < e.w / 2 + m) return true;
+    }
+    return false;
+  }
+  const mtSolid = (x, z, m) => solids.at(x, z).some(o => x > o.x0 - m && x < o.x1 + m && z > o.z0 - m && z < o.z1 + m);
+  function mtFree(x, z, yaw, len, wid) {
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = -fz, rz = fx;
+    for (const [a, b] of [[0, 0], [0.5, 0.5], [0.5, -0.5], [-0.5, 0.5], [-0.5, -0.5], [0.5, 0], [-0.5, 0]]) {
+      const px = x + fx * a * len + rx * b * wid, pz = z + fz * a * len + rz * b * wid;
+      if (mtSolid(px, pz, 0.6) || mtOnRoad(px, pz, 4.5)) return false;   // clear of the road and its sidewalk
+    }
+    return true;
+  }
+  function mtLot(p) {
+    if (MT.lots[p.id]) return MT.lots[p.id];
+    const [ox0, oz0] = outDir(p); let best = null;
+    // try the lot on the far side of the sign first, then pushed back, then the other way round
+    for (const dir of [1, -1]) for (const d0 of [9, 15, 22, 30, 40, 52]) {
+      const ox = ox0 * dir, oz = oz0 * dir, rx = oz, rz = -ox, slots = [], pitch = 3.1, aisle = 8.5, len = 5.4;
+      const rowA = d0 + len / 2, rowB = rowA + len + aisle, mid = (rowA + rowB) / 2;
+      for (let i = 0; i < 26; i++) {
+        const s = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * pitch;
+        for (const [row, face] of [[rowA, 1], [rowB, -1]]) {
+          const x = p.x + ox * row + rx * s, z = p.z + oz * row + rz * s, yaw = Math.atan2(-ox * face, -oz * face);
+          if (mtFree(x, z, yaw, len, 2.3)) slots.push({ x, z, yaw, s, row: face });
+        }
+      }
+      // the aisle has to be open too, that's where everybody stands
+      const okAisle = [-6, 0, 6].filter(s => !mtSolid(p.x + ox * mid + rx * s, p.z + oz * mid + rz * s, 0.4) && !mtOnRoad(p.x + ox * mid + rx * s, p.z + oz * mid + rz * s, 4)).length;
+      // both rows have to fill (hood to hood), not one long line on the edge of the lot
+      const half = Math.ceil(MT_CAP.cars / 2) + 1, nA = slots.filter(q => q.row === 1).length, nB = slots.length - nA;
+      const score = (Math.min(nA, half) + Math.min(nB, half)) * 10 + okAisle * 6 - d0 * 0.4;
+      if (!best || score > best.score) best = { score, slots, ox, oz, rx, rz, mid, cx: p.x + ox * mid, cz: p.z + oz * mid };
+      if (nA >= half && nB >= half && okAisle === 3) break;
+    }
+    // the player's spot stays open: the slot nearest the middle of the first row
+    best.slots.sort((a, b) => Math.abs(a.s) - Math.abs(b.s) || a.row - b.row);
+    const mine = best.slots.findIndex(s => s.row === 1); if (mine >= 0) best.spot = best.slots.splice(mine, 1)[0];
+    return (MT.lots[p.id] = best);
+  }
+
+  // ---------- who's there and what they drove ----------
+  function mtBuild(R, id, tier) {
+    const lo = [0, 0, 2, 4, 6][tier] || 2, tpl = STREET3D[Math.min(9, lo + Math.floor(R() * 4))];
+    const truck = MT_TRUCK.test(id), b = JSON.parse(JSON.stringify(tpl.b));
+    const rimD = FORGED.ALL[Math.floor(R() * FORGED.ALL.length)], fins = ['chrome', 'black', 'gun', 'milled', 'polish', 'bronze', 'chrome', 'black'];
+    const dia = truck ? [22, 24, 26, 28][Math.floor(R() * 4)] : id.includes('caprice') || id.includes('nova') ? [22, 24, 26][Math.floor(R() * 3)] : [19, 20, 20, 22][Math.floor(R() * 4)];
+    delete b.drag; b.rims = [rimD.id, fins[Math.floor(R() * fins.length)], dia];
+    if (!truck && R() < 0.22 && DRAG_PACKS.length) b.drag = DRAG_PACKS[Math.floor(R() * DRAG_PACKS.length)].id;   // some came on drag radials
+    return { tpl, b };
+  }
+  function mtPeople(p, slot) {
+    const lot = mtLot(p), R = mtRand(HNET.seed + ':meetcars:' + slot + ':' + p.id), tier = p.tier || 2;
+    const pool = (phone ? MT_LIGHT : BUILT).slice(); for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    // a mix: mostly cars, a truck or two
+    const models = []; for (const id of pool) { if (models.length >= MT_CAP.models) break; if (MT_TRUCK.test(id) && models.filter(m => MT_TRUCK.test(m)).length >= (phone ? 1 : 2)) continue; models.push(id); }
+    const nCars = Math.min(MT_CAP.cars, lot.slots.length), out = [];
+    for (let k = 0; k < nCars; k++) {
+      const id = models[Math.floor(R() * models.length)], color = PAINTS[Math.floor(R() * PAINTS.length)][1], { tpl, b } = mtBuild(R, id, tier);
+      out.push({ k, car: true, id, color, b, tpl, sl: lot.slots[k], hood: R() < 0.45, doors: R() < 0.18, trunk: R() < 0.22, subs: R() < 0.5 });
+    }
+    for (let k = 0; k < MT_CAP.fans; k++) out.push({ k: nCars + k, car: false });
+    // groups in the aisle: 2-4 people each, spread along it
+    const nG = Math.max(2, Math.round(out.length / 3.4)), span = Math.min(30, Math.max(8, nCars * 1.55));
+    const groups = []; for (let g = 0; g < nG; g++) groups.push({ g, s: nG === 1 ? 0 : -span / 2 + span * g / (nG - 1), list: [] });
+    out.forEach((o, i) => { o.stay = o.car && R() < 0.3; if (!o.stay) { const G = groups[i % nG]; o.grp = G.g; G.list.push(o.k); } });
+    return { out, groups, lot };
+  }
+  const mtId = (slot, p, k) => `v:${slot}:${p.id}:${k}`;
+  // one of them: a regular with this meet's car (or a friend who rode with somebody)
+  function mtEnt(M, o) {
+    const id = mtId(M.slot, M.p, o.k); if (HOOD.byEnt.has(id) || hGoneDead(id)) return HOOD.byEnt.get(id) || null;
+    const pr = hPersona(id + ':' + HNET.seed), lot = M.lot;
+    if (o.car) pr.r = { name: pr.name, nick: o.tpl.nick, id: o.id, color: o.color, b: o.b, need: 0, skill: Math.min(0.95, o.tpl.skill + 0.05), rep: o.tpl.rep, wager: o.tpl.wager };
+    let e;
+    if (o.car) {
+      e = hReg(id, { mode: 'hang', at: M.p.id, meet: M, mk: o, carId: o.id, color: o.color, pr, name: pr.name });
+      if (!e) return null;
+      e.parked = { x: o.sl.x, z: o.sl.z, yaw: o.sl.yaw }; e.home = { ...e.parked };
+      const c = racerCar(pr.r);
+      const dress = m => { try { applyRims(m, c); applyDrag(m, c); applyMotor(m, c); if (o.subs) setCarAudio(m, ['2x12', '2x10', '2x15', '4x12'][o.k % 4], o.k % 3 ? 'comp' : 'pro'); } catch (er) {} };
+      if (e.model) dress(e.model); else { const wait = () => { if (e.gone) return; if (e.model) dress(e.model); else setTimeout(wait, 400); }; setTimeout(wait, 400); }
+    } else {
+      const P = crowdPerson(pr.look + 3 + o.k); if (!P) return null;
+      e = hEnt({ id, kind: 'reg', key: id, name: pr.name, pr, mode: 'hang', at: M.p.id, meet: M, mk: o, fan: true, carId: M.ppl.out[o.k % Math.max(1, M.ppl.out.filter(q => q.car).length)].id || BUILT[0] });
+      hDress(e, P); hLabel(e);
+    }
+    // where they start: by their car's door, or already standing with their group
+    const sp = mtSpot(M, e, 0); e.x = sp.x; e.z = sp.z; e.yaw = sp.yaw; e.hx = e.x; e.hz = e.z;
+    M.ents.push(e); return e;
+  }
+  // where someone at the meet stands right now (worked out from the shared clock, so it's the same on every phone)
+  function mtSpot(M, e, T) {
+    const o = e.mk, lot = M.lot, rx = lot.rx, rz = lot.rz;
+    if (o.stay && o.sl) {
+      // leaning by the driver's door, looking at the aisle
+      const fx = -Math.sin(o.sl.yaw), fz = -Math.cos(o.sl.yaw), side = 1.6;
+      return { x: o.sl.x + (-fz) * side + fx * 0.6, z: o.sl.z + fx * side + fz * 0.6, yaw: Math.atan2(-(lot.cx - o.sl.x), -(lot.cz - o.sl.z)) };
+    }
+    // a few of them drift to another group every so often
+    let gi = o.grp; const hop = Math.floor(T / 40 + (o.k * 0.37)), hr = hHash(M.key + ':hop:' + o.k + ':' + hop);
+    if (!o.car && hr % 100 < 35) gi = hr % M.ppl.groups.length;
+    const G = M.ppl.groups[gi], n = Math.max(2, G.list.length + (gi !== o.grp ? 1 : 0)), at = Math.max(0, G.list.indexOf(o.k)), i = gi !== o.grp ? n - 1 : at;
+    const a = i / n * Math.PI * 2 + G.g * 1.3, r = 1.05 + (n > 3 ? 0.35 : 0), cx = lot.cx + rx * G.s, cz = lot.cz + rz * G.s;
+    const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+    return { x, z, yaw: Math.atan2(-(cx - x), -(cz - z)), cx, cz, gi };
+  }
+
+  // ---------- the talk: little back-and-forths about the cars, run off the shared clock ----------
+  const MT_TALK = [
+    ['what you got in that {car}?', '{mods}', 'how much it make?', '{hp} to the tire', 'thats crazy 🔥'],
+    ['{rim} on {dia}s? 😮‍💨', 'just got em mounted today', 'they hard fr', 'appreciate it'],
+    ['who tryna run it after this?', 'on {street}?', 'nah the highway, 40 roll', 'bet, bring cash'],
+    ['cops gon run us off in a minute', 'they always do 😂', 'we just got here bro', 'park it right then'],
+    ['that {car} sound mean', 'cam and long tubes', 'let me hear it then', 'when we leave 😤'],
+    ['you seen the {car2}?', 'with the {rim2}?', 'yea thats clean', 'he been working on it all summer'],
+    ['bro what you running, E85?', '{fuel}', 'thats why it pull like that', 'facts'],
+    ['who car is that on the end', '{name2}', 'oh that boy built', 'he aint scared to run either'],
+    ['my tires bald 😭', 'thats what burnouts do', 'worth it', 'every time 😂'],
+    ['how much you pay for the paint?', 'dont ask 😂', 'it look wet tho', 'thats candy right there'],
+    ['yall tryna get food after?', 'tacos on {street}', 'bet', 'im starving fr'],
+    ['next meet where?', 'heard {meet2}', 'that lot big', 'pull up then'],
+  ];
+  const MT_SEE = { cheap: ['who that?', 'ayy look who pulled up', 'starter build 😂 its clean tho', 'we all started somewhere', 'it run tho?'],
+    mid: ['ayy who that in the {mycar}?', 'that {mycar} clean', 'what you got in it?', 'oh ok I see you', 'that thing quick?'],
+    big: ['YOOO that {mycar} 😳', '{myhp} hp?? stop playing', 'yall hear that?? 🔥', 'that boy came to race', 'aint nobody running that'] };
+  function mtFill(M, t, sp) {
+    const o = sp.mk, cars = M.ents.filter(e => e.mk.car && !e.gone), mine = o.car ? sp : cars[hHash(sp.id) % Math.max(1, cars.length)] || sp;
+    const other = cars[(hHash(sp.id + t) + 3) % Math.max(1, cars.length)] || mine, c = mine.mk && mine.mk.car ? racerCar(mine.pr.r) : null, c2 = other.mk && other.mk.car ? racerCar(other.pr.r) : null;
+    const mods = c ? [c.drag ? 'drag radials' : '', (c.mods && c.mods.turbo) ? 'turbo' : '', (c.mods && c.mods.nitrous) ? 'a little spray' : '', (c.mods && c.mods.hot) ? 'cam' : '', (c.mods && c.mods.tune) ? 'tune' : '', (c.mods && c.mods.intake) ? 'intake' : ''].filter(Boolean).slice(0, 3).join(', ') || 'all stock bro' : 'its not mine 😂';
+    const meets = mtPlaces().filter(p => p !== M.p && mtRegion(p) === mtRegion(M.p));
+    let hp = 0; try { hp = c ? carHp(c) : 0; } catch (er) {}
+    const rimN = cc => { try { const r = cc && cc.rims && FORGED.RIM(cc.rims.id); return r ? (r.name || 'forged').split(' ')[0] : 'forged'; } catch (er) { return 'forged'; } };
+    let myhp = 0; try { myhp = S.car ? carHp(S.car) : 0; } catch (er) {}
+    return t.replace(/\{car\}/g, c ? (carOf(c.id).model || 'car') : 'car').replace(/\{car2\}/g, c2 ? (carOf(c2.id).model || 'car') : 'car').replace(/\{mods\}/g, mods)
+      .replace(/\{hp\}/g, hp ? Math.round(hp * 0.86) : '400').replace(/\{rim\}/g, rimN(c)).replace(/\{rim2\}/g, rimN(c2)).replace(/\{dia\}/g, c && c.rims ? c.rims.dia : 22)
+      .replace(/\{fuel\}/g, c && c.tparts && c.tparts.includes('e85') ? 'E85 all day' : c && c.tparts && c.tparts.includes('c16') ? 'race gas, C16' : 'just 93 bro')
+      .replace(/\{name2\}/g, other.name || 'Unc').replace(/\{meet2\}/g, meets.length ? goShort(meets[hHash(t + M.key) % meets.length].name) : 'the Stockyards')
+      .replace(/\{street\}/g, H_STREETS[hHash(M.key + t) % H_STREETS.length]).replace(/\{myhp\}/g, myhp || 'that').replace(/\{mycar\}/g, S.car ? carOf(S.car.id).model : 'car');
+  }
+  function mtSay(e, text, toYou) {
+    const rx = HNET.sayRx; HNET.sayRx = true; try { hSay(e, text, toYou); } finally { HNET.sayRx = rx; }
+    e.sayTxt = text;
+    if (e.bub) { e.bub.position.set(0, 2.62, 0); e.bub.scale.set(0.04 * e.bub.userData.aspect, 0.04, 1); }   // sized now, not next frame
+  }
+  function mtTalk(M, T) {
+    const P = 12;
+    for (const G of M.ppl.groups) {
+      const here = M.ents.filter(e => !e.gone && !e.down && !e.own && e.mode === 'hang' && e.mspot && e.mspot.gi === G.g && !e.mk.stay);
+      if (here.length < 2) continue;
+      const cyc = Math.floor((T + G.g * 3.1) / P), u = (T + G.g * 3.1) - cyc * P, line = Math.floor(u / 2.6);
+      const sc = MT_TALK[hHash(M.key + ':talk:' + G.g + ':' + cyc) % MT_TALK.length]; if (line >= sc.length) continue;
+      const key = cyc * 10 + line; if (G.said === key) continue; G.said = key;
+      here.sort((a, b) => a.mk.k - b.mk.k);
+      const sp = here[(line + cyc) % here.length]; G.sp = sp;
+      mtSay(sp, mtFill(M, sc[line], sp));
+    }
+  }
+
+  // ---------- each frame for someone at the meet nobody is dealing with ----------
+  function mtBrain(e, dt, mx, mz, d) {
+    const M = e.meet; if (!M || e.own || e.mode !== 'hang' || e.down) return false;
+    const T = hNow() / 1000, sp = mtSpot(M, e, T); e.mspot = sp;
+    const far = Math.hypot(sp.x - e.x, sp.z - e.z);
+    if (far > 25) { e.x = sp.x; e.z = sp.z; }
+    else if (far > 0.35) { if (!hFootMove(e, sp.x, sp.z, dt, false)) { e.x = sp.x; e.z = sp.z; } return true; }
+    // standing: the one talking looks at the group, the rest look at whoever's talking; anybody turns to you up close
+    const G = sp.gi != null ? M.ppl.groups[sp.gi] : null, talker = G && G.sp && !G.sp.gone && G.sp !== e ? G.sp : null;
+    if (d < 5) hFace(e, mx, mz, dt);
+    else if (talker && Math.hypot(talker.x - e.x, talker.z - e.z) < 6) hFace(e, talker.x, talker.z, dt);
+    else e.yaw += hNorm(sp.yaw - e.yaw) * Math.min(1, dt * 4);
+    return true;
+  }
+  const _mtRegBrain = hRegBrain;
+  hRegBrain = function (e, dt, mx, mz, d) { if (e.meet && mtBrain(e, dt, mx, mz, d)) return; if (e.fan && e.mode === 'leave') { e.mode = 'hang'; return; } return _mtRegBrain.apply(this, arguments); };
+
+  // ---------- talking to them ----------
+  const _mtTalkMenu = hTalkMenu;
+  hTalkMenu = function (e) {
+    if (!e.meet) return _mtTalkMenu(e);
+    const base = _mtTalkMenu(e);
+    return () => {
+      const m = base(); if (!m) return null; const M = e.meet;
+      if (e.fan) { m.rows = m.rows.filter(r => !/^Race |'s /.test(r.t) && !/for a ride/.test(r.t)); m.sub = `At the meet · ${M.p.name}`; }
+      else {
+        const c = racerCar(e.pr.r); let hp = 0; try { hp = carHp(c); } catch (er) {}
+        m.rows.splice(1, 0, { t: 'Pop the hood', s: `${hp} hp · let them show you the motor`, btn: 'Look', act: () => { if (e.model) { setPanels(e.model, 'hood', true); e.mk.hoodT = hNow() + 40000; } mtSay(e, mtFill(M, hPick(['{mods}', 'thats {hp} to the tire', 'she gon eat 😤', 'go ahead look']), e), true); } });
+        m.sub = `At the meet · ${carLabel(carOf(e.carId))}`;
+      }
+      if (S.car) m.rows.splice(1, 0, { t: 'What you think of mine?', s: carLabel(carOf(S.car.id)), btn: 'Ask', act: () => { mtSay(e, mtFill(M, hPick(MT_SEE[mtTierOf()]), e), true); } });
+      return m;
+    };
+  };
+  function mtTierOf() { let hp = 0; try { hp = S.car ? carHp(S.car) : 0; } catch (er) {} return hp >= 650 ? 'big' : hp >= 380 ? 'mid' : 'cheap'; }
+
+  // ---------- spawning, the lot's cars, and clearing up ----------
+  function mtOpen(p, slot) {
+    const M = { p, slot, key: HNET.seed + ':' + slot + ':' + p.id, seed: HNET.seed, ents: [], lot: mtLot(p), t0: performance.now() };
+    M.ppl = mtPeople(p, slot); MT.live = M; M.queue = M.ppl.out.slice(); PK.dirty = true;
+    return M;
+  }
+  function mtClose() {
+    const M = MT.live; if (!M) return; MT.live = null; PK.dirty = true;
+    for (const e of M.ents) if (!e.gone && !(e.own && e.own !== 'me') && !(e.own === 'me' && (HOOD.racing === e || e.mode === 'fight'))) hKill(e);
+  }
+  // the parked map cars leave the lot while a meet is on it
+  PK.skip = s => { const M = MT.live; if (!M) return false; const L = M.lot; return Math.hypot(s.x - L.cx, s.z - L.cz) < 34; };
+  function mtAnnounce(p, slot) {
+    const k = HNET.seed + ':' + slot + ':' + mtRegion(p); if (MT.told[k]) return; MT.told[k] = 1;
+    const txt = [`Car meet at ${goShort(p.name)} right now. Built cars only, pull up 🏁`, `Meet is live at ${goShort(p.name)}. Lot already full 🔥`, `${goShort(p.name)} going crazy right now. Car meet till it gets shut down 🏁`][hHash(k) % 3];
+    try { addGossip({ kind: 'news', icon: '🏁', text: txt, loc: p.id }); } catch (er) {}
+  }
+  function mtChip(M, d) {
+    if (!MT.chip) {
+      const st = document.createElement('style');
+      st.textContent = `#meetchip{position:fixed;left:12px;top:calc(env(safe-area-inset-top,0px) + 204px);z-index:9;background:rgba(18,16,22,0.78);color:#f1ece4;border-radius:10px;padding:4px 9px;font:700 12px var(--body);pointer-events:none;border-left:4px solid #ff1a2e}#meetchip[hidden]{display:none}body.phoning #meetchip,body.indoors #meetchip,body.creating #meetchip{display:none}`;
+      document.head.append(st); MT.chip = document.createElement('div'); MT.chip.id = 'meetchip'; MT.chip.hidden = true; document.body.append(MT.chip);
+    }
+    const txt = M && d < 450 ? `🏁 MEET · ${goShort(M.p.name)} · ${M.ents.filter(e => e.mk.car && !e.gone).length} cars · ${mtLeft()} min` : '';
+    if (txt !== MT.chipKey) { MT.chipKey = txt; MT.chip.textContent = txt; }
+    const show = !!txt && worldOn; if (MT.chip.hidden === show) MT.chip.hidden = !show;
+  }
+  function mtTick(dt) {
+    if (!HOOD.ready || !driving || !DATA) { if (MT.chip && !MT.chip.hidden) MT.chip.hidden = true; return; }
+    const [mx, mz] = hMe(), slot = mtSlot(), cur = mtCurrent(mx, mz);
+    if (cur && slot !== MT.lastSlot) { MT.lastSlot = slot; mtAnnounce(cur, slot); }
+    let M = MT.live;
+    // a meet stays up while you're at it, even past its slot; it packs up once you leave
+    if (M && (M.seed !== HNET.seed || Math.hypot(M.lot.cx - mx, M.lot.cz - mz) > 460 || (M.slot < slot - 1 && Math.hypot(M.lot.cx - mx, M.lot.cz - mz) > 120))) { mtClose(); M = null; }
+    if (!M && cur && Math.hypot(cur.x - mx, cur.z - mz) < 340 && worldOn) M = mtOpen(cur, slot);
+    mtChip(M, M ? Math.hypot(M.lot.cx - mx, M.lot.cz - mz) : 1e9);
+    if (!M) return;
+    // they come in a couple per frame so pulling up never hitches; the cars stream in one at a time behind them (putCar's queue)
+    for (let n = 0; n < 2 && M.queue.length; n++) { const o = M.queue.shift(); if (!HOOD.byEnt.has(mtId(M.slot, M.p, o.k)) && !hGoneDead(mtId(M.slot, M.p, o.k)) && !mtEnt(M, o)) { M.queue.push(o); break; } }   // the street crowd's people may still be building
+    M.ents = M.ents.filter(e => !e.gone);
+    const T = hNow() / 1000;
+    mtTalk(M, T);
+    // the cars: hoods up, doors open, trunks up with the subs showing, on a slow shared cycle
+    for (const e of M.ents) {
+      if (!e.mk.car || !e.model) continue;
+      const o = e.mk, cyc = Math.floor(T / 50 + o.k * 0.31), r = hHash(M.key + ':pan:' + o.k + ':' + cyc) % 100;
+      const hood = (o.hood && r < 75) || (o.hoodT && hNow() < o.hoodT), doors = o.doors && r > 40, trunk = o.trunk && r % 3 !== 0;
+      const sig = (hood ? 1 : 0) | (doors ? 2 : 0) | (trunk ? 4 : 0);
+      if (e.panSig !== sig) { e.panSig = sig; setPanels(e.model, 'hood', hood); setPanels(e.model, 'doors', doors); setPanels(e.model, 'trunk', trunk); }
+      if (Math.hypot(e.x - mx, e.z - mz) < 80) stepPanels(e.model, dt);
+    }
+    // you pulled up: the closest group notices
+    const dl = Math.hypot(M.lot.cx - mx, M.lot.cz - mz);
+    if (dl < 32 && hInCar() && Math.abs(drv.v) < 4 && MT.arrived !== M.key) {
+      MT.arrived = M.key;
+      const by = M.ents.filter(e => !e.gone && !e.down && !e.own).sort((a, b) => Math.hypot(a.x - mx, a.z - mz) - Math.hypot(b.x - mx, b.z - mz)).slice(0, 3);
+      const L = MT_SEE[mtTierOf()]; by.forEach((e, i) => setTimeout(() => { if (!e.gone) mtSay(e, mtFill(M, L[(hHash(e.id) + i) % L.length], e), i === 0); }, 600 + i * 1700));
+    }
+    if (dl > 120 && MT.arrived === M.key) MT.arrived = null;
+  }
+  // ==== live car meets (end) ====
+  window.__meet = { MT, MT_CAP, mtTick, mtCurrent, mtPick, mtLot, mtOpen, mtClose, mtPlaces, mtSlot, mtFill, mtTalk };
   window.__hood = { dbgRoute(x0, z0, x1, z1) { const g = gpsGraph(), a = hNearestNode(x0, z0), b = hNearestNode(x1, z1), t = performance.now(), r = hRoute(a, b); return [a, b, g.nx[a], g.nz[a], g.nx[b], g.nz[b], g.adj[a].length, g.adj[b].length, r && r.length, Math.round(performance.now() - t)]; }, prime(gid) { for (const v of [0, 1, 2]) { hBase(gid, v); } while (HOOD.baseQ.length) { HOOD.baseQ.length && (frame = 9 * Math.ceil(frame / 9)); hBuildBases(); } }, spawn() { HOOD.regT = 0; const [x, z] = hMe(); hSpawn(x, z); }, tick: hoodTick, HOOD, hS, hOwner, hBlockAt, hoodMenu, hTalkMenu, hRideAsk, hRideOut, hShotAt, hJoin, setOf, hReg, hOppSlide, hSetSlide, hCrew, hRegBeef, hJobGive, hFire, HNET, hClaim, hSched, hRoutes, hNow, hDeadIn, hDeadList, hDrop, WAR, wS, wStart, wStep, wTick, wEnd, wHeat, wNews };
 
   // ---------- your homes online: one owner per house on a server, inviting people over, knocking on doors ----------
