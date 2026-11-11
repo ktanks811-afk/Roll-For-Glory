@@ -417,6 +417,12 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   const stage = document.getElementById('stage');
   const phone = Math.min(screen.width, screen.height) < 600;
   const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+  // if the phone takes the 3D view away (low memory, long time in the background) the screen would just freeze: save and reload
+  // instead, at most once a minute so a phone that's truly out of room doesn't loop
+  renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault();
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (er) {}
+    let last = 0; try { last = +sessionStorage.getItem('mw3d.glreload') || 0; sessionStorage.setItem('mw3d.glreload', Date.now()); } catch (er) {}
+    if (Date.now() - last > 60000) setTimeout(() => location.reload(), 400); });
   renderer.setPixelRatio(Math.min(phone ? 1.6 : 2, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1752,12 +1758,43 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   // ---------- the real cars: each one we built by hand, baked to cars/<id>.json and painted your color ----------
-  const CARS3D = { cache: {}, done: {}, live: new Set() };
+  // memory (iPhone crash fix): models load one at a time (a hero car's file is up to 10 MB of JSON, and parsing several at once
+  // spiked past what iPhone Safari allows a tab), and a model nobody has shown for a while is freed (carMemStep)
+  const CARS3D = { cache: {}, done: {}, live: new Set(), meta: {}, slots: new Set(), q: [], busy: false, gone: {}, freed: 0 };
   const b64arr = (s, T) => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new T(u.buffer); };
-  function carData(id) {
-    if (!CARS3D.cache[id]) CARS3D.cache[id] = fetch('cars/' + id + '.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(bakeCar).then(T => (CARS3D.done[id] = T))
+  function carPump() {
+    if (CARS3D.busy || !CARS3D.q.length) return; CARS3D.busy = true;
+    const job = CARS3D.q.shift(), next = () => { CARS3D.busy = false; setTimeout(carPump, 0); };
+    fetch('cars/' + job.id + '.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(bakeCar).then(T => { next(); job.ok(T); }, e => { next(); job.no(e); });
+  }
+  function carData(id, first) {
+    if (!CARS3D.cache[id]) CARS3D.cache[id] = new Promise((ok, no) => { const job = { id, ok, no }; if (first) CARS3D.q.unshift(job); else CARS3D.q.push(job); carPump(); })
+      .then(T => { CARS3D.done[id] = T; CARS3D.meta[id] = T.engines.map(e => ({ kind: e.kind, label: e.label, stock: e.stock, hp: e.hp, price: e.price })); return T; })
       .catch(e => { delete CARS3D.cache[id]; console.warn('car model ' + id + ': ' + e.message); return null; });
+    else if (first) { const i = CARS3D.q.findIndex(j => j.id === id); if (i > 0) CARS3D.q.unshift(CARS3D.q.splice(i, 1)[0]); }
     return CARS3D.cache[id];
+  }
+  // free a model's geometry (GPU buffers and the arrays) once no car on any screen uses it; it streams back in if needed again
+  function carFree(id) {
+    const T = CARS3D.done[id]; if (!T) return;
+    const seen = new Set(), walk = x => { if (!x || typeof x !== 'object' || seen.has(x)) return; seen.add(x);
+      if (x.isBufferGeometry) { x.dispose(); return; } if (x.isMaterial || x.isTexture) return; if (x.geo && x.geo.isBufferGeometry) { x.geo.dispose(); return; }
+      for (const v of Array.isArray(x) ? x : Object.values(x)) walk(v); };
+    walk(T); for (const m of T.mats) m.dispose();
+    delete CARS3D.done[id]; delete CARS3D.cache[id]; CARS3D.freed++;
+  }
+  const carRooted = slot => { if (slot.userData.dead) return false; let o = slot; while (o.parent) o = o.parent; return !!o.isScene; };
+  function carMemStep(now) {
+    // models that left the screen stay listed in the rim / drag-pack sets until someone changes rims; drop them so they can be freed
+    const rooted = m => { let o = m; while (o.parent) o = o.parent; return o.type === 'Scene'; };
+    for (const L of [rimLive, dragLive]) for (const m of L) if (!rooted(m)) L.delete(m);
+    const used = new Set(); if (S.car) used.add(S.car.id);
+    for (const slot of CARS3D.slots) { if (!slot.userData.dead && slot.parent) { if (carRooted(slot)) used.add(slot.userData.carId); } else CARS3D.slots.delete(slot); }
+    for (const id of Object.keys(CARS3D.done)) {
+      if (used.has(id)) { delete CARS3D.gone[id]; continue; }
+      if (!CARS3D.gone[id]) CARS3D.gone[id] = now;
+      else if (now - CARS3D.gone[id] > (phone ? 30000 : 90000)) { delete CARS3D.gone[id]; carFree(id); }
+    }
   }
   // one geometry per look: materials that match exactly get merged so a car is a few dozen draw calls
   function bakeCar(d) {
@@ -1846,8 +1883,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   }
   // drop a car into any group; the model streams in, the slot is ready right away
   function putCar(parent, id, color, then) {
-    const slot = new THREE.Group(); parent.add(slot); slot.userData.carId = id;
-    carData(id).then(T => { if (!T || slot.userData.dead) return; const m = carMesh(T, color); slot.add(m); slot.userData.model = m; if (then) then(m); });
+    const slot = new THREE.Group(); parent.add(slot); slot.userData.carId = id; CARS3D.slots.add(slot);
+    carData(id, !!S.car && S.car.id === id && parent === car).then(T => { if (!T || slot.userData.dead) return; const m = carMesh(T, color); slot.add(m); slot.userData.model = m; if (then) then(m); });
     return slot;
   }
   // ---------- detail levels for everyone else's car (Phase 3F, phones): the full hero model up close; further out the
@@ -7198,7 +7235,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     return Object.assign({ lg: 0.09, o: 0.3, drive: 1.6, vol: 0.2, peak: 3.6 }, k);
   }
   // the motors a car's model has (once it has loaded): [{ kind, label, stock }]
-  const motorKinds = c => { const T = CARS3D.done[c.id]; if (!T) carData(c.id); return T ? T.engines.map(e => ({ kind: e.kind, label: e.label, stock: e.stock, hp: e.hp, price: e.price })) : []; };
+  const motorKinds = c => { const M = CARS3D.meta[c.id]; if (!M) carData(c.id); return M ? M.map(e => ({ ...e })) : []; };
   const stockKind = c => { const s = motorKinds(c).find(k => k.stock); return s ? s.kind : ''; };
   // the running motor: two oscillators through a drive and a lowpass, lope on the gain, an optional whine; pitch follows rpm
   const ENGS = { a: null, key: '', rpm: 0, gas: 0, lift: 0, popT: 0 };
@@ -25232,7 +25269,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
   const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e4 = new THREE.Euler(), v4 = new THREE.Vector3(), v5 = new THREE.Vector3(), s4 = new THREE.Vector3();
   function finalize() {
-    SIGN.mats = SIGN.canvases.map(c => { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; return new THREE.MeshBasicMaterial({ map: t, color: 0xd8d8d8 }); });
+    SIGN.mats = SIGN.canvases.map(c => { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; t.onUpdate = () => { t.onUpdate = null; c.width = c.height = 1; };   /* memory: once on the GPU the 16 MB canvas isn't needed */ return new THREE.MeshBasicMaterial({ map: t, color: 0xd8d8d8 }); });
     for (const b of buckets.values()) {
       const g = new THREE.Group(), box = new THREE.Box3();
       for (const k in b.acc) {
@@ -25670,6 +25707,45 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       if (!b.group) continue;
       const s = b.sphere, d = cp.distanceTo(s.center) - s.radius;
       b.group.visible = d < VIS[b.layer] && frustum.intersectsSphere(s);
+      if (b.group.visible) b.gpu = true;
+    }
+  }
+  // the city's merged block meshes carry normals and colours as 32-bit floats; 8-bit normals and 16-bit colours look the same and
+  // take about a third less memory (both the copy in the page and the copy on the GPU). Runs once, after the world is built.
+  function packBuckets() {
+    let saved = 0;
+    for (const b of buckets.values()) if (b.group) b.group.traverse(o => {
+      if (!o.isMesh || o.isInstancedMesh) return; const g = o.geometry, n = g.attributes.normal, c = g.attributes.color;
+      if (g.userData.packed) return; g.userData.packed = true;
+      if (n && n.array instanceof Float32Array && n.itemSize === 3) { const a = n.array, q = new Int8Array(a.length); for (let i = 0; i < a.length; i++) q[i] = Math.round(Math.max(-1, Math.min(1, a[i])) * 127); g.setAttribute('normal', new THREE.BufferAttribute(q, 3, true)); saved += a.byteLength - q.byteLength; }
+      if (c && c.array instanceof Float32Array) { const a = c.array; let ok = true; for (let i = 0; i < a.length; i++) if (!(a[i] >= 0 && a[i] <= 1)) { ok = false; break; }
+        if (ok) { const q = new Uint16Array(a.length); for (let i = 0; i < a.length; i++) q[i] = Math.round(a[i] * 65535); g.setAttribute('color', new THREE.BufferAttribute(q, c.itemSize, true)); saved += a.byteLength - q.byteLength; } }
+    });
+    MEM.packed = Math.round(saved / 1e6);
+  }
+  // ---------- memory (iPhone crash fix): iPhone Safari kills a tab that holds too much ("A problem repeatedly occurred").
+  // Every couple of seconds: the city blocks you've driven far away from give their GPU copy back (the data stays, so they
+  // draw again when you come back), parked cars' close-up models nobody is near go, and hero car models nobody uses are freed.
+  const MEM = { last: 0, packed: 0, far: { near: phone ? 1.35 : 1.6, mid: phone ? 1.25 : 1.5 }, hold: phone ? 20000 : 60000, dropped: 0 };
+  function memStep(now) {
+    try { carMemStep(now); } catch (e) { console.warn('car memory: ' + e.message); }
+    let cp = camera.position; if (inside && car) cp = car.position;
+    for (const b of buckets.values()) {
+      if (!b.group || !b.gpu || b.group.visible || !MEM.far[b.layer]) continue;
+      const d = cp.distanceTo(b.sphere.center) - b.sphere.radius;
+      if (d < VIS[b.layer] * MEM.far[b.layer]) { b.away = 0; continue; }
+      if (!b.away) { b.away = now; continue; }
+      if (now - b.away < MEM.hold) continue;
+      b.gpu = false; b.away = 0; MEM.dropped++;
+      b.group.traverse(o => { if (o.isInstancedMesh) o.dispatchEvent({ type: 'dispose' }); else if (o.isMesh && o.geometry) o.geometry.dispose(); });   // r128 InstancedMesh has no dispose(): the event frees its instance buffers
+    }
+    for (const id in PK.types) {
+      const T = PK.types[id]; if (!T.full) continue;
+      if (T.full.n) { T.fullIdle = 0; continue; }
+      if (!T.fullIdle) { T.fullIdle = now; continue; }
+      if (now - T.fullIdle < MEM.hold * 2) continue;
+      for (const im of T.full.list) { scene.remove(im); im.geometry.dispose(); im.dispatchEvent({ type: 'dispose' }); }
+      T.full = null; T.fullLoading = false; T.fullIdle = 0;
     }
   }
   function resize() {
@@ -25681,6 +25757,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function loop(now) {
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
+    if (now - MEM.last > 2000) { MEM.last = now; memStep(now); }
     netTick(dt); HOME.stepOut(dt); homeNetTick(dt); stepSpinners(dt);
     stepNos(dt, (driving && !foot.on) || ROLL.on || STRIP.on);
     if ((frame & 15) === 0) syncCarModel();
@@ -25752,6 +25829,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       controls.target.set(DOWNTOWN.x, 0, DOWNTOWN.z); camera.position.set(DOWNTOWN.x + 380, 330, DOWNTOWN.z + 520);
       $('facts').textContent = `${(nB).toLocaleString()} buildings · ${(D.T.length / 4).toLocaleString()} trees · ${Math.round(D.E.length / 7).toLocaleString()} streets · ${D.P.length} places`;
       setTime('day'); resize(); controls.update(); bindInteriorInput(renderer.domElement); bindStick(); bindPhone(); bindCarUI(); bindCockpit(); bindFob(); HOME.bindUI(); refreshStats();
+      packBuckets();
       ld.hidden = true;
       if (!S.made) openCreator(true); else enterWorld();
       window.__map.ready = true;
@@ -25759,7 +25837,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     } catch (e) { ld.textContent = 'Could not load the map: ' + e.message; console.error(e); }
   }
   window.__map = { ELAB: { XENG, XENG_BY, SWL, genMotor, swVis, THREE, EL, EL_TABS, elOpen, elGo, elInstall, elDraft, elOverlay, swRender, CRATES, ENG_DB, engMigrate, crateCfg, LAB, PT_CATS }, PRO: { PRO, PRO_SHOPS, PRO_STYLE, PRO_PKG, proTuneMake, proTuneJob, proPlan, proRoll, proDrop, proFinish, proPickup, proReady, proResultMenu, proPlanMenu }, HUDX: { HUDX, hudOpt, hudSet, hudxFrame, hudDiag }, PCAT: { PC, PC_BY, partOpt, pcOf, pcOpen, pcRender, pcBuy, pcFits, pcPreview, pcClose, susOf, susSquat, susPlant, tunePose, SUS_CATS, PCL, LCB, lcbTap, ENG_CATS, ENG_PARTS, engBuild, engFuel, engFuelHp, exhSnd, ENG_STOCK_BUILD }, DMG: { DMG, dmgStep, wrOf, wrGet, wrPerf, engDead, dmgOpen, dmgRender, dmgSet, repairCosts, partFix, ENGT, MENUS, DHL }, ECU: { ecuOpen, ecuRender, ecuOf, ecuFull, ecuEdit, ECL, ECU_N }, FI: { fiOpen, fiRender, fiAt, fiHw, fiTabAt, IC: FI_IC, FIL }, NX: { nxSpec, nxConf, nxSteady, nxState, nxPhys, nxOpen, nxRender, nxLb, nxPsi, nxTofPsi, nxJet, KITS: NX_KITS, NOSI }, CLOD, clodStep, GBX, gbShift, gbMode, drvS: () => drv, carObj: () => car, cam: () => camera, rnd: () => renderer, scn: () => scene, carLive, BLINK,
-    ready: false, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, rimPic, rimPicDraw, RIMPIC, SPIN, RIMUI, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
+    ready: false, CARS3D, BUILT, syncCarModel, MEM, memStep, gps: () => GPS, districtAt, engOf, engModel, engDefOf, ENG_DB, carHp, carPerf, EA, ENGLAB, LAB, labOpen, labClose, ENGT, ENGFREE, eaCfgOf, stepEngFree, vehOf, tuneRun, PK, stepParked, openMenu, openParts, PARTS, PART_BY_ID, partsSpec, engineLoad, putPart, ROLL, stepRoll, rollOpen, rollClose, STREET3D, racerCar, perfOf, RACE_MODES, STRIP, WHEELIE, SURF, dragPerf, driveFx, stripOpen, stripClose, stepStrip, DRAG_PACKS, HS, LM, FOB, openTune, tuneRun, tunePerf, TUNE_PRESETS, rimRefresh, applyRims, MENUS, FORGED, rimPic, rimPicDraw, RIMPIC, SPIN, RIMUI, fobPress, TIRE, physStep, stepDrive, SKID, SMOKE, physReset, carPerf, PEOPLE, animPerson, idlePerson, FX, putCar, setCarAudio, stepPanels, applyMotor, swapMotor, ENGS, setTime, flyTo, startDrive, stopDrive, setPin, drv, keys, hold,
     view(cx, cy, cz, tx, tz) { fly = null; controls.target.set(tx, 0, tz); camera.position.set(cx, cy, cz); controls.update(); },
     snap(cx, cy, cz, tx, ty, tz) { camera.position.set(cx, cy, cz); camera.lookAt(tx, ty, tz); renderer.render(scene, camera); return renderer.domElement.toDataURL('image/jpeg', 0.88); },
     vis() { const o = {}; for (const b of buckets.values()) if (b.group) { const k = b.layer + (b.group.visible ? '+' : '-'); o[k] = (o[k] || 0) + 1; } o.cam = camera.position.toArray().map(Math.round); o.car = [drv.x, drv.z]; return o; },
