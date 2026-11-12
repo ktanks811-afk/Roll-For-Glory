@@ -21704,7 +21704,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     RL_ENV.ground.position.y = -6; RL_ENV.scene.add(RL_ENV.ground);
     function rlEnv(n, L) {
       const U = RL_ENV.sky.material.uniforms;
-      for (const k of Object.keys(RL_SKY.uniforms)) { const v = RL_SKY.uniforms[k].value; if (v && v.copy) U[k].value.copy(v); else U[k].value = v; }
+      for (const k of Object.keys(RL_SKY.uniforms)) { if (!U[k]) continue; const v = RL_SKY.uniforms[k].value; if (v && v.copy) U[k].value.copy(v); else U[k].value = v; }
       U.disc.value = 0; U.starK.value = 0; U.skyK.value *= L.envK;
       const nh = U.nightHor.value, hor = L.night ? [nh.r, nh.g, nh.b] : rlSkyAt(U, 0.7, 0.05, 0.7); RL_ENV.ground.material.color.set(L.ground).multiplyScalar(0.6).add(new THREE.Color(hor[0], hor[1], hor[2]).multiplyScalar(0.12 + L.night * 0.3));
       if (!RL_ENV.pm) RL_ENV.pm = new THREE.PMREMGenerator(renderer);
@@ -22375,7 +22375,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         for (let v = 0; v < 2; v++) {
           const total = lod === 2 ? cnt[ti][0] + cnt[ti][1] : cnt[ti][v];
           if (!total || (lod === 2 && v === 1)) { LODM[ti][lod].push(null); continue; }
-          const cap = lod === 0 ? Math.min(total, 900) : lod === 1 ? Math.min(total, 5000) : total;
+          const cap = lod === 0 ? Math.min(total, 900) : lod === 1 ? Math.min(total, 5000) : Math.min(total, 8000);
           const geo = T.fn(T.o, lod, 1000 + ti * 97 + v * 13 + lod);
           const im = new THREE.InstancedMesh(geo, SNM.leaf, cap); im.count = 0; im.visible = false; im.frustumCulled = false;
           im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); giveColors(im, cap);
@@ -25647,6 +25647,451 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   // ==== 3E (end) ====
   })();
   // ==== yellow belly (end) ====
+  // ==== environment (begin) ====
+  (() => {
+  // ---------- environment pass: real clouds that drift across the sky and throw moving shade on the ground, Texas
+  // countryside between the towns (post oak + cedar mottes, creek tree lines, wooded hills, lone pasture oaks), grass and
+  // weeds at your feet, barbed-wire fences along the country roads and round hay bales in the pastures.
+  // Everything is drawn in code (nothing downloaded) and built around the camera, so the phone only pays for what's near.
+  const EV = { stats: {}, on: true, time: 'day' };
+  window.__env = EV;
+  const ETAU = Math.PI * 2;
+
+  // ================= clouds =================
+  // envCloud: x, y = wind drift (noise units), z = coverage threshold (lower = more cloud), w = ground shade strength
+  // envCloudSun: x, y = sun direction xz per metre up (where a cloud's shadow lands), w = cloud base height (m)
+  const EC = { u: { x: 13.7, y: 41.2, z: 0.5, w: 0 }, s: { x: 0, y: 0, z: 0, w: 2100 }, cov: 0.5 };
+  for (const k of Object.keys(THREE.ShaderLib)) { const u = THREE.ShaderLib[k].uniforms; if (u && u.directionalLights) { u.envCloud = { value: EC.u }; u.envCloudSun = { value: EC.s }; } }
+  const EC_NOISE = `
+float ecH( vec2 p ) { vec3 p3 = fract( vec3( p.xyx ) * 0.1031 ); p3 += dot( p3, p3.yzx + 33.33 ); return fract( ( p3.x + p3.y ) * p3.z ); }
+float ecN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f ); return mix( mix( ecH( i ), ecH( i + vec2( 1.0, 0.0 ) ), f.x ), mix( ecH( i + vec2( 0.0, 1.0 ) ), ecH( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }
+float ecShape( vec2 q ) { vec2 p = q * 0.00024 + envCloud.xy; return ( ecN( p ) * 0.5 + ecN( p * 2.03 + 3.1 ) * 0.28 + ecN( p * 4.07 + 7.3 ) * 0.14 ) / 0.92; }
+`;
+  // every lit material: the sun is dimmed where a cloud sits between it and the ground (same noise as the sky, so the
+  // shadows on the ground line up with the clouds overhead and drift with them)
+  THREE.ShaderChunk.lights_pars_begin = 'uniform vec4 envCloud;\nuniform vec4 envCloudSun;\n' + EC_NOISE + `
+float envCloudShade( vec3 vp ) {
+  if ( envCloud.w <= 0.0 ) return 1.0;
+  vec3 d = vp - viewMatrix[ 3 ].xyz;
+  vec3 w = vec3( dot( viewMatrix[ 0 ].xyz, d ), dot( viewMatrix[ 1 ].xyz, d ), dot( viewMatrix[ 2 ].xyz, d ) );
+  vec2 q = w.xz + envCloudSun.xy * ( envCloudSun.w - w.y );
+  return 1.0 - envCloud.w * smoothstep( envCloud.z - 0.02, envCloud.z + 0.2, ecShape( q ) );
+}
+` + THREE.ShaderChunk.lights_pars_begin;
+  {
+    let c = THREE.ShaderChunk.lights_fragment_begin;
+    const a = c.indexOf('\tDirectionalLight directionalLight;'), r = '\t\tRE_Direct( directLight, geometry, material, reflectedLight );';
+    const b = c.indexOf(r, a);
+    if (a > 0 && b > a) {
+      c = c.slice(0, b) + '\t\tdirectLight.color *= envCS;\n' + c.slice(b);
+      c = c.replace('\tDirectionalLight directionalLight;', '\tDirectionalLight directionalLight;\n\tfloat envCS = envCloudShade( geometry.position );');
+      THREE.ShaderChunk.lights_fragment_begin = c; EV.stats.cloudShade = true;
+    }
+  }
+  // the sky: a layer of fair-weather cumulus at ~2 km, lit from the sun side, dark bellies, bright edges toward the sun
+  const EC_LOOK = {
+    day: { lit: [1.02, 1.0, 0.97], shade: [0.5, 0.55, 0.63], glow: [0, 0, 0], amt: 1, shadow: 0.5 },
+    sunset: { lit: [1.35, 0.78, 0.5], shade: [0.3, 0.24, 0.3], glow: [0.06, 0.03, 0.02], amt: 1, shadow: 0.32 },
+    night: { lit: [0.028, 0.032, 0.046], shade: [0.012, 0.014, 0.02], glow: [0.03, 0.019, 0.01], amt: 0.9, shadow: 0 },
+  };
+  const ECU = { cLit: { value: new THREE.Color() }, cShade: { value: new THREE.Color() }, cGlow: { value: new THREE.Color() }, cAmt: { value: 1 } };
+  function ecSky() {
+    const R = window.__real; if (!R || !R.RL_SKY) return false;
+    const m = R.RL_SKY; if (m.userData.env) return true;
+    Object.assign(m.uniforms, ECU, { envCloud: { value: EC.u }, envCloudSun: { value: EC.s } });
+    m.fragmentShader = m.fragmentShader.replace('void main() {', 'uniform vec4 envCloud; uniform vec4 envCloudSun; uniform vec3 cLit, cShade, cGlow; uniform float cAmt;' + EC_NOISE + '\n      void main() {')
+      .replace('gl_FragColor = vec4( mix( day, nt, night ), 1.0 );', `vec3 skyc = mix( day, nt, night );
+        if ( dir.y > 0.004 && cAmt > 0.0 ) {
+          float ct = ( envCloudSun.w - cameraPosition.y ) / max( dir.y, 0.01 );
+          vec2 q = cameraPosition.xz + dir.xz * ct, p = q * 0.00024 + envCloud.xy;
+          float near = 1.0 - smoothstep( 0.03, 0.2, dir.y );   // near the horizon the detail would shimmer
+          float f = ecShape( q ) + ( ( ecN( p * 8.3 ) - 0.5 ) * 0.1 + ( ecN( p * 17.9 + 5.0 ) - 0.5 ) * 0.05 ) * ( 1.0 - near );
+          float d = smoothstep( envCloud.z, envCloud.z + 0.13 + near * 0.12, f );
+          vec2 sd = normalize( sunDir.xz + vec2( 1e-4 ) );
+          float f2 = ecShape( q + sd * 420.0 );
+          float lit = clamp( 1.0 - ( f2 - envCloud.z ) * 2.4, 0.0, 1.0 );
+          vec3 c = mix( cShade, cLit, clamp( lit * 0.7 + ( 1.0 - d ) * 0.35, 0.0, 1.0 ) );
+          c += cLit * pow( max( cosT, 0.0 ), 10.0 ) * ( 1.0 - d ) * 1.1;
+          c += cGlow * ( 1.0 - lit * 0.6 );
+          c = mix( c, skyc, hz * 0.6 );
+          skyc = mix( skyc, c, d * smoothstep( 0.004, 0.09, dir.y ) * cAmt );
+        }
+        gl_FragColor = vec4( skyc, 1.0 );`);
+    if (!/envCloud/.test(m.fragmentShader) || !/skyc/.test(m.fragmentShader)) { console.warn('env: sky shader not patched'); return true; }
+    m.userData.env = true; m.needsUpdate = true; EV.stats.cloudSky = true;
+    return true;
+  }
+  function ecTime(n) {
+    const L = EC_LOOK[n] || EC_LOOK.day; EV.time = n;
+    ECU.cLit.value.setRGB(...L.lit); ECU.cShade.value.setRGB(...L.shade); ECU.cGlow.value.setRGB(...L.glow); ECU.cAmt.value = L.amt;
+  }
+  function ecStep(dt) {
+    const L = EC_LOOK[EV.time] || EC_LOOK.day, R = window.__real, tier = R && R.RL ? R.RL.tier : 'high';
+    EC.u.x = (EC.u.x + dt * 0.0021) % 500; EC.u.y = (EC.u.y + dt * 0.0009) % 500;   // ~6 m/s out of the south-southwest
+    EC.u.z = EC.cov; EC.u.w = tier === 'low' || !EV.on ? 0 : L.shadow;
+    const s = (R && R.SUN_DIR) || { x: 0.42, y: 0.74, z: 0.5 }, y = Math.max(0.08, s.y);
+    EC.s.x = s.x / y; EC.s.y = s.z / y;
+  }
+  EV.clouds = (cov) => { EC.cov = clamp(cov, 0.3, 1.2); };   // 0.3 = overcast, 0.56 = scattered, 1.2 = clear
+
+  // ================= the countryside: trees between the towns =================
+  // The map's own trees sit in town. Out in the country the land was bare, so this adds what North Texas really looks like
+  // from the road: post oak + cedar mottes, tree lines along the creeks, wooded hills, and a lone big oak in a pasture.
+  // They're added to the map data before the ground is drawn, so the ground map, the plant detail levels and the from-
+  // above view all get them.
+  const evH = (a, b) => { let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  function evN(x, z) { const ix = Math.floor(x), iz = Math.floor(z); let fx = x - ix, fz = z - iz; fx = fx * fx * (3 - 2 * fx); fz = fz * fz * (3 - 2 * fz);
+    return lerp(lerp(evH(ix, iz), evH(ix + 1, iz), fx), lerp(evH(ix, iz + 1), evH(ix + 1, iz + 1), fx), fz); }
+  const evF = (x, z) => (evN(x, z) * 0.55 + evN(x * 2.1 + 5.2, z * 2.1 + 1.3) * 0.3 + evN(x * 4.3 + 9.1, z * 4.3 + 3.7) * 0.15);
+  const EVOCC = { CS: 25 };
+  function evOccupancy(D) {
+    const TX = D.texas || { x0: -10800, x1: 9200, z0: -10600, z1: 10100 }, CS = EVOCC.CS;
+    const NX = Math.ceil((TX.x1 - TX.x0) / CS), NZ = Math.ceil((TX.z1 - TX.z0) / CS), occ = new Uint8Array(NX * NZ);
+    const mark = (x0, z0, x1, z1, v = 1) => {
+      const i0 = Math.max(0, Math.floor((Math.min(x0, x1) - TX.x0) / CS)), i1 = Math.min(NX - 1, Math.floor((Math.max(x0, x1) - TX.x0) / CS));
+      const j0 = Math.max(0, Math.floor((Math.min(z0, z1) - TX.z0) / CS)), j1 = Math.min(NZ - 1, Math.floor((Math.max(z0, z1) - TX.z0) / CS));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) occ[j * NX + i] |= v;
+    };
+    for (const t of D.towns || []) mark(t.x0 - 40, t.z0 - 40, t.x1 + 40, t.z1 + 40);
+    for (const g of D.ground || []) if (g[4] === 'city') mark(g[0] - 30, g[1] - 30, g[2] + 30, g[3] + 30);
+    const B = D.B; for (let i = 0; i < B.length; i += 8) mark(B[i] - 10, B[i + 1] - 10, B[i] + B[i + 2] + 10, B[i + 1] + B[i + 3] + 10);
+    const L = D.L; for (let i = 0; i < L.length; i += 5) mark(L[i] - 4, L[i + 1] - 4, L[i] + L[i + 2] + 4, L[i + 1] + L[i + 3] + 4);
+    const E = D.E; for (let i = 0; i < E.length; i += 7) { const p = E[i + 4] / 2 + 8; mark(Math.min(E[i], E[i + 2]) - p, Math.min(E[i + 1], E[i + 3]) - p, Math.max(E[i], E[i + 2]) + p, Math.max(E[i + 1], E[i + 3]) + p, 3); }
+    for (const w of D.water || []) mark(w.x - 14, w.z - 14, w.x + w.w + 14, w.z + w.d + 14);
+    for (const l of D.lakes || []) mark(l.x0 - 20, l.z0 - 20, l.x1 + 20, l.z1 + 20);
+    for (const r of D.rocks || []) mark(r[0] - 6, r[1] - 6, r[0] + r[2] + 6, r[1] + r[3] + 6);
+    for (const p of D.P || []) mark(p.x - 50, p.z - 50, p.x + 50, p.z + 50);
+    Object.assign(EVOCC, { TX, NX, NZ, occ });
+    return EVOCC;
+  }
+  function envCountryTrees(D) {
+    const t0 = performance.now(), O = evOccupancy(D), { TX, NX, NZ, occ, CS } = O;
+    const ti = D.tkinds.indexOf('tree'), pi = D.tkinds.indexOf('pine'); if (ti < 0) return;
+    const hills = D.hills || [], add = [];
+    const dryR = (D.ground || []).filter(g => g[4] === '#c2a172');   // the dry tan plain south of town: fewer, smaller trees, more cedar
+    let sx = 0;   // deterministic per spot (everyone online sees the same countryside)
+    const hh = (a, b) => evH(Math.floor(a * 7.31) + 9187, Math.floor(b * 5.17) - 3301 + sx);
+    let nMotte = 0, nCreek = 0, nHill = 0, nLone = 0;
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+      if (occ[j * NX + i]) continue;
+      const cx = TX.x0 + (i + 0.5) * CS, cz = TX.z0 + (j + 0.5) * CS;
+      const r0 = hh(cx, cz); if (r0 > 0.85) continue;   // nothing below goes past 0.85
+      const creekN = evF(cx / 2100 + 31, cz / 2100 + 17), creek = 1 - Math.abs(creekN * 2 - 1.04), grove = creek > 0.988 ? 0 : evF(cx / 650, cz / 650);
+      let hill = 0; for (const h of hills) { const R = h[2] * 1.15, ddx = cx - h[0], ddz = cz - h[1]; if (ddx > R || ddx < -R || ddz > R || ddz < -R) continue; const d = Math.hypot(ddx, ddz); if (d < R) hill = Math.max(hill, 1 - d / R); }
+      let dry = 0; for (const g of dryR) if (cx >= g[0] && cx <= g[2] && cz >= g[1] && cz <= g[3]) dry = 1;
+      const west = clamp((-cx - 1500) / 4000, 0, 1);   // the Cross Timbers west of town: more cedar
+      let p = 0.022, n = 1, why = 0;
+      if (creek > 0.988) { p = 0.6; n = (creek > 0.994) ? 2 : 1; why = 1; }
+      else if (grove > 0.73) { p = clamp((grove - 0.73) * 8, 0, 0.85); n = grove > 0.75 ? 3 : 2; why = 2; }
+      else if (hill > 0) { p = 0.12 + hill * 0.55; n = 2; why = 3; }
+      if (dry) p *= why === 0 ? 1.6 : 0.8;   // the dry plain: fewer groves, more lone mesquite-size trees
+      if (r0 > p) continue;
+      for (let k = 0; k < n; k++) {
+        const a = hh(cx + k * 7.1, cz - k * 3.3), b = hh(cx - k * 5.7, cz + k * 9.9), x = cx + (a - 0.5) * CS * 0.9, z = cz + (b - 0.5) * CS * 0.9;
+        const cedar = hh(x, z) < 0.12 + west * 0.3 + dry * 0.25 + (why === 3 ? 0.15 : 0);
+        const size = why === 0 ? 4.4 + a * 2.4 : why === 1 ? 3.6 + b * 2.6 : 3.0 + a * 2.2 - dry * 0.6;
+        add.push(x, z, cedar ? Math.max(2.4, size * 0.75) : size, cedar && pi >= 0 ? pi : ti);
+        if (why === 1) nCreek++; else if (why === 2) nMotte++; else if (why === 3) nHill++; else nLone++;
+      }
+    }
+    const T = D.T; for (let i = 0; i < add.length; i++) T.push(add[i]);
+    EV.stats.rural = { trees: add.length / 4, motte: nMotte, creek: nCreek, hill: nHill, lone: nLone, ms: Math.round(performance.now() - t0) };
+  }
+  // The ground was one 29 km quad sitting 0.4 m over a 160 km backdrop quad. Triangles that big get clipped badly when the
+  // camera is low and looks level (exactly the driving view out in the country), so the backdrop won the depth test and
+  // the open ground turned pale grey-white. The ground now comes in ~450 m tiles and the backdrop is a frame around the
+  // map that never sits under it.
+  function envFixGround(before) {
+    const W = WB.x1 - WB.x0, H = WB.z1 - WB.z0; let fixed = 0;
+    for (const o of scene.children) {
+      if (before.has(o) || !o.isMesh || !o.geometry || !o.geometry.parameters) continue;
+      const P = o.geometry.parameters;
+      if (Math.abs(P.width - W) < 1 && Math.abs(P.height - H) < 1) { o.geometry.dispose(); o.geometry = new THREE.PlaneGeometry(W, H, 64, 48).rotateX(-Math.PI / 2); fixed |= 1; envPasture(o.material); }
+      else if (P.width >= 100000 && Math.abs(o.position.y + 0.4) < 0.01) {
+        const S = P.width / 2, g = [], add = (x0, z0, x1, z1) => { if (x1 - x0 < 1 || z1 - z0 < 1) return; const p = new THREE.PlaneGeometry(x1 - x0, z1 - z0, 8, 8).rotateX(-Math.PI / 2); p.translate((x0 + x1) / 2, 0, (z0 + z1) / 2); g.push(p); };
+        const m = 2;   // a 2 m overlap under the ground's edge, so no seam shows from above
+        add(-S, -S, S, WB.z0 + m); add(-S, WB.z1 - m, S, S); add(-S, WB.z0 + m, WB.x0 + m, WB.z1 - m); add(WB.x1 - m, WB.z0 + m, S, WB.z1 - m);
+        const pos = [], nor = [], uv = [], idx = []; let base = 0;
+        for (const p of g) { const a = p.attributes; pos.push(...a.position.array); nor.push(...a.normal.array); uv.push(...a.uv.array); for (const i of p.index.array) idx.push(i + base); base += a.position.count; p.dispose(); }
+        const f = new THREE.BufferGeometry(); f.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); f.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); f.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); f.setIndex(idx);
+        o.geometry.dispose(); o.geometry = f; o.position.x = 0; o.position.z = 0; fixed |= 2;
+      }
+    }
+    EV.stats.ground = fixed;
+  }
+  // the tan plain south of town was flat beige sand; real Johnson County pasture is straw and olive with greener swales
+  function envPasture(m) {
+    const ob = m.onBeforeCompile, ok = m.customProgramCacheKey;
+    m.onBeforeCompile = function (sh) {
+      if (ob) ob.call(this, sh);
+      if (!/vGW/.test(sh.fragmentShader) || !/rlF/.test(sh.fragmentShader)) return;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <alphamap_fragment>', `{ vec3 dc = diffuseColor.rgb; float tn = smoothstep( 0.05, 0.14, dc.r - dc.b ) * smoothstep( 0.22, 0.36, dc.r ) * ( 1.0 - smoothstep( 0.69, 0.75, dc.g / max( dc.r, 1e-4 ) ) );
+    vec2 q = vGW.xz; float n1 = rlF( q * 0.018 ), n2 = rlF( q * 0.11 ), n3 = rlN( q * 1.7 );
+    vec3 straw = vec3( 0.088, 0.07, 0.034 ) * ( 0.8 + 0.35 * n2 ) * ( 0.88 + 0.24 * n3 ), olive = vec3( 0.042, 0.052, 0.02 ) * ( 0.85 + 0.3 * n3 );
+    diffuseColor.rgb = mix( dc, mix( straw, olive, smoothstep( 0.42, 0.68, n1 * 0.7 + n2 * 0.3 ) ), tn * 0.9 ); }
+  #include <alphamap_fragment>`);
+    };
+    m.customProgramCacheKey = () => 'envpasture' + (ok ? ok.call(m) : '');
+    m.needsUpdate = true;
+  }
+  const _evMakeGround = makeGround;
+  makeGround = function (D) {
+    try { envCountryTrees(D); } catch (e) { console.warn('environment: country trees ' + e.message); }
+    const before = new Set(scene.children), r = _evMakeGround.apply(this, arguments);
+    try { envFixGround(before); } catch (e) { console.warn('environment: ground ' + e.message); }
+    return r;
+  };
+
+  // ================= what the ground is at a spot (lots, towns, water) =================
+  const EGL = { lots: new Grid(50), towns: [], dry: [], ok: false };
+  const GRASS_LOT = { yard: 1, park: 1, field: 2, junk: 3, dirt: 4, trail: 4 };   // 1 lawn, 2 pasture, 3 weeds, 4 sparse
+  function egPrep(D) {
+    const L = D.L;
+    for (let i = 0; i < L.length; i += 5) { const k = D.lkinds[L[i + 4]], o = { x0: L[i], z0: L[i + 1], x1: L[i] + L[i + 2], z1: L[i + 1] + L[i + 3], k }; EGL.lots.add(o, o.x0, o.z0, o.x1, o.z1); }
+    for (const t of D.towns || []) EGL.towns.push([t.x0, t.z0, t.x1, t.z1]);
+    for (const g of D.ground || []) { if (g[4] === 'city') EGL.towns.push([g[0], g[1], g[2], g[3]]); else if (g[4] === '#c2a172') EGL.dry.push([g[0], g[1], g[2], g[3]]); }
+    for (const st of D.states || []) if (st.rect) EGL.towns.push([st.rect.x0, st.rect.z0, st.rect.x1, st.rect.z1]);
+    EGL.ok = true;
+  }
+  const inR = (A, x, z) => { for (const r of A) if (x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]) return true; return false; };
+  const inWater = (x, z, pad = 2) => { for (const w of WATER) if (x > w.x - pad && x < w.x + w.w + pad && z > w.z - pad && z < w.z + w.d + pad) return true; for (const l of DATA.lakes || []) if (x > l.x0 - pad && x < l.x1 + pad && z > l.z0 - pad && z < l.z1 + pad) return true; return false; };
+  // 0 = no grass here (pavement, buildings, water, town ground), else the grass kind
+  function groundKind(x, z) {
+    let k = null; for (const o of EGL.lots.at(x, z)) if (x >= o.x0 && x <= o.x1 && z >= o.z0 && z <= o.z1) { k = o.k; if (!GRASS_LOT[k]) return 0; }
+    if (k) return GRASS_LOT[k];
+    if (inR(EGL.towns, x, z)) return 0;
+    return inR(EGL.dry, x, z) ? 5 : 2;   // open country: pasture (dry plain = 5)
+  }
+
+  // ================= grass clumps, tall grass, weeds and wildflowers at your feet =================
+  // A 4-cell atlas drawn here: 0 lawn/pasture clump, 1 tall dry grass with seed heads, 2 bluebonnets + paintbrush,
+  // 3 broadleaf weeds. Crossed cards, normals pointing up (so they light like the ground they grow out of), a little wind.
+  const EG = { im: null, cap: 9000, tiles: new Map(), at: [1e9, 1e9], n: 0, R: 0, TS: 16 };
+  function egAtlas() {
+    const W = 512, H = 256, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const x = cv.getContext('2d');
+    let sd = 11; const rn = () => { sd = (sd * 16807) % 2147483647; return (sd - 1) / 2147483646; };
+    const blade = (cx, len, lean, w, col) => { x.strokeStyle = col; x.lineWidth = w; x.lineCap = 'round'; x.beginPath(); x.moveTo(cx, H - 2); x.quadraticCurveTo(cx + lean * 0.4, H - len * 0.6, cx + lean, H - len); x.stroke(); };
+    const hsl = (h, s, l) => `hsl(${h},${s}%,${l}%)`;
+    // fill clear pixels with the leaf colour so mips don't go dark at the edges
+    const cell = (c, base, fn) => { x.save(); x.translate(c * 128, 0); x.beginPath(); x.rect(0, 0, 128, H); x.clip(); x.fillStyle = base; x.globalAlpha = 0.004; x.fillRect(0, 0, 128, H); x.globalAlpha = 1; fn(); x.restore(); };
+    cell(0, '#4a6a2a', () => { for (let i = 0; i < 70; i++) { const c = 64 + (rn() - 0.5) * 70; blade(c, 70 + rn() * 150, (c - 64) * 0.9 + (rn() - 0.5) * 40, 1.5 + rn() * 2.2, hsl(72 + rn() * 26, 26 + rn() * 18, 30 + rn() * 20)); } });
+    cell(1, '#8a7a40', () => { for (let i = 0; i < 46; i++) { const c = 64 + (rn() - 0.5) * 60, len = 120 + rn() * 125, lean = (c - 64) * 1.1 + (rn() - 0.5) * 30; blade(c, len, lean, 1.2 + rn() * 1.6, hsl(44 + rn() * 14, 26 + rn() * 18, 48 + rn() * 20));
+      if (rn() < 0.5) { x.fillStyle = hsl(38, 35, 55 + rn() * 15); for (let k = 0; k < 6; k++) { x.beginPath(); x.ellipse(c + lean + (rn() - 0.5) * 4, H - len + k * 5, 2, 4, 0.3, 0, ETAU); x.fill(); } } } });
+    cell(2, '#3e5e28', () => { for (let i = 0; i < 34; i++) { const c = 64 + (rn() - 0.5) * 70; blade(c, 50 + rn() * 90, (c - 64) * 0.8, 1.6 + rn() * 1.8, hsl(85 + rn() * 20, 28, 32 + rn() * 14)); }
+      for (let i = 0; i < 9; i++) { const c = 20 + rn() * 88, top = H - 90 - rn() * 80, red = rn() < 0.3; x.strokeStyle = hsl(100, 35, 28); x.lineWidth = 2; x.beginPath(); x.moveTo(c, H - 2); x.lineTo(c + (rn() - 0.5) * 10, top); x.stroke();
+        for (let k = 0; k < 9; k++) { x.fillStyle = red ? hsl(8 + rn() * 12, 80, 48 + rn() * 10) : k < 2 ? '#f4f2ee' : hsl(225 + rn() * 20, 60, 38 + rn() * 14); x.beginPath(); x.arc(c + (rn() - 0.5) * 9, top + k * 4.5, 3.4 - k * 0.15, 0, ETAU); x.fill(); } } });
+    cell(3, '#4e6a30', () => { for (let i = 0; i < 16; i++) { const c = 64 + (rn() - 0.5) * 70, a = (rn() - 0.5) * 1.6, len = 30 + rn() * 55; x.save(); x.translate(c, H - 4); x.rotate(a); x.fillStyle = hsl(80 + rn() * 22, 30, 32 + rn() * 14); x.beginPath(); x.moveTo(0, 0); x.quadraticCurveTo(-14, -len * 0.5, 0, -len); x.quadraticCurveTo(14, -len * 0.5, 0, 0); x.fill(); x.restore(); }
+      for (let i = 0; i < 4; i++) { const c = 30 + rn() * 70, t = H - 60 - rn() * 50; x.strokeStyle = hsl(90, 30, 30); x.lineWidth = 1.5; x.beginPath(); x.moveTo(c, H - 3); x.lineTo(c, t); x.stroke(); x.fillStyle = hsl(50, 90, 55); x.beginPath(); x.arc(c, t, 5, 0, ETAU); x.fill(); } });
+    // canvas pixels are premultiplied, so clear pixels lose their colour and the mips go dark round every blade: copy
+    // into a DataTexture with each cell's clear pixels set to that cell's average blade colour
+    const img = x.getImageData(0, 0, W, H), d = img.data;
+    for (let c = 0; c < 4; c++) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let yy = 0; yy < H; yy++) for (let xx = c * 128; xx < c * 128 + 128; xx++) { const i = (yy * W + xx) * 4; if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } }
+      if (n) { r /= n; g /= n; b /= n; }
+      for (let yy = 0; yy < H; yy++) for (let xx = c * 128; xx < c * 128 + 128; xx++) { const i = (yy * W + xx) * 4, a = d[i + 3] / 255; if (a < 0.98) { d[i] = d[i] * a + r * (1 - a); d[i + 1] = d[i + 1] * a + g * (1 - a); d[i + 2] = d[i + 2] * a + b * (1 - a); } }
+    }
+    // DataTexture rows run bottom-up: flip so uv (0,0) is the foot of the blades
+    const flip = new Uint8Array(W * H * 4); for (let yy = 0; yy < H; yy++) flip.set(d.subarray((H - 1 - yy) * W * 4, (H - yy) * W * 4), yy * W * 4);
+    const t = new THREE.DataTexture(flip, W, H, THREE.RGBAFormat); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+    return t;
+  }
+  function egMesh() {
+    const pos = [], uv = [], nor = [], idx = [];
+    for (let k = 0; k < 3; k++) { const a = k * Math.PI / 3, c = Math.cos(a) * 0.5, s = Math.sin(a) * 0.5, b = pos.length / 3;
+      pos.push(-c, 0, -s, c, 0, s, c, 1, s, -c, 1, -s); uv.push(0, 0, 1, 0, 1, 1, 0, 1); for (let i = 0; i < 4; i++) nor.push(0, 1, 0); idx.push(b, b + 1, b + 2, b, b + 2, b + 3); }
+    const g = new THREE.InstancedBufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setIndex(idx);
+    const cellA = new THREE.InstancedBufferAttribute(new Float32Array(EG.cap), 1); cellA.setUsage(THREE.DynamicDrawUsage); g.setAttribute('aCell', cellA);
+    const m = new THREE.MeshStandardMaterial({ map: egAtlas(), alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.95, envMapIntensity: 0.4 });
+    const U = (window.__scn && window.__scn.U) || { uTime: { value: 0 } };
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = U.uTime;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aCell;\nuniform float uTime;')
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_UV\n vUv.x = ( aCell + clamp( vUv.x, 0.02, 0.98 ) ) * 0.25;\n#endif')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+  { vec2 wp = vec2( instanceMatrix[ 3 ][ 0 ], instanceMatrix[ 3 ][ 2 ] ); float ph = uTime * 1.7 + wp.x * 0.21 + wp.y * 0.17;
+    float sw = ( sin( ph ) * 0.6 + sin( ph * 2.3 + 1.7 ) * 0.25 ) * 0.09 * position.y * position.y; transformed.x += sw; transformed.z += sw * 0.6; }`);
+    };
+    m.customProgramCacheKey = () => 'envgrass1';
+    const im = new THREE.InstancedMesh(g, m, EG.cap); im.count = 0; im.frustumCulled = false; im.receiveShadow = true; im.castShadow = false; im.name = 'env-grass';
+    im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(EG.cap * 3).fill(1), 3); im.instanceColor.setUsage(THREE.DynamicDrawUsage); im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(im); EG.im = im;
+  }
+  // one 16 m tile of ground cover, the same every time (x, z, rot, size, cell, r, g, b per clump)
+  function egTile(ti, tj) {
+    const key = ti * 100003 + tj; let t = EG.tiles.get(key); if (t) { EG.tiles.delete(key); EG.tiles.set(key, t); return t; }
+    const L = window.__st && window.__st.lib, TS = EG.TS, out = [];
+    if (L) {
+      const x0 = ti * TS, z0 = tj * TS; let sd = (Math.imul(ti, 73856093) ^ Math.imul(tj, 19349663)) >>> 0 || 1; const rn = () => { sd = Math.imul(sd ^ (sd >>> 15), 2246822507) + 0x6b43a9b5 >>> 0; return (sd >>> 8) / 16777216; };
+      // town ground with no lot (Stop Six, the neighborhoods) reads as mowed verge, not pasture
+      const urban = L.solidIn(x0 - 45, z0 - 45, x0 + TS + 45, z0 + TS + 45);
+      const kind = (x, z) => { let k = groundKind(x, z); if (urban && (k === 2 || k === 5)) k = 6; return k; };
+      const kc = kind(x0 + TS / 2, z0 + TS / 2), want = kc === 1 ? 90 : kc === 6 ? 110 : kc === 2 || kc === 5 ? 170 : kc === 3 ? 120 : kc === 4 ? 40 : 0;
+      for (let i = 0; i < want; i++) {
+        const x = x0 + rn() * TS, z = z0 + rn() * TS, k = kc === 1 || kc === 6 || i % 6 === 0 ? kind(x, z) : kc; if (!k) continue;
+        const r = 0.3; if (L.roadIn(x - r, z - r, x + r, z + r, 0.4) || L.solidIn(x - r, z - r, x + r, z + r) || L.driveIn(x - r, z - r, x + r, z + r) || L.featIn(x - r, z - r, x + r, z + r) || inWater(x, z)) continue;
+        const p = rn(); let cell, sz, cr, cg, cb;
+        const dry = k === 5 || k === 4, v = 0.85 + rn() * 0.3;
+        if (k === 1 || k === 6) { if (k === 1 && p > 0.6) continue; cell = p < (k === 6 ? 0.75 : 0.85) ? 0 : p < 0.97 ? 3 : 2; sz = 0.16 + rn() * 0.12 + (k === 6 ? 0.06 : 0); cr = 0.95 * v; cg = 1.02 * v; cb = 0.88 * v; }   // mowed lawns + verges: short
+        else { cell = p < (dry ? 0.35 : 0.6) ? 0 : p < (dry ? 0.88 : 0.84) ? 1 : p < 0.94 ? 3 : 2; sz = cell === 1 ? 0.4 + rn() * 0.4 : cell === 2 ? 0.32 + rn() * 0.16 : 0.26 + rn() * 0.26;
+          if (cell === 2 && (dry || rn() < 0.35)) cell = 3;
+          cr = (dry ? 1.04 : 0.97) * v; cg = (dry ? 0.98 : 1.03) * v; cb = (dry ? 0.82 : 0.88) * v; }
+        out.push(x, z, rn() * ETAU, sz, cell, cr, cg, cb);
+      }
+    }
+    t = new Float32Array(out); EG.tiles.set(key, t);
+    if (EG.tiles.size > 320) { const it = EG.tiles.keys(); for (let i = 0; i < 80; i++) EG.tiles.delete(it.next().value); }
+    return t;
+  }
+  const _m4 = new THREE.Matrix4(), _q4 = new THREE.Quaternion(), _v4 = new THREE.Vector3(), _s4 = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+  function egStep(force) {
+    if (!EG.im) return;
+    const cp = camera.position, R = EV.tierR.grass, low = cp.y < 45 && R > 0 && EV.on;
+    if (!low) { EG.im.count = 0; EG.at = [1e9, 1e9]; EV.stats.grass = 0; return; }
+    if (!force && Math.hypot(cp.x - EG.at[0], cp.z - EG.at[1]) < 5) return;
+    EG.at = [cp.x, cp.z];
+    const TS = EG.TS, im = EG.im, cA = im.geometry.attributes.aCell, col = im.instanceColor; let n = 0;
+    const i0 = Math.floor((cp.x - R) / TS), i1 = Math.floor((cp.x + R) / TS), j0 = Math.floor((cp.z - R) / TS), j1 = Math.floor((cp.z + R) / TS), R2 = R * R;
+    const order = []; for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const dx = Math.max(0, Math.abs((i + 0.5) * TS - cp.x) - TS / 2), dz = Math.max(0, Math.abs((j + 0.5) * TS - cp.z) - TS / 2); if (dx * dx + dz * dz < R2) order.push([dx * dx + dz * dz, i, j]); }
+    order.sort((a, b) => a[0] - b[0]);
+    for (const [, i, j] of order) {
+      if (n >= EG.cap) break;
+      const t = egTile(i, j);
+      for (let k = 0; k < t.length && n < EG.cap; k += 8) {
+        const dx = t[k] - cp.x, dz = t[k + 1] - cp.z, d2 = dx * dx + dz * dz; if (d2 > R2) continue;
+        const fade = Math.min(1, (R2 - d2) / (R2 * 0.25));   // shrink into the ground at the edge, no pop line
+        _m4.compose(_v4.set(t[k], 0.02, t[k + 1]), _q4.setFromAxisAngle(_up, t[k + 2]), _s4.set(t[k + 3] * 1.4, t[k + 3] * fade, t[k + 3] * 1.4));
+        im.setMatrixAt(n, _m4); cA.array[n] = t[k + 4]; col.array[n * 3] = t[k + 5]; col.array[n * 3 + 1] = t[k + 6]; col.array[n * 3 + 2] = t[k + 7]; n++;
+      }
+    }
+    im.count = n; im.instanceMatrix.needsUpdate = true; cA.needsUpdate = true; col.needsUpdate = true; EV.stats.grass = n;
+  }
+
+  // ================= barbed-wire fences along the country roads, round hay bales in the pastures =================
+  const EF = { runs: [], posts: null, wires: null, bales: null, at: [1e9, 1e9], capP: 1800, capB: 260 };
+  function efPrep() {
+    const ST = window.__st; if (!ST || !ST.edges) return;
+    for (const e of ST.edges) {
+      if (e.kind === 'highway') continue;
+      const len = Math.hypot(e.bx - e.ax, e.bz - e.az); if (len < 40) continue;
+      const mx = (e.ax + e.bx) / 2, mz = (e.az + e.bz) / 2; if (inR(EGL.towns, mx, mz)) continue;
+      const dx = (e.bx - e.ax) / len, dz = (e.bz - e.az) / len, off = e.w / 2 + 5.5;
+      for (const sd of [-1, 1]) EF.runs.push({ ax: e.ax - dz * off * sd, az: e.az + dx * off * sd, dx, dz, len, x0: Math.min(e.ax, e.bx) - off - 2, x1: Math.max(e.ax, e.bx) + off + 2, z0: Math.min(e.az, e.bz) - off - 2, z1: Math.max(e.az, e.bz) + off + 2 });
+    }
+    EV.stats.fenceRuns = EF.runs.length;
+  }
+  function efMeshes() {
+    const wood = new THREE.MeshStandardMaterial({ color: lin('#6b5a44'), roughness: 0.95 }), steel = new THREE.MeshStandardMaterial({ color: lin('#3c4a3a'), roughness: 0.55, metalness: 0.6 }), wire = new THREE.MeshStandardMaterial({ color: lin('#8a8a86'), roughness: 0.45, metalness: 0.8 });
+    const mk = (geo, mat, cap, name) => { const im = new THREE.InstancedMesh(geo, mat, cap); im.count = 0; im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.castShadow = !phone; im.receiveShadow = true; im.name = name; scene.add(im); return im; };
+    EF.posts = mk(new THREE.CylinderGeometry(0.065, 0.075, 1.35, 6).translate(0, 0.675, 0), wood, EF.capP / 4, 'env-fence-posts');
+    EF.tposts = mk(new THREE.BoxGeometry(0.045, 1.25, 0.035).translate(0, 0.625, 0), steel, EF.capP, 'env-fence-tposts');
+    EF.wires = mk(new THREE.BoxGeometry(1, 0.012, 0.012).translate(0.5, 0, 0), wire, EF.capP, 'env-fence-wire');
+    EF.wires.castShadow = false;
+    // round bales: straw sides, a rolled spiral on each end
+    const side = new THREE.CanvasTexture((() => { const c = document.createElement('canvas'); c.width = 128; c.height = 64; const x = c.getContext('2d'); x.fillStyle = '#b39a5c'; x.fillRect(0, 0, 128, 64); for (let i = 0; i < 900; i++) { x.strokeStyle = `hsla(${40 + Math.random() * 12},${35 + Math.random() * 20}%,${40 + Math.random() * 30}%,0.7)`; x.lineWidth = 1; const y = Math.random() * 64, a = Math.random() * 128; x.beginPath(); x.moveTo(a, y); x.lineTo(a + 6 + Math.random() * 14, y + (Math.random() - 0.5) * 3); x.stroke(); } return c; })());
+    const end = new THREE.CanvasTexture((() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#a88f52'; x.fillRect(0, 0, 128, 128); x.lineWidth = 2.2;
+      for (let a = 0; a < 46; a += 0.05) { const r = a * 1.35, r2 = (a + 0.05) * 1.35; x.strokeStyle = `hsl(${38 + (a % 3) * 4},38%,${36 + ((a * 7) % 5) * 5}%)`; x.beginPath(); x.moveTo(64 + Math.cos(a) * r, 64 + Math.sin(a) * r); x.lineTo(64 + Math.cos(a + 0.05) * r2, 64 + Math.sin(a + 0.05) * r2); x.stroke(); } return c; })());
+    side.encoding = end.encoding = THREE.sRGBEncoding; side.wrapS = THREE.RepeatWrapping; side.repeat.set(3, 1);
+    const bg = new THREE.CylinderGeometry(0.82, 0.82, 1.5, 16, 1).rotateZ(Math.PI / 2).translate(0, 0.8, 0);
+    EF.bales = mk(bg, [new THREE.MeshStandardMaterial({ map: side, roughness: 1 }), new THREE.MeshStandardMaterial({ map: end, roughness: 1 }), new THREE.MeshStandardMaterial({ map: end, roughness: 1 })], EF.capB, 'env-bales');
+    EF.bales.castShadow = true;
+  }
+  const _fe = new THREE.Euler();
+  function efStep(force) {
+    if (!EF.posts) return;
+    const cp = camera.position, R = EV.tierR.fence, RB = EV.tierR.bale, show = cp.y < 220 && EV.on;
+    if (!show) { EF.posts.count = EF.tposts.count = EF.wires.count = EF.bales.count = 0; EF.at = [1e9, 1e9]; return; }
+    if (!force && Math.hypot(cp.x - EF.at[0], cp.z - EF.at[1]) < 20) return;
+    EF.at = [cp.x, cp.z];
+    const L = window.__st && window.__st.lib; if (!L) return;
+    let np = 0, nt = 0, nw = 0;
+    const free = (x, z, r) => !L.roadIn(x - r, z - r, x + r, z + r, 0.2) && !L.driveIn(x - r, z - r, x + r, z + r) && !L.solidIn(x - r - 2, z - r - 2, x + r + 2, z + r + 2) && !L.featIn(x - r, z - r, x + r, z + r) && !inWater(x, z, 3);
+    for (const run of EF.runs) {
+      if (cp.x < run.x0 - R || cp.x > run.x1 + R || cp.z < run.z0 - R || cp.z > run.z1 + R) continue;
+      // the stretch of this run inside the radius
+      const rx = cp.x - run.ax, rz = cp.z - run.az, along = rx * run.dx + rz * run.dz, side = Math.abs(rx * -run.dz + rz * run.dx); if (side > R) continue;
+      const h = Math.sqrt(R * R - side * side), s0 = Math.max(0, Math.floor((along - h) / 3.6)), s1 = Math.min(Math.floor(run.len / 3.6), Math.ceil((along + h) / 3.6));
+      let prev = null, gap = 0;
+      for (let s = s0; s <= s1; s++) {
+        const x = run.ax + run.dx * s * 3.6, z = run.az + run.dz * s * 3.6;
+        if (!free(x, z, 0.3) || groundKind(x, z) === 0 || L.solidIn(x - 40, z - 40, x + 40, z + 40)) { prev = null; gap = 3; continue; }   // country only: no fence next to houses
+        if (gap > 0) { gap--; if (gap > 0) { prev = null; continue; } }
+        const wood = s % 4 === 0 || !prev, lean = (evH(s, Math.floor(run.ax)) - 0.5) * 0.05;
+        _m4.compose(_v4.set(x, 0, z), _q4.setFromEuler(_fe.set(lean, 0, lean * 0.6)), _s4.set(1, 1, 1));
+        if (wood) { if (np < EF.posts.instanceMatrix.count) EF.posts.setMatrixAt(np++, _m4); } else if (nt < EF.capP) EF.tposts.setMatrixAt(nt++, _m4);
+        if (prev && nw + 4 <= EF.capP) {
+          const ang = Math.atan2(-(z - prev[1]), x - prev[0]), dl = Math.hypot(x - prev[0], z - prev[1]); _q4.setFromAxisAngle(_up, ang);
+          for (const hy of [0.42, 0.7, 0.96, 1.2]) { _m4.compose(_v4.set(prev[0], hy - 0.025 * Math.sin(s), prev[1]), _q4, _s4.set(dl, 1, 1)); EF.wires.setMatrixAt(nw++, _m4); }
+        }
+        prev = [x, z];
+      }
+    }
+    // hay bales: a few rows in the open pastures along the roads, the same every time
+    let nb = 0; const BT = 120;
+    for (let i = Math.floor((cp.x - RB) / BT); i <= Math.floor((cp.x + RB) / BT); i++) for (let j = Math.floor((cp.z - RB) / BT); j <= Math.floor((cp.z + RB) / BT); j++) {
+      const h0 = evH(i * 31 + 7, j * 17 - 3); if (h0 > 0.2) continue;
+      const cx = (i + 0.2 + evH(i, j + 9) * 0.6) * BT, cz = (j + 0.2 + evH(i + 4, j) * 0.6) * BT;
+      if (Math.hypot(cx - cp.x, cz - cp.z) > RB) continue;
+      const k = groundKind(cx, cz); if (k !== 2 && k !== 5) continue;
+      const n = 3 + Math.floor(evH(i - 2, j + 5) * 6), ang = evH(i + 11, j - 7) * ETAU, dx = Math.cos(ang), dz = Math.sin(ang), row = evH(i, j) < 0.6;
+      for (let b = 0; b < n && nb < EF.capB; b++) {
+        const x = cx + (row ? dx * b * 2.2 : (evH(i + b, j) - 0.5) * 40), z = cz + (row ? dz * b * 2.2 : (evH(i, j + b) - 0.5) * 40);
+        if (!free(x, z, 1.2) || groundKind(x, z) === 0 || L.solidIn(x - 50, z - 50, x + 50, z + 50)) continue;
+        _m4.compose(_v4.set(x, 0, z), _q4.setFromAxisAngle(_up, row ? -ang : evH(b, i) * ETAU), _s4.set(1, 0.97 + evH(b, j) * 0.06, 1)); EF.bales.setMatrixAt(nb++, _m4);
+      }
+    }
+    for (const [im, n] of [[EF.posts, np], [EF.tposts, nt], [EF.wires, nw], [EF.bales, nb]]) { im.count = n; im.instanceMatrix.needsUpdate = true; }
+    EV.stats.fence = { wood: np, tposts: nt, wires: nw, bales: nb };
+  }
+
+  // how far each Graphics tier draws the close-up ground cover
+  const EV_TIER = { ultra: { grass: 70, fence: 280, bale: 650 }, high: { grass: phone ? 50 : 62, fence: phone ? 190 : 240, bale: phone ? 420 : 550 }, low: { grass: 0, fence: 110, bale: 260 } };
+  EV.tierR = EV_TIER.high;
+  const _evFinalize = finalize;
+  finalize = function () {
+    const r = _evFinalize.apply(this, arguments);
+    try { egPrep(DATA); efPrep(); egMesh(); efMeshes(); } catch (e) { console.error('environment build', e); }
+    return r;
+  };
+
+  // buildings that come in after the map data (ranches, landmarks, the strip, places) can land on a country tree: drop
+  // those before the trees are planted (only the ones out in the open cells, which are ours)
+  const _evAddTrees = addTrees;
+  addTrees = function (D) {
+    try {
+      const O = EVOCC, T = D.T, T2 = []; let cut = 0;
+      if (O.occ) for (let i = 0; i < T.length; i += 4) {
+        const x = T[i], z = T[i + 1], ci = Math.floor((x - O.TX.x0) / O.CS), cj = Math.floor((z - O.TX.z0) / O.CS);
+        const ours = ci >= 0 && cj >= 0 && ci < O.NX && cj < O.NZ && !O.occ[cj * O.NX + ci];
+        if (ours && solids.at(x, z).concat(solids.at(x + 2, z + 2), solids.at(x - 2, z - 2)).some(b => x + 2 > b.x0 && x - 2 < b.x1 && z + 2 > b.z0 && z - 2 < b.z1)) { cut++; continue; }
+        T2.push(T[i], T[i + 1], T[i + 2], T[i + 3]);
+      }
+      if (cut) D.T = T2; EV.stats.ruralCut = cut;
+    } catch (e) { console.warn('environment: tree check ' + e.message); }
+    return _evAddTrees.apply(this, arguments);
+  };
+
+  // ================= wiring =================
+  ecSky();
+  const _evSetTime = setTime;
+  setTime = function (n) { const r = _evSetTime.apply(this, arguments); try { ecSky(); ecTime(n); } catch (e) {} return r; };
+  const _evStep = stepStreet;
+  let evLast = 0;
+  stepStreet = function (t) {
+    const r = _evStep.apply(this, arguments);
+    const dt = Math.min(0.1, Math.max(0, t - evLast)); evLast = t;
+    try {
+      ecStep(dt);
+      const R = window.__real, tier = R && R.RL ? R.RL.tier : 'high', T = EV_TIER[tier] || EV_TIER.high, f = T !== EV.tierR; EV.tierR = T;
+      egStep(f); efStep(f);
+    } catch (e) { if (!EV.err) { EV.err = 1; console.error('environment step', e); } }
+    return r;
+  };
+  EV.force = () => { egStep(true); efStep(true); };
+  EV.debug = { EC, EC_LOOK, EVOCC, EG, EF, EGL, groundKind };
+  })();
+  // ==== environment (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
