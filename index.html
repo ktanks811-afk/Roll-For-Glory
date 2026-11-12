@@ -26314,6 +26314,542 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
   EV.debug = { EC, EC_LOOK, EVOCC, EG, EF, EGL, EH, EP, EA, groundKind };
   })();
   // ==== environment (end) ====
+  // ==== drive-in custom bay (begin) ====
+  // Kimari 2026-11-12: "when you take your car to get customized it will pull up a menu". Drive up to a paint/body shop,
+  // a rim shop, a performance shop or a mechanic in your own car and pull in: the car rolls into the bay, the door comes
+  // down, the turntable spins it round to face you and the menu opens. Every pick previews on the car (the camera goes to
+  // the part) before you pay; Back puts it the way it was. Paint, rims, tint, underglow, ride height, calipers, leather,
+  // ambient light and body kits are bought here; the Engine Lab, the tuning laptop, drag packs, car audio and repairs
+  // open on top of the bay. One extra car model (the one you drive, already loaded) and a small room, all freed on exit.
+  const KS_TYPES = new Set(['visual', 'rims', 'perf', 'repair']);
+  const KS_W = 15, KS_D = 17, KS_H = 5.6;
+  const KS = { on: false, p: null, scene: null, cam: null, root: null, disc: null, ring: null, door: null, slot: null, model: null, P: null,
+    stack: [], sel: 0, rows: [], page: null, phase: '', t: 0, uAz: 0, uEl: 0, zoom: 1, idle: 0, shot: 'overview', open: '',
+    camPos: new THREE.Vector3(), camLook: new THREE.Vector3(), trash: [], ui: null, sub: false, pad: {}, padRep: 0, padUsed: false,
+    off: { x: 0, y: 0 }, offT: { x: 0, y: 0 }, exp: 1, ride: 0, key: '', drags: new Map(), pinch: 0, f: 0, flash: 0 };
+  const KS_OVER = ['menu', 'englab', 'parts', 'tune', 'engbuild', 'rimbig'];
+  const KS_SHOTS = {
+    overview: { az: 38, el: 12, d: 1.5, ty: 0.75 },
+    paint: { az: -42, el: 17, d: 1.45, ty: 0.7 },
+    wheel: { az: 64, el: 8, d: 2.9, wheel: 1, abs: 1 },
+    side: { az: 90, el: 9, d: 1.25, ty: 0.85 },
+    stance: { az: 90, el: 2, d: 1.35, ty: 0.45 },
+    low: { az: 24, el: 3, d: 1.35, ty: 0.3 },
+    rear: { az: 148, el: 15, d: 1.4, ty: 0.75 },
+    inside: { az: 70, el: 22, d: 0.95, ty: 0.95, open: 'doors' },
+    engine: { az: 0, el: 48, d: 0.95, tx: 0.55, ty: 0.85, open: 'hood' },
+    trunk: { az: 180, el: 32, d: 1.05, tx: -0.62, ty: 0.95, open: 'trunk' },
+  };
+  const KS_NEON = [['Glitch amber', '#ffb636'], ['Murda red', '#ff2a2a'], ['Ice blue', '#4fb8ff'], ['Royal purple', '#9a3cff'], ['Toxic green', '#2aff7a'], ['Hot pink', '#ff4fb8'], ['Cold white', '#e8f0ff']];
+  const KS_TINT = [[0, 'No tint', 'Factory clear glass', 120], [35, 'Light smoke · 35%', 'A little shade, legal in Texas', 250], [20, 'Dark · 20%', 'Hard to see in', 300], [5, 'Limo · 5%', 'Blacked out', 400]];
+  const KS_STANCE = [['Lifted', 4, 4, 'Sits up, rides soft, rolls more'], ['Stock height', 0, 0, 'How it left the factory'], ['Street drop', -2, -2, 'Tucks a little tire, grips a little better'], ['Lowered', -4, -4, 'Low and tight'], ['Slammed', -7, -7, 'On the ground: watch the driveways'], ['Drag rake', 3, -1, 'Nose up, rear down: plants the rear tires']];
+  const ksRate = () => (KS.p && KS.p.rate) || 1;
+  const ksTintOf = c => (c && c.tintL != null ? c.tintL : c && c.tint ? 20 : 0);
+  // the preview car: your car with its own copy of everything the bay can change (the rest is shared, read only)
+  const ksCopy = c => Object.assign({}, c, { rims: c.rims ? Object.assign({}, c.rims) : c.rims, look: Object.assign({}, c.look || {}), kits: Object.assign({}, c.kits || {}),
+    tune: Object.assign({}, c.tune || {}), tparts: (c.tparts || []).slice(), drag: c.drag });
+
+  // ---- tint and underglow on every model of a car (yours on the street, in the bay, in the garage) ----
+  const KS_NEON_MATS = new Map(); let KS_NEON_GEO = null, KS_NEON_TEX = null;
+  function ksNeonMat(hex) {
+    let m = KS_NEON_MATS.get(hex); if (m) return m;
+    if (!KS_NEON_TEX) {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 128; const k = cv.getContext('2d'), g = k.createRadialGradient(64, 64, 4, 64, 64, 64);
+      g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,0.75)'); g.addColorStop(0.8, 'rgba(255,255,255,0.18)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      k.fillStyle = g; k.fillRect(0, 0, 128, 128); KS_NEON_TEX = new THREE.CanvasTexture(cv);
+      KS_NEON_GEO = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2); KS_NEON_GEO.userData.shared = true;
+    }
+    m = new THREE.MeshBasicMaterial({ map: KS_NEON_TEX, color: new THREE.Color(hex), transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    KS_NEON_MATS.set(hex, m); return m;
+  }
+  function ksNeon(m, c) {
+    const U = m.userData, want = (c && c.neon) || '';
+    if (!want) { if (U.ksNeon) U.ksNeon.visible = false; return; }
+    let g = U.ksNeon;
+    if (!g) {
+      g = U.ksNeon = new THREE.Mesh(KS_NEON_GEO || (ksNeonMat(want), KS_NEON_GEO), ksNeonMat(want)); g.renderOrder = 2; g.castShadow = g.receiveShadow = false; g.frustumCulled = false;
+      g.scale.set((U.wid || 1.9) * 1.55, 1, (U.len || 4.8) * 1.12); g.position.set(0, 0.035, -(U.front || 2.4) + (U.len || 4.8) / 2);
+    }
+    g.material = ksNeonMat(want); g.visible = true;
+    const host = m.parent || m; if (g.parent !== host) host.add(g);
+  }
+  function ksTint(m, c) {
+    const U = m.userData, L = ksTintOf(c);
+    if (!U.ksGlass) {
+      if (!L) return;   // never touched: leave the shared glass alone
+      const role = new Set((U.roles && U.roles.glass) || []), map = new Map(); U.ksGlass = [...role];
+      m.traverse(o => { if (!o.isMesh || o === U.ksNeon) return; const mt = o.material; if (!mt || Array.isArray(mt) || !mt.transparent || mt.isMeshBasicMaterial || role.has(mt)) return;
+        if (mt.opacity > 0.8 || Math.max(mt.color.r, mt.color.g, mt.color.b) > 0.2) return;
+        let cl = map.get(mt); if (!cl) { cl = mt.clone(); cl.userData.o0 = mt.opacity; map.set(mt, cl); U.ksGlass.push(cl); } o.material = cl; });
+    }
+    const k = { 0: 0, 35: 0.32, 20: 0.58, 5: 0.84 }[L] || 0;
+    for (const g of U.ksGlass) { const o0 = g.userData.o0 != null ? g.userData.o0 : g.opacity; g.opacity = o0 + (0.97 - o0) * k; }
+  }
+  const _ksApplyLook = applyLook;
+  applyLook = function (m, c) { _ksApplyLook(m, c); try { if (m && m.userData) { ksTint(m, c); ksNeon(m, c); } } catch (e) { console.warn('bay look', e); } };
+
+  // ---- the bay: a room of our own (Glitch amber + magenta), a turntable, a roll-up door ----
+  function ksMat(o, Basic) { const m = new (Basic ? THREE.MeshBasicMaterial : THREE.MeshStandardMaterial)(o); KS.trash.push(m); return m; }
+  function ksGeo(g) { KS.trash.push(g); return g; }
+  function ksCanvas(w, h, draw) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d'), w, h); const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; KS.trash.push(t); return t; }
+  function ksBox(par, w, h, d, mat, x, y, z, cast) { const m = new THREE.Mesh(ksGeo(new THREE.BoxGeometry(w, h, d)), mat); m.position.set(x, y, z); m.castShadow = !!cast; m.receiveShadow = true; par.add(m); return m; }
+  function ksEnv() {
+    const room = new THREE.Scene(), gg = new THREE.SphereGeometry(40, 32, 16), cc = [], P = gg.attributes.position;
+    for (let i = 0; i < P.count; i++) { const y = P.getY(i) / 40; const c = new THREE.Color(0x15141a).lerp(new THREE.Color(0x5a5866), Math.max(0, y)); cc.push(c.r, c.g, c.b); }
+    gg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
+    const mats = [new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })]; room.add(new THREE.Mesh(gg, mats[0]));
+    const geos = [gg];
+    for (const [x, y, z, w, h, col, k] of [[0, 30, 0, 30, 6, 0xffffff, 2.2], [0, 30, -12, 30, 4, 0xffffff, 1.6], [0, 30, 12, 30, 4, 0xffffff, 1.6], [-36, 8, 0, 30, 2, 0xffb636, 1.1], [36, 8, 0, 30, 2, 0xff3d7f, 0.8], [0, 6, -36, 40, 3, 0xffffff, 0.7]]) {
+      const pg = new THREE.PlaneGeometry(w, h), pm = new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(k), side: THREE.DoubleSide }), pl = new THREE.Mesh(pg, pm);
+      pl.position.set(x, y, z); pl.lookAt(0, 0, 0); room.add(pl); geos.push(pg); mats.push(pm);
+    }
+    const pm = new THREE.PMREMGenerator(renderer), rt = pm.fromScene(room, 0.03); pm.dispose(); geos.forEach(g => g.dispose()); mats.forEach(m => m.dispose());
+    KS.trash.push(rt); return rt.texture;
+  }
+  function ksBuild(p) {
+    const s = KS.scene = new THREE.Scene(); s.background = new THREE.Color(0x0c0b10); s.environment = ksEnv();
+    KS.cam = new THREE.PerspectiveCamera(42, innerWidth / Math.max(1, innerHeight), 0.05, 90);
+    s.add(new THREE.HemisphereLight(0xfff2e6, 0x16141c, 0.5));
+    const key = new THREE.DirectionalLight(0xffffff, 0.95); key.position.set(3, 13, 6); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
+    const sc = key.shadow.camera; sc.left = sc.bottom = -8; sc.right = sc.top = 8; sc.near = 2; sc.far = 30; key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; s.add(key); s.add(key.target);
+    const amb = new THREE.PointLight(0xffb636, 0.35, 12); amb.position.set(-KS_W / 2 + 1, 2.6, -2); s.add(amb);
+    const mag = new THREE.PointLight(0xff3d7f, 0.22, 10); mag.position.set(KS_W / 2 - 1, 2.6, 2); s.add(mag);
+    const W = KS_W, D = KS_D, H = KS_H;
+    // floor: dark epoxy with a tile grid and the yellow pull-in lines
+    const floorTex = ksCanvas(512, 512, (k, w) => { k.fillStyle = '#1d1e23'; k.fillRect(0, 0, w, w); k.strokeStyle = 'rgba(0,0,0,0.55)'; k.lineWidth = 3; for (let i = 0; i <= 4; i++) { k.beginPath(); k.moveTo(i * 128, 0); k.lineTo(i * 128, w); k.stroke(); k.beginPath(); k.moveTo(0, i * 128); k.lineTo(w, i * 128); k.stroke(); }
+      for (let i = 0; i < 900; i++) { k.fillStyle = `rgba(255,255,255,${Math.random() * 0.035})`; k.fillRect(Math.random() * w, Math.random() * w, 2, 2); } });
+    floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping; floorTex.repeat.set(W / 4, D / 4);
+    const fl = new THREE.Mesh(ksGeo(new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2)), ksMat({ map: floorTex, roughness: 0.3, metalness: 0.15, envMapIntensity: 0.9 })); fl.receiveShadow = true; s.add(fl);
+    const yel = ksMat({ color: 0xe8b43a, roughness: 0.6 });
+    for (const x of [-1.6, 1.6]) { const ln = new THREE.Mesh(ksGeo(new THREE.PlaneGeometry(0.12, D / 2 - 3.6).rotateX(-Math.PI / 2)), yel); ln.position.set(x, 0.004, D / 4 + 1.8); ln.receiveShadow = true; s.add(ln); }
+    // walls, with the roll-up door in the front one
+    const wall = ksMat({ color: 0x1b1a20, roughness: 0.9, envMapIntensity: 0.4 }), trim = ksMat({ color: 0x111015, roughness: 0.6, metalness: 0.4 });
+    ksBox(s, W, H, 0.3, wall, 0, H / 2, -D / 2 - 0.15); ksBox(s, 0.3, H, D, wall, -W / 2 - 0.15, H / 2, 0); ksBox(s, 0.3, H, D, wall, W / 2 + 0.15, H / 2, 0);
+    const dw = 6.4, dh = 3.9;
+    ksBox(s, (W - dw) / 2, H, 0.3, wall, -(W + dw) / 4, H / 2, D / 2 + 0.15); ksBox(s, (W - dw) / 2, H, 0.3, wall, (W + dw) / 4, H / 2, D / 2 + 0.15); ksBox(s, dw, H - dh, 0.3, wall, 0, dh + (H - dh) / 2, D / 2 + 0.15);
+    ksBox(s, W, 0.2, D, ksMat({ color: 0x141318, roughness: 0.9 }), 0, H + 0.1, 0);
+    for (const z of [-D / 2 + 0.02, D / 2 - 0.02]) ksBox(s, W, 0.35, 0.06, trim, 0, 0.175, z);
+    // outside the door: the lot in daylight, so the drive-in reads
+    const lot = new THREE.Mesh(ksGeo(new THREE.PlaneGeometry(30, 22).rotateX(-Math.PI / 2)), ksMat({ color: 0x4a4b4f, roughness: 0.95 })); lot.position.set(0, -0.01, D / 2 + 11); lot.receiveShadow = true; s.add(lot);
+    const sky = new THREE.Mesh(ksGeo(new THREE.PlaneGeometry(40, 16)), ksMat({ color: 0x9ab8d6 }, true)); sky.position.set(0, 6, D / 2 + 20); sky.rotation.y = Math.PI; s.add(sky);
+    // the roll-up door: slats on a canvas, rides up into the header
+    const slats = ksCanvas(256, 256, (k, w) => { k.fillStyle = '#5a5d64'; k.fillRect(0, 0, w, w); for (let y = 0; y < w; y += 16) { k.fillStyle = '#41444a'; k.fillRect(0, y, w, 3); k.fillStyle = '#6c7078'; k.fillRect(0, y + 3, w, 2); } });
+    slats.wrapS = slats.wrapT = THREE.RepeatWrapping; slats.repeat.set(2, 4);
+    KS.door = new THREE.Mesh(ksGeo(new THREE.BoxGeometry(dw, dh, 0.08)), ksMat({ map: slats, roughness: 0.55, metalness: 0.5 })); KS.door.position.set(0, dh * 1.5, D / 2 + 0.05); KS.door.castShadow = true; s.add(KS.door);
+    KS.door.userData.h = dh;
+    // light: ceiling panels, amber and magenta LED strips (our look), the shop's name on the back wall
+    const panel = ksMat({ color: 0xffffff }, true);
+    for (const z of [-4.5, 0, 4.5]) for (const x of [-3.2, 3.2]) { const pl = new THREE.Mesh(ksGeo(new THREE.PlaneGeometry(2.6, 0.9).rotateX(Math.PI / 2)), panel); pl.position.set(x, H - 0.02, z); s.add(pl); }
+    const amber = ksMat({ color: 0xffb636, toneMapped: false }, true), pink = ksMat({ color: 0xff3d7f, toneMapped: false }, true);
+    ksBox(s, 0.05, 0.06, D - 1, amber, -W / 2 + 0.03, 3.0, 0); ksBox(s, 0.05, 0.06, D - 1, pink, W / 2 - 0.03, 3.0, 0);
+    ksBox(s, W - 1, 0.06, 0.05, amber, 0, 4.6, -D / 2 + 0.03); ksBox(s, W - 1, 0.03, 0.05, pink, 0, 4.5, -D / 2 + 0.03);
+    const name = (p.name || 'Custom Bay').replace(/ \(.*\)$/, '').toUpperCase();
+    const sign = ksCanvas(1024, 256, (k, w, h) => {
+      k.fillStyle = '#0f0e13'; k.fillRect(0, 0, w, h); k.textAlign = 'center'; k.textBaseline = 'middle';
+      const fs = Math.min(112, Math.floor(1700 / Math.max(8, name.length))); k.font = `${fs}px Bungee, Impact, sans-serif`;
+      k.fillStyle = '#ff3d7f'; k.fillText(name, w / 2 - 5, 100 + 2, 980); k.fillStyle = '#36e0ff'; k.fillText(name, w / 2 + 5, 100 - 2, 980); k.fillStyle = '#ffb636'; k.fillText(name, w / 2, 100, 980);
+      k.font = '700 34px "Barlow Condensed", "Arial Narrow", sans-serif'; k.fillStyle = '#e9e2d6'; k.fillText('C U S T O M   B A Y   ·   M U R D A   W O R T H', w / 2, 200, 980);
+      k.fillStyle = '#ffb636'; k.fillRect(110, 168, 804, 3); });
+    const sg = new THREE.Mesh(ksGeo(new THREE.PlaneGeometry(9, 2.25)), ksMat({ map: sign, toneMapped: false }, true)); sg.position.set(0, 3.25, -D / 2 + 0.06); s.add(sg);
+    // tool chests, a tire stack, a rim display: set dressing along the walls
+    const red = ksMat({ color: 0xb8281c, roughness: 0.35, metalness: 0.5 }), chrome = ksMat({ color: 0xd8dadf, roughness: 0.2, metalness: 1 });
+    for (const [x, z] of [[-W / 2 + 0.6, -5.5], [-W / 2 + 0.6, -3.7]]) { ksBox(s, 0.75, 1.05, 1.6, red, x, 0.525, z, true); for (let i = 0; i < 5; i++) ksBox(s, 0.02, 0.025, 1.3, chrome, x + 0.38, 0.2 + i * 0.18, z); }
+    const tire = ksMat({ color: 0x141416, roughness: 0.9 }), tg = ksGeo(new THREE.TorusGeometry(0.31, 0.12, 10, 24).rotateX(Math.PI / 2));
+    for (let i = 0; i < 4; i++) { const t = new THREE.Mesh(tg, tire); t.position.set(W / 2 - 0.8, 0.13 + i * 0.25, -5.6); t.castShadow = true; s.add(t); }
+    try {
+      const g = new THREE.Group(), fins = ['chrome', 'black', 'gun', 'bronze', 'polish', 'chrome'];
+      for (let i = 0; i < 6; i++) { const w = FORGED.wheelM(FORGED.ALL[(i * 13 + 5) % FORGED.ALL.length], fins[i], 20, 0, true); w.position.set((i % 3 - 1) * 0.78, i < 3 ? 0.4 : -0.4, 0); g.add(w); }
+      const b = FORGED.bake(g); b.position.set(-W / 2 + 0.12, 2.0, 3.2); b.rotation.y = Math.PI / 2; s.add(b); b.traverse(o => { if (o.isMesh) KS.trash.push(o.geometry); });
+    } catch (e) { console.warn('bay rims', e); }
+    // the turntable: brushed disc, a lit amber ring that pulses when it turns
+    KS.disc = new THREE.Group(); s.add(KS.disc);
+    const disc = new THREE.Mesh(ksGeo(new THREE.CylinderGeometry(3.3, 3.36, 0.08, 64)), ksMat({ color: 0x2c2d33, roughness: 0.28, metalness: 0.75 })); disc.position.y = 0.04; disc.receiveShadow = true; KS.disc.add(disc);
+    KS.ring = ksMat({ color: 0xffb636, toneMapped: false }, true);
+    const ring = new THREE.Mesh(ksGeo(new THREE.TorusGeometry(3.33, 0.03, 6, 96).rotateX(Math.PI / 2)), KS.ring); ring.position.y = 0.075; KS.disc.add(ring);
+    const ring2 = new THREE.Mesh(ksGeo(new THREE.TorusGeometry(2.2, 0.012, 4, 80).rotateX(Math.PI / 2)), pink); ring2.position.y = 0.081; KS.disc.add(ring2);
+    KS.root = new THREE.Group(); KS.root.position.y = 0.08; s.add(KS.root);
+  }
+  function ksDispose() {
+    if (KS.slot) { KS.slot.userData.dead = true; if (KS.slot.parent) KS.slot.parent.remove(KS.slot); }
+    for (const x of KS.trash) { try { x.dispose(); } catch (e) {} }
+    KS.trash = []; KS.scene = null; KS.root = KS.disc = KS.door = KS.slot = KS.model = KS.ring = null; KS.P = null;
+  }
+
+  // ---- the menu pages ----
+  function ksHome() {
+    const c = S.car, p = KS.p, rows = [], r = rimOf(c);
+    rows.push({ ic: '🎨', t: 'Respray', s: `${c.matte ? 'Matte' : 'Gloss'} · factory and kustom colors`, go: ksPaint, cam: 'paint' });
+    rows.push({ ic: '🛞', t: 'Wheels', s: c.drag ? 'Drag pack on: change it in the Workshop' : r ? `${r.name} · ${c.rims.dia} in` : 'Stock wheels', go: ksWheels, cam: 'wheel' });
+    rows.push({ ic: '🪟', t: 'Window tint', s: KS_TINT.find(x => x[0] === ksTintOf(c))[1], go: ksTintPage, cam: 'side' });
+    rows.push({ ic: '💡', t: 'Underglow', s: c.neon ? (KS_NEON.find(x => x[1] === c.neon) || ['Custom'])[0] : 'None', go: ksNeonPage, cam: 'low' });
+    rows.push({ ic: '⬇️', t: 'Stance', s: 'Ride height on coilovers', go: ksStance, cam: 'stance' });
+    if (LOOK_CARS.has(c.id)) rows.push({ ic: '🏁', t: 'Body, brakes & interior', s: 'Kits, calipers, leather, ambient light', go: ksBody, cam: 'rear' });
+    rows.push({ ic: '🔧', t: 'Workshop', s: 'Engine Lab, tuning, drag packs, audio, repairs', go: ksShop, cam: 'engine' });
+    rows.push({ ic: '🚪', t: 'Drive out', s: 'Roll the door up and leave', act: ksLeave, cam: 'overview' });
+    return { title: (p.name || 'Custom bay').replace(/ \(.*\)$/, ''), sub: `${carLabel(carOf(c.id))} · ${carHp(c)} hp`, cam: 'overview', rows };
+  }
+  function ksPaint() {
+    const c = S.car, rate = ksRate(), mt = KS.matte != null ? KS.matte : !!c.matte, rows = [];
+    rows.push({ ic: '✨', t: 'Gloss clear coat', s: 'Wet look, deep shine', pick: () => { KS.matte = false; }, on: !mt, pv: P => { P.matte = false; } });
+    rows.push({ ic: '🌑', t: 'Satin matte', s: 'Flat, no shine (+$300)', pick: () => { KS.matte = true; }, on: mt, pv: P => { P.matte = true; } });
+    let list = []; try { const L = MENUS.paint({ name: '', rate: 1 }).rows; for (const r of L) { if (!r.sw) break; list.push([r.t, r.sw]); } } catch (e) { list = PAINTS.slice(); }
+    for (const [n, hex] of list) {
+      const on = c.color === hex && !!c.matte === mt, price = Math.round((1500 + (mt ? 300 : 0)) * rate);
+      rows.push({ sw: hex, t: n, s: mt ? 'Satin matte' : 'Gloss', price, on, what: 'Paint: ' + n, fx: x => { x.color = hex; x.matte = mt || BMW_MATTE.has(hex); } });
+    }
+    return { title: 'Respray', sub: `${mt ? 'Satin matte' : 'Gloss'} · 2 coats + clear · tap a color to see it`, cam: 'paint', rows, keep: 2 };
+  }
+  function ksWheels() {
+    const c = S.car, r = rimOf(c), rows = [], rate = ksRate();
+    if (KS.dia == null) KS.dia = c.rims && c.rims.dia || 20; if (!KS.fin) KS.fin = c.rims && c.rims.fin || 'chrome';
+    if (c.drag) rows.push({ ic: '⚠️', t: 'Drag pack on this car', s: 'Pull it in the Workshop to run street rims', off: true });
+    rows.push({ ic: '📏', t: `Size · ${KS.dia} in`, s: 'Bigger sits higher, weighs more', go: ksSizes, cam: 'wheel' });
+    rows.push({ sw: RIM_FIN[KS.fin][1], t: `Finish · ${RIM_FIN[KS.fin][0]}`, s: 'Chrome, black, bronze and more', go: ksFins, cam: 'wheel' });
+    for (const L of FORGED.LINES) rows.push({ img: rimPic(L.designs[0].id, KS.fin, KS.dia, L.wire ? (KS.tire || 'gold') : ''), t: L.name, s: L.blurb || (L.wire ? 'Houston swangas on vogues' : `${L.designs.length} designs`), tag: 'from ' + money(rimPrice(L, KS.dia, { rate })), go: () => ksDesigns(L), cam: 'wheel', off: !!c.drag });
+    if (r && c.rims.fin !== KS.fin) rows.push({ sw: RIM_FIN[KS.fin][1], t: `Refinish your ${r.name}`, s: `In ${RIM_FIN[KS.fin][0].toLowerCase()}`, price: Math.round(450 * rate), what: 'Rim refinish', fx: x => { x.rims = Object.assign({}, x.rims, { fin: KS.fin }); } });
+    if (r) { const back = Math.round(rimPrice(r.line, c.rims.dia, { rate: 1 }) * 0.4); rows.push({ ic: '↩️', t: 'Stock wheels back on', s: `Sell your set back for ${money(back)}`, price: 0, gain: back, what: 'Sold rims', fx: x => { x.rims = null; } }); }
+    return { title: 'Wheels', sub: r ? `On the car: ${r.name} · ${c.rims.dia} in · ${RIM_FIN[c.rims.fin][0]}` : 'Stock wheels on the car', cam: 'wheel', rows };
+  }
+  // the size and finish pickers show the pick on your car: your rims if you run some, else the first forged design
+  const ksRimPv = (P, ch) => { const base = P.drag ? null : rimOf(P) ? P.rims : { id: FORGED.ALL[0].id, fin: KS.fin, dia: KS.dia }; if (base) P.rims = Object.assign({}, base, ch); };
+  function ksSizes() {
+    const rows = Object.keys(RIM_SIZES).map(Number).map(dia => ({ ic: dia >= 26 ? '🍩' : '⭕', t: `${dia} inch`, s: dia >= 28 ? 'Donk size: tall, heavy, sits way up' : dia >= 24 ? 'Big rims, thin rubber' : dia <= 16 ? 'Classic, fat sidewall' : dia <= 18 ? 'More sidewall, rides soft' : 'Street size', on: KS.dia === dia, pick: () => { KS.dia = dia; }, pv: P => ksRimPv(P, { dia }) }));
+    return { title: 'Rim size', sub: 'Pick a size, then a line and a design', cam: 'wheel', rows, back: 1 };
+  }
+  function ksFins() {
+    const rows = Object.entries(RIM_FIN).map(([id, [n, sw]]) => ({ sw, t: n, on: KS.fin === id, pick: () => { KS.fin = id; }, pv: P => ksRimPv(P, { fin: id }) }));
+    return { title: 'Rim finish', sub: 'For your next set, or to refinish yours', cam: 'wheel', rows, back: 1 };
+  }
+  function ksDesigns(L) {
+    const c = S.car, r = rimOf(c), cost = rimPrice(L, KS.dia, { rate: ksRate() }), rows = [];
+    if (L.wire) for (const [k, [n, sw]] of Object.entries(RIM_TIRES)) rows.push({ sw, t: 'Tires: ' + n, s: 'Vogues for the set', on: (KS.tire || 'gold') === k, pick: () => { KS.tire = k; }, pv: P => { if (rimOf(P) && rimOf(P).wire) P.rims = Object.assign({}, P.rims, { tire: k }); }, stay: 1 });
+    for (const d of L.designs) {
+      const want = Object.assign({ id: d.id, fin: KS.fin, dia: KS.dia }, d.wire ? { tire: KS.tire || 'gold' } : {}), on = !!r && c.rims.id === d.id && c.rims.dia === KS.dia && c.rims.fin === KS.fin && (!d.wire || tireOf(c) === want.tire);
+      rows.push({ img: rimPic(d.id, KS.fin, KS.dia, d.wire ? want.tire : ''), t: d.name, s: `${d.spokes}${d.deep ? ' · deep lip' : ''}${d.dish > 0.35 ? ' · deep concave' : ''} · ${KS.dia} in ${RIM_FIN[KS.fin][0].toLowerCase()}`, price: cost, on, off: !!c.drag, what: d.name, fx: x => { x.rims = Object.assign({}, want); } });
+    }
+    return { title: L.name, sub: `${KS.dia} in · ${RIM_FIN[KS.fin][0]} · ${money(cost)} a set of 4`, cam: 'wheel', rows };
+  }
+  function ksTintPage() {
+    const c = S.car, cur = ksTintOf(c), rate = ksRate();
+    return { title: 'Window tint', sub: 'Film on every window but the windshield', cam: 'side', rows: KS_TINT.map(([L, n, s, pr]) => ({ ic: L ? '🕶️' : '🔆', t: n, s, price: Math.round(pr * rate), on: cur === L, what: 'Tint: ' + n, fx: x => { x.tintL = L; x.tint = L > 0; } })) };
+  }
+  function ksNeonPage() {
+    const c = S.car, rate = ksRate(), rows = [{ ic: '⭘', t: 'No underglow', s: 'Take the kit off', price: 0, on: !c.neon, what: 'Underglow off', fx: x => { x.neon = null; } }];
+    for (const [n, hex] of KS_NEON) rows.push({ sw: hex, t: n, s: 'LED strips under the rockers and bumpers', price: Math.round(900 * rate), on: c.neon === hex, what: 'Underglow: ' + n, fx: x => { x.neon = hex; } });
+    return { title: 'Underglow', sub: 'Shows best at night', cam: 'low', rows };
+  }
+  function ksStance() {
+    const c = S.car, t = tuneOf(c), coils = hasPart(c, 'coils'), rate = ksRate(), cp = TUNE_PARTS.coils.price;
+    const rows = KS_STANCE.map(([n, f, r, s]) => { const on = coils ? t.rhF === f && t.rhR === r : !f && !r, price = Math.round((180 + (coils || (!f && !r) ? 0 : cp)) * rate);
+      return { ic: f > 0 && r > 0 ? '⬆️' : f || r ? '⬇️' : '➖', t: n, s: `${s}${f === r ? ` · ${f > 0 ? '+' : ''}${f} cm` : ` · front ${f > 0 ? '+' : ''}${f}, rear ${r} cm`}${!coils && (f || r) ? ` · coilovers ${money(cp * rate)} included` : ''}`, price, on, what: 'Stance: ' + n,
+        fx: x => { if (f || r) { x.tparts = (x.tparts || []).slice(); if (!x.tparts.includes('coils')) x.tparts.push('coils'); } x.tune = Object.assign({}, x.tune, { rhF: f, rhR: r }); } }; });
+    return { title: 'Stance', sub: coils ? 'Coilovers on: pick a height' : 'Any drop comes with coilovers · fine-tune on the tuning laptop', cam: 'stance', rows };
+  }
+  function ksBody() {
+    const c = S.car, LS = lookSet(c), L = c.look || {};
+    const rows = [];
+    if (LS.kits && Object.keys(LS.kits).length) rows.push({ ic: '🏁', t: 'Body kits', s: Object.values(LS.kits).map(k => k[0].split(' ').slice(-2).join(' ')).slice(0, 3).join(', ') + '…', go: ksKits, cam: 'rear' });
+    if (LS.cal && LS.cal.length) rows.push({ sw: L.cal || LS.def.cal, t: 'Brake calipers', s: 'Paint the calipers', go: () => ksLookList('cal'), cam: 'wheel' });
+    if (LS.leather && LS.leather.length) rows.push({ sw: (LS.leather.find(x => x[0] === (L.leather || LS.def.leather)) || [0, '#111'])[1], t: 'Interior leather', s: L.leather || LS.def.leather, go: () => ksLookList('leather'), cam: 'inside' });
+    if (LS.amb && LS.amb.length) rows.push({ sw: L.amb || LS.def.amb, t: 'Ambient lighting', s: 'The light strips inside', go: () => ksLookList('amb'), cam: 'inside' });
+    return { title: 'Body, brakes & interior', sub: carLabel(carOf(c.id)), cam: 'rear', rows };
+  }
+  function ksKits() {
+    const c = S.car, LS = lookSet(c), rate = ksRate();
+    const rows = Object.entries(LS.kits).map(([k, [n, price]]) => { const on = !!(c.kits && c.kits[k]);
+      return { ic: on ? '✅' : '➕', t: n, s: on ? 'Installed: pick it to take it off (free)' : 'Bolt it on', price: on ? 0 : Math.round(price * rate), what: on ? n + ' off' : n, cam: /wing|duck|diff|roof|croof/.test(k) ? 'rear' : /lip|chood|z07/.test(k) ? 'paint' : 'side',
+        fx: x => { x.kits = Object.assign({}, x.kits); if (on) delete x.kits[k]; else x.kits[k] = 1; } }; });
+    return { title: 'Body kits', sub: 'Pick a part to see it on the car', cam: 'rear', rows };
+  }
+  function ksLookList(kind) {
+    const c = S.car, LS = lookSet(c), L = c.look || {}, rate = ksRate();
+    const P = { cal: ['Brake calipers', 650, 'wheel'], leather: ['Interior leather', 3200, 'inside'], amb: ['Ambient lighting', 150, 'inside'] }[kind];
+    const rows = LS[kind].map(e => { const n = e[0], v = kind === 'leather' ? n : e[1], cur = L[kind] || LS.def[kind];
+      return { sw: e[1], t: n, price: Math.round(P[1] * rate), on: cur === v, what: P[0] + ': ' + n, fx: x => { x.look = Object.assign({}, x.look, { [kind]: v }); } }; });
+    return { title: P[0], sub: 'Tap one to see it', cam: P[2], rows };
+  }
+  function ksShop() {
+    const p = KS.p, rows = [
+      { ic: '⚙️', t: 'Engine Lab', s: 'Build, parts, boost, nitrous, ECU, swaps, health', act: () => elOpen('build'), cam: 'engine' },
+      { ic: '💻', t: 'Tuning laptop', s: 'Suspension, alignment, gearing, launch', act: () => openTune(p), cam: 'stance' },
+      { ic: '🏎️', t: 'Drag packs & tires', s: 'Skinnies, slicks, radials, tubs', act: () => openMenu(() => MENUS.drag(p)), cam: 'wheel' },
+      { ic: '🔊', t: 'Car audio', s: 'Subs, amps, door speakers', act: () => openMenu(() => MENUS.audio(p)), cam: 'trunk' },
+      { ic: '🩹', t: 'Repairs & upkeep', s: `Car health ${carHealth(S.car)}%`, act: () => openMenu(() => MENUS.repair(p)), cam: 'overview' }];
+    return { title: 'Workshop', sub: 'Opens on top of the bay; close it to come back', cam: 'engine', rows };
+  }
+
+  // ---- the menu UI ----
+  function ksUI() {
+    if (KS.ui) return KS.ui;
+    const st = document.createElement('style'); st.textContent = `
+body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#parts):not(#tune):not(#engbuild):not(#rimbig):not(#loading):not(script):not(style):not(link) { visibility: hidden !important; }
+#ks { position: fixed; inset: 0; z-index: 7; pointer-events: none; font-family: var(--body); color: var(--fg); }
+#ks[hidden] { display: none; }
+#ks .ks-touch { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
+#ks .ks-top { position: absolute; left: calc(env(safe-area-inset-left, 0px) + 14px); right: calc(env(safe-area-inset-right, 0px) + 14px); top: calc(env(safe-area-inset-top, 0px) + 10px); display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+#ks .ks-brand b { display: block; font-family: var(--display); font-weight: 400; font-size: 22px; letter-spacing: 0.02em; color: #ffb636; text-shadow: -2px 0 #ff3d7f, 2px 0 #36e0ff; line-height: 1.05; }
+#ks .ks-brand span { display: block; font-size: 12px; letter-spacing: 0.32em; color: #e9e2d6; opacity: 0.85; margin-top: 3px; }
+#ks .ks-cash { margin-left: auto; font: 700 20px var(--body); background: rgba(12,10,16,0.78); border: 1px solid rgba(255,182,54,0.45); border-radius: 10px; padding: 4px 12px; color: #7ee08a; }
+#ks .ks-panel { position: absolute; left: calc(env(safe-area-inset-left, 0px) + 10px); top: calc(env(safe-area-inset-top, 0px) + 10px); bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); width: min(330px, 40vw); display: flex; flex-direction: column; pointer-events: auto;
+  background: linear-gradient(180deg, rgba(20,17,26,0.94), rgba(12,10,16,0.94)); border: 1px solid #3a3244; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); transition: transform .25s ease, opacity .25s ease; }
+#ks .ks-panel::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(180deg, #ffb636, #ff3d7f 70%, #36e0ff); }
+#ks.intro .ks-panel, #ks.sub .ks-panel { transform: translateX(-110%); opacity: 0; pointer-events: none; }
+#ks:not(.intro) .ks-brand { display: none; }
+#ks .ks-hd { padding: 8px 12px 6px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+#ks .ks-crumb { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #a89fb2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ks .ks-title { font-family: var(--display); font-size: 17px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ks .ks-subt { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #a89fb2; margin-top: 2px; }
+#ks .ks-list { flex: 1; overflow-y: auto; padding: 6px 8px 8px 12px; -webkit-overflow-scrolling: touch; }
+#ks .ks-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 5px 8px; margin: 2px 0; border: 1px solid transparent; border-radius: 10px; background: rgba(255,255,255,0.03); color: inherit; font: inherit; text-align: left; cursor: pointer; position: relative; }
+#ks .ks-row.sel { background: rgba(255,182,54,0.14); border-color: rgba(255,182,54,0.6); }
+#ks .ks-row.sel::after { content: ''; position: absolute; left: -7px; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: #ffb636; }
+#ks .ks-row.off { opacity: 0.45; }
+#ks .ks-row .ic { flex: 0 0 34px; height: 34px; display: grid; place-items: center; font-size: 20px; border-radius: 9px; background: rgba(255,255,255,0.05); }
+#ks .ks-row i.sw { flex: 0 0 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); box-shadow: inset 0 -6px 10px rgba(0,0,0,0.35), inset 0 4px 8px rgba(255,255,255,0.25); }
+#ks .ks-row img.rp { flex: 0 0 46px; width: 46px; height: 46px; border-radius: 9px; background: radial-gradient(circle at 50% 40%, #3a3f4a, #15171c 72%); object-fit: contain; }
+#ks .ks-row .tx { flex: 1; min-width: 0; }
+#ks .ks-row .tx b { display: block; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ks .ks-row .tx span { display: block; font-size: 13px; color: #a89fb2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ks .ks-row .pr { flex: 0 0 auto; font-weight: 700; font-size: 16px; color: #ffb636; }
+#ks .ks-row .pr.on { color: #7ee08a; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+#ks .ks-row .pr.go { color: #a89fb2; font-size: 22px; }
+#ks .ks-ft { display: flex; gap: 8px; padding: 6px 10px 8px 14px; border-top: 1px solid rgba(255,255,255,0.07); }
+#ks .ks-ft button { flex: 1; min-height: 42px; border-radius: 11px; font: 700 17px var(--body); letter-spacing: 0.04em; cursor: pointer; }
+#ks .ks-back { background: transparent; color: var(--fg); border: 1px solid #4a4256; }
+#ks .ks-buy { background: #ffb636; color: #16121c; border: 0; }
+#ks .ks-buy:disabled { background: #3a3444; color: #a89fb2; }
+#ks .ks-ft kbd { font: 700 12px var(--body); border-radius: 50%; padding: 1px 6px; margin-right: 6px; background: rgba(0,0,0,0.25); display: none; }
+#ks.pad .ks-ft kbd { display: inline-block; }
+#ks .ks-hint { position: absolute; right: calc(env(safe-area-inset-right, 0px) + 14px); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); font-size: 13px; color: #d8d0e2; background: rgba(12,10,16,0.6); border-radius: 8px; padding: 4px 10px; pointer-events: none; }
+#ks .ks-skip { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); transform: translateX(-50%); font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; color: #e9e2d6; opacity: 0.8; pointer-events: none; display: none; }
+#ks.intro .ks-skip { display: block; } #ks.intro .ks-hint { display: none; }
+#ks .ks-flash { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.9); font-family: var(--display); font-size: 30px; color: #ffb636; text-shadow: -2px 0 #ff3d7f, 2px 0 #36e0ff, 0 4px 18px rgba(0,0,0,0.7); opacity: 0; pointer-events: none; transition: opacity .2s, transform .35s; white-space: nowrap; }
+#ks .ks-flash.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+@media (orientation: portrait) {
+  #ks .ks-panel { top: auto; left: calc(env(safe-area-inset-left, 0px) + 8px); right: calc(env(safe-area-inset-right, 0px) + 8px); width: auto; height: 46vh; }
+  #ks.intro .ks-panel, #ks.sub .ks-panel { transform: translateY(110%); }
+  #ks .ks-hint { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 62px); }
+}`;
+    document.head.appendChild(st);
+    const el = KS.ui = document.createElement('div'); el.id = 'ks'; el.hidden = true;
+    el.innerHTML = `<div class="ks-touch"></div><div class="ks-top"><div class="ks-brand"><b></b><span>CUSTOM BAY</span></div><div class="ks-cash"></div></div>
+<div class="ks-panel"><div class="ks-hd"><div class="ks-crumb"></div><div class="ks-title"></div><div class="ks-subt"></div></div><div class="ks-list"></div>
+<div class="ks-ft"><button class="ks-back"><kbd>B</kbd>Back</button><button class="ks-buy"><kbd>A</kbd>Buy</button></div></div>
+<div class="ks-hint">Drag to look around</div><div class="ks-skip">Tap to skip</div><div class="ks-flash"></div>`;
+    document.body.appendChild(el);
+    const q = s => el.querySelector(s);
+    q('.ks-list').addEventListener('click', e => { const b = e.target.closest('.ks-row'); if (!b) return; const i = +b.dataset.i; if (i === KS.sel || KS.rows[i].go || KS.rows[i].act) { KS.sel = i; ksActivate(); } else ksSelect(i); });
+    q('.ks-back').addEventListener('click', ksBack); q('.ks-buy').addEventListener('click', ksActivate);
+    // drag the empty part of the screen to orbit; pinch or the mouse wheel to zoom; a tap during the intro skips it
+    const T = q('.ks-touch');
+    T.addEventListener('pointerdown', e => { KS.drags.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY }); if (KS.drags.size === 2) { const [a, b] = [...KS.drags.values()]; KS.pinch = Math.hypot(a.x - b.x, a.y - b.y); } try { T.setPointerCapture(e.pointerId); } catch (er) {} });
+    T.addEventListener('pointermove', e => { const d = KS.drags.get(e.pointerId); if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y; d.x = e.clientX; d.y = e.clientY;
+      if (KS.drags.size >= 2) { const [a, b] = [...KS.drags.values()], n = Math.hypot(a.x - b.x, a.y - b.y); if (KS.pinch) KS.zoom = clamp(KS.zoom * KS.pinch / Math.max(1, n), 0.55, 1.8); KS.pinch = n; }
+      else { KS.uAz -= dx * 0.0085; KS.uEl = clamp(KS.uEl + dy * 0.005, -0.25, 1.0); } KS.idle = 0; });
+    const up = e => { const d = KS.drags.get(e.pointerId); KS.drags.delete(e.pointerId); if (KS.drags.size < 2) KS.pinch = 0; if (d && KS.phase !== 'menu' && KS.phase !== 'out' && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 12) ksSkip(); };
+    T.addEventListener('pointerup', up); T.addEventListener('pointercancel', up);
+    T.addEventListener('wheel', e => { e.preventDefault(); KS.zoom = clamp(KS.zoom * (1 + Math.sign(e.deltaY) * 0.08), 0.55, 1.8); KS.idle = 0; }, { passive: false });
+    // keyboard: arrows move, Enter buys, Esc / Backspace go back, left/right turn the camera
+    addEventListener('keydown', e => {
+      if (!KS.on || KS.sub || e.target.tagName === 'INPUT') return; const k = e.code; let used = true;
+      if (k === 'ArrowUp' || k === 'KeyW') ksMove(-1); else if (k === 'ArrowDown' || k === 'KeyS') ksMove(1);
+      else if (k === 'Enter' || k === 'Space' || k === 'KeyE') { if (KS.phase === 'menu') ksActivate(); else ksSkip(); }
+      else if (k === 'Escape' || k === 'Backspace') ksBack();
+      else if (k === 'ArrowLeft' || k === 'KeyA') { KS.uAz += 0.35; KS.idle = 0; } else if (k === 'ArrowRight' || k === 'KeyD') { KS.uAz -= 0.35; KS.idle = 0; }
+      else if (k === 'PageUp' || k === 'KeyQ') ksCat(-1); else if (k === 'PageDown' || k === 'KeyR') ksCat(1);
+      else used = false;
+      if (used) { e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+    return el;
+  }
+  function ksRender() {
+    const el = ksUI(), pg = KS.page = KS.stack[KS.stack.length - 1](), q = s => el.querySelector(s);
+    KS.rows = pg.rows; if (KS.sel >= KS.rows.length) KS.sel = Math.max(0, KS.rows.length - 1);
+    q('.ks-brand b').textContent = (KS.p.name || 'Custom bay').replace(/ \(.*\)$/, '');
+    q('.ks-cash').textContent = money(S.cash);
+    q('.ks-crumb').textContent = KS.stack.length > 1 ? KS.stack.slice(0, -1).map(f => f === ksHome ? 'Bay' : (KS.titles.get(f) || '')).filter(Boolean).join(' › ') : 'Custom bay · Murda Worth';
+    KS.titles.set(KS.stack[KS.stack.length - 1], pg.title);
+    q('.ks-title').textContent = pg.title; q('.ks-subt').textContent = pg.sub || '';
+    const list = q('.ks-list'), keep = list.dataset.k === pg.title ? list.scrollTop : 0; list.dataset.k = pg.title;
+    list.innerHTML = KS.rows.map((r, i) => {
+      const vis = r.img ? `<img class="rp${r.img.u ? ' on' : ''}" data-rp="${esc(r.img.k)}" src="${r.img.u || RIMPIC_BLANK}" alt="">` : r.sw ? `<i class="sw" style="background:${esc(r.sw)}"></i>` : `<span class="ic">${r.ic || '•'}</span>`;
+      const pr = r.on ? '<span class="pr on">✓ On</span>' : r.go ? `<span class="pr go">${r.tag ? `<small style="font-size:13px;color:#ffb636">${esc(r.tag)}</small> ` : ''}›</span>` : r.pick || r.act ? '' : r.gain ? `<span class="pr">+${money(r.gain)}</span>` : r.price != null ? `<span class="pr">${r.price ? money(r.price) : 'Free'}</span>` : '';
+      return `<button class="ks-row${i === KS.sel ? ' sel' : ''}${r.off ? ' off' : ''}" data-i="${i}">${vis}<span class="tx"><b>${esc(r.t)}</b>${r.s ? `<span>${esc(r.s)}</span>` : ''}</span>${pr}</button>`;
+    }).join('');
+    list.scrollTop = keep; ksSelect(KS.sel, true);
+  }
+  function ksSelect(i, quiet) {
+    KS.sel = clamp(i, 0, KS.rows.length - 1); const el = KS.ui, r = KS.rows[KS.sel]; if (!r) return;
+    el.querySelectorAll('.ks-row').forEach((b, j) => b.classList.toggle('sel', j === KS.sel));
+    const b = el.querySelector(`.ks-row[data-i="${KS.sel}"]`); if (b && !quiet) b.scrollIntoView({ block: 'nearest' });
+    const buy = el.querySelector('.ks-buy');
+    buy.disabled = !!r.off || (!!r.on && !r.pick);
+    buy.innerHTML = '<kbd>A</kbd>' + (r.go || r.act ? 'Open' : r.pick ? (r.on ? 'Picked' : 'Pick') : r.on ? 'On your car' : r.gain ? 'Sell ' + money(r.gain) : r.price ? 'Buy ' + money(r.price) : 'Do it');
+    el.querySelector('.ks-back').innerHTML = '<kbd>B</kbd>' + (KS.stack.length > 1 ? 'Back' : 'Drive out');
+    ksShot(r.cam || KS.page.cam || 'overview'); ksPreview();
+  }
+  function ksMove(d) { if (KS.phase !== 'menu' || !KS.rows.length) return; let i = KS.sel; for (let n = 0; n < KS.rows.length; n++) { i = (i + d + KS.rows.length) % KS.rows.length; if (!KS.rows[i].off) break; } ksSelect(i); }
+  // LB / RB: hop to the next section without backing out
+  function ksCat(d) {
+    if (KS.phase !== 'menu') return; const home = ksHome().rows.filter(r => r.go);
+    const cur = KS.stack[1] ? home.findIndex(r => r.go === KS.stack[1]) : -1, nx = home[(cur + d + home.length + (cur < 0 && d > 0 ? 0 : 0)) % home.length];
+    KS.stack = [ksHome, nx.go]; KS.sel = 0; KS.uAz = KS.uEl = 0; ksRender();
+  }
+  function ksShot(k) { if (KS.shot === k) return; KS.shot = k; KS.uAz = 0; KS.uEl = 0; KS.zoom = 1; const want = (KS_SHOTS[k] || {}).open || ''; if (want !== KS.open && KS.model) { for (const kd of ['doors', 'hood', 'trunk']) setPanels(KS.model, kd, kd === want); KS.open = want; } }
+  function ksPreview() {
+    if (!S.car || !KS.model) return; const r = KS.rows[KS.sel], P = ksCopy(S.car);
+    if (r && !r.off) { if (r.pv) r.pv(P); else if (r.fx && !r.on) r.fx(P); }
+    KS.P = P; ksApplyModel(P);
+  }
+  function ksApplyModel(P) {
+    const m = KS.model; if (!m || !P) return;
+    if (m.userData.paint) m.userData.paint.color.copy(lin(P.color));
+    applyDrag(m, P);
+    // ride height (the same numbers the physics reads); wheels stay on the ground
+    let ride = 0; try { const T = tunePerf(P); ride = ((T.rideF || 0) + (T.rideR || 0)) / 2; } catch (e) {}
+    const d = ride - KS.ride; if (Math.abs(d) > 1e-5) { m.position.y += d; for (const w of m.userData.wheels) w.position.y -= d; KS.ride = ride; }
+  }
+  function ksActivate() {
+    if (!KS.on || KS.phase !== 'menu') return; const r = KS.rows[KS.sel]; if (!r || r.off) return;
+    if (r.go) { KS.stack.push(r.go); KS.sel = 0; ksRender(); return; }
+    if (r.act) { r.act(); KS.subT = performance.now(); return; }
+    if (r.pick) { r.pick(); if (r.stay) { ksRender(); return; } KS.stack.pop(); ksRender(); return; }
+    if (r.on) { toast('Already on your car.'); return; }
+    const c = S.car; if (r.price && !spend(r.price, r.what || r.t)) return;
+    r.fx(c); if (r.gain) earn(r.gain, r.what || r.t);
+    if (car && car.userData.body) car.userData.body.color.copy(lin(c.color));
+    rimRefresh(c); dragRefresh(c); save(); refreshStats();
+    ksFlash(r.gain ? 'SOLD' : r.price ? 'INSTALLED' : 'DONE'); toast(`${r.what || r.t}. Looks right.`, 'good');
+    ksRender();
+  }
+  function ksFlash(t) { const f = KS.ui.querySelector('.ks-flash'); f.textContent = t; f.classList.add('on'); clearTimeout(KS.flash); KS.flash = setTimeout(() => f.classList.remove('on'), 1100); }
+  function ksBack() {
+    if (!KS.on) return; if (KS.phase !== 'menu') { ksSkip(); return; }
+    if (KS.stack.length > 1) { const top = KS.stack.pop(); const home = KS.stack[KS.stack.length - 1](); KS.sel = Math.max(0, home.rows.findIndex(r => r.go === top)); ksRender(); return; }
+    ksLeave();
+  }
+
+  // ---- in and out ----
+  function ksCan(p) { return !!(p && KS_TYPES.has(p.type) && S.car && driving && !foot.on && !inside && !STRIP.on && !ROLL.on && car && !(typeof RIDE !== 'undefined' && RIDE.with)); }
+  function ksOpen(p) {
+    if (!ksCan(p)) return false;
+    closeMenu(); showCard(null); drv.v = 0; drv.gas = 0;
+    KS.p = p; KS.stack = [ksHome]; KS.sel = 0; KS.titles = new Map(); KS.matte = null; KS.dia = null; KS.fin = null; KS.tire = null; KS.ride = 0; KS.open = ''; KS.shot = ''; KS.uAz = KS.uEl = 0; KS.zoom = 1; KS.sub = false;
+    ksBuild(p);
+    KS.slot = putCar(KS.root, S.car.id, S.car.color, m => {
+      KS.model = m; m.position.y = 0; try { const b = audioBuild(S.car); setCarAudio(m, b.subs.id, b.doors.id); applyMotor(m, S.car); } catch (e) {}
+      KS.ride = 0; ksApplyModel(KS.P || ksCopy(S.car)); if (KS.phase === 'menu') ksRender();
+    });
+    KS.root.position.set(0, 0.08, 13.5); KS.root.rotation.y = 0; KS.disc.rotation.y = 0; KS.door.position.y = KS.door.userData.h * 1.5;
+    KS.phase = 'in'; KS.t = 0; KS.last = 0; KS.on = true; KS.exp = renderer.toneMappingExposure; renderer.toneMappingExposure = 1.0;
+    KS.camPos.set(-4.6, 1.55, -5.2); KS.camLook.set(0, 0.8, 8);
+    const el = ksUI(); el.hidden = false; el.classList.add('intro'); el.classList.remove('sub'); el.querySelector('.ks-brand b').textContent = (p.name || '').replace(/ \(.*\)$/, ''); el.querySelector('.ks-cash').textContent = money(S.cash);
+    document.body.classList.add('ks-on'); KS.key = ksKey();
+    return true;
+  }
+  function ksSkip() {
+    if (KS.phase === 'in' || KS.phase === 'shut' || KS.phase === 'spin') { KS.root.position.z = 0; KS.root.rotation.y = Math.PI; KS.disc.rotation.y = Math.PI; KS.door.position.y = KS.door.userData.h / 2; ksMenu(); }
+  }
+  function ksMenu() { KS.phase = 'menu'; KS.t = 0; KS.ui.classList.remove('intro'); KS.shot = ''; ksRender(); }
+  function ksLeave() { if (KS.phase === 'out') return; KS.phase = 'out'; KS.t = 0; KS.ui.classList.add('intro'); KS.ui.querySelector('.ks-skip').textContent = ''; if (KS.model) for (const kd of ['doors', 'hood', 'trunk']) setPanels(KS.model, kd, false); }
+  function ksFinish() {
+    const p = KS.p; KS.on = false; KS.phase = ''; KS.ui.hidden = true; KS.ui.querySelector('.ks-skip').textContent = 'Tap to skip'; document.body.classList.remove('ks-on');
+    renderer.toneMappingExposure = KS.exp; ksDispose();
+    if (p && driving) { const [ox, oz] = outDir(p); const r = nearestRoad(p.x + ox * 12, p.z + oz * 12); if (r) { drv.x = r.x + (r.horiz ? 0 : r.e.w / 4); drv.z = r.z + (r.horiz ? r.e.w / 4 : 0); drv.yaw = r.horiz ? Math.PI / 2 : 0; drv.v = 0; drv.cam.set(drv.x + Math.sin(drv.yaw) * 14, 7, drv.z + Math.cos(drv.yaw) * 14); } }
+    save(); refreshStats(); showCard(null);
+  }
+  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.engX]) : ''; };
+  const ksEase = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const _ksA = new THREE.Vector3(), _ksB = new THREE.Vector3(), _ksW = new THREE.Vector3();
+  function ksStep(dt) {
+    // real time (the frame loop caps dt at 50 ms, so a slow frame would stretch the intro out)
+    const now = performance.now(); dt = Math.min(0.25, Math.max(0, (now - (KS.last || now)) / 1000)); KS.last = now;
+    KS.t += dt; KS.f++; const m = KS.model, R = KS.root, door = KS.door, dh = door.userData.h;
+    if (!S.car) { ksFinish(); return; }
+    // the intro: roll in, door down, turntable spins it round; the exit: door up, drive out
+    if (KS.phase === 'in') { const k = Math.min(1, KS.t / 2.4), z = 13.5 * Math.pow(1 - k, 2.2), dz = R.position.z - z; R.position.z = z; if (m) spinWheels(m, dz); if (k >= 1) { KS.phase = 'shut'; KS.t = 0; } }
+    else if (KS.phase === 'shut') { const k = Math.min(1, KS.t / 1.0); door.position.y = dh * 1.5 - dh * ksEase(k); if (k >= 1) { KS.phase = 'spin'; KS.t = 0; } }
+    else if (KS.phase === 'spin') { const k = Math.min(1, KS.t / 1.7); R.rotation.y = Math.PI * ksEase(k); KS.disc.rotation.y = R.rotation.y; if (k >= 1) ksMenu(); }
+    else if (KS.phase === 'out') {
+      const k1 = Math.min(1, KS.t / 0.9); door.position.y = dh / 2 + dh * ksEase(k1);
+      if (KS.t > 0.9) { const k = Math.min(1, (KS.t - 0.9) / 1.6), z = 14 * k * k, dz = z - R.position.z; R.position.z = z; if (m) spinWheels(m, dz); if (k >= 1) { ksFinish(); return; } }
+    }
+    KS.ring.color.setHSL(0.11, 1, KS.phase === 'spin' ? 0.5 + 0.2 * Math.sin(KS.t * 18) : 0.58);
+    if (m) stepPanels(m, dt);
+    // overlays (Engine Lab, tuning laptop, drag packs, audio, repairs) open on top of the bay; when they close, refresh
+    if (now - (KS.chk || 0) > 150 && KS.phase === 'menu') { KS.chk = now;
+      const open = KS_OVER.some(id => { const e = document.getElementById(id); return e && !e.hidden && e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none'; });
+      if (open !== KS.sub) { KS.sub = open; KS.ui.classList.toggle('sub', open); if (!open) ksRender(); }
+      const k = ksKey(); if (k !== KS.key) { KS.key = k; if (m && (m.userData.paint && S.car)) { applyMotor(m, S.car); const b = audioBuild(S.car); setCarAudio(m, b.subs.id, b.doors.id); } if (!KS.sub) ksRender(); else ksPreview(); }
+      KS.ui.querySelector('.ks-cash').textContent = money(S.cash);
+    }
+    ksPad(dt);
+    // the camera: each part has its framing; drag / right stick orbits it; it drifts slowly round when you leave it
+    const asp = innerWidth / Math.max(1, innerHeight), cam = KS.cam; cam.aspect = asp; cam.fov = asp < 0.8 ? 58 : 42;
+    let want = _ksA, look = _ksB;
+    if (KS.phase === 'in' || KS.phase === 'shut') { want.set(-4.4, 1.5, -5.4); look.set(R.position.x, 0.75, R.position.z); }
+    else if (KS.phase === 'out') { want.set(4.2, 1.5, -4.6); look.set(0, 0.8, R.position.z); }
+    else {
+      const S0 = KS_SHOTS[KS.phase === 'spin' ? 'overview' : KS.shot] || KS_SHOTS.overview, U = m && m.userData, yaw = R.rotation.y;
+      if (KS.phase === 'menu' && KS.stack.length === 1 && !KS.sub) { KS.idle += dt; if (KS.idle > 5 && !KS.drags.size) KS.uAz += dt * 0.12; }
+      const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);   // car forward and right, in the room
+      const len = U ? U.len : 4.8, cz = U ? -U.front + U.len / 2 : 0;
+      let tx = R.position.x + fx * (-cz), tz = R.position.z + fz * (-cz), ty = S0.ty || 0.75;
+      if (S0.tx) { tx += fx * S0.tx * len / 2; tz += fz * S0.tx * len / 2; }
+      let az = S0.az * Math.PI / 180;
+      if (S0.wheel && U) {   // the front wheel on the side the shot looks from
+        let best = null, bs = -1e9; for (const w of U.wheels) { w.getWorldPosition(_ksW); const s = (_ksW.x - tx) * fx + (_ksW.z - tz) * fz + ((_ksW.x - tx) * rx + (_ksW.z - tz) * rz) * 0.3; if (s > bs) { bs = s; best = _ksW.clone(); } }
+        if (best) { tx = best.x; tz = best.z; ty = best.y; }
+      }
+      az += KS.uAz; const el = clamp(S0.el * Math.PI / 180 + KS.uEl, -0.05, 1.25), d = (S0.abs ? S0.d : S0.d * len) * KS.zoom * (asp < 0.8 ? 1.25 : 1);
+      const dx = fx * Math.cos(az) + rx * Math.sin(az), dz = fz * Math.cos(az) + rz * Math.sin(az);
+      want.set(tx + dx * d * Math.cos(el), ty + d * Math.sin(el), tz + dz * d * Math.cos(el)); look.set(tx, ty, tz);
+      want.x = clamp(want.x, -KS_W / 2 + 0.35, KS_W / 2 - 0.35); want.z = clamp(want.z, -KS_D / 2 + 0.35, KS_D / 2 - 0.35); want.y = clamp(want.y, 0.22, KS_H - 0.3);
+    }
+    const k = 1 - Math.exp(-dt * (KS.phase === 'menu' ? 5 : 3));
+    KS.camPos.lerp(want, k); KS.camLook.lerp(look, 1 - Math.exp(-dt * 6)); cam.position.copy(KS.camPos); cam.lookAt(KS.camLook);
+    // push the car into the open part of the screen (beside the panel in landscape, above the sheet in portrait)
+    const pn = KS.ui.querySelector('.ks-panel'), showP = KS.phase === 'menu' && !KS.sub;
+    if ((KS.f & 15) === 1) { const b = pn.getBoundingClientRect(); KS.offT.x = showP && asp >= 0.8 ? (b.right) / 2 : 0; KS.offT.y = showP && asp < 0.8 ? (innerHeight - b.top) / 2 : 0; }
+    KS.off.x += (KS.offT.x - KS.off.x) * Math.min(1, dt * 6); KS.off.y += (KS.offT.y - KS.off.y) * Math.min(1, dt * 6);
+    const w = innerWidth, h = innerHeight; if (Math.abs(KS.off.x) + Math.abs(KS.off.y) > 0.5) cam.setViewOffset(w, h, -KS.off.x, KS.off.y, w, h); else cam.clearViewOffset();
+    cam.updateProjectionMatrix();
+    renderer.shadowMap.needsUpdate = true;
+  }
+  // Xbox / standard pad: D-pad or left stick moves, A buys / opens, B backs out, LB / RB jump sections, right stick and triggers move the camera
+  function ksPad(dt) {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : []; let p = null; for (const x of pads) if (x && x.connected !== false) { p = x; break; } if (!p) return;
+    const b = i => !!(p.buttons[i] && p.buttons[i].pressed), v = i => (p.buttons[i] ? p.buttons[i].value : 0), ay = p.axes[1] || 0;
+    const now = { a: b(0), b: b(1), lb: b(4), rb: b(5), up: b(12) || ay < -0.6, dn: b(13) || ay > 0.6 }, pr = KS.pad;
+    const any = now.a || now.b || now.lb || now.rb || now.up || now.dn || Math.abs(p.axes[2] || 0) > 0.2 || Math.abs(p.axes[3] || 0) > 0.2;
+    if (any && !KS.padUsed) { KS.padUsed = true; KS.ui.classList.add('pad'); KS.ui.querySelector('.ks-hint').textContent = 'Ⓐ Buy · Ⓑ Back · LB/RB Section · Right stick Look · LT/RT Zoom'; }
+    if (KS.sub) { if (now.b && !pr.b) { const mn = document.getElementById('menu'); if (mn && !mn.hidden) closeMenu(); else { const tu = document.getElementById('tune'); if (tu && !tu.hidden) closeTune(); else { const el = document.getElementById('englab'); const x = el && el.querySelector('[data-x]'); if (x) x.click(); } } } KS.pad = now; return; }
+    if (now.a && !pr.a) { if (KS.phase === 'menu') ksActivate(); else ksSkip(); }
+    if (now.b && !pr.b) ksBack();
+    if (now.lb && !pr.lb) ksCat(-1); if (now.rb && !pr.rb) ksCat(1);
+    const dir = now.up ? -1 : now.dn ? 1 : 0;
+    if (dir) { if (!(pr.up || pr.dn)) { ksMove(dir); KS.padRep = 0.38; } else { KS.padRep -= dt; if (KS.padRep <= 0) { ksMove(dir); KS.padRep = 0.11; } } }
+    const rx = p.axes[2] || 0, ry = p.axes[3] || 0;
+    if (Math.abs(rx) > 0.15) { KS.uAz -= rx * dt * 1.9; KS.idle = 0; } if (Math.abs(ry) > 0.15) { KS.uEl = clamp(KS.uEl + ry * dt * 1.1, -0.25, 1.0); KS.idle = 0; }
+    const zt = v(7) - v(6); if (Math.abs(zt) > 0.1) KS.zoom = clamp(KS.zoom * (1 - zt * dt * 0.9), 0.55, 1.8);
+    KS.pad = now;
+  }
+  // pulling in at one of these shops in your own car drives into the bay; "Walk in" still takes you inside on foot
+  const _ksPullIn = pullIn;
+  pullIn = function () { const p = cardPlace; if (ksCan(p) && ksOpen(p)) return; return _ksPullIn.apply(this, arguments); };
+  const _ksShowCard = showCard;
+  showCard = function (p, mode) {
+    const r = _ksShowCard.apply(this, arguments);
+    try {
+      if (p && mode === 'near' && ksCan(p)) {
+        const act = document.getElementById('c-act'), go = act.querySelector('.btn.go');
+        if (go && !act.querySelector('[data-ks]')) { go.innerHTML = 'Drive into the bay'; const w = btn('Walk in', () => { drv.v = 0; enterInterior(p); }); w.dataset.ks = '1'; act.append(w); }
+      }
+    } catch (e) {}
+    return r;
+  };
+  window.__ks = { KS, KS_SHOTS, ksOpen, ksSkip, ksLeave, ksActivate, ksMove, ksSelect, ksBack, ksCat, ksHome, ksPaint, ksWheels, ksTintPage, ksNeonPage, ksStance, ksBody, ksShop, ksCan, ksTintOf, places: () => DATA.P, gpu: () => Object.assign({}, renderer.info.memory) };
+  // ==== drive-in custom bay (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
@@ -26823,6 +27359,7 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
     const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); resize(); }
     const incar = driving && !foot.on && !inside; if (incar !== bc.contains('incar')) bc.toggle('incar', incar); if (inside !== bc.contains('indoors')) bc.toggle('indoors', inside);
     cockpitFrame(dt);
+    if (KS.on) { ksStep(dt); if (KS.on && KS.scene) { renderer.render(KS.scene, KS.cam); return; } }
     if (STRIP.on) { stepStrip(dt); renderer.render(STRIP.scene, STRIP.cam); return; }
     if (ROLL.on) { stepRoll(dt); renderer.render(ROLL.scene, ROLL.cam); return; }
     if (creating) { crStep(dt); renderer.render(CR.scene, CR.cam); return; }
