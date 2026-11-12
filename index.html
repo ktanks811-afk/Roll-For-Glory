@@ -15109,7 +15109,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     const w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return;
     const dpr = Math.min(2, devicePixelRatio || 1);
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
-    const P = carPerf(), ev = isEV(c), red = gbRed(c), tmax = red <= 4500 ? 6000 : red > 7500 ? 9000 : 8000, topMph = P.top * 2.237, smax = topMph < 150 ? 160 : topMph < 190 ? 200 : 240;
+    const P = carPerf(), ev = isEV(c), red = gbRed(c), tmax = red <= 4500 ? 6000 : red > 9500 ? Math.ceil((red + 1500) / 1000) * 1000 : red > 7500 ? 9000 : 8000, topMph = P.top * 2.237, smax = topMph < 150 ? 160 : topMph < 190 ? 200 : 240;
     const key = [w, h, dpr, tmax, smax, red, ev].join();
     if (key !== CLU.key) { CLU.key = key; CLU.bg = clBackground(w, h, dpr, tmax, smax, red, ev); }
     const g = cv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(CLU.bg.cv, 0, 0); g.scale(dpr, dpr);
@@ -26850,6 +26850,948 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   };
   window.__ks = { KS, KS_SHOTS, ksOpen, ksSkip, ksLeave, ksActivate, ksMove, ksSelect, ksBack, ksCat, ksHome, ksPaint, ksWheels, ksTintPage, ksNeonPage, ksStance, ksBody, ksShop, ksCan, ksTintOf, places: () => DATA.P, gpu: () => Object.assign({}, renderer.info.memory) };
   // ==== drive-in custom bay (end) ====
+  // ==== motorcycles (_moto.js): real two-wheel physics for every bike, the 2025 Suzuki Hayabusa hero build (moving
+  // chassis, rider on the bars and pegs, S.I.R.S. electronics, TFT), and the Moto Shop. Bikes used to ride on the car
+  // simulation with the body leaned for looks; now a bike is its own vehicle: two tires, a lean you countersteer into,
+  // wheelies and stoppies that come from the weight transfer, crashes when you ask for more than the rubber has ====
+  (() => {
+  // ===== motorcycle dynamics core (pure: no game globals) =====
+  // Bike frame: x forward, y left, z up. Lean phi > 0 leans left, yaw rate r > 0 turns left. Pitch th > 0 is nose up
+  // (a wheelie, pivoting on the rear contact patch); th < 0 is a stoppie (pivoting on the front patch).
+  // Everything here is the real thing at one 1/240 s step: two tires with combined slip (push and turn share one grip
+  // budget) and camber thrust, the bike as an inverted pendulum on its contact line steered by the rider (who has to
+  // countersteer to get it to lean), pitch about either patch when a wheel comes off the ground, the engine through
+  // clutch + six-speed + chain, and the rider aids (traction control, wheelie control, launch control, ABS, quickshifter).
+  const MOTO = (() => {
+    const G9 = 9.81, RPM = 30 / Math.PI, RHO = 1.2;
+    const clamp = (x, a, b) => x < a ? a : x > b ? b : x, lerp = (a, b, t) => a + (b - a) * t;
+    const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+    // the tire: Pacejka-like shape on the combined slip vector, camber thrust as an equivalent slip angle
+    const TB = 2.33, TC = 1.35, TBC = TB * TC;
+    const _o = { x: 0, y: 0 };
+    function tire(T, mu, Fz, kap, tanA, gam, o) {
+      if (Fz <= 0) { o.x = 0; o.y = 0; return o; }
+      const aCam = T.kc * Math.tan(clamp(gam, -1.2, 1.2)) * T.ap / (mu * TBC);
+      const sx = kap / T.kp, sy = (-Math.atan(tanA) + aCam) / T.ap, rho = Math.sqrt(sx * sx + sy * sy);
+      const k = rho < 1e-6 ? TBC : Math.sin(TC * Math.atan(TB * rho)) / rho;
+      o.x = mu * Fz * k * sx * (T.lx || 1); o.y = mu * Fz * k * sy * (T.ly || 1); return o;
+    }
+    // the tread warms with the work it does and the air cools it; each compound has its window
+    const gripT = (T, t) => { const d = t < T.t0 ? (T.t0 - t) / T.wC : t > T.t1 ? (t - T.t1) / T.wH : 0; return clamp(1 - T.cold * Math.min(1, d * d), 0.55, 1); };
+
+    function init(B, u) {
+      const st = { bike: true, u: u || 0, v: 0, r: 0, phi: 0, phid: 0, th: 0, thd: 0, wF: (u || 0) / B.rF, wR: (u || 0) / B.rR, we: B.idle / RPM, g: 1, e: 0, lock: false,
+        delta: 0, aS: 0, zF: 0, zR: 0, zFv: 0, zRv: 0, tw: [28, 28], tc: 1, wc: 1, thr: 0, cut: false, lim: false, shT: 0, shDir: 0, aLat: 0, ax: 0, kapR: 0, kapF: 0, alR: 0, alF: 0, FzF: 0, FzR: 0,
+        absF: 1, absR: 1, rearSlideT: 0, crash: null, lcOn: false, lever: 0, leverT: 0, iA: 0, tcAct: 0, wcAct: 0, absAct: 0, slipR: 0, slipF: 0, steerT: 0, cruise: 0, nos: 0 };
+      if (Math.abs(u) > 1) { let g = 1; for (let i = 0; i < B.gears.length; i++) { const n = u / B.rR * B.N(i + 1) * RPM; if (n < B.red * 0.8) { g = i + 1; break; } g = i + 1; } st.g = g; st.we = Math.max(B.idle, u / B.rR * B.N(g) * RPM) / RPM; st.lock = true; st.e = 1; }
+      return st;
+    }
+    // one step. I: { thr, brkF, brkR, steer (-1..1, + left), lever (clutch lever 0..1), gear (manual) or null, up, dn, lc }
+    // env: { mu (surface), drag (cdA), tq(rpm) wide open crank torque N·m, Tf(rpm) friction torque }
+    function step(B, st, I, h, env) {
+      const m = B.m, W = m * G9, L = B.L, a = B.a, b = B.b, hc = B.h;
+      let u = st.u, v = st.v, r = st.r;
+      const spd = Math.hypot(u, v), mu0 = env.mu;
+      // ---- the rider's inputs through the electronics ----
+      const md = B.modes[B.mode] || B.modes.A;
+      let gas = clamp(I.thr || 0, 0, 1);
+      if (st.cruise > 0 && !(I.brkF > 0.05 || I.brkR > 0.05)) { if (gas < 0.05) gas = clamp(0.25 + (st.cruise - u) * 0.25, 0, 0.9); else if (gas > 0.05) st.cruise = 0; }
+      else if (I.brkF > 0.05 || I.brkR > 0.05) st.cruise = 0;
+      const want = Math.pow(gas, md.curve) * md.pow;
+      st.thr += (want - st.thr) * Math.min(1, h * (want > st.thr ? md.rise : 14));
+      // ---- the gearbox: sequential, with or without the quickshifter; auto picks for you if you want ----
+      const N = g => g > 0 ? B.N(g) : 0;
+      st.shT = Math.max(0, st.shT - h);
+      let shift = 0;
+      if (I.gear != null) { if (I.gear !== st.g && st.shT <= 0) shift = I.gear - st.g; }
+      else if (st.shT <= 0 && !st.crash) {
+        const nR = Math.abs(st.wR) * RPM, upAt = lerp(B.red * 0.55, B.red * 0.975, Math.pow(st.thr, 0.8)), dnAt = lerp(B.red * 0.28, B.red * 0.5, st.thr);
+        if (st.g < B.gears.length && nR * N(st.g) > upAt && st.lock && u > 2) shift = 1;
+        else if (st.g > 1 && nR * N(st.g) < dnAt && nR * N(st.g - 1) < B.red * 0.85) shift = -1;
+        if (u < 1.2 && st.g > 1 && !st.lock) shift = 1 - st.g;
+      }
+      if (shift) {
+        const qs = B.qs && (shift > 0 ? st.thr > 0.15 : true) && Math.abs(shift) === 1;
+        st.g = clamp(st.g + shift, 0, B.gears.length); st.shDir = shift;
+        st.shT = qs ? (shift > 0 ? B.qsT : B.qsT * 1.4) : B.shiftT; st.qs = qs;
+        if (!qs) { st.lock = false; st.e = 0; }
+        if (qs && shift < 0 && st.lock) st.we = Math.min(B.red * 1.05 / RPM, Math.abs(st.wR) * N(st.g));   // auto-blip: the revs come up to meet the lower gear
+        if (qs && shift > 0 && st.lock) st.we = Math.abs(st.wR) * N(st.g);
+      }
+      const Ng = N(st.g), cutQS = st.shT > 0 && st.qs, shifting = st.shT > 0 && !st.qs;
+      // ---- the clutch: the lever, the launch and the auto clutch (bites off the line by rpm like a rider feathering it) ----
+      const ne = st.we * RPM, lever = clamp(I.lever || 0, 0, 1);
+      if (lever > 0.5) { st.leverT = 0.0001; st.lock = false; st.e = 0; }
+      else if (st.leverT > 0) { st.leverT += h; st.e = Math.min(1, st.e + h / B.dumpT); if (st.e >= 1) st.leverT = 0; }
+      else if (shifting) { st.e = 0; st.lock = false; }
+      else if (!st.lock && Ng) {
+        const stopped = Math.abs(st.wR) * Ng * RPM < B.idle * 1.2, bite = B.bite + B.biteW * Math.pow(gas, 0.8);
+        const eR = gas > 0.04 ? clamp((ne - (bite - 2600)) / 2600, 0, 1) * clamp(gas * 3, 0, 1) : 0;
+        if (stopped) { st.e = eR; st.eRoll = 0; }
+        // rolling: a rider keeps slipping it while the revs are still well above the wheel (a bog never locks it up low)
+        else { const ratio = clamp(Math.abs(st.wR) * Ng / Math.max(st.we, 1), 0, 1); st.eRoll = Math.min(1, (st.eRoll || 0) + h / 0.7); st.e = Math.min(st.e + h / 0.12, Math.max(eR, ratio * ratio * ratio, st.eRoll, gas < 0.04 ? 1 : 0)); }
+      }
+      if (!Ng) { st.lock = false; }
+      if (st.lock && ne < B.idle * 0.75) { st.lock = false; st.e = 0; }   // it would stall: the clutch comes in
+      // ---- the motor ----
+      if (ne > B.red) st.lim = true; else if (ne < B.red - 220) st.lim = false;
+      const vlim = B.vmax && u > B.vmax; if (vlim) st.vcut = true; else if (u < B.vmax - 0.5) st.vcut = false;
+      let thrE = st.thr;
+      const lcActive = I.lc && B.lc && Math.abs(u) < 12 && st.g <= 1;
+      st.lcOn = !!lcActive;
+      if (lcActive && Math.abs(u) < 1) thrE = Math.min(thrE, clamp((B.lcRpm + 150 - ne) / 300, 0, 1));
+      const idl = B.idle; if (ne < idl * 1.25 && !st.crash) thrE = Math.max(thrE, clamp(0.03 + (idl - ne) * 0.0006, 0, 0.3));
+      if (st.lim || st.vcut || cutQS) thrE = Math.min(thrE, st.lim ? 0 : st.vcut ? 0.15 : 0);
+      st.cut = !!(st.lim || (cutQS && st.shDir > 0));
+      // traction control: rear slip against the tire's peak (allowed slip falls with lean: an IMU system)
+      const lean = Math.abs(st.phi);
+      if (B.tc > 0 && u > 1.5) {
+        const sl = (st.wR * B.rR - u) / Math.max(u, 4), kt = B.tyR.kp * (1.45 - 0.1 * B.tc) * (1 - 0.45 * Math.sin(lean)), e = (sl - kt) / kt;
+        st.tc = clamp(st.tc + h * (e > 0 ? -e * (6 + B.tc) : (1 - st.tc) * 3), 0.08, 1); st.tcAct = st.tc < 0.97 ? 1 : 0;
+      } else { st.tc = Math.min(1, st.tc + h * 4); st.tcAct = 0; }
+      // wheelie control (anti-lift): holds the front within a few degrees of the ground at its level
+      if (B.wc > 0 && st.th > 0) {
+        const thA = (11 - B.wc) * 0.011, cut = clamp((st.th - thA) * 9 + st.thd * 1.6, 0, 1);
+        st.wc = Math.min(st.wc, 1 - cut); st.wcAct = cut > 0.02 ? 1 : 0;
+      } else st.wcAct = 0;
+      st.wc = Math.min(1, st.wc + h * 2.5);
+      thrE *= Math.min(st.tc, st.wc);
+      const tq = env.tq(ne) * (st.nosK || 1), Tf = env.Tf(ne) * B.ebc;
+      let Te = thrE * tq - (1 - thrE) * Tf;
+      if (st.crash) Te = -Tf;
+      // ---- loads: weight transfer through the suspension (lag ~0.07 s); a wheel off the ground carries nothing ----
+      st.aS += (st.ax - st.aS) * Math.min(1, h / 0.07);
+      let FzF, FzR;
+      if (st.th > 0) { FzF = 0; FzR = W; }
+      else if (st.th < 0) { FzR = 0; FzF = W; }
+      else { FzF = W * b / L - m * st.aS * hc / L - 0.25 * RHO * B.clF * u * u; FzR = W - FzF; }
+      const liftF = FzF < 0 && st.th === 0, liftR = FzR < 0 && st.th === 0;
+      FzF = Math.max(0, FzF); FzR = Math.max(0, FzR); st.FzF = FzF; st.FzR = FzR;
+      // ---- the tires ----
+      const tF = B.tyF, tR = B.tyR, gF = gripT(tF, st.tw[0]), gR = gripT(tR, st.tw[1]);
+      const muF = tF.mu * mu0 * gF * clamp(1 - 0.08 * (FzF / (W * 0.5) - 1), 0.82, 1.1), muR = tR.mu * mu0 * gR * clamp(1 - 0.08 * (FzR / (W * 0.5) - 1), 0.82, 1.1);
+      const dg = st.delta * B.cosRake, cd = Math.cos(dg), sd = Math.sin(dg);
+      const uF = u, vF = v + a * r, lngF = uF * cd + vF * sd, latF = -uF * sd + vF * cd, denF = Math.max(Math.abs(lngF), 1.5);
+      const lngR = u, latR = v - b * r, denR = Math.max(Math.abs(lngR), 1.5);
+      const tanAF = latF / Math.max(Math.abs(lngF), 2), tanAR = latR / Math.max(Math.abs(lngR), 2);
+      const gam = st.phi;
+      // ---- the driveline: the rear wheel, the clutch and the engine solved together (linearised tire, implicit) ----
+      const kF = (st.wF * B.rF - lngF) / denF, kR = (st.wR * B.rR - lngR) / denR;
+      tire(tF, muF, FzF, kF, tanAF, gam, _o); const FxF0 = _o.x;
+      tire(tF, muF, FzF, kF + 0.004, tanAF, gam, _o); const kxF = Math.max(0, (_o.x - FxF0) / 0.004) * B.rF / denF;
+      tire(tR, muR, FzR, kR, tanAR, gam, _o); const FxR0 = _o.x;
+      tire(tR, muR, FzR, kR + 0.004, tanAR, gam, _o); const kxR = Math.max(0, (_o.x - FxR0) / 0.004) * B.rR / denR;
+      // brakes, with ABS (lean-sensitive) and rear lift mitigation
+      let TbF = clamp(I.brkF || 0, 0, 1) * B.brkF, TbR = clamp(I.brkR || 0, 0, 1) * B.brkR;
+      if (B.abs && u > 1.5) {
+        const sF = -kF / tF.kp, sR = -kR / tR.kp;
+        st.absF = clamp(st.absF + h * (sF > 1.15 ? -60 : sF > 0.85 ? 0 : 10), 0.05, 1); st.absR = clamp(st.absR + h * (sR > 1.15 ? -60 : sR > 0.85 ? 0 : 10), 0.05, 1);
+        if (st.th < -0.01 || (FzR < W * 0.06 && TbF > 0)) st.absF = Math.min(st.absF, clamp(1 - (-st.th) * 25 - (FzR < W * 0.06 ? 0.3 : 0), 0.2, 1));   // rear lift mitigation
+        TbF *= st.absF; TbR *= st.absR; st.absAct = st.absF < 0.95 || st.absR < 0.95 ? 1 : 0;
+      } else { st.absF = st.absR = 1; st.absAct = 0; }
+      const eta = 0.95;
+      let Tc = 0;
+      const locked = st.lock && Ng > 0;
+      if (locked) {
+        const Ieff = B.IwR + eta * B.Ie * Ng * Ng, y = h * (eta * Ng * Te - B.rR * FxR0);
+        st.wR += y / (Ieff + h * B.rR * kxR);
+        st.we = st.wR * Ng; Tc = Te;
+        // slipper clutch: hard engine braking that would lock the rear lets the clutch slip
+        if (Te < 0 && kR < -B.slipK * tR.kp) { st.lock = false; st.e = 0.35; }
+        // more torque than the clutch holds: it slips
+        if (Math.abs(Te) > B.clCap * 1.02) st.lock = false;
+      } else {
+        const cap = B.clCap * st.e * (B.tc > 0 ? st.tc : 1) * (B.wc > 0 ? st.wc : 1), dW = st.we - Ng * st.wR;
+        Tc = Ng > 0 && st.e > 0 ? cap * Math.sign(dW || 1) : 0;
+        if (Ng > 0 && Math.abs(dW) < 1e-3) Tc = 0;
+        const y = h * (eta * Ng * Tc - B.rR * FxR0);
+        st.wR += y / (B.IwR + h * B.rR * kxR);
+        const we0 = st.we; st.we = Math.max(0, st.we + h * (Te - Tc) / B.Ie);
+        if (Ng > 0 && st.e > 0.97 && Math.sign(we0 - Ng * st.wR) !== Math.sign(st.we - Ng * st.wR)) { st.lock = true; st.we = Ng * st.wR; }
+        if (Ng > 0 && st.e > 0.97 && Math.abs(st.we - Ng * st.wR) < 3) { st.lock = true; st.we = Ng * st.wR; }
+      }
+      st.wF += h * (-B.rF * FxF0) / (B.IwF + h * B.rF * kxF);
+      // brakes clamp the spin toward zero
+      const brakeTo0 = (w, Tb, I0, kx, R) => { const dmax = h * Tb / (I0 + h * R * kx); return Math.abs(w) <= dmax ? 0 : w - Math.sign(w) * dmax; };
+      if (TbF > 0) st.wF = brakeTo0(st.wF, TbF, B.IwF, kxF, B.rF);
+      if (TbR > 0) { const I0 = locked ? B.IwR + eta * B.Ie * Ng * Ng : B.IwR; st.wR = brakeTo0(st.wR, TbR, I0, kxR, B.rR); if (locked) st.we = st.wR * Ng; }
+      if (st.we * RPM < 300 && !st.crash) st.we = 300 / RPM;
+      // ---- forces at the new spin ----
+      const kF2 = (st.wF * B.rF - lngF) / denF, kR2 = (st.wR * B.rR - lngR) / denR;
+      tire(tF, muF, FzF, kF2, tanAF, gam, _o); const FxF = _o.x, FyF = _o.y;
+      tire(tR, muR, FzR, kR2, tanAR, gam, _o); const FxR = _o.x, FyR = _o.y;
+      st.useF = FzF > 1 ? Math.hypot(FxF, FyF) / (muF * FzF) : 0; st.useR = FzR > 1 ? Math.hypot(FxR, FyR) / (muR * FzR) : 0;
+      st.kapF = kF2; st.kapR = kR2; st.alF = Math.atan(tanAF); st.alR = Math.atan(tanAR);
+      const bxF = FxF * cd - FyF * sd, byF = FxF * sd + FyF * cd;
+      const air = 0.5 * RHO * env.drag * u * Math.abs(u), roll = B.crr * W * clamp(u / 0.5, -1, 1);
+      const Fx = bxF + FxR - air - roll, Fy = byF + FyR, Mz = a * byF - b * FyR;
+      // tread heat (J into the rubber, out to the air)
+      for (const [i, Fxw, Fyw, sl, la, T, Fz] of [[0, FxF, FyF, st.wF * B.rF - lngF, latF, tF, FzF], [1, FxR, FyR, st.wR * B.rR - lngR, latR, tR, FzR]]) {
+        const Q = Math.abs(Fxw * sl) + (spd > 2 ? Math.abs(Fyw * la) : 0) + Fz * 0.012 * spd;
+        st.tw[i] += h * (Q * T.heat - 4.2 * (1 + 0.05 * Math.abs(u)) * (st.tw[i] - env.amb)) / 900;
+      }
+      st.slipF = Math.hypot(st.wF * B.rF - lngF, spd > 2 ? latF : 0); st.slipR = Math.hypot(st.wR * B.rR - lngR, spd > 2 ? latR : 0);
+      // ---- the chassis in plane: forward, sideways, yaw ----
+      let du = Fx / m, dv = Fy / m;
+      const Iz = B.Iz, dr = Mz / Iz;
+      u += (du + r * v) * h; v += (dv - r * u) * h; r += dr * h;
+      // the rider's feet and the low-speed balance: under walking pace the bike follows its front wheel
+      const kin = 1 - sstep(2.2, 5.5, Math.abs(u));
+      if (kin > 0) { const rk = u * Math.tan(dg) / L; r += (rk - r) * kin * Math.min(1, h * 25); v *= 1 - kin * Math.min(1, h * 20); }
+      if (Math.abs(u) < 0.05 && !gas && (I.brkF > 0 || I.brkR > 0)) { u = 0; v *= 0.5; }
+      st.ax = du; st.aLat = dv + 0;   // the side force over mass is the lateral acceleration the pendulum feels
+      // ---- lean: the bike is an inverted pendulum on its contact line; the rider steers to balance it ----
+      const Ir = B.Ir, H = B.IwF * st.wF + B.IwR * st.wR, aLat = Fy / m;
+      // the rider: picks a lean for the turn asked for and steers (countersteers) to get there
+      const vmax = clamp(Math.abs(u), 0, 80);
+      const phiMax = Math.min(B.leanMax - 0.04, Math.atan(0.84 * Math.min(muF, muR))) * lerp(0.35, 1, sstep(3, 14, vmax));
+      let phiT = clamp(I.steer || 0, -1, 1) * phiMax;
+      if (st.th > 0.25) phiT *= 0.3;
+      const use = Math.max(st.useF || 0, st.useR || 0); if (use > 0.9) phiT *= clamp(1 - (use - 0.9) * 4, 0.4, 1);
+      // a rider rolls it in at their own pace (quicker at low speed), not all at once
+      const rate = B.rollRate * lerp(1.6, 1, sstep(8, 30, Math.abs(u)));
+      st.phiT = (st.phiT || 0) + clamp(phiT - (st.phiT || 0), -rate * h, rate * h);
+      const hs = sstep(25, 80, Math.abs(u)), e = st.phi - st.phiT, kp = B.kp * lerp(1, 0.4, hs), kd = B.kd * lerp(1, 0.8, hs);
+      const ad = (G9 * Math.sin(st.phi) + (Ir / (m * hc)) * (kp * e + kd * st.phid) + H * r / (m * hc)) / Math.max(0.3, Math.cos(st.phi));
+      let dl;
+      if (Math.abs(u) > 1) {
+        // the turn that lean needs is a yaw rate (a_lat / u); steer for it (kinematic feed-forward) and trim on the yaw rate
+        // the gyro feels, the way a rider's hands do. Leaning in first means steering the other way first: countersteer
+        const uu = Math.max(2, Math.abs(u)), rd = ad / uu, kr = 3 * L / uu;
+        st.iA = clamp(st.iA + h * (rd - r) * 7 * kr, -0.08, 0.08);
+        dl = (rd * L / uu + kr * (rd - r) + st.iA) / B.cosRake;
+      } else dl = 0;
+      // low speed: the bars turn straight from the input
+      const dLow = clamp(I.steer || 0, -1, 1) * B.lock * (1 - sstep(1, 6, Math.abs(u)) * 0.85);
+      dl = lerp(dl, dLow, kin);
+      if (st.th > 0) dl = clamp(I.steer || 0, -1, 1) * 0.1;   // front in the air: the bars just flop with the input
+      dl = clamp(dl, -B.lock, B.lock);
+      // the steering itself has a rate (a rider's arms, the steering damper)
+      const dRate = B.dRate * (1 + 3 * kin);
+      st.delta += clamp(dl - st.delta, -dRate * h, dRate * h);
+      // the pendulum
+      let phidd = (m * hc * (G9 * Math.sin(st.phi) - aLat * Math.cos(st.phi)) - H * r * Math.cos(st.phi) - B.cRoll * st.phid) / Ir;
+      if (kin > 0) { const pk = Math.atan(u * r / G9); phidd = lerp(phidd, (pk - st.phi) * 60 - st.phid * 14, kin); }
+      st.phid += phidd * h; st.phi += st.phid * h;
+      // ---- pitch: wheelies and stoppies are the weight transfer overcoming the weight on that end ----
+      const axNow = du;
+      if (st.th === 0) {
+        if (liftF && axNow > 0) { st.th = 1e-4; st.thd = 0; }
+        else if (liftR && axNow < 0) { st.th = -1e-4; st.thd = 0; }
+      }
+      if (st.th > 0) {
+        const c = Math.cos(st.th), s = Math.sin(st.th), xg = b * c - hc * s, yg = b * s + hc * c;
+        const Ic = B.Ip + m * (b * b + hc * hc), thdd = (m * axNow * yg - m * G9 * xg - 18 * st.thd) / Ic;
+        st.thd += thdd * h; st.th += st.thd * h;
+        if (st.th <= 0) { st.zFv -= Math.max(0, -st.thd) * 1.6; st.th = 0; st.thd = 0; st.landT = 0.3; }
+      } else if (st.th < 0) {
+        const p = -st.th, c = Math.cos(p), s = Math.sin(p), xg = a * c - hc * s, yg = a * s + hc * c;
+        const Ic = B.Ip + m * (a * a + hc * hc), pdd = (m * (-axNow) * yg - m * G9 * xg - 18 * (-st.thd)) / Ic;
+        st.thd -= pdd * h; st.th += st.thd * h;
+        if (st.th >= 0) { st.zRv -= Math.max(0, st.thd) * 1.2; st.th = 0; st.thd = 0; }
+      }
+      // ---- the suspension (what you see: fork dive, the shock squatting); compression > 0 ----
+      const sF0 = W * b / L, sR0 = W * a / L;
+      const fF = (st.th > 0 ? 0 : FzF) - sF0, fR = (st.th < 0 ? 0 : FzR) - sR0;
+      st.zFv += h * (fF - B.kSF * st.zF - B.cSF * st.zFv) / (m * 0.32); st.zF += h * st.zFv;
+      st.zRv += h * (fR - B.kSR * st.zR - B.cSR * st.zRv) / (m * 0.4); st.zR += h * st.zRv;
+      if (st.zF > 0.075) { st.zF = 0.075; st.zFv = Math.min(0, st.zFv); } if (st.zF < -0.04) { st.zF = -0.04; st.zFv = Math.max(0, st.zFv); }
+      if (st.zR > 0.07) { st.zR = 0.07; st.zRv = Math.min(0, st.zRv); } if (st.zR < -0.035) { st.zR = -0.035; st.zRv = Math.max(0, st.zRv); }
+      // ---- going down: past the grip (lowside), off the edge of a wheelie (loop), over the bars, or a slide that hooks up (highside) ----
+      if (!st.crash) {
+        if (Math.abs(st.phi) > B.leanMax + 0.12 && Math.abs(u) > 1) st.crash = { kind: 'low', t: 0, side: Math.sign(st.phi) };
+        else if (st.th > B.loop) st.crash = { kind: 'loop', t: 0, side: 1 };
+        else if (st.th < -0.85) st.crash = { kind: 'over', t: 0, side: 1 };
+        else {
+          const slide = Math.abs(st.alR) > 0.32 && Math.abs(u) > 10;
+          if (slide) st.rearSlideT += h; else { if (st.rearSlideT > 0.12 && Math.abs(st.alR) < 0.08 && Math.abs(st.phi) > 0.35) st.crash = { kind: 'high', t: 0, side: -Math.sign(st.phi) }; st.rearSlideT = Math.max(0, st.rearSlideT - h * 3); }
+        }
+        if (st.crash) st.crash.u0 = u;
+      }
+      st.u = u; st.v = v; st.r = r;
+      return st;
+    }
+    // the crashed bike sliding on its side
+    function slide(B, st, h) {
+      const c = st.crash; c.t += h;
+      const sp = Math.hypot(st.u, st.v); if (sp > 0.01) { const k = Math.max(0, sp - 0.55 * G9 * h) / sp; st.u *= k; st.v *= k; }
+      st.r *= Math.exp(-h * 1.2); st.wF *= Math.exp(-h * 0.8); st.wR *= Math.exp(-h * 0.8); st.we = Math.max(0, st.we - h * 400);
+      const tgt = c.side * 1.38; st.phid += ((tgt - st.phi) * 30 - st.phid * 6) * h; st.phi += st.phid * h;
+      if (st.th !== 0) { st.thd += (-st.th * 20 - st.thd * 4) * h; st.th += st.thd * h; if (Math.abs(st.th) < 0.01) st.th = 0; }
+      st.delta *= Math.exp(-h * 3); st.thr = 0; st.ax = 0;
+      return st;
+    }
+    return { init, step, slide, tire, gripT, G9, RPM };
+  })();
+
+
+  const MT_RPM = 30 / Math.PI, MT_DEG = Math.PI / 180;
+  // the Hayabusa joins the powersports list (the 2022 Gen 3 rides the same model)
+  RIDES.unshift(Object.assign({}, RIDE_BY.suzuki_hayabusa_2022, { id: 'suzuki_hayabusa_2025', y: 2025, model: 'Hayabusa', trim: 'GSX1300R', msrp: 19599, kg: 264, color: '#050506', lim: 186, redline: 11000 }));
+  RIDE_BY.suzuki_hayabusa_2025 = RIDES[0];
+  const MT_ALIAS = { suzuki_hayabusa_2022: 'suzuki_hayabusa_2025' };
+  const _mtPut = putCar;
+  putCar = function (parent, id, color, then) { return _mtPut.call(this, parent, MT_ALIAS[id] || id, color, then); };
+  // its motor: the real 1340 (81 x 65 mm, 12.5:1, 188 hp at 9,700, 150 N·m at 7,000), so the sound and the dyno are the Busa's
+  ENG_DB.hayabusa = { name: 'Suzuki Hayabusa 1340 (Gen 3 GSX1300R)', fam: 'busa', vt: 'dohc', cyl: 4, bore: 3.189, stroke: 2.559, cr: 12.5, fo: 'i4', red: 11000, idle: 1150, Ie: 0.045,
+    cam: { dI: 236, dE: 232, lI: 0.37, lE: 0.33, lsa: 110, icl: 106 }, head: 120, valve: 1.3, tb: 520, fuel: 'port', inj: 0, pump: 0, fuelHp: 240, intake: 'stock', exh: 'moto', hdr: 'manifold',
+    hp: 188, nP: 9700, tq: 150, nT: 7000, note: '1340 cc DOHC 16-valve inline-4, 81 x 65 mm ✓, 12.5:1 ✓, 188 hp @ 9,700 ✓, 150 N·m @ 7,000 ✓, 43 mm throttle bodies' };
+  STOCK_ENG.suzuki_hayabusa_2025 = STOCK_ENG.suzuki_hayabusa_2022 = 'hayabusa';
+
+  // ---------- the chassis numbers: the Hayabusa from Suzuki's sheet, every other bike from its catalog entry ----------
+  // gears: primary x each gear x final (front/rear sprocket); the Busa: 1.596 primary, 2.615/1.937/1.526/1.285/1.136/1.043, 17/43
+  const MT_GEO = {
+    suzuki_hayabusa_2025: { kg: 264, wb: 1.48, frF: 0.48, h: 0.66, rF: 0.30, rR: 0.311, rake: 23, prim: 1.596, gears: [2.615, 1.937, 1.526, 1.285, 1.136, 1.043], spr: [17, 43],
+      vmax: 83.06, lean: 0.94, cdA: 0.31, cdUp: 0.43, brkF: 1600, brkR: 450, lc: true, qs: true, abs: true, modes: true, Ie: 0.045, hero: true },
+  };
+  MT_GEO.suzuki_hayabusa_2022 = MT_GEO.suzuki_hayabusa_2025;
+  function mtGeo(c) {
+    if (MT_GEO[c.id]) return MT_GEO[c.id];
+    const r = rideOf(c), cr = r.kind === 'cruiser', kg = r.kg > 380 && !cr ? r.kg * 0.8 : r.kg, lim = r.lim / 2.237;
+    const gears = cr ? [3.34, 2.31, 1.72, 1.39, 1.18, 1.0] : [2.6, 2.05, 1.7, 1.45, 1.3, 1.18], prim = cr ? 1.0 : 1.65, red = r.redline || 11000;
+    const fin = red / MT_RPM / (lim * 1.06 / (cr ? 0.33 : 0.31)) / (prim * gears[5]), t = Math.round(fin * 16);
+    return (MT_GEO[c.id] = { kg, wb: cr ? 1.62 : r.hp < 80 ? 1.37 : 1.42, frF: cr ? 0.45 : 0.5, h: cr ? 0.58 : 0.63, rF: cr ? 0.32 : 0.3, rR: cr ? 0.33 : 0.31, rake: cr ? 30 : 24, prim, gears, spr: [16, t],
+      vmax: 0, lean: cr ? 0.55 : r.hp < 80 ? 0.85 : 0.96, cdA: cr ? 0.55 : 0.34, cdUp: cr ? 0.6 : 0.45, brkF: cr ? 1100 : 1400, brkR: cr ? 600 : 400, lc: r.hp > 180, qs: r.hp > 180, abs: (r.y || 2015) >= 2014, modes: r.hp > 180, Ie: cr ? 0.12 : 0.05 });
+  }
+  // the tires you can run: each its grip, how fast it warms and the window it works in; drag radials hook straight and not sideways
+  const MT_TIRES = {
+    street: { name: 'Bridgestone Battlax S22 (sport street)', price: 420, mu: [1.22, 1.28], t0: 20, t1: 95, cold: 0.1, heat: 0.3, blurb: 'Warms in a block, grips cold and in the rain, wears slow' },
+    perf: { name: 'Pirelli Diablo Rosso IV (performance)', price: 520, mu: [1.27, 1.34], t0: 40, t1: 100, cold: 0.16, heat: 0.27, blurb: 'More bite at full lean once warm, a little sketchy cold' },
+    track: { name: 'Pirelli Diablo Supercorsa SP (track)', price: 640, mu: [1.33, 1.42], t0: 70, t1: 115, cold: 0.3, heat: 0.24, blurb: 'Sticky as glue at temperature, slick and dangerous cold. Warm them up' },
+    drag: { name: 'Shinko Hook-Up drag radial (rear) + Rosso IV (front)', price: 690, mu: [1.27, 1.62], t0: 45, t1: 110, cold: 0.2, heat: 0.35, lx: 1, ly: 0.62, blurb: 'Hooks hard straight up the strip; turns like a brick and hates corners' },
+  };
+  // the Moto Shop's parts: each changes a physical input (power, mass, inertia, geometry, grip), and the numbers stay real
+  const MT_PARTS = {
+    ecu: { name: 'ECU flash', cat: 'perf', opts: { stock: ['Factory map', 0], flash: ['Woolich Racing flash (186 mph limiter off, +500 rpm, sharper map)', 650] } },
+    intake: { name: 'Air filter / intake', cat: 'perf', opts: { stock: ['Factory paper filter', 0], filter: ['K&N high-flow filter', 120], ram: ['BMC race filter + ram-air snorkels', 380] } },
+    exh: { name: 'Exhaust', cat: 'perf', opts: { stock: ['Factory twin cans', 0], akra: ['Akrapovič titanium slip-ons', 1690], yosh: ['Yoshimura Alpha T slip-ons', 1240], scp: ['SC-Project CR-T slip-ons', 1390], full: ['Akrapovič Racing Line full titanium system (headers + cans)', 4290] } },
+    cams: { name: 'Cams', cat: 'perf', opts: { stock: ['Factory cams', 0], s1: ['Web Cam stage 1 (more up top)', 980] } },
+    inj: { name: 'Injectors + fuel', cat: 'perf', opts: { stock: ['Factory injectors', 0], hi: ['Injector Dynamics high-flow set + pump', 890] } },
+    eng: { name: 'Engine internals', cat: 'perf', opts: { stock: ['Factory 1340', 0], bb: ['1441 cc big-bore kit (Wiseco pistons, head work)', 4200], st: ['1647 cc stroker (billet crank, rods, pistons)', 9800] } },
+    turbo: { name: 'Turbo', cat: 'perf', opts: { none: ['Naturally aspirated', 0], t1: ['Turbo kit, 8 psi (needs the flash + injectors)', 7900], t2: ['Turbo kit, 16 psi (needs internals too)', 11900] } },
+    nos: { name: 'Nitrous', cat: 'perf', opts: { none: ['None', 0], n50: ['Wet 50-shot kit (hold NOS)', 1150], n100: ['Wet 100-shot kit (hold NOS)', 1450] } },
+    spr: { name: 'Gearing (front / rear sprocket)', cat: 'perf', opts: { stock: ['17 / 43 factory', 0], s16: ['16 / 43 (shorter, hits harder)', 160], s45: ['17 / 46 (drag gearing)', 190], s18: ['18 / 43 (taller, top speed)', 160] } },
+    low: { name: 'Lowering link', cat: 'chassis', opts: { stock: ['Factory link', 0], l1: ['1 in. lowering link', 160], l2: ['2 in. lowering link', 180], l3: ['3 in. drag link', 210] } },
+    arm: { name: 'Swingarm', cat: 'chassis', opts: { stock: ['Factory swingarm', 0], a2: ['+2 in. extended', 1350], a4: ['+4 in. extended', 1450], a6: ['+6 in. extended', 1550], a10: ['+10 in. drag arm', 2400] } },
+    susp: { name: 'Suspension', cat: 'chassis', opts: { stock: ['KYB fork + shock (factory)', 0], ohl: ['Öhlins NIX30 cartridges + TTX shock', 4300] } },
+    brakes: { name: 'Brakes', cat: 'chassis', opts: { stock: ['Brembo Stylema, 320 mm discs (factory)', 0], rcs: ['Brembo RCS19 master + T-Drive 330 mm discs', 2650] } },
+    wheels: { name: 'Wheels', cat: 'chassis', opts: { stock: ['Cast aluminium (factory)', 0], forged: ['Marchesini forged magnesium (lighter, quicker steering)', 4600] } },
+    strap: { name: 'Front straps', cat: 'chassis', opts: { off: ['None', 0], on: ['Drag straps (front down 1.5 in.)', 60] } },
+  };
+  const MT_EL0 = { mode: 'A', tc: 4, wc: 5, lc: 2, qs: 1, ebc: 2, abs: 1 };
+  function mtOf(c) { const o = c.moto || (c.moto = {}); o.p = o.p || {}; o.el = Object.assign({}, MT_EL0, o.el || {}); o.tire = o.tire || 'street'; return o; }
+  const mtP = (c, k) => mtOf(c).p[k] || Object.keys(MT_PARTS[k].opts)[0];
+  // power: what each part does to the motor's torque at a given rpm (real-world dyno gains on a Gen 3)
+  function mtPowK(c, n, red) {
+    let k = 1; const p = k2 => mtP(c, k2);
+    if (p('ecu') === 'flash') k *= 1.04 + 0.03 * clamp((n - 6000) / 4000, 0, 1);
+    if (p('intake') === 'filter') k *= 1.012; if (p('intake') === 'ram') k *= 1.015 * (p('ecu') === 'flash' ? 1.008 : 0.995);
+    const ex = p('exh'); if (ex === 'akra' || ex === 'yosh') k *= 1.02; if (ex === 'scp') k *= 1.025; if (ex === 'full') k *= 1.03 + (p('ecu') === 'flash' ? 0.02 : 0) * clamp((n - 5000) / 5000, 0, 1);
+    if (p('cams') === 's1') k *= 1 - 0.04 * clamp((5500 - n) / 3000, 0, 1) + 0.05 * clamp((n - 7000) / 3500, 0, 1);
+    const e = p('eng'); if (e === 'bb') k *= 1.1; if (e === 'st') k *= 1.24 - 0.04 * clamp((n - 8000) / 3000, 0, 1);
+    return k;
+  }
+  const mtWet = c => { const n = mtP(c, 'nos'); return n === 'n50' ? 50 : n === 'n100' ? 100 : 0; };
+  const mtBoost = c => { const t = mtP(c, 'turbo'); return t === 't1' ? 8 : t === 't2' ? 16 : 0; };
+  // what's missing for a part (the shop won't let you hurt the motor)
+  function mtNeeds(c, k, v) {
+    if (k === 'turbo' && v !== 'none') { const n = []; if (mtP(c, 'ecu') !== 'flash') n.push('the ECU flash'); if (mtP(c, 'inj') !== 'hi') n.push('the high-flow injectors'); if (v === 't2' && mtP(c, 'eng') === 'stock') n.push('built internals'); return n; }
+    if (k === 'nos' && v === 'n100' && mtP(c, 'inj') !== 'hi') return ['the high-flow injectors'];
+    if (k === 'eng' && v !== 'stock' && mtP(c, 'ecu') !== 'flash') return ['the ECU flash'];
+    if (k === 'exh' && v === 'full' && mtP(c, 'ecu') !== 'flash') return ['the ECU flash (a full system runs lean without it)'];
+    return [];
+  }
+  // ---------- the bike the physics rides: geometry, masses, tires, the parts, the electronics (cached per build) ----------
+  const MT_CACHE = new Map();
+  function bikeSpec(c) {
+    const o = mtOf(c), key = c.id + JSON.stringify(o) + Math.round(c.cond.tires / 5) + Math.round(c.cond.engine / 5) + (c.fuel > 0 ? 1 : 0); let B = MT_CACHE.get(key); if (B) return B;
+    const g = mtGeo(c), p = k => mtP(c, k), el = o.el, rd = rideOf(c);
+    // the hero runs its own modelled motor; any other bike gets a sport-bike curve from its sheet (peak power near the redline), not a car motor
+    const EM = g.hero ? engOf(c) : null, red0 = EM ? EM.red : (rd && rd.redline) || 11000;
+    const gen = EM ? null : { red: red0, pk: ((rd && rd.hp) || 120) * 745.7 / (0.9 * red0 / MT_RPM) };
+    const lowIn = { stock: 0, l1: 1, l2: 2, l3: 3 }[p('low')], armIn = { stock: 0, a2: 2, a4: 4, a6: 6, a10: 10 }[p('arm')], strap = p('strap') === 'on' ? 1.5 : 0;
+    const exKg = { stock: 0, akra: -6, yosh: -5, scp: -7, full: -12 }[p('exh')] + (p('wheels') === 'forged' ? -4.5 : 0) + (p('turbo') !== 'none' ? 14 : 0) + (p('nos') !== 'none' ? 6 : 0) + (p('arm') !== 'stock' ? 1.5 + armIn * 0.4 : 0);
+    const m = g.kg + exKg + 80, L = g.wb + armIn * 0.0254, h = g.h - lowIn * 0.0254 * 0.45 - strap * 0.0254 * 0.35;
+    // the CG doesn't move with a longer arm: the rear axle does (b grows, so it takes more to lift the front)
+    const b = g.frF * g.wb + armIn * 0.0254, a = L - b;
+    const T0 = MT_TIRES[o.tire] || MT_TIRES.street, wear = 0.82 + 0.18 * clamp(c.cond.tires / 100, 0, 1), suK = p('susp') === 'ohl' ? 1.03 : 1;
+    const ty = (i) => ({ mu: T0.mu[i] * wear * suK, kp: i ? 0.1 : 0.09, ap: i ? 0.12 : 0.11, kc: 0.85, heat: T0.heat, t0: T0.t0, t1: T0.t1, wC: 40, wH: 30, cold: T0.cold, lx: i ? T0.lx || 1 : 1, ly: i ? T0.ly || 1 : 1 });
+    const sprF = { stock: g.spr[0], s16: g.spr[0] - 1, s45: g.spr[0], s18: g.spr[0] + 1 }[p('spr')], sprR = p('spr') === 's45' ? g.spr[1] + 3 : g.spr[1], fin = sprR / sprF;
+    const flash = p('ecu') === 'flash', red = red0 + (flash && g.hero ? 500 : 0), wl = p('wheels') === 'forged' ? 0.72 : 1;
+    const modeOK = g.modes, md = el.mode;
+    B = { id: c.id, hero: !!g.hero, m, L, a, b, h, rF: g.rF, rR: g.rR, gears: g.gears, fin, prim: g.prim, N: gi => g.prim * g.gears[gi - 1] * fin, red, gen, idle: EM ? EM.idle : 1200, Ie: g.Ie, IwF: 0.6 * wl, IwR: 1.0 * wl,
+      clCap: (EM ? EM.tq : gen.pk * 1.25) * 1.6 * (mtP(c, 'eng') !== 'stock' || mtBoost(c) ? 1.35 : 1), bite: 2200, biteW: 4800, dumpT: 0.12,
+      brkF: g.brkF * (p('brakes') === 'rcs' ? 1.15 : 1), brkR: g.brkR, tyF: ty(0), tyR: ty(1), Ip: m * 0.17, Ir: m * h * h + 22, Iz: m * 0.16 * (L / 1.48) ** 2,
+      cRoll: 30, kp: 16, kd: 9, rollRate: 1.5 * (1.48 / L), dRate: 2.5, lock: 0.52, leanMax: Math.max(0.6, g.lean - lowIn * 0.035 - strap * 0.02), loop: Math.atan2(b, h) + 0.32,
+      cosRake: Math.cos(g.rake * MT_DEG), kSF: 23500 * (p('susp') === 'ohl' ? 1.08 : 1), cSF: 1900 * (p('susp') === 'ohl' ? 1.2 : 1), kSR: 25000, cSR: 2000, crr: 0.015, clF: 0,
+      vmax: flash ? 0 : g.vmax, slipK: 1.5, ebc: [1.2, 1, 0.75, 0.5][el.ebc || 0], qs: g.qs && !!el.qs, qsT: 0.055, shiftT: 0.22, lc: g.lc && el.lc > 0, lcRpm: [0, 4500, 6000, 7500][el.lc] || 6000,
+      mode: modeOK ? md : 'A', modes: { A: { pow: 1, curve: 1, rise: 12 }, B: { pow: 1, curve: 1.5, rise: 6 }, C: { pow: 0.72, curve: 1.6, rise: 4 } },
+      tc: el.tc || 0, wc: el.wc || 0, abs: g.abs && el.abs !== 0, cdA: g.cdA, cdUp: g.cdUp, boost: mtBoost(c), wet: mtWet(c), alive: c.fuel > 0, engK: 0.55 + 0.45 * clamp(c.cond.engine / 100, 0, 1), EM, c };
+    // what the rest of the game reads (gauges, gearbox, strip timers): a vehicle object that looks like a car's
+    const Rr = [g.rF, g.rF, g.rR, g.rR], man = g.gears.map(x => x * g.prim);
+    B.V = { id: c.id, bike: true, m, kg: g.kg, L, R: Rr, red, idle: B.idle, Ie: B.Ie, ev: false, drive: 'R', man, auto: man, fd: fin, fdMan: fin, T: [B.tyF, B.tyF, B.tyR, B.tyR], tcAvail: g.lc, lcRpm: B.lcRpm, E: { tab: EM && EM.tab, tstep: EM && EM.step, hp: EM ? EM.hp : (rd && rd.hp) || 120, tq: EM ? EM.tq : Math.round(gen.pk), red, pkW: (EM ? EM.hp : (rd && rd.hp) || 120) * 745.7 } };
+    // top speed: where the power at the wheel meets the air (and the limiter, unless it's flashed)
+    let top = 10; for (let v = 10; v < 120; v += 0.5) { let F = 0; for (let i = 1; i <= g.gears.length; i++) { const n = v / g.rR * B.N(i) * MT_RPM; if (n > red || n < 2000) continue; F = Math.max(F, mtTq(B, n, 1, 0) * B.N(i) * 0.95 / g.rR); } if (F > 0.5 * 1.2 * g.cdA * v * v + 0.015 * m * 9.81) top = v; else if (top > 10) break; }
+    B.top = B.vmax ? Math.min(top, B.vmax) : top;
+    if (MT_CACHE.size > 30) MT_CACHE.clear(); MT_CACHE.set(key, B); return B;
+  }
+  // the crank torque wide open at n rpm with this build (boost: how much of the turbo's target is up, 0..1)
+  function mtTq(B, n, boost, nos) {
+    if (!B.alive) return 0;
+    const G = B.gen, x = G ? n / G.red : 0;
+    const base = B.EM ? engTqAt(B.EM, n) : G.pk * clamp(0.62 + 0.55 * x - 0.2 * Math.max(0, x - 0.75) * 4 * x, 0.25, 1.08);
+    let T = base * mtPowK(B.c, n, B.red) * B.engK;
+    if (B.boost) T *= 1 + (B.boost / 14.7) * 0.85 * boost * clamp((n - 3800) / 2600, 0, 1);
+    if (nos && B.wet && n > 3500) T += B.wet * 745.7 / Math.max(300, n / MT_RPM);
+    return T;
+  }
+
+  // ---------- the physics step for a bike (in place of the car simulation) ----------
+  const BK = { st: null, B: null, spool: 0, lcArm: false, nos: false, clutch: false, backT: 0, maxLean: 0, crashT: 0, told: {}, wheelieT: 0 };
+  const simBike = c => { const r = rideOf(c); return !!r && twoWheels(r); };
+  const _mtPerf = carPerf;
+  carPerf = function () {
+    const P = _mtPerf.apply(this, arguments), c = S.car;
+    if (c && simBike(c)) { const B = bikeSpec(c); P.bike = B; P.veh = B.V; P.top = c.fuel <= 0 ? 0 : B.top; P.shiftT = B.qs ? 0.06 : 0.22; P.tc = B.tc > 0; }
+    return P;
+  };
+  const _mtPhys = physStep;
+  physStep = function (I, P, h) {
+    if (!(P && P.bike)) return _mtPhys.apply(this, arguments);
+    const n = Math.max(1, Math.ceil(h / VD_H - 1e-6)), k = h / n;
+    for (let i = 0; i < n; i++) bikeStep(I, P, k);
+  };
+  function bikeStep(I, P, h) {
+    const B = P.bike, sy = Math.sin(drv.yaw), cy = Math.cos(drv.yaw), fx = -sy, fz = -cy, lx = -cy, lz = sy;
+    const u0 = TIRE.vx * fx + TIRE.vz * fz, v0 = TIRE.vx * lx + TIRE.vz * lz;
+    let st = TIRE.vd;
+    if (!st || !st.bike || st.id !== B.id) {
+      st = TIRE.vd = Object.assign(MOTO.init(B, u0), { id: B.id, w: [0, 0, 0, 0], tT: [28, 28, 28, 28], lift: [0, 0, 0, 0], Fz: [0, 0, 0, 0], kap: [0, 0, 0, 0], al: [0, 0, 0, 0], fx: [0, 0, 0, 0], fy: [0, 0, 0, 0], rev: false, ce: 1, zc: 0, ph: 0, bar: 0, lch: 0 });
+      st.tw = [ENV_AMB(), ENV_AMB()]; BK.maxLean = 0;
+    }
+    BK.st = st; BK.B = B; st.V = B.V; BK.simT = (BK.simT || 0) + h;
+    if (st.sync) { st.sync = false; st.wF = u0 / B.rF; st.wR = u0 / B.rR; if (st.lock) st.we = Math.max(B.idle / MT_RPM, st.wR * B.N(st.g)); }
+    st.u = u0; st.v = v0; st.r = TIRE.w;
+    const busy = RDR.mode !== 'ride' && B.hero, crashed = !!st.crash;
+    const gb = I.gb && I.gb.man && !I.gb.ev ? I.gb : null, moving = Math.abs(u0) > 2.5;
+    let gas = busy ? 0 : I.gas || 0, brk = busy ? 1 : I.brake || 0;
+    const lever = !busy && !moving && (I.hb || BK.clutch) ? 1 : 0;
+    // the brake button works both brakes the way a rider does (front hard, a touch of rear); the handbrake button is the rear
+    // brake on the move (and the clutch lever at a stop); up on the back wheel the front brake does nothing, so it's all rear
+    let brkF = brk, brkR = brk * 0.4 + (moving && I.hb ? 1 : 0);
+    if (st.th > 0.02) { brkR = Math.max(brkR, brk); brkF = 0; }
+    // walking it backward: hold brake at a stop
+    if (!moving && brk > 0.3 && !gas && !busy) BK.backT += h; else BK.backT = 0;
+    // the nitrous sprays at wide open throttle in gear; the turbo spools with load
+    const nos = BK.nos && B.wet && gas > 0.9 && st.g >= 1 && !crashed;
+    if (B.boost) BK.spool += ((gas > 0.5 ? 1 : 0) * clamp((st.we * MT_RPM - 3000) / 4000, 0, 1) - BK.spool) * Math.min(1, h * (gas > 0.5 ? 1.6 : 5));
+    const tuck = clamp((Math.abs(u0) - 25) / 20, 0, 1) * (gas > 0.5 ? 1 : 0.6);
+    const env = { mu: SURF.mu * (SURF.prep ? (mtOf(B.c).tire === 'drag' ? 1.25 : 1.12) : 1), drag: lerp(B.cdUp, B.cdA, tuck), amb: ENV_AMB(),
+      tq: n => mtTq(B, n, BK.spool, nos), Tf: n => (B.EM ? B.EM.tq : B.gen.pk * 1.1) * (0.04 + 0.1 * (n / B.red) ** 2) + 3 };
+    const I2 = { thr: gas, brkF, brkR, steer: drv.steer || 0, lever, gear: gb ? Math.max(0, gb.g) : null, lc: B.lc && BK.lcArm };
+    BK.env = env; BK.I2 = I2;
+    if (crashed) MOTO.slide(B, st, h);
+    else MOTO.step(B, st, I2, h, env);
+    // rolling backward off the walk-back: your feet stop it
+    if (BK.backT === 0 && st.u < 0 && st.u > -3 && !crashed) { st.u = Math.min(0, st.u + 4 * h); st.wF = st.u / B.rF; st.wR = st.u / B.rR; }
+    if (BK.backT > 0.7 && !crashed) { st.u = -0.9; st.wF = st.u / B.rF; st.wR = st.u / B.rR; st.r = st.u * Math.tan(st.delta * B.cosRake) / B.L; }
+    // launch control lets go once you're up and going; the cruise holds what you set
+    if (BK.lcArm && (st.g >= 3 || st.u > 40)) { BK.lcArm = false; mtHud(); }
+    // ---- what the rest of the game reads ----
+    st.w[0] = st.w[1] = st.wF; st.w[2] = st.w[3] = st.wR; st.tT[0] = st.tT[1] = st.tw[0]; st.tT[2] = st.tT[3] = st.tw[1];
+    st.kap[0] = st.kap[1] = st.kapF; st.kap[2] = st.kap[3] = st.kapR; st.Fz[0] = st.Fz[1] = st.FzF / 2; st.Fz[2] = st.Fz[3] = st.FzR / 2;
+    st.ce = st.lock ? 1 : st.e; st.lch = lever && gas > 0.3 ? 1 : 0; st.Te = 0; st.ay = st.u * st.r;
+    const u = st.u, v = st.v, r = st.r;
+    TIRE.vx = fx * u + lx * v; TIRE.vz = fz * u + lz * v; TIRE.w = r; drv.yaw += r * h; drv.v = u;
+    TIRE.delta = st.delta; TIRE.wv = st.wR * B.rR; TIRE.re = st.we * MT_RPM / B.red; TIRE.gA = Math.max(1, st.g); TIRE.shT = st.shT; TIRE.thr = st.thr; TIRE.drv = 'R';
+    const lit = st.kapR > 0.35 && gas > 0.05 ? 1 : st.kapR < 0.15 ? 0 : TIRE.lit; TIRE.lit = lit; TIRE.spin += ((lit ? 1 : 0) - TIRE.spin) * Math.min(1, h * (lit ? 12 : 5));
+    TIRE.slipR = st.slipR; TIRE.slipF = st.slipF; TIRE.ax += (st.ax - TIRE.ax) * Math.min(1, h * 6); TIRE.axL = st.ax; TIRE.ay += (st.u * st.r - TIRE.ay) * Math.min(1, h * 6);
+    TIRE.lift = 0; TIRE.bar = 0; TIRE.lch = st.lch; TIRE.boost = BK.spool;
+    BK.maxLean = Math.max(BK.maxLean, Math.abs(st.phi));
+  }
+  const ENV_AMB = () => typeof TT_AMB === 'number' ? TT_AMB : 28;
+
+  // ---------- the rig: everything that moves on the model, from the physics state ----------
+  const _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _m3 = new THREE.Matrix4(), _mq = new THREE.Quaternion(), _mv = new THREE.Vector3(), _mv2 = new THREE.Vector3(), _mv3 = new THREE.Vector3(), _ms = new THREE.Vector3(1, 1, 1);
+  const _ax = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+  function mtRigInit(m) {
+    const U = m.userData; if (U.rig) return U.rig; const K = U.bike; if (!K) return null;
+    const V = a => new THREE.Vector3(a[0], a[1], a[2]), A = U.anim || {}, X = U.bikeX || {};
+    const R = U.rig = { K, axF: V(K.axF), axR: V(K.axR), s: V(K.s).normalize(), S0: V(K.S0), pivot: V(K.pivot), shockTop: V(K.shockTop), link: V(K.link), sprF: V(K.sprF), grip: V(K.grip), pegR: V(K.pegR), seat: V(K.seat),
+      cosR: Math.cos(K.rake), parts: {}, wF: null, wR: null, spinF: 0, spinR: 0, spinS: 0, stand: 1, pull: [0, 0], ped: [0, 0], lean: 0.14, th: 0, zF: 0, zR: 0, delta: 0, X };
+    for (const [k, list] of Object.entries(A)) { const a = list[0]; R.parts[k] = { g: a.g, p: a.g.position.clone(), x: X[k] || {} }; a.g.matrixAutoUpdate = false; }
+    for (const w of U.wheels) { (w.position.x > 0 ? (R.wF = w) : (R.wR = w)); w.matrixAutoUpdate = false; w.userData.s0 = w.scale.clone(); }
+    R.armL = R.axR.distanceTo(R.pivot); R.l0 = R.link.clone().sub(R.shockTop);
+    return R;
+  }
+  const setM = (g, M) => { if (!g) return; g.matrix.copy(M); g.matrixWorldNeedsUpdate = true; };
+  // pose: { phi, th, zF, zR, delta, spinF, spinR, stand, brkL, clL, brkP, shP, rpm, mph, on }
+  function mtPose(m, S2) {
+    const R = mtRigInit(m); if (!R) return; const U = m.userData, P = R.parts;
+    // body on the ground: lean about the line through the contact patches (the round crowns roll it up a little),
+    // a wheelie about the rear patch, a stoppie about the front one, then the suspension's pitch and squat
+    const rc = 0.07, phi = S2.phi, th = S2.th;
+    _m1.makeTranslation(0, rc, 0).multiply(_m2.makeRotationZ(phi)).multiply(_m3.makeTranslation(0, -rc, 0));
+    const pz = th >= 0 ? -R.axR.x : -R.axF.x;   // the pivot patch in the root frame (z back)
+    _m2.makeTranslation(0, 0, pz).multiply(_m3.makeRotationX(th)).multiply(_mq.identity() && _m3.makeTranslation(0, 0, -pz)); _m1.multiply(_m2);
+    const L = R.axF.x - R.axR.x, p = -(S2.zF - S2.zR) / L;
+    _m2.makeTranslation(0, -S2.zR, -R.axR.x).multiply(_m3.makeRotationX(p)).multiply(_mq.identity() && _m3.makeTranslation(0, 0, R.axR.x)); _m1.multiply(_m2);
+    m.matrixAutoUpdate = false; m.matrix.copy(_m1); m.matrixWorldNeedsUpdate = true;
+    // steering: the bars, the clamps and the fork turn about the steering head's axis; the fork slides up it as it compresses
+    const Ms = _m1.makeTranslation(R.S0.x, R.S0.y, R.S0.z).multiply(_m2.makeRotationAxis(R.s, S2.delta)).multiply(_m3.makeTranslation(-R.S0.x, -R.S0.y, -R.S0.z));
+    const Msx = Ms.clone();
+    const tr = (pp, M0) => (M0 ? _m2.copy(M0) : _m2.identity()).multiply(_m3.makeTranslation(pp.x, pp.y, pp.z));
+    if (P.bsteer) setM(P.bsteer.g, tr(P.bsteer.p, Msx));
+    const cF = S2.zF / R.cosR, fpos = _mv.copy(R.axF).addScaledVector(R.s, cF);
+    if (P.fork) setM(P.fork.g, tr(fpos, Msx));
+    if (R.wF) { tr(fpos, Msx).multiply(_m3.makeRotationZ(-S2.spinF)).scale(R.wF.userData.s0); setM(R.wF, _m2); }
+    for (const [k, sgn, v] of [['brakeL', -1, S2.brkL], ['clutchL', 1, S2.clL]]) if (P[k]) setM(P[k].g, tr(P[k].p, Msx).multiply(_m3.makeRotationY(sgn * 0.32 * v)));
+    if (P.throttle) setM(P.throttle.g, tr(P.throttle.p, Msx));
+    // rear: the swingarm swings up as the shock compresses; the wheel, the caliper and the axle ride on it
+    const ths = -Math.asin(clamp(S2.zR / R.armL, -0.5, 0.5));
+    const Mw = _m1.makeTranslation(R.pivot.x, R.pivot.y, R.pivot.z).multiply(_m3.makeRotationZ(ths)), Mwc = Mw.clone();
+    if (P.swing) setM(P.swing.g, Mwc);
+    const axR = _mv2.copy(R.axR).sub(R.pivot).applyAxisAngle(_ax.z, ths).add(R.pivot);
+    if (R.wR) { _m2.copy(Mwc).multiply(_m3.makeTranslation(R.axR.x - R.pivot.x, R.axR.y - R.pivot.y, R.axR.z - R.pivot.z)).multiply(_m3.makeRotationZ(-S2.spinR)).scale(R.wR.userData.s0); setM(R.wR, _m2); }
+    if (P.shock) { const lk = _mv3.copy(R.link).sub(R.pivot).applyAxisAngle(_ax.z, ths).add(R.pivot).sub(R.shockTop), a0 = Math.atan2(R.l0.y, R.l0.x), a1 = Math.atan2(lk.y, lk.x); setM(P.shock.g, tr(P.shock.p).multiply(_m3.makeRotationZ(a1 - a0))); }
+    // the chain: top and bottom runs from the front sprocket to the rear one, re-aimed and stretched as the arm moves
+    for (const [k, sgn] of [['chainT', 1], ['chainB', -1]]) if (P[k]) {
+      const rf = R.K.sprFr || 0.046, rr = R.K.sprR || 0.11, A = _mv.set(R.sprF.x, R.sprF.y + sgn * rf, R.sprF.z), Bp = _mv3.set(axR.x, axR.y + sgn * rr, R.sprF.z), d = Bp.clone().sub(A), len0 = P[k].x.len || d.length();
+      setM(P[k].g, _m2.makeTranslation(A.x, A.y, A.z).multiply(_m3.makeRotationZ(Math.atan2(d.y, d.x) - Math.PI)).multiply(_m3.makeScale(d.length() / len0, 1, 1)));
+    }
+    if (P.sprF) setM(P.sprF.g, tr(P.sprF.p).multiply(_m3.makeRotationZ(-S2.spinS)));
+    if (P.brakeP) setM(P.brakeP.g, tr(P.brakeP.p).multiply(_m3.makeRotationZ(-0.22 * S2.brkP)));
+    if (P.shiftP) setM(P.shiftP.g, tr(P.shiftP.p).multiply(_m3.makeRotationZ(0.2 * S2.shP)));
+    // the side stand: folded up along the frame, or down with its foot on the ground
+    if (P.stand) { const pv = P.stand.p, dn = P.stand.x.down, d0 = _mv.set(-0.31, -0.01, 0).normalize(), d1 = dn ? _mv2.set(dn[0] - pv.x, dn[1] - pv.y, dn[2] - pv.z).normalize() : _mv2.set(0, -1, -0.4).normalize();
+      _mq.setFromUnitVectors(d0, d1); const q = new THREE.Quaternion().slerp(_mq, S2.stand); setM(P.stand.g, tr(pv).multiply(_m3.makeRotationFromQuaternion(q))); }
+    // the needles: the tach (0-13,000) and the speedo (0-200 mph) swing about each dial's face
+    for (const [k, f] of [['nd_tach', S2.rpm / 13000], ['nd_spd', S2.mph / 200]]) if (P[k]) { const t = P[k].x.tilt || 0.95, axis = _mv.set(Math.cos(Math.PI / 2 - t), Math.sin(Math.PI / 2 - t), 0).normalize(); setM(P[k].g, tr(P[k].p).multiply(_m3.makeRotationAxis(axis, lerp(-0.75 * Math.PI, 0.75 * Math.PI, clamp(f, 0, 1))))); }
+    if (U.lamps && U.lamps.tail) for (const g of U.lamps.tail) g.visible = !!S2.on;
+    m.updateMatrixWorld(true);
+  }
+  // parked: on its side stand, leaned onto it
+  const MT_PARK = { phi: 0.15, th: 0, zF: 0, zR: 0, delta: 0.35, spinF: 0, spinR: 0, spinS: 0, stand: 1, brkL: 0, clL: 0, brkP: 0, shP: 0, rpm: 0, mph: 0, on: false };
+  // a fresh copy of the model knows it's a bike and sits on its stand (dealer floor, garage, someone else's parked bike)
+  const _mtBake = bakeCar;
+  bakeCar = function (d) { const T = _mtBake.apply(this, arguments); if (d && d.bike) { T.bike = d.bike; T.bikeX = Object.fromEntries((d.anim || []).map(a => [a.name, a.x || {}])); } return T; };
+  const _mtMesh = carMesh;
+  carMesh = function (T) {
+    const root = _mtMesh.apply(this, arguments);
+    if (T && T.bike) { root.userData.bike = T.bike; root.userData.bikeX = T.bikeX; root.userData.eye = [-0.06, 1.24, 0]; try { mtPose(root, MT_PARK); } catch (e) { console.warn('bike rig: ' + e.message); } }
+    return root;
+  };
+  // far away: a bike's motor, chain and levers are on the outside, so the distance culling keeps them (it hides only the tiny bits)
+  const _mtClod = clodPrep;
+  clodPrep = function (m) { const L = _mtClod.apply(this, arguments); if (m && m.userData.bike && L) for (const e of L.list) e.in = false; return L; };
+
+  // ---------- you on it: hands on the grips, feet on the pegs (two-bone IK), tucked at speed, hanging off in corners,
+  // a foot down at a stop, getting on and off over the seat, and thrown off when it goes down ----------
+  const RDR = { mode: 'ride', t: 0, fd: 0, hang: 0, tuck: 0, rag: null, pick: 0 };
+  const _lk = { D: new THREE.Vector3(), m: new THREE.Vector3(), u: new THREE.Vector3(), f: new THREE.Vector3(), E: new THREE.Vector3(), q: new THREE.Quaternion(), qi: new THREE.Quaternion(), q2: new THREE.Quaternion() };
+  // a leg reaches its ankle to T (in the person's root space), the knee bends toward pole
+  function legIK(P, i, T, pole, w = 1) {
+    const leg = P.legs[i], knee = P.knees && P.knees[i], ank = P.ankles && P.ankles[i]; if (!knee || !ank) return;
+    const t0 = knee.position, s0 = ank.position, LT = t0.length(), LS = s0.length(), hip = leg.position;
+    const D = _lk.D.subVectors(T, hip), d = clamp(D.length(), 0.12, LT + LS - 0.003); D.normalize();
+    const mm = _lk.m.copy(pole).addScaledVector(D, -pole.dot(D)); if (mm.lengthSq() < 1e-6) mm.set(0, 0, 1); mm.normalize();
+    const ca = clamp((LT * LT + d * d - LS * LS) / (2 * LT * d), -1, 1), sa = Math.sqrt(1 - ca * ca);
+    const u = _lk.u.copy(D).multiplyScalar(ca).addScaledVector(mm, sa), E = _lk.E.copy(hip).addScaledVector(u, LT), f = _lk.f.copy(hip).addScaledVector(D, d).sub(E).normalize();
+    _lk.q.setFromUnitVectors(_mv.copy(t0).normalize(), u); _lk.qi.copy(_lk.q).invert(); f.applyQuaternion(_lk.qi);
+    leg.quaternion.slerp(_lk.q, w); _lk.q2.setFromUnitVectors(_mv.copy(s0).normalize(), f); knee.quaternion.slerp(_lk.q2, w);
+    // the foot stays flat-ish: undo what the leg and knee did, then tip the toes down a little
+    _lk.q.copy(leg.quaternion).multiply(knee.quaternion).invert(); ank.quaternion.copy(_lk.q).multiply(_mq.setFromAxisAngle(_ax.x, 0.25));
+  }
+  // two-bone arm IK (the same bones and lengths the gun hold uses): the hand centre onto T in upper-body space
+  const AIK = { D: new THREE.Vector3(), m: new THREE.Vector3(), u: new THREE.Vector3(), E: new THREE.Vector3(), f: new THREE.Vector3(), qa: new THREE.Quaternion(), qf: new THREE.Quaternion(), qi: new THREE.Quaternion(),
+    U0: [new THREE.Vector3(-0.03, -0.285, -0.008).normalize(), new THREE.Vector3(0.03, -0.285, -0.008).normalize()], F0: [new THREE.Vector3(-0.016, -0.312, 0.036).normalize(), new THREE.Vector3(0.016, -0.312, 0.036).normalize()], LA: 0.286, LB: 0.314 };
+  function armIK(P, i, T, pole, w) {
+    if (w <= 0.001 || !P.fores) return; const K = AIK, arm = P.arms[i], fore = P.fores[i], Sp = arm.position;
+    const D = K.D.subVectors(T, Sp), d = clamp(D.length(), 0.08, K.LA + K.LB - 0.004); D.normalize();
+    const m = K.m.copy(pole).addScaledVector(D, -pole.dot(D)).normalize();
+    const ca = clamp((K.LA * K.LA + d * d - K.LB * K.LB) / (2 * K.LA * d), -1, 1), sa = Math.sqrt(1 - ca * ca);
+    const u = K.u.copy(D).multiplyScalar(ca).addScaledVector(m, sa), E = K.E.copy(Sp).addScaledVector(u, K.LA), f = K.f.copy(Sp).addScaledVector(D, d).sub(E).normalize();
+    K.qa.setFromUnitVectors(K.U0[i], u); K.qi.copy(K.qa).invert(); f.applyQuaternion(K.qi); K.qf.setFromUnitVectors(K.F0[i], f);
+    arm.quaternion.slerp(K.qa, w); fore.quaternion.slerp(K.qf, w);
+  }
+  const _wp = new THREE.Vector3(), _wp2 = new THREE.Vector3(), POLE_A = [new THREE.Vector3(-0.8, -1, -0.1), new THREE.Vector3(0.8, -1, -0.1)];
+  // where a point on the bike is, in the person's root space (k: 'inner' point, or steer-relative grip)
+  function mtToRoot(P, m, x, y, z, steer) {
+    const R = m.userData.rig, inn = m.userData.inner; _wp.set(x, y, z);
+    if (steer && R) _wp.sub(R.S0).applyAxisAngle(R.s, R.delta).add(R.S0);
+    inn.localToWorld(_wp); return P.root.worldToLocal(_wp);
+  }
+  function mtRider(m, S2, dt) {
+    if (!ME || !ME.root) return; const P = ME, U = m.userData, R = U.rig; if (!R) return;
+    if (P.wrap.parent !== m) { wearMe(m); P.wrap.position.set(0, 0, 0); P.wrap.rotation.set(0, 0, 0); }
+    P.wrap.visible = !drv.fp;
+    const Hs = P.root.scale.y || 1, k = RDR, u = Math.abs(S2.u || 0);
+    // seat, stand and lean blend for getting on / off: 0 standing beside it on the left, 1 seated
+    let sit = 1, swing = 0;
+    if (k.mode === 'mount' || k.mode === 'dismount') { const t = clamp(k.t / 1.25, 0, 1), f = k.mode === 'mount' ? t : 1 - t; sit = smooth(0.25, 0.85, f); swing = Math.sin(clamp((f - 0.2) / 0.6, 0, 1) * Math.PI); }
+    const tuckW = k.tuck += ((S2.tuck || 0) - k.tuck) * Math.min(1, dt * 3);
+    const hang = k.hang += (clamp(S2.phi / 0.8, -1, 1) * clamp((u - 8) / 10, 0, 1) - k.hang) * Math.min(1, dt * 4);
+    // the hips: on the seat (a little further back tucked), off the inside of the seat hanging off; beside the bike standing
+    const sx = R.seat.x - 0.05 - 0.04 * tuckW, sy = R.seat.y + 0.065, seatW = [-sx, 0, 0];
+    const standP = [-0.62 + 0.0, 0, 0.18], seated = [R.seat.x - 0.05 - 0.04 * tuckW, sy - 0.85 * Hs, 0];
+    const hx = lerp(standP[0], -hang * 0.07, sit), hy = lerp(0, seated[1], sit) + swing * 0.12, hz = lerp(standP[2] + 0.3, -seated[0], sit);
+    P.root.position.set(hx, hy, hz);   // wrap/root frame: x right, z back (the seat's x forward maps to -z)
+    P.root.rotation.set(0, Math.PI, 0);
+    m.updateMatrixWorld(true); P.root.updateMatrixWorld(true);
+    // the torso: upright beside it, sport tuck on it, lower still at speed, forward in a wheelie, tilted into the turn
+    const lean0 = lerp(0.08, 0.62 + 0.12 * clamp(u / 15, 0, 1) + 0.38 * tuckW + (S2.th > 0.05 ? 0.15 : 0) - (S2.brk || 0) * 0.08, sit);
+    P.upper.rotation.set(lean0, 0, -hang * 0.32 * sit);
+    if (P.head) P.head.rotation.set(-lean0 * 0.85 + 0.05, (S2.delta || 0) * 1.5, hang * 0.25 * sit);
+    P.root.updateMatrixWorld(true);
+    // hands on the grips (they turn with the bars); feet on the pegs, or down
+    const gx = R.grip.x - 0.01, gy = R.grip.y, gz = R.grip.z;
+    for (let i = 0; i < 2; i++) {
+      const sd = i === 0 ? 1 : -1;   // arms[0] / legs[0] are the right side
+      const w = sit > 0.05 || k.mode === 'mount' || k.mode === 'dismount' ? 1 : 0;
+      const T = mtToRoot(P, m, gx, gy, gz * sd, true); P.upper.worldToLocal(P.root.localToWorld(_wp2.copy(T)));
+      if (w) armIK(P, i, _wp2, POLE_A[i], 1);
+      // a foot: peg (ridden), ground beside it (stopped / getting on); the right leg swings over the tail getting on and off
+      let fx = R.pegR.x - 0.06, fy = R.pegR.y + 0.075, fz = (R.pegR.z + 0.035) * sd;
+      const down = i === 1 ? Math.max(k.fd, 1 - sit) : 1 - sit;
+      if (down > 0) { fx = lerp(fx, -0.3, down); fy = lerp(fy, 0.1, down); fz = lerp(fz, sd * 0.36 - (i === 0 && sit < 0.5 ? 0.62 : 0), down); }
+      if (i === 0 && swing > 0) { fx = lerp(fx, R.seat.x - 0.38, swing); fy = lerp(fy, 1.18, swing); fz = lerp(fz, 0, swing); }
+      const A = mtToRoot(P, m, fx, fy, fz, false);
+      legIK(P, i, A.clone(), _mv3.set(sd * -0.35 * (i === (hang > 0 ? 1 : 0) ? 1 + Math.abs(hang) : 1), 0.1, 1).normalize(), 1);
+    }
+  }
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+  // ---------- each frame on a bike: the pose, the rider, the camera, the gauges ----------
+  const _mtRide = rideFrame;
+  rideFrame = function (dt) {
+    const c = S && S.car, U = car && car.userData, m = U && U.model;
+    if (!(c && simBike(c) && m && m.userData.bike)) { document.body.classList.remove('moto'); if (RDR.mode !== 'ride') RDR.mode = 'ride'; return _mtRide.apply(this, arguments); }
+    const want = driving && !foot.on && !inside && !RIDE.with && !ROLL.on;
+    if (!want) { document.body.classList.remove('moto'); RD.on = false; return; }
+    document.body.classList.add('moto'); RD.on = true; BK.live = performance.now();
+    const st = TIRE.vd && TIRE.vd.bike ? TIRE.vd : null, B = BK.B, R = mtRigInit(m); if (!R) return;
+    const u = st ? st.u : 0, crashed = !!(st && st.crash);
+    // getting on / off plays out first
+    if (RDR.mode === 'mount' || RDR.mode === 'dismount') { RDR.t += dt; if (RDR.t >= 1.25) { if (RDR.mode === 'mount') RDR.mode = 'ride'; else { RDR.mode = 'ride'; mtOffDone(); return; } } }
+    if (RDR.pick > 0) RDR.pick = Math.max(0, RDR.pick - dt);
+    // the stand folds as you roll off, a foot goes down when you stop
+    const stopped = Math.abs(u) < 0.5 && !crashed;
+    R.stand += ((RDR.mode === 'ride' ? 0 : 1) - R.stand) * Math.min(1, dt * 5);
+    RDR.fd += ((stopped && RDR.mode === 'ride' && (!st || st.thr < 0.3) ? 1 : 0) - RDR.fd) * Math.min(1, dt * 6);
+    const phiP = st ? st.phi : 0, phi = lerp(lerp(phiP, 0.055, RDR.fd * (1 - clamp(Math.abs(phiP) / 0.2, 0, 1))), 0.15, R.stand) * (RDR.pick > 0 ? 1 - RDR.pick : 1) + (RDR.pick > 0 ? RDR.pickPhi * RDR.pick : 0);
+    R.spinF += (st ? st.wF : 0) * dt; R.spinR += (st ? st.wR : 0) * dt; R.spinS += (st ? st.wR * (B ? B.fin : 2.5) : 0) * dt; R.delta = st ? st.delta : 0;
+    const pr = R.pull; pr[0] += ((drv.brk || 0) - pr[0]) * Math.min(1, dt * 14); pr[1] += ((st && (!st.lock || st.leverT > 0) && Math.abs(u) < 6 ? 1 - st.e : 0) - pr[1]) * Math.min(1, dt * 14);
+    const shP = st && st.shT > 0 ? Math.sign(st.shDir || 0) : 0;
+    const S2 = { phi, th: st ? st.th : 0, zF: st ? st.zF : 0, zR: st ? st.zR : 0, delta: lerp(R.delta, 0.35, R.stand), spinF: R.spinF, spinR: R.spinR, spinS: R.spinS, stand: R.stand, brkL: pr[0], clL: pr[1], brkP: (drv.hb && Math.abs(u) > 2.5) || (drv.brk || 0) > 0.3 ? 1 : 0, shP,
+      rpm: st ? st.we * MT_RPM : 0, mph: Math.abs(u) * 2.237, on: true, u, tuck: clamp((Math.abs(u) - 25) / 20, 0, 1) * ((drv.gas || 0) > 0.5 ? 1 : 0.5), brk: drv.brk || 0 };
+    mtPose(m, S2);
+    if (!crashed || !RDR.rag) mtRider(m, S2, dt);
+    // turn signals cancel after the lean comes back
+    if (BLINK.mode === 'L' || BLINK.mode === 'R') { const d = (BLINK.mode === 'L' ? 1 : -1) * phi; BLINK.peak = Math.max(BLINK.peak, d); if (BLINK.peak > 0.2 && d < 0.04) BLINK.mode = ''; }
+    // a bike is small: the chase cam sits closer and lower than for a car and leans a touch with it
+    if (!drv.far && !TR.cine && !drv.fp) {
+      const cy = drv.camYaw == null ? drv.yaw : drv.camYaw, back = 5.4 + Math.min(1.6, Math.abs(u) * 0.03), up = 2.1;
+      if (!RD.cam) RD.cam = camera.position.clone();
+      RD.cam.lerp(v4.set(drv.x + Math.sin(cy) * back, up, drv.z + Math.cos(cy) * back), 1 - Math.exp(-dt * 7));
+      camera.position.copy(RD.cam); camera.up.set(Math.sin(phi * 0.12) * -Math.cos(cy), 1, Math.sin(phi * 0.12) * Math.sin(cy)).normalize();
+      camera.lookAt(drv.x - Math.sin(cy) * 4, 1.0, drv.z - Math.cos(cy) * 4); camera.up.set(0, 1, 0);
+    } else RD.cam = null;
+    if (st) mtTold(st, u);
+    if (crashed) mtCrashFrame(dt, st, m);
+    if ((frame & 7) === 0) mtHud();
+  }
+  // hints the first time things happen (wheelie, TC working, the knee down)
+  function mtTold(st, u) {
+    const say = (k, msg, kind) => { if (BK.told[k]) return; BK.told[k] = true; toast(msg, kind || 'good'); };
+    if (st.th > 0.09) { BK.wheelieT += 1 / 60; if (BK.wheelieT > 0.4) say('wh', `WHEELIE · ${Math.round(st.th / MT_DEG)}° · roll off or touch the rear brake to bring it down`); } else BK.wheelieT = 0;
+    if (st.th < -0.08) say('st', 'STOPPIE · the rear is up: ease off the front brake');
+    if (st.tcAct && u > 3) say('tc', 'Traction control is catching the rear (TC ' + BK.B.tc + ')', '');
+    if (st.wcAct) say('wc', 'Anti-lift is holding the front down (AL ' + BK.B.wc + '). Turn it down or off for wheelies', '');
+    if (Math.abs(st.phi) > 0.75) say('kn', `Knee down · ${Math.round(Math.abs(st.phi) / MT_DEG)}° of lean`);
+  }
+
+  // ---------- going down: the bike slides on its side, you tumble off it, then you're on foot next to it ----------
+  function mtCrashFrame(dt, st, m) {
+    const c = st.crash; BK.crashT += dt;
+    if (!RDR.rag) {
+      // thrown: you leave the seat with the bike's speed (a highside throws you up and over, a loop off the back)
+      const P = ME; if (!P) return; const w = new THREE.Vector3(); P.root.getWorldPosition(w);
+      scene.attach(P.wrap); const sp = Math.max(0, c.u0 || 0), f = new THREE.Vector3(-Math.sin(drv.yaw), 0, -Math.cos(drv.yaw)), l = new THREE.Vector3(-Math.cos(drv.yaw), 0, Math.sin(drv.yaw));
+      const up = c.kind === 'high' ? 4.5 : c.kind === 'loop' ? 2.5 : c.kind === 'over' ? 3.5 : 1.0;
+      RDR.rag = { p: P.wrap.position.clone(), v: f.multiplyScalar(sp * (c.kind === 'loop' ? 0.6 : 0.92)).addScaledVector(l, (c.side || 1) * (c.kind === 'high' ? -2.5 : 1.2)).add(new THREE.Vector3(0, up, 0)), rx: 0, rz: 0, wx: 3 + Math.random() * 4, wz: (Math.random() - 0.5) * 6, rest: 0, yaw: drv.yaw };
+      const hurt = Math.min(45, sp * 0.9); S.health = clamp100(S.health - hurt); const d = Math.min(30, sp * 0.6); S.car.cond.body = Math.max(0, S.car.cond.body - d); S.car.cond.lights = Math.max(0, S.car.cond.lights - d * 0.5);
+      toast(c.kind === 'high' ? 'HIGHSIDE. The rear hooked up and threw you over the top.' : c.kind === 'loop' ? 'LOOPED IT. Too much throttle up on the back wheel.' : c.kind === 'over' ? 'Over the bars. Too much front brake.' : c.kind === 'hit' ? 'You hit it hard and went down.' : 'LOWSIDE. Asked the tires for more than they had.', 'bad');
+    }
+    const G = RDR.rag, P = ME;
+    // the body: ballistic until it lands, then it tumbles and slides to a stop
+    G.v.y -= 9.81 * dt; G.p.addScaledVector(G.v, dt);
+    if (G.p.y <= 0) { G.p.y = 0; if (G.v.y < -2) { G.v.y *= -0.25; G.wx *= 0.7; } else G.v.y = 0; const sp = Math.hypot(G.v.x, G.v.z); if (sp > 0) { const k = Math.max(0, sp - 6 * dt) / sp; G.v.x *= k; G.v.z *= k; } G.wx *= Math.exp(-dt * 1.5); G.wz *= Math.exp(-dt * 2); }
+    G.rx += G.wx * dt; G.rz += G.wz * dt;
+    const moving = Math.hypot(G.v.x, G.v.z) > 0.3 || G.p.y > 0.05;
+    if (!moving) G.rest += dt;
+    if (P) {
+      P.wrap.position.copy(G.p); P.wrap.position.y += moving ? 0.25 : 0.12;
+      // lying flat once it stops (face down), flailing until then
+      const lie = smooth(0, 0.6, G.rest);
+      P.wrap.rotation.set(lerp(G.rx % (Math.PI * 2), -Math.PI / 2, lie), G.yaw, lerp(G.rz, 0, lie));
+      P.root.position.set(0, 0, 0); P.root.rotation.set(0, Math.PI, 0);
+      const t = BK.crashT;
+      for (let i = 0; i < 2; i++) { const s = i ? 1 : -1; P.arms[i].rotation.set(-1.6 + Math.sin(t * 9 + i) * 0.8 * (1 - lie), 0, s * (0.6 + 0.4 * (1 - lie))); if (P.fores) P.fores[i].rotation.set(-0.5, 0, 0);
+        P.legs[i].rotation.set(-0.3 + Math.sin(t * 7 + i * 2) * 0.6 * (1 - lie), 0, s * 0.15); if (P.knees) P.knees[i].rotation.set(0.6 * (1 - lie) + 0.1, 0, 0); }
+      P.upper.rotation.set(0.2 * (1 - lie), 0, 0);
+    }
+    // both stopped: you get up next to it
+    if (G.rest > 1.6 && Math.hypot(st.u, st.v) < 0.3) mtCrashDone(st);
+  }
+  function mtCrashDone(st) {
+    const G = RDR.rag; RDR.rag = null; BK.crashT = 0;
+    BK.down = { x: drv.x, z: drv.z, yaw: drv.yaw, phi: st.crash.side * 1.38 };
+    st.crash = null; drv.v = 0; physReset();
+    _mtOut.call(null); if (foot.on) { foot.x = G.p.x; foot.z = G.p.z; foot.holder.position.set(foot.x, 0, foot.z); }
+    if (ME) { ME.wrap.rotation.set(0, 0, 0); ME.wrap.position.set(0, 0, 0); }
+    toast('You got up. Walk back to the bike and pick it up (Get in).', '');
+  }
+
+  // ---------- getting on and off ----------
+  const _mtOut = getOut, _mtIn = getIn;
+  getOut = function () {
+    const c = S && S.car; if (!(c && simBike(c) && driving && !foot.on && !inside)) return _mtOut.apply(this, arguments);
+    const st = TIRE.vd; if (st && st.crash) return;
+    if (Math.abs(drv.v) > 2) { toast('Slow down and stop first.', 'bad'); return; }
+    if (RDR.mode !== 'ride') return;
+    // only animate while you're actually riding it on screen (loading a save on foot just puts you off)
+    if (!(performance.now() - (BK.live || 0) < 400)) { RDR.mode = 'ride'; return _mtOut.apply(this, arguments); }
+    RDR.mode = 'dismount'; RDR.t = 0; drv.v = 0;
+  };
+  function mtOffDone() {
+    RDR.mode = 'ride'; _mtOut();
+    // you step off on the left, right next to it
+    if (foot.on) { const lx = -Math.cos(drv.yaw), lz = Math.sin(drv.yaw); foot.x = drv.x + lx * 0.75 - Math.sin(drv.yaw) * -0.25; foot.z = drv.z + lz * 0.75 - Math.cos(drv.yaw) * -0.25; foot.holder.position.set(foot.x, 0, foot.z); }
+  }
+  getIn = function () {
+    const c = S && S.car, was = foot.on; const r = _mtIn.apply(this, arguments);
+    if (was && !foot.on && c && simBike(c)) {
+      RDR.mode = 'mount'; RDR.t = 0; RDR.fd = 1;
+      if (BK.down) { RDR.pick = 1; RDR.pickPhi = BK.down.phi; BK.down = null; toast('Picked it up.', ''); }
+      BK.told = {};
+    }
+    return r;
+  };
+  // parked (you're walking): it stands on its side stand, or lies where it fell
+  const _mtFoot = stepFoot;
+  stepFoot = function (dt) {
+    const r = _mtFoot.apply(this, arguments);
+    try { const c = S && S.car, m = car && car.userData.model; if (c && simBike(c) && m && m.userData.bike) { document.body.classList.remove('moto'); const R = mtRigInit(m); if (R) { R.stand = 1; mtPose(m, BK.down ? Object.assign({}, MT_PARK, { phi: BK.down.phi, stand: 0 }) : MT_PARK); } } } catch (e) {}
+    return r;
+  };
+  // hitting something hard at speed puts you down
+  const _mtStep = stepDrive;
+  stepDrive = function (dt) {
+    const c = S && S.car, bike = c && simBike(c), st0 = TIRE.vd, v0 = Math.hypot(TIRE.vx, TIRE.vz), x0 = drv.x, z0 = drv.z;
+    const r = _mtStep.apply(this, arguments);
+    // the same ride carrying on (not a reset or a teleport) that lost a lot of speed in one frame: it hit something
+    if (bike && driving) { const st = TIRE.vd; if (st && st === st0 && st.bike && !st.crash && v0 > 9 && Math.hypot(drv.x - x0, drv.z - z0) < 5 && v0 - Math.hypot(TIRE.vx, TIRE.vz) > 6.5) st.crash = { kind: 'hit', t: 0, side: Math.random() < 0.5 ? 1 : -1, u0: v0 }; }
+    return r;
+  };
+
+  // ---------- the electronics on the bars (S.I.R.S.) and the sequential shifter ----------
+  function mtCss() {
+    if (document.getElementById('mtcss')) return; const st = document.createElement('style'); st.id = 'mtcss';
+    st.textContent = `body.moto #shifter,body.moto #lcbtn{display:none!important}#mtsh{display:none;flex-direction:column;gap:6px;align-items:stretch}body.moto #mtsh{display:flex}
+      #mtsh button,#mtel button{font:800 14px "Barlow Condensed",system-ui,sans-serif;color:#f2efe6;background:rgba(18,16,22,.86);border:1px solid #3a3244;border-radius:10px;padding:7px 9px;min-width:44px;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+      #mtsh b{display:block;text-align:center;font:800 22px "Barlow Condensed",system-ui;color:#ffd23f}
+      #mtel{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 40px);z-index:7;display:none;flex-direction:row;flex-wrap:wrap;justify-content:center;max-width:92vw;gap:5px}body.moto #mtel{display:flex}
+      #mtel button.on{background:#ffd23f;color:#1a1300;border-color:#ffd23f}#mtel button.act{box-shadow:0 0 0 2px #ff8a1a}#mtel small{display:block;font-size:10px;opacity:.75;font-weight:600}`;
+    document.head.append(st);
+  }
+  function mtUI() {
+    mtCss(); if (document.getElementById('mtel')) return;
+    const sh = document.createElement('div'); sh.id = 'mtsh'; sh.innerHTML = '<button data-k="up">▲</button><b data-k="g">1</b><button data-k="dn">▼</button><button data-k="am">A</button>';
+    const ref = document.getElementById('shifter'); if (ref && ref.parentNode) ref.parentNode.insertBefore(sh, ref.nextSibling); else document.body.append(sh);
+    sh.querySelector('[data-k="up"]').onclick = e => { e.preventDefault(); if (!GBX.man) gbMode(true); gbSeq(1); BK.qsT = 0; };
+    sh.querySelector('[data-k="dn"]').onclick = e => { e.preventDefault(); if (!GBX.man) gbMode(true); gbSeq(-1); };
+    sh.querySelector('[data-k="am"]').onclick = e => { e.preventDefault(); gbMode(!GBX.man); };
+    const el = document.createElement('div'); el.id = 'mtel'; document.body.append(el);
+    el.innerHTML = ['mode', 'tc', 'wc', 'lc', 'qs', 'crz', 'nos'].map(k => `<button data-k="${k}"></button>`).join('');
+    el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; e.preventDefault(); mtElTap(b.dataset.k); });
+    const nb = el.querySelector('[data-k="nos"]'), on = e => { e.preventDefault(); BK.nos = true; nb.classList.add('on'); }, off = () => { BK.nos = false; nb.classList.remove('on'); };
+    nb.addEventListener('pointerdown', on); nb.addEventListener('pointerup', off); nb.addEventListener('pointerleave', off); nb.addEventListener('pointercancel', off);
+    mtHud();
+  }
+  function mtElTap(k) {
+    const c = S && S.car; if (!c || !simBike(c)) return; const o = mtOf(c), el = o.el, g = mtGeo(c);
+    if (k === 'mode') { if (!g.modes) return toast('This bike has one power map.'); el.mode = { A: 'B', B: 'C', C: 'A' }[el.mode] || 'A'; toast(`Power mode ${el.mode}: ${{ A: 'full power, sharp throttle', B: 'full power, softer throttle', C: 'reduced power, gentle (rain)' }[el.mode]}`); }
+    if (k === 'tc') { el.tc = (el.tc + 1) % 11; toast(el.tc ? `Traction control ${el.tc} (1 lets it slide, 10 holds it tight)` : 'Traction control OFF', el.tc ? '' : 'bad'); }
+    if (k === 'wc') { el.wc = (el.wc + 1) % 11; toast(el.wc ? `Anti-lift ${el.wc} (1 lets the front float, 10 keeps it down)` : 'Anti-lift OFF: it will wheelie, and it will loop if you hold it', el.wc ? '' : 'bad'); }
+    if (k === 'lc') { if (!g.lc) return toast('No launch control on this bike.'); if (!BK.lcArm) { BK.lcArm = true; toast(`Launch control armed (${[0, 4500, 6000, 7500][el.lc || 2]} rpm). Stop, hold the clutch (E-brk), pin it, let go.`, 'good'); } else { el.lc = (el.lc % 3) + 1; toast(`Launch rpm ${[0, 4500, 6000, 7500][el.lc]}`); } }
+    if (k === 'qs') { if (!g.qs) return toast('No quickshifter on this bike.'); el.qs = el.qs ? 0 : 1; toast(el.qs ? 'Quickshifter ON: clutchless shifts both ways' : 'Quickshifter OFF: each shift uses the clutch'); }
+    if (k === 'crz') { const st = TIRE.vd; if (st && st.bike) { if (st.cruise) { st.cruise = 0; toast('Cruise off'); } else if (st.u > 13 && st.g >= 2) { st.cruise = st.u; toast(`Cruise set ${Math.round(st.u * 2.237)} mph`, 'good'); } else toast('Cruise sets above 30 mph in 2nd or higher.'); } }
+    save(); mtHud();
+  }
+  function mtHud() {
+    const el = document.getElementById('mtel'); if (!el) { if (document.body.classList.contains('moto')) mtUI(); return; }
+    const c = S && S.car; if (!c || !simBike(c)) return; const o = mtOf(c), e = o.el, g = mtGeo(c), st = TIRE.vd && TIRE.vd.bike ? TIRE.vd : null;
+    const set = (k, html, on, act) => { const b = el.querySelector(`[data-k="${k}"]`); if (!b) return; if (b.innerHTML !== html) b.innerHTML = html; b.classList.toggle('on', !!on); b.classList.toggle('act', !!act); };
+    set('mode', `${g.modes ? e.mode : 'A'}<small>MODE</small>`); set('tc', `${e.tc || 'OFF'}<small>TC</small>`, 0, st && st.tcAct); set('wc', `${e.wc || 'OFF'}<small>ANTI-LIFT</small>`, 0, st && st.wcAct);
+    set('lc', `${BK.lcArm ? 'ARMED' : 'LC'}<small>${[0, 4500, 6000, 7500][e.lc || 2]}</small>`, BK.lcArm, st && st.lcOn); set('qs', `${e.qs ? 'ON' : 'OFF'}<small>QS</small>`, e.qs);
+    set('crz', `${st && st.cruise ? Math.round(st.cruise * 2.237) : 'SET'}<small>CRUISE</small>`, st && st.cruise); set('nos', `NOS<small>${mtWet(c) ? mtWet(c) + ' shot' : 'none'}</small>`, BK.nos);
+    const nb = el.querySelector('[data-k="nos"]'); if (nb) nb.hidden = !mtWet(c); const lb = el.querySelector('[data-k="lc"]'); if (lb) lb.hidden = !g.lc; const qb = el.querySelector('[data-k="qs"]'); if (qb) qb.hidden = !g.qs;
+    const gEl = document.querySelector('#mtsh [data-k="g"]'); if (gEl) { const gg = GBX.man ? GBX.g : st ? st.g : 1; gEl.textContent = gg <= 0 ? 'N' : String(gg); }
+    const am = document.querySelector('#mtsh [data-k="am"]'); if (am) am.textContent = GBX.man ? 'M' : 'A';
+    const hb = document.getElementById('b-hb'); if (hb) { const want = document.body.classList.contains('moto') ? (Math.abs(drv.v) > 2.5 ? 'Rear brk' : 'Clutch') : 'E-brk'; if (hb.textContent !== want) hb.textContent = want; }
+  }
+  // keys: M power mode, T traction control, Y anti-lift, L launch control, Q quickshifter, K cruise, G nitrous (hold)
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || !document.body.classList.contains('moto')) return;
+    const k = { KeyM: 'mode', KeyT: 'tc', KeyY: 'wc', KeyL: 'lc', KeyQ: 'qs', KeyK: 'crz' }[e.code]; if (k && !e.repeat) mtElTap(k);
+    if (e.code === 'KeyG') BK.nos = true;
+  });
+  addEventListener('keyup', e => { if (e.code === 'KeyG') BK.nos = false; });
+  // on a bike there's no reverse in the box; the sequential pattern is 1-N-2-3-4-5-6
+  const _mtShift = gbShift;
+  gbShift = function (to, quiet) { if (S && S.car && simBike(S.car) && to < 0) to = 0; return _mtShift.call(this, to, quiet); };
+
+  // ---------- the TFT between the dials ----------
+  function busaDraw(sc, X, spd, thr) {
+    if (!sc.cv) { sc.cv = document.createElement('canvas'); sc.cv.width = 240; sc.cv.height = 320; sc.tex = new THREE.CanvasTexture(sc.cv); sc.m.material.map = sc.tex; sc.m.material.color.setRGB(0.9, 0.9, 0.9); sc.m.material.needsUpdate = true; }
+    const g = sc.cv.getContext('2d'), W = 240, H = 320, st = TIRE.vd && TIRE.vd.bike ? TIRE.vd : null, c = S.car, o = mtOf(c), e = o.el, rpm = st ? st.we * MT_RPM : 0, red = st && st.V ? st.V.red : 11000;
+    g.fillStyle = '#04060a'; g.fillRect(0, 0, W, H); g.textAlign = 'center'; g.textBaseline = 'middle';
+    const gear = !st ? 'N' : (GBX.man ? GBX.g : st.g) <= 0 ? 'N' : String(GBX.man ? GBX.g : st.g);
+    // the gear, huge; the speed under it; the bar of rpm across the top with the shift light
+    g.fillStyle = rpm > red * 0.93 ? '#ff3a2a' : '#1d2635'; g.fillRect(10, 8, 220, 10); g.fillStyle = rpm > red * 0.93 ? '#ff3a2a' : rpm > red * 0.8 ? '#ffb020' : '#3d8bff'; g.fillRect(10, 8, 220 * clamp(rpm / 13000, 0, 1), 10);
+    g.fillStyle = '#f2efe6'; g.font = 'bold 120px sans-serif'; g.fillText(gear, W / 2, 100);
+    g.font = 'bold 44px sans-serif'; g.fillText(Math.round(spd * 2.237), W / 2, 188); g.font = '14px sans-serif'; g.fillStyle = '#8a93a6'; g.fillText('MPH', W / 2, 214);
+    // the S.I.R.S. line: mode, TC, anti-lift, quickshifter, launch
+    g.font = 'bold 18px sans-serif'; const row = [[`${e.mode}`, '#ffd23f'], [`TC${e.tc || '-'}`, st && st.tcAct ? '#ff8a1a' : '#c9d2e3'], [`AL${e.wc || '-'}`, st && st.wcAct ? '#ff8a1a' : '#c9d2e3'], [e.qs ? 'QS' : '', '#2aff6a'], [BK.lcArm ? 'LC' : '', '#ff3a2a']];
+    row.forEach(([t, col], i) => { g.fillStyle = col; g.fillText(t, 26 + i * 47, 246); });
+    // fuel and coolant, lean angle (live / max this ride)
+    g.fillStyle = '#8a93a6'; g.font = '13px sans-serif'; g.textAlign = 'left'; g.fillText('F', 12, 280); g.fillText('°C', 12, 302);
+    g.fillStyle = '#1d2635'; g.fillRect(30, 274, 90, 10); g.fillStyle = c.fuel < 0.15 ? '#ff3a2a' : '#c9d2e3'; g.fillRect(30, 274, 90 * clamp(c.fuel, 0, 1), 10);
+    g.fillStyle = '#c9d2e3'; g.fillText(Math.round(ENGT.T || 25) + '', 34, 302);
+    g.textAlign = 'right'; g.fillText(`LEAN ${Math.round(Math.abs(st ? st.phi : 0) / MT_DEG)}° / ${Math.round(BK.maxLean / MT_DEG)}°`, 230, 280);
+    if (st && st.cruise) { g.fillStyle = '#2aff6a'; g.fillText('CRUISE ' + Math.round(st.cruise * 2.237), 230, 302); } else if (BK.nos && mtWet(c)) { g.fillStyle = '#3d8bff'; g.fillText('NOS', 230, 302); }
+    if (BLINK.mode) { const on = (BLINK.t % 0.8) < 0.5; g.fillStyle = on ? '#2aff6a' : '#0e2a18'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; if (BLINK.mode !== 'R') g.fillText('◀', 18, 40); if (BLINK.mode !== 'L') g.fillText('▶', W - 18, 40); }
+    sc.tex.needsUpdate = true;
+  }
+  const _mtScr = scrDraw;
+  scrDraw = function (sc, X, spd, thr) { if (sc && sc.k === 'tft' && S.car && simBike(S.car)) return busaDraw(sc, X, spd, thr); return _mtScr.apply(this, arguments); };
+
+  // ---------- the sound: the Busa's own 1340 through whichever exhaust is on it ----------
+  const MT_EXS = { akra: { lp: 2100, g: 1.35, o: 0.6 }, yosh: { lp: 1900, g: 1.45, o: 0.65 }, scp: { lp: 3200, g: 1.8, o: 0.9 }, full: { lp: 2600, g: 1.7, o: 0.85 } };
+  const _mtEa = eaCfgOf;
+  eaCfgOf = function (c) {
+    const cfg = _mtEa.apply(this, arguments); if (!c || !simBike(c) || !cfg || cfg.ev) return cfg;
+    const x = mtP(c, 'exh'), X = MT_EXS[x], tb = mtBoost(c);
+    if (!X && !tb) return cfg;
+    const ex = Object.assign({}, cfg.ex); for (const k of ['shut', 'open']) { ex[k] = Object.assign({}, ex[k]); if (X) { ex[k].lp = X.lp; ex[k].g *= X.g; ex[k].o = Math.max(ex[k].o, X.o); } }
+    const gen = Object.assign({}, cfg.gen); if (X) gen.pop = Math.min(0.6, gen.pop + 0.2 * X.o); if (tb) gen.turbo = true;
+    return Object.assign({}, cfg, { ex, gen, turbo: cfg.turbo || !!tb, key: cfg.key + '|moto:' + x + tb });
+  };
+
+  // ---------- the Moto Shop: every shop that works on cars works on a bike its own way ----------
+  function mtSet(c, msg) { save(); MT_CACHE.clear(); dragRefresh(c); const m = car && car.userData.model; if (m && S.car === c) applyLook(m, c); toast(msg, 'good'); }
+  function motoShop(p) {
+    const c = S.car, g = mtGeo(c), o = mtOf(c), rate = (p && p.rate) || 1, B = bikeSpec(c);
+    const rows = [
+      { t: `${carLabel(carOf(c.id))}`, s: `${Math.round(mtHpNow(c))} hp at the crank · ${Math.round(B.m - 80)} kg · wheelbase ${Math.round(B.L * 1000)} mm · ${MT_TIRES[o.tire].name.split(' (')[0]} · top ${Math.round(B.top * 2.237)} mph`, btn: 'OK', off: true, act: () => {} },
+      { t: 'Performance', s: 'ECU, intake, exhausts, cams, injectors, internals, turbo, nitrous, gearing', btn: 'Open', act: () => openMenu(() => mtCat(p, 'perf')) },
+      { t: 'Chassis', s: 'Lowering links, extended swingarms, Öhlins, Brembo RCS, forged wheels, drag straps', btn: 'Open', act: () => openMenu(() => mtCat(p, 'chassis')) },
+      { t: 'Tires', s: 'Street, performance, track and drag rubber: each grips, warms and wears its own way', btn: 'Open', act: () => openMenu(() => mtTires(p)) },
+    ];
+    if (g.hero) rows.push({ t: 'Looks', s: 'Factory schemes, carbon fairings, decals, wheels, exhaust finish, seat cowl, screens, mirrors', btn: 'Open', act: () => openMenu(() => mtLooks(p)) });
+    if (g.hero) rows.push({ t: c.kits && c.kits.naked ? 'Fairings are off (the motor shows)' : 'Take the fairings off', s: 'See the 1340 inline-4, its headers and the radiator. Free; put them back any time', btn: c.kits && c.kits.naked ? 'Put back' : 'Strip', act: () => { c.kits = c.kits || {}; if (c.kits.naked) delete c.kits.naked; else c.kits.naked = true; mtSet(c, c.kits.naked ? 'Fairings off.' : 'Fairings back on.'); openMenu(() => motoShop(p)); } });
+    rows.push({ t: 'Electronics (S.I.R.S.)', s: 'Power mode, traction control, anti-lift, launch control, quickshifter, engine braking, ABS', btn: 'Set', act: () => openMenu(() => mtElec(p)) });
+    return { title: (p && p.name ? p.name + ' · ' : '') + 'Moto Shop', sub: 'Bike parts, tires and setup', rows };
+  }
+  const mtHpNow = c => { const B = bikeSpec(c); let pk = 0; for (let n = 3000; n <= B.red; n += 100) pk = Math.max(pk, mtTq(B, n, 1, false) * n / MT_RPM / 745.7); return pk; };
+  function mtCat(p, cat) {
+    const c = S.car, rate = (p && p.rate) || 1, o = mtOf(c), rows = [];
+    for (const [k, P] of Object.entries(MT_PARTS)) {
+      if (P.cat !== cat) continue; const cur = mtP(c, k);
+      for (const [v, [name, price]] of Object.entries(P.opts)) {
+        const on = cur === v, need = mtNeeds(c, k, v);
+        rows.push({ t: `${P.name}: ${name}`, s: on ? 'On the bike now' : need.length ? 'Needs ' + need.join(' and ') : '', btn: on ? 'Installed' : price ? money(price * rate) : 'Free', off: on || need.length > 0,
+          act: () => { if (price && !spend(Math.round(price * rate), name)) return; o.p[k] = v; const hp0 = Math.round(mtHpNow(c)); mtSet(c, `${name} on. ${hp0} hp at the crank.`); openMenu(() => mtCat(p, cat)); } });
+      }
+    }
+    return { title: cat === 'perf' ? 'Performance' : 'Chassis', sub: `${Math.round(mtHpNow(c))} hp · ${Math.round(bikeSpec(c).m - 80)} kg`, rows, back: () => openMenu(() => motoShop(p)) };
+  }
+  function mtTires(p) {
+    const c = S.car, rate = (p && p.rate) || 1, o = mtOf(c), rows = [];
+    for (const [k, T] of Object.entries(MT_TIRES)) { const on = o.tire === k;
+      rows.push({ t: T.name, s: (on ? `On it now (${Math.round(c.cond.tires)}% tread). ` : '') + T.blurb, btn: on ? 'New set ' + money(T.price * rate) : money(T.price * rate), act: () => { if (!spend(Math.round(T.price * rate), T.name)) return; o.tire = k; c.cond.tires = 100; mtSet(c, `${T.name} mounted.`); openMenu(() => mtTires(p)); } }); }
+    return { title: 'Tires', sub: 'Front and rear, mounted and balanced', rows };
+  }
+  // looks: the factory schemes from the brochure, and the custom pieces
+  const MT_SCHEMES = [['Glass Sparkle Black / Candy Burnt Gold', '#050506', '#b8892c', '#c79a3a', '#b8892c'], ['Metallic Matte Steel Green / Silver', '#26352c', '#b8bcc2', '#c9ced4', '#2a2b2e'], ['Pearl Brilliant White / Pearl Vigor Blue', '#d8dade', '#1d4fae', '#1d4fae', '#9aa0a8'], ['Metallic Thunder Gray / Candy Daring Red', '#3d4046', '#a50f1a', '#c41b1b', '#2a2b2e']];
+  const MT_LOOK = {
+    acc: [['Gold', '#b8892c'], ['Silver', '#b8bcc2'], ['Red', '#a50f1a'], ['Blue', '#1d4fae'], ['Black-out', '#111214']],
+    dec: [['Gold', '#c79a3a'], ['Silver', '#c9ced4'], ['Red', '#c41b1b'], ['White', '#eceeee'], ['Black-out', '#1a1b1e']],
+    rim: [['Gold', '#b8892c'], ['Black', '#141416'], ['Bronze', '#6a4a2a'], ['Silver', '#b4b8bc'], ['Red', '#9a0d14']],
+    exh: [['Titanium burnt blue', '#5a6488'], ['Brushed titanium', '#8e9298'], ['Carbon black', '#1a1b1e'], ['Polished', '#d8dadc'], ['Black ceramic', '#202124']],
+    cal: [['Brembo gold', '#b8892c'], ['Red', '#c41b1b'], ['Black', '#141416'], ['Blue', '#1d4fae']],
+    seat: [['Black', '#161618'], ['Brown', '#4a3020'], ['Red', '#5a0d14'], ['Grey suede', '#45474c']],
+    frame: [['Satin black (factory)', '#2e3034'], ['Polished', '#c9ccd0'], ['Gold', '#a8822c'], ['Red', '#7a1018']],
+  };
+  function mtLooks(p) {
+    const c = S.car, rate = (p && p.rate) || 1, L = c.look || (c.look = {}), K = c.kits || (c.kits = {}), rows = [];
+    const buy = (price, what, fn) => { if (price && !spend(Math.round(price * rate), what)) return; fn(); mtSet(c, what + '.'); openMenu(() => mtLooks(p)); };
+    for (const [n, paint, acc, dec, rim] of MT_SCHEMES) rows.push({ t: 'Factory scheme: ' + n, sw: paint, btn: money(2400 * rate), act: () => buy(2400, n, () => { c.color = paint; L.acc = acc; L.dec = dec; L.rim = rim; L.carbon = false; }) });
+    rows.push({ t: L.carbon ? 'Full carbon fairings (on)' : 'Full carbon fiber fairings', s: 'Every painted panel in 2x2 twill carbon under clear', btn: L.carbon ? 'Remove' : money(5200 * rate), act: () => buy(L.carbon ? 0 : 5200, L.carbon ? 'Back to paint' : 'Carbon fairings', () => { L.carbon = !L.carbon; }) });
+    rows.push({ t: c.matte ? 'Satin wrap (on)' : 'Satin wrap over the paint', btn: c.matte ? 'Remove' : money(1600 * rate), act: () => buy(c.matte ? 0 : 1600, c.matte ? 'Wrap off' : 'Satin wrap', () => { c.matte = !c.matte; }) });
+    const named = { acc: 'Accent stripes', dec: 'Decals (kanji, Hayabusa, SUZUKI)', rim: 'Wheels', exh: 'Exhaust finish', cal: 'Calipers', seat: 'Seat', frame: 'Frame and swingarm' }, cost = { acc: 450, dec: 350, rim: 900, exh: 600, cal: 380, seat: 520, frame: 1800 };
+    for (const [k, list] of Object.entries(MT_LOOK)) for (const [n, hex] of list) { const on = (L[k] || '') === hex; rows.push({ t: `${named[k]}: ${n}`, sw: hex, btn: on ? 'On it' : money(cost[k] * rate), off: on, act: () => buy(cost[k], `${named[k]}: ${n}`, () => { L[k] = hex; }) }); }
+    for (const [k, n, price] of [['cowl', 'Solo seat cowl (color-matched)', 420], ['dbl', 'Double-bubble screen (taller, more tuck)', 260], ['mir', 'Mirror block-off plates (track look)', 140]]) { const on = !!K[k]; rows.push({ t: n, s: on ? 'Installed. Tap to take it off.' : '', btn: on ? 'Remove' : money(price * rate), act: () => buy(on ? 0 : price, on ? n + ' off' : n, () => { if (on) delete K[k]; else K[k] = true; }) }); }
+    rows.push({ t: 'Screen tint: ' + (L.scr === 'clear' ? 'clear' : 'dark smoke'), btn: money(180 * rate), act: () => buy(180, 'Screen tint', () => { L.scr = L.scr === 'clear' ? '' : 'clear'; }) });
+    return { title: 'Looks', sub: 'Paint and color in the paint booth; the bike-only pieces here', rows };
+  }
+  function mtElec(p) {
+    const c = S.car, o = mtOf(c), e = o.el, g = mtGeo(c), rows = [];
+    const st = (k, v, msg) => { e[k] = v; save(); MT_CACHE.clear(); toast(msg); openMenu(() => mtElec(p)); };
+    if (g.modes) for (const m of ['A', 'B', 'C']) rows.push({ t: `Power mode ${m}`, s: { A: 'Full power, the sharpest throttle', B: 'Full power, softer response', C: 'About 70% power, gentle throttle (rain)' }[m], btn: e.mode === m ? 'On' : 'Pick', off: e.mode === m, act: () => st('mode', m, 'Mode ' + m) });
+    rows.push({ t: `Traction control: ${e.tc || 'OFF'}`, s: '1 lets the rear step out, 10 holds it straight. OFF: burnouts and slides, all on you', btn: 'Change', act: () => st('tc', (e.tc + 1) % 11, 'TC ' + ((e.tc + 1) % 11 || 'OFF')) });
+    rows.push({ t: `Anti-lift (wheelie control): ${e.wc || 'OFF'}`, s: '1 lets the front float a few degrees, 10 keeps it on the ground. OFF: real wheelies (and real loop-outs)', btn: 'Change', act: () => st('wc', (e.wc + 1) % 11, 'Anti-lift ' + ((e.wc + 1) % 11 || 'OFF')) });
+    if (g.lc) rows.push({ t: `Launch control rpm: ${[0, 4500, 6000, 7500][e.lc]}`, s: 'Arm it on the bars (LC), hold the clutch, pin the throttle, let go', btn: 'Change', act: () => st('lc', (e.lc % 3) + 1, 'Launch ' + [0, 4500, 6000, 7500][(e.lc % 3) + 1]) });
+    if (g.qs) rows.push({ t: `Bi-directional quickshifter: ${e.qs ? 'ON' : 'OFF'}`, s: 'Clutchless up and down shifts with an auto-blip', btn: 'Toggle', act: () => st('qs', e.qs ? 0 : 1, 'Quickshifter ' + (e.qs ? 'off' : 'on')) });
+    if (g.modes) rows.push({ t: `Engine braking: ${['', 'strong', 'normal', 'light'][e.ebc]}`, s: 'How hard it slows off the throttle (a slipper clutch stops the rear from hopping)', btn: 'Change', act: () => st('ebc', (e.ebc % 3) + 1, 'Engine braking ' + ['', 'strong', 'normal', 'light'][(e.ebc % 3) + 1]) });
+    if (g.abs) rows.push({ t: 'ABS with rear-lift mitigation', s: 'Always on (the street Busa can\'t switch it off). It keeps the rear on the ground under hard braking', btn: 'On', off: true, act: () => {} });
+    return { title: 'Electronics (S.I.R.S.)', sub: 'The same settings as the bars, in one place', rows };
+  }
+  // the car shops: engine, rims, drag and audio send a bike to the Moto Shop (the rides block turned bikes away before)
+  for (const k of ['engine', 'rims', 'drag', 'audio']) { const fn = MENUS[k]; if (!fn) continue; MENUS[k] = function (p) { if (S.car && simBike(S.car)) return motoShop(p); return fn.apply(this, arguments); }; }
+  MENUS.moto = p => S.car && simBike(S.car) ? motoShop(p) : { title: 'Moto Shop', sub: 'Bikes only', rows: [{ t: 'Bring a bike in', s: 'Ride a motorcycle here for parts, tires and setup', btn: 'OK', act: () => closeMenu() }] };
+  // the bike's own colors and kits on the model (accent stripes, decals, wheels, exhaust finish, frame, seat, carbon)
+  let MT_CARBON = null;
+  function mtCarbon(mat) {
+    if (mat.userData.carbon) return; mat.userData.carbon = true;
+    mat.onBeforeCompile = sh => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCp;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvCp = position;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCp;\nuniform float uCarbon;').replace('#include <color_fragment>', `#include <color_fragment>
+        if (uCarbon > 0.5) { vec3 q = vCp * 160.0; float a = fract((q.x + q.y) * 0.5), b = fract((q.x - q.y + q.z) * 0.5); float w = step(0.5, fract((floor(q.x + q.y) + floor(q.x - q.y + q.z)) * 0.5));
+          float t = mix(abs(sin(a * 3.14159)), abs(sin(b * 3.14159)), w); diffuseColor.rgb = mix(vec3(0.012, 0.013, 0.015), vec3(0.075, 0.078, 0.085), t); }`);
+      sh.uniforms.uCarbon = mat.userData.uC = { value: 1 };
+    };
+    mat.needsUpdate = true;
+  }
+  const _mtLook = applyLook;
+  applyLook = function (m, c) {
+    const r = _mtLook.apply(this, arguments);
+    try {
+      const U = m && m.userData; if (!U || !U.bike || !c) return r; const L = c.look || {}, R = U.roles || {};
+      const paint = (role, hex, k = 1) => { for (const mm of R[role] || []) { if (hex) mm.color.copy(lin(hex, k)); else if (mm.userData.c0) mm.color.fromArray(mm.userData.c0); } };
+      paint('acc', L.acc); paint('dec', L.dec); paint('dec2', L.dec); paint('rim', L.rim); paint('rimLip', L.acc || L.rim); paint('exh', L.exh); paint('seat', L.seat); paint('frame', L.frame); paint('cal', L.cal);
+      for (const mm of R.scr || []) { if (mm.userData.o0 == null) mm.userData.o0 = mm.opacity; mm.opacity = L.scr === 'clear' ? Math.max(0.12, mm.userData.o0 * 0.4) : mm.userData.o0; }
+      if (U.paint) { if (L.carbon) { mtCarbon(U.paint); if (U.paint.userData.uC) U.paint.userData.uC.value = 1; } else if (U.paint.userData.uC) U.paint.userData.uC.value = 0; }
+      // the exhaust kits by part: slip-ons and the full system show their own cans
+      const ex = mtP(c, 'exh'), kit = { akra: 'exAkra', full: 'exAkra', yosh: 'exYosh', scp: 'exScp' }[ex];
+      if (U.kits) for (const [k, gs] of Object.entries(U.kits)) { if (k === '!exh') gs.forEach(g => g.visible = !kit); else if (/^ex[A-Z]/.test(k)) gs.forEach(g => g.visible = k === kit); else if (k === '!mir' && c.kits) gs.forEach(g => g.visible = !c.kits.mir); }
+    } catch (e) { console.warn('bike look: ' + e.message); }
+    return r;
+  };
+  mtUI();
+  window.__moto = { tick: (n, dt) => { for (let i = 0; i < n; i++) stepDrive(dt); }, gbMode: m => gbMode(m), GBX, applyLook: (m, c) => applyLook(m, c), ea: c => eaCfgOf(c), MOTO, BK, RDR, bikeSpec, mtPose, mtRider, mtOf, mtTq, mtHpNow, MT_PARTS, MT_TIRES, motoShop, mtElTap, simBike, MT_GEO };
+  })();
+  // ==== motorcycles (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
