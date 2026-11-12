@@ -1,6 +1,6 @@
 {
-  "name": "Murda Worth TEST",
-  "short_name": "MW Test",
+  "name": "Murda Worth SR",
+  "short_name": "Murda Worth SR",
   "description": "Murda Worth in 3D (test build)",
   "start_url": "./index.html",
   "scope": "./",
