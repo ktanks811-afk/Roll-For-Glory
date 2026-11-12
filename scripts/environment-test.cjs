@@ -1,5 +1,6 @@
 // Environment pass check for the 3D game (headless Chromium, Playwright): clouds + cloud shade, the countryside trees,
-// the ground fix (no pale ground when the camera is low and level), grass at your feet, fences and hay bales.
+// the ground fix (no pale ground when the camera is low and level), grass at your feet, fences and hay bales,
+// and pass 2: road wear, the horizon ring, cattle / windmills / pumpjacks, fireflies.
 // Serve the repo on http://localhost:8765 and set S to a folder that holds npm/node_modules/three (three@0.128.0).
 // SHOTS=1 saves pictures to SD (default environment-shots).
 const { chromium } = require('playwright');
@@ -56,10 +57,23 @@ const S = process.env.S;
   const tier = async t => { await ev(t => { window.__real.rlSetPref(t); window.__cops.COP.cam = [200, 1.6, 4512, 700, 1.0, 4512]; }, t); await wait(5000); return ev(() => window.__env.stats.grass); };
   out.tLow = await tier('low'); out.tUltra = await tier('ultra'); await tier('high');
   ok(out.tLow === 0 && out.tUltra > out.road.grass, 'tiers change the grass reach');
+  // 8) pass 2: worn roads, the horizon ring, cattle + a windmill + a pumpjack out in the country, fireflies at night
+  out.p2 = await ev(() => { const D = window.__env.debug, M = window.__map.scn(); return { wear: !!window.__env.stats.roadWear, horizon: !!(D.EH.mesh && D.EH.mesh.visible && M.getObjectByName('env-horizon')), air: !!D.EA.pts }; });
+  ok(out.p2.wear && out.p2.horizon && out.p2.air, 'road wear + horizon ring + air built');
+  const life = async cam => { await ev(c => { window.__cops.COP.cam = c; }, cam); await wait(5000); return ev(() => Object.assign({}, window.__env.stats.life)); };
+  out.cows = await life([-7673, 1.7, 2911, -7680, 1, 2902]); out.mill = await life([-215, 2.2, 4340, -187, 6, 4365]); out.jack = await life([-2790, 2.2, -1428, -2802, 2.2, -1441]);
+  ok(out.cows.cows > 5 && out.mill.mills > 0 && out.jack.jacks > 0, 'cattle, windmill and pumpjack in the country');
+  // near town the herds keep to the open fields: no cow on a road or within 30 m of a building
+  await life([1505, 1.7, -690, 1505, 4, -760]);
+  out.townCows = await ev(() => { const P = window.__env.debug.EP, L = window.__st.lib; let n = 0, bad = 0; for (const im of [P.cowG, P.cowS]) { const a = im.instanceMatrix.array; for (let i = 0; i < im.count; i++) { const x = a[i * 16 + 12], z = a[i * 16 + 14]; n++; if (window.__st.onRoad(x, z) || L.solidIn(x - 30, z - 30, x + 30, z + 30)) bad++; } } return { n, bad }; });
+  ok(out.townCows.bad === 0, 'no cattle on a road or beside a building');
   // 7) night: no cloud shade, clouds go dark
   await ev(() => window.__map.setTime('night')); await pg.waitForFunction(() => window.__env.debug.EC.u.w === 0, null, { timeout: 20000, polling: 250 }).catch(() => {});
   out.night = await ev(() => window.__env.debug.EC.u.w);
   ok(out.night === 0, 'no cloud shade at night');
+  await ev(() => { window.__cops.COP.cam = [-2600, 1.8, -1500, -3400, 3, -1300]; }); await pg.waitForFunction(() => window.__env.debug.EA.U.uA.value > 0.3, null, { timeout: 60000, polling: 500 }).catch(() => {});
+  out.flies = await ev(() => ({ a: window.__env.debug.EA.U.uA.value, on: window.__env.debug.EA.pts.visible }));
+  ok(out.flies.on && out.flies.a > 0.3, 'fireflies over the grass at night');
   out.errors = errs.slice(0, 8); ok(!errs.length, 'no page errors');
   console.log(JSON.stringify(out, null, 1));
   console.log(fail.length ? 'FAIL: ' + fail.join('; ') : 'PASS: environment');

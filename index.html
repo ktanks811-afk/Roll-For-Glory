@@ -26045,13 +26045,235 @@ float envCloudShade( vec3 vp ) {
     EV.stats.fence = { wood: np, tposts: nt, wires: nw, bales: nb };
   }
 
+  // ================= worn roads: tone blotches, patch repairs, cracks, tar snakes, oil drips (world space, never tiles) =================
+  function envRoadWear(m) {
+    const ob = m.onBeforeCompile, ok = m.customProgramCacheKey;
+    m.onBeforeCompile = function (sh) {
+      if (ob) ob.call(this, sh);
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vEW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvEW = ( modelMatrix * vec4( position, 1.0 ) ).xyz;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vEW;
+float erH( vec2 p ) { vec3 p3 = fract( vec3( p.xyx ) * 0.1031 ); p3 += dot( p3, p3.yzx + 33.33 ); return fract( ( p3.x + p3.y ) * p3.z ); }
+float erN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f ); return mix( mix( erH( i ), erH( i + vec2( 1.0, 0.0 ) ), f.x ), mix( erH( i + vec2( 0.0, 1.0 ) ), erH( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }
+float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + erN( p * 4.3 + 7.7 ) * 0.15; }`).replace('#include <map_fragment>', `#include <map_fragment>
+  { vec2 q = vEW.xz; float fw = max( fwidth( q.x ), fwidth( q.y ) ), nearK = 1.0 - smoothstep( 0.12, 0.9, fw );
+    float paint = smoothstep( 0.2, 0.45, max( diffuseColor.r, diffuseColor.g ) );
+    vec3 c = diffuseColor.rgb * ( 0.68 + 0.66 * erF( q * 0.055 ) );
+    vec2 ps = vec2( 7.0, 11.0 ), pc = floor( q / ps ), pf = fract( q / ps ); float ph = erH( pc );
+    float pch = step( 0.88, ph ) * step( 0.12, pf.x ) * step( pf.x, 0.4 + 0.45 * erH( pc + 3.1 ) ) * step( 0.1, pf.y ) * step( pf.y, 0.45 + 0.45 * erH( pc + 7.7 ) );
+    c = mix( c, c * ( ph > 0.94 ? 0.6 : 1.3 ) + 0.002, pch * ( 1.0 - paint ) );
+    float mask = smoothstep( 0.48, 0.66, erF( q * 0.035 + 5.0 ) );
+    float crack = ( 1.0 - smoothstep( 0.0, 0.016 + fw * 0.6, abs( erF( q * 0.55 + 11.0 ) - 0.5 ) ) ) * mask * nearK;
+    float tar = ( 1.0 - smoothstep( 0.0, 0.012 + fw * 0.3, abs( erF( q * 0.21 + 37.0 ) - 0.5 ) ) ) * smoothstep( 0.45, 0.62, erF( q * 0.02 + 9.0 ) ) * nearK;
+    float oil = smoothstep( 0.7, 0.8, erF( q * 1.3 ) ) * smoothstep( 0.52, 0.68, erF( q * 0.09 + 21.0 ) ) * nearK;
+    c *= ( 1.0 - 0.75 * crack ) * ( 1.0 - 0.35 * oil * ( 1.0 - paint ) );
+    c = mix( c, vec3( 0.006 ), tar * 0.85 * ( 1.0 - paint * 0.6 ) );
+    c = mix( c, c * 0.8, paint * smoothstep( 0.4, 0.75, erF( q * 0.8 + 3.0 ) ) * 0.6 );   // paint wears thin in places
+    diffuseColor.rgb = c; }`);
+      EV.stats.roadWear = sh.fragmentShader.indexOf('erF( q * 0.055 )') > 0;
+    };
+    m.customProgramCacheKey = () => 'envroad' + (ok ? ok.call(m) : '');
+    m.needsUpdate = true;
+  }
+  const _evBuildMaterials = buildMaterials;
+  buildMaterials = function () { const r = _evBuildMaterials.apply(this, arguments); try { if (MAT.road) envRoadWear(MAT.road); } catch (e) { console.warn('environment: road wear ' + e.message); } return r; };
+
+  // ================= the horizon: low wooded hills in the haze instead of a ruler-flat edge =================
+  // A ring that travels with the camera (like the sky), sitting where the haze is already ~85% thick, so nothing real is
+  // hidden behind it; it only gives the skyline a shape.
+  const EH = { mesh: null };
+  function ehBuild() {
+    const N = 420, pos = [], nor = [], col = [], idx = [];
+    const hN = a => { const x = Math.cos(a), z = Math.sin(a); return evF(x * 2.3 + 40, z * 2.3 + 40) * 0.6 + evF(x * 6.1 + 9, z * 6.1 + 3) * 0.28 + evF(x * 40 + 5, z * 40 + 5) * 0.07 + evF(x * 160, z * 160) * 0.05; };
+    for (let i = 0; i <= N; i++) {
+      const a = i / N * ETAU, c = Math.cos(a), sn = Math.sin(a), h = 0.006 + Math.max(0, hN(a) - 0.3) * 0.085, sh = 0.75 + evH(i, 7) * 0.3;
+      pos.push(c, -0.004, sn, c, h, sn); nor.push(-c * 0.5, 0.86, -sn * 0.5, -c * 0.5, 0.86, -sn * 0.5);
+      col.push(0.03 * sh, 0.045 * sh, 0.022 * sh, 0.045 * sh, 0.062 * sh, 0.03 * sh);
+      if (i < N) { const b = i * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide, envMapIntensity: 0.2 }));
+    m.frustumCulled = false; m.name = 'env-horizon'; m.renderOrder = -4; scene.add(m); EH.mesh = m;
+  }
+  function ehStep() {
+    const m = EH.mesh; if (!m) return;
+    const f = scene.fog, n = f.near * 0.35, R = n + 0.72 * (f.far - n), cp = camera.position;
+    m.visible = EV.on && cp.y < R * 0.25; m.position.set(cp.x, 0, cp.z); m.scale.set(R, R, R);
+  }
+
+  // ================= country life: cattle, windmills + stock tanks, pumpjacks =================
+  const EP = { at: [1e9, 1e9], mills: [], jacks: [], n: {} };
+  const _pa = new THREE.Vector3(), _pb = new THREE.Vector3(), _pq = new THREE.Quaternion(), _pm = new THREE.Matrix4();
+  function evMerge(parts) {   // [geometry, '#hex'] -> one geometry with vertex colours
+    const pos = [], nor = [], col = [], idx = []; let base = 0;
+    for (const [g, hex] of parts) { const a = g.attributes, c = lin(hex); for (let i = 0; i < a.position.count; i++) { pos.push(a.position.getX(i), a.position.getY(i), a.position.getZ(i)); nor.push(a.normal.getX(i), a.normal.getY(i), a.normal.getZ(i)); col.push(c.r, c.g, c.b); }
+      for (const i of g.index.array) idx.push(i + base); base += a.position.count; g.dispose(); }
+    const f = new THREE.BufferGeometry(); f.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); f.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); f.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); f.setIndex(idx); return f;
+  }
+  const evBox = (w, h, d, x, y, z, hex, rz = 0, ry = 0) => { const g = new THREE.BoxGeometry(w, h, d); if (rz) g.rotateZ(rz); if (ry) g.rotateY(ry); g.translate(x, y, z); return [g, hex]; };
+  const evBeam = (a, b, t, hex) => { _pa.set(...a); _pb.set(...b); const len = _pa.distanceTo(_pb), g = new THREE.BoxGeometry(t, len, t); _pq.setFromUnitVectors(_up, _pb.clone().sub(_pa).normalize()); g.applyMatrix4(_pm.compose(_pa.clone().add(_pb).multiplyScalar(0.5), _pq, _s4.set(1, 1, 1))); return [g, hex]; };
+  // a rounded body part: rings [x, y, halfHeight, halfWidth] along a path in the x/y plane, each ring square to the path
+  function evLoft(R, hex, seg = 10, pw = 2.6) {
+    const pos = [], idx = [], n = R.length;
+    for (let i = 0; i < n; i++) { const p = R[Math.max(0, i - 1)], q = R[Math.min(n - 1, i + 1)]; let tx = q[0] - p[0], ty = q[1] - p[1]; const l = Math.hypot(tx, ty) || 1; tx /= l; ty /= l;
+      for (let k = 0; k < seg; k++) { const a = k / seg * ETAU, c = Math.cos(a), sn = Math.sin(a), e = 2 / pw, u = Math.sign(c) * Math.pow(Math.abs(c), e) * R[i][2], w = Math.sign(sn) * Math.pow(Math.abs(sn), e) * R[i][3];
+        pos.push(R[i][0] - ty * u, R[i][1] + tx * u, w); } }
+    for (let i = 0; i < n - 1; i++) for (let k = 0; k < seg; k++) { const a = i * seg + k, b = i * seg + (k + 1) % seg, c = a + seg, d = b + seg; idx.push(a, b, c, b, d, c); }
+    const c0 = pos.length / 3; pos.push(R[0][0], R[0][1], 0, R[n - 1][0], R[n - 1][1], 0);
+    for (let k = 0; k < seg; k++) { idx.push(c0, (k + 1) % seg, k, c0 + 1, (n - 1) * seg + k, (n - 1) * seg + (k + 1) % seg); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return [g, hex];
+  }
+  const evCyl = (r0, r1, h, x, y, z, hex, rz = 0, rx = 0) => { const g = new THREE.CylinderGeometry(r0, r1, h, 7, 1); if (rz) g.rotateZ(rz); if (rx) g.rotateX(rx); g.translate(x, y, z); return [g, hex]; };
+  // a cow, nose toward +x, about 1.4 m at the shoulder; white so the herd's hide colour tints it
+  function epCow(graze) {
+    const W = '#ffffff', D = '#2a2622', H = '#d9cfbd', P = [];
+    P.push(evLoft([[-0.9, 1.2, 0.1, 0.08], [-0.84, 1.14, 0.3, 0.22], [-0.62, 1.08, 0.41, 0.32], [-0.2, 1.01, 0.46, 0.38], [0.25, 1.0, 0.45, 0.37], [0.58, 1.06, 0.42, 0.31], [0.8, 1.13, 0.36, 0.24], [0.9, 1.16, 0.2, 0.14]], W, 12));
+    // neck + head in one sweep
+    if (graze) P.push(evLoft([[0.72, 1.14, 0.3, 0.19], [0.98, 0.94, 0.24, 0.16], [1.14, 0.7, 0.19, 0.14], [1.24, 0.5, 0.17, 0.15], [1.34, 0.33, 0.17, 0.15], [1.44, 0.2, 0.15, 0.14], [1.5, 0.13, 0.13, 0.13]], W, 9),
+      evLoft([[1.5, 0.13, 0.13, 0.13], [1.55, 0.07, 0.11, 0.115]], D, 9), evBox(0.05, 0.11, 0.56, 1.18, 0.6, 0, W, 0.5), evCyl(0.012, 0.03, 0.2, 1.2, 0.68, 0.2, H, 0, 0.9), evCyl(0.012, 0.03, 0.2, 1.2, 0.68, -0.2, H, 0, -0.9));
+    else P.push(evLoft([[0.72, 1.18, 0.3, 0.19], [0.98, 1.34, 0.25, 0.16], [1.16, 1.5, 0.2, 0.14], [1.3, 1.57, 0.18, 0.15], [1.46, 1.54, 0.17, 0.15], [1.6, 1.49, 0.15, 0.14], [1.67, 1.46, 0.13, 0.13]], W, 9),
+      evLoft([[1.67, 1.46, 0.13, 0.13], [1.73, 1.44, 0.11, 0.115]], D, 9), evBox(0.05, 0.11, 0.56, 1.24, 1.68, 0, W, -0.3), evCyl(0.012, 0.03, 0.2, 1.3, 1.76, 0.2, H, 0, 0.9), evCyl(0.012, 0.03, 0.2, 1.3, 1.76, -0.2, H, 0, -0.9));
+    // legs: thick forearm / gaskin, slim cannon, dark hoof
+    for (const [x, z, back] of [[0.56, 0.2, 0], [0.56, -0.2, 0], [-0.62, 0.2, 1], [-0.62, -0.2, 1]]) {
+      P.push(evCyl(back ? 0.15 : 0.12, 0.075, 0.48, x + (back ? 0.03 : 0), 0.66, z, W, back ? -0.16 : 0), evCyl(0.07, 0.055, 0.4, x + (back ? -0.02 : 0), 0.28, z, W, back ? 0.1 : 0), evCyl(0.065, 0.075, 0.09, x + (back ? -0.03 : 0), 0.045, z, D)); }
+    P.push(evCyl(0.03, 0.018, 0.75, -0.95, 0.84, 0, W, 0.08), evCyl(0.04, 0.03, 0.2, -0.98, 0.4, 0, D, 0.08));   // tail + switch
+    P.push(evLoft([[-0.42, 0.6, 0.02, 0.05], [-0.34, 0.6, 0.1, 0.14], [-0.2, 0.6, 0.02, 0.05]], '#e8c4b8', 8));   // udder
+    return evMerge(P);
+  }
+  function epBuild() {
+    const std = (o) => new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, roughness: 0.85 }, o));
+    const mk = (geo, mat, cap, name, colors) => { const im = new THREE.InstancedMesh(geo, mat, cap); im.count = 0; im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.castShadow = true; im.receiveShadow = true; im.name = name;
+      if (colors) { im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3); im.instanceColor.setUsage(THREE.DynamicDrawUsage); } scene.add(im); return im; };
+    const hide = std({ roughness: 0.9 });
+    EP.cowS = mk(epCow(false), hide, 160, 'env-cows', true); EP.cowG = mk(epCow(true), hide, 160, 'env-cows-grazing', true);
+    // windmill: a 9 m galvanized tower, the tank beside it; the wheel + tail are their own mesh so they turn
+    const G = '#9aa0a2', G2 = '#7d8486', T = [];
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) T.push(evBeam([sx * 1.25, 0, sz * 1.25], [sx * 0.22, 9, sz * 0.22], 0.09, G));
+    for (const y of [1.6, 3.6, 5.6, 7.4]) { const r = 1.25 - (1.03 * y / 9); for (const [a, b] of [[[r, y, r], [r, y, -r]], [[r, y, -r], [-r, y, -r]], [[-r, y, -r], [-r, y, r]], [[-r, y, r], [r, y, r]]]) T.push(evBeam(a, b, 0.05, G2));
+      const r2 = 1.25 - (1.03 * (y + 1.9) / 9); if (y < 7) { T.push(evBeam([r, y, r], [-r2, y + 1.9, r2], 0.035, G2), evBeam([-r, y, -r], [r2, y + 1.9, -r2], 0.035, G2), evBeam([r, y, -r], [r2, y + 1.9, r2], 0.035, G2), evBeam([-r, y, r], [-r2, y + 1.9, -r2], 0.035, G2)); } }
+    T.push(evBox(0.9, 0.06, 0.9, 0, 8.3, 0, '#6b5a44'), evBox(0.3, 0.5, 0.3, 0, 9.2, 0, G2), evBox(0.06, 8.6, 0.06, 0, 4.3, 0, G2));
+    { const tk = new THREE.CylinderGeometry(2.3, 2.3, 0.75, 22, 1, true); tk.translate(4.6, 0.375, 0); T.push([tk, '#a8aeb0']); const tk2 = new THREE.CylinderGeometry(2.26, 2.26, 0.74, 22, 1, true); tk2.scale(-1, 1, 1); tk2.translate(4.6, 0.375, 0); T.push([tk2, '#70777a']);
+      const wt = new THREE.CylinderGeometry(2.26, 2.26, 0.02, 22); wt.translate(4.6, 0.6, 0); T.push([wt, '#16323a']); T.push(evBeam([0.2, 0.5, 0], [2.4, 0.8, 0], 0.06, G2)); }
+    EP.mill = mk(evMerge(T), std({ roughness: 0.5, metalness: 0.55, side: THREE.DoubleSide }), 20, 'env-windmills');
+    const Wh = []; for (let i = 0; i < 18; i++) { const a = i / 18 * ETAU, g = new THREE.BoxGeometry(0.3, 0.95, 0.02); g.rotateY(0.45); g.translate(0, 0.95, 0); g.rotateZ(a); Wh.push([g, i % 6 === 0 ? '#b8bcbc' : G]); }
+    { const hub = new THREE.CylinderGeometry(0.16, 0.16, 0.12, 10); hub.rotateX(Math.PI / 2); Wh.push([hub, G2]); const rim = new THREE.TorusGeometry(1.42, 0.02, 4, 28); Wh.push([rim, G2]); const rim2 = new THREE.TorusGeometry(0.55, 0.02, 4, 20); Wh.push([rim2, G2]); }
+    EP.wheel = mk(evMerge(Wh), std({ roughness: 0.45, metalness: 0.6, side: THREE.DoubleSide }), 20, 'env-windmill-wheels');
+    EP.vane = mk(evMerge([evBox(0.04, 0.04, 2.0, 0, 0, -1.2, G2), evBox(0.03, 0.8, 1.0, 0, 0, -2.3, '#a33a2a')]), std({ roughness: 0.6, metalness: 0.4 }), 20, 'env-windmill-vanes');
+    // pumpjack: skid + samson post + gearbox; the walking beam (with the horsehead) and the crank weights move
+    const K = '#1e2220', R = '#7a2f1e', Bs = [];
+    Bs.push(evBox(6.2, 0.2, 1.5, -0.4, 0.1, 0, '#3a3c38'), evBox(1.3, 1.0, 0.9, -2.2, 0.7, 0, K), evBox(0.9, 0.7, 0.7, -3.6, 0.55, 0, '#4a4c48'));
+    for (const z of [0.45, -0.45]) { Bs.push(evBeam([0.9, 0.2, z], [0, 3.4, z * 0.35], 0.16, R), evBeam([-0.9, 0.2, z], [0, 3.4, z * 0.35], 0.16, R)); }
+    Bs.push(evBox(0.4, 0.3, 0.6, 0, 3.45, 0, K), evBox(0.12, 1.3, 0.12, 3.05, 0.65, 0, '#8a8c88'), evBox(0.5, 0.5, 0.5, 3.05, 0.25, 0, K));   // saddle bearing, wellhead
+    EP.jack = mk(evMerge(Bs), std({ roughness: 0.7, metalness: 0.3 }), 16, 'env-pumpjacks');
+    EP.beam = mk(evMerge([evBox(5.2, 0.34, 0.3, 0.2, 0, 0, R), evBox(0.55, 1.5, 0.34, 2.95, -0.35, 0, R, -0.12), evBox(0.3, 0.3, 0.34, -2.3, -0.1, 0, K)]), std({ roughness: 0.7, metalness: 0.3 }), 16, 'env-pumpjack-beams');
+    EP.crank = mk(evMerge([evBox(0.3, 1.9, 0.14, 0, 0.55, 0.55, K), evBox(0.3, 1.9, 0.14, 0, 0.55, -0.55, K), evBox(0.55, 0.8, 0.2, 0, 1.2, 0.6, '#3a3c38'), evBox(0.55, 0.8, 0.2, 0, 1.2, -0.6, '#3a3c38')]), std({ roughness: 0.7, metalness: 0.3 }), 16, 'env-pumpjack-cranks');
+    for (const im of [EP.wheel, EP.vane, EP.beam, EP.crank]) im.castShadow = !phone;
+  }
+  const COW_COL = [[0.02, 0.02, 0.022], [0.02, 0.02, 0.022], [0.1, 0.028, 0.014], [0.1, 0.028, 0.014], [0.3, 0.2, 0.11], [0.62, 0.6, 0.55], [0.09, 0.05, 0.03]];
+  function epStep(force) {
+    if (!EP.mill) return;
+    const cp = camera.position, RP = EV.tierR.prop, RC = EV.tierR.cow, show = cp.y < 400 && EV.on;
+    if (!show) { for (const k of ['cowS', 'cowG', 'mill', 'wheel', 'vane', 'jack', 'beam', 'crank']) EP[k].count = 0; EP.mills.length = EP.jacks.length = 0; EP.at = [1e9, 1e9]; return; }
+    if (!force && Math.hypot(cp.x - EP.at[0], cp.z - EP.at[1]) < 40) return;
+    EP.at = [cp.x, cp.z];
+    const L = window.__st && window.__st.lib; if (!L) return;
+    const open = (x, z, r) => { const k = groundKind(x, z); return (k === 2 || k === 5) && !L.roadIn(x - r, z - r, x + r, z + r, 6) && !L.solidIn(x - r - 45, z - r - 45, x + r + 45, z + r + 45) && !L.featIn(x - r, z - r, x + r, z + r) && !L.driveIn(x - r, z - r, x + r, z + r) && !inWater(x, z, r + 6) && evF(x / 650, z / 650) < 0.69 && (1 - Math.abs(evF(x / 2100 + 31, z / 2100 + 17) * 2 - 1.04)) < 0.975; };
+    // herds
+    let ns = 0, ng = 0; const HT = 260;
+    for (let i = Math.floor((cp.x - RC) / HT); i <= Math.floor((cp.x + RC) / HT); i++) for (let j = Math.floor((cp.z - RC) / HT); j <= Math.floor((cp.z + RC) / HT); j++) {
+      if (evH(i * 13 + 5, j * 29 - 11) > 0.3) continue;
+      const cx = (i + 0.25 + evH(i + 3, j) * 0.5) * HT, cz = (j + 0.25 + evH(i, j - 8) * 0.5) * HT; if (Math.hypot(cx - cp.x, cz - cp.z) > RC + 40 || !open(cx, cz, 4)) continue;
+      const n = 7 + Math.floor(evH(i - 6, j + 2) * 12), breed = Math.floor(evH(i + 9, j + 9) * 3) * 2, head = evH(i, j + 77) * ETAU;
+      for (let c = 0; c < n; c++) {
+        const a = evH(i * 7 + c, j) * ETAU, r = 3 + Math.sqrt(evH(i, j * 7 + c)) * 26, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r; if (!open(x, z, 1.5)) continue;
+        const graze = evH(c + i, c - j) < 0.62, im = graze ? EP.cowG : EP.cowS, k = graze ? ng : ns; if (k >= 160) continue;
+        const sc = 0.9 + evH(c, i + j) * 0.22, calf = evH(c * 3, i - j) < 0.14 ? 0.6 : 1, yaw = head + (evH(c * 5, j + i) - 0.5) * 2.4;
+        _m4.compose(_v4.set(x, 0, z), _q4.setFromAxisAngle(_up, yaw), _s4.set(sc * calf, sc * calf, sc * calf)); im.setMatrixAt(k, _m4);
+        const col = COW_COL[Math.min(COW_COL.length - 1, breed + (evH(c, j * 3 + i) < 0.8 ? 0 : Math.floor(evH(c + 1, i) * 3) * 2 + 1))], v = 0.85 + evH(c + 8, i) * 0.3;
+        im.instanceColor.array[k * 3] = col[0] * v; im.instanceColor.array[k * 3 + 1] = col[1] * v; im.instanceColor.array[k * 3 + 2] = col[2] * v;
+        if (graze) ng++; else ns++;
+      }
+    }
+    EP.cowS.count = ns; EP.cowG.count = ng; for (const im of [EP.cowS, EP.cowG]) { im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; }
+    // windmills and pumpjacks
+    EP.mills.length = EP.jacks.length = 0; const PT = 420;
+    for (let i = Math.floor((cp.x - RP) / PT); i <= Math.floor((cp.x + RP) / PT); i++) for (let j = Math.floor((cp.z - RP) / PT); j <= Math.floor((cp.z + RP) / PT); j++) {
+      const h = evH(i * 19 - 3, j * 23 + 7), what = h < 0.13 ? 1 : h > 0.9 ? 2 : 0; if (!what) continue;
+      const x = (i + 0.2 + evH(i, j + 31) * 0.6) * PT, z = (j + 0.2 + evH(i + 31, j) * 0.6) * PT; if (Math.hypot(x - cp.x, z - cp.z) > RP || !open(x, z, 7)) continue;
+      const yaw = evH(i + 2, j - 2) * ETAU;
+      if (what === 1 && EP.mills.length < 20) EP.mills.push({ x, z, yaw, ph: evH(i, j) * 9, sp: 1.6 + evH(j, i) * 1.6 });
+      else if (what === 2 && EP.jacks.length < 16) EP.jacks.push({ x, z, yaw, ph: evH(i, j) * 9, sp: 0.75 + evH(j, i) * 0.4 });
+    }
+    EP.mills.forEach((m, k) => { _m4.compose(_v4.set(m.x, 0, m.z), _q4.setFromAxisAngle(_up, m.yaw), _s4.set(1, 1, 1)); EP.mill.setMatrixAt(k, _m4); });
+    EP.jacks.forEach((m, k) => { _m4.compose(_v4.set(m.x, 0, m.z), _q4.setFromAxisAngle(_up, m.yaw), _s4.set(1, 1, 1)); EP.jack.setMatrixAt(k, _m4); });
+    EP.mill.count = EP.wheel.count = EP.vane.count = EP.mills.length; EP.jack.count = EP.beam.count = EP.crank.count = EP.jacks.length;
+    EP.mill.instanceMatrix.needsUpdate = EP.jack.instanceMatrix.needsUpdate = true;
+    EV.stats.life = { cows: ns + ng, mills: EP.mills.length, jacks: EP.jacks.length };
+  }
+  const _wq = new THREE.Quaternion(), _wq2 = new THREE.Quaternion(), _zax = new THREE.Vector3(0, 0, 1);
+  function epAnim(t) {   // only the handful in range move: wheels into the south-west wind, beams nodding, cranks turning
+    if (!EP.mill || (!EP.mills.length && !EP.jacks.length)) return;
+    const wind = 0.9;   // the wheel faces the wind (same heading as the cloud drift)
+    EP.mills.forEach((m, k) => {
+      _q4.setFromAxisAngle(_up, wind); _wq.setFromAxisAngle(_zax, t * m.sp + m.ph);
+      _m4.compose(_v4.set(m.x + Math.sin(wind) * 0.42, 9.3, m.z + Math.cos(wind) * 0.42), _wq2.copy(_q4).multiply(_wq), _s4.set(1, 1, 1)); EP.wheel.setMatrixAt(k, _m4);
+      _m4.compose(_v4.set(m.x, 9.3, m.z), _q4, _s4.set(1, 1, 1)); EP.vane.setMatrixAt(k, _m4);
+    });
+    EP.jacks.forEach((m, k) => {
+      const a = t * m.sp + m.ph; _q4.setFromAxisAngle(_up, m.yaw);
+      _m4.compose(_v4.set(m.x, 3.75, m.z), _wq2.copy(_q4).multiply(_wq.setFromAxisAngle(_zax, Math.sin(a) * 0.2)), _s4.set(1, 1, 1)); EP.beam.setMatrixAt(k, _m4);
+      _v4.set(-2.2, 1.0, 0).applyQuaternion(_q4); _m4.compose(_v4.set(m.x + _v4.x, 1.0, m.z + _v4.z), _wq2.copy(_q4).multiply(_wq.setFromAxisAngle(_zax, -a)), _s4.set(1, 1, 1)); EP.crank.setMatrixAt(k, _m4);
+    });
+    EP.wheel.instanceMatrix.needsUpdate = EP.vane.instanceMatrix.needsUpdate = EP.beam.instanceMatrix.needsUpdate = EP.crank.instanceMatrix.needsUpdate = true;
+  }
+
+  // ================= the air: fireflies over the grass at dusk and night, drifting seed fluff by day =================
+  const EA = { pts: null, U: { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uCol: { value: new THREE.Color() }, uA: { value: 0 }, uBlink: { value: 1 }, uSize: { value: 60 } }, grassy: 0, t: 0 };
+  function eaBuild() {
+    const N = 420, pos = new Float32Array(N * 3), seed = new Float32Array(N * 4);
+    for (let i = 0; i < N; i++) { pos[i * 3] = evH(i, 1) * 60; pos[i * 3 + 1] = 0.25 + evH(i, 2) * evH(i, 5) * 3.2; pos[i * 3 + 2] = evH(i, 3) * 60; for (let k = 0; k < 4; k++) seed[i * 4 + k] = evH(i * 4 + k, 9); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('seed', new THREE.BufferAttribute(seed, 4));
+    const m = new THREE.ShaderMaterial({ uniforms: EA.U, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+      vertexShader: `uniform float uTime, uSize, uBlink; uniform vec3 uCam; attribute vec4 seed; varying float vA;
+        #include <common>
+        #include <logdepthbuf_pars_vertex>
+        void main() {
+          vec3 p = position + vec3( sin( uTime * 0.31 + seed.x * 6.28 ) * 1.6 + uTime * 0.25 * ( 1.0 - uBlink ), sin( uTime * 0.53 + seed.y * 6.28 ) * 0.35, cos( uTime * 0.27 + seed.z * 6.28 ) * 1.6 );
+          vec2 w = mod( p.xz - uCam.xz, 60.0 ) - 30.0;
+          vec4 mv = viewMatrix * vec4( uCam.x + w.x, p.y, uCam.z + w.y, 1.0 );
+          float blink = pow( max( 0.0, sin( uTime * ( 1.1 + seed.w * 1.4 ) + seed.x * 40.0 ) ), 2.5 );
+          vA = mix( 0.6 + 0.4 * seed.w, blink, uBlink ) * ( 1.0 - smoothstep( 20.0, 30.0, length( w ) ) );
+          gl_PointSize = clamp( uSize * ( 0.6 + seed.z * 0.8 ) / max( 1.0, - mv.z ), 2.0, 18.0 );
+          gl_Position = projectionMatrix * mv;
+          #include <logdepthbuf_vertex>
+        }`,
+      fragmentShader: `uniform vec3 uCol; uniform float uA; varying float vA;
+        #include <common>
+        #include <logdepthbuf_pars_fragment>
+        void main() {
+          #include <logdepthbuf_fragment>
+          float d = length( gl_PointCoord - 0.5 ) * 2.0; float a = ( 1.0 - smoothstep( 0.15, 1.0, d ) ) * vA * uA; if ( a < 0.004 ) discard;
+          gl_FragColor = vec4( uCol * a, a );
+        }` });
+    const pts = new THREE.Points(g, m); pts.frustumCulled = false; pts.name = 'env-air'; pts.visible = false; pts.renderOrder = 6; scene.add(pts); EA.pts = pts;
+  }
+  function eaStep(t, dt) {
+    const P = EA.pts; if (!P) return;
+    const cp = camera.position, R = window.__real, tier = R && R.RL ? R.RL.tier : 'high';
+    EA.t += dt; if (EA.t > 1.5) { EA.t = 0; let n = 0; for (let k = 0; k < 8; k++) { const a = k / 8 * ETAU; if (groundKind(cp.x + Math.cos(a) * 18, cp.z + Math.sin(a) * 18)) n++; } EA.grassy = n / 8; }
+    const night = EV.time !== 'day', want = EV.on && tier !== 'low' && cp.y < 30 ? (night ? clamp(EA.grassy * 1.4, 0, 1) : clamp(EA.grassy, 0, 1) * 0.5) : 0;
+    EA.U.uA.value += (want - EA.U.uA.value) * Math.min(1, dt * 1.5); P.visible = EA.U.uA.value > 0.01;
+    EA.U.uTime.value = t % 3600; EA.U.uCam.value.copy(cp); EA.U.uBlink.value = night ? 1 : 0; EA.U.uSize.value = (night ? 150 : 46) * renderer.domElement.height / 800;
+    if (night) EA.U.uCol.value.setRGB(3.0, 3.6, 0.6); else EA.U.uCol.value.setRGB(0.5, 0.5, 0.44);
+  }
+
   // how far each Graphics tier draws the close-up ground cover
-  const EV_TIER = { ultra: { grass: 70, fence: 280, bale: 650 }, high: { grass: phone ? 50 : 62, fence: phone ? 190 : 240, bale: phone ? 420 : 550 }, low: { grass: 0, fence: 110, bale: 260 } };
+  const EV_TIER = { ultra: { grass: 70, fence: 280, bale: 650, prop: 1100, cow: 520 }, high: { grass: phone ? 50 : 62, fence: phone ? 190 : 240, bale: phone ? 420 : 550, prop: phone ? 760 : 950, cow: phone ? 380 : 460 }, low: { grass: 0, fence: 110, bale: 260, prop: 520, cow: 240 } };
   EV.tierR = EV_TIER.high;
   const _evFinalize = finalize;
   finalize = function () {
     const r = _evFinalize.apply(this, arguments);
-    try { egPrep(DATA); efPrep(); egMesh(); efMeshes(); } catch (e) { console.error('environment build', e); }
+    try { egPrep(DATA); efPrep(); egMesh(); efMeshes(); ehBuild(); epBuild(); eaBuild(); } catch (e) { console.error('environment build', e); }
     return r;
   };
 
@@ -26084,12 +26306,12 @@ float envCloudShade( vec3 vp ) {
     try {
       ecStep(dt);
       const R = window.__real, tier = R && R.RL ? R.RL.tier : 'high', T = EV_TIER[tier] || EV_TIER.high, f = T !== EV.tierR; EV.tierR = T;
-      egStep(f); efStep(f);
+      egStep(f); efStep(f); ehStep(); epStep(f); epAnim(t); eaStep(t, dt);
     } catch (e) { if (!EV.err) { EV.err = 1; console.error('environment step', e); } }
     return r;
   };
-  EV.force = () => { egStep(true); efStep(true); };
-  EV.debug = { EC, EC_LOOK, EVOCC, EG, EF, EGL, groundKind };
+  EV.force = () => { egStep(true); efStep(true); epStep(true); };
+  EV.debug = { EC, EC_LOOK, EVOCC, EG, EF, EGL, EH, EP, EA, groundKind };
   })();
   // ==== environment (end) ====
   // ---------- assemble ----------
