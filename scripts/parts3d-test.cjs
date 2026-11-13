@@ -24,7 +24,7 @@ const PORT = process.env.PORT || 8791, S = process.env.S, OUT = process.env.OUT,
   await pg.waitForFunction(() => window.__ks.KS.model, null, { timeout: 120000, polling: 500 });
   await ev(() => window.__ks.ksSkip()); await wait(2500);
   const nav = async (title, n) => { const ok = await ev(t => { const K = window.__ks, i = K.KS.rows.findIndex(r => r.t.includes(t)); if (i < 0) return false; K.ksSelect(i); K.ksActivate(); return true; }, title); await wait(n || 1500); return ok; };
-  const sel = async (title, n) => { const r = await ev(t => { const K = window.__ks, i = K.KS.rows.findIndex(r => r.t.includes(t)); if (i < 0) return null; K.ksSelect(i); const R = K.KS.rows[i]; return { t: R.t, s: R.s, price: R.price, on: !!R.on, off: !!R.off, prev: K.KS.P.px, meshes: (K.KS.model.userData.pxM || []).length }; }, title); await wait(n || 2600); return r; };
+  const sel = async (title, n) => { const r = await ev(t => { const K = window.__ks, i = K.KS.rows.findIndex(r => r.t.includes(t)); if (i < 0) return null; K.ksSelect(i); const R = K.KS.rows[i]; return { t: R.t, s: R.s, price: R.price, on: !!R.on, off: !!R.off, prev: K.KS.P.px, meshes: (K.KS.model.userData.pxM || []).filter(o => o.userData.px !== 'exh').length }; }, title); await wait(n || 2600); return r; };
   const buy = async () => { await ev(() => window.__ks.ksActivate()); await wait(700); return ev(() => ({ px: window.__map.S.car.px, cash: window.__map.S.cash })); };
   const R = {};
   R.home = await nav('Aero & body parts'); await shot('01-parts-menu');
@@ -33,7 +33,7 @@ const PORT = process.env.PORT || 8791, S = process.env.S, OUT = process.env.OUT,
   await nav('Canards'); R.needs = await sel('double canards', 400); await ev(() => window.__ks.ksBack()); await wait(400);
   // splitter: preview, back out without buying, then buy the race splitter in gloss carbon
   await nav('Front splitter'); R.pv = await sel('race splitter'); await shot('02-splitter-preview');
-  await ev(() => window.__ks.ksBack()); await wait(900); R.afterBack = await ev(() => ({ px: window.__map.S.car.px || null, meshes: (window.__ks.KS.model.userData.pxM || []).length }));
+  await ev(() => window.__ks.ksBack()); await wait(900); R.afterBack = await ev(() => ({ px: window.__map.S.car.px || null, meshes: (window.__ks.KS.model.userData.pxM || []).filter(o => o.userData.px !== 'exh').length }));
   await nav('Front splitter'); await nav('Finish'); await sel('Gloss carbon', 1800); await shot('03-finish-carbon'); await ev(() => window.__ks.ksActivate()); await wait(700);
   const c0 = await ev(() => window.__map.S.cash); R.pick = await sel('race splitter', 600); R.b1 = await buy(); R.paid = c0 - R.b1.cash;
   await ev(() => window.__ks.ksBack()); await wait(400);
@@ -54,17 +54,24 @@ const PORT = process.env.PORT || 8791, S = process.env.S, OUT = process.env.OUT,
   // the sim and the online build
   R.sim = await ev(() => { const X = window.__px, c = window.__map.S.car, V = X.veh(c), s = X.pxSum(c); return { m: V.m, cdA: V.cdA, clF: V.clF, clR: V.clR, kg: X.kg(c), sum: s }; });
   R.net = await ev(() => { const X = window.__px, b = X.myBuild(), o = X.cleanBuild(JSON.parse(JSON.stringify(b))), bad = X.cleanBuild({ x: [['zz-spl-rc', 'cg'], ['m5g90-xxx-1', 'cg'], ['m5g90-spl-rc', 'nope'], 7] }); return { sent: b.x, got: o.px, same: X.pxKey(o) === X.pxKey(window.__map.S.car), bad: bad.px || null }; });
+  // exhaust & underside: the car goes up on the lift and shows the system the engine build has; change the build and it changes
+  await nav('Exhaust & underside', 3500); await shot('14-lift-stock');
+  R.ex0 = await ev(() => { const K = window.__ks.KS, m = K.model; return { lift: K.lift > 1, key: window.__px.pxExOf(window.__map.S.car, true), tris: m.userData.pxM.filter(o => o.userData.px === 'exh').reduce((s, o) => s + o.geometry.attributes.position.count / 3, 0) }; });
+  await ev(() => { const c = window.__map.S.car; c.eb = Object.assign({}, c.eb, { hdr: 'longtube', cats: 'hfc', exh: 'xpipe' }); }); await wait(2500); await shot('15-lift-xpipe');
+  R.ex1 = await ev(() => { const X = window.__px, K = window.__ks.KS, m = K.model, b = X.myBuild(), o = X.cleanBuild(JSON.parse(JSON.stringify(b))); return { key: X.pxExOf(window.__map.S.car), sent: b.q, got: (o.exq || []).join('|'), bad: X.cleanBuild({ q: 'longtube|hfc|rm -rf|1' }).exq || null, tris: m.userData.pxM.filter(o => o.userData.px === 'exh').reduce((s, o) => s + o.geometry.attributes.position.count / 3, 0) }; });
+  await ev(() => { window.__ks.ksBack(); window.__ks.ksSelect(0); }); await wait(2500); R.down = await ev(() => window.__ks.KS.lift < 0.2);
   // drive out: the parts are on the street car and in the save
   await ev(() => window.__ks.ksLeave()); await pg.waitForFunction(() => !window.__ks.KS.on, null, { timeout: 30000, polling: 200 }); await wait(4000); await shot('13-street');
-  R.street = await ev(() => { const M = window.__map, m = M.car && M.car.userData.model; return { meshes: m ? (m.userData.pxM || []).length : -1, saved: Object.keys((JSON.parse(JSON.stringify(M.S)).car || {}).px || {}).length }; });
+  R.street = await ev(() => { const M = window.__map, m = M.car && M.car.userData.model; return { exh: !!m && (m.userData.pxM || []).some(o => o.userData.px === 'exh'), meshes: m ? (m.userData.pxM || []).length : -1, saved: Object.keys((JSON.parse(JSON.stringify(M.S)).car || {}).px || {}).length }; });
   // every car: its whole catalog generates against its own body (a part that can't fit is not offered)
   R.all = await ev(async () => { const X = window.__px, M = window.__map, out = {}; const ids = ['bmw_m5_g90_2025', 'kia_stinger_gt2_2022', 'dodge_charger_srt_hellcat_widebody_2020', 'dodge_charger_scat_pack_2015', 'chevrolet_camaro_ss_2016', 'ford_mustang_gt_2019', 'dodge_challenger_rt_scat_pack_widebody_2019', 'chevrolet_corvette_stingray_c8_2020', 'chevrolet_corvette_z06_c7_2019', 'dodge_copperhead_1997', 'chevrolet_nova_1972', 'chevrolet_caprice_classic_box_chevy_1986', 'jeep_grand_cherokee_trackhawk_2018', 'mercedes_maybach_gls600_2021', 'chevrolet_tahoe_2021', 'mercedes_amg_g63_2019', 'ford_f_150_regular_cab_2021', 'ram_1500_trx_2021'];
     for (const id of ids) { await X.carData(id); const cat = X.pxCatalog(id); let fit = 0, tris = 0; const no = []; for (const P of cat) { const G = X.pxBuild(id, P); if (G) { fit++; tris += G.reduce((s, q) => s + q.geo.attributes.position.count / 3, 0); } else no.push(P.id); } out[id] = [cat.length, fit, Math.round(tris / Math.max(1, fit)), no.join(',')]; }
     return out; });
-  console.log(JSON.stringify(R).slice(0, 5000)); console.log('base', JSON.stringify(base));
+  console.log(JSON.stringify({ ex0: R.ex0, ex1: R.ex1, down: R.down, street: R.street, sim: R.sim })); console.log('base', JSON.stringify(base));
   const tot = Object.values(R.all).reduce((s, v) => [s[0] + v[0], s[1] + v[1]], [0, 0]); console.log('catalog', tot[0], 'parts,', tot[1], 'fit');
   const ok = opened && R.home && R.needs && R.needs.off && /Needs a front splitter/.test(R.needs.s) && R.pv && R.pv.meshes > 0 && !R.afterBack.px && R.afterBack.meshes === 0 && R.b1.px.spl[1] === 'cg' && R.paid > 0 && !R.needs2.off
     && R.wing.px.spo && R.lid.host === 'trunk' && !R.off.px.spl && !R.off.px.can && R.shelf.price === 0 && R.refitCost === 0 && R.refit.px.spl && R.sheet.rows.length >= 4
-    && R.sim.kg > base.kg && R.sim.m > base.m && R.sim.cdA > base.cdA && R.sim.clR < base.clR - 0.1 && R.sim.clF < base.clF && R.net.same && Object.keys(R.net.bad || {}).join() === 'spl' && R.street.meshes > 0 && R.street.saved >= 4 && tot[1] >= tot[0] - 2 && !errs.length;
+    && R.sim.kg > base.kg && R.sim.m > base.m && R.sim.cdA > base.cdA && R.sim.clR < base.clR - 0.1 && R.sim.clF < base.clF && R.net.same && Object.keys(R.net.bad || {}).join() === 'spl' && R.ex0.lift && R.ex0.tris > 500 && R.ex1.key && R.ex1.sent === R.ex1.key && R.ex1.got === R.ex1.key && !R.ex1.bad && R.ex1.tris !== R.ex0.tris && R.down && R.street.exh && R.street.meshes > 0 && R.street.saved >= 4 && tot[1] >= tot[0] - 2 && !errs.length;
+  if (!ok) { const D = Object.assign({}, R); delete D.all; console.log('detail', JSON.stringify(D), 'opened', opened); }
   console.log(ok ? 'PASS' : 'FAIL', 'ERR', errs.join('\n').slice(0, 2000) || 'none'); await b.close(); process.exit(ok ? 0 : 1);
 })();
