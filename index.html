@@ -26490,6 +26490,7 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
     rows.push({ ic: '⬇️', t: 'Stance', s: 'Ride height on coilovers', go: ksStance, cam: 'stance' });
     if (LOOK_CARS.has(c.id)) rows.push({ ic: '🏁', t: 'Body, brakes & interior', s: 'Kits, calipers, leather, ambient light', go: ksBody, cam: 'rear' });
     if (typeof pxHas === 'function' && pxHas(c)) rows.push({ ic: '🧩', t: 'Aero & body parts', s: c.px && Object.keys(c.px).length ? `${Object.keys(c.px).length} bolted on · splitters, wings, scoops and more` : 'Splitters, skirts, diffusers, wings, scoops: cut for this car', go: pxHome, cam: 'overview' });
+    if (typeof pxBrakes === 'function' && !c.drag) rows.push({ ic: '🛑', t: 'Brakes', s: (c.parts && c.parts.brakes && PART_BY_ID[c.parts.brakes] ? PART_BY_ID[c.parts.brakes].brand + ' ' + PART_BY_ID[c.parts.brakes].name : 'Factory brakes') + ' · rotors, calipers, colors', go: pxBrakes, cam: 'pxbrake' });
     if (typeof pxHasEx === 'function' && pxHasEx(c)) rows.push({ ic: '💨', t: 'Exhaust & underside', s: 'Up on the lift: see the system the engine build has', go: pxUnder, cam: 'pxunder' });
     rows.push({ ic: '🔧', t: 'Workshop', s: 'Engine Lab, tuning, drag packs, audio, repairs', go: ksShop, cam: 'engine' });
     rows.push({ ic: '🚪', t: 'Drive out', s: 'Roll the door up and leave', act: ksLeave, cam: 'overview' });
@@ -26767,7 +26768,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     try { if (S.car) dragRefresh(S.car); } catch (e) {}
     save(); refreshStats(); showCard(null);
   }
-  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.engX, c.px, c.eb && [c.eb.hdr, c.eb.cats, c.eb.exh]]) : ''; };
+  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.engX, c.px, c.eb && [c.eb.hdr, c.eb.cats, c.eb.exh], c.parts && c.parts.brakes]) : ''; };
   const ksEase = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const _ksA = new THREE.Vector3(), _ksB = new THREE.Vector3(), _ksW = new THREE.Vector3();
   function ksStep(dt) {
@@ -28353,7 +28354,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     s = [0, 0, 0, 0, 0, 0]; for (const { P, fin } of pxList(c)) { s[0] += P.kg * PX_FIN[fin][2]; s[1] += P.aero[0]; s[2] += P.aero[1]; s[3] += P.aero[2]; s[4] += Math.round(P.price * PX_FIN[fin][1]); s[5]++; }
     if (PX_SUM.size > 200) PX_SUM.clear(); PX_SUM.set(k, s); return s;
   }
-  function pxKg(c) { return PX_ON && c && c.px ? pxSum(c)[0] : 0; }
+  function pxKg(c) { return (PX_ON && c && c.px ? pxSum(c)[0] : 0) + (PX_ON && c ? pxbKg(c) : 0); }
   const pxNeed = (c, P) => { for (const s of P.req || []) if (!(c.px && c.px[s])) return `Needs a ${PX_SLOTS[s][0].toLowerCase()} first`; return ''; };
   function pxInstall(x, P, fin) {
     x.px = Object.assign({}, x.px, { [P.slot]: [P.id, fin] }); x.pxo = Object.assign({}, x.pxo, { [P.id + '|' + fin]: 1 });
@@ -28392,7 +28393,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       for (const g of G || []) { const mesh = new THREE.Mesh(g.geo, pxMat(g.mat, U)); mesh.castShadow = false; mesh.userData.px = 'exh'; U.inner.add(mesh); U.pxM.push(mesh); } }
   }
   const _pxApplyLook = applyLook;
-  applyLook = function (m, c) { _pxApplyLook(m, c); try { if (m && m.userData && m.userData.inner) pxApply(m, c); } catch (e) { console.warn('parts', e); } };
+  applyLook = function (m, c) { _pxApplyLook(m, c); try { if (m && m.userData && m.userData.inner) { pxApply(m, c); pxbApply(m, c); } } catch (e) { console.warn('parts', e); } };
 
   // ---- the sim: weight rides on partsKg (patched in), drag and lift per axle on the car's sheet ----
   const _pxVspec = vspecVar;
@@ -28408,11 +28409,12 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   // ---- online: the parts (and the tint and underglow) ride on the build other players get ----
   const _pxMyBuild = myBuild;
   myBuild = function () { const b = _pxMyBuild(); const c = S.car; if (!b || !c) return b;
-    const x = pxList(c).map(e => [e.P.id, e.fin]); if (x.length) b.x = x; const q = pxExOf(c); if (q) b.q = q; if (c.tintL) b.t = c.tintL; if (c.neon) b.n = c.neon; return b; };
+    const x = pxList(c).map(e => [e.P.id, e.fin]); if (x.length) b.x = x; const q = pxExOf(c); if (q) b.q = q; if (c.tintL) b.t = c.tintL; if (c.neon) b.n = c.neon; if (pxbId(c) || pxbCol(c)) b.k = [pxbId(c), pxbCol(c)]; return b; };
   const _pxClean = cleanBuild;
   cleanBuild = function (b) { const o = _pxClean(b); if (!b || typeof b !== 'object') return o;
     if (Array.isArray(b.x)) { const px = {}; for (const e of b.x.slice(0, 20)) { if (!Array.isArray(e) || typeof e[0] !== 'string' || !/^[a-z0-9]{2,12}-[a-z]{3}-[a-z0-9]{1,4}$/.test(e[0]) || !PX_FIN[e[1]]) continue; const slot = e[0].split('-')[1]; if (PX_SLOTS[slot]) px[slot] = [e[0], e[1]]; } if (Object.keys(px).length) o.px = px; }
     if (typeof b.q === 'string') { const q = b.q.split('|'); if (q.length === 4 && PX_EXQ.hdr.includes(q[0]) && PX_EXQ.cats.includes(q[1]) && PX_EXQ.exh.includes(q[2]) && (q[3] === '0' || q[3] === '1')) o.exq = q; }
+    if (Array.isArray(b.k) && (b.k[0] === '' || (typeof b.k[0] === 'string' && PART_BY_ID[b.k[0]] && PART_BY_ID[b.k[0]].cat === 'brakes')) && (b.k[1] === '' || /^#[0-9a-f]{6}$/.test(b.k[1]))) o.bk = [b.k[0], b.k[1]];
     if ([35, 20, 5].includes(b.t)) { o.tintL = b.t; o.tint = true; } if (typeof b.n === 'string' && KS_NEON.some(n => n[1] === b.n)) o.neon = b.n; return o; };
 
   // ---- the bay: Aero & body parts ----
@@ -28460,10 +28462,186 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       { ic: '⚙️', t: 'Change it in the Engine Lab', s: 'Headers, cats and exhaust are engine parts: they change power and sound, and what you see here', act: () => elOpen('parts'), cam: 'pxunder' }];
     return { title: 'Exhaust & underside', sub: 'Up on the lift · drag to look around', cam: 'pxunder', rows };
   }
+  // ---- brakes: the brake part on the car (c.parts.brakes, the same part the sim reads) is real hardware behind the wheel ----
+  // A rotor that turns with the wheel and a caliper that does not (it steers with the front wheels and rides the suspension).
+  // Every kit is sized to what clears the wheel that is on the car: a 380 mm kit behind 17s is fitted as the size that fits.
+  // Aftermarket rims used to have nothing behind them at all, so they get the car's factory brakes too.
+  const PXB_SPEC = {
+    brakes_7c: { rot: 'ds', d: 0, pist: 0, kg: 0, what: 'Drilled and slotted rotors in the factory size, factory calipers' },
+    brakes_7d: { rot: 'slot', two: 1, d: 0, pist: 0, kg: -3, what: 'Two-piece slotted rotors on alloy hats, factory calipers' },
+    brakes_7e: { rot: 'slot', two: 1, d: 355, dr: 345, pist: 4, pr: 4, style: 'smooth', col: '#c0121a', kg: 2, what: '4-piston calipers on 355 mm two-piece slotted rotors' },
+    brakes_7f: { rot: 'ds', two: 1, d: 355, dr: 330, pist: 6, pr: 4, style: 'rib', col: '#111114', kg: -2, what: 'Forged 6-piston calipers on 355 mm drilled and slotted rotors' },
+    brakes_7g: { rot: 'ds', two: 1, d: 380, dr: 355, pist: 6, pr: 4, style: 'smooth', col: '#c0121a', kg: 5, what: '6-piston monoblocks on 380 mm drilled and slotted rotors' },
+    brakes_7h: { rot: 'slot', two: 1, d: 380, dr: 360, pist: 6, pr: 4, style: 'bar', col: '#c0121a', kg: 4, what: '6-piston calipers on 380 mm two-piece slotted rotors' },
+    brakes_7i: { rot: 'j', two: 1, d: 378, dr: 355, pist: 6, pr: 4, style: 'open', col: '#8a8d92', kg: 1, what: 'Open-bridge 6-piston race calipers on 378 mm J-hook rotors' },
+    brakes_7j: { rot: 'cres', two: 1, d: 380, dr: 355, pist: 6, pr: 4, style: 'rib', col: '#1c4fa8', kg: 3, what: '6-piston calipers on 380 mm crescent-groove rotors' },
+    brakes_7k: { rot: 'ccm', two: 1, d: 400, dr: 380, pist: 6, pr: 4, style: 'bar', col: '#e0b012', kg: -19, what: '6-piston calipers on 400 mm carbon-ceramic rotors' } };
+  const PXB_COLS = [['Red', '#c0121a'], ['Yellow', '#e0b012'], ['Black', '#111114'], ['Silver', '#a9adb2'], ['Blue', '#1c4fa8'], ['Orange', '#d2531a'], ['Lime', '#7fc41c'], ['Gold', '#b8892e'], ['White', '#eceff2'], ['Purple', '#5a2a9a']];
+  const PXB_M = {}, PXB_G = new Map(), PXB_PAINT = new Map();
+  const pxbMat = k => PXB_M[k] || (PXB_M[k] = new THREE.MeshStandardMaterial(
+    k === 'iron' ? { color: lin('#9a9da3'), metalness: 0.72, roughness: 0.44 } : k === 'cast' ? { color: lin('#4b4d51'), metalness: 0.7, roughness: 0.68 }
+    : k === 'ccm' ? { color: lin('#2f3136'), metalness: 0.35, roughness: 0.5 } : k === 'hat' ? { color: lin('#141417'), metalness: 0.75, roughness: 0.42 }
+    : k === 'alu' ? { color: lin('#9da1a8'), metalness: 0.9, roughness: 0.4 } : k === 'bolt' ? { color: lin('#d5d8dc'), metalness: 1, roughness: 0.22 }
+    : k === 'pad' ? { color: lin('#1a1917'), metalness: 0.1, roughness: 0.9 } : k === 'braid' ? { color: lin('#b9bcc1'), metalness: 0.9, roughness: 0.45 }
+    : k === 'ph' ? { color: 0xff00ff } : { color: lin('#030304'), metalness: 0.2, roughness: 0.85 }));
+  function pxbPaint(hex) { let m = PXB_PAINT.get(hex); if (!m) { m = new THREE.MeshPhysicalMaterial({ color: lin(hex), metalness: 0.3, roughness: 0.34 }); m.clearcoat = 0.9; m.clearcoatRoughness = 0.12; PXB_PAINT.set(hex, m); } return m; }
+  const pxbZ = g => { g.rotateX(Math.PI / 2); return g; };   // lathe and cylinders are built on y: lay them on the wheel's axis (z, outboard +)
+  const pxbLathe = (pts, seg) => pxbZ(new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[0], p[1])), seg || 28));
+  // an arc-shaped block: r0..r1, centred on angle 90 degrees (straight up), half-angle ha, from z0 to z1, softened edges
+  function pxbSector(r0, r1, ha, z0, z1, bev) {
+    const s = new THREE.Shape(), a0 = Math.PI / 2 - ha, a1 = Math.PI / 2 + ha;
+    s.absarc(0, 0, r1, a0, a1, false); s.absarc(0, 0, r0, a1, a0, true); s.closePath();
+    const b = bev == null ? 0.0025 : bev, g = new THREE.ExtrudeGeometry(s, { depth: Math.max(0.001, z1 - z0 - 2 * b), bevelEnabled: b > 0, bevelSize: b, bevelThickness: b, bevelSegments: 1, curveSegments: 7 });
+    g.translate(0, 0, z0 + b); return g;
+  }
+  function pxbInst(geo, mat, list) {   // list of [x, y, z, rotZ, sx, sy]
+    const im = new THREE.InstancedMesh(geo, mat, list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+    list.forEach((p, i) => { e.set(0, 0, p[3] || 0); q.setFromEuler(e); m4.compose(new THREE.Vector3(p[0], p[1], p[2]), q, new THREE.Vector3(p[4] || 1, p[5] || 1, 1)); im.setMatrixAt(i, m4); });
+    return im;
+  }
+  // the rotor: two friction plates with a vented gap, a hat (bolted on alloy for two-piece), and the face pattern
+  function pxbRotor(Rr, t, type, two) {
+    const key = ['r', Rr.toFixed(3), t, type, two ? 1 : 0].join('|'); if (PXB_G.has(key)) return PXB_G.get(key);
+    const g = new THREE.Group(), ccm = type === 'ccm', ring = Math.min(0.068, Rr * 0.38), r1 = Rr - ring, pl = t * 0.3, face = pxbMat(ccm ? 'ccm' : 'iron'), h = t / 2;
+    for (const s of [1, -1]) g.add(new THREE.Mesh(pxbLathe([[r1, s * (h - pl)], [Rr - 0.0012, s * (h - pl)], [Rr, s * (h - pl + 0.0012)], [Rr, s * (h - 0.0012)], [Rr - 0.0012, s * h], [r1 + 0.0012, s * h], [r1, s * (h - 0.0012)], [r1, s * (h - pl)]]), face));
+    const gap = new THREE.Mesh(pxbZ(new THREE.CylinderGeometry(Rr - 0.006, Rr - 0.006, t - 2 * pl, 32, 1, true)), pxbMat('dark')); g.add(gap);
+    const vn = Math.round(Rr * 110), vanes = []; for (let i = 0; i < vn; i++) { const a = i / vn * Math.PI * 2; vanes.push([Math.cos(a) * (Rr - 0.004), Math.sin(a) * (Rr - 0.004), 0, a]); }
+    g.add(pxbInst(new THREE.BoxGeometry(0.01, 0.0035, t - 2 * pl), pxbMat(ccm ? 'ccm' : 'cast'), vanes));
+    const rh = Math.min(r1 - 0.014, 0.088), top = h + 0.034, hm = pxbMat(two ? 'hat' : 'cast');
+    g.add(new THREE.Mesh(pxbLathe([[r1 + 0.004, h - pl], [r1 + 0.004, h - pl + 0.007], [rh + 0.012, h - pl + 0.009], [rh, h + 0.004], [rh, top], [0.033, top], [0.033, top - 0.006], [rh - 0.006, top - 0.006], [rh - 0.006, h - 0.004], [rh + 0.008, h - pl + 0.002], [r1 + 0.004, h - pl]], 32), hm));
+    if (two) { const n = Rr > 0.17 ? 12 : 10, bl = []; for (let i = 0; i < n; i++) { const a = (i + 0.5) / n * Math.PI * 2; bl.push([Math.cos(a) * (r1 + 0.0005), Math.sin(a) * (r1 + 0.0005), h - pl + 0.0095]); } g.add(pxbInst(pxbZ(new THREE.CylinderGeometry(0.0048, 0.0048, 0.005, 6)), pxbMat('bolt'), bl)); }
+    // face pattern, both sides: slots are grooves, drilled holes go through, J-hooks and crescents are their own shapes
+    const dk = pxbMat('dark'), slots = [], holes = [], mid = r1 + ring / 2, eps = 0.0004;
+    for (const s of [1, -1]) { const z = s * (h + eps);
+      if (type === 'slot' || type === 'ds') { const n = type === 'ds' ? 6 : 8; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + (s < 0 ? 0.2 : 0); slots.push([Math.cos(a) * mid, Math.sin(a) * mid, z, a + s * 0.62, ring * 0.86 / 0.01, 1]); } }
+      if (type === 'ds' || type === 'ccm') { const n = type === 'ccm' ? 26 : 18, k = 3; for (let i = 0; i < n; i++) for (let j = 0; j < k; j++) { const f = (j + 0.6) / (k + 0.2), a = (i + (type === 'ds' ? 0.5 : 0)) / n * Math.PI * 2 + f * 0.26 * s, r = r1 + ring * f; holes.push([Math.cos(a) * r, Math.sin(a) * r, z]); } }
+      if (type === 'j') { const n = 24; for (let i = 0; i < n; i++) for (let j = 0; j < 3; j++) { const f = (j + 0.5) / 3, a = i / n * Math.PI * 2 + (j % 2) * 0.13, r = r1 + ring * (0.14 + f * 0.72); slots.push([Math.cos(a) * r, Math.sin(a) * r, z, a + s * 0.95, 1.5, 0.8]); } }
+      if (type === 'cres') { const n = 10; for (let i = 0; i < n; i++) for (let j = 0; j < 4; j++) { const f = (j + 0.5) / 4, bow = Math.sin(f * Math.PI) * 0.11, a = i / n * Math.PI * 2 + s * bow, r = r1 + ring * (0.08 + f * 0.84); slots.push([Math.cos(a) * r, Math.sin(a) * r, z, a + s * (0.9 - f * 1.8) * 0.75, ring * 0.25 / 0.01, 1]); } }
+    }
+    const back = new THREE.Group(); back.rotation.y = Math.PI; g.add(back);   // marks for the inboard face are built facing out, then turned around
+    const flipA = p => [-p[0], p[1], -p[2], Math.PI - (p[3] || 0), p[4], p[5]];
+    if (slots.length) { g.add(pxbInst(new THREE.PlaneGeometry(0.01, 0.005), dk, slots.filter(p => p[2] > 0))); back.add(pxbInst(new THREE.PlaneGeometry(0.01, 0.005), dk, slots.filter(p => p[2] < 0).map(flipA))); }
+    if (holes.length) g.add(pxbInst(new THREE.CircleGeometry(0.0034, 6), dk, holes.filter(p => p[2] > 0)));
+    if (holes.length) back.add(pxbInst(new THREE.CircleGeometry(0.0034, 6), dk, holes.filter(p => p[2] < 0).map(flipA)));
+    const out = FORGED.bake(g); PXB_G.set(key, out); return out;
+  }
+  // the caliper, built straight up at 12 o'clock around a rotor of radius Rr and thickness t. n pistons (0 = the factory
+  // single-piston floater), style: smooth / rib / bar / open. The painted body is the 'ph' material, swapped per car.
+  function pxbCaliper(Rr, t, n, style) {
+    const key = ['c', Rr.toFixed(3), t, n, style].join('|'); if (PXB_G.has(key)) return PXB_G.get(key);
+    const g = new THREE.Group(), ph = pxbMat('ph'), h = t / 2, flo = !n, L = flo ? 0.15 : n >= 6 ? 0.27 : 0.22, ha = Math.min(0.78, L / 2 / (Rr - 0.03));
+    const rIn = Rr - Math.min(0.062, Rr * 0.36), rOut = Rr + 0.021, zo = h + (flo ? 0.03 : 0.047), zi = -(h + (flo ? 0.05 : 0.047)), add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); g.add(m); return m; };
+    add(pxbSector(rIn + (flo ? 0.012 : 0), rOut, ha, h + 0.013, zo), ph); add(pxbSector(rIn, rOut, ha, zi, -(h + 0.013)), ph);   // the two halves
+    if (style === 'open') { for (const s of [1, -1]) { const b = pxbSector(Rr + 0.004, rOut, 0.11, -(h + 0.016), h + 0.016, 0.0015); b.rotateZ(s * (ha - 0.11)); add(b, ph); } }
+    else { for (const s of [1, -1]) { const b = pxbSector(Rr + 0.004, rOut, ha * 0.26, -(h + 0.016), h + 0.016, 0.0015); b.rotateZ(s * ha * 0.74); add(b, ph); } add(pxbSector(Rr + 0.006, rOut - 0.002, flo ? ha * 0.4 : 0.07, -(h + 0.016), h + 0.016, 0.0015), ph); }
+    for (const s of [1, -1]) {   // pads: friction material on a steel backing plate, each side of the rotor
+      add(pxbSector(rIn + 0.004, Rr - 0.002, ha - 0.1, s > 0 ? h + 0.0008 : -(h + 0.0098), s > 0 ? h + 0.0098 : -(h + 0.0008), 0), pxbMat('pad'));
+      add(pxbSector(rIn + 0.002, Rr - 0.001, ha - 0.07, s > 0 ? h + 0.0098 : -(h + 0.0142), s > 0 ? h + 0.0142 : -(h + 0.0098), 0), pxbMat('bolt'));
+    }
+    const rb = (rIn + rOut) / 2 - 0.006, at = (a, r) => [Math.cos(Math.PI / 2 + a) * r, Math.sin(Math.PI / 2 + a) * r];
+    if (flo) {   // the floater: one big piston housing on the inboard side, two slide pins, a cast bracket
+      const c = add(pxbZ(new THREE.CylinderGeometry(0.031, 0.034, 0.05, 20)), ph); c.position.set(0, rb - 0.004, zi - 0.02);
+      for (const s of [1, -1]) { const p = at(s * (ha + 0.06), rb + 0.004), b = add(pxbZ(new THREE.CylinderGeometry(0.008, 0.008, 0.075, 10)), pxbMat('rub')); b.position.set(p[0], p[1], -0.012); }
+      const br = pxbSector(rIn - 0.004, Rr - 0.004, ha + 0.12, -(h + 0.04), -(h + 0.016), 0.002); add(br, pxbMat('cast'));
+    } else {
+      const k = n / 2, bos = [], rs = k === 3 ? [0.021, 0.0185, 0.0165] : [0.021, 0.0185];
+      for (let i = 0; i < k; i++) { const a = (i - (k - 1) / 2) * (ha * 1.5 / k), p = at(-a, rb - 0.004); bos.push([p[0], p[1], rs[i]]); }
+      for (const s of [1, -1]) for (const b of bos) { const c = add(pxbZ(new THREE.CylinderGeometry(b[2], b[2] + 0.003, 0.006, 14)), ph); c.position.set(b[0], b[1], s > 0 ? zo + 0.002 : zi - 0.002); }
+      if (style === 'rib') for (let i = 0; i <= k; i++) { const a = (i - k / 2) * (ha * 1.5 / k), r = pxbSector(rIn + 0.01, rOut - 0.002, 0.016, zo - 0.002, zo + 0.0035, 0.001); r.rotateZ(-a); add(r, ph); }
+      if (style === 'bar') add(pxbSector(rOut - 0.02, rOut - 0.004, ha * 0.5, zo - 0.002, zo + 0.003, 0.001), ph);
+      if (style === 'open') for (let i = 0; i < k - 1; i++) { const a = (i - (k - 2) / 2) * (ha * 1.5 / k), w = pxbSector(rb + 0.012, rOut - 0.005, 0.07, zo - 0.001, zo + 0.0006, 0); w.rotateZ(-a); add(w, pxbMat('dark')); }
+      const bl = []; for (const s of [1, -1]) for (const f of [0.92, 0.62]) { const p = at(s * ha * f, rOut - 0.008); bl.push([p[0], p[1], zo + 0.002]); }
+      g.add(pxbInst(pxbZ(new THREE.CylinderGeometry(0.0055, 0.0055, 0.006, 6)), pxbMat('bolt'), bl));
+      for (const s of [1, -1]) { const p = at(s * (ha - 0.05), rOut + 0.007), b = add(new THREE.CylinderGeometry(0.003, 0.004, 0.016, 8), pxbMat('bolt')); b.position.set(p[0], p[1], zi + 0.012); b.rotation.z = s * -(ha - 0.05); }
+      add(pxbSector(rIn - 0.05, rIn + 0.004, 0.2, zi - 0.004, zi + 0.02, 0.002), pxbMat('alu'));   // the radial mount bracket down to the upright
+    }
+    // the hose: a banjo fitting on the inboard side, braided line curving up and in toward the strut
+    const p0 = new THREE.Vector3(0.02, rb, zi - (flo ? 0.045 : 0.004)), hose = new THREE.CatmullRomCurve3([p0, p0.clone().add(new THREE.Vector3(0.012, 0.02, -0.03)), p0.clone().add(new THREE.Vector3(-0.01, 0.06, -0.07)), p0.clone().add(new THREE.Vector3(-0.04, 0.085, -0.12))]);
+    add(new THREE.TubeGeometry(hose, 8, 0.0048, 5, false), pxbMat(flo ? 'rub' : 'braid')); const bj = add(pxbZ(new THREE.CylinderGeometry(0.008, 0.008, 0.012, 8)), pxbMat('bolt')); bj.position.copy(p0);
+    const out = FORGED.bake(g); PXB_G.set(key, out); return out;
+  }
+  // what a wheel on the model gives us to work with: which way is out, how big the barrel is, where the factory rotor and caliper are
+  function pxbWheel(w, rimDia) {
+    const st = w.userData.stock, kids = (st ? st.kids : w.children).filter(o => o.isMesh && !o.userData.pxb), sc = st ? st.scale : w.scale, R = sc.x, wz = sc.z;
+    let rotor = [], cal = [], rotR = 0, rotZ = null, rimR = 0, capZ = 0, capR = 9, calCol = null;
+    for (const o of kids) { const g = o.geometry; if (!g.boundingBox) g.computeBoundingBox(); const b = g.boundingBox, cx = (b.min.x + b.max.x) / 2, cy = (b.min.y + b.max.y) / 2, zc = (b.min.z + b.max.z) / 2, zs = b.max.z - b.min.z, rad = Math.max(b.max.x, -b.min.x, b.max.y, -b.min.y), mt = o.material.metalness || 0;
+      if (Math.hypot(cx, cy) > 0.1) { cal.push(o); calCol = '#' + o.material.color.clone().convertLinearToSRGB().getHexString(); continue; }
+      if (rad >= 0.3 && rad <= 0.66 && zs <= 0.2 && Math.abs(zc) < 0.16 && mt >= 0.75) { rotor.push(o); if (rad * R > rotR) { rotR = rad * R; rotZ = zc * wz; } continue; }
+      if (rad < 0.95 && zs >= 0.5) rimR = Math.max(rimR, rad * R);
+      if (rad < capR && Math.abs(zc) > 0.15) { capR = rad; capZ = zc; }
+    }
+    const out = st && rimDia ? Math.sign(w.position.z) || 1 : (Math.sign(capZ) || Math.sign(w.position.z) || 1);
+    if (!rimR) rimR = R * 0.68;
+    return { R, wz, sc, out, rotor, cal, rotR: rotR || Math.min(rimR * 0.78, 0.15), rotZ: rotZ == null ? -0.02 : rotZ * out, rimR, calCol, barrel: (rimDia ? rimDia * 0.0127 : rimR) - 0.013 };
+  }
+  const pxbId = c => (c && c.parts && c.parts.brakes) || (c && c.bk && c.bk[0]) || '';
+  const pxbCol = c => (c && c.look && c.look.cal) || (c && c.bk && c.bk[1]) || '';
+  const pxbKeyOf = (m, c) => [pxbId(c), pxbCol(c), m.userData.rimKey || '', c && c.drag ? 1 : 0].join('~');
+  function pxbApply(m, c) {
+    const U = m.userData; if (!U || !U.wheels || U.wheels.length !== 4 || U.bike) return;
+    const key = pxbKeyOf(m, c), have = U.wheels.every(w => !w.userData.pxbG || w.userData.pxbG.every(o => o.parent === w));
+    if (U.pxbKey === key && have) return; U.pxbKey = key;
+    for (const w of U.wheels) { for (const o of w.userData.pxbG || []) if (o.parent) o.parent.remove(o); w.userData.pxbG = null; const st = w.userData.stock; for (const o of (st ? st.kids : w.children)) if (o.userData.pxbHid) { o.visible = true; o.userData.pxbHid = false; } }
+    if (U.pxbCal === undefined) { const set = new Set((U.roles && U.roles.cal) || []); U.pxbCal = set.size ? U.inner.children.filter(o => o.isMesh && set.has(o.material)) : []; }
+    for (const o of U.pxbCal) o.visible = true; U.pxbFit = null;
+    if (!c || c.drag) return;
+    const spec = PXB_SPEC[pxbId(c)], rim = rimOf(c), onRim = !!rim && !!U.rimKey, xs = U.wheels.map(w => w.position.x), xm = (Math.max(...xs) + Math.min(...xs)) / 2;
+    if (!spec && !onRim) return;
+    const fit = {};
+    for (const w of U.wheels) {
+      const I = pxbWheel(w, onRim ? c.rims.dia : 0), front = w.position.x > xm, kit = !!(spec && spec.pist), n = kit ? (front ? spec.pist : spec.pr) : 0;
+      const t = kit ? (front ? 0.034 : 0.028) : front ? 0.03 : 0.022, bodyCal = U.pxbCal.length > 0, ownCal = kit || (onRim && !bodyCal);
+      const want = spec && spec.d ? (front ? spec.d : spec.dr) / 2000 : I.rotR, Rr = Math.max(0.1, Math.min(want, I.barrel - (ownCal ? 0.03 : bodyCal ? 0.004 : 0.03)));
+      const type = spec ? spec.rot : 'plain', G = [], inv = new THREE.Vector3(1 / w.scale.x, 1 / w.scale.y, 1 / w.scale.z), z0 = I.rotZ * I.out;
+      const rg = new THREE.Group(); rg.scale.copy(inv); rg.position.z = z0 * inv.z; if (I.out < 0) rg.rotation.y = Math.PI; rg.userData.pxb = 1;
+      for (const b of pxbRotor(+Rr.toFixed(3), t, type, !!(spec && spec.two)).children) { const k = new THREE.Mesh(b.geometry, b.material); k.userData.pxb = 1; rg.add(k); }
+      w.add(rg); G.push(rg);
+      for (const o of I.rotor) { o.visible = false; o.userData.pxbHid = true; }
+      if (ownCal) {
+        const hub = new THREE.Group(); hub.scale.copy(inv); hub.position.z = z0 * inv.z; hub.userData.pxb = 1;
+        hub.updateMatrix = function () { this.rotation.z = -this.parent.rotation.z; THREE.Object3D.prototype.updateMatrix.call(this); };
+        const flip = new THREE.Group(); if (I.out < 0) flip.rotation.y = Math.PI; hub.add(flip);
+        const ang = (front ? 162 : 22) * Math.PI / 180, a = I.out < 0 ? Math.PI - ang : ang, cg = new THREE.Group(); cg.rotation.z = a - Math.PI / 2; flip.add(cg);
+        const paint = pxbPaint(pxbCol(c) || (kit ? spec.col : I.calCol || '#4b4d51'));
+        for (const b of pxbCaliper(+Rr.toFixed(3), t, n, kit ? spec.style : 'float').children) { const k = new THREE.Mesh(b.geometry, b.material === PXB_M.ph ? paint : b.material); k.userData.pxb = 1; cg.add(k); }
+        w.add(hub); G.push(hub);
+        for (const o of I.cal) { o.visible = false; o.userData.pxbHid = true; }
+      }
+      w.userData.pxbG = G; fit[front ? 'f' : 'r'] = Math.round(Rr * 2000); fit[front ? 'wf' : 'wr'] = Math.round((spec && spec.d ? (front ? spec.d : spec.dr) : Rr * 2000));
+    }
+    if (spec && spec.pist) for (const o of U.pxbCal) o.visible = false;
+    U.pxbFit = fit;
+  }
+  const _pxbRims = applyRims;
+  applyRims = function (m, c) { _pxbRims(m, c); try { if (PX_ON && m && m.userData && m.userData.inner) pxbApply(m, c); } catch (e) { console.warn('parts brakes', e); } };
+  const pxbKg = c => { const s = PXB_SPEC[pxbId(c)]; return s ? s.kg : 0; };
+
+  // ---- the bay: Brakes ----
+  Object.assign(KS_SHOTS, { pxbrake: { az: 78, el: 3, d: 1.25, wheel: 1, abs: 1 } });
+  const pxbPrice = p => Math.round(p.price * (1 + PTAX) + p.labor * PLABOR);
+  const pxbFitLine = (c, s) => { const U = KS.model && KS.model.userData, f = U && U.pxbKey === pxbKeyOf(KS.model, c) && U.pxbFit; if (!f || !s || !s.d) return ''; return f.f < s.d - 2 ? ` · fitted as ${f.f} mm front: that is what clears ${c.rims && rimOf(c) ? 'your ' + c.rims.dia + 's' : 'the factory wheels'}` : ` · ${f.f} mm front, ${f.r} mm rear`; };
+  function pxBrakes() {
+    const c = S.car, cur = pxbId(c), m = carOf(c.id), list = PARTS.rows.filter(p => p.cat === 'brakes' && partFits(p, m)).sort((a, b) => a.stage - b.stage || a.price - b.price), rows = [];
+    const paintable = !!(PXB_SPEC[cur] && PXB_SPEC[cur].pist) || LOOK_CARS.has(c.id) || !!rimOf(c);
+    if (paintable) rows.push({ ic: '🎨', t: 'Caliper color', s: (PXB_COLS.find(x => x[1] === pxbCol(c)) || [pxbCol(c) ? 'Custom' : 'As it comes'])[0], go: pxBrakeCols, cam: 'pxbrake' });
+    rows.push({ ic: '🏭', t: 'Factory brakes', s: 'The rotors and calipers the car left the line with', price: cur ? 300 : 0, what: 'Factory brakes back on', on: !cur, off: !cur, cam: 'pxbrake',
+      pv: P => { P.parts = Object.assign({}, P.parts); delete P.parts.brakes; }, fx: x => { const old = (x.parts || {}).brakes; x.parts = Object.assign({}, x.parts); delete x.parts.brakes; if (old && x === S.car) { (S.partsBin = S.partsBin || []).push({ pid: old, uid: 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }); try { VEH_CACHE.clear(); } catch (e) {} } } });
+    for (const p of list) { const s = PXB_SPEC[p.id], on = cur === p.id;
+      rows.push({ ic: s ? (s.pist ? '🛑' : '⭕') : '🧱', t: `${p.brand} ${p.name}`, s: `${s ? s.what : 'Pads and lines: same hardware to look at, more bite'} · braking +${Math.round((PFX.brakes.force[p.stage] - 1) * 100)}%${s && s.kg ? ` · ${s.kg > 0 ? '+' : ''}${(s.kg * 2.2046).toFixed(0)} lb` : ''}${on ? pxbFitLine(c, s) : ''}`,
+        price: on ? 0 : pxbPrice(p), what: `${p.brand} ${p.name} (installed)`, on, off: on, cam: 'pxbrake', pv: P => { P.parts = Object.assign({}, P.parts, { brakes: p.id }); },
+        fx: x => { const old = (x.parts || {}).brakes; x.parts = Object.assign({}, x.parts, { brakes: p.id }); if (x === S.car) { if (old) (S.partsBin = S.partsBin || []).push({ pid: old, uid: 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }); try { VEH_CACHE.clear(); } catch (e) {} } } }); }
+    const sp = PXB_SPEC[cur], pc = cur && PART_BY_ID[cur];
+    return { title: 'Brakes', sub: pc ? `${pc.brand} ${pc.name}${pxbFitLine(c, sp)}` : 'Factory brakes · drag to look around', cam: 'pxbrake', rows };
+  }
+  function pxBrakeCols() {
+    const c = S.car, now = pxbCol(c);
+    const rows = PXB_COLS.map(([n, hex]) => ({ sw: hex, t: n, s: 'Calipers painted and cleared', price: now === hex ? 0 : 650, what: 'Calipers: ' + n, on: now === hex, off: now === hex, cam: 'pxbrake', fx: x => { x.look = Object.assign({}, x.look, { cal: hex }); } }));
+    return { title: 'Caliper color', sub: 'All four corners', cam: 'pxbrake', rows };
+  }
   const pxHasEx = c => !!c && !!pxExOf(c, true);
   const pxHas = c => !!c && pxCatalog(c.id).length > 0;
   PX_ON = true;
-  window.__px = { PX_FITS, PX_GEO, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxUnder, pxExOf, pxApply, pxLand, pxDeck, carData, veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
+  window.__px = { PX_FITS, PX_GEO, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxUnder, pxExOf, pxApply, pxBrakes, pxbApply, PXB_SPEC, PXB_G, pxLand, pxDeck, carData, veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
   // ==== aftermarket parts (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
