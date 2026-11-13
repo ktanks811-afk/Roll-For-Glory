@@ -10844,7 +10844,7 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
     return o;
   }
   function vehOf(c, kg) {
-    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0, c.eng || '', c.engX || '', JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), JSON.stringify(c.sus || 0), c.xd || '', c.st || '', c.tx || '', c.mr || '', c.kits && c.kits.z07 ? 1 : 0, c.dr || '', c.dm || '', JSON.stringify(c.rims || 0), c.tubs || 0].join('|');
+    const m = carOf(c.id), red0 = gbRed(c), t = tuneOf(c), k = dragFix(c), dl = partLv(c, 'diff'), key = [c.id, kg, red0, JSON.stringify(c.tune || 0), JSON.stringify(c.drag || 0), (c.tparts || []).join(), JSON.stringify(c.parts || 0), Math.round(c.cond.tires / 5), c.swap ? c.swap.hp : 0, c.eng || '', c.engX || '', JSON.stringify(c.eb || 0), JSON.stringify(c.mods || 0), JSON.stringify(c.sus || 0), c.xd || '', c.st || '', c.tx || '', c.mr || '', c.kits && c.kits.z07 ? 1 : 0, c.dr || '', c.dm || '', JSON.stringify(c.rims || 0), c.tubs || 0, pxKey(c)].join('|');
     let V = VEH_CACHE.get(key); if (V) return V;
     const sp = vspecVar(c, vspecOf(c.id, m, red0)), E = Object.assign({}, sp.eng), tr = sp.tr, geo = sp.geo, su = sp.susp, ti = sp.tire;
     // the engine as it's built (Phase 2): its own torque curve, redline, idle and rotating inertia from the engine model
@@ -12867,7 +12867,7 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
     P.shiftT = PFX.transmission.shift[L('transmission')]; P.knock = (P.knock || 0) + ld.risk; P.engWhy = ld.why[0] || null;
     return P;
   }
-  const partsKg = c => (carOf(c.id).kg || 1500) * PFX.weight.mult[partLv(c, 'weight')] + (() => { const x = nxConf(c); return x ? NX_KITS[x.kit].kg + (x.add && x.add.btl15 ? 3 : 0) : 0; })();
+  const partsKg = c => (carOf(c.id).kg || 1500) * PFX.weight.mult[partLv(c, 'weight')] + (() => { const x = nxConf(c); return x ? NX_KITS[x.kit].kg + (x.add && x.add.btl15 ? 3 : 0) : 0; })() + pxKg(c);
   // hp with a part swapped in, for the +hp on each row
   function hpWith(c, p) {
     const keep = c.parts, np = Object.assign({}, keep, { [p.cat]: p.id }); if (p.cat === 'turbo') delete np.supercharger; if (p.cat === 'supercharger') delete np.turbo;
@@ -26347,7 +26347,7 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
   const ksTintOf = c => (c && c.tintL != null ? c.tintL : c && c.tint ? 20 : 0);
   // the preview car: your car with its own copy of everything the bay can change (the rest is shared, read only)
   const ksCopy = c => Object.assign({}, c, { rims: c.rims ? Object.assign({}, c.rims) : c.rims, look: Object.assign({}, c.look || {}), kits: Object.assign({}, c.kits || {}),
-    tune: Object.assign({}, c.tune || {}), tparts: (c.tparts || []).slice(), drag: c.drag });
+    tune: Object.assign({}, c.tune || {}), tparts: (c.tparts || []).slice(), drag: c.drag, px: Object.assign({}, c.px || {}) });
 
   // ---- tint and underglow on every model of a car (yours on the street, in the bay, in the garage) ----
   const KS_NEON_MATS = new Map(); let KS_NEON_GEO = null, KS_NEON_TEX = null;
@@ -26484,6 +26484,7 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
     rows.push({ ic: '💡', t: 'Underglow', s: c.neon ? (KS_NEON.find(x => x[1] === c.neon) || ['Custom'])[0] : 'None', go: ksNeonPage, cam: 'low' });
     rows.push({ ic: '⬇️', t: 'Stance', s: 'Ride height on coilovers', go: ksStance, cam: 'stance' });
     if (LOOK_CARS.has(c.id)) rows.push({ ic: '🏁', t: 'Body, brakes & interior', s: 'Kits, calipers, leather, ambient light', go: ksBody, cam: 'rear' });
+    if (typeof pxHas === 'function' && pxHas(c)) rows.push({ ic: '🧩', t: 'Aero & body parts', s: c.px && Object.keys(c.px).length ? `${Object.keys(c.px).length} bolted on · splitters, wings, scoops and more` : 'Splitters, skirts, diffusers, wings, scoops: cut for this car', go: pxHome, cam: 'overview' });
     rows.push({ ic: '🔧', t: 'Workshop', s: 'Engine Lab, tuning, drag packs, audio, repairs', go: ksShop, cam: 'engine' });
     rows.push({ ic: '🚪', t: 'Drive out', s: 'Roll the door up and leave', act: ksLeave, cam: 'overview' });
     return { title: (p.name || 'Custom bay').replace(/ \(.*\)$/, ''), sub: `${carLabel(carOf(c.id))} · ${carHp(c)} hp`, cam: 'overview', rows };
@@ -26558,7 +26559,7 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
     const c = S.car, LS = lookSet(c), rate = ksRate();
     const rows = Object.entries(LS.kits).map(([k, [n, price]]) => { const on = !!(c.kits && c.kits[k]);
       return { ic: on ? '✅' : '➕', t: n, s: on ? 'Installed: pick it to take it off (free)' : 'Bolt it on', price: on ? 0 : Math.round(price * rate), what: on ? n + ' off' : n, cam: /wing|duck|diff|roof|croof/.test(k) ? 'rear' : /lip|chood|z07/.test(k) ? 'paint' : 'side',
-        fx: x => { x.kits = Object.assign({}, x.kits); if (on) delete x.kits[k]; else x.kits[k] = 1; } }; });
+        fx: x => { x.kits = Object.assign({}, x.kits); if (on) delete x.kits[k]; else { x.kits[k] = 1; if (typeof pxKitOn === 'function') pxKitOn(x, k); } } }; });
     return { title: 'Body kits', sub: 'Pick a part to see it on the car', cam: 'rear', rows };
   }
   function ksLookList(kind) {
@@ -26598,7 +26599,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
 #ks .ks-hd { padding: 8px 12px 6px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
 #ks .ks-crumb { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #a89fb2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #ks .ks-title { font-family: var(--display); font-size: 17px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#ks .ks-subt { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #a89fb2; margin-top: 2px; }
+#ks .ks-subt { font-size: 13px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: #a89fb2; margin-top: 2px; }
 #ks .ks-list { flex: 1; overflow-y: auto; padding: 6px 8px 8px 12px; -webkit-overflow-scrolling: touch; }
 #ks .ks-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 5px 8px; margin: 2px 0; border: 1px solid transparent; border-radius: 10px; background: rgba(255,255,255,0.03); color: inherit; font: inherit; text-align: left; cursor: pointer; position: relative; }
 #ks .ks-row.sel { background: rgba(255,182,54,0.14); border-color: rgba(255,182,54,0.6); }
@@ -26610,6 +26611,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
 #ks .ks-row .tx { flex: 1; min-width: 0; }
 #ks .ks-row .tx b { display: block; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #ks .ks-row .tx span { display: block; font-size: 13px; color: #a89fb2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ks-row.sel .tx span { white-space: normal; }
 #ks .ks-row .pr { flex: 0 0 auto; font-weight: 700; font-size: 16px; color: #ffb636; }
 #ks .ks-row .pr.on { color: #7ee08a; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
 #ks .ks-row .pr.go { color: #a89fb2; font-size: 22px; }
@@ -26734,7 +26736,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   function ksOpen(p) {
     if (!ksCan(p)) return false;
     closeMenu(); showCard(null); drv.v = 0; drv.gas = 0;
-    KS.p = p; KS.stack = [ksHome]; KS.sel = 0; KS.titles = new Map(); KS.matte = null; KS.dia = null; KS.fin = null; KS.tire = null; KS.ride = 0; KS.open = ''; KS.shot = ''; KS.uAz = KS.uEl = 0; KS.zoom = 1; KS.sub = false;
+    KS.p = p; KS.stack = [ksHome]; KS.sel = 0; KS.titles = new Map(); KS.matte = null; KS.dia = null; KS.fin = null; KS.tire = null; KS.pxFin = {}; KS.ride = 0; KS.open = ''; KS.shot = ''; KS.uAz = KS.uEl = 0; KS.zoom = 1; KS.sub = false;
     ksBuild(p);
     KS.slot = putCar(KS.root, S.car.id, S.car.color, m => {
       KS.model = m; m.position.y = 0; try { const b = audioBuild(S.car); setCarAudio(m, b.subs.id, b.doors.id); applyMotor(m, S.car); } catch (e) {}
@@ -26758,7 +26760,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     if (p && driving) { const [ox, oz] = outDir(p); const r = nearestRoad(p.x + ox * 12, p.z + oz * 12); if (r) { drv.x = r.x + (r.horiz ? 0 : r.e.w / 4); drv.z = r.z + (r.horiz ? r.e.w / 4 : 0); drv.yaw = r.horiz ? Math.PI / 2 : 0; drv.v = 0; drv.cam.set(drv.x + Math.sin(drv.yaw) * 14, 7, drv.z + Math.cos(drv.yaw) * 14); } }
     save(); refreshStats(); showCard(null);
   }
-  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.engX]) : ''; };
+  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.engX, c.px]) : ''; };
   const ksEase = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const _ksA = new THREE.Vector3(), _ksB = new THREE.Vector3(), _ksW = new THREE.Vector3();
   function ksStep(dt) {
@@ -27792,6 +27794,612 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   window.__moto = { tick: (n, dt) => { for (let i = 0; i < n; i++) stepDrive(dt); }, gbMode: m => gbMode(m), GBX, applyLook: (m, c) => applyLook(m, c), ea: c => eaCfgOf(c), MOTO, BK, RDR, bikeSpec, mtPose, mtRider, mtOf, mtTq, mtHpNow, MT_PARTS, MT_TIRES, motoShop, mtElTap, simBike, MT_GEO };
   })();
   // ==== motorcycles (end) ====
+  // ==== aftermarket parts (begin) ====
+  // Kimari 2026-11-13: "hundreds of detailed, realistic, installable aftermarket parts ... parts must physically attach".
+  // One parts system for every car model. Nothing here is a stock mesh dropped on every car: each part is cut for the car
+  // it goes on. The first time a car needs a part its own body is measured (pxFit: the roof, hood and trunk-lid surfaces,
+  // the nose and tail outlines, the rockers, the bumper bottoms, the bed of a truck), and the part's shape is generated
+  // against those measurements, so a splitter follows that bumper, a wing stands on that trunk lid (and opens with it),
+  // a hood scoop lies on that hood. A part that can't be fitted (no room ahead of the wheel for a canard, no deck for a
+  // spoiler) isn't offered for that car. Every part has an id, a slot, a brand, finishes, a price, a weight and the
+  // aero it adds; they save on the car (c.px), change the sim (drag / lift per axle / weight) and ride on the online build.
+  var PX_ON = false;
+  const PX_G = 0.03, PX_FITS = new Map(), PX_GEO = new Map(), PX_MATS = {}, PX_CATS = new Map();
+  const PX_SLOTS = {
+    spl: ['Front splitter', '🔻', 'pxfront'], can: ['Canards', '🪽', 'pxfront'], skt: ['Side skirts', '📏', 'pxside'], dif: ['Rear diffuser', '🦈', 'pxrear'],
+    spo: ['Spoiler & wing', '🏁', 'rear'], hod: ['Hood scoop & vents', '🌬️', 'pxhood'], pin: ['Hood pins', '📍', 'pxhood'], lvr: ['Rear window louvers', '🪟', 'pxdeck'],
+    rof: ['Roof', '🔦', 'pxroof'], rak: ['Roof rack', '🧳', 'pxroof'], bul: ['Bull bar', '🐂', 'pxfront'], stp: ['Side steps', '🪜', 'pxside'],
+    bed: ['Bed bar', '🛻', 'pxdeck'], ton: ['Bed cover', '📦', 'pxdeck'], flp: ['Mud flaps', '🟫', 'pxside'] };
+  // finishes: [name, price x, weight x]. Body parts come in plastics, paint and carbon; tube parts in steel finishes
+  const PX_FIN = { sb: ['Satin black', 1, 1], gb: ['Gloss black', 1.08, 1], pm: ['Paint matched', 1.3, 1.05], cg: ['Gloss carbon', 2.3, 0.45], cm: ['Dry carbon', 2.5, 0.42], fc: ['Forged carbon', 2.8, 0.47],
+    tb: ['Black powder coat', 1, 1], st: ['Polished stainless', 1.35, 1], ch: ['Chrome', 1.25, 1.02], al: ['Brushed aluminum', 1, 1] };
+  const PX_FSW = { sb: '#1b1b1d', gb: '#050506', pm: '#8a1f2a', cg: '#2a2c30', cm: '#3a3b3d', fc: '#45474b', tb: '#111112', st: '#d5d8dc', ch: '#f2f4f6', al: '#a4a8ad' };
+  const PX_FSET = { body: ['sb', 'gb', 'pm', 'cg', 'cm', 'fc'], tube: ['tb', 'st', 'ch'], alu: ['al', 'tb'], blk: ['sb', 'gb'] };
+  // kits a car was built with that sit in the same place as one of these slots
+  const PX_CLASH = { spl: ['lip'], spo: ['wing', 'duck'], dif: ['diff'], skt: ['skirt'], hod: ['chood'] };
+
+  // ---- materials (shared by every car; a handful of small canvases) ----
+  function pxTex(kind) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128; const k = cv.getContext('2d');
+    if (kind === 'carbon') {   // 2x2 twill: 8 x 8 tows a tile
+      k.fillStyle = '#0c0c0d'; k.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { const warp = ((i - j) % 4 + 4) % 4 < 2, x = i * 16, y = j * 16;
+        const g = warp ? k.createLinearGradient(x, 0, x + 16, 0) : k.createLinearGradient(0, y, 0, y + 16);
+        g.addColorStop(0, '#111113'); g.addColorStop(0.5, warp ? '#5a5d63' : '#3b3d42'); g.addColorStop(1, '#111113'); k.fillStyle = g; k.fillRect(x + 0.5, y + 0.5, 15, 15); }
+    } else {   // forged: chopped flakes every which way
+      k.fillStyle = '#141416'; k.fillRect(0, 0, 128, 128); let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+      for (let n = 0; n < 420; n++) { const x = rnd() * 128, y = rnd() * 128, a = rnd() * Math.PI, l = 5 + rnd() * 12, w = 2 + rnd() * 5, v = 26 + rnd() * 78 | 0;
+        for (const [ox, oy] of [[0, 0], [128, 0], [-128, 0], [0, 128], [0, -128]]) { k.save(); k.translate(x + ox, y + oy); k.rotate(a); k.fillStyle = `rgb(${v},${v},${v + 3})`; k.fillRect(-l / 2, -w / 2, l, w); k.restore(); } }
+    }
+    const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+  }
+  function pxMat(key, U) {
+    if (key === 'pm') return (U && U.paint) || pxMat('gb');
+    let m = PX_MATS[key]; if (m) return m;
+    const S = (o) => new THREE.MeshStandardMaterial(o), P = (o) => { const x = new THREE.MeshPhysicalMaterial(o); x.clearcoat = 1; x.clearcoatRoughness = 0.04; return x; };
+    m = key === 'cg' ? P({ map: PX_MATS.tc || (PX_MATS.tc = pxTex('carbon')), color: 0xffffff, metalness: 0.35, roughness: 0.32 })
+      : key === 'cm' ? S({ map: PX_MATS.tc || (PX_MATS.tc = pxTex('carbon')), color: 0xd8d8d8, metalness: 0.25, roughness: 0.62 })
+      : key === 'fc' ? P({ map: PX_MATS.tf || (PX_MATS.tf = pxTex('forged')), color: 0xffffff, metalness: 0.4, roughness: 0.3 })
+      : key === 'gb' ? P({ color: lin('#060607'), metalness: 0.1, roughness: 0.16 })
+      : key === 'sb' ? S({ color: lin('#17171a'), metalness: 0.1, roughness: 0.58 })
+      : key === 'tb' ? S({ color: lin('#0d0d0e'), metalness: 0.35, roughness: 0.7 })
+      : key === 'st' ? S({ color: lin('#d9dce0'), metalness: 1, roughness: 0.14 })
+      : key === 'ch' ? S({ color: lin('#f4f6f8'), metalness: 1, roughness: 0.04 })
+      : key === 'al' ? S({ color: lin('#a9adb3'), metalness: 0.92, roughness: 0.36 })
+      : key === 'rub' ? S({ color: lin('#0b0b0b'), metalness: 0, roughness: 0.92 })
+      : key === 'red' ? S({ color: lin('#c8141c'), metalness: 0.6, roughness: 0.35 })
+      : key === 'lens' ? S({ color: lin('#e9eef5'), metalness: 0.2, roughness: 0.12, emissive: lin('#39414d') })
+      : key === 'dark' ? S({ color: lin('#020203'), metalness: 0, roughness: 0.95 })
+      : S({ color: lin('#17171a'), roughness: 0.6 });
+    m.userData.px = true; return PX_MATS[key] = m;
+  }
+
+  // ---- a small solid-geometry kit: everything is a closed solid, so nothing shows a back face ----
+  function pxSolid(B, T) {   // T: [[a, b, c], ...]; turn it right side out, then add it
+    let vol = 0; for (const [a, b, c] of T) vol += a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]);
+    const t = B.t; for (const [a, b, c] of T) { if (vol < 0) t.push(a[0], a[1], a[2], c[0], c[1], c[2], b[0], b[1], b[2]); else t.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); }
+  }
+  // rings of the same point count joined along their length, capped at both ends
+  function pxSweep(B, rings) {
+    const T = [], n = rings[0].length;
+    for (let i = 0; i + 1 < rings.length; i++) { const R0 = rings[i], R1 = rings[i + 1]; for (let j = 0; j < n; j++) { const k = (j + 1) % n; T.push([R0[j], R0[k], R1[k]], [R0[j], R1[k], R1[j]]); } }
+    const cap = (R, flip) => { const c = [0, 0, 0]; for (const p of R) { c[0] += p[0] / n; c[1] += p[1] / n; c[2] += p[2] / n; } for (let j = 0; j < n; j++) { const k = (j + 1) % n; T.push(flip ? [c, R[k], R[j]] : [c, R[j], R[k]]); } };
+    cap(rings[0], true); cap(rings[rings.length - 1], false); pxSolid(B, T);
+  }
+  const pxPlate = (B, poly, z, th) => pxSweep(B, [poly.map(p => [p[0], p[1], z - th / 2]), poly.map(p => [p[0], p[1], z + th / 2])]);   // a flat plate standing fore-aft
+  const pxBox = (B, x, y, z, sx, sy, sz) => pxPlate(B, [[x - sx / 2, y - sy / 2], [x + sx / 2, y - sy / 2], [x + sx / 2, y + sy / 2], [x - sx / 2, y + sy / 2]], z, sz);
+  // a smooth line through points (Catmull-Rom), n steps a span
+  function pxCurve(P, n) {
+    const o = [], g = i => P[clamp(i, 0, P.length - 1)];
+    for (let i = 0; i + 1 < P.length; i++) { const a = g(i - 1), b = g(i), c = g(i + 1), d = g(i + 2);
+      for (let s = 0; s < n; s++) { const t = s / n, t2 = t * t, t3 = t2 * t; o.push([0, 1, 2].map(k => 0.5 * (2 * b[k] + (c[k] - a[k]) * t + (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * t2 + (3 * b[k] - a[k] - 3 * c[k] + d[k]) * t3))); } }
+    o.push(P[P.length - 1]); return o;
+  }
+  // a round tube along a line; r is a number or a radius for each point; sy squashes it into an oval
+  function pxTube(B, P, r, seg = 10, sy = 1) {
+    const rings = [], V = THREE.Vector3; let N = null; const t = new V(), bn = new V();
+    for (let i = 0; i < P.length; i++) { const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)]; t.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize();
+      if (!N) { N = new V(0, 1, 0); if (Math.abs(t.y) > 0.9) N.set(1, 0, 0); } N.addScaledVector(t, -N.dot(t)).normalize(); bn.crossVectors(t, N);
+      const rr = typeof r === 'number' ? r : r[i], R = [];
+      for (let j = 0; j < seg; j++) { const an = j / seg * Math.PI * 2, c = Math.cos(an) * rr, s = Math.sin(an) * rr * sy; R.push([P[i][0] + N.x * c + bn.x * s, P[i][1] + N.y * c + bn.y * s, P[i][2] + N.z * c + bn.z * s]); }
+      rings.push(R); }
+    pxSweep(B, rings);
+  }
+  // triangles to a geometry: smooth where faces meet gently, crisp at real edges; box-mapped UVs for the weave
+  function pxGeo(B, crease = 0.74) {
+    const P = new Float32Array(B.t), nf = P.length / 9, FN = new Float32Array(nf * 3), FA = new Float32Array(nf), N = new Float32Array(P.length), UV = new Float32Array(nf * 6), at = new Map();
+    for (let f = 0; f < nf; f++) { const i = f * 9, ax = P[i + 3] - P[i], ay = P[i + 4] - P[i + 1], az = P[i + 5] - P[i + 2], bx = P[i + 6] - P[i], by = P[i + 7] - P[i + 1], bz = P[i + 8] - P[i + 2];
+      let x = ay * bz - az * by, y = az * bx - ax * bz, z = ax * by - ay * bx; const l = Math.hypot(x, y, z) || 1e-12; FA[f] = l; FN[f * 3] = x /= l; FN[f * 3 + 1] = y /= l; FN[f * 3 + 2] = z /= l;
+      const ux = Math.abs(x), uy = Math.abs(y), uz = Math.abs(z), k = 31;
+      for (let v = 0; v < 3; v++) { const px = P[i + v * 3], py = P[i + v * 3 + 1], pz = P[i + v * 3 + 2]; UV[f * 6 + v * 2] = (uy >= ux && uy >= uz ? px : ux >= uz ? pz : px) * k; UV[f * 6 + v * 2 + 1] = (uy >= ux && uy >= uz ? pz : py) * k;
+        const key = Math.round(px * 2500) + '_' + Math.round(py * 2500) + '_' + Math.round(pz * 2500); let L = at.get(key); if (!L) at.set(key, L = []); L.push(f); } }
+    for (let f = 0; f < nf; f++) for (let v = 0; v < 3; v++) { const i = f * 9 + v * 3, key = Math.round(P[i] * 2500) + '_' + Math.round(P[i + 1] * 2500) + '_' + Math.round(P[i + 2] * 2500);
+      let x = 0, y = 0, z = 0; for (const g of at.get(key)) { if (FA[g] < 1e-10) continue; const d = FN[f * 3] * FN[g * 3] + FN[f * 3 + 1] * FN[g * 3 + 1] + FN[f * 3 + 2] * FN[g * 3 + 2]; if (d > crease) { x += FN[g * 3] * FA[g]; y += FN[g * 3 + 1] * FA[g]; z += FN[g * 3 + 2] * FA[g]; } }
+      const l = Math.hypot(x, y, z); if (l > 1e-12) { N[i] = x / l; N[i + 1] = y / l; N[i + 2] = z / l; } else { N[i] = FN[f * 3]; N[i + 1] = FN[f * 3 + 1]; N[i + 2] = FN[f * 3 + 2]; } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.BufferAttribute(UV, 2));
+    g.computeBoundingSphere(); g.userData.shared = true; return g;
+  }
+
+  // ---- fitment: measure a car's own body once (height, underside, nose, tail and flank maps on a 3 cm grid) ----
+  function pxFit(id) {
+    let F = PX_FITS.get(id); if (F) { PX_FITS.delete(id); PX_FITS.set(id, F); return F; }
+    const T = CARS3D.done[id]; if (!T || !T.wheels || T.wheels.length !== 4 || !T.box) return null;
+    const g = PX_G, bx = T.box, x0 = bx[0][0] - 0.09, x1 = bx[1][0] + 0.09, zh = Math.max(-bx[0][2], bx[1][2]) + 0.09, yh = bx[1][1] + 0.15,
+      nx = Math.ceil((x1 - x0) / g), ny = Math.ceil((yh + 0.06) / g), nz = Math.ceil(zh / g), mk = (n, v) => new Float32Array(n).fill(v);
+    const top = mk(nx * nz, -9), bot = mk(nx * nz, 9), frt = mk(nz * ny, -9), rr = mk(nz * ny, 9), side = mk(nx * ny, 0), hood = mk(nx * nz, -9), deck = mk(nx * nz, -9), glass = mk(nx * nz, -9);
+    const put = (x, y, z, pm, gl) => { const ix = (x - x0) / g | 0, iy = (y + 0.06) / g | 0, az = Math.abs(z), iz = az / g | 0; if (ix < 0 || ix >= nx || iy < 0 || iy >= ny || iz >= nz) return;
+      const a = ix * nz + iz, b = iz * ny + iy, s = ix * ny + iy;
+      if (y > top[a]) top[a] = y; if (y < bot[a]) bot[a] = y; if (x > frt[b]) frt[b] = x; if (x < rr[b]) rr[b] = x; if (az > side[s]) side[s] = az; if (pm && y > pm[a]) pm[a] = y; if (gl && y > gl[a]) gl[a] = y; };
+    const A = new THREE.Vector3(), Bv = new THREE.Vector3(), C = new THREE.Vector3();
+    const add = (parts, M, pm) => { for (const q of parts) { const mt = T.mats[q.mat]; if (mt && mt.isMeshBasicMaterial && mt.transparent) continue; const P = q.geo.attributes.position.array, gl = mt && mt.transparent && mt.opacity < 0.9 ? glass : null;
+      for (let i = 0; i + 8 < P.length; i += 9) { A.set(P[i], P[i + 1], P[i + 2]); Bv.set(P[i + 3], P[i + 4], P[i + 5]); C.set(P[i + 6], P[i + 7], P[i + 8]); if (M) { A.applyMatrix4(M); Bv.applyMatrix4(M); C.applyMatrix4(M); }
+        const L = Math.max(Math.abs(A.x - Bv.x) + Math.abs(A.y - Bv.y) + Math.abs(A.z - Bv.z), Math.abs(A.x - C.x) + Math.abs(A.y - C.y) + Math.abs(A.z - C.z), Math.abs(C.x - Bv.x) + Math.abs(C.y - Bv.y) + Math.abs(C.z - Bv.z)), n = Math.min(60, Math.ceil(L / (g * 0.7)));
+        if (n <= 1) { put(A.x, A.y, A.z, pm, gl); put(Bv.x, Bv.y, Bv.z, pm, gl); put(C.x, C.y, C.z, pm, gl); }
+        else for (let a = 0; a <= n; a++) for (let b = 0; a + b <= n; b++) { const u = a / n, w = b / n, t = 1 - u - w; put(A.x * t + Bv.x * u + C.x * w, A.y * t + Bv.y * u + C.y * w, A.z * t + Bv.z * u + C.z * w, pm, gl); } } } };
+    const closed = p => new THREE.Matrix4().fromArray(p.pm).multiply(new THREE.Matrix4().compose(new THREE.Vector3().fromArray(p.pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rot[0], p.rot[1], p.rot[2])), new THREE.Vector3().fromArray(p.scale)));
+    const rearP = T.panels.find(p => /^(trunk|hatch|liftgate|liftback|tailgate|swing)$/.test(p.name)), hoodP = T.panels.find(p => p.name === 'hood');
+    add(T.body, null, null);
+    for (const p of T.panels) add(p.parts, closed(p), p === hoodP ? hood : p === rearP ? deck : null);
+    if (T.kits) for (const [k, L] of Object.entries(T.kits)) if (k[0] === '!') for (const e of L) if (Array.isArray(e)) add(e, null, null);
+    const W = T.wheels.map(w => w.pos), xF = Math.max(...W.map(w => w[0])), xR = Math.min(...W.map(w => w[0]));
+    F = { id, g, x0, nx, ny, nz, top, bot, frt, rr, side, hood, deck, glass, X0: bx[0][0], X1: bx[1][0], H: bx[1][1], hw: zh - 0.09, xF, xR, r: W[0][1], tw: Math.max(...W.map(w => Math.abs(w[2]))),
+      rear: rearP ? rearP.name : '', hasHood: !!hoodP };
+    const ok = v => v > -8 && v < 8;
+    // a height map read between the cells (so a part laid on it doesn't stair-step)
+    F.at = (map, x, z) => { const fx = (x - x0) / g - 0.5, fz = Math.abs(z) / g - 0.5, ix = clamp(Math.floor(fx), 0, nx - 2), iz = clamp(Math.floor(fz), 0, nz - 2), u = clamp(fx - ix, 0, 1), w = clamp(fz - iz, 0, 1);
+      const a = map[ix * nz + iz], b = map[(ix + 1) * nz + iz], c = map[ix * nz + iz + 1], d = map[(ix + 1) * nz + iz + 1];
+      if (ok(a) && ok(b) && ok(c) && ok(d)) return (a * (1 - u) + b * u) * (1 - w) + (c * (1 - u) + d * u) * w;
+      let best = NaN, bd = 9; for (let i = ix - 2; i <= ix + 3; i++) for (let k = iz - 2; k <= iz + 3; k++) { if (i < 0 || k < 0 || i >= nx || k >= nz) continue; const v = map[i * nz + k]; if (!ok(v)) continue; const dd = Math.abs(i - fx) + Math.abs(k - fz); if (dd < bd) { bd = dd; best = v; } }
+      return best; };
+    const yr = (ya, yb) => [clamp((ya + 0.06) / g | 0, 0, ny - 1), clamp((yb + 0.06) / g | 0, 0, ny - 1)];
+    F.front = (z, ya, yb) => { const iz = clamp(Math.abs(z) / g | 0, 0, nz - 1), [a, b] = yr(ya, yb); let m = -9; for (let i = a; i <= b; i++) m = Math.max(m, frt[iz * ny + i]); return m; };
+    F.back = (z, ya, yb) => { const iz = clamp(Math.abs(z) / g | 0, 0, nz - 1), [a, b] = yr(ya, yb); let m = 9; for (let i = a; i <= b; i++) m = Math.min(m, rr[iz * ny + i]); return m; };
+    F.sideZ = (x, ya, yb) => { const ix = clamp((x - x0) / g | 0, 0, nx - 1), [a, b] = yr(ya, yb); let m = 0; for (let i = a; i <= b; i++) m = Math.max(m, side[ix * ny + i]); return m; };
+    F.botMin = (xa, xb, za, zb) => { let m = 9; for (let i = clamp((xa - x0) / g | 0, 0, nx - 1); i <= clamp((xb - x0) / g | 0, 0, nx - 1); i++) for (let k = clamp(za / g | 0, 0, nz - 1); k <= clamp(zb / g | 0, 0, nz - 1); k++) m = Math.min(m, bot[i * nz + k]); return m; };
+    // the trailing edge of a surface at one z: the rearmost spot where it has stopped falling away (a deck lip, the end of a roof)
+    F.edge = (map, z, ymin = -8) => { const iz = clamp(Math.abs(z) / g | 0, 0, nz - 1); let ix = 0; while (ix < nx && !(map[ix * nz + iz] > ymin)) ix++;
+      for (let k = ix; k < Math.min(nx - 3, ix + 24); k++) { const a = map[k * nz + iz], b = map[(k + 2) * nz + iz]; if (a > ymin && b > ymin && b - a < 2 * g * 0.7) return { x: x0 + (k + 0.5) * g, y: a }; }
+      return null; };
+    F.cell = (map, x, z) => { const ix = (x - x0) / g | 0, iz = Math.abs(z) / g | 0; return ix < 0 || iz < 0 || ix >= nx || iz >= nz ? -9 : map[ix * nz + iz]; };
+    F.inv = {}; if (hoodP) F.inv.hood = closed(hoodP).invert(); if (rearP) F.inv.rear = closed(rearP).invert();
+    PX_FITS.set(id, F); if (PX_FITS.size > 4) PX_FITS.delete(PX_FITS.keys().next().value);
+    return F;
+  }
+  const pxAvg = (a, n = 1) => { for (let p = 0; p < n; p++) { const b = a.slice(); for (let i = 1; i + 1 < a.length; i++) a[i] = (b[i - 1] + b[i] * 2 + b[i + 1]) / 4; } return a; };
+  const pxMed = a => { const b = a.filter(v => isFinite(v) && Math.abs(v) < 8).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
+  const pxRange = (a, b, step) => { const n = Math.max(1, Math.round((b - a) / step)), o = []; for (let i = 0; i <= n; i++) o.push(a + (b - a) * i / n); return o; };
+
+  // ---- landmarks every generator shares ----
+  function pxLand(F) {
+    if (F.L) return F.L; const g = F.g, L = F.L = {}, a = [], b = [];
+    for (let z = g / 2; z < F.hw * 0.45; z += g) { const fx = F.front(z, 0.05, 0.45); if (fx > -8) a.push(F.botMin(fx - 0.16, fx - 0.03, z, z)); const bx = F.back(z, 0.05, 0.5); if (bx < 8) b.push(F.botMin(bx + 0.03, bx + 0.16, z, z)); }
+    L.ybF = pxMed(a); L.ybR = pxMed(b);
+    let roof = 0; for (let x = F.xR; x < F.xF; x += g) roof = Math.max(roof, F.at(F.top, x, 0) || 0); L.roofY = roof;
+    // rocker: how far out the sill is and where its bottom edge sits, between the wheels
+    const zs = [], ys = []; for (let x = F.xR + F.r + 0.25; x < F.xF - F.r - 0.25; x += g) { const z = F.sideZ(x, F.r * 0.55, F.r + 0.16); zs.push(z); ys.push(F.botMin(x, x, z - 0.12, z - 0.03)); }
+    L.zRock = pxMed(zs); L.yRock = pxMed(ys);
+    // roof ends (the top of the windshield and the top of the back glass) and how wide the flat of it is
+    let xa = NaN, xb = NaN; for (let x = F.X0; x < F.X1; x += g / 2) if (F.at(F.top, x, 0) > roof - 0.045) { if (isNaN(xa)) xa = x; xb = x; } L.roofR = xa; L.roofF = xb;
+    L.roofW = x => { let w = 0; const c = F.at(F.top, x, 0); for (let z = 0; z < F.hw; z += g / 2) { if (!(F.at(F.top, x, z) > c - 0.07)) break; w = z; } return w; };
+    if (F.hasHood) { let h0 = NaN, h1 = NaN; for (let i = 0; i < F.nx; i++) if (F.hood[i * F.nz] > -8 || F.hood[i * F.nz + 1] > -8) { const x = F.x0 + (i + 0.5) * g; if (isNaN(h0)) h0 = x; h1 = x; } L.hx0 = h0; L.hx1 = h1;
+      L.hoodW = x => { const i = clamp((x - F.x0) / g | 0, 0, F.nx - 1); let w = 0; for (let k = 0; k < F.nz; k++) if (F.hood[i * F.nz + k] > -8) w = (k + 0.5) * g; return w; }; }
+    return L;
+  }
+  // the trailing edge of the trunk lid / hatch / roof across the car: { zs, xe, ye, Z }
+  function pxDeck(F, map, ymin) {
+    const zs = [], xe = [], ye = []; let prev = null;
+    for (let z = F.g / 2; z < F.hw; z += F.g) { const e = F.edge(map, z, ymin); if (!e || (prev && (Math.abs(e.x - prev.x) > 0.12 || Math.abs(e.y - prev.y) > 0.1))) break; zs.push(z); xe.push(e.x); ye.push(e.y); prev = e; }
+    if (zs.length < 10) return null; zs.pop(); xe.pop(); ye.pop(); pxAvg(xe, 2); pxAvg(ye, 2);
+    return { zs, xe, ye, Z: zs[zs.length - 1], n: zs.length };
+  }
+  const pxMir = (zs, f) => { const o = []; for (let i = zs.length - 1; i >= 0; i--) o.push(f(i, -1)); for (let i = 0; i < zs.length; i++) o.push(f(i, 1)); return o; };   // a ring per station, left side then right
+  const pxSm = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+
+  // ---- the generators: (F, K, o) -> false if it can't be fitted to this car. K.b(material, host) gives a builder ----
+  const PXG = {};
+  PXG.splitter = (F, K, o) => {
+    const L = pxLand(F), g = F.g; if (!(L.ybF > 0.09)) return false;
+    const th = o.th || 0.012, yT = Math.max(L.ybF + 0.004, 0.085 + th), yB = yT - th, zs = [], xs = [], fb = [];
+    for (let z = g / 2; z < F.hw + g; z += g) { const x = F.front(z, yT - 0.03, yT + 0.2); if (x < F.X1 - (o.wrap || 0.42)) break; zs.push(z); xs.push(x); fb.push(F.botMin(x - 0.12, x - 0.02, z, z)); }
+    if (zs.length < 14) return false; pxAvg(xs, 3); pxAvg(fb, 2); const n = zs.length, Z = zs[n - 1];
+    const nrm = i => { const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1), dx = xs[b] - xs[a], dz = zs[b] - zs[a], l = Math.hypot(dx, dz) || 1; return i === 0 ? [1, 0] : [dz / l, -dx / l]; };
+    const B = K.b('F'), ext = i => o.ext * (1 - 0.3 * Math.pow(zs[i] / Z, 3));
+    pxSweep(B, pxMir(zs, (i, s) => { const [nx, nz] = nrm(i), e = ext(i), ox = xs[i] + nx * e, oz = zs[i] + nz * e, ix = Math.min(xs[i] - o.depth, xs[n - 1] - 0.02), iz = zs[i] * 0.94;
+      return [[ix, yT, s * iz], [ox - nx * 0.01, yT, s * (oz - nz * 0.01)], [ox, yT - th * 0.5, s * oz], [ox - nx * 0.01, yB, s * (oz - nz * 0.01)], [ix, yB, s * iz]]; }));
+    // the riser that closes the gap up to the bumper (taller on an air dam)
+    const rise = o.riser || 0;
+    pxSweep(B, pxMir(zs, (i, s) => { const [nx, nz] = nrm(i), yU = yT + Math.max(0.012, rise) + clamp(fb[i] - yT, 0, 0.02), a = [xs[i] + nx * 0.003, zs[i] + nz * 0.003], b = [xs[i] - nx * 0.012, zs[i] - nz * 0.012];
+      return [[a[0], yT - 0.002, s * a[1]], [a[0], yU, s * a[1]], [b[0], yU, s * b[1]], [b[0], yT - 0.002, s * b[1]]]; }));
+    if (o.rods) { const R = K.b('st'); for (const f of o.rods) for (const s of [-1, 1]) { const i = clamp(Math.round(f * n), 1, n - 2), [nx, nz] = nrm(i), e = ext(i) * 0.6, a = [xs[i] + nx * e, yT, s * (zs[i] + nz * e)], yq = yT + 0.17, tx = F.front(zs[i], yq - 0.03, yq + 0.03);
+      if (tx < -8) continue; const b = [tx + 0.003, yq, s * zs[i]], at = t => [0, 1, 2].map(k => a[k] + (b[k] - a[k]) * t);
+      pxTube(R, [at(0), at(0.3), at(0.301), at(0.7), at(0.701), at(1)], [0.004, 0.004, 0.0075, 0.0075, 0.004, 0.004], 8); } }
+    if (o.fence) for (const s of [-1, 1]) { const [nx, nz] = nrm(n - 1), e = ext(n - 1), xo = xs[n - 1] + nx * e, zo = zs[n - 1] + nz * e;
+      pxPlate(B, [[xo + 0.01, yB], [xo + 0.01, yT + 0.045], [xo - 0.12, yT + o.fence], [xo - 0.2, yT + o.fence * 0.5], [xo - 0.2, yB]], s * (zo + 0.002), 0.006); }
+    return true;
+  };
+  PXG.canard = (F, K, o) => {
+    const L = pxLand(F), xa = F.xF + F.r + 0.15, len = Math.min(F.X1 - 0.08 - xa, o.len || 0.26); if (!(L.ybF > 0.09) || len < 0.15) return false;
+    const B = K.b('F'), xs = pxRange(xa, xa + len, 0.025);
+    for (let k = 0; k < o.n; k++) { const y0 = L.ybF + 0.15 + k * 0.125, zz = pxAvg(xs.map(x => F.sideZ(x, y0 - 0.02, y0 + 0.07)), 2); if (zz.some(z => z < 0.3)) return false;
+      for (const s of [-1, 1]) pxSweep(B, xs.map((x, i) => { const u = 1 - i / (xs.length - 1), w = 0.012 + (o.w || 0.085) * Math.pow(u, 0.8) * (k ? 0.8 : 1), y = y0 + u * len * 0.24, cu = w * 0.22 * u;
+        return [[x, y, s * (zz[i] - 0.014)], [x, y + cu, s * (zz[i] + w)], [x, y + cu + 0.006, s * (zz[i] + w)], [x, y + 0.006, s * (zz[i] - 0.014)]]; })); }
+    return true;
+  };
+  PXG.skirt = (F, K, o) => {
+    const L = pxLand(F), xa = F.xR + F.r + 0.11, xb = F.xF - F.r - 0.11; if (!(L.yRock > 0.1) || xb - xa < 1) return false;
+    const B = K.b('F'), xs = pxRange(xa, xb, 0.05), band = [L.yRock - 0.01, L.yRock + 0.1], zz = pxAvg(xs.map(x => F.sideZ(x, band[0], band[1])), 3), yR = L.yRock, n = xs.length;
+    for (const s of [-1, 1]) {
+      pxSweep(B, xs.map((x, i) => { const k = Math.min(pxSm((x - xa) / 0.12), pxSm((xb - x) / 0.12)), z = zz[i];
+        if (o.kind === 'blade') { const e = (o.ext || 0.04) * (0.25 + 0.75 * k), th = 0.012; return [[x, yR + 0.003, s * (z - 0.06)], [x, yR + 0.003, s * (z + e)], [x, yR + 0.003 - th / 2, s * (z + e + 0.004)], [x, yR + 0.003 - th, s * (z + e)], [x, yR + 0.003 - th, s * (z - 0.06)]]; }
+        const q = 0.3 + 0.7 * k; return [[x, yR + 0.085, s * (z - 0.012)], [x, yR + 0.07, s * (z + 0.016 * q)], [x, yR + 0.012, s * (z + 0.042 * q)], [x, yR - 0.022, s * (z + 0.038 * q)], [x, yR - 0.03, s * (z - 0.05)]]; }));
+      if (o.wing) pxPlate(B, [[xa + 0.01, yR - 0.009], [xa + 0.24, yR - 0.009], [xa + 0.17, yR + 0.045], [xa + 0.01, yR + 0.085]], s * (zz[0] + (o.ext || 0.04) * 0.6), 0.006);
+    }
+    return true;
+  };
+  PXG.diffuser = (F, K, o) => {
+    const L = pxLand(F), g = F.g; if (!(L.ybR > 0.15)) return false;
+    const yT = L.ybR + 0.004, fin = Math.min(o.fin, yT - 0.085), drop = Math.min(o.drop, yT - 0.12); if (fin < 0.035 || drop < 0.01) return false;
+    const zw = o.w * F.hw, zs = [], xr = []; for (let z = g / 2; z < zw; z += g) { const x = F.back(z, yT - 0.03, yT + 0.2); if (x > 8) break; zs.push(z); xr.push(x); } if (zs.length < 10) return false; pxAvg(xr, 3);
+    const B = K.b('F'), pr = o.prot || 0.02;
+    pxSweep(B, pxMir(zs, (i, s) => { const x = xr[i]; return [[x - pr, yT, s * zs[i]], [x + o.len, yT - drop, s * zs[i]], [x + o.len, yT - drop - 0.008, s * zs[i]], [x - pr, yT - 0.008, s * zs[i]]]; }));
+    const Z = zs[zs.length - 1], at = z => xr[clamp(Math.round(Math.abs(z) / g - 0.5), 0, xr.length - 1)];
+    for (let k = 0; k < o.n; k++) { const z = o.n === 1 ? 0 : -Z + 0.03 + (2 * Z - 0.06) * k / (o.n - 1), x = at(z), end = k === 0 || k === o.n - 1 ? 1.25 : 1;
+      pxPlate(B, [[x - pr - 0.012 * end, yT - 0.002], [x + o.len * 0.92, yT - drop * 0.92], [x + o.len * 0.92, yT - drop * 0.92 - 0.02], [x + o.len * 0.55, yT - drop * 0.55 - fin * 0.62], [x + o.len * 0.12, yT - fin * end * 0.97], [x - pr - 0.012 * end, yT - fin * end]], z, 0.007); }
+    return true;
+  };
+  // a lip, a ducktail or a roof spoiler: a profile swept along the trailing edge of the lid (or the roof)
+  PXG.lip = (F, K, o) => {
+    let map = o.roof ? F.top : F.deck; const L = pxLand(F); let hi = -9; if (o.top && !o.roof) for (let i = 0; i < map.length; i++) if (map[i] > hi && map[i] < 8) hi = map[i];
+    let D = pxDeck(F, map, o.roof ? L.roofY - 0.25 : o.top ? hi - 0.2 : -8);
+    if ((!D || D.Z < 0.35) && o.top && !o.roof) { map = F.top; D = pxDeck(F, map, L.roofY - 0.25); }   // a liftgate whose top edge is the roof line itself
+    if (D && o.top) { let n = D.n; while (n > 4 && D.ye[n - 1] < D.ye[0] - 0.035) n--; D = { zs: D.zs.slice(0, n), xe: D.xe.slice(0, n), ye: D.ye.slice(0, n), Z: D.zs[n - 1], n }; }   // stop where the roof rolls over into the pillar
+    if (!D || D.Z < 0.35) return false;
+    const B = K.b('F', o.roof ? 'inner' : 'rear'), out = o.out || 0, sf = (x, z, d) => { const v = F.at(map, x, z); return isFinite(v) && Math.abs(v - d) < 0.12 ? v : d; };
+    pxSweep(B, pxMir(D.zs, (i, s) => { const z = D.zs[i], xe = D.xe[i], ye = D.ye[i], k = 0.45 + 0.55 * pxSm((D.Z - z) / (o.tip || 0.16)), c = o.c * (0.8 + 0.2 * k), h = o.h * k, R = [];
+      for (const t of [0, 0.2, 0.4, 0.6, 0.8, 1]) { const x = xe + c - (c + out) * t, base = x > xe ? sf(x, z, ye) : ye - (xe - x) * (o.fall || 0); R.push([x, base + 0.002 + h * Math.pow(t, o.kick || 1.6), s * z]); }
+      const te = R[R.length - 1]; R.push([te[0] + 0.004, te[1] - 0.009, s * z]); if (out) R.push([xe - 0.002, ye - 0.012, s * z]); else R.push([xe - 0.001, ye - 0.006, s * z]);
+      R.push([xe + c * 0.5, sf(xe + c * 0.5, z, ye) - 0.006, s * z]); R.push([xe + c, sf(xe + c, z, ye) - 0.006, s * z]); return R; }));
+    return true;
+  };
+  const pxFoil = (xLE, y, c, aoa, tk, z, cam = 0.05) => { const U = [0, 0.012, 0.05, 0.12, 0.25, 0.4, 0.6, 0.8, 1], R = [], ta = Math.tan(aoa), yt = u => 5 * tk * (0.2969 * Math.sqrt(u) - 0.126 * u - 0.3516 * u * u + 0.2843 * u * u * u - 0.1015 * u * u * u * u), yc = u => -cam * 4 * u * (1 - u);
+    for (const u of U) R.push([xLE - u * c, y + (yc(u) + yt(u) + u * ta) * c, z]); for (let i = U.length - 2; i > 0; i--) { const u = U[i]; R.push([xLE - u * c, y + (yc(u) - yt(u) + u * ta) * c, z]); } return R; };
+  PXG.wing = (F, K, o) => {
+    const D = pxDeck(F, F.deck, -8); if (!D || D.Z < 0.4) return false;
+    const c = o.c, aoa = (o.aoa || 9) * Math.PI / 180, S = Math.min(o.span * F.hw, F.hw - 0.015), xe = D.xe[0], ye = D.ye[0], xLE = xe + c * (o.fwd == null ? 0.72 : o.fwd), yW = ye + o.h, tk = o.tk || 0.11;
+    const B = K.b('F', 'rear'), sf = (x, z) => { const v = F.at(F.deck, x, z); return isFinite(v) && Math.abs(v - ye) < 0.15 ? v : ye; };
+    const zsW = o.bow ? pxRange(-S, S, S / 4) : [-S, S];
+    pxSweep(B, zsW.map(z => pxFoil(xLE, yW - (o.bow || 0) * Math.pow(Math.abs(z) / S, 2), c, aoa, tk, z)));
+    if (o.el === 2) pxSweep(B, [-S, S].map(z => pxFoil(xLE - c * 0.9, yW + c * Math.tan(aoa) * 0.9 + 0.034, c * 0.4, aoa + 0.34, 0.1, z)));
+    if (o.gurney) pxBox(B, xLE - c + 0.002, yW + c * Math.tan(aoa) + o.gurney / 2, 0, 0.003, o.gurney, S * 2);
+    const TEy = yW + c * Math.tan(aoa), top2 = o.el === 2 ? 0.07 : 0;
+    const EP = [[[xLE + 0.03, yW + 0.05], [xLE - c - 0.04, TEy + 0.07 + top2], [xLE - c - 0.04, TEy - 0.07], [xLE - 0.3 * c, yW - 0.11], [xLE + 0.03, yW - 0.07]],
+      [[xLE + 0.02, yW + 0.04], [xLE - 0.6 * c, TEy + 0.12 + top2], [xLE - c - 0.06, TEy + 0.12 + top2], [xLE - c - 0.03, TEy - 0.05], [xLE - 0.45 * c, yW - 0.13], [xLE + 0.02, yW - 0.05]],
+      [[xLE + 0.012, yW + 0.035], [xLE - c - 0.02, TEy + 0.045 + top2], [xLE - c - 0.02, TEy - 0.04], [xLE + 0.012, yW - 0.045]],
+      [[xLE + 0.04, yW + 0.03], [xLE - 0.5 * c, TEy + 0.06 + top2], [xLE - c - 0.07, TEy + 0.1 + top2], [xLE - c - 0.05, TEy - 0.09], [xLE - 0.55 * c, yW - 0.09], [xLE + 0.04, yW - 0.03]]];
+    if (o.ep != null) for (const s of [-1, 1]) pxPlate(B, EP[o.ep], s * (S + 0.002), 0.006);
+    // what it stands on: plates, swan necks or pedestals, down to that lid
+    const zu = Math.min(D.Z - 0.07, S * (o.upz || 0.55)), xm = xLE - c * 0.45, yU = yW + 0.45 * c * Math.tan(aoa) - tk * c * 0.35;
+    for (const s of [-1, 1]) { const z = s * zu, y1 = sf(xm + 0.07, zu) - 0.005, y2 = sf(xm - 0.07, zu) - 0.005;
+      if (o.up === 'swan') { const top = yW + 0.3 * c * Math.tan(aoa) + tk * c * 0.42; pxTube(K.b('al', 'rear'), pxCurve([[xm + 0.02, sf(xm + 0.02, zu) - 0.01, z], [xLE + 0.03, yW - 0.07, z], [xLE + 0.075, yW + 0.01, z], [xLE + 0.02, yW + 0.085, z], [xLE - c * 0.3, top + 0.012, z]], 6), 0.028, 10, 0.14);
+        pxBox(K.b('al', 'rear'), xm + 0.02, sf(xm + 0.02, zu) + 0.001, z, 0.12, 0.008, 0.045); }
+      else if (o.up === 'ped') pxPlate(B, [[xm + 0.1, y1], [xm + 0.055, yU], [xm - 0.05, yU], [xm - 0.085, y2]], z, o.pedW || 0.06);
+      else { const A = K.b('al', 'rear'); pxPlate(A, [[xm + 0.075, y1 + 0.004], [xm + 0.04, yU], [xm - 0.04, yU], [xm - 0.07, y2 + 0.004], [xm - 0.02, (y2 + yU) / 2 - 0.01]], z, 0.008); pxBox(A, xm, (y1 + y2) / 2 + 0.006, z, 0.17, 0.006, 0.04); } }
+    return true;
+  };
+  // a drag-strip blade: a flat aluminum plate off the back of the lid, held by rods
+  PXG.blade = (F, K, o) => {
+    const D = pxDeck(F, F.deck, -8); if (!D || D.Z < 0.4) return false;
+    const B = K.b('F', 'rear'), R = K.b('st', 'rear'), a = (o.ang || 14) * Math.PI / 180, ca = Math.cos(a) * o.len, sa = Math.sin(a) * o.len;
+    pxSweep(B, pxMir(D.zs, (i, s) => { const x = D.xe[i], y = D.ye[i], z = s * D.zs[i]; return [[x + 0.035, y + 0.003, z], [x - ca, y + sa + 0.003, z], [x - ca - 0.001, y + sa - 0.002, z], [x + 0.035, y - 0.003, z]]; }));
+    for (const f of [0.22, 0.72]) for (const s of [-1, 1]) { const i = clamp(Math.round(f * D.n), 0, D.n - 1), x = D.xe[i], y = D.ye[i], z = s * D.zs[i], yd = F.at(F.deck, x + 0.2, z);
+      pxTube(R, [[x - ca * 0.85, y + sa * 0.85 + 0.004, z], [x + 0.2, (isFinite(yd) && Math.abs(yd - y) < 0.1 ? yd : y) + 0.004, z]], 0.0045, 8); }
+    for (const s of [-1, 1]) { const i = D.n - 1, x = D.xe[i], y = D.ye[i]; pxPlate(B, [[x + 0.035, y], [x - ca, y + sa + 0.004], [x - ca, y + sa - 0.05], [x + 0.035, y - 0.012]], s * (D.zs[i] + 0.003), 0.004); }
+    return true;
+  };
+  PXG.scoop = (F, K, o) => {
+    const L = pxLand(F); if (!F.hasHood || !(L.hx1 - L.hx0 > 0.7)) return false;
+    const hl = L.hx1 - L.hx0, len = o.len * hl, lo = o.dir < 0 ? L.hx0 + 0.07 + len : L.hx1 - (o.back || 0.2) * hl - len, hi = o.dir < 0 ? L.hx0 + 0.07 : lo + len;
+    const wmax = Math.min(o.w, L.hoodW((lo + hi) / 2) - 0.12); if (wmax < 0.12) return false;
+    const B = K.b('F', 'hood'), n = 12, U = [-1, -0.92, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 0.92, 1], rings = [], sf = (x, z) => { const v = F.at(F.hood, x, z); return isFinite(v) ? v : F.at(F.top, x, z); };
+    for (let i = 0; i <= n; i++) { const s = i / n, x = lo + (hi - lo) * s, hh = Math.max(0.004, o.h * Math.pow(pxSm(s), 0.8)), ww = wmax * (o.dir < 0 ? 0.72 + 0.28 * s : 0.8 + 0.2 * s), R = [];
+      for (const u of U) R.push([x, sf(x, u * ww) + hh * Math.pow(1 - Math.pow(Math.abs(u), 3.2), 1 / 3.2), u * ww]);
+      for (const u of [1, 0.5, 0, -0.5, -1]) R.push([x, sf(x, u * ww) - 0.006, u * ww]); rings.push(R); }
+    pxSweep(B, rings);
+    // the mouth: a dark panel set just inside the tall end
+    const E = rings[n], c = [0, 1, 2].map(k => E.reduce((s, p) => s + p[k], 0) / E.length), d = o.dir < 0 ? -1 : 1, mouth = E.map(p => [p[0], c[1] + (p[1] - c[1]) * 0.74 + 0.004, c[2] + (p[2] - c[2]) * 0.9]);
+    pxSweep(K.b('dark', 'hood'), [mouth.map(p => [p[0] - d * 0.004, p[1], p[2]]), mouth.map(p => [p[0] + d * 0.0025, p[1], p[2]])]);
+    return true;
+  };
+  PXG.louver = (F, K, o) => {
+    const L = pxLand(F); if (!F.hasHood || !(L.hx1 - L.hx0 > 0.7)) return false;
+    const hl = L.hx1 - L.hx0, xc = L.hx0 + (o.at || 0.42) * hl, hwid = L.hoodW(xc), zc = hwid * (o.zc || 0.5), len = Math.min(o.len, hl * 0.4), w = Math.min(o.w, hwid - zc - 0.07) * 2; if (w < 0.1) return false;
+    const B = K.b('F', 'hood'), Dk = K.b('dark', 'hood'), sf = (x, z) => { const v = F.at(F.hood, x, z); return isFinite(v) ? v : F.at(F.top, x, z); };
+    for (const s of [-1, 1]) { const z0 = zc - w / 2, z1 = zc + w / 2, zz = pxRange(z0, z1, 0.05), xx = pxRange(xc - len / 2, xc + len / 2, 0.05);
+      pxSweep(Dk, xx.map(x => [...zz.map(z => [x, sf(x, z) + 0.0035, s * z]), ...zz.slice().reverse().map(z => [x, sf(x, z) - 0.003, s * z])]));
+      const bar = (pts, wide) => pxSweep(B, pts.map(([x, z]) => { const y = sf(x, z); return wide ? [[x - 0.008, y - 0.002, s * z], [x - 0.008, y + 0.009, s * z], [x + 0.008, y + 0.009, s * z], [x + 0.008, y - 0.002, s * z]] : [[x, y - 0.002, s * (z - 0.008)], [x, y + 0.009, s * (z - 0.008)], [x, y + 0.009, s * (z + 0.008)], [x, y - 0.002, s * (z + 0.008)]]; }));
+      bar(zz.map(z => [xc - len / 2, z]), 1); bar(zz.map(z => [xc + len / 2, z]), 1); bar(xx.map(x => [x, z0]), 0); bar(xx.map(x => [x, z1]), 0);
+      for (let k = 0; k < o.n; k++) { const x = xc - len / 2 + len * (k + 0.75) / (o.n + 0.5), ch = Math.min(0.034, len / o.n * 0.8);
+        pxSweep(B, zz.map(z => { const y = sf(x, z) + 0.004; return [[x + ch / 2, y, s * z], [x - ch / 2, y + ch * 0.5, s * z], [x - ch / 2 - 0.002, y + ch * 0.5 - 0.004, s * z], [x + ch / 2, y - 0.004, s * z]]; })); } }
+    return true;
+  };
+  PXG.pins = (F, K, o) => {
+    const L = pxLand(F); if (!F.hasHood || !(L.hx1 - L.hx0 > 0.7)) return false;
+    const x = L.hx1 - 0.14 * (L.hx1 - L.hx0), z0 = L.hoodW(x) * 0.6, y = F.at(F.hood, x, z0); if (!isFinite(y) || z0 < 0.25) return false;
+    const B = K.b('F', 'hood');
+    for (const s of [-1, 1]) { const z = s * z0; pxTube(B, [[x, y - 0.002, z], [x, y + 0.0025, z]], 0.024, 16); pxTube(B, [[x, y, z], [x, y + 0.02, z]], 0.0045, 8);
+      const ring = []; for (let i = 0; i <= 14; i++) { const a = i / 14 * Math.PI * 1.75; ring.push([x - 0.004 + Math.cos(a) * 0.013, y + 0.012, z + Math.sin(a) * 0.013]); } pxTube(B, ring, 0.0014, 5);
+      pxTube(B, pxCurve([[x - 0.004, y + 0.012, z], [x - 0.03, y + 0.008, z + s * 0.012], [x - 0.07, y + 0.004, z + s * 0.01]], 4), 0.0011, 5); }
+    return true;
+  };
+  PXG.wlouver = (F, K, o) => {
+    // over the back glass itself: where the glass is the top surface, behind the roof
+    const L = pxLand(F), g = F.g, isG = (x, z) => { const v = F.cell(F.glass, x, z); return v > -8 && F.cell(F.top, x, z) - v < 0.03; };
+    let xt = NaN, xb = NaN; for (let x = L.roofR + 0.1; x > F.X0; x -= g / 2) { if (isG(x, 0)) { if (isNaN(xt)) xt = x; xb = x; } else if (!isNaN(xt) && xb - x > 0.07) break; }
+    if (!(xt - xb > 0.3)) return false; xt -= 0.02; xb += 0.03;
+    const wAt = x => { let w = 0; for (let z = 0; z < F.hw; z += g / 2) { if (!isG(x, z)) break; w = z; } return w - 0.035; };
+    const B = K.b('F'), n = Math.max(4, Math.round((xt - xb) / 0.085)), xs = pxRange(xb, xt, 0.05), ws = pxAvg(xs.map(wAt), 2); if (Math.min(...ws) < 0.25) return false;
+    const wOf = x => ws[clamp(Math.round((x - xb) / (xt - xb) * (xs.length - 1)), 0, xs.length - 1)], sf = (x, z) => { const v = F.at(F.glass, x, z); return isFinite(v) ? v : F.at(F.top, x, z); };
+    for (let k = 0; k < n; k++) { const x = xb + (xt - xb) * (k + 0.5) / n, w = wOf(x), ch = (xt - xb) / n * 0.92;
+      pxSweep(B, pxRange(-w, w, w / 3).map(z => { const y = sf(x, z) + 0.03; return [[x + ch / 2, y + 0.006, z], [x - ch / 2, y - 0.004, z], [x - ch / 2, y - 0.009, z], [x + ch / 2, y + 0.001, z]]; })); }
+    for (const f of [-1, 0, 1]) pxSweep(B, xs.map((x, i) => { const z = f * (ws[i] - 0.012), y = sf(x, z); return [[x, y + 0.002, z - 0.011], [x, y + 0.032, z - 0.011], [x, y + 0.032, z + 0.011], [x, y + 0.002, z + 0.011]]; }));
+    return true;
+  };
+  PXG.vortex = (F, K, o) => {
+    const L = pxLand(F), x = L.roofR + 0.03, w = L.roofW(x + 0.06) * 0.86; if (!(w > 0.3)) return false; const B = K.b('F'), sf = (xx, z) => F.at(F.top, xx, z);
+    pxSweep(B, pxRange(-w - 0.02, w + 0.02, 0.06).map(z => { const y = sf(x + 0.035, z); return [[x + 0.06, y - 0.002, z], [x + 0.06, y + 0.004, z], [x + 0.01, sf(x + 0.01, z) + 0.004, z], [x + 0.01, sf(x + 0.01, z) - 0.002, z]]; }));
+    for (let k = 0; k < o.n; k++) { const z = -w + 2 * w * k / (o.n - 1), a = sf(x + 0.075, z), b = sf(x + 0.005, z); pxPlate(B, [[x + 0.075, a], [x + 0.022, b + 0.026], [x + 0.008, b + 0.024], [x + 0.004, b]], z, 0.007); }
+    return true;
+  };
+  PXG.lightbar = (F, K, o) => {
+    const L = pxLand(F), x = L.roofF - 0.07, w = L.roofW(x - 0.05) * (o.w || 0.82); if (!(w > 0.3)) return false;
+    const B = K.b('F'), Ln = K.b('lens'), zz = pxRange(-w, w, 0.1), d = 0.075, h = 0.058, base = z => F.at(F.top, x, z) + 0.034;
+    pxSweep(B, zz.map(z => { const y = base(z); return [[x + d / 2 - 0.004, y + 0.004, z], [x + d / 2 - 0.004, y + h - 0.004, z], [x + d / 2 - 0.016, y + h, z], [x - d / 2 + 0.012, y + h, z], [x - d / 2, y + h - 0.014, z], [x - d / 2, y + 0.01, z], [x - d / 2 + 0.01, y, z], [x + d / 2 - 0.014, y, z]]; }));
+    pxSweep(Ln, pxRange(-w + 0.012, w - 0.012, 0.1).map(z => { const y = base(z); return [[x + d / 2 - 0.006, y + 0.009, z], [x + d / 2 - 0.006, y + h - 0.009, z], [x + d / 2 + 0.001, y + h - 0.009, z], [x + d / 2 + 0.001, y + 0.009, z]]; }));
+    const T = K.b('tb'); for (const s of [-1, 1]) { const z = s * (w + 0.012), yr = F.at(F.top, x, w * 0.97); pxPlate(T, [[x - 0.035, yr - 0.004], [x + 0.035, yr - 0.004], [x + 0.022, base(w) + h * 0.7], [x - 0.022, base(w) + h * 0.7]], z, 0.008); }
+    return true;
+  };
+  PXG.rack = (F, K, o) => {
+    const L = pxLand(F), xm = (L.roofF + L.roofR) / 2, half = Math.min(0.42, (L.roofF - L.roofR) / 2 - 0.25); if (!(half > 0.22)) return false;
+    const B = K.b('F'), T = K.b('tb'), bars = [xm - half, xm + half]; let wmin = 9;
+    for (const x of bars) { const w = L.roofW(x); wmin = Math.min(wmin, w); if (!(w > 0.3)) return false; const y = F.at(F.top, x, 0) + 0.085;
+      pxSweep(B, [-w - 0.03, w + 0.03].map(z => { const R = []; for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; R.push([x + Math.cos(a) * 0.04, y + Math.sin(a) * 0.014, z]); } return R; }));
+      for (const s of [-1, 1]) { const z = s * (w - 0.03), yr = F.at(F.top, x, w - 0.03); pxPlate(T, [[x - 0.05, yr - 0.004], [x + 0.05, yr - 0.004], [x + 0.035, y + 0.008], [x - 0.035, y + 0.008]], z, 0.05); } }
+    if (o.basket) { const w = wmin - 0.1, y0 = F.at(F.top, xm, 0) + 0.085 + 0.026, xa = xm - half - 0.16, xb = xm + half + 0.16, loop = (y, r, in0 = 0) => { const P = [], c = 0.09; for (const [x, z] of [[xa + c, -w], [xb - c, -w], [xb, -w + c], [xb, w - c], [xb - c, w], [xa + c, w], [xa, w - c], [xa, -w + c], [xa + c, -w], [xb - c, -w]]) P.push([x, y, z]); pxTube(B, P, r, 8); };
+      loop(y0, 0.012); loop(y0 + 0.12, 0.014);
+      for (let k = 0; k < 7; k++) { const z = -w + 2 * w * (k + 0.5) / 7; pxTube(B, [[xa + 0.01, y0, z], [xb - 0.01, y0, z]], 0.008, 6); }
+      for (const [x, z] of [[xa, -w * 0.5], [xa, w * 0.5], [xb, -w * 0.5], [xb, w * 0.5], [xm - half, -w], [xm + half, -w], [xm - half, w], [xm + half, w], [xm, -w], [xm, w]]) pxTube(B, [[x, y0, z], [x, y0 + 0.12, z]], 0.008, 6);
+      pxSweep(T, [-w * 0.86, w * 0.86].map(z => [[xb + 0.012, y0 - 0.012, z], [xb + 0.012, y0 + 0.118, z], [xb + 0.075, y0 - 0.01, z], [xb + 0.07, y0 - 0.014, z]])); }
+    return true;
+  };
+  PXG.bullbar = (F, K, o) => {
+    const L = pxLand(F), yb = L.ybF, hoodY = Math.max(...pxRange(F.X1 - 0.55, F.X1 - 0.12, 0.05).map(x => F.at(F.top, x, 0) || 0)); if (!(yb > 0.2) || !(hoodY - yb > 0.5)) return false;
+    const B = K.b('F'), zo = F.hw * (o.zo || 0.3), yTop = o.full ? hoodY - 0.05 : Math.min(yb + 0.5, hoodY - 0.14), off = 0.085;
+    const fx = (y, za, zb) => { let m = -9; for (let z = za; z <= zb; z += F.g) m = Math.max(m, F.front(z, y - 0.05, y + 0.05)); return (m > -8 ? m : F.X1) + off; };
+    const xa = y => Math.max(fx(y, 0, zo + 0.05), fx(yb + 0.1, 0, zo + 0.05) - 0.06), half = [[yb - 0.02, zo * 0.82], [yb + 0.16, zo], [yTop - 0.09, zo], [yTop, zo - 0.09], [yTop, 0]];
+    const P = [...half.slice(0, 4).map(([y, z]) => [xa(y), y, -z]), [xa(yTop), yTop, 0], ...half.slice(0, 4).reverse().map(([y, z]) => [xa(y), y, z])];
+    pxTube(B, pxCurve(P, 6), 0.03, 12);
+    const ym = (yb + yTop) / 2 + 0.02; pxTube(B, [[xa(ym), ym, -zo], [xa(ym), ym, zo]], 0.022, 10);
+    for (const s of [-1, 1]) pxTube(K.b('tb'), [[xa(yb - 0.02), yb - 0.02, s * zo * 0.82], [xa(yb) - off - 0.2, yb - 0.035, s * zo * 0.8]], 0.024, 8);
+    pxSweep(K.b('al'), [-zo * 0.78, zo * 0.78].map(z => [[xa(yb + 0.14) - 0.02, yb + 0.14, z], [xa(yb) - off - 0.16, yb - 0.03, z], [xa(yb) - off - 0.16, yb - 0.036, z], [xa(yb + 0.14) - 0.026, yb + 0.14, z]]));
+    if (o.full) for (const s of [-1, 1]) { const zw = F.hw * 0.84, y1 = yTop - 0.04, y2 = ym + 0.05, px = (y, z) => { const v = F.front(z, y - 0.06, y + 0.06); return (v > -8 ? v : F.X1 - 0.2) + off * 0.8; };
+      pxTube(B, pxCurve([[xa(y1), y1, s * zo], [px(y1, zw * 0.7), y1, s * zw * 0.7], [px(y1, zw), y1 - 0.03, s * zw], [px(y2, zw), y2 + 0.03, s * zw], [px(y2, zw * 0.7), y2, s * zw * 0.7], [xa(y2), y2, s * zo]], 5), 0.019, 8); }
+    if (o.lights) for (const s of [-1, 1]) { const y = yTop + 0.085, z = s * zo * 0.42, x = xa(yTop); pxTube(K.b('tb'), [[x - 0.03, y, z], [x + 0.04, y, z]], 0.07, 16); pxTube(K.b('lens'), [[x + 0.04, y, z], [x + 0.046, y, z]], 0.061, 16); pxTube(K.b('tb'), [[x, yTop, z], [x, y - 0.06, z]], 0.012, 6); }
+    return true;
+  };
+  PXG.steps = (F, K, o) => {
+    const L = pxLand(F), xa = F.xR + F.r + 0.15, xb = F.xF - F.r - 0.15; if (!(L.yRock > 0.22) || xb - xa < 1) return false;
+    const B = K.b('F'), T = K.b('tb'), Rb = K.b('rub'), zr = L.zRock, y = L.yRock - 0.035;
+    for (const s of [-1, 1]) {
+      if (o.kind === 'nerf') { const z = zr + 0.085; pxTube(B, pxCurve([[xa - 0.02, y, s * (zr - 0.05)], [xa + 0.07, y, s * (z - 0.02)], [xa + 0.16, y, s * z], [(xa + xb) / 2, y, s * z], [xb - 0.16, y, s * z], [xb - 0.07, y, s * (z - 0.02)], [xb + 0.02, y, s * (zr - 0.05)]], 5), 0.038, 12);
+        for (const f of o.pads) pxBox(Rb, xa + (xb - xa) * f, y + 0.036, s * z, 0.34, 0.012, 0.06); }
+      else { const z = zr + 0.08; pxSweep(B, [xa + 0.03, xa + 0.09, xb - 0.09, xb - 0.03].map((x, i) => { const k = i === 0 || i === 3 ? 0.55 : 1, w = 0.085 * k; return [[x, y + 0.016, s * (z - w)], [x, y + 0.02, s * (z + w - 0.012)], [x, y + 0.008, s * (z + w)], [x, y - 0.018, s * (z + w - 0.006)], [x, y - 0.022, s * (z - w)]]; }));
+        pxBox(Rb, (xa + xb) / 2, y + 0.022, s * z, xb - xa - 0.3, 0.006, 0.1); }
+      for (const f of [0.12, 0.5, 0.88]) { const x = xa + (xb - xa) * f; pxTube(T, [[x, y - 0.006, s * (zr + 0.06)], [x, y + 0.03, s * (zr - 0.14)]], 0.013, 6); }
+    }
+    return true;
+  };
+  // the bed of a pickup: where the cab ends, the floor, and the rails
+  function pxBed(F) {
+    const L = pxLand(F), g = F.g; let xc = NaN; for (let x = F.X0; x < F.xF; x += g / 2) if (F.at(F.top, x, 0) > L.roofY - 0.3) { xc = x; break; } if (!(xc - F.X0 > 1.2)) return null;
+    const fl = []; for (let x = F.X0 + 0.35; x < xc - 0.3; x += g) fl.push(F.at(F.top, x, 0)); const yf = pxMed(fl), xm = (F.X0 + xc) / 2; let zo = NaN, zi = NaN;
+    for (let z = F.hw; z > 0.3; z -= g / 2) { const v = F.at(F.top, xm, z); if (isNaN(zo)) { if (v > yf + 0.3) zo = z; } else if (!(v > yf + 0.25)) { zi = z; break; } }
+    if (isNaN(zo) || isNaN(zi) || zo - zi < 0.02) return null; const zr = (zo + zi) / 2, yr = F.at(F.top, xm, zr);
+    return { xc, yf, zo, zi, zr, yr, L };
+  }
+  PXG.bedbar = (F, K, o) => {
+    const Bd = pxBed(F); if (!Bd) return false; const { xc, zr, yr, L } = Bd, B = K.b('F'), xh = xc - 0.15, yT = L.roofY + 0.015;
+    const half = [[xh, yr - 0.01, zr], [xh - 0.02, yr + (yT - yr) * 0.62, zr - 0.015], [xh - 0.07, yT - 0.05, zr - 0.09], [xh - 0.09, yT, zr - 0.2]];
+    pxTube(B, pxCurve([...half.map(p => [p[0], p[1], -p[2]]), [xh - 0.09, yT, 0], ...half.slice().reverse()], 6), 0.038, 12);
+    for (const s of [-1, 1]) { pxTube(B, [[xh - 0.075, yT - 0.06, s * (zr - 0.1)], [xh - 0.66, yr - 0.01, s * zr]], 0.032, 10); pxBox(K.b('tb'), xh - 0.33, yr + 0.004, s * zr, 0.8, 0.01, 0.07); }
+    const ym = yr + (yT - yr) * 0.5; pxTube(B, [[xh - 0.015, ym, -zr + 0.012], [xh - 0.015, ym, zr - 0.012]], 0.026, 10);
+    for (let k = 0; k < o.lights; k++) { const z = (zr - 0.32) * (o.lights === 1 ? 0 : -1 + 2 * k / (o.lights - 1)), y = yT + 0.105, x = xh - 0.09; pxTube(K.b('tb'), [[x - 0.035, y, z], [x + 0.04, y, z]], 0.078, 16); pxTube(K.b('lens'), [[x + 0.04, y, z], [x + 0.046, y, z]], 0.068, 16); pxTube(K.b('tb'), [[x, yT + 0.02, z], [x, y - 0.07, z]], 0.012, 6); }
+    return true;
+  };
+  PXG.tonneau = (F, K, o) => {
+    const Bd = pxBed(F); if (!Bd) return false; const { xc, yf, zo, yr } = Bd, g = F.g; let xa = F.X0 + 0.04, xb = xc - 0.05;
+    for (let x = xc; x > xc - 0.5; x -= g / 2) if (F.at(F.top, x, 0) < yf + 0.2) { xb = x + 0.01; break; }
+    const B = K.b('F'), T = K.b('tb'), y = yr + 0.008, w = zo - 0.018, n = o.fold || 3, len = (xb - xa) / n;
+    for (let k = 0; k < n; k++) { const a = xa + len * k + 0.004, b = xa + len * (k + 1) - 0.004; pxSweep(B, [-w, w].map(z => [[a, y, z], [a + 0.006, y + 0.03, z], [b - 0.006, y + 0.03, z], [b, y, z]]));
+      if (k) pxBox(T, xa + len * k, y + 0.012, 0, 0.012, 0.02, w * 2 - 0.01); }
+    for (const s of [-1, 1]) pxBox(T, (xa + xb) / 2, y + 0.006, s * (w + 0.004), xb - xa, 0.03, 0.012);
+    return true;
+  };
+  PXG.flaps = (F, K, o) => {
+    const T = CARS3D.done[F.id]; if (!T) return false; const B = K.b('rub'), A = K.b('F');
+    for (const w of T.wheels) { const x = w.pos[0] - F.r - 0.06, s = Math.sign(w.pos[2]) || 1, zc = Math.abs(w.pos[2]), yT = F.r + 0.1, yB = Math.max(0.1, F.r * 0.3), out = Math.min(zc + 0.2, F.sideZ(x, yT, yT + 0.2) + 0.012), inn = zc - 0.14;
+      if (out - inn < 0.18) return false;
+      pxSweep(B, [inn, out].map(z => [[x + 0.012, yT, s * z], [x + 0.006, yT, s * z], [x - 0.04, yB, s * z], [x - 0.03, yB, s * z]]));
+      pxBox(A, x - 0.03, yB + 0.035, s * (inn + out) / 2, 0.004, 0.035, (out - inn) * 0.7); }
+    return true;
+  };
+
+  // ---- the catalog: what is made for each car. Brands are Murda Worth's own shops. ----
+  // [short id, class, what the parts call the car]
+  const PX_CARS = {
+    bmw_m5_g90_2025: ['m5g90', 'sedan', 'M5'], kia_stinger_gt2_2022: ['stinger', 'sedan', 'Stinger'],
+    dodge_charger_srt_hellcat_widebody_2020: ['hellcatwb', 'msedan', 'Charger Widebody'], dodge_charger_scat_pack_2015: ['scat15', 'msedan', 'Charger'],
+    chevrolet_camaro_ss_2016: ['camaro6', 'muscle', 'Camaro'], ford_mustang_gt_2019: ['s550', 'muscle', 'Mustang'], dodge_challenger_rt_scat_pack_widebody_2019: ['challwb', 'muscle', 'Challenger'],
+    chevrolet_corvette_stingray_c8_2020: ['c8', 'sport', 'C8'], chevrolet_corvette_z06_c7_2019: ['c7z', 'sport', 'C7 Z06'], dodge_copperhead_1997: ['copper', 'sport', 'Copperhead'],
+    chevrolet_nova_1972: ['nova72', 'classic', 'Nova'], chevrolet_caprice_classic_box_chevy_1986: ['boxchevy', 'classic', 'Caprice'],
+    jeep_grand_cherokee_trackhawk_2018: ['trackhawk', 'suv', 'Trackhawk'], mercedes_maybach_gls600_2021: ['gls600', 'suv', 'GLS'],
+    chevrolet_tahoe_2021: ['tahoe21', 'suvo', 'Tahoe'], mercedes_amg_g63_2019: ['g63', 'suvo', 'G 63'],
+    ford_f_150_regular_cab_2021: ['f150rc', 'truck', 'F-150'], ram_1500_trx_2021: ['trx', 'truck', 'TRX'] };
+  const PX_BRAND = { sedan: 'Trinity Carbon Werks', msedan: 'Stop Six Speed', muscle: 'Stop Six Speed', sport: 'Ironline Aero', classic: 'Lake Worth Hot Rod', suv: 'Trinity Carbon Werks', suvo: 'Panther City Offroad', truck: 'Panther City Offroad' };
+  function pxCatalog(id) {
+    let C = PX_CATS.get(id); if (C) return C; C = []; PX_CATS.set(id, C); const info = PX_CARS[id]; if (!info) return C;
+    const [k, cls, tag] = info, h = [...id].reduce((s, ch) => (s * 31 + ch.charCodeAt(0)) >>> 0, 7), r = i => ((h >>> (i * 4)) % 16) / 15, br = PX_BRAND[cls];
+    const is = (...a) => a.includes(cls), car = (...a) => a.includes(k);
+    // add(slot, variant, name, description, generator, options, price, kg, finishes, [drag m2, lift front, lift rear], extra)
+    const add = (slot, v, n, d, gen, o, price, kg, fins, aero, x) => C.push(Object.assign({ id: `${k}-${slot}-${v}`, slot, n: `${tag} ${n}`, b: br, d, gen: PXG[gen], o, price, kg, fins: PX_FSET[fins], aero: aero || [0, 0, 0] }, x || {}));
+    const road = is('sedan', 'msedan', 'muscle', 'sport'), ext = 0.04 + 0.02 * r(1);
+    // front
+    if (road) {
+      add('spl', 'st', 'street lip', 'A low lip under the bumper', 'splitter', { ext, depth: 0.2, th: 0.012 }, 450, 3.2, 'body', [0.008, -0.035, 0]);
+      add('spl', 'tr', 'track splitter', 'Flat blade on two stainless rods', 'splitter', { ext: ext + 0.04, depth: 0.3, th: 0.012, rods: [0.36] }, 900, 5, 'body', [0.016, -0.085, 0.005]);
+      add('spl', 'rc', 'race splitter', 'Long blade, four rods, end fences', 'splitter', { ext: ext + 0.075, depth: 0.36, th: 0.014, rods: [0.26, 0.62], fence: 0.075 }, 1400, 7, 'body', [0.026, -0.135, 0.01]);
+      add('can', 's1', 'canards', 'One dive plane each side of the bumper', 'canard', { n: 1, w: 0.06 + 0.02 * r(2) }, 280, 0.6, 'body', [0.008, -0.022, 0]);
+      add('can', 's2', 'double canards', 'Two a side. Needs a splitter under them to balance', 'canard', { n: 2, w: 0.065 + 0.02 * r(2) }, 480, 1.1, 'body', [0.016, -0.042, 0], { req: ['spl'] });
+      add('skt', 'md', 'side skirts', 'Molded sill extensions', 'skirt', { kind: 'molded' }, 520, 4, 'body', [-0.004, -0.006, -0.006]);
+      add('skt', 'bl', 'skirt blades', 'Flat blades with a winglet ahead of the rear wheel', 'skirt', { kind: 'blade', ext: 0.035 + 0.015 * r(3), wing: 1 }, 640, 3.5, 'body', [0.002, -0.012, -0.012]);
+      const sn = 3 + Math.round(r(4));
+      add('dif', 'st', `${sn}-fin diffuser`, 'Street diffuser under the bumper', 'diffuser', { n: sn, w: 0.5, len: 0.3, drop: 0.035, fin: 0.055 }, 600, 3, 'body', [-0.004, 0, -0.03]);
+      add('dif', 'tr', `${sn + 2}-fin track diffuser`, 'Longer tunnel, deeper fins', 'diffuser', { n: sn + 2, w: 0.62, len: 0.42, drop: 0.05, fin: 0.07, prot: 0.04 }, 950, 4.5, 'body', [-0.006, 0, -0.06]);
+      if (is('sport', 'sedan')) add('dif', 'rc', `${sn + 4}-fin race diffuser`, 'Full width, sticks out past the bumper', 'diffuser', { n: sn + 4, w: 0.74, len: 0.5, drop: 0.06, fin: 0.085, prot: 0.075 }, 1500, 6.5, 'body', [-0.004, 0.005, -0.09]);
+    }
+    if (is('classic')) add('spl', 'ad', 'chin spoiler', 'A 70s air dam under the bumper', 'splitter', { ext: 0.012, depth: 0.1, th: 0.014, riser: 0.085, wrap: 0.3 }, 220, 2.6, 'blk', [-0.01, -0.03, 0]);
+    if (is('suv') || car('tahoe21')) add('spl', 'st', 'front lip', 'A lip under the bumper', 'splitter', { ext: 0.035, depth: 0.18, th: 0.014 }, 520, 4, 'body', [0.008, -0.03, 0]);
+    if (car('trackhawk')) add('spl', 'tr', 'track splitter', 'Flat blade on two stainless rods', 'splitter', { ext: 0.075, depth: 0.3, th: 0.014, rods: [0.36] }, 980, 6, 'body', [0.018, -0.08, 0.005]);
+    if (is('suv')) { add('skt', 'md', 'side skirts', 'Molded sill extensions', 'skirt', { kind: 'molded' }, 620, 5, 'body', [-0.004, -0.005, -0.005]);
+      add('dif', 'st', '4-fin diffuser', 'Street diffuser under the bumper', 'diffuser', { n: 4, w: 0.48, len: 0.3, drop: 0.04, fin: 0.06 }, 720, 4, 'body', [-0.004, 0, -0.025]); }
+    // rear: spoilers and wings stand on this car's own lid, or its roof
+    const wc = 0.24 + 0.05 * r(5), ep = Math.round(r(6) * 3), wh = is('sport') ? 0.17 + 0.05 * r(7) : 0.23 + 0.06 * r(7);
+    if (road) {
+      add('spo', 'lp', 'lip spoiler', 'A low lip on the edge of the lid', 'lip', { c: 0.07, h: 0.022, kick: 1.3 }, 260, 0.9, 'body', [0.003, 0, -0.02]);
+      add('spo', 'dk', 'ducktail', 'One piece, kicked up off the lid', 'lip', { c: 0.17 + 0.05 * r(8), h: 0.055 + 0.025 * r(9), kick: 2.1 }, 480, 2.2, 'body', [0.012, 0.004, -0.055]);
+      if (is('muscle', 'msedan')) add('spo', 'pd', 'pedestal spoiler', 'A raised blade on two pedestals', 'wing', { c: 0.2, h: 0.075, span: 0.86, tk: 0.13, aoa: 5, up: 'ped', upz: 0.72, fwd: 0.85, bow: 0.012 }, 420, 3, 'body', [0.01, 0.004, -0.045]);
+      add('spo', 'gt', 'GT wing', 'Single plane on aluminum uprights, end plates', 'wing', { c: wc, h: wh, span: 0.9, ep, aoa: 9, gurney: 0.012 }, 1300, 6.5, 'body', [0.06, 0.03, -0.2]);
+      if (is('sport', 'sedan')) add('spo', 'sw', 'swan-neck wing', 'Hung from above so the underside stays clean', 'wing', { c: wc + 0.03, h: wh + 0.03, span: 0.94, ep: (ep + 1) % 4, aoa: 10, up: 'swan', gurney: 0.014 }, 1900, 7.5, 'body', [0.066, 0.035, -0.25]);
+      if (is('sport')) add('spo', 'w2', 'two-plane wing', 'Main plane and a flap, tall end plates', 'wing', { c: wc + 0.02, h: wh + 0.02, span: 0.96, ep: 1, aoa: 8, el: 2, up: 'swan' }, 2400, 9, 'body', [0.085, 0.045, -0.31]);
+      if (is('muscle', 'msedan')) add('spo', 'bl', 'drag blade', 'Flat aluminum blade on four rods, strip style', 'blade', { len: 0.2 + 0.07 * r(10), ang: 12 + 6 * r(11) }, 380, 3.5, 'alu', [0.02, 0.01, -0.07]);
+    }
+    if (is('classic')) { add('spo', 'dk', 'ducktail', 'One piece, kicked up off the lid', 'lip', { c: 0.2, h: 0.06, kick: 2 }, 420, 2.4, 'blk', [0.012, 0.004, -0.05]);
+      add('spo', 'pd', 'pedestal spoiler', 'A raised blade on two pedestals', 'wing', { c: 0.19, h: 0.085, span: 0.84, tk: 0.14, aoa: 6, up: 'ped', upz: 0.7, fwd: 0.9 }, 390, 3, 'body', [0.01, 0.004, -0.04]);
+      add('spo', 'bl', 'drag blade', 'Flat aluminum blade on four rods, strip style', 'blade', { len: 0.28, ang: 14 }, 380, 3.8, 'alu', [0.022, 0.01, -0.075]); }
+    if (is('suv', 'suvo')) { const roof = car('g63');
+      add('spo', 'rs', 'roof spoiler', 'Carries the roof line out over the glass', 'lip', { c: 0.1, h: 0.012, kick: 1.2, out: 0.11, fall: 0.12, roof, top: 1, tip: 0.1 }, 540, 2.4, 'body', [-0.006, 0, -0.02]);
+      if (!car('g63', 'tahoe21')) add('spo', 'rl', 'long roof spoiler', 'A longer blade with a kicked edge', 'lip', { c: 0.12, h: 0.03, kick: 2, out: 0.19, fall: 0.05, roof, top: 1, tip: 0.1 }, 760, 3.2, 'body', [0.004, 0, -0.04]); }
+    // hood
+    if (is('muscle', 'msedan', 'classic', 'truck')) {
+      add('hod', 'cw', `${Math.round((0.05 + 0.03 * r(12)) / 0.0254 * 2) / 2} in. cowl hood`, 'Cowl induction: rises toward the windshield, open at the back', 'scoop', { dir: -1, len: 0.72, w: 0.3 + 0.05 * r(13), h: 0.05 + 0.03 * r(12) }, 780, 4, 'body', [0.012, 0, 0]);
+      add('hod', 'rm', 'ram air scoop', 'Forward-facing scoop in the middle of the hood', 'scoop', { dir: 1, len: 0.34, w: 0.2 + 0.05 * r(14), h: 0.06, back: 0.3 }, 690, 3, 'body', [0.014, 0, 0]);
+    }
+    if (road && !car('c8') || car('trackhawk', 'gls600')) add('hod', 'lv', 'hood louvers', 'A vent panel each side to let the heat out', 'louver', { n: 5 + Math.round(r(15) * 2), len: 0.3 + 0.08 * r(0), w: 0.1, at: is('sport') ? 0.5 : 0.42 }, 420, 1.2, 'body', [0.002, -0.014, 0]);
+    if (is('muscle', 'msedan', 'classic')) add('pin', 'p1', 'hood pins', 'Pins, scuff plates and lanyards on the front corners', 'pins', {}, 90, 0.2, 'tube');
+    if (is('muscle') || car('nova72')) add('lvr', 'w1', 'rear window louvers', 'Slats over the back glass', 'wlouver', {}, 390, 3, 'blk', [0.004, 0, 0]);
+    // roof
+    if (is('sedan', 'msedan')) add('rof', 'vg', 'vortex generators', 'A row of fins on the back of the roof', 'vortex', { n: 7 + 2 * Math.round(r(2)) }, 140, 0.3, 'body', [0.001, 0, -0.006]);
+    if (is('suvo', 'truck')) add('rof', 'lb', 'roof light bar', 'LED bar over the windshield', 'lightbar', {}, 520, 6, 'blk', [0.05, 0, 0]);
+    if (is('suv', 'suvo')) { add('rak', 'cb', 'crossbars', 'Two aero bars across the roof', 'rack', {}, 380, 5, 'tube', [0.03, 0, 0]); add('rak', 'bk', 'roof basket', 'A cargo basket on crossbars, wind fairing up front', 'rack', { basket: 1 }, 760, 16, 'tube', [0.085, 0, 0]); }
+    // trucks and off-roaders
+    if (is('suvo', 'truck')) {
+      add('bul', 'bb', 'bull bar', 'A 2.5 in. hoop with a skid plate', 'bullbar', {}, 650, 22, 'tube', [0.03, 0, 0]);
+      add('bul', 'bl', 'bull bar with lights', 'The hoop, a skid plate and two round lamps', 'bullbar', { lights: 1 }, 890, 26, 'tube', [0.04, 0, 0]);
+      add('bul', 'gg', 'grille guard', 'Full guard with headlight hoops', 'bullbar', { full: 1, zo: 0.34 }, 980, 34, 'tube', [0.045, 0, 0]);
+      add('stp', 'nf', 'nerf bars', '3 in. round bars with step pads', 'steps', { kind: 'nerf', pads: car('f150rc') ? [0.5] : [0.28, 0.72] }, 420, 18, 'tube', [0.012, 0, 0]);
+      add('stp', 'rb', 'running boards', 'Flat boards with a rubber tread', 'steps', { kind: 'board' }, 560, 22, 'blk', [0.014, 0, 0]);
+      add('flp', 'f1', 'mud flaps', 'Rubber flaps with a weight plate behind each wheel', 'flaps', {}, 120, 3, 'tube', [0.006, 0, 0]);
+    }
+    if (is('truck')) { add('bed', 'sb', 'sport bar', 'A bed bar behind the cab with four lamps', 'bedbar', { lights: 4 }, 890, 28, 'tube', [0.06, 0, 0], { not: ['ton'] });
+      add('ton', 't3', 'tri-fold bed cover', 'Hard cover, three panels', 'tonneau', { fold: 3 }, 1100, 25, 'blk', [-0.045, 0, 0], { not: ['bed'] }); }
+    return C;
+  }
+  const pxPart = (carId, pid) => pxCatalog(carId).find(p => p.id === pid) || null;
+  function pxBuild(carId, P) {
+    const key = carId + '|' + P.id; if (PX_GEO.has(key)) { const G = PX_GEO.get(key); PX_GEO.delete(key); PX_GEO.set(key, G); return G; }
+    const F = pxFit(carId); if (!F) return null;   // the model isn't in memory: try again when it is
+    const K = { m: new Map(), b(mat, host = 'inner') { const k = mat + '|' + host; let B = this.m.get(k); if (!B) this.m.set(k, B = { t: [], mat, host }); return B; } };
+    let ok = false; try { ok = P.gen(F, K, P.o || {}); } catch (e) { console.warn('part ' + P.id + ': ' + e.message); }
+    if (ok) for (const B of K.m.values()) { if (B.host !== 'inner' && !F.inv[B.host]) ok = false; for (let i = 0; i < B.t.length; i++) if (B.t[i] !== B.t[i]) { ok = false; break; } }
+    const G = ok ? [...K.m.values()].filter(B => B.t.length).map(B => ({ geo: pxGeo(B), mat: B.mat, host: B.host })) : null;
+    PX_GEO.set(key, G);
+    if (PX_GEO.size > 64) { const k0 = PX_GEO.keys().next().value, old = PX_GEO.get(k0); PX_GEO.delete(k0); if (old) for (const q of old) q.geo.dispose(); }
+    return G;
+  }
+
+  // ---- what is on a car: c.px = { slot: [part id, finish] }, c.pxo = parts you own (on the shelf) ----
+  function pxKey(c) { const x = c && c.px; if (!x) return ''; let s = ''; for (const k of Object.keys(x).sort()) s += k + '=' + x[k][0] + ':' + x[k][1] + ','; return s; }
+  function pxList(c, id) { const o = [], x = c && c.px; if (!x) return o; id = id || c.id; for (const [slot, v] of Object.entries(x)) { const P = Array.isArray(v) && pxPart(id, v[0]); if (P && P.slot === slot) o.push({ slot, P, fin: P.fins.includes(v[1]) ? v[1] : P.fins[0] }); } return o; }
+  const PX_SUM = new Map();
+  function pxSum(c) {   // [kg, drag, lift front, lift rear, price, count]
+    const k = c && c.px ? c.id + '|' + pxKey(c) : ''; if (!k) return [0, 0, 0, 0, 0, 0]; let s = PX_SUM.get(k); if (s) return s;
+    s = [0, 0, 0, 0, 0, 0]; for (const { P, fin } of pxList(c)) { s[0] += P.kg * PX_FIN[fin][2]; s[1] += P.aero[0]; s[2] += P.aero[1]; s[3] += P.aero[2]; s[4] += Math.round(P.price * PX_FIN[fin][1]); s[5]++; }
+    if (PX_SUM.size > 200) PX_SUM.clear(); PX_SUM.set(k, s); return s;
+  }
+  function pxKg(c) { return PX_ON && c && c.px ? pxSum(c)[0] : 0; }
+  const pxNeed = (c, P) => { for (const s of P.req || []) if (!(c.px && c.px[s])) return `Needs a ${PX_SLOTS[s][0].toLowerCase()} first`; return ''; };
+  function pxInstall(x, P, fin) {
+    x.px = Object.assign({}, x.px, { [P.slot]: [P.id, fin] }); x.pxo = Object.assign({}, x.pxo, { [P.id + '|' + fin]: 1 });
+    for (const s of P.not || []) delete x.px[s];
+    if (x.kits && PX_CLASH[P.slot]) { x.kits = Object.assign({}, x.kits); for (const k of PX_CLASH[P.slot]) delete x.kits[k]; }
+  }
+  function pxRemove(x, slot) { x.px = Object.assign({}, x.px); delete x.px[slot]; for (const { slot: s, P } of pxList(x)) if ((P.req || []).includes(slot)) delete x.px[s]; }
+  function pxKitOn(x, kit) { if (!x.px) return; for (const [slot, ks] of Object.entries(PX_CLASH)) if (ks.includes(kit) && x.px[slot]) { x.px = Object.assign({}, x.px); delete x.px[slot]; } }
+  // what a part does, in the sim's own numbers: weight, downforce per axle at 100 mph, drag area
+  const pxLb = cl => Math.round(-0.25 * 1.2 * cl * 44.7 * 44.7 * 0.2248);
+  function pxFx(kg, a) { const o = [`${kg >= 0 ? '+' : ''}${Math.round(kg * 2.2046 * 10) / 10} lb`]; if (a[1]) o.push(`front ${pxLb(a[1]) >= 0 ? '+' : ''}${pxLb(a[1])} lb downforce`); if (a[2]) o.push(`rear ${pxLb(a[2]) >= 0 ? '+' : ''}${pxLb(a[2])} lb downforce`); if (a[0]) o.push(`drag ${a[0] > 0 ? '+' : ''}${a[0].toFixed(3)} m²`); return o.join(' · '); }
+
+  // ---- on the model: bolt the parts to the body, the hood or the lid (they open with it) ----
+  function pxApply(m, c) {
+    const U = m.userData, id = (m.parent && m.parent.userData && m.parent.userData.carId) || (c && c.id), key = c && c.px && id ? pxKey(c) : '';
+    if (key && U.kits) for (const slot of Object.keys(c.px)) for (const k of PX_CLASH[slot] || []) for (const g of U.kits[k] || []) g.visible = false;
+    if ((U.pxKey || '') === key) return;
+    for (const o of U.pxM || []) if (o.parent) o.parent.remove(o); U.pxM = []; U.pxKey = key; if (!key) return;
+    const F = pxFit(id); if (!F) { U.pxKey = ''; return; }
+    for (const { slot, P, fin } of pxList(c, id)) { const G = pxBuild(id, P); if (!G) continue;
+      for (const q of G) { const mesh = new THREE.Mesh(q.geo, pxMat(q.mat === 'F' ? fin : q.mat, U)); mesh.castShadow = q.mat !== 'lens' && q.mat !== 'dark'; mesh.userData.px = slot;
+        const host = q.host === 'hood' ? U.panels.hood : q.host === 'rear' ? U.panels[F.rear] : null;
+        if (q.host !== 'inner' && !host) continue;
+        if (host) { mesh.matrixAutoUpdate = false; mesh.matrix.copy(F.inv[q.host]); host.g.add(mesh); } else U.inner.add(mesh);
+        U.pxM.push(mesh); } }
+  }
+  const _pxApplyLook = applyLook;
+  applyLook = function (m, c) { _pxApplyLook(m, c); try { if (m && m.userData && m.userData.inner) pxApply(m, c); } catch (e) { console.warn('parts', e); } };
+
+  // ---- the sim: weight rides on partsKg (patched in), drag and lift per axle on the car's sheet ----
+  const _pxVspec = vspecVar;
+  vspecVar = function (c, sp) {
+    let o = _pxVspec(c, sp); if (!o || !o.aero || !c || !c.px) return o; const s = pxSum(c); if (!s[1] && !s[2] && !s[3]) return o;
+    o = Object.assign({}, o); o.aero = { cdA: Math.max(0.3, o.aero.cdA + s[1]), clF: o.aero.clF + s[2], clR: o.aero.clR + s[3] }; return o;
+  };
+
+  // ---- online: the parts (and the tint and underglow) ride on the build other players get ----
+  const _pxMyBuild = myBuild;
+  myBuild = function () { const b = _pxMyBuild(); const c = S.car; if (!b || !c) return b;
+    const x = pxList(c).map(e => [e.P.id, e.fin]); if (x.length) b.x = x; if (c.tintL) b.t = c.tintL; if (c.neon) b.n = c.neon; return b; };
+  const _pxClean = cleanBuild;
+  cleanBuild = function (b) { const o = _pxClean(b); if (!b || typeof b !== 'object') return o;
+    if (Array.isArray(b.x)) { const px = {}; for (const e of b.x.slice(0, 20)) { if (!Array.isArray(e) || typeof e[0] !== 'string' || !/^[a-z0-9]{2,12}-[a-z]{3}-[a-z0-9]{1,4}$/.test(e[0]) || !PX_FIN[e[1]]) continue; const slot = e[0].split('-')[1]; if (PX_SLOTS[slot]) px[slot] = [e[0], e[1]]; } if (Object.keys(px).length) o.px = px; }
+    if ([35, 20, 5].includes(b.t)) { o.tintL = b.t; o.tint = true; } if (typeof b.n === 'string' && KS_NEON.some(n => n[1] === b.n)) o.neon = b.n; return o; };
+
+  // ---- the bay: Aero & body parts ----
+  Object.assign(KS_SHOTS, { pxfront: { az: 30, el: 7, d: 0.62, tx: 0.72, ty: 0.42 }, pxside: { az: 76, el: 5, d: 0.92, ty: 0.4 }, pxrear: { az: 152, el: 5, d: 0.66, tx: -0.72, ty: 0.4 },
+    pxhood: { az: 22, el: 30, d: 0.78, tx: 0.5, ty: 0.95 }, pxroof: { az: 38, el: 24, d: 1.05, ty: 1.45 }, pxdeck: { az: 150, el: 26, d: 0.95, tx: -0.45, ty: 1.1 } });
+  const PX_PAGES = {}, PX_FPAGES = {};
+  const pxFinOf = (slot, P, cur) => { const f = (KS.pxFin && KS.pxFin[slot]) || (cur && cur[1]) || P.fins[0]; return P.fins.includes(f) ? f : P.fins[0]; };
+  function pxSubLine(c) { const s = pxSum(c); return s[5] ? `${s[5]} on the car · ${money(s[4])} in parts · ${pxFx(s[0], [s[1], s[2], s[3]])} at 100 mph` : 'Cut for this car: pick a part to see it bolted on'; }
+  function pxHome() {
+    const c = S.car, cat = pxCatalog(c.id), rows = [], on = c.px || {};
+    for (const [slot, [name, ic, cam]] of Object.entries(PX_SLOTS)) { const list = cat.filter(p => p.slot === slot); if (!list.length) continue; const cur = on[slot] && pxPart(c.id, on[slot][0]);
+      rows.push({ ic, t: name, s: cur ? `${cur.n} · ${(PX_FIN[on[slot][1]] || PX_FIN.sb)[0]}` : `${list.length} made for this car`, go: PX_PAGES[slot] || (PX_PAGES[slot] = () => pxSlot(slot)), cam }); }
+    rows.push({ ic: '🧾', t: 'Build sheet', s: 'Everything bolted on, what it weighs and what it cost', go: pxSheet, cam: 'overview' });
+    return { title: 'Aero & body parts', sub: pxSubLine(c), cam: 'overview', rows };
+  }
+  function pxSlot(slot) {
+    const c = S.car, rate = ksRate(), cat = pxCatalog(c.id).filter(p => p.slot === slot), cur = c.px && c.px[slot], rows = [], [name, ic, cam] = PX_SLOTS[slot];
+    const fins = [...new Set(cat.flatMap(p => p.fins))], f0 = pxFinOf(slot, cat[0], cur);
+    if (fins.length > 1) rows.push({ sw: f0 === 'pm' ? c.color : PX_FSW[f0], t: `Finish · ${PX_FIN[f0][0]}`, s: fins.map(f => PX_FIN[f][0]).join(', '), go: PX_FPAGES[slot] || (PX_FPAGES[slot] = () => pxFins(slot)), cam });
+    for (const P of cat) { if (!pxBuild(c.id, P)) continue; const fin = pxFinOf(slot, P, cur), on = !!cur && cur[0] === P.id && cur[1] === fin, own = !!(c.pxo && c.pxo[P.id + '|' + fin]), need = pxNeed(c, P);
+      rows.push({ ic, t: P.n, s: need || `${P.b} · ${P.d} · ${PX_FIN[fin][0]} · ${pxFx(P.kg * PX_FIN[fin][2], P.aero)}${own && !on ? ' · on your shelf' : ''}`, price: own ? 0 : Math.round(P.price * PX_FIN[fin][1] * rate), on, off: !!need, what: P.n, cam: P.cam || cam, fx: x => pxInstall(x, P, fin) }); }
+    if (cur) rows.push({ ic: '↩️', t: 'Take it off', s: 'Back to stock here. The part goes on your shelf, free to bolt back on', price: 0, what: name + ' off', cam, fx: x => pxRemove(x, slot) });
+    return { title: name, sub: rows.length > (cur ? 1 : 0) + (fins.length > 1 ? 1 : 0) ? pxSubLine(c) : 'Nothing in this spot fits this body', cam, rows };
+  }
+  function pxFins(slot) {
+    const c = S.car, cat = pxCatalog(c.id).filter(p => p.slot === slot), cur = c.px && c.px[slot], fins = [...new Set(cat.flatMap(p => p.fins))], now = pxFinOf(slot, cat[0], cur);
+    const rows = fins.map(f => ({ sw: f === 'pm' ? c.color : PX_FSW[f], t: PX_FIN[f][0], s: `${PX_FIN[f][1] === 1 ? 'Base price' : 'Price x' + PX_FIN[f][1]}${PX_FIN[f][2] < 0.9 ? ' · less than half the weight' : ''}`, on: now === f, pick: () => { (KS.pxFin || (KS.pxFin = {}))[slot] = f; },
+      pv: P => { const base = (cur && pxPart(c.id, cur[0])) || cat.find(p => p.fins.includes(f) && pxBuild(c.id, p)); if (base && base.fins.includes(f)) P.px = Object.assign({}, P.px, { [slot]: [base.id, f] }); } }));
+    return { title: PX_SLOTS[slot][0] + ' finish', sub: 'For the next part you pick here', cam: PX_SLOTS[slot][2], rows, back: 1 };
+  }
+  function pxSheet() {
+    const c = S.car, L = pxList(c), rows = L.map(({ slot, P, fin }) => ({ ic: PX_SLOTS[slot][1], t: P.n, s: `${PX_SLOTS[slot][0]} · ${PX_FIN[fin][0]} · ${money(Math.round(P.price * PX_FIN[fin][1]))} · ${pxFx(P.kg * PX_FIN[fin][2], P.aero)}`, go: PX_PAGES[slot] || (PX_PAGES[slot] = () => pxSlot(slot)), cam: PX_SLOTS[slot][2] }));
+    if (L.length) rows.push({ ic: '🧹', t: 'Strip it back to stock', s: 'Every part comes off and goes on your shelf', price: 0, what: 'Parts off', cam: 'overview', fx: x => { x.px = {}; } });
+    else rows.push({ ic: '•', t: 'Nothing bolted on yet', s: 'Back out and pick a spot on the car', off: true });
+    const n = Object.keys(c.pxo || {}).length;
+    return { title: 'Build sheet', sub: L.length ? pxSubLine(c) + (n > L.length ? ` · ${n - L.length} more on your shelf` : '') : 'Stock body', cam: 'overview', rows };
+  }
+  const pxHas = c => !!c && pxCatalog(c.id).length > 0;
+  PX_ON = true;
+  window.__px = { PX_FITS, PX_GEO, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxApply, pxLand, pxDeck, carData, veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
+  // ==== aftermarket parts (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
