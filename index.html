@@ -26468,11 +26468,16 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
     const ring = new THREE.Mesh(ksGeo(new THREE.TorusGeometry(3.33, 0.03, 6, 96).rotateX(Math.PI / 2)), KS.ring); ring.position.y = 0.075; KS.disc.add(ring);
     const ring2 = new THREE.Mesh(ksGeo(new THREE.TorusGeometry(2.2, 0.012, 4, 80).rotateX(Math.PI / 2)), pink); ring2.position.y = 0.081; KS.disc.add(ring2);
     KS.root = new THREE.Group(); KS.root.position.y = 0.08; s.add(KS.root);
+    // a four-post lift under the car: the runways ride up with it, the posts stand on the floor
+    { const lm = ksMat({ color: 0x23242a, metalness: 0.6, roughness: 0.5 }), am = ksMat({ color: 0xffb636, metalness: 0.3, roughness: 0.5 }); KS.liftG = new THREE.Group(); KS.liftG.visible = false; KS.root.add(KS.liftG); KS.posts = [];
+      for (const sx of [-1, 1]) { ksBox(KS.liftG, 0.42, 0.07, 5.3, lm, sx * 0.86, -0.045, 0, true); for (const sz of [-1, 1]) KS.posts.push(ksBox(KS.liftG, 0.14, 1, 0.14, am, sx * 1.5, 0, sz * 2.45, true)); }
+      for (const sz of [-1, 1]) ksBox(KS.liftG, 3.1, 0.09, 0.14, lm, 0, -0.09, sz * 2.45, true);
+      KS.under = new THREE.PointLight(0xfff4e0, 0, 7, 1.4); KS.under.position.set(0, -0.75, 0); KS.liftG.add(KS.under); }
   }
   function ksDispose() {
     if (KS.slot) { KS.slot.userData.dead = true; if (KS.slot.parent) KS.slot.parent.remove(KS.slot); }
     for (const x of KS.trash) { try { x.dispose(); } catch (e) {} }
-    KS.trash = []; KS.scene = null; KS.root = KS.disc = KS.door = KS.slot = KS.model = KS.ring = null; KS.P = null;
+    KS.trash = []; KS.scene = null; KS.root = KS.disc = KS.door = KS.slot = KS.model = KS.ring = KS.liftG = null; KS.posts = []; KS.P = null;
   }
 
   // ---- the menu pages ----
@@ -26485,6 +26490,7 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
     rows.push({ ic: '⬇️', t: 'Stance', s: 'Ride height on coilovers', go: ksStance, cam: 'stance' });
     if (LOOK_CARS.has(c.id)) rows.push({ ic: '🏁', t: 'Body, brakes & interior', s: 'Kits, calipers, leather, ambient light', go: ksBody, cam: 'rear' });
     if (typeof pxHas === 'function' && pxHas(c)) rows.push({ ic: '🧩', t: 'Aero & body parts', s: c.px && Object.keys(c.px).length ? `${Object.keys(c.px).length} bolted on · splitters, wings, scoops and more` : 'Splitters, skirts, diffusers, wings, scoops: cut for this car', go: pxHome, cam: 'overview' });
+    if (typeof pxHasEx === 'function' && pxHasEx(c)) rows.push({ ic: '💨', t: 'Exhaust & underside', s: 'Up on the lift: see the system the engine build has', go: pxUnder, cam: 'pxunder' });
     rows.push({ ic: '🔧', t: 'Workshop', s: 'Engine Lab, tuning, drag packs, audio, repairs', go: ksShop, cam: 'engine' });
     rows.push({ ic: '🚪', t: 'Drive out', s: 'Roll the door up and leave', act: ksLeave, cam: 'overview' });
     return { title: (p.name || 'Custom bay').replace(/ \(.*\)$/, ''), sub: `${carLabel(carOf(c.id))} · ${carHp(c)} hp`, cam: 'overview', rows };
@@ -26736,7 +26742,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   function ksOpen(p) {
     if (!ksCan(p)) return false;
     closeMenu(); showCard(null); drv.v = 0; drv.gas = 0;
-    KS.p = p; KS.stack = [ksHome]; KS.sel = 0; KS.titles = new Map(); KS.matte = null; KS.dia = null; KS.fin = null; KS.tire = null; KS.pxFin = {}; KS.ride = 0; KS.open = ''; KS.shot = ''; KS.uAz = KS.uEl = 0; KS.zoom = 1; KS.sub = false;
+    KS.p = p; KS.stack = [ksHome]; KS.sel = 0; KS.titles = new Map(); KS.matte = null; KS.dia = null; KS.fin = null; KS.tire = null; KS.pxFin = {}; KS.lift = 0; KS.ride = 0; KS.open = ''; KS.shot = ''; KS.uAz = KS.uEl = 0; KS.zoom = 1; KS.sub = false;
     ksBuild(p);
     KS.slot = putCar(KS.root, S.car.id, S.car.color, m => {
       KS.model = m; m.position.y = 0; try { const b = audioBuild(S.car); setCarAudio(m, b.subs.id, b.doors.id); applyMotor(m, S.car); } catch (e) {}
@@ -26758,9 +26764,10 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     const p = KS.p; KS.on = false; KS.phase = ''; KS.ui.hidden = true; KS.ui.querySelector('.ks-skip').textContent = 'Tap to skip'; document.body.classList.remove('ks-on');
     renderer.toneMappingExposure = KS.exp; ksDispose();
     if (p && driving) { const [ox, oz] = outDir(p); const r = nearestRoad(p.x + ox * 12, p.z + oz * 12); if (r) { drv.x = r.x + (r.horiz ? 0 : r.e.w / 4); drv.z = r.z + (r.horiz ? r.e.w / 4 : 0); drv.yaw = r.horiz ? Math.PI / 2 : 0; drv.v = 0; drv.cam.set(drv.x + Math.sin(drv.yaw) * 14, 7, drv.z + Math.cos(drv.yaw) * 14); } }
+    try { if (S.car) dragRefresh(S.car); } catch (e) {}
     save(); refreshStats(); showCard(null);
   }
-  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.engX, c.px]) : ''; };
+  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.engX, c.px, c.eb && [c.eb.hdr, c.eb.cats, c.eb.exh]]) : ''; };
   const ksEase = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const _ksA = new THREE.Vector3(), _ksB = new THREE.Vector3(), _ksW = new THREE.Vector3();
   function ksStep(dt) {
@@ -26776,6 +26783,8 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       const k1 = Math.min(1, KS.t / 0.9); door.position.y = dh / 2 + dh * ksEase(k1);
       if (KS.t > 0.9) { const k = Math.min(1, (KS.t - 0.9) / 1.6), z = 14 * k * k, dz = z - R.position.z; R.position.z = z; if (m) spinWheels(m, dz); if (k >= 1) { ksFinish(); return; } }
     }
+    { const lf = KS.phase === 'menu' && !KS.sub ? ((KS_SHOTS[KS.shot] || {}).lift || 0) : 0; KS.lift = (KS.lift || 0) + (lf - (KS.lift || 0)) * Math.min(1, dt * 2.2); if (KS.lift < 0.004 && !lf) KS.lift = 0; R.position.y = 0.08 + KS.lift;
+      if (KS.liftG) { KS.liftG.visible = KS.lift > 0.01; KS.under.intensity = Math.min(1, KS.lift) * 1.5; for (const q of KS.posts) { q.scale.y = KS.lift + 0.45; q.position.y = -KS.lift - 0.08 + (KS.lift + 0.45) / 2; } } }
     KS.ring.color.setHSL(0.11, 1, KS.phase === 'spin' ? 0.5 + 0.2 * Math.sin(KS.t * 18) : 0.58);
     if (m) stepPanels(m, dt);
     // overlays (Engine Lab, tuning laptop, drag packs, audio, repairs) open on top of the bay; when they close, refresh
@@ -26796,14 +26805,14 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       if (KS.phase === 'menu' && KS.stack.length === 1 && !KS.sub) { KS.idle += dt; if (KS.idle > 5 && !KS.drags.size) KS.uAz += dt * 0.12; }
       const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);   // car forward and right, in the room
       const len = U ? U.len : 4.8, cz = U ? -U.front + U.len / 2 : 0;
-      let tx = R.position.x + fx * (-cz), tz = R.position.z + fz * (-cz), ty = S0.ty || 0.75;
+      let tx = R.position.x + fx * (-cz), tz = R.position.z + fz * (-cz), ty = (S0.ty || 0.75) + (KS.lift || 0);
       if (S0.tx) { tx += fx * S0.tx * len / 2; tz += fz * S0.tx * len / 2; }
       let az = S0.az * Math.PI / 180;
       if (S0.wheel && U) {   // the front wheel on the side the shot looks from
         let best = null, bs = -1e9; for (const w of U.wheels) { w.getWorldPosition(_ksW); const s = (_ksW.x - tx) * fx + (_ksW.z - tz) * fz + ((_ksW.x - tx) * rx + (_ksW.z - tz) * rz) * 0.3; if (s > bs) { bs = s; best = _ksW.clone(); } }
         if (best) { tx = best.x; tz = best.z; ty = best.y; }
       }
-      az += KS.uAz; const el = clamp(S0.el * Math.PI / 180 + KS.uEl, -0.05, 1.25), d = (S0.abs ? S0.d : S0.d * len) * KS.zoom * (asp < 0.8 ? 1.25 : 1);
+      az += KS.uAz; const el = clamp(S0.el * Math.PI / 180 + KS.uEl, S0.lift ? -0.6 : -0.05, 1.25), d = (S0.abs ? S0.d : S0.d * len) * KS.zoom * (asp < 0.8 ? 1.25 : 1);
       const dx = fx * Math.cos(az) + rx * Math.sin(az), dz = fz * Math.cos(az) + rz * Math.sin(az);
       want.set(tx + dx * d * Math.cos(el), ty + d * Math.sin(el), tz + dz * d * Math.cos(el)); look.set(tx, ty, tz);
       want.x = clamp(want.x, -KS_W / 2 + 0.35, KS_W / 2 - 0.35); want.z = clamp(want.z, -KS_D / 2 + 0.35, KS_D / 2 - 0.35); want.y = clamp(want.y, 0.22, KS_H - 0.3);
@@ -27846,6 +27855,8 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       : key === 'st' ? S({ color: lin('#d9dce0'), metalness: 1, roughness: 0.14 })
       : key === 'ch' ? S({ color: lin('#f4f6f8'), metalness: 1, roughness: 0.04 })
       : key === 'al' ? S({ color: lin('#a9adb3'), metalness: 0.92, roughness: 0.36 })
+      : key === 'ss' ? S({ color: lin('#c3c6ca'), metalness: 0.95, roughness: 0.3 })
+      : key === 'mild' ? S({ color: lin('#6c6a66'), metalness: 0.75, roughness: 0.62 })
       : key === 'rub' ? S({ color: lin('#0b0b0b'), metalness: 0, roughness: 0.92 })
       : key === 'red' ? S({ color: lin('#c8141c'), metalness: 0.6, roughness: 0.35 })
       : key === 'lens' ? S({ color: lin('#e9eef5'), metalness: 0.2, roughness: 0.12, emissive: lin('#39414d') })
@@ -28204,6 +28215,33 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     for (const s of [-1, 1]) pxBox(T, (xa + xb) / 2, y + 0.006, s * (w + 0.004), xb - xa, 0.03, 0.012);
     return true;
   };
+  // ---- the exhaust under the car, as the engine build has it: collectors, cats, X or H pipe, resonators, mufflers, tailpipes ----
+  // o: { hdr, cats, exh, dual }. It hangs under this car's own floor, humps over its rear axle and stops inside its rear bumper
+  // (the tips in the bumper are the car's own). What you hear already comes from the same parts (EXH_SND / HDR_SND).
+  PXG.exhaust = (F, K, o) => {
+    const L = pxLand(F), g = F.g, stock = o.exh === 'stock', big = o.exh === 'straight' || o.exh === 'xpipe' || o.hdr === 'longtube' || o.hdr === 'downpipe';
+    const r = stock ? 0.027 : big ? 0.037 : 0.032, P = K.b(stock ? 'mild' : 'ss'), xA = F.xF - 0.28, xB = Math.min(F.back(0.3 * F.hw, L.ybR, L.ybR + 0.25), F.X0 + 0.3) + 0.09; if (!(L.ybR > 0.12) || xA - xB < 2) return false;
+    const fl = x => { let m = 9; for (let z = 0.06; z < 0.36; z += g) { const v = F.at(F.bot, x, z); if (v < m) m = v; } return m < 8 ? m : NaN; };
+    const xs = pxRange(xB, xA, 0.1), fy = pxAvg(xs.map(x => { const v = fl(x); return isFinite(v) ? clamp(v, 0.14, F.r + 0.12) : L.yRock; }), 3), yAt = x => { const t = clamp((x - xB) / (xA - xB), 0, 1) * (xs.length - 1), i = Math.min(xs.length - 2, Math.floor(t)); return fy[i] + (fy[i + 1] - fy[i]) * (t - i) - r - 0.012; };
+    const xM = (F.xF + F.xR) / 2 + 0.1, xR = F.xR, xU = (F.xR + xB) / 2 - 0.02, z1 = 0.15, z2 = Math.min(F.hw * 0.46, F.tw - 0.28), yE = Math.max(L.ybR + 0.02, yAt(xB + 0.2)), sides = o.dual ? [-1, 1] : [1];
+    const oval = (B, xa, xb, y, z, rz, ry) => pxSweep(B, [[xa, 0.35], [xa - 0.05 * Math.sign(xa - xb), 1], [xb + 0.05 * Math.sign(xa - xb), 1], [xb, 0.35]].map(([x, k]) => { const R = []; for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2; R.push([x, y + Math.sin(a) * ry * k, z + Math.cos(a) * rz * k]); } return R; }));
+    for (const s of sides) {
+      const zx = o.exh === 'xpipe' && o.dual ? 0.03 : z1, zr = o.dual ? z2 : z2 * 0.9, pts = [[xA, yAt(xA), s * z1], [xA - 0.35, yAt(xA - 0.35), s * z1], [xM + 0.22, yAt(xM + 0.22), s * z1], [xM, yAt(xM), s * zx], [xM - 0.22, yAt(xM - 0.22), s * z1],
+        [xR + 0.3, yAt(xR + 0.3), s * (z1 + 0.04)], [xR, yAt(xR) + 0.035, s * (z1 + zr) / 2], [xR - 0.26, yAt(xR - 0.26), s * zr], [xU, yE, s * zr], [xB, yE, s * zr]];
+      pxTube(P, pxCurve(pts, 5), r, 10);
+      // cats (a fat can, a slim high-flow one, or straight pipe), a resonator, the rear muffler
+      const xc = xA - 0.26; if (o.cats !== 'off' && o.hdr !== 'downpipe') oval(K.b(o.cats === 'hfc' ? 'ss' : 'mild'), xc + (o.cats === 'hfc' ? 0.1 : 0.14), xc - (o.cats === 'hfc' ? 0.1 : 0.14), yAt(xc), s * z1, o.cats === 'hfc' ? 0.05 : 0.066, o.cats === 'hfc' ? 0.046 : 0.05);
+      if (o.exh === 'stock' || o.exh === 'perf' || o.exh === 'valved') { const xr = xM - 0.42; oval(P, xr + 0.19, xr - 0.19, yAt(xr), s * (z1 + 0.012), 0.055, 0.047); }
+      if (o.exh !== 'mufdel' && o.exh !== 'straight') { const len = stock ? 0.27 : 0.2, xm = (xR - 0.26 + xU) / 2 - 0.02, ym = (yAt(xR - 0.26) + yE) / 2; oval(P, xm + len, xm - len, ym + 0.006, s * zr, stock ? 0.13 : 0.095, stock ? 0.07 : 0.058);
+        if (o.exh === 'valved') { pxBox(K.b('tb'), xB + 0.14, yE + r + 0.02, s * (zr + 0.03), 0.07, 0.045, 0.05); pxTube(K.b('tb'), [[xB + 0.14, yE, s * zr], [xB + 0.14, yE + r + 0.02, s * (zr + 0.02)]], 0.008, 6); } }
+      if (o.hdr === 'longtube') { const C = K.b('ss'); pxTube(C, [[xA + 0.2, yAt(xA) + 0.02, s * z1], [xA + 0.02, yAt(xA), s * z1], [xA - 0.02, yAt(xA), s * z1]], [0.052, 0.045, r], 10);
+        for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + 0.6; pxTube(C, pxCurve([[xA + 0.19, yAt(xA) + 0.02 + Math.sin(a) * 0.026, s * z1 + Math.cos(a) * 0.026], [xA + 0.3, yAt(xA) + 0.05 + Math.sin(a) * 0.03, s * (z1 + 0.02) + Math.cos(a) * 0.03], [xA + 0.42, yAt(xA) + 0.13 + i * 0.012, s * (z1 + 0.07) + Math.cos(a) * 0.03]], 4), 0.021, 8); } }
+      for (const x of [xM + 0.5, xR + 0.42, xU + 0.1]) pxTube(K.b('rub'), [[x, yAt(x) + r, s * (x < xR ? zr : z1) * 1], [x, yAt(x) + r + 0.05, s * (x < xR ? zr : z1)]], 0.012, 6);
+    }
+    if (o.dual && o.exh === 'hpipe') pxTube(P, [[xM, yAt(xM), -z1], [xM, yAt(xM), z1]], r * 0.8, 10);
+    if (o.dual && o.exh === 'xpipe') oval(P, xM + 0.07, xM - 0.07, yAt(xM), 0, 0.07, r * 0.98);
+    return true;
+  };
   PXG.flaps = (F, K, o) => {
     const T = CARS3D.done[F.id]; if (!T) return false; const B = K.b('rub'), A = K.b('F');
     for (const w of T.wheels) { const x = w.pos[0] - F.r - 0.06, s = Math.sign(w.pos[2]) || 1, zc = Math.abs(w.pos[2]), yT = F.r + 0.1, yB = Math.max(0.1, F.r * 0.3), out = Math.min(zc + 0.2, F.sideZ(x, yT, yT + 0.2) + 0.012), inn = zc - 0.14;
@@ -28328,10 +28366,19 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   const pxLb = cl => Math.round(-0.25 * 1.2 * cl * 44.7 * 44.7 * 0.2248);
   function pxFx(kg, a) { const o = [`${kg >= 0 ? '+' : ''}${Math.round(kg * 2.2046 * 10) / 10} lb`]; if (a[1]) o.push(`front ${pxLb(a[1]) >= 0 ? '+' : ''}${pxLb(a[1])} lb downforce`); if (a[2]) o.push(`rear ${pxLb(a[2]) >= 0 ? '+' : ''}${pxLb(a[2])} lb downforce`); if (a[0]) o.push(`drag ${a[0] > 0 ? '+' : ''}${a[0].toFixed(3)} m²`); return o.join(' · '); }
 
+  // the exhaust a car's engine build has: '' when there is nothing to show (an EV, or a bone-stock car out on the street)
+  const PX_EXQ = { hdr: ['stock', 'shorty', 'longtube', 'downpipe'], cats: ['stock', 'hfc', 'off'], exh: ['stock', 'resdel', 'perf', 'xpipe', 'hpipe', 'valved', 'mufdel', 'straight'] };
+  function pxExOf(c, all) {
+    if (!c) return ''; if (Array.isArray(c.exq)) return c.exq.join('|');   // another player's, as their build sent it
+    if (!c.id || !PX_CARS[c.id] || c.swap) return ''; let D = null; try { D = engDefOf(c); } catch (e) {} if (!D) return '';
+    const b = c.eb || {}, q = [PX_EXQ.hdr.includes(b.hdr) ? b.hdr : 'stock', PX_EXQ.cats.includes(b.cats) ? b.cats : 'stock', PX_EXQ.exh.includes(b.exh) ? b.exh : 'stock'];
+    if (!all && q.every(v => v === 'stock')) return '';
+    return q.join('|') + '|' + (D.cyl <= 4 || /^i\d|single|twin/.test(D.fo || '') || D.exh === 'single-cat' ? 0 : 1);
+  }
   // ---- on the model: bolt the parts to the body, the hood or the lid (they open with it) ----
   function pxApply(m, c) {
-    const U = m.userData, id = (m.parent && m.parent.userData && m.parent.userData.carId) || (c && c.id), key = c && c.px && id ? pxKey(c) : '';
-    if (key && U.kits) for (const slot of Object.keys(c.px)) for (const k of PX_CLASH[slot] || []) for (const g of U.kits[k] || []) g.visible = false;
+    const U = m.userData, id = (m.parent && m.parent.userData && m.parent.userData.carId) || (c && c.id), ex = id && PX_CARS[id] ? pxExOf(c, m === KS.model) : '', key = (c && c.px && id ? pxKey(c) : '') + (ex ? '#' + ex : '');
+    if (key && U.kits && c.px) for (const slot of Object.keys(c.px)) for (const k of PX_CLASH[slot] || []) for (const g of U.kits[k] || []) g.visible = false;
     if ((U.pxKey || '') === key) return;
     for (const o of U.pxM || []) if (o.parent) o.parent.remove(o); U.pxM = []; U.pxKey = key; if (!key) return;
     const F = pxFit(id); if (!F) { U.pxKey = ''; return; }
@@ -28341,6 +28388,8 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
         if (q.host !== 'inner' && !host) continue;
         if (host) { mesh.matrixAutoUpdate = false; mesh.matrix.copy(F.inv[q.host]); host.g.add(mesh); } else U.inner.add(mesh);
         U.pxM.push(mesh); } }
+    if (ex) { const q = ex.split('|'), G = pxBuild(id, { id: 'exh:' + ex, gen: PXG.exhaust, o: { hdr: q[0], cats: q[1], exh: q[2], dual: q[3] === '1' } });
+      for (const g of G || []) { const mesh = new THREE.Mesh(g.geo, pxMat(g.mat, U)); mesh.castShadow = false; mesh.userData.px = 'exh'; U.inner.add(mesh); U.pxM.push(mesh); } }
   }
   const _pxApplyLook = applyLook;
   applyLook = function (m, c) { _pxApplyLook(m, c); try { if (m && m.userData && m.userData.inner) pxApply(m, c); } catch (e) { console.warn('parts', e); } };
@@ -28352,18 +28401,24 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     o = Object.assign({}, o); o.aero = { cdA: Math.max(0.3, o.aero.cdA + s[1]), clF: o.aero.clF + s[2], clR: o.aero.clR + s[3] }; return o;
   };
 
+  // an engine build installed in the Engine Lab shows under the car straight away
+  const _pxElInstall = elInstall;
+  elInstall = function () { const r = _pxElInstall.apply(this, arguments); try { if (S.car) dragRefresh(S.car); } catch (e) {} return r; };
+
   // ---- online: the parts (and the tint and underglow) ride on the build other players get ----
   const _pxMyBuild = myBuild;
   myBuild = function () { const b = _pxMyBuild(); const c = S.car; if (!b || !c) return b;
-    const x = pxList(c).map(e => [e.P.id, e.fin]); if (x.length) b.x = x; if (c.tintL) b.t = c.tintL; if (c.neon) b.n = c.neon; return b; };
+    const x = pxList(c).map(e => [e.P.id, e.fin]); if (x.length) b.x = x; const q = pxExOf(c); if (q) b.q = q; if (c.tintL) b.t = c.tintL; if (c.neon) b.n = c.neon; return b; };
   const _pxClean = cleanBuild;
   cleanBuild = function (b) { const o = _pxClean(b); if (!b || typeof b !== 'object') return o;
     if (Array.isArray(b.x)) { const px = {}; for (const e of b.x.slice(0, 20)) { if (!Array.isArray(e) || typeof e[0] !== 'string' || !/^[a-z0-9]{2,12}-[a-z]{3}-[a-z0-9]{1,4}$/.test(e[0]) || !PX_FIN[e[1]]) continue; const slot = e[0].split('-')[1]; if (PX_SLOTS[slot]) px[slot] = [e[0], e[1]]; } if (Object.keys(px).length) o.px = px; }
+    if (typeof b.q === 'string') { const q = b.q.split('|'); if (q.length === 4 && PX_EXQ.hdr.includes(q[0]) && PX_EXQ.cats.includes(q[1]) && PX_EXQ.exh.includes(q[2]) && (q[3] === '0' || q[3] === '1')) o.exq = q; }
     if ([35, 20, 5].includes(b.t)) { o.tintL = b.t; o.tint = true; } if (typeof b.n === 'string' && KS_NEON.some(n => n[1] === b.n)) o.neon = b.n; return o; };
 
   // ---- the bay: Aero & body parts ----
   Object.assign(KS_SHOTS, { pxfront: { az: 30, el: 7, d: 0.62, tx: 0.72, ty: 0.42 }, pxside: { az: 76, el: 5, d: 0.92, ty: 0.4 }, pxrear: { az: 152, el: 5, d: 0.66, tx: -0.72, ty: 0.4 },
-    pxhood: { az: 22, el: 30, d: 0.78, tx: 0.5, ty: 0.95 }, pxroof: { az: 38, el: 24, d: 1.05, ty: 1.45 }, pxdeck: { az: 150, el: 26, d: 0.95, tx: -0.45, ty: 1.1 } });
+    pxhood: { az: 22, el: 30, d: 0.78, tx: 0.5, ty: 0.95 }, pxroof: { az: 38, el: 24, d: 1.05, ty: 1.45 }, pxdeck: { az: 150, el: 26, d: 0.95, tx: -0.45, ty: 1.1 },
+    pxunder: { az: 172, el: -13, d: 1.0, ty: 0.2, lift: 1.55 }, pxunderf: { az: 8, el: -13, d: 1.0, ty: 0.2, lift: 1.55 } });
   const PX_PAGES = {}, PX_FPAGES = {};
   const pxFinOf = (slot, P, cur) => { const f = (KS.pxFin && KS.pxFin[slot]) || (cur && cur[1]) || P.fins[0]; return P.fins.includes(f) ? f : P.fins[0]; };
   function pxSubLine(c) { const s = pxSum(c); return s[5] ? `${s[5]} on the car · ${money(s[4])} in parts · ${pxFx(s[0], [s[1], s[2], s[3]])} at 100 mph` : 'Cut for this car: pick a part to see it bolted on'; }
@@ -28396,9 +28451,19 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     const n = Object.keys(c.pxo || {}).length;
     return { title: 'Build sheet', sub: L.length ? pxSubLine(c) + (n > L.length ? ` · ${n - L.length} more on your shelf` : '') : 'Stock body', cam: 'overview', rows };
   }
+  // Exhaust & underside: the car goes up on the lift; what is under it is what the engine build has
+  function pxUnder() {
+    const c = S.car, q = pxExOf(c, true).split('|'), nm = (cat, k) => { try { const o = partOpt(c.eb || {}, cat); if (o && o.name && (c.eb || {})[cat] === k) return o.name; } catch (e) {} return (ENG_PARTS[cat].opts[k] || {}).name || k; };
+    const rows = [{ ic: '🔩', t: 'Headers: ' + nm('hdr', q[0]), s: q[0] === 'longtube' ? 'Four primaries into a collector each side, under the floor' : q[0] === 'downpipe' ? 'Big-bore pipes off the turbos' : 'Up in the engine bay', act: () => elOpen('parts'), cam: 'pxunderf' },
+      { ic: '🧪', t: 'Cats: ' + nm('cats', q[1]), s: q[1] === 'off' ? 'Straight pipe where the cats were' : q[1] === 'hfc' ? 'Slim polished high-flow cats' : 'Factory cans behind the collectors', act: () => elOpen('parts'), cam: 'pxunderf' },
+      { ic: '💨', t: 'Exhaust: ' + nm('exh', q[2]), s: `${q[3] === '1' ? 'True dual' : 'Single pipe'} · ${q[2] === 'xpipe' ? 'X-pipe' : q[2] === 'hpipe' ? 'H-pipe' : q[2] === 'straight' || q[2] === 'mufdel' ? 'no mufflers' : q[2] === 'stock' ? 'factory mufflers' : 'performance mufflers'} · over the rear axle and out the back`, act: () => elOpen('parts'), cam: 'pxunder' },
+      { ic: '⚙️', t: 'Change it in the Engine Lab', s: 'Headers, cats and exhaust are engine parts: they change power and sound, and what you see here', act: () => elOpen('parts'), cam: 'pxunder' }];
+    return { title: 'Exhaust & underside', sub: 'Up on the lift · drag to look around', cam: 'pxunder', rows };
+  }
+  const pxHasEx = c => !!c && !!pxExOf(c, true);
   const pxHas = c => !!c && pxCatalog(c.id).length > 0;
   PX_ON = true;
-  window.__px = { PX_FITS, PX_GEO, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxApply, pxLand, pxDeck, carData, veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
+  window.__px = { PX_FITS, PX_GEO, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxUnder, pxExOf, pxApply, pxLand, pxDeck, carData, veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
   // ==== aftermarket parts (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
