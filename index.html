@@ -7192,11 +7192,11 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   }
   function applyAudioBuild() {
     const fx = radioFx(); if (!fx) return;
-    const b = audioBuild(S.car), key = b.subs.id + '/' + b.doors.id; if (key === FX.build) return; FX.build = key;
+    const b = audioBuild(S.car), key = b.subs.id + '/' + b.doors.id + '/' + (b.ax || ''); if (key === FX.build) return; FX.build = key;
     const t = FX.ctx.currentTime, set = (p, v) => p.setTargetAtTime(v, t, 0.25), subs = b.subs.id !== 'none', P = subs ? b.pow : 0;
     FX.pow = P;
     set(fx.lowCut.frequency, subs ? 55 : 70); set(fx.boomG.gain, P * 0.9); set(fx.subG.gain, P * 1.6);
-    set(fx.rattleAmt.gain, P > 0.3 ? (P - 0.3) * 1.1 : 0); set(fx.mids.gain, b.doors.bonus * 20); set(fx.air.gain, b.doors.bonus * 26);
+    set(fx.rattleAmt.gain, P > 0.3 ? (P - 0.3) * 1.1 : 0); set(fx.mids.gain, b.doors.bonus * 20); set(fx.air.gain, b.doors.bonus * 26); if (b.dsp && subs) { set(fx.lowCut.frequency, 45); set(fx.rattleAmt.gain, P > 0.3 ? (P - 0.3) * 0.73 : 0); }
   }
   // how hard the subs hit right now, 0 to about 1
   function radioBass() {
@@ -26492,6 +26492,7 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
     if (typeof pxHas === 'function' && pxHas(c) && (typeof pxHasExt !== 'function' || pxHasExt(c))) rows.push({ ic: '🧩', t: 'Aero & body parts', s: c.px && Object.keys(c.px).length ? `${Object.keys(c.px).length} bolted on · splitters, wings, scoops and more` : 'Splitters, skirts, diffusers, wings, scoops: cut for this car', go: pxHome, cam: 'overview' });
     if (typeof pxHasInt === 'function' && pxHasInt(c)) rows.push({ ic: '🎡', t: 'Interior parts', s: 'Steering wheels, roll bars and cages: made for this cabin', go: pxInterior, cam: 'inside' });
     if (typeof pxBrakes === 'function' && !c.drag) rows.push({ ic: '🛑', t: 'Brakes', s: (c.parts && c.parts.brakes && PART_BY_ID[c.parts.brakes] ? PART_BY_ID[c.parts.brakes].brand + ' ' + PART_BY_ID[c.parts.brakes].name : 'Factory brakes') + ' · rotors, calipers, colors', go: pxBrakes, cam: 'pxbrake' });
+    if (typeof pxAudio === 'function') rows.push({ ic: '🔊', t: 'Trunk audio', s: (c.audio && c.audio.subs && c.audio.subs !== 'none' ? (SUBS.find(x => x.id === c.audio.subs) || SUBS[0]).name : 'No subs yet') + ' · boxes, grilles, capacitor, processor', go: pxAudio, cam: 'pxaud' });
     if (typeof pxDrvPage === 'function' && pxHasDrv(c)) rows.push({ ic: '🛞', t: 'Drivetrain & suspension', s: 'Up on the lift: gearbox, propshaft, diff, sway bars', go: pxDrvPage, cam: 'pxdrv' });
     if (typeof pxEngPage === 'function' && pxHasEx(c) && !c.swap && !c.engX) rows.push({ ic: '🐌', t: 'Under the hood', s: 'Intake, turbo and blower kits, intercooler: what the engine build bolted on', go: pxEngPage, cam: 'engine' });
     if (typeof pxHasEx === 'function' && pxHasEx(c)) rows.push({ ic: '💨', t: 'Exhaust & underside', s: 'Up on the lift: see the system the engine build has', go: pxUnder, cam: 'pxunder' });
@@ -26771,7 +26772,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     try { if (S.car) dragRefresh(S.car); } catch (e) {}
     save(); refreshStats(); showCard(null);
   }
-  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.engX, c.px, c.eb && [c.eb.hdr, c.eb.cats, c.eb.exh, c.eb.intake, c.eb.power, c.eb.icool, c.eb.cool, c.eb.oil, c.eb.meth], c.parts && [c.parts.brakes, c.parts.transmission, c.parts.diff]]) : ''; };
+  const ksKey = () => { const c = S.car; return c ? JSON.stringify([c.id, c.color, c.matte, c.rims, c.drag, c.tint, c.tintL, c.neon, c.kits, c.look, c.tune && [c.tune.rhF, c.tune.rhR], c.tparts, c.subs, c.doors, c.audio, c.engX, c.px, c.eb && [c.eb.hdr, c.eb.cats, c.eb.exh, c.eb.intake, c.eb.power, c.eb.icool, c.eb.cool, c.eb.oil, c.eb.meth], c.parts && [c.parts.brakes, c.parts.transmission, c.parts.diff]]) : ''; };
   const ksEase = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const _ksA = new THREE.Vector3(), _ksB = new THREE.Vector3(), _ksW = new THREE.Vector3();
   function ksStep(dt) {
@@ -28379,7 +28380,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     s = [0, 0, 0, 0, 0, 0]; for (const { P, fin } of pxList(c)) { s[0] += P.kg * PX_FIN[fin][2]; s[1] += P.aero[0]; s[2] += P.aero[1]; s[3] += P.aero[2]; s[4] += Math.round(P.price * PX_FIN[fin][1]); s[5]++; }
     if (PX_SUM.size > 200) PX_SUM.clear(); PX_SUM.set(k, s); return s;
   }
-  function pxKg(c) { return (PX_ON && c && c.px ? pxSum(c)[0] : 0) + (PX_ON && c ? pxbKg(c) : 0); }
+  function pxKg(c) { return (PX_ON && c && c.px ? pxSum(c)[0] : 0) + (PX_ON && c ? pxbKg(c) + pxaKg(c) : 0); }
   const pxNeed = (c, P) => { for (const s of P.req || []) if (!(c.px && c.px[s])) return `Needs a ${PX_SLOTS[s][0].toLowerCase()} first`; return ''; };
   function pxInstall(x, P, fin) {
     x.px = Object.assign({}, x.px, { [P.slot]: [P.id, fin] }); x.pxo = Object.assign({}, x.pxo, { [P.id + '|' + fin]: 1 });
@@ -28403,7 +28404,8 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   }
   // ---- on the model: bolt the parts to the body, the hood or the lid (they open with it) ----
   function pxApply(m, c) {
-    const U = m.userData, id = (m.parent && m.parent.userData && m.parent.userData.carId) || (c && c.id), ex = id && PX_CARS[id] ? pxExOf(c, m === KS.model) : '', eq = id && PX_CARS[id] ? pxEngOf(c) : '', dq = id && PX_CARS[id] ? pxDrvOf(c, m === KS.model) : '', key = (c && c.px && id ? pxKey(c) : '') + (ex ? '#' + ex : '') + (eq ? '@' + eq : '') + (dq ? '%' + dq : '');
+    const U = m.userData, id = (m.parent && m.parent.userData && m.parent.userData.carId) || (c && c.id), ex = id && PX_CARS[id] ? pxExOf(c, m === KS.model) : '', eq = id && PX_CARS[id] ? pxEngOf(c) : '', dq = id && PX_CARS[id] ? pxDrvOf(c, m === KS.model) : '', aq = id ? pxAudOf(c, id) : '', key = (c && c.px && id ? pxKey(c) : '') + (ex ? '#' + ex : '') + (eq ? '@' + eq : '') + (dq ? '%' + dq : '') + (aq ? '&' + aq : '');
+    if (U.audio && c && c.audio) { const b = audioBuild(c); setCarAudio(m, b.subs.id, b.doors.id); }   // the bay's preview and other players' cars show the box they have
     if (key && U.kits && c.px) for (const slot of Object.keys(c.px)) for (const k of PX_CLASH[slot] || []) for (const g of U.kits[k] || []) g.visible = false;
     if ((U.pxKey || '') === key) return;
     for (const o of U.pxM || []) if (o.parent) o.parent.remove(o); for (const o of U.pxHid || []) o.visible = true; U.pxM = []; U.pxHid = []; U.pxKey = key; if (!key) return;
@@ -28421,6 +28423,8 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       for (const g of G || []) { const mesh = new THREE.Mesh(g.geo, pxMat(g.mat, U)); mesh.castShadow = false; mesh.userData.px = 'eng'; U.inner.add(mesh); U.pxM.push(mesh); } }
     if (dq) { const G = pxBuild(id, { id: 'drv:' + dq, gen: PXG.drive, o: { tr: dq[0] === '1', df: dq[1] === '1', sw: dq[2] === '1' } });
       for (const g of G || []) { const mesh = new THREE.Mesh(g.geo, pxMat(g.mat, U)); mesh.castShadow = false; mesh.userData.px = 'drv'; U.inner.add(mesh); U.pxM.push(mesh); } }
+    if (aq) { const q = aq.split('|'), G = pxBuild(id, { id: 'aud:' + aq, gen: PXG.audio, o: { k: q[0], grl: q[1], cap: q[2] === '1', dsp: q[3] === '1' } });
+      for (const g of G || []) { const mesh = new THREE.Mesh(g.geo, pxMat(g.mat, U)); mesh.castShadow = false; mesh.userData.px = 'aud'; U.inner.add(mesh); U.pxM.push(mesh); } }
   }
   const _pxApplyLook = applyLook;
   applyLook = function (m, c) { _pxApplyLook(m, c); try { if (m && m.userData && m.userData.inner) { pxApply(m, c); pxbApply(m, c); } } catch (e) { console.warn('parts', e); } };
@@ -28439,13 +28443,14 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   // ---- online: the parts (and the tint and underglow) ride on the build other players get ----
   const _pxMyBuild = myBuild;
   myBuild = function () { const b = _pxMyBuild(); const c = S.car; if (!b || !c) return b;
-    const x = pxList(c).map(e => [e.P.id, e.fin]); if (x.length) b.x = x; const q = pxExOf(c); if (q) b.q = q; if (c.tintL) b.t = c.tintL; if (c.neon) b.n = c.neon; if (pxbId(c) || pxbCol(c)) b.k = [pxbId(c), pxbCol(c)]; const e = pxEngOf(c); if (e) b.e = e; const d = pxDrvOf(c); if (d) b.d = d; return b; };
+    const x = pxList(c).map(e => [e.P.id, e.fin]); if (x.length) b.x = x; const q = pxExOf(c); if (q) b.q = q; if (c.tintL) b.t = c.tintL; if (c.neon) b.n = c.neon; if (pxbId(c) || pxbCol(c)) b.k = [pxbId(c), pxbCol(c)]; const e = pxEngOf(c); if (e) b.e = e; const d = pxDrvOf(c); if (d) b.d = d; const a = c.audio; if (a && (a.subs && a.subs !== 'none' || a.doors && a.doors !== 'stock')) b.a = [a.subs || 'none', a.doors || 'stock', PXA_GRL[a.grl] ? a.grl : '', a.cap ? 1 : 0, a.dsp ? 1 : 0]; return b; };
   const _pxClean = cleanBuild;
   cleanBuild = function (b) { const o = _pxClean(b); if (!b || typeof b !== 'object') return o;
     if (Array.isArray(b.x)) { const px = {}; for (const e of b.x.slice(0, 20)) { if (!Array.isArray(e) || typeof e[0] !== 'string' || !/^[a-z0-9]{2,12}-[a-z]{3}-[a-z0-9]{1,4}$/.test(e[0]) || !PX_FIN[e[1]]) continue; const slot = e[0].split('-')[1]; if (PX_SLOTS[slot]) px[slot] = [e[0], e[1]]; } if (Object.keys(px).length) o.px = px; }
     if (typeof b.q === 'string') { const q = b.q.split('|'); if (q.length === 4 && PX_EXQ.hdr.includes(q[0]) && PX_EXQ.cats.includes(q[1]) && PX_EXQ.exh.includes(q[2]) && (q[3] === '0' || q[3] === '1')) o.exq = q; }
     if (typeof b.e === 'string') { const q = b.e.split('|'); if (q.length === 6 && q.every(v => PXE_KEYS.includes(v))) o.ebq = b.e; }
     if (typeof b.d === 'string' && /^[01]{3}$/.test(b.d)) o.drq = b.d;
+    if (Array.isArray(b.a) && SUBS.some(x => x.id === b.a[0]) && DOORS.some(x => x.id === b.a[1])) o.audio = { subs: b.a[0], doors: b.a[1], grl: PXA_GRL[b.a[2]] ? b.a[2] : '', cap: b.a[3] === 1 ? 1 : 0, dsp: b.a[4] === 1 ? 1 : 0 };
     if (Array.isArray(b.k) && (b.k[0] === '' || (typeof b.k[0] === 'string' && PART_BY_ID[b.k[0]] && PART_BY_ID[b.k[0]].cat === 'brakes')) && (b.k[1] === '' || /^#[0-9a-f]{6}$/.test(b.k[1]))) o.bk = [b.k[0], b.k[1]];
     if ([35, 20, 5].includes(b.t)) { o.tintL = b.t; o.tint = true; } if (typeof b.n === 'string' && KS_NEON.some(n => n[1] === b.n)) o.neon = b.n; return o; };
 
@@ -28968,6 +28973,96 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   // the close-ups aim at this car's own wheel and cabin
   Object.assign(KS_SHOTS, { pxstw: { az: 97, el: 10, d: 0.27, tx: 0.03, tr: -0.37, ty: 1.02, open: 'doors' }, pxcage: { az: 115, el: 14, d: 0.6, ty: 0.95, open: 'doors' } });
   function pxIntCam(id) { const F = pxFit(id), C = F && pxCabin(F); if (!C) return; KS_SHOTS.pxstw.at = [C.e[0] + 0.4, C.e[1] - 0.14, C.e[2]]; KS_SHOTS.pxcage.at = [C.xh + 0.35, C.e[1] - 0.12, 0]; }
+  // ---- trunk audio: the sub boxes are each car's own (c.audio.subs). These bolt on to them: grilles over the cones, a capacitor
+  //      and a signal processor on the floor beside the amp, with their wiring. c.audio = { subs, doors, grl, cap, dsp } ----
+  const PXA_KIND = { '2x10': 't10', '2x12': 't12', '2x15': 't15', '4x12': 'q12' };
+  const PXA_GRL = { bar: ['Bar grilles', 'Five steel bars over each cone, on four standoffs', 40, 0.35], mesh: ['Mesh grilles', 'Polished rings and spokes, domed over each cone', 65, 0.4] };
+  const PXA_CAP = ['2 farad capacitor', 'Beside the amp on a fused 4-gauge feed. Holds the voltage up on the big notes: hits a little harder', 260, 2.4, 0.04];
+  const PXA_DSP = ['Signal processor', 'Tunes the box to the trunk: digs 10 Hz deeper and takes a third of the rattle out', 420, 0.9];
+  // the box this car has for a layout, measured: the baffle the cones sit in, each cone, the amp on the floor behind it
+  function pxAudBox(F, k) {
+    const M = F.aud || (F.aud = {}); if (M[k] !== undefined) return M[k]; M[k] = null; const T = CARS3D.done[F.id], v = T && T.audio && T.audio.subs && T.audio.subs[k]; if (!v || !(v.cones || []).length) return null;
+    const bb = parts => { const b = [9, 9, 9, -9, -9, -9]; for (const g of parts) { const p = g.geo.attributes.position.array; for (let i = 0; i < p.length; i++) { const a = i % 3; if (p[i] < b[a]) b[a] = p[i]; if (p[i] > b[a + 3]) b[a + 3] = p[i]; } } return b; };
+    const B = v.body.map(g => bb([g])), cx0 = v.cones[0].pos[0], baf = B.filter(b => b[3] - b[0] < 0.03 && b[4] - b[1] > 0.2).sort((a, b) => Math.abs(a[0] - cx0) - Math.abs(b[0] - cx0))[0]; if (!baf) return null;
+    const low = B.filter(b => b[0] < baf[0] - 0.1 && b[4] - b[1] < 0.08 && b[1] < baf[1] + 0.04 && b[5] - b[2] < baf[5] - baf[2]);
+    const amp = low.length ? low.reduce((s, b) => [Math.min(s[0], b[0]), Math.min(s[1], b[1]), Math.min(s[2], b[2]), Math.max(s[3], b[3]), Math.max(s[4], b[4]), Math.max(s[5], b[5])]) : null; if (amp) amp[3] = Math.min(amp[3], baf[0]);   // the part of it out in the open
+    if (v.cones.some(c => { const b = bb(c.parts); return b[4] - b[1] < b[3] - b[0]; })) return null;   // cones that fire up through the floor: nothing here fits them
+    const cones = v.cones.map(c => { const b = bb(c.parts); return { p: c.pos, R: Math.max(b[4], b[5], -b[1], -b[2]), xf: c.pos[0] + b[0] }; });
+    const zmax = Math.max(...B.map(b => b[5])) - 0.02, L = amp ? amp[3] - amp[0] : 0;   // room on the floor each side of the amp
+    return M[k] = { baf, amp, cones, zmax, cap: !!amp && amp[5] + 0.06 + 0.036 + 0.012 < zmax && L > 0.16, dsp: !!amp && -(amp[2] - 0.022 - 0.085 - 0.012) < zmax && L > 0.15 };
+  }
+  const pxaOf = c => (c && c.audio) || null;
+  function pxAudOf(c, id) {   // 'layout|grille|cap|dsp' when something of ours is in the trunk
+    const a = pxaOf(c), k = a && PXA_KIND[a.subs]; id = id || (c && c.id); if (!k || !PX_CARS[id] || !(PXA_GRL[a.grl] || a.cap || a.dsp)) return '';
+    return `${k}|${PXA_GRL[a.grl] ? a.grl : ''}|${a.cap ? 1 : 0}|${a.dsp ? 1 : 0}`;
+  }
+  function pxaKg(c) { const a = pxaOf(c), s = a && SUBS.find(x => x.id === a.subs); if (!s || !s.n || !PX_CARS[c.id]) return 0; return (PXA_GRL[a.grl] ? PXA_GRL[a.grl][3] * s.n : 0) + (a.cap ? PXA_CAP[3] : 0) + (a.dsp ? PXA_DSP[3] : 0); }
+  // o: { k, grl, cap, dsp }
+  PXG.audio = (F, K, o) => {
+    const A = pxAudBox(F, o.k); if (!A) return false; const { baf, amp, cones } = A; let any = false;
+    if (o.grl) { const G = K.b(o.grl === 'mesh' ? 'st' : 'tb'), bolt = K.b('st');
+      for (const c of cones) { const R = c.R + 0.006, x = c.xf - 0.03, cy = c.p[1], cz = c.p[2];
+        const yl = amp && x > amp[0] && x < amp[3] && cz + R > amp[2] && cz - R < amp[5] ? amp[4] + 0.008 : -9, Y = y => Math.max(yl, y);   // the ring sits flat on the amp where it reaches it
+        const ring = (r, dx) => { const P = []; for (let i = 0; i <= 40; i++) { const a = i / 40 * Math.PI * 2; P.push([x + dx, Y(cy + Math.sin(a) * r), cz + Math.cos(a) * r]); } return P; };
+        pxTube(G, ring(R, 0), 0.006, 8);
+        if (o.grl === 'bar') for (let j = -2; j <= 2; j++) { const y = cy + j * R * 0.36, w = Math.sqrt(R * R - (y - cy) * (y - cy)); if (y > yl + 0.004) pxTube(G, [[x, y, cz - w], [x, y, cz + w]], 0.0038, 6); }
+        else { pxTube(G, ring(R * 0.66, -0.006), 0.003, 6); pxTube(G, ring(R * 0.33, -0.011), 0.003, 6);
+          for (let i = 0; i < 8; i++) { const a = (i + 0.5) / 8 * Math.PI * 2, s = Math.sin(a), q = Math.cos(a); pxTube(G, [[x - 0.013, Y(cy + s * 0.016), cz + q * 0.016], [x - 0.011, Y(cy + s * R * 0.33), cz + q * R * 0.33], [x - 0.006, Y(cy + s * R * 0.66), cz + q * R * 0.66], [x, Y(cy + s * R), cz + q * R]], 0.003, 6); }
+          pxTurn(G, [x - 0.013, cy, cz], 0, [[-0.004, 0.012], [-0.002, 0.018], [0.003, 0.018]], 12); }
+        for (let i = 0; i < 4; i++) { const a = (i + 0.5) / 4 * Math.PI * 2, py = cy + Math.sin(a) * R, pz = cz + Math.cos(a) * R; if (py < yl + 0.004) continue;
+          pxTurn(G, [x, py, pz], 0, [[0, 0.0048], [Math.min(0.075, baf[0] - x + 0.002), 0.0048]], 8); pxTurn(bolt, [x, py, pz], 0, [[-0.009, 0.005], [-0.007, 0.0085], [-0.002, 0.0085]], 6); }
+        any = true; } }
+    const xm = amp ? (amp[0] + amp[3]) / 2 : 0, fl = amp ? amp[1] : 0;
+    if (o.cap && A.cap) { const r = 0.036, L = Math.min(0.22, amp[3] - amp[0] - 0.04), zc = amp[5] + 0.06, y = fl + 0.014 + r, x0 = xm - L / 2, x1 = xm + L / 2;
+      const al = K.b('al'), blk = K.b('tb');
+      pxTurn(al, [x0, y, zc], 0, [[0.018, r], [L - 0.006, r], [L, r * 0.82]], 20);
+      pxTurn(blk, [x0, y, zc], 0, [[0, r * 0.86], [0.004, r + 0.0015], [0.018, r + 0.0015]], 20); pxTurn(K.b('lens'), [x0, y, zc], 0, [[-0.002, 0.004], [-0.002, 0.017], [0, 0.017]], 14);
+      for (const d of [0.05, L - 0.05]) pxBox(blk, x0 + d, fl + 0.012, zc, 0.03, 0.024, r * 2 + 0.02);
+      const tp = [x0 + 0.03, y + r + 0.004, zc + 0.014], tn = [x0 + 0.03, y + r + 0.004, zc - 0.014];   // the two posts on top, by the display end
+      pxTurn(K.b('red'), tp, 1, [[-0.006, 0.007], [0.008, 0.007]], 8); pxTurn(blk, tn, 1, [[-0.006, 0.007], [0.008, 0.007]], 8);
+      // + to the amp, - to a floor bolt, and the fused feed in from the battery through a grommet in the baffle
+      pxTube(K.b('red'), pxCurve([[tp[0], tp[1] + 0.004, tp[2]], [tp[0] - 0.02, tp[1] + 0.03, zc - 0.01], [tp[0] - 0.03, fl + 0.06, amp[5] + 0.02], [tp[0] - 0.03, fl + 0.028, amp[5] - 0.004]], 4), 0.0055, 8);
+      pxTube(K.b('rub'), pxCurve([[tn[0], tn[1] + 0.004, tn[2]], [tn[0] - 0.035, tn[1] + 0.02, tn[2]], [x0 - 0.035, fl + 0.03, zc - 0.02], [x0 - 0.04, fl + 0.004, zc - 0.02]], 4), 0.0055, 8);
+      pxTurn(bolt_(K), [x0 - 0.04, fl, zc - 0.02], 1, [[0, 0.011], [0.004, 0.011], [0.004, 0.007], [0.009, 0.007]], 6);
+      const gy = baf[1] + 0.035, gx = baf[0];
+      pxTube(K.b('red'), pxCurve([[tp[0] + 0.004, tp[1] + 0.004, tp[2]], [tp[0] + 0.05, tp[1] + 0.035, zc + 0.012], [x1 - 0.03, tp[1] + 0.02, zc + 0.014], [gx - 0.03, gy + 0.012, zc + 0.008], [gx + 0.004, gy, zc]], 4), 0.0055, 8);
+      pxTurn(K.b('tank'), [x1 - 0.075, tp[1] + 0.026, zc + 0.014], 0, [[0, 0.007], [0.004, 0.012], [0.05, 0.012], [0.054, 0.007]], 10);   // the fuse holder
+      pxTurn(K.b('rub'), [gx, gy, zc], 0, [[-0.006, 0.009], [-0.006, 0.015], [0.001, 0.015]], 10); any = true; }
+    if (o.dsp && A.dsp) { const W = 0.085, zd = amp[2] - 0.022 - W / 2, L = Math.min(0.19, amp[3] - amp[0] - 0.03), H = 0.034, y = fl + 0.006 + H / 2;
+      const al = K.b('al'), blk = K.b('tb');
+      pxBox(al, xm, y, zd, L - 0.012, H, W); for (const s of [-1, 1]) pxBox(blk, xm + s * (L / 2 - 0.003), y, zd, 0.006, H + 0.004, W + 0.004);
+      for (const s of [-1, 1]) pxBox(blk, xm + s * (L / 2 - 0.03), fl + 0.003, zd, 0.02, 0.006, W + 0.03);
+      pxBox(K.b('lens'), xm - L / 2 - 0.0005, y + 0.004, zd + 0.02, 0.002, 0.012, 0.03);   // the display, on the end you see from the bumper
+      for (let i = 0; i < 4; i++) pxTurn(K.b('st'), [xm - L / 2, y - 0.006, zd - 0.034 + i * 0.012], 0, [[-0.008, 0.0035], [0, 0.0035]], 6);
+      // two signal leads over to the amp
+      for (const d of [-0.025, 0.025]) pxTube(K.b('sil'), pxCurve([[xm + d, y, zd + W / 2], [xm + d, y + 0.03, zd + W / 2 + 0.008], [xm + d, fl + 0.045, amp[2] - 0.006], [xm + d, fl + 0.026, amp[2] + 0.004]], 4), 0.004, 8);
+      any = true; }
+    return any;
+  };
+  function bolt_(K) { return K.b('st'); }
+  // the sim: the capacitor adds a little output, the processor retunes the low end (see applyAudioBuild)
+  const _pxAudioBuild = audioBuild;
+  audioBuild = function (c) { const b = _pxAudioBuild(c), a = pxaOf(c); b.ax = ''; if (a && b.subs.n && c && PX_CARS[c.id]) { if (a.cap) b.pow = Math.min(1.15, b.pow + PXA_CAP[4]); b.dsp = !!a.dsp; b.ax = (a.cap ? 'c' : '') + (a.dsp ? 'd' : ''); } return b; };
+  // ---- the bay: Trunk audio ----
+  Object.assign(KS_SHOTS, { pxaud: { az: 168, el: 32, d: 0.5, tx: -0.7, ty: 0.9, open: 'trunk' } });
+  // (the Challenger's trunk is a deep well behind a tall lip, so its camera looks down steeper)
+  function pxAudCam(P) { const F = pxFit(P.id), a = pxaOf(P), A = F && a && PXA_KIND[a.subs] && pxAudBox(F, PXA_KIND[a.subs]), S0 = KS_SHOTS.pxaud;
+    if (A) { S0.at = [A.baf[0] - 0.12, (A.baf[1] + A.baf[4]) / 2, 0]; S0.d = 0.34; S0.el = PX_CARS[P.id][0] === 'challwb' ? 60 : F.rear === 'trunk' ? 42 : 30; } else { delete S0.at; S0.d = 0.5; S0.el = 32; } }
+  const pxaSet = (x, o) => { x.audio = Object.assign({ subs: 'none', doors: 'stock' }, x.audio, o); };
+  function pxAudio() {
+    const c = S.car, rate = ksRate(), a = Object.assign({ subs: 'none', doors: 'stock' }, c.audio), sub = SUBS.find(x => x.id === a.subs) || SUBS[0], F = pxFit(c.id), rows = []; pxAudCam(c);
+    const A = F && PX_CARS[c.id] && sub.n ? pxAudBox(F, PXA_KIND[a.subs]) : null, need = !sub.n ? 'Needs subs in the trunk first' : !A ? 'The box on this car is sealed: nothing to bolt these to' : '', room = ok => need || (ok ? '' : 'No floor left beside the amp with this box');
+    for (const x of SUBS) rows.push({ ic: x.n ? '🔊' : '📻', t: x.name, s: x.desc + (x === sub ? '' : x.n ? '' : ' Everything else stays on the shelf'), price: x === sub ? 0 : Math.round(x.price * rate), on: x === sub, what: x.name, cam: 'pxaud', pv: P => { pxaSet(P, { subs: x.id }); pxAudCam(P); }, fx: X => { pxaSet(X, { subs: x.id }); if (X === S.car) pxAudCam(X); } });
+    rows.push({ ic: '🚪', t: 'Door speakers: ' + (DOORS.find(x => x.id === a.doors) || DOORS[0]).name, s: 'Mids and highs over the bass', go: pxAudDoors, cam: 'inside' });
+    for (const [k, [n, d, p, kg]] of Object.entries(PXA_GRL)) { const on = a.grl === k; rows.push({ ic: '🕸️', t: n, s: need || `${d} · ${pxFx(kg * sub.n, [0, 0, 0])}`, price: on ? 0 : Math.round(p * sub.n * rate), on, off: !!need, what: n, cam: 'pxaud', fx: X => pxaSet(X, { grl: k }) }); }
+    rows.push({ ic: '🔋', t: PXA_CAP[0], s: room(A && A.cap) || `${PXA_CAP[1]} · ${pxFx(PXA_CAP[3], [0, 0, 0])}`, price: a.cap ? 0 : Math.round(PXA_CAP[2] * rate), on: !!a.cap, off: !!room(A && A.cap), what: PXA_CAP[0], cam: 'pxaud', fx: X => pxaSet(X, { cap: 1 }) });
+    rows.push({ ic: '🎚️', t: PXA_DSP[0], s: room(A && A.dsp) || `${PXA_DSP[1]} · ${pxFx(PXA_DSP[3], [0, 0, 0])}`, price: a.dsp ? 0 : Math.round(PXA_DSP[2] * rate), on: !!a.dsp, off: !!room(A && A.dsp), what: PXA_DSP[0], cam: 'pxaud', fx: X => pxaSet(X, { dsp: 1 }) });
+    if (a.grl || a.cap || a.dsp) rows.push({ ic: '↩️', t: 'Pull the add-ons', s: 'Grilles, capacitor and processor come out. The subs stay', price: 0, what: 'Add-ons out', cam: 'pxaud', fx: X => pxaSet(X, { grl: '', cap: 0, dsp: 0 }) });
+    const b = audioBuild(c);
+    return { title: 'Trunk audio', sub: `${sub.name} · output ${Math.round(b.pow * 100)}%${b.dsp ? ' · tuned' : ''}`, cam: 'pxaud', rows };
+  }
+  function pxAudDoors() { const c = S.car, rate = ksRate(), cur = (c.audio && c.audio.doors) || 'stock';
+    return { title: 'Door speakers', sub: 'In the door cards', cam: 'inside', rows: DOORS.map(x => ({ ic: '🚪', t: x.name, s: x.desc, price: x.id === cur ? 0 : Math.round(x.price * rate), on: x.id === cur, what: x.name, cam: 'inside', fx: X => pxaSet(X, { doors: x.id }) })) }; }
   function pxEngPage() {
     const c = S.car, q = pxEngOf(c).split('|'), nm = (cat) => { const k = (c.eb || {})[cat] || 'stock'; try { const o = partOpt(c.eb || {}, cat); if (o && o.name) return o.name; } catch (e) {} return ((ENG_PARTS[cat] || { opts: {} }).opts[k] || {}).name || k; };
     const row = (ic, cat, on, s) => ({ ic, t: ENG_PARTS[cat].label + ': ' + nm(cat), s: on ? s : 'Factory: nothing extra to see', act: () => elOpen(cat === 'power' || cat === 'icool' || cat === 'meth' ? 'boost' : 'parts'), cam: 'engine' });
@@ -28980,7 +29075,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   const pxHasEx = c => !!c && !!pxExOf(c, true);
   const pxHas = c => !!c && pxCatalog(c.id).length > 0;
   PX_ON = true;
-  window.__px = { PX_FITS, PX_GEO, PXG, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxUnder, pxExOf, pxApply, pxBrakes, pxbApply, PXB_SPEC, PXB_G, pxEngOf, pxEngPage, pxDrvOf, pxDrvPage, pxInterior, pxHasInt, pxSteer, pxCabin, pxBelly, pxdCat, pxLand, pxDeck, carData, rowsOf: cat => PARTS.rows.filter(p => p.cat === cat && partFits(p, carOf(S.car.id))), veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
+  window.__px = { PX_CARS, T: id => CARS3D.done[id], PX_FITS, PX_GEO, PXG, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxUnder, pxExOf, pxApply, pxBrakes, pxbApply, PXB_SPEC, PXB_G, pxEngOf, pxEngPage, pxDrvOf, pxDrvPage, pxAudio, pxAudOf, pxAudBox, audioBuild: c => audioBuild(c), pxInterior, pxHasInt, pxSteer, pxCabin, pxBelly, pxdCat, pxLand, pxDeck, carData, rowsOf: cat => PARTS.rows.filter(p => p.cat === cat && partFits(p, carOf(S.car.id))), veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
   // ==== aftermarket parts (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
