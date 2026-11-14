@@ -24,7 +24,7 @@ const PORT = process.env.PORT || 8791, S = process.env.S, OUT = process.env.OUT,
   await pg.waitForFunction(() => window.__ks.KS.model, null, { timeout: 120000, polling: 500 });
   await ev(() => window.__ks.ksSkip()); await wait(2500);
   const nav = async (title, n) => { const ok = await ev(t => { const K = window.__ks, i = K.KS.rows.findIndex(r => r.t.includes(t)); if (i < 0) return false; K.ksSelect(i); K.ksActivate(); return true; }, title); await wait(n || 1500); return ok; };
-  const sel = async (title, n) => { const r = await ev(t => { const K = window.__ks, i = K.KS.rows.findIndex(r => r.t.includes(t)); if (i < 0) return null; K.ksSelect(i); const R = K.KS.rows[i]; return { t: R.t, s: R.s, price: R.price, on: !!R.on, off: !!R.off, prev: K.KS.P.px, meshes: (K.KS.model.userData.pxM || []).filter(o => o.userData.px !== 'exh').length }; }, title); await wait(n || 2600); return r; };
+  const sel = async (title, n) => { const r = await ev(t => { const K = window.__ks, i = K.KS.rows.findIndex(r => r.t.includes(t)); if (i < 0) return null; K.ksSelect(i); const R = K.KS.rows[i]; return { t: R.t, s: R.s, price: R.price, on: !!R.on, off: !!R.off, prev: K.KS.P.px, meshes: (K.KS.model.userData.pxM || []).filter(o => o.userData.px !== 'exh' && o.userData.px !== 'drv').length }; }, title); await wait(n || 2600); return r; };
   const buy = async () => { await ev(() => window.__ks.ksActivate()); await wait(700); return ev(() => ({ px: window.__map.S.car.px, cash: window.__map.S.cash })); };
   const R = {};
   R.home = await nav('Aero & body parts'); await shot('01-parts-menu');
@@ -33,7 +33,7 @@ const PORT = process.env.PORT || 8791, S = process.env.S, OUT = process.env.OUT,
   await nav('Canards'); R.needs = await sel('double canards', 400); await ev(() => window.__ks.ksBack()); await wait(400);
   // splitter: preview, back out without buying, then buy the race splitter in gloss carbon
   await nav('Front splitter'); R.pv = await sel('race splitter'); await shot('02-splitter-preview');
-  await ev(() => window.__ks.ksBack()); await wait(900); R.afterBack = await ev(() => ({ px: window.__map.S.car.px || null, meshes: (window.__ks.KS.model.userData.pxM || []).filter(o => o.userData.px !== 'exh').length }));
+  await ev(() => window.__ks.ksBack()); await wait(900); R.afterBack = await ev(() => ({ px: window.__map.S.car.px || null, meshes: (window.__ks.KS.model.userData.pxM || []).filter(o => o.userData.px !== 'exh' && o.userData.px !== 'drv').length }));
   await nav('Front splitter'); await nav('Finish'); await sel('Gloss carbon', 1800); await shot('03-finish-carbon'); await ev(() => window.__ks.ksActivate()); await wait(700);
   const c0 = await ev(() => window.__map.S.cash); R.pick = await sel('race splitter', 600); R.b1 = await buy(); R.paid = c0 - R.b1.cash;
   await ev(() => window.__ks.ksBack()); await wait(400);
