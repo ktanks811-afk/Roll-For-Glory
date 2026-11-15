@@ -125,6 +125,14 @@ const PORT = process.env.PORT || 8791, S = process.env.S, OUT = process.env.OUT,
   await sel('Bar grilles', 1500); await buy(); await wait(800); await sel('capacitor', 1500); await buy(); await wait(800); await sel('Signal processor', 1500); await buy(); await wait(1500); await shot('24-trunk-audio'); R.aud = await audStat();
   R.audNet = await ev(() => { const X = window.__px, b = X.myBuild(), o = X.cleanBuild(JSON.parse(JSON.stringify(b))); return { sent: b.a, got: o.audio, bad: X.cleanBuild({ a: ['9x99', 'stock', '', 1, 1] }).audio || null }; });
   await sel('Pull the add-ons', 800); await buy(); await wait(1500); await ev(() => window.__ks.ksSelect(0)); await wait(1500); R.audOff = await audStat();
+  // parts only one car gets, and the Copperhead's restoration rows ahead of its made-up aftermarket
+  R.own = await ev(() => { const X = window.__px, M = window.__map, own = id => X.pxCatalog(id).filter(p => p.own), o = {};
+    for (const id of ['bmw_m5_g90_2025', 'jeep_grand_cherokee_trackhawk_2018', 'chevrolet_corvette_z06_c7_2019', 'kia_stinger_gt2_2022']) o[id] = own(id).length;
+    const ids = new Set(), dup = []; for (const id of Object.keys(X.PX_CARS)) for (const p of X.pxCatalog(id)) { if (ids.has(p.id)) dup.push(p.id); ids.add(p.id); }
+    const keep = M.S.car; let cu; try { M.S.car = M.newCar('dodge_copperhead_1997'); M.S.car.color = '#111114'; M.S.car.px = { spl: ['copper-spl-st', 'sb'] }; const rows = X.pxHome().rows, t = rows.map(r => r.t), i0 = t.indexOf('CONCEPT RESTORATION'), i1 = t.indexOf('FICTIONAL AFTERMARKET');
+      const P = { color: '#111114', matte: true, px: { a: 1 }, rims: { id: 'x' } }; for (const r of rows.slice(i0 + 1, i1)) r.fx(P);
+      cu = { i0, i1, n: rows.length, hdrOff: !!(rows[i0] && rows[i0].off && rows[i1].off), slotsAfter: rows.findIndex(r => /splitter/i.test(r.t)) > i1, paint: rows[i0 + 1].price > 0, P }; } finally { M.S.car = keep; }
+    const other = X.pxHome().rows.some(r => /RESTORATION|FICTIONAL/.test(r.t)); return { o, dup: dup.length, cu, other }; });
   await ev(() => { window.__ks.ksBack(); window.__ks.ksSelect(0); }); await wait(1500);
   // drive out: the parts are on the street car and in the save
   await ev(() => window.__ks.ksLeave()); await pg.waitForFunction(() => !window.__ks.KS.on, null, { timeout: 30000, polling: 200 }); await wait(4000); await shot('13-street');
@@ -136,7 +144,7 @@ const PORT = process.env.PORT || 8791, S = process.env.S, OUT = process.env.OUT,
       for (const q of E || []) { const p = q.geo.attributes.position; for (let i = 0; i < p.count; i++) if (p.getY(i) < low) low = p.getY(i); }
       out[id] = [cat.length, fit, Math.round(tris / Math.max(1, fit)), no.join(','), dt, deep, +low.toFixed(3)]; }
     return out; });
-  console.log(JSON.stringify({ aud0: R.aud0, audNeed: R.audNeed, audPvS: R.audPvS, audSub: R.audSub, aud: R.aud, audNet: R.audNet, audOff: R.audOff, int0: R.int0, stwPvS: R.stwPvS, stw: R.stw, stwTurn: R.stwTurn, cag: R.cag, intNet: R.intNet, stwOff: R.stwOff, drv0: R.drv0, drvPv: R.drvPv, drvSw: R.drvSw, dfPv: R.dfPv, drvDf: R.drvDf, drvNet: R.drvNet, drvAll: Object.fromEntries(Object.entries(R.all).map(([k, v]) => [k.split('_').slice(0, 3).join('_'), v.slice(4)])), eng0: R.eng0, eng: R.eng, bk0: R.bk0, bkPv: R.bkPv, bkBuy: R.bkBuy, bkPaid: R.bkPaid, bkSpin: R.bkSpin, bkCol: R.bkCol, ex0: R.ex0, ex1: R.ex1, down: R.down, street: R.street, sim: R.sim })); console.log('base', JSON.stringify(base));
+  console.log(JSON.stringify({ own: R.own, aud0: R.aud0, audNeed: R.audNeed, audPvS: R.audPvS, audSub: R.audSub, aud: R.aud, audNet: R.audNet, audOff: R.audOff, int0: R.int0, stwPvS: R.stwPvS, stw: R.stw, stwTurn: R.stwTurn, cag: R.cag, intNet: R.intNet, stwOff: R.stwOff, drv0: R.drv0, drvPv: R.drvPv, drvSw: R.drvSw, dfPv: R.dfPv, drvDf: R.drvDf, drvNet: R.drvNet, drvAll: Object.fromEntries(Object.entries(R.all).map(([k, v]) => [k.split('_').slice(0, 3).join('_'), v.slice(4)])), eng0: R.eng0, eng: R.eng, bk0: R.bk0, bkPv: R.bkPv, bkBuy: R.bkBuy, bkPaid: R.bkPaid, bkSpin: R.bkSpin, bkCol: R.bkCol, ex0: R.ex0, ex1: R.ex1, down: R.down, street: R.street, sim: R.sim })); console.log('base', JSON.stringify(base));
   const tot = Object.values(R.all).reduce((s, v) => [s[0] + v[0], s[1] + v[1]], [0, 0]); console.log('catalog', tot[0], 'parts,', tot[1], 'fit');
   const ok = opened && R.home && R.needs && R.needs.off && /Needs a front splitter/.test(R.needs.s) && R.pv && R.pv.meshes > 0 && !R.afterBack.px && R.afterBack.meshes === 0 && R.b1.px.spl[1] === 'cg' && R.paid > 0 && !R.needs2.off
     && R.wing.px.spo && R.lid.host === 'trunk' && !R.off.px.spl && !R.off.px.can && R.shelf.price === 0 && R.refitCost === 0 && R.refit.px.spl && R.sheet.rows.length >= 4
@@ -148,7 +156,9 @@ const PORT = process.env.PORT || 8791, S = process.env.S, OUT = process.env.OUT,
     && R.audPage && R.aud0.meshes === 0 && R.audNeed && R.audNeed.off && /Needs subs/.test(R.audNeed.s) && R.audPvS.kind === 't12' && R.audSub.audio.subs === '2x12' && R.audSub.cash < R.aud0.cash && R.audSub.meshes === 0
     && R.aud.meshes > 3 && R.aud.key === 't12|bar|1|1' && R.aud.pow > R.audSub.pow && R.aud.dsp && R.aud.ax === 'cd' && R.aud.kg > R.audSub.kg + 3 && R.aud.cash < R.audSub.cash && R.aud.lo >= R.aud.floor - 0.002 && R.aud.hi < R.aud.top && R.aud.wide < R.aud.zmax
     && R.audNet.sent && R.audNet.sent.join() === '2x12,stock,bar,1,1' && R.audNet.got && R.audNet.got.grl === 'bar' && R.audNet.got.cap === 1 && !R.audNet.bad && R.audOff.meshes === 0 && R.audOff.audio.subs === '2x12' && R.audOff.pow === R.audSub.pow
-    && Object.entries(R.all).every(([k, v]) => /tahoe|f_150|trx/.test(k) ? v[4] === 0 : v[4] > 1500 && v[5] === 0 && v[6] > 0.03) && R.street.bk === '2222' && R.street.exh && R.street.meshes > 0 && R.street.saved >= 4 && tot[1] >= tot[0] - 2 && !errs.length;
+    && Object.entries(R.all).every(([k, v]) => /tahoe|f_150|trx/.test(k) ? v[4] === 0 : v[4] > 1500 && v[5] === 0 && v[6] > 0.03) && R.street.bk === '2222' && R.street.exh && R.street.meshes > 0 && R.street.saved >= 4 && tot[1] >= tot[0] - 2
+    && R.own.o.bmw_m5_g90_2025 === 4 && R.own.o.jeep_grand_cherokee_trackhawk_2018 === 3 && R.own.o.chevrolet_corvette_z06_c7_2019 === 3 && R.own.o.kia_stinger_gt2_2022 === 4 && R.own.dup === 0 && !R.own.other
+    && R.own.cu.i0 === 0 && R.own.cu.i1 === 4 && R.own.cu.hdrOff && R.own.cu.slotsAfter && R.own.cu.paint && R.own.cu.P.color === '#9c3a10' && R.own.cu.P.matte === false && R.own.cu.P.rims === null && Object.keys(R.own.cu.P.px).length === 0 && !errs.length;
   if (!ok) { const D = Object.assign({}, R); delete D.all; console.log('detail', JSON.stringify(D), 'opened', opened); }
   console.log(ok ? 'PASS' : 'FAIL', 'ERR', errs.join('\n').slice(0, 2000) || 'none'); await b.close(); process.exit(ok ? 0 : 1);
 })();

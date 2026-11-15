@@ -28347,6 +28347,30 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     }
     if (is('truck')) { add('bed', 'sb', 'sport bar', 'A bed bar behind the cab with four lamps', 'bedbar', { lights: 4 }, 890, 28, 'tube', [0.06, 0, 0], { not: ['ton'] });
       add('ton', 't3', 'tri-fold bed cover', 'Hard cover, three panels', 'tonneau', { fold: 3 }, 1100, 25, 'blk', [-0.045, 0, 0], { not: ['bed'] }); }
+    // each car's own parts: shapes and sizes that only this body gets (on top of what its class shares)
+    const own = { own: 1 };
+    if (car('m5g90')) {
+      add('spl', 'cs', 'CS-pattern splitter', 'Deeper carbon blade with short end fences', 'splitter', { ext: 0.05, depth: 0.26, th: 0.012, fence: 0.05 }, 1650, 4.4, 'body', [0.014, -0.075, 0.004], own);
+      add('skt', 'cs', 'CS-pattern sill blades', 'Slim flat blades the length of the sill', 'skirt', { kind: 'blade', ext: 0.03, wing: 0 }, 890, 3.2, 'body', [0.001, -0.01, -0.01], own);
+      add('dif', 'cs', 'CS-pattern diffuser', 'Five deep fins between the quad tips', 'diffuser', { n: 5, w: 0.66, len: 0.36, drop: 0.045, fin: 0.075, prot: 0.02 }, 1250, 4.2, 'body', [-0.005, 0, -0.05], own);
+      add('spo', 'cs', 'CS-pattern lip spoiler', 'A taller carbon lip with a sharp kick', 'lip', { c: 0.11, h: 0.034, kick: 1.7 }, 780, 1.3, 'body', [0.006, 0.002, -0.034], own);
+    }
+    if (car('trackhawk')) {
+      add('hod', 'ra', 'ram-air hood scoop', 'Forward-facing scoop over the blower', 'scoop', { dir: 1, len: 0.36, w: 0.27, h: 0.055, back: 0.32 }, 820, 3.4, 'body', [0.016, 0, 0], own);
+      add('spo', 'tw', 'track roof wing', 'A long kicked blade off the roof edge', 'lip', { c: 0.14, h: 0.04, kick: 2.2, out: 0.22, fall: 0.04, top: 1, tip: 0.1 }, 940, 3.6, 'body', [0.008, 0, -0.05], own);
+      add('dif', 'tk', '6-fin track diffuser', 'Deeper tunnel between the quad tips', 'diffuser', { n: 6, w: 0.56, len: 0.36, drop: 0.05, fin: 0.07 }, 980, 4.6, 'body', [-0.005, 0, -0.04], own);
+    }
+    if (car('c7z')) {
+      add('spl', 'z7', 'Stage 3 splitter with end caps', 'Wide carbon blade, tall winglets at the corners', 'splitter', { ext: 0.06, depth: 0.3, th: 0.012, fence: 0.09 }, 1350, 4.8, 'body', [0.02, -0.11, 0.006], own);
+      add('skt', 'z7', 'Stage 3 carbon rockers', 'Wide blades with a winglet ahead of the rear wheel', 'skirt', { kind: 'blade', ext: 0.045, wing: 1 }, 1150, 3.8, 'body', [0.003, -0.014, -0.014], own);
+      add('spo', 'z7', 'Stage 3 wickerbill spoiler', 'Tall kicked blade across the tail', 'lip', { c: 0.12, h: 0.05, kick: 2.4 }, 995, 2, 'body', [0.03, 0.006, -0.11], own);
+    }
+    if (car('stinger')) {
+      add('spl', 'ap', 'aero-pack lip with fences', 'A low lip with a short fence each end', 'splitter', { ext: 0.045, depth: 0.22, th: 0.012, fence: 0.04 }, 740, 3.6, 'body', [0.01, -0.045, 0.002], own);
+      add('dif', 'q4', 'quad-exit diffuser', 'Four fins set between the four tips', 'diffuser', { n: 4, w: 0.6, len: 0.34, drop: 0.045, fin: 0.065 }, 880, 3.6, 'body', [-0.005, 0, -0.04], own);
+      add('spo', 'dl', 'liftback ducktail', 'A tall one-piece kick on the hatch edge', 'lip', { c: 0.2, h: 0.07, kick: 2.3 }, 620, 2.6, 'body', [0.014, 0.004, -0.06], own);
+      add('hod', 'v2', 'GT hood vents', 'Two short wide vent panels near the cowl', 'louver', { n: 4, len: 0.22, w: 0.13, at: 0.62 }, 520, 1, 'body', [0.002, -0.012, 0], own);
+    }
     // inside: a wheel on the car's own column, a bar or a cage bent to its own cabin
     const col = car('m5g90', 'stinger', 's550', 'challwb', 'c7z', 'copper', 'nova72', 'trackhawk', 'gls600');   // cars whose wheel turns on its own column
     if (!is('truck', 'suvo')) {
@@ -28465,6 +28489,12 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     int = int === 'int' ? 'int' : undefined; if (int) pxIntCam(S.car.id); const c = S.car, cat = pxCatalog(c.id), rows = [], on = c.px || {};
     for (const [slot, [name, ic, cam, grp]] of Object.entries(PX_SLOTS)) { const list = cat.filter(p => p.slot === slot); if (grp !== int || !list.length) continue; const cur = on[slot] && pxPart(c.id, on[slot][0]);
       rows.push({ ic, t: name, s: cur ? `${cur.n} · ${(PX_FIN[on[slot][1]] || PX_FIN.sb)[0]}` : `${list.length} made for this car`, go: PX_PAGES[slot] || (PX_PAGES[slot] = () => pxSlot(slot)), cam }); }
+    if (!int && PX_CARS[c.id] && PX_CARS[c.id][0] === 'copper') { const rate = ksRate(), stock = '#9c3a10', isStock = (c.color || '').toLowerCase() === stock && !c.matte, n = Object.keys(on).length, r = rimOf(c), back = r ? Math.round(rimPrice(r.line, c.rims.dia, { rate: 1 }) * 0.4) : 0;   // the concept comes first, and what was never made for it is marked as such
+      rows.unshift({ ic: '🏛️', t: 'CONCEPT RESTORATION', s: 'Back to how it stood on the 1997 show stand', off: true },
+        { sw: stock, t: 'Concept copper respray', s: isStock ? 'This is the show car color' : 'The original copper, gloss, as shown in 1997', price: isStock ? 0 : Math.round(1200 * rate), on: isStock, what: 'Concept copper', cam: 'paint', fx: x => { x.color = stock; x.matte = false; } },
+        { ic: '🛞', t: 'Original five-spoke wheels', s: r ? `Your ${r.name} come off and sell back for ${money(back)}` : 'On the car', price: 0, gain: back, on: !r, what: 'Concept wheels', cam: 'wheel', fx: x => { x.rims = null; } },
+        { ic: '🧹', t: 'Remove every aftermarket part', s: n ? `${n} part${n > 1 ? 's' : ''} come off and go on your shelf` : 'Nothing aftermarket on it', price: 0, on: !n, what: 'Back to concept trim', cam: 'overview', fx: x => { x.px = {}; } },
+        { ic: '🧪', t: 'FICTIONAL AFTERMARKET', s: 'None of this was ever made for the concept. It all unbolts', off: true }); }
     rows.push({ ic: '🧾', t: 'Build sheet', s: 'Everything bolted on, what it weighs and what it cost', go: pxSheet, cam: 'overview' });
     return { title: int ? 'Interior parts' : 'Aero & body parts', sub: pxSubLine(c), cam: int ? 'inside' : 'overview', rows };
   }
@@ -28476,7 +28506,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     const fins = [...new Set(cat.flatMap(p => p.fins))], f0 = pxFinOf(slot, cat[0], cur);
     if (fins.length > 1) rows.push({ sw: f0 === 'pm' ? c.color : PX_FSW[f0], t: `Finish · ${PX_FIN[f0][0]}`, s: fins.map(f => PX_FIN[f][0]).join(', '), go: PX_FPAGES[slot] || (PX_FPAGES[slot] = () => pxFins(slot)), cam });
     for (const P of cat) { if (!pxBuild(c.id, P)) continue; const fin = pxFinOf(slot, P, cur), on = !!cur && cur[0] === P.id && cur[1] === fin, own = !!(c.pxo && c.pxo[P.id + '|' + fin]), need = pxNeed(c, P);
-      rows.push({ ic, t: P.n, s: need || `${P.b} · ${P.d} · ${PX_FIN[fin][0]} · ${pxFx(P.kg * PX_FIN[fin][2], P.aero)}${own && !on ? ' · on your shelf' : ''}`, price: own ? 0 : Math.round(P.price * PX_FIN[fin][1] * rate), on, off: !!need, what: P.n, cam: P.cam || cam, fx: x => pxInstall(x, P, fin) }); }
+      rows.push({ ic, t: P.n, s: need || `${P.own ? 'Only made for this car' : P.b} · ${P.d} · ${PX_FIN[fin][0]} · ${pxFx(P.kg * PX_FIN[fin][2], P.aero)}${own && !on ? ' · on your shelf' : ''}`, price: own ? 0 : Math.round(P.price * PX_FIN[fin][1] * rate), on, off: !!need, what: P.n, cam: P.cam || cam, fx: x => pxInstall(x, P, fin) }); }
     if (cur) rows.push({ ic: '↩️', t: 'Take it off', s: 'Back to stock here. The part goes on your shelf, free to bolt back on', price: 0, what: name + ' off', cam, fx: x => pxRemove(x, slot) });
     return { title: name, sub: rows.length > (cur ? 1 : 0) + (fins.length > 1 ? 1 : 0) ? pxSubLine(c) : 'Nothing in this spot fits this body', cam, rows };
   }
