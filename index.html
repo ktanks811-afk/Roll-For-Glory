@@ -26496,6 +26496,7 @@ float erF( vec2 p ) { return erN( p ) * 0.55 + erN( p * 2.07 + 13.1 ) * 0.3 + er
     if (typeof pxDrvPage === 'function' && pxHasDrv(c)) rows.push({ ic: '🛞', t: 'Drivetrain & suspension', s: 'Up on the lift: gearbox, propshaft, diff, sway bars', go: pxDrvPage, cam: 'pxdrv' });
     if (typeof pxEngPage === 'function' && pxHasEx(c) && !c.swap && !c.engX) rows.push({ ic: '🐌', t: 'Under the hood', s: 'Intake, turbo and blower kits, intercooler: what the engine build bolted on', go: pxEngPage, cam: 'engine' });
     if (typeof pxHasEx === 'function' && pxHasEx(c)) rows.push({ ic: '💨', t: 'Exhaust & underside', s: 'Up on the lift: see the system the engine build has', go: pxUnder, cam: 'pxunder' });
+    if (typeof pxGarage === 'function') rows.push({ ic: '📋', t: "Mechanic's build sheet", s: 'Stock against your build: power, weight, every part and what it lists for', go: pxGarage, cam: 'overview' });
     rows.push({ ic: '🔧', t: 'Workshop', s: 'Engine Lab, tuning, drag packs, audio, repairs', go: ksShop, cam: 'engine' });
     rows.push({ ic: '🚪', t: 'Drive out', s: 'Roll the door up and leave', act: ksLeave, cam: 'overview' });
     return { title: (p.name || 'Custom bay').replace(/ \(.*\)$/, ''), sub: `${carLabel(carOf(c.id))} · ${carHp(c)} hp`, cam: 'overview', rows };
@@ -29154,6 +29155,30 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   myBuild = function () { const b = _pxmMy(), c = S.car; if (!b || !c || !c.moto || !c.moto.p) return b; const v = PXM_NET.map(([k, L, d]) => L.includes(c.moto.p[k]) ? c.moto.p[k] : d); if (v.some((x, i) => x !== PXM_NET[i][2])) b.m = v; return b; };
   const _pxmClean = cleanBuild;
   cleanBuild = function (b) { const o = _pxmClean(b); if (!o || !b || !Array.isArray(b.m)) return o; const p = {}; PXM_NET.forEach(([k, L, d], i) => { if (L.includes(b.m[i]) && b.m[i] !== d) p[k] = b.m[i]; }); if (Object.keys(p).length) o.moto = { p }; return o; };
+  // ---- the mechanic's build sheet: the whole car on one page, stock against what it is now, every part and what it lists for ----
+  function pxgItems(c) {   // [group, name, list price]
+    const L = [], b = c.eb || {};
+    for (const { slot, P, fin } of pxList(c)) L.push([PX_SLOTS[slot][3] === 'int' ? 'Interior' : 'Body & aero', P.n, Math.round(P.price * PX_FIN[fin][1])]);
+    for (const id of Object.values(c.parts || {})) { const p = PART_BY_ID[id]; if (p) L.push(['Bolt-on parts', `${p.brand} ${p.name}`, pxbPrice(p)]); }
+    for (const cat of Object.keys(ENG_PARTS)) { if (!b[cat] || !ENG_PARTS[cat].opts) continue; let o = null; try { o = partOpt(b, cat); } catch (e) {} if (o && o.name && o.price > 0) L.push(['Engine build', o.name, Math.round(o.price)]); }
+    const r = rimOf(c); if (r) L.push(['Wheels', `${r.name} · ${c.rims.dia} in`, Math.round(rimPrice(r.line, c.rims.dia, { rate: 1 }))]);
+    const a = c.audio || {}, sb = SUBS.find(x => x.id === a.subs), dr = DOORS.find(x => x.id === a.doors);
+    if (sb && sb.price) L.push(['Audio', sb.name, sb.price]); if (dr && dr.price) L.push(['Audio', dr.name, dr.price]);
+    if (PXA_GRL[a.grl] && sb && sb.n) L.push(['Audio', PXA_GRL[a.grl][0], PXA_GRL[a.grl][2] * sb.n]); if (a.cap) L.push(['Audio', PXA_CAP[0], PXA_CAP[2]]); if (a.dsp) L.push(['Audio', PXA_DSP[0], PXA_DSP[2]]);
+    return L;
+  }
+  const PXG_GO = { 'Body & aero': ['🧩', () => pxHome(), 'overview'], 'Interior': ['🎡', () => pxInterior(), 'inside'], 'Bolt-on parts': ['🔩', () => ksShop(), 'engine'], 'Engine build': ['🐌', () => ksShop(), 'engine'], 'Wheels': ['🛞', () => ksWheels(), 'wheel'], 'Audio': ['🔊', () => pxAudio(), 'pxaud'] };
+  function pxGarage() {
+    const c = S.car, s0 = newCar(c.id), lb = k => Math.round(k * 2.2046), hp0 = Math.round(carHp(s0)), hp = Math.round(carHp(c)), kg0 = partsKg(s0), kg = partsKg(c), L = pxgItems(c), sum = pxSum(c), rows = [];
+    const dh = hp - hp0, dl = lb(kg) - lb(kg0), sg = v => (v > 0 ? '+' : '') + v;
+    rows.push({ ic: '🏭', t: `Stock: ${hp0} hp · ${lb(kg0).toLocaleString()} lb`, s: `${(lb(kg0) / Math.max(1, hp0)).toFixed(1)} lb for every horsepower, as it left the factory`, off: true });
+    rows.push({ ic: '🔧', t: `Now: ${hp} hp · ${lb(kg).toLocaleString()} lb`, s: `${sg(dh)} hp · ${sg(dl)} lb · ${(lb(kg) / Math.max(1, hp)).toFixed(1)} lb per hp`, off: true });
+    if (sum[1] || sum[2] || sum[3]) rows.push({ ic: '🌬️', t: 'Aero at 100 mph', s: pxFx(0, [sum[1], sum[2], sum[3]]).replace(/^[+-]?0 lb · /, ''), off: true });
+    let total = 0; const G = new Map(); for (const [g, n, p] of L) { let e = G.get(g); if (!e) G.set(g, e = { n: [], p: 0 }); e.n.push(n); e.p += p; total += p; }
+    for (const [g, e] of G) { const [ic, go, cam] = PXG_GO[g]; let s = e.n.join(', '); if (s.length > 84) s = s.slice(0, 81).replace(/[, ]+\S*$/, '') + ' and more'; rows.push({ ic, t: `${g} · ${e.n.length} part${e.n.length > 1 ? 's' : ''}`, s, tag: money(e.p), go, cam }); }
+    rows.push(L.length ? { ic: '💵', t: `${money(total)} in parts on the car`, s: `List price of the ${L.length} thing${L.length > 1 ? 's' : ''} bolted on right now, before shop rates and labor`, off: true } : { ic: '•', t: 'Bone stock', s: 'Nothing aftermarket on it yet', off: true });
+    return { title: "Mechanic's build sheet", sub: `${carLabel(carOf(c.id))} · stock against your build`, cam: 'overview', rows };
+  }
   function pxEngPage() {
     const c = S.car, q = pxEngOf(c).split('|'), nm = (cat) => { const k = (c.eb || {})[cat] || 'stock'; try { const o = partOpt(c.eb || {}, cat); if (o && o.name) return o.name; } catch (e) {} return ((ENG_PARTS[cat] || { opts: {} }).opts[k] || {}).name || k; };
     const row = (ic, cat, on, s) => ({ ic, t: ENG_PARTS[cat].label + ': ' + nm(cat), s: on ? s : 'Factory: nothing extra to see', act: () => elOpen(cat === 'power' || cat === 'icool' || cat === 'meth' ? 'boost' : 'parts'), cam: 'engine' });
@@ -29166,7 +29191,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   const pxHasEx = c => !!c && !!pxExOf(c, true);
   const pxHas = c => !!c && pxCatalog(c.id).length > 0;
   PX_ON = true;
-  window.__px = { PX_CARS, T: id => CARS3D.done[id], PX_FITS, PX_GEO, PXG, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxUnder, pxExOf, pxApply, pxBrakes, pxbApply, PXB_SPEC, PXB_G, pxEngOf, pxEngPage, pxDrvOf, pxDrvPage, pxAudio, pxAudOf, pxAudBox, audioBuild: c => audioBuild(c), pxInterior, pxHasInt, pxSteer, pxCabin, pxBelly, pxdCat, pxLand, pxDeck, carData, rowsOf: cat => PARTS.rows.filter(p => p.cat === cat && partFits(p, carOf(S.car.id))), veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
+  window.__px = { pxGarage, pxgItems, PX_CARS, T: id => CARS3D.done[id], PX_FITS, PX_GEO, PXG, PX_SLOTS, PX_FIN, pxCatalog, pxFit, pxBuild, pxInstall, pxRemove, pxSum, pxKey, pxList, pxHome, pxSlot, pxSheet, pxUnder, pxExOf, pxApply, pxBrakes, pxbApply, PXB_SPEC, PXB_G, pxEngOf, pxEngPage, pxDrvOf, pxDrvPage, pxAudio, pxAudOf, pxAudBox, audioBuild: c => audioBuild(c), pxInterior, pxHasInt, pxSteer, pxCabin, pxBelly, pxdCat, pxLand, pxDeck, carData, rowsOf: cat => PARTS.rows.filter(p => p.cat === cat && partFits(p, carOf(S.car.id))), veh: c => vehOf(c, partsKg(c)), kg: c => partsKg(c), myBuild: () => myBuild(), cleanBuild: b => cleanBuild(b) };
   // ==== aftermarket parts (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
