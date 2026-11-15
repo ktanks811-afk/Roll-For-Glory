@@ -29093,6 +29093,67 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   }
   function pxAudDoors() { const c = S.car, rate = ksRate(), cur = (c.audio && c.audio.doors) || 'stock';
     return { title: 'Door speakers', sub: 'In the door cards', cam: 'inside', rows: DOORS.map(x => ({ ic: '🚪', t: x.name, s: x.desc, price: x.id === cur ? 0 : Math.round(x.price * rate), on: x.id === cur, what: x.name, cam: 'inside', fx: X => pxaSet(X, { doors: x.id }) })) }; }
+  // ---- bikes: what the Moto Shop bolts on shows on the bike itself (the parts and their physics already live in c.moto.p) ----
+  const PXM_ARM = { stock: 0, a2: 2, a4: 4, a6: 6, a10: 10 }, PXM_MATS = {};
+  const pxmMat = k => PXM_MATS[k] || (PXM_MATS[k] = k === 'blue' ? Object.assign(new THREE.MeshPhysicalMaterial({ color: 0x163f9c, metalness: 0.35, roughness: 0.3 }), { clearcoat: 1, clearcoatRoughness: 0.08 })
+    : k === 'strap' ? new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0, roughness: 0.85 }) : k === 'gold' ? new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 1, roughness: 0.22 })
+    : k === 'yel' ? new THREE.MeshStandardMaterial({ color: 0xe8c417, metalness: 0.2, roughness: 0.4 }) : pxMat(k));
+  const pxmP = (c, k, d) => (c && c.moto && c.moto.p && c.moto.p[k]) || d;
+  const pxmKey = c => [pxmP(c, 'arm', 'stock'), pxmP(c, 'nos', 'none'), pxmP(c, 'turbo', 'none'), pxmP(c, 'strap', 'off'), pxmP(c, 'susp', 'stock'), c && c.kits && c.kits.naked ? 1 : 0].join('|');
+  // an extended swingarm: the pivot end stays on the frame, the axle end (axle blocks, caliper, adjusters) moves back whole, and the beams between grow
+  function pxmArm(m, ext) {
+    const U = m.userData, A = U.anim && U.anim.swing; if (!A || !U.bike) return; const g = A[0].g, K0 = U.bike0 || (U.bike0 = U.bike);
+    if ((U.pxmExt || 0) === ext) return; U.pxmExt = ext;
+    g.traverse(o => { if (!o.isMesh || o.userData.px) return; const G0 = o.userData.pxG0 || (o.userData.pxG0 = o.geometry); if (o.geometry !== G0) o.geometry.dispose(); o.geometry = G0; if (!ext) return;
+      const G = G0.clone(), P = G.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), t = clamp((-x - 0.06) / 0.38, 0, 1); P.setX(i, x - ext * t * t * (3 - 2 * t)); }
+      P.needsUpdate = true; G.computeBoundingBox(); G.computeBoundingSphere(); o.geometry = G; });
+    U.bike = ext ? Object.assign({}, K0, { axR: [K0.axR[0] - ext, K0.axR[1], K0.axR[2]] }) : K0;
+    const R = U.rig; if (R) { R.K = U.bike; R.axR.set(U.bike.axR[0], U.bike.axR[1], U.bike.axR[2]); R.armL = R.axR.distanceTo(R.pivot); }
+  }
+  // a nitrous bottle on a billet bracket clamped to the left passenger peg hanger, valve forward, braided line into the tail
+  function pxmBottle(K) {
+    const blue = K.b('blue'), al = K.b('al'), ch = K.b('ch'), red = K.b('redan'), br = K.b('braid');
+    pxTurn(blue, [0, 0, 0], 0, [[-0.128, 0.018], [-0.122, 0.034], [-0.108, 0.0405], [0.07, 0.0405], [0.092, 0.034], [0.106, 0.021], [0.116, 0.0145]], 20);
+    pxTurn(ch, [0, 0, 0], 0, [[0.114, 0.0135], [0.146, 0.0135], [0.146, 0.0175], [0.163, 0.0175], [0.163, 0.008], [0.176, 0.008]], 12);
+    pxTurn(red, [0.154, 0.017, 0], 1, [[0, 0.0055], [0.012, 0.0055], [0.012, 0.0165], [0.019, 0.0165]], 10);
+    for (const x of [-0.07, 0.035]) { pxTurn(al, [x, 0, 0], 0, [[-0.008, 0.0425], [0.008, 0.0425]], 20); pxBox(al, x, 0, 0.049, 0.016, 0.03, 0.02); }
+    pxBox(al, -0.0175, 0, 0.064, 0.14, 0.05, 0.01);
+    pxBox(al, 0.02, 0, 0.085, 0.044, 0.046, 0.034); pxTurn(K.b('ss'), [0.02, 0.012, 0.064], 2, [[-0.004, 0.006], [0, 0.006]], 6); pxTurn(K.b('ss'), [0.02, -0.012, 0.064], 2, [[-0.004, 0.006], [0, 0.006]], 6);
+    pxTube(br, pxCurve([[0.176, 0, 0], [0.2, 0.004, 0.006], [0.215, 0.04, 0.05], [0.19, 0.1, 0.11]], 6), 0.0042, 8);
+  }
+  // a turbo in the gap between the block and the headers: fed off the right header, wastegate, dump pipe down the middle, charge pipe up the right side to the throttle bodies
+  function pxmTurbo(K, big) {
+    const iron = K.b('mild'), al = K.b('al'), ss = K.b('ss'), blue = K.b('blue'), red = K.b('redan'), x = 0.356, y = 0.33, k = big ? 1.08 : 1;
+    pxTurn(iron, [x, y, 0.03], 2, [[0, 0.02], [0.004, 0.036 * k], [0.012, 0.042 * k], [0.046, 0.042 * k], [0.056, 0.035 * k], [0.062, 0.022]], 18);
+    pxTurn(al, [x, y, 0.09], 2, [[0, 0.021], [0.036, 0.021]], 12);
+    pxTurn(al, [x, y, 0.124], 2, [[0, 0.03], [0.006, 0.045 * k], [0.03, 0.045 * k], [0.04, 0.035], [0.045, 0.024], [0.068, 0.024], [0.068, 0.0275], [0.076, 0.0275]], 20);
+    pxTube(ss, pxCurve([[0.445, 0.43, 0.125], [0.42, 0.395, 0.1], [0.395, 0.362, 0.075], [0.378, 0.345, 0.058]], 5), 0.017, 10);
+    pxTurn(ss, [0.405, 0.385, 0.068], 1, [[0, 0.013], [0.028, 0.013], [0.028, 0.021], [0.046, 0.021], [0.052, 0.011]], 12);
+    pxTube(ss, pxCurve([[x, y, 0.036], [x - 0.003, y - 0.006, 0.0], [x - 0.01, y - 0.04, -0.03], [x - 0.02, y - 0.1, -0.036], [x - 0.026, y - 0.135, -0.034]], 5), 0.023, 12);
+    const cp = pxCurve([[x + 0.012, y + 0.03, 0.142], [x + 0.018, y + 0.085, 0.158], [0.35, 0.5, 0.196], [0.275, 0.615, 0.204], [0.175, 0.695, 0.172], [0.1, 0.718, 0.115]], 6);
+    pxTube(al, cp, 0.0205, 12);
+    for (const i of [7, 20]) pxTube(blue, cp.slice(i, i + 3), 0.0235, 12);
+    pxTurn(red, [0.31, 0.585, 0.2], 1, [[0, 0.011], [0.018, 0.011], [0.018, 0.019], [0.04, 0.019], [0.046, 0.011]], 12);
+  }
+  function pxmApply(m, c) {
+    const U = m.userData; if (!U || !U.bike || !U.inner || !c) return; const key = pxmKey(c); if (U.pxmKey === key) return; U.pxmKey = key;
+    for (const o of U.pxmM || []) { if (o.parent) o.parent.remove(o); o.geometry.dispose(); } U.pxmM = [];
+    pxmArm(m, (PXM_ARM[pxmP(c, 'arm', 'stock')] || 0) * 0.0254);
+    const K0 = U.bike0 || U.bike, put = (fn, host, pos, rz) => { const K = { m: new Map(), b(mat) { let B = this.m.get(mat); if (!B) this.m.set(mat, B = { t: [], mat }); return B; } }; fn(K);
+      for (const B of K.m.values()) { if (!B.t.length) continue; const o = new THREE.Mesh(pxGeo(B), pxmMat(B.mat)); o.position.set(pos[0], pos[1], pos[2]); o.rotation.z = rz || 0; o.castShadow = true; o.userData.px = 'bike'; host.add(o); U.pxmM.push(o); } };
+    const tb = pxmP(c, 'turbo', 'none'); if (tb !== 'none' && K0.wb === 1.48) put(K => pxmTurbo(K, tb === 't2'), U.inner, [0, 0, 0], 0);
+    // Öhlins: the yellow spring on the shock
+    const sh = U.anim && U.anim.shock && U.anim.shock[0].g, ohl = pxmP(c, 'susp', 'stock') === 'ohl'; if (sh) sh.traverse(o => { if (!o.isMesh) return; const M0 = o.userData.pxM0 || (o.userData.pxM0 = o.material); if (M0.color.getHexString() === 'c0121a' || o.userData.pxSpr) { o.userData.pxSpr = 1; o.material = ohl ? pxmMat('yel') : M0; } });
+    if (pxmP(c, 'nos', 'none') !== 'none' && K0.pegP) put(pxmBottle, U.inner, [K0.pegP[0] + 0.03, K0.pegP[1] + 0.075, -(K0.pegP[2] + 0.052)], -0.3);
+  }
+  const _pxmLook = applyLook;
+  applyLook = function (m, c) { const r = _pxmLook.apply(this, arguments); try { if (m && m.userData && m.userData.bike) pxmApply(m, c); } catch (e) { console.warn('bike parts', e); } return r; };
+  // online: other players see the arm, the bottle, the turbo, the shock and the cans you run
+  const PXM_NET = [['arm', Object.keys(PXM_ARM), 'stock'], ['nos', ['none', 'n50', 'n100'], 'none'], ['turbo', ['none', 't1', 't2'], 'none'], ['susp', ['stock', 'ohl'], 'stock'], ['exh', ['stock', 'akra', 'yosh', 'scp', 'full'], 'stock']];
+  const _pxmMy = myBuild;
+  myBuild = function () { const b = _pxmMy(), c = S.car; if (!b || !c || !c.moto || !c.moto.p) return b; const v = PXM_NET.map(([k, L, d]) => L.includes(c.moto.p[k]) ? c.moto.p[k] : d); if (v.some((x, i) => x !== PXM_NET[i][2])) b.m = v; return b; };
+  const _pxmClean = cleanBuild;
+  cleanBuild = function (b) { const o = _pxmClean(b); if (!o || !b || !Array.isArray(b.m)) return o; const p = {}; PXM_NET.forEach(([k, L, d], i) => { if (L.includes(b.m[i]) && b.m[i] !== d) p[k] = b.m[i]; }); if (Object.keys(p).length) o.moto = { p }; return o; };
   function pxEngPage() {
     const c = S.car, q = pxEngOf(c).split('|'), nm = (cat) => { const k = (c.eb || {})[cat] || 'stock'; try { const o = partOpt(c.eb || {}, cat); if (o && o.name) return o.name; } catch (e) {} return ((ENG_PARTS[cat] || { opts: {} }).opts[k] || {}).name || k; };
     const row = (ic, cat, on, s) => ({ ic, t: ENG_PARTS[cat].label + ': ' + nm(cat), s: on ? s : 'Factory: nothing extra to see', act: () => elOpen(cat === 'power' || cat === 'icool' || cat === 'meth' ? 'boost' : 'parts'), cam: 'engine' });
