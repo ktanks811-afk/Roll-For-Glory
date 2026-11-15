@@ -3,6 +3,7 @@
 // npm/node_modules/three (three@0.128.0). Counts GPU bytes by wrapping WebGL uploads/deletes, plus the JS heap.
 // STEPS=boot,cars,tour,yb,hr,leave picks steps. CARS=n hero cars to cycle through, IDLE/LEAVE=ms to wait after,
 // TEXLIST=1 lists the biggest textures, EVAL=file runs a snippet in the page after boot. PORT (default 8765).
+// Q=extra query string (e.g. Q=&uqoff=stores,mid,houses,mat turns parts of the unique buildings pass off to compare).
 const { chromium } = require('playwright');
 const S = process.env.S, STEPS = (process.env.STEPS || 'boot,cars,yb,hr,leave').split(',');
 (async () => {
@@ -33,7 +34,7 @@ const S = process.env.S, STEPS = (process.env.STEPS || 'boot,cars,yb,hr,leave').
     r.heapMB = Math.round(hu.usedSize / 1e6); r.extMB = Math.round(((hu.embedderHeapUsedSize || 0) + (hu.backingStorageSize || 0)) / 1e6); r.totalMB = r.heapMB + r.extMB + r.gpuBufMB + r.gpuTexMB; rows.push({ step: name, ...r }); console.log(JSON.stringify({ step: name, ...r })); };
   // the peak while the city builds (the moment a phone is most likely to give up on a cold start)
   let peak = 0, polling = true; const poll = (async () => { while (polling) { try { const hu = await cdp.send('Runtime.getHeapUsage'); peak = Math.max(peak, hu.usedSize + (hu.embedderHeapUsedSize || 0) + (hu.backingStorageSize || 0)); } catch (e) {} await new Promise(r => setTimeout(r, 250)); } })();
-  await pg.goto('http://localhost:' + (process.env.PORT || 8765) + '/index.html?test=1');
+  await pg.goto('http://localhost:' + (process.env.PORT || 8765) + '/index.html?test=1' + (process.env.Q || ''));
   await pg.waitForFunction(() => window.__map && window.__map.ready, null, { timeout: 240000 });
   polling = false; await poll; console.log(JSON.stringify({ step: 'loading peak (page memory, before the GPU)', peakMB: Math.round(peak / 1e6) }));
   await ev(() => { const M = window.__map; M.S.cash = 1e7; M.S.rep = 9999; try { M.closeCreator(); } catch (e) {} });
