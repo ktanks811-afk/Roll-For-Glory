@@ -778,7 +778,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     if (!NO_SOLID.has(kind) && kind !== 'parked') solids.add({ x0, z0, x1, z1 }, x0, z0, x1, z1);
     if (LM.byB.has(i)) return;   // one of our banks or shops stands here (_landmarks.js)
     if (kind === 'parked') {
-      solids.add({ x0, z0, x1, z1 }, x0, z0, x1, z1);
+      solids.add({ x0, z0, x1, z1, park: 1 }, x0, z0, x1, z1);
       // car-sized ones become our real cars (_parked.js); big rigs and trailers keep a block
       if (!parkSpot(cx, cz, w, d, h, hex, bi)) inst('near', 'car', cx, cz, [cx, 0.1, cz, w > d ? Math.PI / 2 : 0, Math.min(w, d), h, Math.max(w, d), hex]);
       return;
@@ -21572,7 +21572,8 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
         // stuck on a wall: back onto the roads
         u.t += dt; if (u.t > 2) { const mv = Math.hypot(u.x - u.sx, u.z - u.sz); u.t = 0; u.sx = u.x; u.sz = u.z; if (mv < 1.5 && want > 6) { u.stuck++; if (u.stuck > 1) { copJoin(u); u.stuck = 0; } } else u.stuck = 0; }
       } else {
-        u.t += dt; if (u.t > 2 || !u.path) { u.t = 0; const n = hNearestNode(tx, tz); if (n >= 0 && n !== u.b) u.path = hRoute(u.b, n) || null; }
+        if (u.b == null && u.join == null) copJoin(u);
+        u.t += dt; if (u.b != null && (u.t > 2 || !u.path)) { u.t = 0; const n = hNearestNode(tx, tz); if (n >= 0 && n !== u.b) u.path = hRoute(u.b, n) || null; }
         copRoad(u, dt, COP.phase === 'search' ? 24 : 40, true);
       }
       // on foot close by: an officer jumps out and runs you down
@@ -24336,6 +24337,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     for (const zr of [Z - 15.4, Z + 15.4]) for (const [a, b] of hwSegs(30)) for (let s = a; s < b; s += 200) {
       const e = Math.min(b, s + 200), m = (s + e) / 2, A = acc('mid', 'plain', m, zr), P = acc('near', 'plain', m, zr), o = zr < Z ? -0.12 : 0.12;
       prism(A, A, R4(s, zr - 0.06, e, zr + 0.06), 0.52, 0.84, steel, steel, 4, 4);
+      solids.add({ x0: s, z0: zr - 0.1, x1: e, z1: zr + 0.1, rail: 1 }, s, zr - 0.1, e, zr + 0.1);   // guardrails are solid (realism phase 1)
       for (let t = s; t <= e; t += 4) prism(P, P, R4(t - 0.07, zr + o - 0.07, t + 0.07, zr + o + 0.07), 0, 0.8, post, post, 1, 1);
     }
     // high-mast lights down the median: twin arms, one over each side
@@ -30700,6 +30702,516 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   };
   window.__est = { tick: dt => HOME.stepOut(dt || 0.05), EST, estDoors, estFind, estUse, estPullIn, estSave, estLoad, estMine };
   // ==== your place on the street (end) ====
+  // ==== crashes (begin) ====
+  // Kimari 2026-11-20: "Let's focus rn on the realism real life things in the game and all the physics". Realism
+  // Phase 1, crashes and collisions. Your car used to be a 1.7 m circle that only hit buildings: crew cars, cop cars,
+  // trees, street lights, utility poles and hydrants you drove straight through, and every hit just scrubbed speed.
+  // Now the car is its real box (measured off its own wheels) and every hit is a rigid-body impulse: mass and yaw
+  // inertia from the vehicle sim, restitution, scraping friction. Clip a corner and you spin; hit a car and you both
+  // move by your masses; the damage goes where you hit (dents pushed into the real body mesh, lights, a radiator leak
+  // up front, a bent wheel that pulls the steering, airbags), scaled by the change of speed like a real crash.
+  const CRX = {
+    posts: null, postsN: 0, hit: false, crashDv: 0, mdl: null, cool: new Map(), msgT: 0, pend: null,
+    E: 0.12, MU: 0.45, SLOP: 0.01,
+    geysers: [], fallen: [], fx: null, stats: { hits: 0, dvMax: 0 },
+  };
+  window.__crash = CRX;
+  CRX.dbg = { step: dt => stepDrive(dt), street: t => stepStreet(t), fx: dt => { crMoversStep(dt); crFxStep(dt); }, solids, crBox, crPosts, crPlants, crMovers, crashStep, crDentRestore, get car() { return car; } };
+  const crRot = (x, z, c, s) => [x * c + z * s, -x * s + z * c];   // car-local (x right, z back) -> world offset, yaw = rotation.y
+
+  // ---- the car's real footprint: off its wheels, plus the overhangs ----
+  function crBox() {
+    const M3 = car && car.userData.model;
+    if (M3 && M3.userData.crB) return M3.userData.crB;
+    const V = TIRE.vd && TIRE.vd.V, bike = !!(S && S.car && typeof simBike === 'function' && simBike(S.car));
+    let B = { hw: bike ? 0.42 : V ? clamp(V.tf / 2 + 0.17, 0.7, 1.3) : 0.95, hl: V ? clamp(V.L / 2 + 1.0, 1.5, 4.5) : 2.4, cz: 0 };
+    if (M3 && M3.userData.wheels && M3.userData.wheels.length >= 2) {
+      const sp = car.position.clone(), sr = car.rotation.y; car.position.set(0, 0, 0); car.rotation.y = 0; car.updateMatrixWorld(true);
+      let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; const p = new THREE.Vector3();
+      for (const w of M3.userData.wheels) { w.getWorldPosition(p); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+      car.position.copy(sp); car.rotation.y = sr; car.updateMatrixWorld(true);
+      const wb = z1 - z0, tw = x1 - x0;
+      if (wb > 1.0 && wb < 9) {
+        // front overhang (toward -z) a touch shorter than the rear on most cars; trucks and vans hang out more
+        const fo = clamp(wb * 0.32, 0.55, 1.2), ro = clamp(wb * 0.36, 0.5, 1.5);
+        B = { hw: bike ? 0.42 : clamp(tw / 2 + 0.2, 0.7, 1.35), hl: (wb + fo + ro) / 2, cz: (z0 - fo + z1 + ro) / 2, wb, tw, zF: z0, zR: z1 };
+      }
+      M3.userData.crB = B;
+    }
+    return B;
+  }
+
+  // ---- what's out there to hit, besides the buildings and parked cars (solids) ----
+  // street lights and hydrants are instanced per bucket: read them back out of their InstancedMeshes once
+  function crPosts() {
+    if (CRX.posts) return CRX.posts;
+    const G = new Grid(40), m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+    let n = 0;
+    for (const b of buckets.values()) {
+      if (!b.group) continue;
+      const kids = b.group.children, heads = kids.find(o => o.isInstancedMesh && o.geometry === SHAPES.lampHead), pools = kids.find(o => o.isInstancedMesh && o.geometry === SHAPES.pool);
+      for (const im of kids) {
+        if (!im.isInstancedMesh) continue;
+        const kind = im.geometry === SHAPES.lamp ? 'lamp' : im.geometry === SHAPES.stHyd ? 'hyd' : null; if (!kind) continue;
+        for (let i = 0; i < im.count; i++) {
+          im.getMatrixAt(i, m); m.decompose(p, q, s);
+          const o = { x: p.x, z: p.z, r: kind === 'lamp' ? 0.17 : 0.2, kind, im, i, heads: kind === 'lamp' ? heads : null, pools: kind === 'lamp' ? pools : null, yaw: new THREE.Euler().setFromQuaternion(q).y, y: p.y };
+          G.add(o, o.x - 1, o.z - 1, o.x + 1, o.z + 1); n++;
+        }
+      }
+    }
+    // wooden utility poles (scenery): they don't give
+    const D = window.__scn && window.__scn.debug;
+    if (D && D.POLES) for (const P of D.POLES) { if (!P) continue; const o = { x: P.x, z: P.z, r: 0.16, kind: 'pole' }; G.add(o, o.x - 1, o.z - 1, o.x + 1, o.z + 1); n++; }
+    CRX.postsN = n; CRX.posts = G; return G;
+  }
+  // trees by trunk, bushes by their spread (the scenery's plant store)
+  const CR_TRUNK = { oakLive: 0.15, elm: 0.11, oakRound: 0.13, cedar: 0.08, pear: 0.08, crape: 0.05, pine: 0.065, fanPalm: 0.07, datePalm: 0.13 };
+  const CR_BUSH = { shrub: 0.5, bloom: 0.52, hedge: 0.55 };
+  function crPlants(x, z, R, out) {
+    const D = window.__scn && window.__scn.debug; if (!D || !D.PL || !D.PL.cells.size) return out;
+    const PL = D.PL, cs = PL.CS, ci = Math.floor(x / cs), cj = Math.floor(z / cs);
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+      const cell = PL.cells.get((ci + di) * 100003 + cj + dj); if (!cell) continue;
+      for (let k = 0; k < cell.length; k++) {
+        const i = cell[k], px = PL.X[i], pz = PL.Z[i]; if (Math.abs(px - x) > R + 4 || Math.abs(pz - z) > R + 4) continue;
+        const id = D.SN_TYPES[PL.T[i]].id, sx = PL.SX[i]; if (sx < 0.01) continue;   // knocked flat already
+        const tr = CR_TRUNK[id], bu = CR_BUSH[id];
+        if (tr) out.push({ x: px, z: pz, r: Math.max(0.07, tr * sx), kind: 'tree', pl: i });
+        else if (bu) out.push({ x: px, z: pz, r: bu * sx, kind: 'bush', pl: i, soft: true });
+      }
+    }
+    return out;
+  }
+  // the cars that drive: the hood's regulars and crews, the police
+  function crMovers(x, z, R, out) {
+    const H = typeof HOOD !== 'undefined' ? HOOD : null;
+    if (H) for (const e of H.ents) { if (!e.inCar || e.gone || e.hide || !e.g || !e.g.visible) continue; if (Math.abs(e.x - x) > R + 6 || Math.abs(e.z - z) > R + 6) continue; out.push({ e, x: e.x, z: e.z, yaw: e.yaw, sp: e.sp || 0, hw: 0.96, hl: 2.45, m: 1900, kind: 'hood' }); }
+    const C = window.__cops && window.__cops.COP;
+    if (C) for (const u of C.units) { if (u.gone || !u.inCar || !u.g || !u.g.visible) continue; if (Math.abs(u.x - x) > R + 6 || Math.abs(u.z - z) > R + 6) continue; out.push({ e: u, x: u.x, z: u.z, yaw: u.yaw, sp: u.sp || 0, hw: 0.98, hl: 2.55, m: 2100, kind: 'cop' }); }
+    return out;
+  }
+
+  // ---- contact tests: a box (center, axes, half sizes) against a box or a circle ----
+  // a box: { x, z, ax: [ux, uz] (its right), az: [ux, uz] (its back), hw, hl }
+  const _cA = [], _cB = [];
+  function crCorners(b, out) {
+    out.length = 0;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) out.push([b.x + b.ax[0] * b.hw * sx + b.az[0] * b.hl * sz, b.z + b.ax[1] * b.hw * sx + b.az[1] * b.hl * sz]);
+    return out;
+  }
+  const crInside = (b, x, z, pad) => { const dx = x - b.x, dz = z - b.z; return Math.abs(dx * b.ax[0] + dz * b.ax[1]) <= b.hw + pad && Math.abs(dx * b.az[0] + dz * b.az[1]) <= b.hl + pad; };
+  // A = your car, O = the other box. Returns { nx, nz (pushes A out), d (depth), px, pz (contact) } or null
+  function crBoxBox(A, O) {
+    const dx = A.x - O.x, dz = A.z - O.z; let best = 1e9, nx = 0, nz = 0;
+    for (const ax of [A.ax, A.az, O.ax, O.az]) {
+      const rA = A.hw * Math.abs(A.ax[0] * ax[0] + A.ax[1] * ax[1]) + A.hl * Math.abs(A.az[0] * ax[0] + A.az[1] * ax[1]);
+      const rO = O.hw * Math.abs(O.ax[0] * ax[0] + O.ax[1] * ax[1]) + O.hl * Math.abs(O.az[0] * ax[0] + O.az[1] * ax[1]);
+      const c = dx * ax[0] + dz * ax[1], ov = rA + rO - Math.abs(c);
+      if (ov <= 0) return null;
+      if (ov < best) { best = ov; const sg = c < 0 ? -1 : 1; nx = ax[0] * sg; nz = ax[1] * sg; }
+    }
+    // the contact: your corners inside the other box, else its corners inside yours, else between the two
+    let px = 0, pz = 0, k = 0;
+    for (const c of crCorners(A, _cA)) if (crInside(O, c[0], c[1], 0.02)) { px += c[0]; pz += c[1]; k++; }
+    if (!k) for (const c of crCorners(O, _cB)) if (crInside(A, c[0], c[1], 0.02)) { px += c[0]; pz += c[1]; k++; }
+    if (k) { px /= k; pz /= k; }
+    else { const rA = A.hw * Math.abs(A.ax[0] * nx + A.ax[1] * nz) + A.hl * Math.abs(A.az[0] * nx + A.az[1] * nz); px = A.x - nx * (rA - best / 2); pz = A.z - nz * (rA - best / 2); }
+    return { nx, nz, d: best, px, pz };
+  }
+  function crBoxCircle(A, cx, cz, r) {
+    const dx = cx - A.x, dz = cz - A.z, lx = dx * A.ax[0] + dz * A.ax[1], lz = dx * A.az[0] + dz * A.az[1];
+    const qx = clamp(lx, -A.hw, A.hw), qz = clamp(lz, -A.hl, A.hl);
+    let ex = lx - qx, ez = lz - qz, d = Math.hypot(ex, ez), nlx, nlz, depth;
+    if (d > r) return null;
+    if (d > 1e-5) { nlx = -ex / d; nlz = -ez / d; depth = r - d; }
+    else { // the post is inside the box: out the nearest side
+      const sx = A.hw - Math.abs(lx), sz = A.hl - Math.abs(lz);
+      if (sx < sz) { nlx = -Math.sign(lx || 1); nlz = 0; depth = sx + r; } else { nlx = 0; nlz = -Math.sign(lz || 1); depth = sz + r; }
+    }
+    const nx = nlx * A.ax[0] + nlz * A.az[0], nz = nlx * A.ax[1] + nlz * A.az[1];
+    return { nx, nz, d: depth, px: A.x + qx * A.ax[0] + qz * A.az[0], pz: A.z + qx * A.ax[1] + qz * A.az[1] };
+  }
+
+  // ---- the solve: called by stepDrive after the sim moved the car to (nx, nz) ----
+  const _seen = new Set(), _list = [];
+  function crashStep(nx, nz, dt, vBefore) {
+    CRX.simT = (CRX.simT || 0) + dt * 1000;   // a clock that runs with the sim (cool-downs work at any frame rate)
+    const V = TIRE.vd && TIRE.vd.V, m = V ? V.m : 1600, Iz = V ? V.Iz : m * 1.9, B = crBox();
+    let hit = false, dvMax = 0, ev = null;
+    for (let it = 0; it < 4; it++) {
+      const yaw = drv.yaw, c = Math.cos(yaw), s = Math.sin(yaw), o = crRot(0, B.cz, c, s);
+      const A = { x: nx + o[0], z: nz + o[1], ax: [c, -s], az: [s, c], hw: B.hw, hl: B.hl }, R = Math.hypot(B.hw, B.hl);
+      // gather what's near
+      _list.length = 0; _seen.clear();
+      for (const [qx, qz] of [[A.x, A.z], [A.x + R, A.z + R], [A.x - R, A.z - R], [A.x + R, A.z - R], [A.x - R, A.z + R]]) for (const b of solids.at(qx, qz)) if (!_seen.has(b)) { _seen.add(b); _list.push(b); }
+      let best = null, bestObj = null;
+      const take = (r, obj) => { if (r && (!best || r.d > best.d)) { best = r; bestObj = obj; } };
+      for (const b of _list) {
+        if (A.x + R < b.x0 || A.x - R > b.x1 || A.z + R < b.z0 || A.z - R > b.z1) continue;
+        take(crBoxBox(A, { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2, ax: [1, 0], az: [0, 1], hw: (b.x1 - b.x0) / 2, hl: (b.z1 - b.z0) / 2 }), { kind: b.park ? 'parked' : b.rail ? 'rail' : 'wall', b });
+      }
+      const PG = crPosts(); _seen.clear();
+      for (const [qx, qz] of [[A.x, A.z], [A.x + R, A.z + R], [A.x - R, A.z - R]]) for (const p of PG.at(qx, qz)) { if (_seen.has(p) || p.down) continue; _seen.add(p); take(crBoxCircle(A, p.x, p.z, p.r), p); }
+      const pl = crPlants(A.x, A.z, R, []);
+      for (const p of pl) take(crBoxCircle(A, p.x, p.z, p.r), p);
+      const mv = crMovers(A.x, A.z, R, []);
+      for (const q of mv) { const qc = Math.cos(q.yaw), qs = Math.sin(q.yaw); take(crBoxBox(A, { x: q.x, z: q.z, ax: [qc, -qs], az: [qs, qc], hw: q.hw, hl: q.hl }), q); }
+      if (!best) break;
+      const r = crResolve(best, bestObj, A, m, Iz, dt);
+      if (r.pos) { nx += r.pos[0]; nz += r.pos[1]; }
+      if (!best.soft && !bestObj.soft) hit = true;
+      if (r.dv > dvMax) { dvMax = r.dv; ev = r; }
+      if (bestObj.soft) break;
+    }
+    if (dvMax > 0.4) {
+      vdSync();
+      // knocked backward against the gear: the converter lets go so the motor keeps idling instead of being dragged to a stall
+      const st = TIRE.vd; if (st && st.V && !st.V.ev) { if (drv.v < 1) st.lock = false; st.we = Math.max(st.we, st.V.idle / RPM); }
+    }
+    if (hit || dvMax > 0) drv.v = TIRE.vx * -Math.sin(drv.yaw) + TIRE.vz * -Math.cos(drv.yaw);
+    CRX.hit = hit;
+    if (ev) crImpact(ev);
+    return { x: nx, z: nz, hit };
+  }
+  // one contact: positional push-out plus the impulse (normal with restitution, tangential friction up to MU x normal)
+  function crResolve(C, O, A, m, Iz, dt) {
+    const n = [C.nx, C.nz], rx = C.px - drv.x, rz = C.pz - drv.z;
+    // velocity of the contact point: v + w x r (w about +y: (w*rz, -w*rx))
+    const w = TIRE.w, vpx = TIRE.vx + w * rz, vpz = TIRE.vz - w * rx;
+    let ox = 0, oz = 0, im2 = 0, mover = O.e ? O : null, breakable = null;
+    if (mover) { const f = [-Math.sin(O.yaw), -Math.cos(O.yaw)], ko = O.e._crk; ox = ko ? ko.vx : f[0] * O.sp; oz = ko ? ko.vz : f[1] * O.sp; im2 = 1 / O.m; }
+    const rvx = vpx - ox, rvz = vpz - oz, vn = rvx * n[0] + rvz * n[1];
+    const kN = rz * n[0] - rx * n[1], tx = -n[1], tz = n[0], kT = rz * tx - rx * tz;
+    const res = { dv: 0, pos: null, C, O, vn, px: C.px, pz: C.pz, nx: n[0], nz: n[1], vt: 0 };
+    // bushes: you plow through, they slow you a little and throw leaves
+    if (O.soft) {
+      const sp = Math.hypot(TIRE.vx, TIRE.vz); if (sp > 1) { const k = Math.max(0, 1 - dt * (2.5 + 0.2 * sp) / sp); TIRE.vx *= k; TIRE.vz *= k; }   // ~0.3-0.7 g of branches
+      const key = 'b' + O.pl, now = CRX.simT || 0; if (sp > 3 && !(CRX.cool.get(key) > now)) { CRX.cool.set(key, now + 900); crLeaves(O.x, O.z, sp); }
+      return res;
+    }
+    // a hydrant or a street light snaps off when you hit it hard enough: it takes some speed and lets you through
+    if ((O.kind === 'hyd' && -vn > 4) || (O.kind === 'lamp' && -vn > 8.5) || (O.kind === 'tree' && O.r < 0.13 && -vn > 7)) breakable = O;
+    if (breakable) {
+      const take = O.kind === 'hyd' ? 2.2 : O.kind === 'lamp' ? 4.5 : 3.5, sp = Math.hypot(TIRE.vx, TIRE.vz), k = Math.max(0, 1 - take / Math.max(sp, 0.1));
+      TIRE.vx *= k; TIRE.vz *= k; TIRE.w += (Math.random() - 0.5) * 0.4;
+      crBreak(O, rvx, rvz); res.dv = take * 0.8; res.knock = O.kind; res.jn = 0; return res;
+    }
+    // push out of it (a mover takes its share by mass)
+    const share = mover ? (1 / m) / (1 / m + im2) : 1, d = Math.max(0, C.d - CRX.SLOP);
+    res.pos = [n[0] * d * share, n[1] * d * share];
+    if (mover) { const k = d * (1 - share); crKnockPos(O, -n[0] * k, -n[1] * k); }
+    if (vn >= 0) return res;
+    const e = -vn > 2 ? CRX.E : 0;   // a slow lean on it doesn't bounce
+    const jn = -(1 + e) * vn / (1 / m + kN * kN / Iz + im2);
+    const vt = rvx * tx + rvz * tz, jtMax = CRX.MU * jn;
+    let jt = -vt / (1 / m + kT * kT / Iz + im2); jt = clamp(jt, -jtMax, jtMax);
+    const Jx = jn * n[0] + jt * tx, Jz = jn * n[1] + jt * tz;
+    TIRE.vx += Jx / m; TIRE.vz += Jz / m; TIRE.w += (kN * jn + kT * jt) / Iz;
+    TIRE.w = clamp(TIRE.w, -6, 6);
+    if (mover) crKnockVel(O, -Jx * im2, -Jz * im2, (kN * jn) / (O.m * 2.2));
+    res.dv = Math.hypot(Jx, Jz) / m; res.vt = vt; res.jn = jn;
+    // the body: a hard stop pitches the nose (or tail) and a side hit rolls it (vehicle sim's sprung mass)
+    const st = TIRE.vd; if (st && st.V && res.dv > 0.8) {
+      const f = [-Math.sin(drv.yaw), -Math.cos(drv.yaw)], dvL = (Jx * f[0] + Jz * f[1]) / m, dvS = (Jx * f[1] * -1 + Jz * f[0]) / m;
+      st.thv += clamp(dvL * CRX.PITCH, -2.5, 2.5); st.phv += clamp(dvS * CRX.ROLL, -2.5, 2.5);
+    }
+    return res;
+  }
+  CRX.PITCH = 0.12; CRX.ROLL = 0.22;
+
+  // ---- the other car: shoved off its lane, sliding to a stop, then it drives off again ----
+  function crKnockVel(O, dvx, dvz, dw) {
+    const e = O.e; let k = e._crk;
+    if (!k) { const f = [-Math.sin(e.yaw), -Math.cos(e.yaw)]; k = e._crk = { x: e.x, z: e.z, yaw: e.yaw, vx: f[0] * (e.sp || 0), vz: f[1] * (e.sp || 0), w: 0, t: 0, kind: O.kind }; }
+    k.vx += dvx; k.vz += dvz; k.w = clamp(k.w + dw, -4, 4); k.t = 0;
+  }
+  function crKnockPos(O, dx, dz) { const e = O.e; if (!e._crk) crKnockVel(O, 0, 0, 0); e._crk.x += dx; e._crk.z += dz; }
+  function crMoversStep(dt) {
+    const step = (e, cop) => {
+      const k = e._crk; if (!k) return;
+      k.t += dt;
+      const sp = Math.hypot(k.vx, k.vz), dec = 7.5 * dt;   // tires scrubbing / the driver on the brakes
+      if (sp > dec) { k.vx -= k.vx / sp * dec; k.vz -= k.vz / sp * dec; } else { k.vx = k.vz = 0; }
+      k.w *= Math.exp(-dt * 3);
+      k.x += k.vx * dt; k.z += k.vz * dt; k.yaw += k.w * dt;
+      // stay out of buildings
+      for (const b of solids.at(k.x, k.z)) { if (k.x > b.x0 - 1 && k.x < b.x1 + 1 && k.z > b.z0 - 1 && k.z < b.z1 + 1) { k.x -= k.vx * dt * 1.5; k.z -= k.vz * dt * 1.5; k.vx = k.vz = 0; } }
+      e.x = k.x; e.z = k.z; e.yaw = k.yaw; e.sp = 0;
+      if (cop) { if (e.g) { e.g.position.set(k.x, 0.12, k.z); e.g.rotation.y = k.yaw; } }
+      else { if (e.g) e.g.position.set(k.x, 0, k.z); if (e.slot) e.slot.rotation.y = k.yaw; }
+      if (k.t > 2.2 && sp < 0.3 && Math.abs(k.w) < 0.05) e._crk = null;   // gathered themselves: back to driving
+    };
+    if (typeof HOOD !== 'undefined') for (const e of HOOD.ents) if (e._crk) { if (e.gone || !e.inCar) e._crk = null; else step(e, false); }
+    const C = window.__cops && window.__cops.COP; if (C) for (const u of C.units) if (u._crk) { if (u.gone) u._crk = null; else step(u, true); }
+  }
+  const _crStepStreet = stepStreet;
+  stepStreet = function (t) {
+    const n = performance.now(), dt = Math.min(0.05, (n - (CRX.ssT || n)) / 1000); CRX.ssT = n;
+    _crStepStreet.apply(this, arguments);
+    try { crMoversStep(dt); crFxStep(dt); } catch (e) { if (!CRX.err) { CRX.err = 1; console.warn('crashes: ' + e.message, e.stack); } }
+  };
+
+  // ---- breakaway things ----
+  const _z4 = new THREE.Matrix4().makeScale(0, 0, 0);
+  function crHide(im, i) { if (!im) return; im.setMatrixAt(i, _z4); im.instanceMatrix.needsUpdate = true; }
+  function crBreak(O, vx, vz) {
+    const sp = Math.hypot(vx, vz) || 1;
+    if (O.kind === 'tree') {
+      const D = window.__scn.debug, PL = D.PL; const i = O.pl; PL.SX[i] = PL.SY[i] = PL.SZ[i] = 0.001; if (window.__scn.relayout) try { window.__scn.relayout(); } catch (e) {}
+      crLeaves(O.x, O.z, sp); crLeaves(O.x, O.z, sp * 0.6); crCrunch(0.7, 'wood'); return;
+    }
+    O.down = true; crHide(O.im, O.i);
+    if (O.kind === 'lamp') {
+      crHide(O.heads, O.i); crHide(O.pools, O.i);
+      // the pole lies down the way you were going, and stays down for a while
+      const g = new THREE.Group(), msh = new THREE.Mesh(SHAPES.lamp, MAT.pole), hd = new THREE.Mesh(SHAPES.lampHead, MAT.lampHead);
+      g.add(msh); g.add(hd); g.position.set(O.x, O.y || 0, O.z); msh.rotation.y = hd.rotation.y = O.yaw; scene.add(g);
+      CRX.fallen.push({ g, t: 0, ax: [vz / sp, -vx / sp], ang: 0, x: O.x, z: O.z });
+      crCrunch(1, 'metal');
+    } else if (O.kind === 'hyd') {
+      CRX.geysers.push({ x: O.x, z: O.z, t: 0, T: 28 }); crCrunch(0.6, 'metal');
+      toast('Knocked the fire hydrant clean off. Water everywhere.', 'bad');
+    }
+    setTimeout(() => crRestore(O), 6 * 60 * 1000);   // the city puts it back
+  }
+  function crRestore(O) {
+    if (!O.down) return; O.down = false;
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, O.yaw, 0));
+    m4.compose(new THREE.Vector3(O.x, O.y || 0, O.z), q, new THREE.Vector3(1, 1, 1));
+    if (O.im) { O.im.setMatrixAt(O.i, m4); O.im.instanceMatrix.needsUpdate = true; }
+    if (O.heads) { O.heads.setMatrixAt(O.i, m4); O.heads.instanceMatrix.needsUpdate = true; }
+    const F = CRX.fallen.findIndex(f => f.x === O.x && f.z === O.z); if (F >= 0) { scene.remove(CRX.fallen[F].g); CRX.fallen.splice(F, 1); }
+  }
+
+  // ---- particles: sparks off a scrape, bits of plastic and glass, leaves, a hydrant's geyser ----
+  function crFxInit() {
+    if (CRX.fx) return CRX.fx;
+    const N = 220, geo = new THREE.BufferGeometry(), pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const W = 600, wgeo = new THREE.BufferGeometry(), wpos = new Float32Array(W * 3);
+    wgeo.setAttribute('position', new THREE.BufferAttribute(wpos, 3));
+    const dc = document.createElement('canvas'); dc.width = dc.height = 32; { const x = dc.getContext('2d'), gr = x.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 32, 32); }
+    const drop = new THREE.CanvasTexture(dc);
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.1, map: drop, vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: true })); pts.frustumCulled = false; scene.add(pts);
+    const wat = new THREE.Points(wgeo, new THREE.PointsMaterial({ size: 0.45, map: drop, color: 0xd6e8f5, transparent: true, opacity: 0.8, depthWrite: false })); wat.frustumCulled = false; scene.add(wat);
+    CRX.fx = { N, pts, pos, col, P: [], W, wat, wpos, WP: [] };
+    return CRX.fx;
+  }
+  function crSpawn(x, y, z, vx, vy, vz, life, r, g, b, grav = 9.8, drag = 0.6) {
+    const F = crFxInit(); if (F.P.length >= F.N) F.P.shift();
+    F.P.push({ x, y, z, vx, vy, vz, t: 0, life, r, g, b, grav, drag });
+  }
+  function crSparks(x, z, n, vx, vz) {
+    for (let i = 0; i < n; i++) crSpawn(x, 0.25 + Math.random() * 0.4, z, vx * 0.3 + (Math.random() - 0.5) * 5, 1 + Math.random() * 3, vz * 0.3 + (Math.random() - 0.5) * 5, 0.25 + Math.random() * 0.35, 1, 0.75 + Math.random() * 0.2, 0.35);
+  }
+  function crBits(x, z, n, glass, color) {
+    const c = new THREE.Color(color || '#2a2a2e');
+    for (let i = 0; i < n; i++) { const gl = glass && Math.random() < 0.6; crSpawn(x, 0.4 + Math.random() * 0.6, z, (Math.random() - 0.5) * 6, 1 + Math.random() * 3.5, (Math.random() - 0.5) * 6, 1.4 + Math.random(), gl ? 0.82 : c.r, gl ? 0.92 : c.g, gl ? 1 : c.b, 9.8, 0.2); }
+  }
+  function crLeaves(x, z, sp) {
+    const n = Math.min(26, 6 + sp * 1.2);
+    for (let i = 0; i < n; i++) crSpawn(x + (Math.random() - 0.5) * 1.5, 0.6 + Math.random() * 1.8, z + (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 3, 0.5 + Math.random() * 2, (Math.random() - 0.5) * 3, 1.8 + Math.random() * 1.5, 0.22 + Math.random() * 0.1, 0.38 + Math.random() * 0.15, 0.12, 2.2, 1.6);
+  }
+  function crFxStep(dt) {
+    const F = CRX.fx;
+    // fallen street lights tip over and lie there
+    for (const f of CRX.fallen) if (f.ang < Math.PI / 2 - 0.08) { f.t += dt; f.ang = Math.min(Math.PI / 2 - 0.08, 0.5 * 4.2 * f.t * f.t); f.g.quaternion.setFromAxisAngle(new THREE.Vector3(f.ax[0], 0, f.ax[1]), f.ang); if (f.ang >= Math.PI / 2 - 0.08) crCrunch(0.5, 'metal', f.x, f.z); }
+    if (!F) return;
+    let k = 0;
+    for (let i = F.P.length - 1; i >= 0; i--) { const p = F.P[i]; p.t += dt; if (p.t > p.life) { F.P.splice(i, 1); continue; } p.vy -= p.grav * dt; const dr = Math.exp(-p.drag * dt); p.vx *= dr; p.vz *= dr; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; if (p.y < 0.03) { p.y = 0.03; p.vy *= -0.25; p.vx *= 0.5; p.vz *= 0.5; } }
+    for (const p of F.P) { const fade = 1 - p.t / p.life; F.pos[k * 3] = p.x; F.pos[k * 3 + 1] = p.y; F.pos[k * 3 + 2] = p.z; F.col[k * 3] = p.r * fade; F.col[k * 3 + 1] = p.g * fade; F.col[k * 3 + 2] = p.b * fade; k++; }
+    F.pts.geometry.setDrawRange(0, k); F.pts.geometry.attributes.position.needsUpdate = true; F.pts.geometry.attributes.color.needsUpdate = true;
+    // geysers: a column of water that falls back down, for half a minute
+    for (let i = CRX.geysers.length - 1; i >= 0; i--) { const G = CRX.geysers[i]; G.t += dt; if (G.t > G.T) { CRX.geysers.splice(i, 1); continue; } const pw = G.t < G.T - 6 ? 1 : (G.T - G.t) / 6; const nn = Math.ceil(dt * 400 * pw); for (let j = 0; j < nn; j++) { if (F.WP.length >= F.W) F.WP.shift(); F.WP.push({ x: G.x + (Math.random() - 0.5) * 0.15, y: 0.35, z: G.z + (Math.random() - 0.5) * 0.15, vx: (Math.random() - 0.5) * 1.8, vy: 6.5 + Math.random() * 4 * pw, vz: (Math.random() - 0.5) * 1.8, t: 0 }); } }
+    let w = 0;
+    for (let i = F.WP.length - 1; i >= 0; i--) { const p = F.WP[i]; p.t += dt; p.vy -= 9.8 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; if (p.y < 0) { F.WP.splice(i, 1); continue; } }
+    for (const p of F.WP) { F.wpos[w * 3] = p.x; F.wpos[w * 3 + 1] = p.y; F.wpos[w * 3 + 2] = p.z; w++; }
+    F.wat.geometry.setDrawRange(0, w); F.wat.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // ---- the sound: a crunch built from noise and a few ringing metal partials, louder and lower the harder the hit ----
+  function crCrunch(k, kind, x, z) {
+    const ac = typeof audioCtx === 'function' ? audioCtx() : null; if (!ac || ac.state !== 'running') return;
+    const d = x != null && car ? Math.hypot(x - car.position.x, z - car.position.z) : 0, vol = clamp(k, 0.1, 1) / (1 + d / 15);
+    if (vol < 0.02) return;
+    const t0 = ac.currentTime, len = 0.25 + 0.5 * k, buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * len), ac.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) { const t = i / ac.sampleRate; ch[i] = (Math.random() * 2 - 1) * Math.exp(-t * (kind === 'wood' ? 9 : 6)) * (1 + 0.6 * Math.sin(t * 90) * (Math.random() < 0.02 ? 3 : 1)); }
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = kind === 'wood' ? 1400 : 2600 - 1200 * k; lp.Q.value = 0.8;
+    const g = ac.createGain(); g.gain.value = 0.9 * vol; src.connect(lp); lp.connect(g); g.connect(ac.destination); src.start(t0); src.stop(t0 + len);
+    if (kind !== 'wood') for (const f of [180, 410, 1130, 2370]) {   // the panel ringing
+      const o = ac.createOscillator(), og = ac.createGain(); o.type = 'triangle'; o.frequency.value = f * (0.9 + Math.random() * 0.2) * (1.1 - 0.3 * k);
+      og.gain.setValueAtTime(0.05 * vol, t0); og.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.15 + 0.35 * k); o.connect(og); og.connect(ac.destination); o.start(t0); o.stop(t0 + 0.6 + 0.4 * k);
+    }
+  }
+  function crScrapeSnd(k) {   // short grinding burst while you drag along something
+    const ac = typeof audioCtx === 'function' ? audioCtx() : null; if (!ac || ac.state !== 'running') return;
+    const t0 = ac.currentTime, len = 0.12, buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * len), ac.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * (0.6 + 0.4 * Math.sin(i * 0.37));
+    const src = ac.createBufferSource(); src.buffer = buf; const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800 + 1500 * k; bp.Q.value = 2;
+    const g = ac.createGain(); g.gain.setValueAtTime(0.25 * clamp(k, 0.1, 1), t0); g.gain.linearRampToValueAtTime(0, t0 + len); src.connect(bp); bp.connect(g); g.connect(ac.destination); src.start(t0);
+  }
+
+  // ---- what a hit does: where on the car, how hard (change of speed, like a real crash test), and what breaks ----
+  const crMph = v => v * 2.237;
+  function crImpact(ev) {
+    const c = S && S.car; if (!c) return;
+    const dv = ev.dv, mph = crMph(dv), now = CRX.simT;
+    CRX.stats.hits++; CRX.stats.dvMax = Math.max(CRX.stats.dvMax, mph);
+    // scraping along something: sparks and a grind, no damage message
+    if (ev.vt && Math.abs(ev.vt) > 4 && ev.jn > 0 && !ev.knock) { if (Math.random() < 0.7) crSparks(ev.px, ev.pz, 3 + Math.min(8, Math.abs(ev.vt) / 3), TIRE.vx, TIRE.vz); if ((CRX.scrT || 0) < now) { CRX.scrT = now + 110; crScrapeSnd(Math.abs(ev.vt) / 20); } }
+    if (mph < 3) return;
+    const key = ev.O && (ev.O.b || ev.O.e || ev.O) || 'x'; if ((CRX.cool.get(key) || 0) > now && mph < (CRX.lastMph || 0) * 1.5) return;
+    CRX.cool.set(key, now + 400); CRX.lastMph = mph;
+    if (CRX.cool.size > 200) CRX.cool.clear();
+    const B = crBox(), yaw = drv.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw);
+    // the contact in the car's own frame (x right, z back), relative to the box center
+    const wx = ev.px - drv.x, wz = ev.pz - drv.z, lx = wx * cs - wz * sn, lz = wx * sn + wz * cs - B.cz;
+    const fx = Math.abs(lz) / B.hl, sx = Math.abs(lx) / B.hw, zone = fx >= sx * 0.95 ? (lz < 0 ? 'front' : 'rear') : (lx < 0 ? 'left' : 'right');
+    const sev = mph < 6 ? 0 : mph < 15 ? 1 : mph < 30 ? 2 : 3;
+    // body and paint: a scuff is a few %, a 30 mph hit is a third of the car
+    const bodyD = Math.min(45, Math.pow(mph, 1.25) * 0.33);
+    c.cond.body = clamp100(c.cond.body - bodyD);
+    if ((zone === 'front' || zone === 'rear') && mph > 5) c.cond.lights = clamp100(c.cond.lights - Math.min(60, (mph - 5) * 2.5));
+    const mid = /c8|ferrari|lamborghini|mclaren|911|cayman|boxster|nsx|_r8|ford_gt|mid/.test(c.id);
+    if (zone === (mid ? 'rear' : 'front') && mph > 14) { c.cond.engine = clamp100(c.cond.engine - (mph - 14) * 1.1); if (!mid) c.rad = Math.min(1, (c.rad || 0) + (mph - 12) / 30); }
+    // a wheel took it: bent tie rod or control arm, the car pulls to that side
+    const nearAxle = B.zF != null && Math.min(Math.abs(lz + B.cz - B.zF), Math.abs(lz + B.cz - B.zR)) < 0.55, front = B.zF != null && Math.abs(lz + B.cz - B.zF) < 0.55;
+    if (nearAxle && (zone === 'left' || zone === 'right' || sx > 0.75) && mph > 7) {
+      c.pull = clamp((c.pull || 0) + (lx < 0 ? 1 : -1) * (front ? 1 : 0.5) * (0.006 + mph * 0.0009), -0.06, 0.06);
+      c.cond.tires = clamp100(c.cond.tires - Math.min(40, mph * 0.8));
+    }
+    // you: the belt and the airbag take most of a frontal hit, a side hit has no crumple room
+    let hurt = mph > 12 ? (mph - 12) * (zone === 'left' || zone === 'right' ? 1.3 : 0.75) : 0;
+    let bag = false;
+    if (zone === 'front' && mph > 15 && !c.bag) { bag = true; c.bag = true; hurt *= 0.6; }
+    if (hurt > 0) S.health = clamp100(S.health - hurt);
+    CRX.stats.last = { mph: +mph.toFixed(1), zone, sev, bodyD: +bodyD.toFixed(1), hurt: +hurt.toFixed(1), kind: ev.knock || (ev.O && ev.O.kind) };
+    // the dent itself, in the real body
+    if (mph > 4) crDent(c, lx, lz + B.cz, ev.nx, ev.nz, ev.knock ? mph * 0.7 : mph);
+    // feel it: sound, bits, camera kick
+    crCrunch(clamp(mph / 35, 0.15, 1), 'metal');
+    if (mph > 5) crBits(ev.px, ev.pz, Math.min(30, mph * 0.8), mph > 14, c.color);
+    if (mph > 6) crSparks(ev.px, ev.pz, Math.min(20, mph * 0.6), TIRE.vx, TIRE.vz);
+    const kick = Math.min(0.9, mph / 40); drv.cam.x += (Math.random() - 0.5) * kick; drv.cam.y += Math.random() * kick * 0.5; drv.cam.z += (Math.random() - 0.5) * kick;
+    // what got hit
+    const O = ev.O || {};
+    if (O.kind === 'parked' && mph > 3 && Math.random() < 0.85) crAlarm(ev.px, ev.pz);
+    if (O.kind === 'hood' && O.e && typeof hSay === 'function') { try { hSay(O.e, hPick(mph > 15 ? ['YOU TRIPPIN?!', 'bro you just totaled my whip', 'you finna pay for that'] : ['watch where you going', 'ay you hit my car', 'bruh. my paint']), true); } catch (er) {} }
+    if (O.kind === 'cop' && mph > 4) { const C = window.__cops; S.heat = Math.min(5, (S.heat || 0) + (mph > 12 ? 2 : 1)); try { if (C && C.COP.phase !== 'chase' && mph > 8) C.copChase('Suspect struck a patrol unit.'); } catch (er) {} if (typeof refreshStats === 'function') refreshStats(); }
+    // tell the player once in a while
+    if (now - CRX.msgT > 1600 || sev >= 2) {
+      CRX.msgT = now;
+      const part = zone === 'front' ? 'front end' : zone === 'rear' ? 'rear end' : zone + ' side';
+      const what = O.kind === 'tree' ? 'a tree' : O.kind === 'pole' ? 'a utility pole' : O.kind === 'lamp' ? 'a light pole' : O.kind === 'hyd' ? 'a hydrant' : O.kind === 'parked' ? 'a parked car' : O.kind === 'hood' ? 'somebody\'s car' : O.kind === 'cop' ? 'a cop car' : O.kind === 'rail' ? 'the guardrail' : 'the wall';
+      const msg = sev === 0 ? `Scraped ${what}. Scuffed the ${part}.` : sev === 1 ? `Hit ${what} at ${Math.round(mph)} mph. Dented the ${part}.` : sev === 2 ? `Hard hit into ${what}, ${Math.round(mph)} mph. The ${part} is smashed${bag ? ' and the airbags went off' : ''}.` : `Bad wreck: ${Math.round(mph)} mph into ${what}.${bag ? ' Airbags went off.' : ''} You're hurt.`;
+      toast(msg, 'bad');
+    }
+    if (c.cond.engine <= 0 && typeof FOB !== 'undefined') FOB.run = false;
+    if ((frame & 3) === 0 || sev >= 1) { save(); refreshStats(); }
+  }
+  function crAlarm(x, z) {
+    const ac = typeof audioCtx === 'function' ? audioCtx() : null; if (!ac || ac.state !== 'running') return;
+    if (CRX.alarmT && performance.now() - CRX.alarmT < 8000) return; CRX.alarmT = performance.now();
+    const t0 = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(); o.type = 'square';
+    for (let i = 0; i < 24; i++) o.frequency.setValueAtTime(i % 2 ? 1250 : 950, t0 + i * 0.25);
+    const d = car ? Math.hypot(x - car.position.x, z - car.position.z) : 5; g.gain.value = 0.07 / (1 + d / 20);
+    o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + 6);
+  }
+
+  // ---- dents: push the body's vertices in around the hit, with a little crumple, and keep them on the car ----
+  // c.dents = [[x, y, z, nx, nz, depth, radius], ...] in the car's own frame (x right, z back, y up from the ground)
+  function crDent(c, lx, lz, nx, nz, mph) {
+    const yaw = drv.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw);
+    // the push direction in the car's frame: n (world) -> local
+    const dnx = nx * cs - nz * sn, dnz = nx * sn + nz * cs;
+    const depth = Math.min(0.32, 0.012 * Math.pow(mph, 1.1)), rad = clamp(0.35 + mph * 0.025, 0.35, 1.1);
+    const y = 0.45 + Math.random() * 0.25;
+    const L = c.dents || (c.dents = []); L.push([+lx.toFixed(3), +y.toFixed(2), +lz.toFixed(3), +dnx.toFixed(3), +dnz.toFixed(3), +depth.toFixed(3), +rad.toFixed(2)]);
+    if (L.length > 30) L.shift();
+    const M3 = car && car.userData.model; if (M3 && M3.userData.crB) crDentMesh(M3, L[L.length - 1]);
+  }
+  const _dv = new THREE.Vector3(), _dq = new THREE.Vector3(), _di = new THREE.Matrix4(), _dc = new THREE.Matrix4();
+  function crDentMesh(M3, D) {
+    // to the car group's frame (where the dent lives) from each mesh's own frame
+    _dc.copy(car.matrixWorld).invert();
+    const wheels = new Set(); for (const w of M3.userData.wheels || []) w.traverse(o => wheels.add(o));
+    const [x, y, z, nx, nz, depth, rad] = D;
+    M3.traverse(o => {
+      if (!o.isMesh || o.isInstancedMesh || wheels.has(o) || !o.geometry || !o.geometry.attributes.position || o.userData.noDent) return;
+      const mat = Array.isArray(o.material) ? o.material[0] : o.material; if (mat && (mat.transparent && mat.opacity < 0.5 || mat.blending === THREE.AdditiveBlending)) return;
+      o.updateMatrixWorld(); _di.multiplyMatrices(_dc, o.matrixWorld);   // mesh -> car frame
+      const inv = new THREE.Matrix4().copy(_di).invert();
+      // quick reject: the mesh's box in the car frame
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const bb = o.geometry.boundingBox.clone().applyMatrix4(_di); if (bb.distanceToPoint(_dv.set(x, y, z)) > rad) return;
+      if (!o.userData.crOwn) { o.geometry = o.geometry.clone(); o.userData.crOwn = true; o.userData.crOrig = o.geometry.attributes.position.array.slice(); if (o.geometry.attributes.normal) o.userData.crOrigN = o.geometry.attributes.normal.array.slice(); }
+      const P = o.geometry.attributes.position, N = o.geometry.attributes.normal, a = P.array;
+      // the push in mesh units: car-frame displacement (n * depth) mapped back through the inverse
+      const p0 = _dv.set(x, y, z).applyMatrix4(inv).clone(), p1 = _dq.set(x + nx * depth, y, z + nz * depth).applyMatrix4(inv);
+      const dx = p1.x - p0.x, dy = p1.y - p0.y, dz = p1.z - p0.z, sc = Math.hypot(dx, dy, dz) / Math.max(depth, 1e-6), R = rad * sc;
+      let moved = 0;
+      for (let i = 0; i < a.length; i += 3) {
+        const ex = a[i] - p0.x, ey = (a[i + 1] - p0.y) * 1.4, ez = a[i + 2] - p0.z, d = Math.hypot(ex, ey, ez); if (d > R) continue;
+        const f = (1 - d / R), k = f * f * (0.85 + 0.3 * Math.abs(Math.sin(a[i] * 7.1 + a[i + 1] * 9.7 + a[i + 2] * 5.3)));   // a soft crumple, not a smooth scoop
+        a[i] += dx * k; a[i + 1] += dy * k * 0.3 - Math.abs(dy + dx + dz) * 0.04 * k; a[i + 2] += dz * k;
+        if (N) { const nn = N.array; nn[i] += -dx / sc / depth * 0.45 * k + (Math.random() - 0.5) * 0.12 * k; nn[i + 2] += -dz / sc / depth * 0.45 * k + (Math.random() - 0.5) * 0.12 * k; const l = Math.hypot(nn[i], nn[i + 1], nn[i + 2]) || 1; nn[i] /= l; nn[i + 1] /= l; nn[i + 2] /= l; }
+        moved++;
+      }
+      if (moved) { P.needsUpdate = true; if (N) N.needsUpdate = true; o.geometry.computeBoundingSphere(); }
+    });
+    crPop(M3, D);
+  }
+  // a hard hit in front buckles the hood up off its latch; one from behind springs the trunk lid
+  function crPop(M3, D) {
+    const P = M3.userData.panels; if (!P || D[5] < 0.12) return;
+    const B = M3.userData.crB || {}, front = B.zF != null ? D[2] < B.zF + 0.3 : D[2] < -1, rear = B.zR != null ? D[2] > B.zR - 0.3 : D[2] > 1;
+    for (const k in P) {
+      const p = P[k]; if (!p || !p.g) continue;
+      if (!(front && /hood|bonnet/i.test(k)) && !(rear && /trunk|deck|boot|hatch|gate|lid/i.test(k))) continue;
+      if (p.crBase == null) p.crBase = p.base;
+      const amt = Math.min(0.16, (p.crAmt || 0) + D[5] * 0.35); p.crAmt = amt;
+      p.base = p.crBase + p.open * amt; p.g.rotation[p.axis] = p.base + p.open * (p.t * p.t * (3 - 2 * p.t));
+    }
+  }
+  function crDentRestore(M3) {
+    if (!M3) return;
+    const P = M3.userData.panels; if (P) for (const k in P) { const p = P[k]; if (p && p.crBase != null) { p.base = p.crBase; p.crAmt = 0; p.g.rotation[p.axis] = p.base + p.open * (p.t * p.t * (3 - 2 * p.t)); } }
+    M3.traverse(o => { if (o.isMesh && o.userData.crOwn && o.userData.crOrig) { o.geometry.attributes.position.array.set(o.userData.crOrig); o.geometry.attributes.position.needsUpdate = true; if (o.userData.crOrigN && o.geometry.attributes.normal) { o.geometry.attributes.normal.array.set(o.userData.crOrigN); o.geometry.attributes.normal.needsUpdate = true; } } });
+  }
+  // a fresh model (another car, a paint job, a reload): put this car's dents back on it once it's built
+  function crModelWatch() {
+    const M3 = car && car.userData.model; if (M3 === CRX.mdl) return; CRX.mdl = M3;
+    if (!M3 || !S || !S.car) return; crBox();
+    for (const D of S.car.dents || []) crDentMesh(M3, D);
+  }
+
+  // ---- the shop: a body job takes the dents out and the airbags get replaced; alignment comes with the tires ----
+  const _crPartFix = partFix;
+  partFix = function (c, k) {
+    const r = _crPartFix.apply(this, arguments);
+    if (k === 'body') { c.dents = []; c.bag = false; c.pull = 0; if (S && c === S.car && car) crDentRestore(car.userData.model); }
+    if (k === 'tires') c.pull = 0;
+    if (k === 'engine') c.rad = 0;
+    return r;
+  };
+  // a cracked radiator: the engine runs hotter (Phase 4D heat model)
+  const _crDmgCtx = dmgCtx;
+  dmgCtx = function (c) { const X = _crDmgCtx.apply(this, arguments); if (c && c.rad > 0 && !X._crRad) { X._crRad = true; X.coolK *= 1 - 0.75 * c.rad; } return X; };
+  // the pull: a bent wheel steers itself a little
+  CRX.pull = () => { const c = S && S.car; return c && c.pull ? c.pull : 0; };
+  const _crStepDriveW = stepDrive;
+  stepDrive = function (dt) { crModelWatch(); return _crStepDriveW.apply(this, arguments); };
+  // an automatic idles on: knocked backward in Drive the converter used to drag the motor down to a stall it never came
+  // back from (the sim has no idle governor below the converter). A real one sits at idle and pulls against it.
+  const _crPhys = physStep;
+  physStep = function (I, P, h) {
+    const r = _crPhys.apply(this, arguments), st = TIRE.vd, V = st && st.V;
+    if (V && !V.ev && V.tt !== 'man' && V.tt !== 'dct' && P && P.top !== 0 && P.pw > 0 && st.we * RPM < V.idle * 0.6) st.we = V.idle / RPM;
+    return r;
+  };
+  // ==== crashes (end) ====
   // ---------- assemble ----------
   const NIGHT_ONLY = [], LAMP_HEADS = [];
   const SHADOW_MATS = new Set(['plain', 'house', 'roof', 'store', 'facade', 'glass']);
@@ -30981,26 +31493,16 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     // moved by something else (teleport, garage, getting back in): start from rest
     if (drv.px == null || Math.hypot(drv.x - drv.px, drv.z - drv.pz) > 0.01 || drv.v === 0 && drv.pv !== 0) { physReset(); drv.camYaw = drv.yaw; }
     const ox = drv.x, oz = drv.z, vBefore = Math.hypot(TIRE.vx, TIRE.vz);
-    drv.steer = lerp(drv.steer, I.steer, 1 - Math.exp(-dt * 7));
+    drv.steer = lerp(drv.steer, clamp(I.steer + CRX.pull(), -1, 1), 1 - Math.exp(-dt * 7));
     // the vehicle simulation runs in steps of at most 1/240 s (a slow frame is capped so a hitch can't launch the car)
     const n = Math.max(1, Math.ceil(Math.min(dt, 0.06) / VD_H - 1e-6)), h = Math.min(dt, 0.06) / n;
     let nx = drv.x, nz = drv.z;
     I.gb = gbFor(P);
     for (let i = 0; i < n; i++) { physStep(I, P, h); nx += TIRE.vx * h; nz += TIRE.vz * h; if (window.__vdTap) window.__vdTap(h, nx, nz); }
     gbAfter(dt, I, P);
-    // push out of buildings
-    const R = 1.7; let hit = false;
-    for (let it = 0; it < 2; it++) for (const b of solids.at(nx, nz).concat(solids.at(nx + R, nz + R), solids.at(nx - R, nz - R))) {
-      const cx = clamp(nx, b.x0, b.x1), cz = clamp(nz, b.z0, b.z1), dx = nx - cx, dz = nz - cz, d = Math.hypot(dx, dz);
-      if (d < R) {
-        hit = true; let ux = 0, uz = 0;
-        if (d > 1e-4) { nx = cx + dx / d * R; nz = cz + dz / d * R; ux = dx / d; uz = dz / d; } else { const l = nx - b.x0, r2 = b.x1 - nx, t = nz - b.z0, bo = b.z1 - nz, m = Math.min(l, r2, t, bo); if (m === l) { nx = b.x0 - R; ux = -1; } else if (m === r2) { nx = b.x1 + R; ux = 1; } else if (m === t) { nz = b.z0 - R; uz = -1; } else { nz = b.z1 + R; uz = 1; } }
-        // stop the part of the motion going into the wall, scrub the rest
-        const vn = TIRE.vx * ux + TIRE.vz * uz; if (vn < 0) { TIRE.vx -= vn * ux * 1.15; TIRE.vz -= vn * uz * 1.15; }
-      }
-    }
-    if (hit) { const k = Math.pow(0.25, dt * 4); TIRE.vx *= k; TIRE.vz *= k; TIRE.w *= Math.pow(0.1, dt * 4); drv.v = TIRE.vx * -Math.sin(drv.yaw) + TIRE.vz * -Math.cos(drv.yaw); vdSync(); }
-    const crash = hit && !drv.hitting ? vBefore : 0; drv.hitting = hit;
+    // hit things: the car's real box against buildings, parked and moving cars, poles, trees (_crash.js, realism phase 1)
+    { const r = crashStep(nx, nz, dt, vBefore); nx = r.x; nz = r.z; drv.hitting = r.hit; }
+    const crash = 0;   // the damage is done per hit inside crashStep now
     drv.x = clamp(nx, WB.x0, WB.x1); drv.z = clamp(nz, WB.z0, WB.z1);
     wearDrive(Math.hypot(drv.x - ox, drv.z - oz), dt, crash);
     stepKnock(dt, I, P);
