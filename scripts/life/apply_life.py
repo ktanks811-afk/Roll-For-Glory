@@ -22,7 +22,12 @@ sub("if (!/^[mrhv]:/.test(e.id)) return false;", "if (!/^[mrhvp]:/.test(e.id)) r
 sub("it[0].length > 48 || !/^[mrhv]:/.test(it[0])", "it[0].length > 48 || !/^[mrhvp]:/.test(it[0])")
 # their brain, and their animation skipping frames when they're far
 sub("      else if (e.war) wBrain(e, dt, mx, mz, d);\n", "      else if (e.war) wBrain(e, dt, mx, mz, d);\n      else if (e.kind === 'ped') lifePed(e, dt, mx, mz, d);\n")
-sub("          if (!e.down) { if (e.moving) animPerson(", "          if (!e.down && !(e.lod > 1 && (frame + (e.ph * 10 | 0)) % e.lod)) { e.af = frame; if (e.moving) animPerson(")
+LODA = "          if (!e.down && !(e.lod > 1 && (frame + (e.ph * 10 | 0)) % e.lod)) { e.af = frame; "
+if "          if (!e.down) { const kk = Math.min(1, dt * 7);" in s or LODA + "const kk" in s:
+    # fluid-motion pose blend: skip frames when far, blend over the skipped time
+    sub("          if (!e.down) { const kk = Math.min(1, dt * 7);", LODA + "const kk = Math.min(1, dt * 7 * (e.lod || 1));")
+else:
+    sub("          if (!e.down) { if (e.moving) animPerson(", LODA + "if (e.moving) animPerson(")
 # nobody inside a building is next to you
 sub("      if (!e.down && e.kind !== 'homie' && e.mode !== 'fight'", "      if (!e.down && !e.hide && e.kind !== 'homie' && e.mode !== 'fight'")
 # folks on the sidewalk pick up the phone too

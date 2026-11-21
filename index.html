@@ -4009,6 +4009,43 @@ uniform mat3 normalMatrix;
     if (P.head) { const look = Math.sin(t * 0.29) * 0.22 + Math.sin(t * 0.11 + 1) * 0.16; P.head.rotation.set(Math.sin(t * 0.19) * 0.05 - 0.02, look * 0.7, w * 0.03); }
   }
 
+  // ===== FLUID-MOTION BEGIN (2026-11-21) =====
+  // Blends a standing pose into a walk by how fast someone is actually moving, so starting and stopping ease in and out
+  // instead of snapping from the idle pose to mid-stride. Also the damped spring the cameras use.
+  const MT_J = ['legs', 'knees', 'ankles', 'arms', 'fores'], MT_BUF = new Float32Array(48);
+  function mtSnap(P, a) {
+    let i = 0;
+    for (const j of MT_J) { const L = P[j]; if (!L) { i += 6; continue; } for (let s = 0; s < 2; s++) { const r = L[s].rotation; a[i++] = r.x; a[i++] = r.y; a[i++] = r.z; } }
+    for (const o of [P.upper, P.head]) { if (!o) { i += 3; continue; } const r = o.rotation; a[i++] = r.x; a[i++] = r.y; a[i++] = r.z; }
+    const q = P.root.position; a[i++] = q.x; a[i++] = q.y; a[i++] = q.z;
+  }
+  function mtMix(P, a, w) {   // move every joint toward the stored pose a by w
+    let i = 0; const m = r => { r.x += (a[i++] - r.x) * w; r.y += (a[i++] - r.y) * w; r.z += (a[i++] - r.z) * w; };
+    for (const j of MT_J) { const L = P[j]; if (!L) { i += 6; continue; } m(L[0].rotation); m(L[1].rotation); }
+    for (const o of [P.upper, P.head]) { if (!o) { i += 3; continue; } m(o.rotation); }
+    m(P.root.position);
+  }
+  // w: 0 standing .. 1 full stride; ph/k/run as animPerson; t: idle clock
+  function mtPose(P, w, ph, k, run, t) {
+    if (w >= 0.995) return animPerson(P, ph, k, run);
+    if (w <= 0.005) return idlePerson(P, t);
+    idlePerson(P, t); mtSnap(P, MT_BUF); animPerson(P, ph, k, run); mtMix(P, MT_BUF, 1 - w);
+  }
+  // how much stride for a speed (m/s): short steps while speeding up or slowing down, full steps at a walk and up
+  const mtWalkW = sp => { const x = clamp(sp / 1.1, 0, 1); return x * x * (3 - 2 * x); };
+  const mtStride = (sp, run) => lerp(clamp(0.35 + 0.65 * sp / 2.5, 0.35, 1.1), 1, run);
+  // critically damped spring, solved implicitly so it stays steady at any frame rate. returns [x, v]
+  function mtSpring(x, v, to, w, dt) {
+    const f = 1 + 2 * dt * w, oo = w * w, hoo = dt * oo, hhoo = dt * hoo, det = 1 / (f + hhoo);
+    return [(f * x + dt * v + hhoo * to) * det, (v + hoo * (to - x)) * det];
+  }
+  // AI cars face the way they're really moving along their path (no sliding sideways into a lane), path direction when slow
+  function mtCarYaw(dx, dz, gx, gz, dt) {
+    const d = Math.hypot(dx, dz);
+    return d > 0.6 * dt && dx * gx + dz * gz > 0 ? Math.atan2(-dx, -dz) : Math.atan2(-gx, -gz);
+  }
+  // ===== FLUID-MOTION END =====
+
   // other people: a small pool of random locals (lower detail), cloned in as staff and customers
   const CROWD = [], CROWD_N = 8;
   let crowdSeed = 1;
@@ -15831,7 +15868,7 @@ body.hd-on #hdiag{display:grid}#hdiag span{color:#7d848c}#hdiag b{color:#f2efe6;
         if (!p.inCar) {
           let dy = nNorm(yaw - v.P.wrap.rotation.y); v.P.wrap.rotation.y += dy * Math.min(1, dt * 12);
           const sp = Math.abs(p.sp);
-          if (sp > 0.4) { const run = clamp((sp - 2.5) / 4.7, 0, 1); p.walk += dt * sp * Math.PI * 2 / lerp(1.55, 3.8, run); animPerson(v.P, p.walk, 1, run); } else idlePerson(v.P, now + p.id.charCodeAt(0));
+          { const run = clamp((sp - 2.5) / 4.7, 0, 1); p.walk += dt * sp * Math.PI * 2 / lerp(1.55, 3.8, run); mtPose(v.P, mtWalkW(sp), p.walk, mtStride(sp, run), run, now + p.id.charCodeAt(0)); }   // FLUID-MOTION
         }
       }
       if (v.label) { v.label.position.set(0, p.inCar ? 2.3 : 2.25, 0); const k = 0.026; v.label.scale.set(k * v.label.userData.aspect, k, 1); }
@@ -16581,8 +16618,8 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     if (e.u >= L) { e.u -= L; const nb = hNext(e); e.a = e.b; e.b = nb; if (e.a === e.b) { e.sp = 0; e.u = 0; } }
     const ax2 = g.nx[e.a], az2 = g.nz[e.a], bx2 = g.nx[e.b], bz2 = g.nz[e.b], L2 = Math.max(0.1, Math.hypot(bx2 - ax2, bz2 - az2)), gx = (bx2 - ax2) / L2, gz = (bz2 - az2) / L2;
     const u = Math.min(e.u, L2), lane = 3.6, tx = ax2 + gx * u - gz * lane, tz = az2 + gz * u + gx * lane;
-    const k = 1 - Math.exp(-dt * 6); e.x += (tx - e.x) * k; e.z += (tz - e.z) * k;
-    const yw = Math.atan2(-gx, -gz); e.yaw += hNorm(yw - e.yaw) * Math.min(1, dt * 5);
+    const k = 1 - Math.exp(-dt * 6), ox = e.x, oz = e.z; e.x += (tx - e.x) * k; e.z += (tz - e.z) * k;
+    const yw = mtCarYaw(e.x - ox, e.z - oz, gx, gz, dt); e.yaw += hNorm(yw - e.yaw) * Math.min(1, dt * 8);   // FLUID-MOTION
   }
   function hPlaceOnRoad(e, x, z) {
     const g = gpsGraph(), n = hNearestNode(x, z); if (n < 0) return false; const adj = g.adj[n]; if (!adj.length) return false;
@@ -17629,7 +17666,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
         P.wrap.visible = !e.inCar && !(e.ride);
         if (P.wrap.visible) {
           P.wrap.rotation.y = e.yaw;
-          if (!e.down && !(e.lod > 1 && (frame + (e.ph * 10 | 0)) % e.lod)) { e.af = frame; if (e.moving) animPerson(P, e.walk, 1, e.moving > 1 ? 1 : 0); else idlePerson(P, now + e.ph); }
+          if (!e.down && !(e.lod > 1 && (frame + (e.ph * 10 | 0)) % e.lod)) { e.af = frame; const kk = Math.min(1, dt * 7 * (e.lod || 1)); e.mw = (e.mw || 0) + ((e.moving ? 1 : 0) - (e.mw || 0)) * kk; e.mr = (e.mr || 0) + ((e.moving > 1 ? 1 : 0) - (e.mr || 0)) * kk; mtPose(P, e.mw, e.walk, 1, e.mr, now + e.ph); }   // FLUID-MOTION
           e.moving = 0;
           if (!e.gun && e.gunId) e.gun = (e.gd || e.kind !== 'reg') && d < 60 ? hGun(e.gunId) : null;
           if (G && G.pv && G.pv.pvDrawGun && e.gun) try { G.pv.pvDrawGun(e, e.view, dt, now); } catch (er) {}
@@ -22232,8 +22269,8 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
     if (u.u >= L) { u.u -= L; const nb = copNext(u); u.a = u.b; u.b = nb; if (u.a === u.b) { u.sp = 0; u.u = 0; } }
     const ax2 = g.nx[u.a], az2 = g.nz[u.a], bx2 = g.nx[u.b], bz2 = g.nz[u.b], L2 = Math.max(0.1, Math.hypot(bx2 - ax2, bz2 - az2)), gx = (bx2 - ax2) / L2, gz = (bz2 - az2) / L2;
     const uu = Math.min(u.u, L2), lane = hot ? 1.6 : 3.6, tx = ax2 + gx * uu - gz * lane, tz = az2 + gz * uu + gx * lane;
-    const k = 1 - Math.exp(-dt * 6); u.x += (tx - u.x) * k; u.z += (tz - u.z) * k;
-    u.yaw += cNorm(Math.atan2(-gx, -gz) - u.yaw) * Math.min(1, dt * 5);
+    const k = 1 - Math.exp(-dt * 6), ox = u.x, oz = u.z; u.x += (tx - u.x) * k; u.z += (tz - u.z) * k;
+    u.yaw += cNorm(mtCarYaw(u.x - ox, u.z - oz, gx, gz, dt) - u.yaw) * Math.min(1, dt * 8);   // FLUID-MOTION
   }
   function copOnRoad(u, x, z) {
     const g = gpsGraph(), n = hNearestNode(x, z); if (n < 0) return false; const adj = g.adj[n]; if (!adj.length) return false;
@@ -33463,7 +33500,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     drv.v = 0; foot.on = true; foot.park = { x: drv.x, z: drv.z, yaw: drv.yaw };
     // step out on the driver's side
     const lx = -Math.cos(drv.yaw), lz = Math.sin(drv.yaw);
-    foot.x = drv.x + lx * 1.9; foot.z = drv.z + lz * 1.9; foot.yaw = drv.yaw; foot.camYaw = drv.yaw; foot.target = null; foot.nearCar = false;
+    foot.x = drv.x + lx * 1.9; foot.z = drv.z + lz * 1.9; foot.yaw = drv.yaw; foot.camYaw = drv.yaw; foot.target = null; foot.nearCar = false; foot.vx = foot.vz = 0; foot.lean = foot.pitch = 0;
     foot.holder.visible = true; foot.holder.position.set(foot.x, 0, foot.z); foot.holder.rotation.y = foot.yaw; wearMe(foot.holder);
     foot.cam.set(foot.x + Math.sin(foot.camYaw) * 4.6, 2.2, foot.z + Math.cos(foot.camYaw) * 4.6); foot.look.set(foot.x - Math.sin(foot.camYaw) * 1.6, 1.35, foot.z - Math.cos(foot.camYaw) * 1.6);
     $('pad').classList.remove('on'); $('hud').classList.add('foot'); $('walkhint').hidden = false; clearTimeout(getOut.hint); getOut.hint = setTimeout(() => { $('walkhint').hidden = true; }, 6000); showCard(null); syncDrive(); resize();
@@ -33503,9 +33540,14 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     // ease between walking and running so the stride blends instead of snapping
     foot.runB = (foot.runB || 0) + ((run && moving ? 1 : 0) - (foot.runB || 0)) * Math.min(1, dt * 5);
     const sp = lerp(2.5, 7.2, foot.runB);
-    if (moving) {
-      const k = Math.min(1, l); wx /= l; wz /= l;
-      let nx = foot.x + wx * sp * k * dt, nz = foot.z + wz * sp * k * dt; const R = 0.35;
+    // FLUID-MOTION: you have momentum. Speed builds over a few tenths of a second and bleeds off when you let go, a hard
+    // turn while running slows you through it, and walls take the speed you push into them.
+    let k = 0, dvx = 0, dvz = 0;
+    if (moving) { k = Math.min(1, l); wx /= l; wz /= l; dvx = wx * sp * k; dvz = wz * sp * k; }
+    let vx = foot.vx || 0, vz = foot.vz || 0; const spd0 = Math.hypot(vx, vz);
+    { const ex = dvx - vx, ez = dvz - vz, el = Math.hypot(ex, ez), acc = moving ? lerp(10, 14, foot.runB) : 16; if (el > 1e-6) { const st = Math.min(el, acc * dt); vx += ex / el * st; vz += ez / el * st; } }
+    if (Math.hypot(vx, vz) > 0.03) {
+      let nx = foot.x + vx * dt, nz = foot.z + vz * dt; const R = 0.35;
       for (const b of solids.at(nx, nz)) {
         if (b.walk) continue;   // porch strips: solid for cars, you walk on them (MOVES)
         if (nx > b.x0 - R && nx < b.x1 + R && nz > b.z0 - R && nz < b.z1 + R) { const pl = nx - (b.x0 - R), pr = b.x1 + R - nx, pt = nz - (b.z0 - R), pb = b.z1 + R - nz, m = Math.min(pl, pr, pt, pb); if (m === pl) nx = b.x0 - R; else if (m === pr) nx = b.x1 + R; else if (m === pt) nz = b.z0 - R; else nz = b.z1 + R; }
@@ -33514,16 +33556,34 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       if (foot.park) { const cx = nx - foot.park.x, cz = nz - foot.park.z, cs = Math.cos(foot.park.yaw), sn = Math.sin(foot.park.yaw), ax = cx * cs - cz * sn, az = cx * sn + cz * cs;
       if (Math.abs(ax) < 1.05 + R && Math.abs(az) < 2.5 + R) { if (1.05 + R - Math.abs(ax) < 2.5 + R - Math.abs(az)) { const px = Math.sign(ax) * (1.05 + R); nx = foot.park.x + px * cs + az * sn; nz = foot.park.z - px * sn + az * cs; } else { const pz = Math.sign(az) * (2.5 + R); nx = foot.park.x + ax * cs + pz * sn; nz = foot.park.z - ax * sn + pz * cs; } } }
       { const q = crFootPush(nx, nz, R); nx = q[0]; nz = q[1]; }   // poles, trunks, signs, cars (crashes)
-      if (foot.target && Math.hypot(nx - foot.x, nz - foot.z) < 0.0004 * sp) foot.target = null;
-      foot.x = clamp(nx, WB.x0, WB.x1); foot.z = clamp(nz, WB.z0, WB.z1);
-      foot.yaw = Math.atan2(-wx, -wz); foot.walk += dt * sp * k * Math.PI * 2 / lerp(1.55, 3.8, foot.runB);
+      if (moving && foot.target && Math.hypot(nx - foot.x, nz - foot.z) < 0.0004 * sp) foot.target = null;
+      nx = clamp(nx, WB.x0, WB.x1); nz = clamp(nz, WB.z0, WB.z1);
+      if (dt > 1e-4) { const rx = (nx - foot.x) / dt, rz = (nz - foot.z) / dt, rl = Math.hypot(rx, rz), cap = Math.max(sp, spd0) + 1; vx = rl > cap ? rx / rl * cap : rx; vz = rl > cap ? rz / rl * cap : rz; }
+      foot.x = nx; foot.z = nz;
+    } else vx = vz = 0;
+    foot.vx = vx; foot.vz = vz;
+    const spd = Math.hypot(vx, vz);
+    foot.aRun = (foot.aRun || 0) + (clamp((spd - 2.6) / 3.6, 0, 1) - (foot.aRun || 0)) * Math.min(1, dt * 8);
+    foot.walk += dt * spd * Math.PI * 2 / lerp(1.55, 3.8, foot.aRun);
+    if (moving) {
+      foot.yaw = Math.atan2(-wx, -wz);
       // the camera swings round behind you while you walk forward-ish
       let dc = foot.yaw - foot.camYaw; dc = Math.atan2(Math.sin(dc), Math.cos(dc));
       if (Math.abs(dc) < 2.0 && performance.now() - LOOK.dragAt > 1500) foot.camYaw += dc * Math.min(1, dt * (run ? 1.6 : 1.0)) * k;
     }
     const h = foot.holder; h.position.set(foot.x, 0, foot.z);
-    let dy = foot.yaw - h.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); h.rotation.y += dy * Math.min(1, dt * 12);
-    if (ME) { if (moving) animPerson(ME, foot.walk, lerp(0.8 + 0.4 * Math.min(1, l), 1, foot.runB), foot.runB); else idlePerson(ME, performance.now() / 1000); }
+    let dy = foot.yaw - h.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    // turn: quick but not instant, a bit slower at a full run
+    const turn = dy * Math.min(1, dt * lerp(13, 9, foot.aRun)); h.rotation.y += turn;
+    if (ME) {
+      mtPose(ME, mtWalkW(spd), foot.walk, mtStride(spd, foot.aRun), foot.aRun, performance.now() / 1000);
+      // lean into a turn (more when running) and into a push off / back on a stop
+      const yr = dt > 1e-4 ? turn / dt : 0, lean = clamp(Math.atan(spd * yr / 9.8) * lerp(0.12, 0.42, foot.aRun), -0.2, 0.2);
+      const acc = dt > 1e-4 ? (spd - (foot.pspd || 0)) / dt : 0; foot.pspd = spd;
+      foot.lean = (foot.lean || 0) + (lean - (foot.lean || 0)) * Math.min(1, dt * 8);
+      foot.pitch = (foot.pitch || 0) + (clamp(acc * 0.02, -0.12, 0.14) - (foot.pitch || 0)) * Math.min(1, dt * 7);
+      h.rotation.z = foot.lean; ME.upper.rotation.x += foot.pitch;   // roll about the way you face (the holder's own axis)
+    }
     drv.x = foot.x; drv.z = foot.z;
     const tall = innerWidth < innerHeight * 0.8;
     orbitCam(foot.x, foot.z, foot.camYaw, drv.far ? 12 : tall ? 4.4 : 3.6, drv.far ? 0 : tall ? 0.35 : 0.55, v4, v5);
@@ -33572,6 +33632,42 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     for (const p of pads) { if (!p) continue; const ax = p.axes[0] || 0; if (Math.abs(ax) > 0.15) steer = -ax; const rt = p.buttons[7] ? p.buttons[7].value : 0, lt = p.buttons[6] ? p.buttons[6].value : 0; if (rt > 0.05) gas = rt; if (lt > 0.05) brake = lt; if (p.buttons[0] && p.buttons[0].pressed) gas = 1; if (p.buttons[1] && p.buttons[1].pressed) hb = 1; if (p.buttons[2] && p.buttons[2].pressed && cardMode === 'near') pullIn(); }
     return { gas, brake, steer, hb };
   }
+  // ===== FLUID-MOTION chase camera (2026-11-21) =====
+  // Before: the camera chased a point behind the car with a plain lerp, so it fell ~12 m further back at 130 mph and
+  // swung in again when you braked, and turns started and stopped with a jerk. Now it rides a damped spring arm fixed to
+  // the car: it swings round smoothly (still toward where the car is really going, so you see a slide), backs off a little
+  // and widens the lens with speed, leans back on a launch and in on hard braking, and looks a touch ahead of you.
+  const MTC = { yv: 0, rel: new THREE.Vector3(), rv: new THREE.Vector3(), out: new THREE.Vector3(), has: false, lk: new THREE.Vector3(), lv: new THREE.Vector3(), ax: 0, pspd: 0, fov: 0, fovAdd: 0 };
+  function mtFov(v) {   // the speed lens on top of whatever lens the camera has
+    if (typeof PM !== 'undefined' && PM.on) return;
+    if (Math.abs(v - MTC.fovAdd) < 0.01) return;
+    camera.fov += v - MTC.fovAdd; MTC.fovAdd = v; camera.updateProjectionMatrix();
+  }
+  function mtFovStep(dt, spd) { MTC.fov += (Math.min(9, Math.max(0, spd - 9) * 0.17) - MTC.fov) * Math.min(1, dt * 2); mtFov(Math.round(MTC.fov * 20) / 20); }
+  function mtDriveCam(dt, spd, dyaw) {
+    if (drv.camYaw == null) drv.camYaw = drv.yaw;
+    const ty = drv.yaw + clamp(dyaw, -0.9, 0.9) * 0.55, e = Math.atan2(Math.sin(ty - drv.camYaw), Math.cos(ty - drv.camYaw));
+    if (Math.abs(e) > 2.2) { drv.camYaw = ty; MTC.yv = 0; }
+    else { const r = mtSpring(drv.camYaw, MTC.yv, drv.camYaw + e, 3.4, dt); drv.camYaw = r[0]; MTC.yv = r[1]; }
+    const acc = dt > 1e-4 ? (spd - MTC.pspd) / dt : 0; MTC.pspd = spd; MTC.ax += (clamp(acc, -14, 12) - MTC.ax) * Math.min(1, dt * 3);
+    const far = drv.far, back = (far ? 26 : 11.5) + Math.min(2.2, spd * 0.035) + clamp(MTC.ax * 0.07, -0.8, 0.9), up = (far ? 12 : 4.2) - Math.min(0.5, spd * 0.008);
+    const wx = Math.sin(drv.camYaw) * back, wz = Math.cos(drv.camYaw) * back, R = MTC.rel, V = MTC.rv;
+    // somebody else moved the camera since last frame: a crash shake stays as a kick the spring settles, a teleport is a jump cut
+    if (!MTC.has) { R.set(wx, up, wz); V.set(0, 0, 0); MTC.has = true; }
+    else { const kx = drv.cam.x - MTC.out.x, ky = drv.cam.y - MTC.out.y, kz = drv.cam.z - MTC.out.z, kd = Math.hypot(kx, ky, kz);
+      if (kd > 6) { R.set(drv.cam.x - drv.x, drv.cam.y, drv.cam.z - drv.z); if (R.length() > 60) R.set(wx, up, wz); V.set(0, 0, 0); } else if (kd > 1e-5) { R.x += kx; R.y += ky; R.z += kz; } }
+    let q = mtSpring(R.x, V.x, wx, 6, dt); R.x = q[0]; V.x = q[1]; q = mtSpring(R.z, V.z, wz, 6, dt); R.z = q[0]; V.z = q[1]; q = mtSpring(R.y, V.y, up, 4.5, dt); R.y = q[0]; V.y = q[1];
+    drv.cam.set(drv.x + R.x, Math.max(0.8, R.y), drv.z + R.z); MTC.out.copy(drv.cam);
+    // look 8 m ahead of the car, a little further along the way it's moving
+    const ahead = drv.v > -1 && spd > 2 ? Math.min(5, spd * 0.1) : 0, lx = -Math.sin(drv.camYaw) * 8 + (spd > 0.1 ? TIRE.vx / spd : 0) * ahead, lz = -Math.cos(drv.camYaw) * 8 + (spd > 0.1 ? TIRE.vz / spd : 0) * ahead;
+    const L = MTC.lk, LV = MTC.lv;
+    if (!MTC.lhas || Math.hypot(L.x - lx, L.z - lz) > 12) { L.set(lx, 1.6, lz); LV.set(0, 0, 0); MTC.lhas = true; }
+    q = mtSpring(L.x, LV.x, lx, 8, dt); L.x = q[0]; LV.x = q[1]; q = mtSpring(L.z, LV.z, lz, 8, dt); L.z = q[0]; LV.z = q[1];
+    drv.look.set(drv.x + L.x, 1.6, drv.z + L.z);
+  }
+  setTimeout(() => { window.__motion = { MTC, mtPose, mtSpring, mtWalkW, mtStride, me: () => ME, foot: dt => stepFoot(dt), drive: dt => stepDrive(dt) }; }, 0);
+  // off the chase camera (on foot, indoors, a race scene): take the speed lens back off
+  function mtFrame() { if (MTC.fovAdd && (!driving || foot.on || inside || STRIP.on || ROLL.on || KS.on || creating)) { MTC.fov = 0; mtFov(0); } }
   function stepDrive(dt) {
     const I = nosInput(window.__drvIn ? window.__drvIn() : input()); drv.gas = I.gas || 0; drv.brk = I.brake || 0; drv.hb = I.hb || 0;
     const P = carPerf();
@@ -33597,18 +33693,13 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     // the camera swings toward where the car is actually going, so you can see a slide
     const spd = Math.hypot(TIRE.vx, TIRE.vz), head = spd > 4 && drv.v > -1 ? Math.atan2(-TIRE.vx, -TIRE.vz) : drv.yaw;
     let dyaw = head - drv.yaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
-    drv.camYaw = drv.camYaw == null ? drv.yaw : drv.camYaw;
-    let cy = drv.yaw + clamp(dyaw, -0.9, 0.9) * 0.55 - drv.camYaw; cy = Math.atan2(Math.sin(cy), Math.cos(cy)); drv.camYaw += cy * (1 - Math.exp(-dt * 4));
-    const back = drv.far ? 26 : 11.5, up = drv.far ? 12 : 4.2;
-    const want = v4.set(drv.x + Math.sin(drv.camYaw) * back, up, drv.z + Math.cos(drv.camYaw) * back);
-    drv.cam.lerp(want, 1 - Math.exp(-dt * 5));
     const M3 = car.userData.model;
     // the driver's seat: a short near plane so the wheel and gauges right in front of you still draw, and a wider lens like a real head turn
     const fpNow = !!(drv.fp && M3 && M3.userData.inner);
-    if (fpNow !== !!drv.fpLens) { drv.fpLens = fpNow; if (fpNow) { drv.lens0 = [camera.near, camera.fov]; camera.near = 0.04; camera.fov = 66; } else if (drv.lens0) { camera.near = drv.lens0[0]; camera.fov = drv.lens0[1]; } camera.updateProjectionMatrix(); }
-    if (fpNow) { const inn = M3.userData.inner, e = M3.userData.eye; inn.updateWorldMatrix(true, false); camera.position.copy(inn.localToWorld(v4.set(e[0], e[1], e[2]))); camera.lookAt(inn.localToWorld(v4.set(e[0] + 8, e[1] - 0.75, e[2]))); }
-    else { camera.position.copy(drv.cam);
-    drv.look.set(drv.x - Math.sin(drv.camYaw) * 8, 1.6, drv.z - Math.cos(drv.camYaw) * 8); camera.lookAt(drv.look); }
+    if (fpNow !== !!drv.fpLens) { mtFov(0); drv.fpLens = fpNow; if (fpNow) { drv.lens0 = [camera.near, camera.fov]; camera.near = 0.04; camera.fov = 66; } else if (drv.lens0) { camera.near = drv.lens0[0]; camera.fov = drv.lens0[1]; } camera.updateProjectionMatrix(); }
+    mtDriveCam(dt, spd, dyaw);   // FLUID-MOTION: the chase camera is a spring arm on the car
+    if (fpNow) { mtFov(0); const inn = M3.userData.inner, e = M3.userData.eye; inn.updateWorldMatrix(true, false); camera.position.copy(inn.localToWorld(v4.set(e[0], e[1], e[2]))); camera.lookAt(inn.localToWorld(v4.set(e[0] + 8, e[1] - 0.75, e[2]))); }
+    else { camera.position.copy(drv.cam); camera.lookAt(drv.look); mtFovStep(dt, spd); }
     spdEl.firstChild.nodeValue = Math.round(spd * 2.237);
     if ((frame & 7) === 0) { const s = streetAt(drv.x, drv.z); streetEl.textContent = s ? s.name : districtAt(drv.x, drv.z); }
     drv.px = drv.x; drv.pz = drv.z; drv.pv = drv.v;
@@ -33958,7 +34049,7 @@ body.lay-edit #dst { pointer-events: none; }
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     if (now - MEM.last > 2000) { MEM.last = now; memStep(now); }
-    netTick(dt); HOME.stepOut(dt); homeNetTick(dt); stepSpinners(dt);
+    mtFrame(); netTick(dt); HOME.stepOut(dt); homeNetTick(dt); stepSpinners(dt);
     stepNos(dt, (driving && !foot.on) || ROLL.on || STRIP.on);
     if ((frame & 15) === 0) syncCarModel();
     if (car) stepPanels(car.userData.model, dt); if (car && driving) stepCarAudio();
@@ -35919,7 +36010,7 @@ body.g-has #mv-pad { bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); righ
       // our own motion: a quick dive the way you rolled, slowing at the end
       MV.roll += dt; const p = MV.roll / MV_RT, sp = 5.4 * (p < 0.8 ? 1 : Math.max(0, (1 - p) / 0.2));
       [nx, nz] = mvFree(px + MV.rdx * sp * dt, pz + MV.rdz * sp * dt);
-      foot.yaw = Math.atan2(-MV.rdx, -MV.rdz); foot.holder.rotation.y = foot.yaw; foot.walk = 0; foot.target = null;
+      foot.yaw = Math.atan2(-MV.rdx, -MV.rdz); foot.holder.rotation.y = foot.yaw; foot.walk = 0; foot.target = null; foot.vx = MV.rdx * sp; foot.vz = MV.rdz * sp;   // FLUID-MOTION: come out of it moving
       if (p >= 1) { MV.roll = 0; MV.rcd = 0.25; }
     } else if (MV.crouch && !MV.air) { nx = px + (nx - px) * 0.42; nz = pz + (nz - pz) * 0.42; }   // crouched: a slow creep
     // too high to step up onto: you need the steps (or a jump)
