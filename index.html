@@ -222,7 +222,7 @@ body.creating > .top, body.creating > .dock, body.creating #hud, body.creating #
 @media (max-height: 500px) { .top #facts { display: none; } .dock { gap: 5px; padding-top: 6px; } .btn { padding: 5px 9px; font-size: 14px; } .chip { padding: 4px 8px; } #places { max-height: 22vh; } .pbtn { width: 54px; height: 54px; font-size: 13px; } }
 /* minimap + compass top-left whenever you're out in the world */
 #mini { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); left: max(16px, env(safe-area-inset-left, 0px)); width: 132px; height: 132px; display: none; pointer-events: none; z-index: 6; }
-#mini canvas { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
+#mini canvas { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; } /* MAP-ICONS: tap = Map on your waypoint */
 #mini-hd { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); font-size: 13px; font-weight: 700; letter-spacing: 0.06em; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
 body.busy:not(.indoors):not(.creating) #mini { display: block; }
 body.busy .top { display: none !important; }
@@ -8798,6 +8798,75 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   }
   // ---------- minimap: roads and places around you, turned to where you face, with a compass ring ----------
   const MINI = { c: null, x: null, hd: null, size: 0, r: 200, seen: new Set(), fwd: new THREE.Vector3() };
+  // MAP-ICONS: places on the minimap as icon badges with names (Kimari 2026-11-21: "name icons instead of just dots").
+  // Badges and labels are drawn once into little canvases and reused, so the phone blits images instead of emoji text.
+  const MI = { ico: new Map(), lab: new Map(), near: [], boxes: [], pinL: null };
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => MI.lab.clear());
+  function miniIcon(type, col, dpr) {
+    const key = type + col + dpr; let c = MI.ico.get(key); if (c) return c;
+    const r = 7 * dpr, s = Math.ceil(r * 2 + 2 * dpr); c = document.createElement('canvas'); c.width = c.height = s; const g = c.getContext('2d');
+    g.fillStyle = 'rgba(14,14,18,0.9)'; g.beginPath(); g.arc(s / 2, s / 2, r, 0, Math.PI * 2); g.fill(); g.lineWidth = 1.6 * dpr; g.strokeStyle = col; g.stroke();
+    g.font = `${Math.round(9 * dpr)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText(PLACE_ICON[type] || '•', s / 2, s / 2 + 0.6 * dpr);
+    MI.ico.set(key, c); return c;
+  }
+  function miniLabel(name, dpr, color) {
+    const t = name.length > 15 ? name.slice(0, 14).trim() + '…' : name, key = t + dpr + (color || ''); let c = MI.lab.get(key); if (c) return c;
+    if (MI.lab.size > 400) MI.lab.clear();
+    const f = `700 ${Math.round(10 * dpr)}px "Barlow Condensed", sans-serif`; c = document.createElement('canvas'); let g = c.getContext('2d'); g.font = f;
+    c.width = Math.ceil(g.measureText(t).width + 6 * dpr); c.height = Math.ceil(14 * dpr); g = c.getContext('2d');
+    g.font = f; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = 3 * dpr; g.strokeStyle = 'rgba(10,10,12,0.92)'; g.strokeText(t, 3 * dpr, c.height / 2); g.fillStyle = color || '#ffe9b0'; g.fillText(t, 3 * dpr, c.height / 2);
+    MI.lab.set(key, c); return c;
+  }
+  function miniPlaces(x, to, dpr, R, px, pz, half) {
+    const N = MI.near; N.length = 0;
+    for (const p of DATA.P) { const dx = p.x - px, dz = p.z - pz, d2 = dx * dx + dz * dz; if (d2 <= R * R * 1.5) N.push([d2, p]); }
+    N.sort((a, b) => a[0] - b[0]);
+    const ICONS = 16, room = half - 5 * dpr, B = MI.boxes; B.length = 0;
+    // a name may run a little past the ring (the ring clips it) but its middle has to be well inside
+    const inside = (x0, y0, x1, y1) => Math.hypot((x0 + x1) / 2 - half, (y0 + y1) / 2 - half) < room - 6 * dpr && Math.hypot(x0 - half, (y0 + y1) / 2 - half) < room + 8 * dpr && Math.hypot(x1 - half, (y0 + y1) / 2 - half) < room + 18 * dpr;
+    const free = (x0, y0, x1, y1) => { for (const b of B) if (x0 < b[2] && x1 > b[0] && y0 < b[3] && y1 > b[1]) return false; return true; };
+    const ME = [half - 8 * dpr, half - 9 * dpr, half + 8 * dpr, half + 8 * dpr]; B.push(ME); // you
+    // far / crowded places stay small dots underneath
+    for (let i = N.length - 1; i >= ICONS; i--) { const p = N[i][1], q = to(p.x, p.z); x.fillStyle = p.color && p.color !== '#ffffff' ? p.color : '#ffd23f'; x.beginPath(); x.arc(q[0], q[1], 2.6 * dpr, 0, Math.PI * 2); x.fill(); }
+    const pts = [];
+    for (let i = Math.min(ICONS, N.length) - 1; i >= 0; i--) {
+      const p = N[i][1], q = to(p.x, p.z), col = p.color && p.color !== '#ffffff' ? p.color : '#ffd23f', ic = miniIcon(p.type, col, dpr);
+      x.drawImage(ic, q[0] - ic.width / 2, q[1] - ic.height / 2); pts[i] = [q, ic.width / 2, p];
+    }
+    const IB = pts.map(t => [t[0][0] - t[1] * 0.7, t[0][1] - t[1] * 0.7, t[0][0] + t[1] * 0.7, t[0][1] + t[1] * 0.7]);   // icon cores
+    // the waypoint's name goes first, above (or under) the pin, and everything else makes room for it
+    if (pin.visible && pinLabel) {
+      const q = to(pin.position.x, pin.position.z);
+      if (Math.hypot(q[0] - half, q[1] - half) < room - 9 * dpr) {
+        const L = miniLabel(pinLabel.userData.name, dpr, '#ffb636'), lx = clamp(q[0] - L.width / 2, 2 * dpr, half * 2 - L.width - 2 * dpr);
+        let ly = q[1] - 7 * dpr - L.height; if (ly < half - room + 12 * dpr) ly = q[1] + 7 * dpr;
+        MI.pinL = [L, lx, ly]; B.push([lx, ly, lx + L.width, ly + L.height]);
+      } else MI.pinL = null;
+    } else MI.pinL = null;
+    // names: nearest first, only where they fit inside the ring without covering another name or icon
+    let left = R > 380 ? 3 : 5;
+    for (let i = 0; i < pts.length && left > 0; i++) {
+      const [q, r, p] = pts[i]; if (pin.visible && pinLabel && p.name === pinLabel.userData.name) continue;
+      const L = miniLabel(p.name, dpr), w = L.width, h = L.height;
+      for (const [lx, ly] of [[q[0] + r + 1 * dpr, q[1] - h / 2], [q[0] - r - 1 * dpr - w, q[1] - h / 2], [q[0] - w / 2, q[1] + r], [q[0] - w / 2, q[1] - r - h]]) {
+        if (!inside(lx, ly, lx + w, ly + h)) continue;
+        // never over you or another name; may brush past at most one other icon's edge
+        if (!free(lx, ly, lx + w, ly + h)) continue;
+        let hit = 0; for (let j = 0; j < IB.length; j++) if (j !== i) { const b = IB[j]; if (lx < b[2] && lx + w > b[0] && ly < b[3] && ly + h > b[1]) hit++; } if (hit > 2) continue;
+        x.drawImage(L, lx, ly); B.push([lx, ly, lx + w, ly + h]); left--; break;
+      }
+    }
+  }
+  function miniTap() {
+    if (document.body.classList.contains('lay-edit') || !worldOn) return;
+    openBigMap(); if (pin.visible) bmGo('pin');
+  }
+  setTimeout(function wireMini() {
+    const c = document.getElementById('mini-c'); if (!c) return setTimeout(wireMini, 500); let down = null;
+    c.addEventListener('pointerdown', e => { e.stopPropagation(); down = [e.clientX, e.clientY, performance.now()]; });
+    c.addEventListener('pointerup', e => { e.stopPropagation(); if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 14 && performance.now() - down[2] < 600) miniTap(); down = null; });
+    c.addEventListener('pointercancel', () => { down = null; });
+  }, 0);
   function stepMini() {
     if (!MINI.c) { MINI.c = document.getElementById('mini-c'); MINI.x = MINI.c.getContext('2d'); MINI.hd = document.getElementById('mini-hd'); }
     const el = MINI.c, box = el.parentNode.getBoundingClientRect(); if (!box.width) return;
@@ -8806,7 +8875,9 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     const px = foot.on ? foot.x : drv.x, pz = foot.on ? foot.z : drv.z;
     camera.getWorldDirection(MINI.fwd); let fx = MINI.fwd.x, fz = MINI.fwd.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
     const rx = -fz, rz = fx; // right of where you face
-    const want = foot.on ? 140 : clamp(220 + Math.abs(drv.v) * 4, 220, 520); MINI.r += (want - MINI.r) * 0.08;
+    let want = foot.on ? 140 : clamp(220 + Math.abs(drv.v) * 4, 220, 520);
+    if (pin.visible) { const pd = Math.hypot(pin.position.x - px, pin.position.z - pz); if (pd < want * 1.2) want = Math.min(want, Math.max(foot.on ? 60 : 85, pd * 1.15 + 25)); } // MAP-ICONS: close in on the waypoint
+    MINI.r += (want - MINI.r) * 0.08;
     const R = MINI.r, half = S / 2, k = (half - 6 * dpr) / R, x = MINI.x;
     const to = (wx, wz) => { const dx = wx - px, dz = wz - pz; return [half + (dx * rx + dz * rz) * k, half - (dx * fx + dz * fz) * k]; };
     x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, S, S);
@@ -8821,14 +8892,11 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     }
     hoodMini(x, to, dpr, R, px, pz);   // gang turf and the people around you (_hood.js)
     // places
-    for (const p of DATA.P) {
-      const dx = p.x - px, dz = p.z - pz; if (dx * dx + dz * dz > R * R * 1.5) continue;
-      const q = to(p.x, p.z); x.fillStyle = p.color && p.color !== '#ffffff' ? p.color : '#ffd23f';
-      x.beginPath(); x.arc(q[0], q[1], 3.2 * dpr, 0, Math.PI * 2); x.fill(); x.lineWidth = dpr; x.strokeStyle = 'rgba(0,0,0,0.6)'; x.stroke();
-    }
+    miniPlaces(x, to, dpr, R, px, pz, half);   // MAP-ICONS
     // your car when you're walking
     if (foot.on && foot.park) { const q = to(foot.park.x, foot.park.z); x.fillStyle = '#7fd1ff'; x.fillRect(q[0] - 3 * dpr, q[1] - 4.5 * dpr, 6 * dpr, 9 * dpr); }
     stepGps(); gpsMini(x, to, dpr);
+    if (MI.pinL) x.drawImage(MI.pinL[0], MI.pinL[1], MI.pinL[2]);   // MAP-ICONS: waypoint name over the route
     netMini(x, to, dpr, R, px, pz);
     x.restore();
     // pin: on the map, or an arrow on the rim pointing at it
@@ -9115,13 +9183,14 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
         <div class="bm-row">${MAP_FILTERS.map(f => `<button class="bm-b${f[0] === 'all' ? ' on' : ''}" data-f="${f[0]}">${f[1]}</button>`).join('')}</div>
       </div>
       <div class="bm-where"></div>
-      <div class="bm-side"><button data-z="1" aria-label="Zoom in">+</button><button data-z="-1" aria-label="Zoom out">−</button><button data-a="me" aria-label="Center on me">◎</button></div>
+      <div class="bm-side"><button data-z="1" aria-label="Zoom in">+</button><button data-z="-1" aria-label="Zoom out">−</button><button data-a="me" aria-label="Center on me">◎</button><button data-a="pin" aria-label="Zoom to waypoint" hidden>🚩</button></div>
       <div class="bm-card" hidden></div>`;
     document.body.append(el);
     BM.c = el.querySelector('canvas'); BM.x = BM.c.getContext('2d');
     el.querySelector('[data-a="close"]').onclick = closeBigMap;
     el.querySelector('[data-a="list"]').onclick = () => { closeBigMap(); openPhone(); phoneApp('maplist'); };
     el.querySelector('[data-a="me"]').onclick = () => bmGo('me');
+    el.querySelector('[data-a="pin"]').onclick = () => bmGo('pin');   // MAP-ICONS
     el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => bmGo(b.dataset.go));
     el.querySelectorAll('[data-z]').forEach(b => b.onclick = () => bmZoom(+b.dataset.z > 0 ? 1.8 : 1 / 1.8, BM.w / 2, BM.h / 2));
     el.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { BM.filter = b.dataset.f; el.querySelectorAll('[data-f]').forEach(o => o.classList.toggle('on', o === b)); bmDirty(); });
@@ -9151,7 +9220,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     if (PH.open) closePhone();
     BM.open = true; BM.el.hidden = false; BM.sel = null; BM.el.querySelector('.bm-card').hidden = true;
     const [x, z] = meXZ(); BM.cx = x; BM.cz = z; BM.follow = true;
-    bmSize(); BM.k = Math.min(BM.w, BM.h) / 2600; bmDirty();
+    bmSize(); BM.k = Math.min(BM.w, BM.h) / 2600; bmDirty(); BM.el.querySelector('[data-a="pin"]').hidden = !pin.visible;
     if (!BM.tick) BM.tick = setInterval(() => { if (!BM.open) return; if (BM.follow) { const [x, z] = meXZ(); BM.cx = x; BM.cz = z; } bmDirty(); }, 250);
   }
   function closeBigMap() { if (!BM.el) return; BM.open = false; BM.el.hidden = true; BM.ptrs.clear(); clearInterval(BM.tick); BM.tick = 0; }
@@ -9164,6 +9233,11 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   }
   function bmFit(x0, z0, x1, z1) { BM.cx = (x0 + x1) / 2; BM.cz = (z0 + z1) / 2; BM.k = Math.min(BM.w / (x1 - x0), (BM.h - 90) / (z1 - z0)); BM.follow = false; bmDirty(); }
   function bmGo(k) {
+    if (k === 'pin') { // MAP-ICONS: zoom in on the waypoint, street level, and show its card
+      if (!pin.visible) return; BM.cx = pin.position.x; BM.cz = pin.position.z; BM.k = Math.max(BM.k, 1.0); BM.follow = false;
+      const nm = pinLabel && pinLabel.userData.name, pl = DATA.P.find(p => p.name === nm && Math.hypot(p.x - pin.position.x, p.z - pin.position.z) < 5);
+      if (pl) bmCard(pl); else bmDirty(); return;
+    }
     if (k === 'me') { const [x, z] = meXZ(); BM.cx = x; BM.cz = z; BM.k = Math.max(BM.k, Math.min(BM.w, BM.h) / 2600); BM.follow = true; bmDirty(); return; }
     if (k === 'fw') return bmFit(DOWNTOWN.x - 3800, DOWNTOWN.z - 3000, DOWNTOWN.x + 3800, DOWNTOWN.z + 3000);
     if (k === 'dal') return bmFit(3200, -5200, 9000, 400);
@@ -9261,6 +9335,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
       const sx = SX(pin.position.x), sz = SZ(pin.position.z);
       x.fillStyle = '#ffb636'; x.strokeStyle = '#121016'; x.lineWidth = 2; x.beginPath(); x.moveTo(sx, sz); x.arc(sx, sz - 18, 9, Math.PI * 0.8, Math.PI * 2.2); x.closePath(); x.fill(); x.stroke();
       x.fillStyle = '#121016'; x.beginPath(); x.arc(sx, sz - 18, 3.5, 0, Math.PI * 2); x.fill();
+      if (pinLabel) { const t = pinLabel.userData.name; x.font = '700 15px "Barlow Condensed", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'bottom'; x.lineWidth = 3.5; x.strokeStyle = 'rgba(10,10,12,0.92)'; x.strokeText(t, sx, sz - 30); x.fillStyle = '#ffb636'; x.fillText(t, sx, sz - 30); } // MAP-ICONS
     }
     // your parked car, then you
     if (foot.on && foot.park) { const sx = SX(foot.park.x), sz = SZ(foot.park.z); x.fillStyle = '#7fd1ff'; x.strokeStyle = '#121016'; x.lineWidth = 1.5; x.fillRect(sx - 4, sz - 6, 8, 12); x.strokeRect(sx - 4, sz - 6, 8, 12); }
@@ -9423,6 +9498,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     let q = to(...meXZ().slice(0, 2)); x.moveTo(q[0], q[1]); for (let i = GPS.at + 1; i < P.length; i++) { q = to(P[i][0], P[i][1]); x.lineTo(q[0], q[1]); } x.stroke();
   }
   window.__gps = GPS;
+  window.__mapicons = { MI, MINI, BM, miniTap, bmGo, openBigMap, closeBigMap, setPin: (...a) => setPin(...a), get pin() { return pin; }, get DATA() { return DATA; } }; // MAP-ICONS tests
 
   // ---------- car physics: a real four-wheel vehicle simulation (Phase 1 rebuild) ----------
   // Everything here is in SI units (kg, m, s, N, N·m, rad/s) and runs at a fixed 240 Hz step.
