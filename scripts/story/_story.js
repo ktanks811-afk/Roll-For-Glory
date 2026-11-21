@@ -2950,14 +2950,14 @@
       await cut(async () => {
         if (k === 'legacy') {
           await syBlack('Six months later<br>United States District Court, Northern District of Texas', 2.6); await syUnblack();
-          actor('mama', h.x, h.z, h.yaw + Math.PI); actor('garza', h.x + 2, h.z + 1, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3.2);
+          placeMe(h.x + 1.4, h.z + 0.6, 0);           actor('mama', h.x, h.z, h.yaw + Math.PI); actor('garza', h.x + 2, h.z + 1, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3.2);
           await lines([['narr', 'Hollis: forty years federal. The Port woman: twenty. Calloway testified to save himself and got thirty anyway.'], ['garza', 'Your brother tried to do this and they killed him for it. You did it and you\'re standing on Pearl\'s porch.'], ['mama', 'Come in and eat. Both of y\'all.']]);
         } else if (k === 'king') {
           await syBlack('One year later', 2); await syUnblack();
           const [mx, mz] = syMe(); shot([mx + 30, 40, mz + 30], [mx, 0, mz], { to: [mx + 60, 70, mz + 10], dur: 8 });
           await lines([['narr', 'Hollis\'s haulers paint over the H. Wren ships twice as much. Every corner from Stop Six to Northside pays you.'], ['narr', 'Big Mama stopped answering your calls in March. Rusty retired to Galveston and didn\'t leave a number.'], ['narr', 'Biggest house in Westover Hills. Fourteen rooms. You sleep in one.']]);
         } else if (k === 'gone') {
-          await syBlack('DFW International<br>One way', 2.4); await syUnblack();
+          await syBlack('DFW International<br>One way', 2.4); { const ap = DATA.P.find(x => x.id === 'air_alliance'); if (ap) { const [aox, aoz] = outDir(ap); placeMe(ap.x + aox * 6, ap.z + aoz * 6, 0); } } await syUnblack();
           actor('mama', foot.x + 1.4, foot.z + 0.6, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3);
           await lines([['mama', 'I ain\'t never been on a plane. You hold my hand when it goes up.'], ['narr', 'Smoke\'s duffel from Uncle Bo\'s windmill. Two tickets. Fort Worth gets small in the window, then it\'s gone.']]);
         } else if (k === 'legend') {
@@ -2967,7 +2967,7 @@
           shot([c.x + 8, 3, c.z + 8], [c.x, 1.2, c.z], { dur: 8 });
           await lines([['narr', 'Greater Stop Six Baptist. The same pews. Two photos on the easel now.'], ['reed', 'We are here, again, for a son of Stop Six.'], ['mama', 'Both my babies. Both of them. Lord, what did that track want from me.']]);
         } else {
-          await syBlack('Ten months later<br>TDCJ Coffield Unit · Life', 2.8); await syUnblack();
+          await syBlack('Ten months later<br>TDCJ Coffield Unit · Life', 2.8); { const jp = window.__jail && window.__jail.jailPlace && window.__jail.jailPlace(); if (jp) { const [jox, joz] = outDir(jp); placeMe(jp.x + jox * 5, jp.z + joz * 5, 0); } } await syUnblack();
           actor('mama', foot.x + 1.2, foot.z, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3);
           await lines([['narr', 'Saturday. Visiting room. Plexiglass. Big Mama in her church hat.'], ['mama', 'Lil Bit graduated. Pastor Reed got him a job. He asked me to tell you he\'s doing it for you.'], ['mama', 'I\'ll be here next Saturday. And the one after. Till the Lord or the parole board says different.']]);
         }
@@ -2992,6 +2992,53 @@
       syNote(`The end: ${E.t}. ${E.s} The Stop Six mural reads "${E.word}."`);
     },
   ], { label: 'Tier 7 · Murda Worth', delay: 60 });
+
+  // ---------- the street remembers the story: what locals say when you walk up (hooked into the living NPCs' greeting) ----------
+  const SY_GREET_END = {
+    legacy: ['That\'s Smoke\'s brother. Put Hollis away for forty years.', 'You did what the police wouldn\'t. Respect.', 'My granny got your picture on the fridge next to Obama.'],
+    king: ['Yes sir. Whatever you need.', 'I ain\'t seen nothing. I never see nothing.', 'You run all this now, huh. Must be lonely up there.'],
+    gone: ['Thought you moved to Atlanta? Visiting?', 'Big Mama sent a postcard to the church. Said y\'all good.', 'Back in Stop Six? Don\'t let it pull you back in.'],
+    legend: ['...Man. Thought I saw a ghost. You look just like him.', 'Two brothers on that wall now. Ironline don\'t forgive.'],
+    life: ['FREE LIL SMOKE. Shirts five dollars.', 'Big Mama still goes up to Coffield every Saturday.'],
+  };
+  function syGreet(e) {
+    const st = S.story; if (!st || !st.on || !st.done || st.done.length < 3) return null;
+    if (e && (e.kind === 'member' || e.kind === 'cop')) return null;
+    const [mx, mz] = syMe(), east = mx > 1100 && mx < 2600 && mz > -900 && mz < 200;   // Stop Six and around
+    if (Math.random() > (east ? 0.5 : 0.28)) return null;
+    const f = st.flags || {}, L = [];
+    if (st.ending && SY_GREET_END[st.ending]) L.push(...SY_GREET_END[st.ending], ...SY_GREET_END[st.ending]);
+    if (st.done.includes('p3') && (st.tier || 0) <= 2) L.push('You Smoke\'s little brother? Sorry about Smoke. For real.', 'Smoke used to give us twenties for good report cards.', 'Big Mama said you home. Welcome back.');
+    if (east && f.mural) L.push('That mural at Lil Tre\'s go hard. Smoke would\'ve loved it.');
+    if (st.album && st.album.out) L.push(`Been bumping "${st.album.title}" all week.`, 'Track six made my girl cry in the car.');
+    if (st.cars && st.cars.shop) L.push(`My cousin got his brakes done at ${st.cars.shop}. Said y'all didn't rob him.`);
+    if (st.cars && st.cars.lot) L.push('Y\'all got anything under five thousand on the lot?');
+    if (st.cars && st.cars.dealer) L.push('You really took Hollis\'s dealership?! In a race?!');
+    if ((st.dragWins || 0) >= 2) L.push('Saw you at the strip. You was moving.', 'Ironline is still talking about that pass.');
+    if (f.smokeCar) L.push('That purple box is back on the east side. Feels right.');
+    if (f.mookFate === 'cut') L.push('Mook been looking lost since y\'all fell out.');
+    if (f.mookFate === 'handled') L.push('Anybody seen Mook? His mama put flyers up at the Taco Stop.', 'Mook mama asked me if I seen him. I ain\'t know what to say.');
+    if (f.mookFate === 'forgive') L.push('You and Mook still tight? That\'s love.');
+    if (f.lilBit === 'free') L.push('Lil Bit say you saved his life. He at church every Thursday now.');
+    if (f.lilBit === 'met' && !f.raid) L.push('Lil Bit look up to you. Be careful what he sees.');
+    if (f.raid === 'run' || f.lostHouse) L.push('Heard they took the house on Ramey. That\'s cold.');
+    if (f.raid === 'booked') L.push('Welcome home. Ninety-one days, huh? Bad warrant.');
+    if (f.callowayFate === 'exposed') L.push('Saw that Calloway video. Four million views. #JusticeForSmoke');
+    if (f.callowayFate === 'arrested') L.push('They say Calloway singing like a bird downtown.');
+    if (f.callowayFate === 'dead') L.push('They found Calloway\'s Tahoe at Ironline. Nobody saying nothing.');
+    if (f.finalSaint === 'ally') L.push('East side and Northside at the same cookout. Never thought I\'d see it.');
+    if (f.finalSaint === 'war') L.push('Stay off Northside, bro. For real.');
+    if (f.garzaDeal === 'yes' && !st.ending) L.push('People saying somebody talking to the feds. Watch who you sit with.');
+    if (f.hvac) L.push('You do AC? My unit been blowing hot since June.', 'Pastor Reed said you got certified. That\'s big.');
+    if (f.mentor) L.push('My little brother go to your Thursday thing. He actually listens to you.');
+    if (f.table && !st.ending) L.push('Saw you with Hollis at the yacht club. In the paper. Hm.');
+    if (f.niaVideo && !f.callowayFate) L.push('Nia from Throttle been real quiet lately. That ain\'t like her.');
+    if (!L.length) return null;
+    const said = SY.greetSaid || (SY.greetSaid = []), fresh = L.filter(t => !said.includes(t)), t = (fresh.length ? fresh : L)[Math.floor(Math.random() * (fresh.length ? fresh : L).length)];
+    said.push(t); if (said.length > 12) said.shift();
+    return t;
+  }
+  window.__storyGreet = syGreet;
 
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
