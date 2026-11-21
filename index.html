@@ -34151,6 +34151,7 @@ body.g-armed #walkhint { display: none !important; }
       const pl = x - (b.x0 - R), pr = b.x1 + R - x, pt = z - (b.z0 - R), pb = b.z1 + R - z, m = Math.min(pl, pr, pt, pb);
       if (m === pl) x = b.x0 - R; else if (m === pr) x = b.x1 + R; else if (m === pt) z = b.z0 - R; else z = b.z1 + R;
     }
+    if (typeof crFootPush === 'function') [x, z] = crFootPush(x, z, R);   // poles, trees, rigs, moving cars (PR #184)
     return [clamp(x, WB.x0, WB.x1), clamp(z, WB.z0, WB.z1)];
   }
   // the pose on top of the walk / idle animation: c crouch, a in the air, rp roll progress 0..1 (or -1), ld landing dip
