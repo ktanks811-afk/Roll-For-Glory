@@ -29,6 +29,7 @@
     saint: { name: 'Saint', full: 'Santiago "Saint" Ortega', col: '#f2d94e', role: 'Northside Reyes. Chuy Ortega\'s nephew. Half the city thinks he killed Smoke.', seed: 171, look: { hairStyle: 'buzz', hair: '#111111', build: 1, height: 2, skin: '#a0704c', top: 'mw_carhartt', bottom: 'mw_wranglers', shoes: 'mk_af1_white', hat: 'no_hat', facialHair: 'goatee', extras: ['chain'] } },
     saint2: { name: 'Lalo', full: 'Lalo Ortega', col: '#f2d94e', role: 'Saint\'s cousin. Doesn\'t listen to anybody.', seed: 181, look: { hairStyle: 'short', hair: '#111111', build: 2, height: 1, skin: '#8a5a3a', top: 'mm_mexico_blk', bottom: 'cargo_tan', shoes: 'mm_botas', hat: 'mw_cap_ranch', facialHair: 'stubble', extras: [] } },
     bo: { name: 'Uncle Bo', full: 'Boyd "Uncle Bo" Jenkins', col: '#e0b070', role: 'Big Mama\'s brother. Cattle, hog dogs and a windmill out by Joshua.', seed: 191, look: { hairStyle: 'short', hair: '#bdbdbd', build: 2, height: 2, skin: '#4a2f1c', top: 'mw_pearlsnap', bottom: 'mw_wranglers', shoes: 'mm_botas', hat: 'mm_tejana', facialHair: 'full_beard', extras: [] } },
+    garza: { name: 'Agent Garza', full: 'Special Agent Rosa Garza (DEA)', col: '#9fd3ff', role: 'DEA, Dallas field office. Was supposed to meet Smoke the night he died.', seed: 211, fem: 1, look: { hairStyle: 'bun', hair: '#1a120c', build: 0, height: 0, skin: '#a8714a', top: 'mx_leather', bottom: 'jeans_black', shoes: 'boots_black', hat: 'no_hat', extras: [] } },
     virgil: { name: 'Virgil', full: 'Virgil (VirL Studios)', col: '#ffc21a', role: 'Owns VirL Studios. Has 11 of Smoke\'s unreleased songs in the vault.', seed: 201, look: { hairStyle: 'locs', hair: '#3a2a1a', build: 1, height: 1, skin: '#55341f', top: 'mx_monogram', bottom: 'jeans_black', shoes: 'kicks_blackout', facialHair: 'beard', extras: ['chain'] } },
     me: { name: 'You', col: '#ffffff' },
     narr: { name: '', col: '#ffffff' },
@@ -1721,7 +1722,7 @@
       await cut(async () => {
         const [mx, mz] = syMe(); shot([mx + 8, 6, mz + 8], [mx, 1.2, mz], { to: [mx + 14, 12, mz + 14], dur: 8 });
         await syTitle('TIER 3 COMPLETE', 'THE BLOCK', `${syFlag('setName') || 'Your set'} holds ${syMine().length} blocks.`, 3.4);
-        await syTitle('NEXT', 'TIER 4 · THE PLUG', 'Coming in the next story update', 2.6);
+        await syTitle('NEXT', 'TIER 4 · THE PLUG', 'Oak Cliff. Weight. I-30.', 2.6);
       });
       st.tier = 4; syMeter('streets', 6, 'The Block'); save(); syMeet('lou');
       syNote('Lou wants to sell to you directly in Oak Cliff. He says to bring a car with a stash spot.');
@@ -1920,6 +1921,202 @@
     },
   ], { label: 'Music mogul · Half the Studio', life: 'music', delay: 0 });
 
+  // ---------- TIER 4: The Plug. Runs to Oak Cliff and back with weight in the car; FWPD/DPS on the way (COP) ----------
+  const SY_LOU_SPOT = 'gas_oakcliff';
+  // the police and jail modules live in their own scopes; reach them through what they expose
+  const syCops = () => window.__cops || { COP: { phase: 'none', stop: null } };
+  const syBusted = () => { const J = window.__jail; return !!(J && J.jBusy && J.jBusy()); };
+  const syHeatUp = n => { S.heat = Math.min(5, (S.heat || 0) + n); const C = syCops(); if (C.COP) C.COP.heat0 = S.heat; refreshStats(); };
+  const syStash = () => !!(S.car && S.car.stash);
+  // one run: pay, pick up at the Gas-N-Go in Oak Cliff, drive it back to Ramey Ave without getting busted
+  async function syLoadRun(o = {}) {
+    const st = sy(), cost = o.cost || 20000, n = o.n || 300;
+    const p = DATA.P.find(x => x.id === SY_LOU_SPOT) || { x: 4937, z: -975 }, [ox, oz] = outDir(p);
+    await syUntil(() => S.cash >= cost, `Get ${money(cost)} for the load${o.label ? ' (' + o.label + ')' : ''}`);
+    await syUntil(() => driving && !foot.on && !!S.car, 'Get in your car');
+    if (!syStash() && !o.noWarn) text('dre', 'No stash spot? You crazy. Anything happen thats on you');
+    await reach(p.x + ox * 8, p.z + oz * 8, 18, 'Gas-N-Go (Oak Cliff)', { obj: o.pickObj || 'Drive to the Gas-N-Go in Oak Cliff for the pickup' });
+    spend(cost, 'Lou: the load'); SY.run = { n, chased: false, busted: false, searched: false }; st.carry = n; save();
+    toast(`${n} in the ${syStash() ? 'stash spot' : 'trunk'}. Drive it home.`, 'good');
+    if (o.onLoaded) await o.onLoaded();
+    const T = syTrap('ramey') || syOpenTrap('ramey'), q = syTrapPos(T);
+    setPin('Ramey Ave Trap House', q.x, q.z); syMarker(q.x, q.z, 3);
+    try {
+      await syUntil(() => {
+        const R = SY.run, COP = syCops().COP; if (!R) return true;
+        if (syBusted()) R.busted = true;
+        if (R.busted) throw SY_FAIL('Busted with the load. It\'s gone, and Lou still got paid.');
+        if (COP.phase === 'chase') R.chased = true;
+        // a traffic stop without a stash spot: the officer looks in the trunk
+        if (COP.stop && !R.searched) { R.searched = true; if (!syStash() && Math.random() < 0.6) { syHeatUp(2); syCops().copChase('Officer found narcotics in the trunk.'); toast('He opened the trunk.', 'bad'); } }
+        const [mx, mz] = syMe(); return Math.hypot(mx - q.x, mz - q.z) < 14 && COP.phase !== 'chase' && COP.phase !== 'stop' && COP.phase !== 'notice';
+      }, o.dropObj || 'Drive the load back to Ramey Ave (don\'t get stopped)', o.sub);
+    } catch (e) { st.carry = 0; SY.run = null; syMarkerOff(); throw e; }
+    syMarkerOff(); T.stock += n; st.carry = 0; const clean = !SY.run.chased; SY.run = null;
+    if (clean) st.cleanRuns = (st.cleanRuns || 0) + 1; st.runs = (st.runs || 0) + 1; save();
+    toast(clean ? `Clean run. ${n} in Ramey Ave. (${st.cleanRuns} clean)` : `Made it, but they chased you. ${n} in Ramey Ave.`, clean ? 'good' : '');
+    return clean;
+  }
+
+  mis('t4a', 4, 'Tier 4', 'Stash Spot', 'Lou says bring a car with a stash spot. Rusty knows how.', [
+    async () => {
+      await call('rusty', [['rusty', 'Lou called me before he called you. Said you need a trap built.'], ['rusty', 'Bring your car. Hidden compartment behind the back seat, opens with the defrost and the window switch at the same time.']], { mustAnswer: true });
+      await syUntil(() => !!S.car, 'Get a car to bring to Rusty');
+      const r = DATA.P.find(x => x.id === 'rusty_used') || { x: -75, z: 463 }, [ox, oz] = outDir(r);
+      actor('rusty', r.x + ox * 4, r.z + oz * 4, 0);
+      const cost = syFlag('wash') === 'rusty' ? 2000 : 3500;
+      await syUntil(() => S.cash >= cost, `Get ${money(cost)} for the stash spot`);
+      await talkTo('rusty', 'Talk to', { obj: 'Drive your car to Rusty\'s Used Autos', pin: "Rusty's Used Autos" });
+      await cut(async () => {
+        faceEach('me', 'rusty'); two('me', 'rusty', 1, 3.4);
+        await lines([['rusty', 'Took me two days. Smoke\'s car had the same one. Same switch.'], ['rusty', 'Defrost and the window at the same time. A dog might smell it. A cop with a flashlight won\'t find it.']]);
+        if (syFlag('wash') === 'rusty') await say('rusty', 'Friend price, since you on my books.');
+      });
+      spend(cost, 'Rusty: stash spot'); S.car.stash = 1; save(); unactor('rusty');
+      syNote('Rusty built a stash spot in your car. Traffic stops won\'t find the load.');
+    },
+  ], { label: 'Tier 4 · Stash Spot', delay: 40 });
+
+  mis('t4b', 4, 'Tier 4', 'Oak Cliff', 'Kessler Park. Lou\'s house. Your first real buy.', [
+    async () => {
+      text('lou', 'Kessler Park. Come by the house first. Then the Gas-N-Go for pickups. Never the house again after today');
+      const k = DATA.P.find(x => x.id === 'kessler_tudor') || { x: 4787, z: -825 }, [ox, oz] = outDir(k);
+      actor('lou', k.x + ox * 5, k.z + oz * 5, 0); actor('dre', k.x + ox * 5 + oz * 2, k.z + oz * 5 - ox * 2, 0);
+      await talkTo('lou', 'Talk to', { obj: 'Drive to Big Lou\'s house in Kessler Park, Oak Cliff', pin: 'Kessler Park' });
+      await cut(async () => {
+        faceEach('me', 'lou'); face('dre', foot.x, foot.z); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 12, 4); await syWait(1.6);
+        ots('me', 'lou');
+        await lines([['lou', 'This is where Smoke sat every Thursday. Same spot. Twenty thousand, three hundred zips\' worth. You move it, you keep the difference.'], ['lou', 'You get stopped, you don\'t know me. You don\'t know Dre. You don\'t know Oak Cliff.']]);
+        close('lou', 1, 1.8); await lines([['lou', 'And I-30 is not your friend. DPS sits at the Six Flags exit every Friday night.']]);
+      });
+      unactor('lou'); unactor('dre');
+      await syLoadRun({ label: 'your first buy', sub: 'Tier 4 · Oak Cliff' });
+      syMeter('streets', 5, 'First Oak Cliff run');
+      syNote('Your first Oak Cliff run: $20,000 for 300, picked up at the Gas-N-Go, dropped at Ramey Ave.');
+    },
+  ], { label: 'Tier 4 · Oak Cliff', delay: 50 });
+
+  mis('t4c', 4, 'Tier 4', 'I-30', 'Friday night. DPS at the Six Flags exit. You have a full load.', [
+    async () => {
+      text('lou', 'Ready when you are. Same place');
+      await syLoadRun({ label: 'Friday', sub: 'Tier 4 · I-30', onLoaded: async () => {
+        await syWait(6);
+        text(syFlag('lookout') ? 'bit' : 'mook', 'DPS just lit somebody up by Six Flags. They pulling EVERYBODY. Take the service road or outrun them');
+        if (!SY.fast) { await syWait(20); if (SY.run && syCops().COP.phase === 'none' && syCops().copChase) { syHeatUp(1); syCops().copChase('DPS: vehicle matching a narcotics tip, eastbound I-30.'); } }
+      } });
+      syMeter('heat', 3); syMeter('streets', 3);
+      syNote('You brought a full load home on I-30 on a Friday night with DPS working the Six Flags exit.');
+    },
+  ], { label: 'Tier 4 · I-30', delay: 60 });
+
+  mis('t4d', 4, 'Tier 4', 'Garza', 'A woman at the pump knows your name. And your brother\'s.', [
+    async () => {
+      const p = DATA.P.find(x => x.id === SY_LOU_SPOT) || { x: 4937, z: -975 }, [ox, oz] = outDir(p);
+      text('lou', 'Pickup at the Gas-N-Go. Come alone');
+      actor('garza', p.x + ox * 6 + oz * 3, p.z + oz * 6 - ox * 3, 0);
+      await talkTo('garza', 'Talk to', { obj: 'Go to the Gas-N-Go in Oak Cliff. Somebody is waiting at the pump.', pin: 'Gas-N-Go (Oak Cliff)', r: 4 });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'garza'); ots('me', 'garza'); syName('garza');
+        await lines([['garza', 'Don\'t look around. Lou\'s people aren\'t here yet. Pump your gas.'], ['garza', 'Special Agent Rosa Garza. DEA. I was supposed to meet your brother at 11:30 the night he died.']]);
+        close('garza', 1, 1.8); await lines([['garza', 'He never showed. Three days later the file on him was gone from my office.'], ['garza', 'I\'m not here to arrest you. I\'m here because whoever killed Smoke knew about me before I knew about them.']]);
+        ots('me', 'garza');
+        i = await choose([{ t: 'You got him killed.', tone: 'blame', d: { streets: 2 } }, { t: 'Who took the file?', tone: 'probe' }, { t: 'I don\'t talk to cops. Walk away.', tone: 'cold', d: { streets: 3, loyalty: 2 } }], { timer: 14 });
+        syFlag('garza', i);
+        close('garza', -1, 1.8);
+        await lines(i === 0 ? [['garza', 'Maybe I did. I think about that every day.'], ['garza', 'My card is in your brother\'s bag, I bet. Call me when you\'re ready to be mad at the right people.']]
+          : i === 1 ? [['garza', 'Somebody with a FWPD badge and access to a federal fax machine.'], ['garza', 'You already know who. You met him on Ramey Ave.']]
+          : [['garza', 'Your brother said that too. For six years.'], ['garza', 'Then one day he called me.']]);
+      });
+      unactor('garza'); syMeet('garza');
+      syNote(i === 1 ? 'DEA Agent Rosa Garza was supposed to meet Smoke at 11:30 the night he died. His file disappeared from her office. She thinks Calloway took it.' : 'DEA Agent Rosa Garza says she was supposed to meet Smoke at 11:30 the night he died. He never showed, and his file disappeared from her office.');
+      await syWait(2);
+      await syLoadRun({ label: 'after Garza', sub: 'Tier 4 · Garza', noWarn: true, pickObj: 'Lou\'s people pulled up. Pick up the load at the Gas-N-Go' });
+    },
+  ], { label: 'Tier 4 · Garza', delay: 70 });
+
+  mis('t4e', 4, 'Tier 4', "Mook's Debt", 'Mook needs fifteen thousand and won\'t say why.', [
+    async () => {
+      const q = syTrapPos({ id: 'ramey' }); actor('mook', q.x + 1.4, q.z + 0.8, 0); SY.actors.get('mook').pose = 'phone';
+      await talkTo('mook', 'Talk to', { obj: 'Mook is at Ramey Ave. He\'s been acting weird.', pin: 'Ramey Ave Trap House' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'mook'); SY.actors.get('mook').pose = null; ots('me', 'mook');
+        await lines([['mook', 'I need fifteen. Not a loan. I mean I need it, like, today.'], ['me', 'For what?'], ['mook', 'Don\'t ask me that. I owe somebody from before. From when Smoke was here.']]);
+        close('mook', 1, 1.6); await say('mook', 'If you don\'t, it\'s cool. I\'ll figure it out. I always figure it out.');
+        ots('me', 'mook');
+        i = await choose([{ t: 'Here. No questions.', tone: 'loyal', d: { loyalty: 6 } }, { t: 'Not till you tell me who.', tone: 'press', d: { loyalty: -2 } }, { t: 'I can\'t carry your old debts, bro.', tone: 'refuse', d: { loyalty: -5 } }], { timer: 14 });
+        syFlag('mookDebt', i);
+        close('mook', -1, 1.6);
+        await say('mook', i === 0 ? '...I won\'t forget this. For real.' : i === 1 ? 'A car lot man. That\'s all I\'m saying. Forget it.' : 'Yeah. Okay. I get it.');
+      });
+      if (i === 0) { await syUntil(() => S.cash >= 15000, 'Get $15,000 for Mook'); spend(15000, 'Mook'); }
+      unactor('mook');
+      syNote(i === 1 ? 'Mook owes "a car lot man" from back when Smoke was alive. He wanted $15,000 and wouldn\'t say more.' : i === 0 ? 'You gave Mook $15,000 for a debt from Smoke\'s time. He wouldn\'t say who.' : 'Mook asked you for $15,000 for an old debt. You said no.');
+    },
+  ], { label: "Tier 4 · Mook's Debt", delay: 60 });
+
+  mis('t4f', 4, 'Tier 4', 'Flashback: The Haulers', 'Six weeks before Ironline. Smoke in a parked car across from Hollis Motors at 3 AM.', [
+    async () => {
+      await syUntil(() => foot.on && !inside, 'Get out and walk (another memory)');
+      const a = DATA.P.find(x => x.id === 'auto_row') || { x: 75, z: -163 }, [ox, oz] = outDir(a), s = { x: a.x + ox * 16, z: a.z + oz * 16 };
+      await cut(async () => {
+        await syBlack('<span style="font-size:.8em;opacity:.7">ACROSS FROM HOLLIS MOTORS · 6 WEEKS BEFORE · 3:10 AM</span>', 2.4);
+        syFlashIn(null, null, 'night'); placeMe(s.x, s.z, 0); actor('hollis', a.x + ox * 3, a.z + oz * 3, 0); actor('calloway', a.x + ox * 3 + oz * 3, a.z + oz * 3 - ox * 3, 0);
+        face('me', a.x, a.z); faceEach('hollis', 'calloway'); SY.actors.get('hollis').pose = 'hands';
+        await syUnblack(); shot([s.x + 2, 1.7, s.z + 2], [a.x, 1.4, a.z], { to: [s.x + 1.5, 1.65, s.z + 1.5], dur: 8 });
+        await lines([['narr', 'Two car haulers idle at the gate. Every car on them has a dealer plate. Every car on them sits low in the back.'], ['narr', 'Hollis hands Calloway a thick envelope under the lot lights.'], ['me', '(Nine. Ten. Eleven pictures. That\'s enough. That\'s enough for Garza.)']]);
+        await syBlack('', 1.2); syFlashOut(); await syUnblack();
+      });
+      syNote('Six weeks before he died, Smoke photographed Hollis paying Calloway at 3 AM while two car haulers loaded at Hollis Motors. The pictures were for Garza.');
+    },
+  ], { label: 'Tier 4 · Flashback', delay: 80 });
+
+  mis('t4g', 4, 'Tier 4', 'The Man Upstairs', 'Lou\'s boss wants to meet you.', [
+    async () => {
+      await call('lou', [['lou', 'The man I buy from wants to meet you. I told him you ain\'t ready. He don\'t care what I think.'], ['lou', 'Hollis Motors. Tonight. Wear a shirt with buttons.']], { mustAnswer: true });
+      setTime('night');
+      const a = DATA.P.find(x => x.id === 'auto_row') || { x: 75, z: -163 }, [ox, oz] = outDir(a);
+      actor('hollis', a.x + ox * 4, a.z + oz * 4, 0); actor('lou', a.x + ox * 4 + oz * 2.4, a.z + oz * 4 - ox * 2.4, 0);
+      await talkTo('hollis', 'Talk to', { obj: 'Go to Hollis Motors at Cowtown Auto Row', pin: 'Hollis Motors' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'hollis'); face('lou', foot.x, foot.z); SY.actors.get('lou').pose = 'cross'; wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 11, 3.6); await syWait(1.6);
+        ots('me', 'hollis');
+        await lines([['hollis', 'Louis has been very proud of you. I let him have his little customers. Everybody needs a hobby.'], ['hollis', 'Every gram in Fort Worth rides in on one of my haulers. Lou buys off the truck. Now you can too.']]);
+        close('hollis', 1, 1.8); await lines([['hollis', 'Half Lou\'s price. Twice the weight. And Calloway works for you instead of on you.'], ['hollis', 'Your brother said no to me. I\'d like the family to have a second chance.']]);
+        ots('me', 'hollis');
+        i = await choose([{ t: 'I\'ll take your price.', tone: 'Hollis', d: { streets: 5, heat: -6, loyalty: -4 } }, { t: 'I\'m staying with Lou.', tone: 'Lou', d: { loyalty: 5, streets: 2 } }, { t: 'What happened to my brother, Deacon?', tone: 'confront', d: { heat: 4 } }], { timer: 16 });
+        if (i === 2) { close('hollis', -1, 1.8); await lines([['hollis', 'A tragedy. A beautiful young man and a car that couldn\'t hold him.'], ['hollis', 'Now. My price, or Lou\'s?']]); i = await choose([{ t: 'Yours.', tone: 'Hollis', d: { streets: 4, loyalty: -4 } }, { t: 'Lou\'s.', tone: 'Lou', d: { loyalty: 4 } }], { timer: 12 }); syFlag('askedHollis', 1); }
+        syFlag('plug', i === 0 ? 'hollis' : 'lou');
+        close('hollis', -1, 1.8); await say('hollis', i === 0 ? 'Smart. Smarter than Darius.' : 'Loyalty. How old-fashioned. Louis, your boy is loyal.');
+        if (i === 1) { face('lou', foot.x, foot.z); close('lou', 1, 1.6); await say('lou', '...You just made a very rich man mad for me. I won\'t forget it.'); }
+      });
+      unactAll(); setTime('day'); syMeet('hollis');
+      syNote(syFlag('plug') === 'hollis' ? 'Deacon Hollis is Lou\'s supplier: everything comes in on his car haulers. You started buying from Hollis directly.' : 'Deacon Hollis is Lou\'s supplier: everything comes in on his car haulers. You told Hollis you\'re staying with Lou.');
+    },
+  ], { label: 'Tier 4 · The Man Upstairs', delay: 70 });
+
+  mis('t4h', 4, 'Tier 4', 'Five Clean', 'Five runs home without a chase. Then everybody knows you\'re for real.', [
+    async () => {
+      const st = sy(), hol = syFlag('plug') === 'hollis';
+      text(hol ? 'hollis' : 'lou', hol ? 'Pickups at the Gas-N-Go. My people. Half price. Do not get chased.' : 'Five clean runs and Dallas starts taking you serious');
+      while ((st.cleanRuns || 0) < 5) await syLoadRun({ cost: hol ? 12000 : 20000, n: hol ? 500 : 300, label: `clean runs: ${st.cleanRuns || 0} of 5`, sub: `Tier 4 · Five Clean (${st.cleanRuns || 0}/5)`, noWarn: true });
+      syMeter('streets', 6, 'Five clean runs');
+    },
+    async () => {
+      const st = sy(), hol = syFlag('plug') === 'hollis';
+      await cut(async () => {
+        const [mx, mz] = syMe(); shot([mx + 8, 6, mz + 8], [mx, 1.2, mz], { to: [mx + 14, 12, mz + 14], dur: 8 });
+        await syTitle('TIER 4 COMPLETE', 'THE PLUG', `${st.runs || 5} runs to Oak Cliff. ${hol ? 'Buying from Hollis.' : 'Loyal to Lou.'}`, 3.4);
+        await syTitle('NEXT', 'TIER 5 · THE CITY', 'Coming in the next story update', 2.6);
+      });
+      st.tier = 5; save();
+      if (hol) text('calloway', 'Deacon says you with us now. Funny how that works.'); else text('calloway', 'Heard you told Deacon no. Your brother did that too.');
+      syNote(`Tier 4 done: five clean runs. ${hol ? 'You\'re buying from Hollis now. Calloway says you\'re "with us."' : 'You stayed with Lou. Calloway says Smoke told Hollis no too.'}`);
+    },
+  ], { label: 'Tier 4 · Five Clean', delay: 60 });
+
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
   PHONE_APPS.splice(1, 0, { id: 'texts', name: 'Messages', icon: '💬', bg: 'linear-gradient(135deg,#5bd36b,#1e9e3a)' });
@@ -1955,7 +2152,7 @@
       }
       for (const [t, k, nm] of TIERS) {
         const ms = M.filter(m => m.tier === t && !m.life); body += `<div class="sec">${k} · ${nm}</div>`;
-        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 4 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
+        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 5 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
         ms.forEach((m, i) => { const done = st.done.includes(m.id), now = st.m === m.id || (!st.m && st.next === m.id); body += `<div class="ms ${done ? 'done' : now ? 'now' : 'lock'}"><div class="n">${done ? '✓' : i + 1}</div><div><h5>${esc(m.title)}</h5><p>${done || now ? esc(m.brief) : 'Locked'}</p></div></div>`; });
       }
     } else if (tab === 'journal') body += st.journal.length ? st.journal.map(j => `<div class="jr">${esc(j)}</div>`).join('') : '<div class="jr">Nothing yet.</div>';
@@ -2062,6 +2259,7 @@
     addDrops(n) { const h = syH(); if (h) h.stats.drops += n; S.heat = 0; },
     hoodReady: () => !!(HOOD.ready && syH()), mine: () => syMine().length, sySlide, syBlockFor,
     signAny() { const L = label(); if (!L.name) lbStart('Test Records'); const a = LB_ARTISTS.find(a => !a.five && !lbSigned(a.id)); if (a) L.roster.push({ id: a.id, cut: 0.2, advance: 0, buzz: a.buzz, day: S.day }); save(); return L.roster.length; },
+    copClear() { const C = window.__cops; try { C.copEnd(''); } catch (e) {} if (C) { C.COP.stop = null; C.COP.phase = 'none'; } S.heat = 0; },
     giveCar() { const c = newCar(BUILT[0], '#6b6f5a', 58); c.fuel = 0.6; S.car = c; syncCarModel(); deliverCar(); save(); },
     advance: syAdvance, pinAt: () => pin.visible ? [pin.position.x, pin.position.z] : null, mk: () => SY.mk && SY.mk.visible ? [SY.mk.position.x, SY.mk.position.z] : null };
   // ===== STORY END =====
