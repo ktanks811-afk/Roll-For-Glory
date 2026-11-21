@@ -4,13 +4,14 @@
 // walks/teleports to each objective, serves trap phone customers, fakes the roll race, and shoots the cutscenes.
 const { chromium } = require('playwright');
 const path = require('path'), fs = require('fs');
-const S = process.env.S, OUT = process.env.OUT || '.', ROOT = path.resolve(__dirname, '..'), UNTIL = process.env.UNTIL || 't12', PICK = +(process.env.PICK || 0), MAXSHOTS = +(process.env.SHOTS || 60);
+const S = process.env.S, OUT = process.env.OUT || '.', ROOT = path.resolve(__dirname, '..'), UNTIL = process.env.UNTIL || 't12', PICK = +(process.env.PICK || 0), MAXSHOTS = +(process.env.SHOTS || 60), LIFE = process.env.LIFE || '';
 const TYPES = { html: 'text/html', js: 'application/javascript', json: 'application/json', png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', m4a: 'audio/mp4', mp3: 'audio/mpeg', css: 'text/css', svg: 'image/svg+xml', glb: 'model/gltf-binary' };
 (async () => {
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: +(process.env.DPR || 1) });
   const pg = await ctx.newPage();
   const errs = []; pg.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 600)));
+  pg.on('crash', () => { console.log('PAGE CRASH ' + new Date().toISOString()); try { fs.writeFileSync(path.join(OUT, 'story-test.log'), log.join('\n') + '\nCRASH\n' + errs.join('\n')); } catch (e) {} });
   pg.on('console', m => { const t = m.text(); if (/story/i.test(t)) errs.push('console: ' + t.slice(0, 400)); });
   await pg.route(/cdn\.jsdelivr\.net\/npm\/three@0\.128\.0\/(.*)$/, (r, req) => { const p = req.url().split('three@0.128.0/')[1]; r.fulfill({ path: S + '/npm/node_modules/three/' + p, contentType: 'application/javascript' }); });
   await pg.route(/supabase/, r => r.fulfill({ body: 'export const createClient=()=>({channel:()=>({on(){return this},subscribe(){return this},send(){},track(){} }),from:()=>({select(){return this},eq(){return this},upsert:async()=>({}),insert:async()=>({}),order(){return this},limit(){return this},then(f){return f({data:[]})}}),rpc:async()=>({data:null})});', contentType: 'application/javascript' }));
@@ -24,6 +25,7 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
   await pg.waitForFunction(() => window.__map && window.__map.ready, null, { timeout: 300000 });
   const ev = (f, a) => pg.evaluate(f, a);
   let nShot = 0; const seen = new Set(), log = [];
+  { const _p = log.push.bind(log); log.push = (...a) => { console.log(new Date().toISOString().slice(11, 19), ...a); return _p(...a); }; }
   const shot = async n => { if (nShot >= MAXSHOTS) return; nShot++; await pg.screenshot({ path: path.join(OUT, String(nShot).padStart(2, '0') + '-' + n.replace(/[^a-z0-9]+/gi, '-').slice(0, 40) + '.png') }); };
   // fresh save: the creator is open; finish it -> the story offer
   await ev(() => { document.getElementById('cr-go').click(); });
@@ -55,10 +57,18 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
       } else await ev(() => { const s = window.__story.sy(); if (s.pack < 3) s.pack = 10; window.__story.syNewOrder(); });
       continue;
     }
+    if (/Keep Ramey Ave stocked/.test(o)) { await ev(() => { const T = window.__story, s = T.sy(), R = T.syTrap('ramey'); s.pack += 40; T.syTrapMenu(R).rows.find(r => /Drop off/.test(r.t)).act(); for (let i = 0; i < 6; i++) T.syTrapTick(); }); await shot('trap-menu'); await pg.waitForTimeout(500); continue; }
+    if (/Pick up the cash/.test(o)) { await ev(() => { const T = window.__story, R = T.syTrap('ramey'), M = window.__map; const q = T.syTrapPos(R); if (!M.foot.on) M.getOut(); M.foot.x = q.x; M.foot.z = q.z; if (!R.cash) R.cash = 500; }); await pg.waitForTimeout(900); await ev(() => { const T = window.__story; window.__map.openMenu && window.__map.openMenu(() => T.syTrapMenu(T.syTrap('ramey'))); }).catch(() => {}); await pg.waitForTimeout(500); await shot('trap-run-menu'); await ev(() => { const T = window.__story; T.syTrapMenu(T.syTrap('ramey')).rows[0].act(); window.__map.closeMenu && window.__map.closeMenu(); }); await pg.waitForTimeout(500); continue; }
+    if (/Get away from Ramey/.test(o)) { await ev(() => { const M = window.__map; if (M.foot.on) { M.foot.x += 400; } else { M.drvS().x += 400; } }); await pg.waitForTimeout(900); continue; }
+    if (/Get out and walk/.test(o)) { await ev(() => { const M = window.__map; if (!M.foot.on) M.getOut(); }); await pg.waitForTimeout(900); continue; }
+    if (/Win a drag race/.test(o)) { await ev(irl => { const s = window.__story.sy(); s.dragWins = (s.dragWins || 0) + 1; s.lastDragAt = irl ? 'ironline' : 'yellowbelly'; }, /Ironline Dragway/.test(o)); await pg.waitForTimeout(600); continue; }
+    if (/Pay off Big Lou/.test(o)) { await ev(() => { const M = window.__map, s = window.__story.sy(); M.S.cash += Math.max(0, s.debt - s.paid) + 1000; }); await pg.waitForTimeout(500); continue; }
+    if (/Get a car/.test(o)) { await ev(() => window.__story.giveCar()); await pg.waitForTimeout(800); continue; }
     if (/Get \$|Get a car/.test(o)) { await ev(() => { const M = window.__map; M.S.cash += 12000; }); await pg.waitForTimeout(500); continue; }
     if (/Run a roll race/.test(o)) { await shot('roll-spot'); await ev(() => { const M = window.__map; M.S.streetRuns = (M.S.streetRuns || 0) + 1; M.S.streetWins = (M.S.streetWins || 0) + 1; }); await pg.waitForTimeout(600); continue; }
-    if (/Walk around Stop Six/.test(o)) { await ev(() => { const M = window.__map; if (!M.foot.on) M.getOut(); M.foot.x = 1700; M.foot.z = -300; }); await pg.waitForTimeout(800); continue; }
+    if (/Walk around Stop Six|Head back to Stop Six/.test(o)) { await ev(() => { const M = window.__map; if (!M.foot.on) M.getOut(); M.foot.x = 1700; M.foot.z = -300; }); await pg.waitForTimeout(800); continue; }
     if (st.pin && o) { await ev(([x, z, s]) => { const M = window.__map; if (M.foot.on) { M.foot.x = x + 1; M.foot.z = z + 1; } else { M.drvS().x = x; M.drvS().z = z; } }, [st.pin[0], st.pin[1]]).catch(async () => { await ev(([x, z]) => { const M = window.__map; if (M.foot.on) { M.foot.x = x + 1; M.foot.z = z + 1; } }, [st.pin[0], st.pin[1]]); }); await pg.waitForTimeout(900); continue; }
+    if (!o && !st.m && !st.next && LIFE && st.done.includes('t2k')) { await ev(k => window.__story.syPlayLife(k), LIFE); await pg.waitForTimeout(800); continue; }
     if (!o && !st.m && st.next) { await ev(() => { window.__story.sy().nextT = 0; }); await pg.waitForTimeout(800); continue; }
     stuck++; if (stuck > 60) { log.push('STUCK ' + JSON.stringify(st).slice(0, 400)); await shot('stuck'); break; }
     await pg.waitForTimeout(500);
@@ -66,6 +76,7 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
   const fin = await ev(() => { const s = window.__story.sy(); return { done: s.done, meters: s.meters, flags: s.flags, journal: s.journal.length, met: s.met, debt: s.debt, paid: s.paid, served: s.served, tier: s.tier, texts: Object.keys(s.texts) }; });
   // the phone apps
   for (const app of ['story', 'texts', 'trap']) { await ev(a => { const M = window.__map; M.openPhone ? M.openPhone() : document.getElementById('phonebtn').click(); }, app).catch(() => {}); await ev(a => { document.querySelector(`#ph-screen .app[data-id="${a}"]`)?.click(); }, app); await pg.waitForTimeout(500); await shot('app-' + app); }
+  await ev(() => { document.querySelector('#ph-screen .app[data-id="story"]')?.click(); }).catch(() => {}); await pg.waitForTimeout(300); await ev(() => { document.querySelector('#ph-screen [data-t="lives"]')?.click(); }).catch(() => {}); await pg.waitForTimeout(500); await shot('app-lives');
   fs.writeFileSync(path.join(OUT, 'story-test.log'), log.join('\n') + '\n\nFINAL ' + JSON.stringify(fin, null, 1) + '\n\nERRORS\n' + errs.join('\n'));
   console.log(JSON.stringify({ fin, errs: errs.slice(0, 20), steps: log.length, minutes: ((Date.now() - t0) / 60000).toFixed(1) }, null, 1));
   await b.close();

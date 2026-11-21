@@ -24,6 +24,8 @@
     tre: { name: 'Lil Tre', full: 'Lil Tre', col: '#ffa3a3', role: 'Runs the corner store on Ramey. Knows everybody\'s business.', seed: 121, look: { hairStyle: 'waves', build: 1, height: 1, skin: '#6b4429', top: 'tee_red', bottom: 'jeans_blue', shoes: 'kicks_white' } },
     robber: { name: 'Hooded dude', full: 'Hooded dude', col: '#ff6b6b', role: '', seed: 131, look: { hairStyle: 'short', build: 1, height: 1, skin: '#55341f', top: 'hoodie_black', bottom: 'joggers_black', shoes: 'kicks_blackout', mask: 'skimask_black' } },
     robber2: { name: 'Second dude', full: 'Second dude', col: '#ff6b6b', role: '', seed: 141, look: { hairStyle: 'cornrows', build: 2, height: 1, skin: '#3f2a1a', top: 'hoodie_grey', bottom: 'cargo_black', shoes: 'boots_tactical', mask: 'bandana_black' } },
+    calloway: { name: 'Det. Calloway', full: 'Det. Wade Calloway (FWPD Narcotics)', col: '#9db4ff', role: 'FWPD narcotics detective. Worked Smoke\'s case. Takes envelopes.', seed: 151, look: { hairStyle: 'buzz', hair: '#5a4632', build: 2, height: 2, skin: '#d8a888', top: 'mx_leather', bottom: 'jeans_black', shoes: 'kicks_blackout', facialHair: 'stubble', extras: [] } },
+    pooh: { name: 'Pooh', full: 'Pooh', col: '#ffe08a', role: 'Old head. Worked Smoke\'s spot. Now works yours.', seed: 161, look: { hairStyle: 'short', hair: '#7a7a7a', build: 2, height: 1, skin: '#4a2f1c', top: 'mw_carhartt', bottom: 'cargo_black', shoes: 'kicks_blackout', facialHair: 'beard', extras: [] } },
     me: { name: 'You', col: '#ffffff' },
     narr: { name: '', col: '#ffffff' },
     throttle: { name: 'Throttle', full: 'Throttle (app)', col: '#ff5a1f', role: '' },
@@ -189,8 +191,8 @@
   // ---------- lines, choices, calls, texts ----------
   // one line of dialogue: subtitle (and the speaker gestures if they're on screen); tap or wait to move on
   function say(who, text, o = {}) {
-    const el = syUI().sub, c = SY_CAST[who] || { name: who, col: '#fff' };
-    const nm = who === 'me' ? (S.name || 'You') : c.name;
+    const el = syUI().sub, fb = who === 'me' && SY.flash, c = fb ? SY_CAST.smoke : SY_CAST[who] || { name: who, col: '#fff' };
+    const nm = who === 'me' && !fb ? (S.name || 'You') : c.name;
     el.innerHTML = `${nm ? `<b style="color:${c.col}">${esc(nm)}${o.phone ? '<span class="ph">📞</span>' : ''}</b>` : ''}${esc(text)}`; el.classList.add('on');
     const A = SY.actors.get(who); if (A) A.talk = 1; else if (who === 'me' && ME) SY.meTalk = 1;
     if (!SY.skip) syVoice(who, text.length);
@@ -328,6 +330,8 @@
   }
   function close(who, side = 1, d = 1.6) {
     const p = syPos(who); if (!p) return; const A = SY.actors.get(who), yaw = who === 'me' ? foot.yaw : A ? A.yaw : 0, fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw) * side, rz = -Math.sin(yaw) * side;
+    // somebody standing in front (the person they're talking to): keep the lens in front of that person's head
+    for (const k of ['me', ...SY.actors.keys()]) { if (k === who) continue; const q = syPos(k); if (!q) continue; const ox = q[0] - p[0], oz = q[1] - p[1], ahead = ox * fx + oz * fz; if (ahead > 0 && ahead < d + 0.5 && Math.abs(ox * rx + oz * rz - 0.5) < 0.7) d = Math.max(0.85, ahead * 0.6); }
     shot([p[0] + fx * d + rx * 0.5, 1.68, p[1] + fz * d + rz * 0.5], [p[0], 1.58, p[1]], { to: [p[0] + fx * (d - 0.2) + rx * 0.45, 1.66, p[1] + fz * (d - 0.2) + rz * 0.45], dur: 7 });
   }
   function wide(x, z, yaw, d = 14, h = 5) { const fx = -Math.sin(yaw), fz = -Math.cos(yaw); shot([x - fx * d, h, z - fz * d], [x, 1.2, z], { to: [x - fx * (d - 3), h - 1, z - fz * (d - 3)], dur: 9 }); }
@@ -513,14 +517,23 @@
       }
       st.done.push(m.id); st.m = null; st.seg = 0; save();
       syObjective(''); syMarkerOff(); syTalkOff();
-      if (!m.quiet) await banner('MISSION PASSED', m.title);
-      const nx = M[M.indexOf(m) + 1];
-      if (nx) { st.next = nx.id; st.nextT = nx.delay != null ? nx.delay : 25; }
-      else { st.next = null; syObjective(''); text('narr', 'More of the story is coming in the next update.', { quiet: true }); }
+      if (m.life) { const ln = syLifeNext(m.life); if (ln) text(SY_LIFE[m.life].who, `When you ready for the next one: ${ln.title}. Story app, Lives.`, { quiet: true }); }
+      else {
+        const main = M.filter(x => !x.life), nx = main[main.indexOf(m) + 1];
+        if (nx) { st.next = nx.id; st.nextT = nx.delay != null ? nx.delay : 25; }
+        else { st.next = null; syObjective(''); text('narr', 'More of the story is coming in the next update.', { quiet: true }); }
+        if (m.id === 't12' && syLifeNext('racing')) text('rusty', 'Heard you put money in Lou\'s hand. Now come build something people remember. Story app, Lives, Street racing.');
+      }
       save();
+      if (!m.quiet) await banner('MISSION PASSED', m.title);
     } catch (e) { if (!(e && e.syAbort)) console.warn('story stopped: ' + (e && e.message), e && e.stack); }
     finally { SY.busy = false; SY.act = null; }
   }
+  // the lives: side chains you play from the Story app (Lives tab) between story beats
+  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' } };
+  const syLifeNext = k => { const st = sy(); return M.find(m => m.life === k && !st.done.includes(m.id)) || null; };
+  const syLifeOpen = k => { const L = SY_LIFE[k]; return L && sy().done.includes(L.after); };
+  function syPlayLife(k) { const st = sy(); if (SY.busy || st.m) { toast('Finish the job you\'re on first.', 'bad'); return false; } const m = syLifeNext(k); if (!m || !syLifeOpen(k)) return false; st.on = true; syRun(m, 0); return true; }
   // between missions: the next one kicks off after a short breather (a call or text pulls you in)
   function syStepFlow(dt) {
     const st = sy(); if (!st.on || SY.busy || SY.lock || creating || !worldOn) return;
@@ -1038,12 +1051,395 @@
         shot([mp.x + Math.sin(SY.mural ? SY.mural.rotation.y : 0) * 9, 2.2, mp.z + Math.cos(SY.mural ? SY.mural.rotation.y : 0) * 9], [mp.x, 2.1, mp.z], { to: [mp.x + Math.sin(SY.mural ? SY.mural.rotation.y : 0) * 6, 2.1, mp.z + Math.cos(SY.mural ? SY.mural.rotation.y : 0) * 6], dur: 9 });
         await lines([['narr', 'Somebody paid the artist. The mural is finished.'], ['narr', 'Nobody on the block calls you Lil Smoke anymore.']]);
         await syTitle('TIER 1 COMPLETE', 'HAND TO HAND', `${money(st.debt - st.paid)} still owed to Big Lou`, 3.4);
-        await syTitle('NEXT', 'TIER 2 · THE TRAP', 'Coming in the next story update', 3);
+        await syTitle('NEXT', 'TIER 2 · THE TRAP', 'Four walls. Workers. Weight.', 3);
       });
       st.tier = 2; st.flags.nickname = 1; syMeter('streets', 6, 'Respect'); syMeter('loyalty', 3); save();
       text('mook', `${S.name || 'bro'}. they saying ur name on the block now. not lil smoke. ur name`);
     },
   ], { label: 'Tier 1 · First Installment', delay: 90 });
+
+  // ---------- TRAP HOUSES (Tier 2): workers sell your stock while you're away; you pick up the cash and restock.
+  // Heat builds; without Calloway's protection (or a lookout and cameras) FWPD can hit the spot. Saved on S.story.traps ----------
+  const SY_TRAPS = { ramey: { place: 'trap_stopsix', name: 'Ramey Ave Trap House', rent: 3000 }, riverside: { place: 'trap_riverside', name: 'Riverside Duplex', rent: 4500 } };
+  const SY_WORKERS = { keisha: { n: 'Keisha', spd: 0.8, honest: 0.99, blurb: 'Slow, careful, never short.' }, lilman: { n: 'Lil Man', spd: 1.5, honest: 0.86, blurb: 'Fast. Talks too much. Counts funny.' }, pooh: { n: 'Pooh', spd: 1.1, honest: 0.95, blurb: 'Old head. Worked for Smoke. Loyal.' },
+    twin: { n: 'Twin', spd: 1.2, honest: 0.93, blurb: 'Quiet. Shows up on time.' }, deja: { n: 'Deja', spd: 1.0, honest: 0.97, blurb: 'Nurse by day. Nobody suspects her.' } };
+  const syTraps = () => (sy().traps = sy().traps || []);
+  const syTrap = id => syTraps().find(t => t.id === id);
+  function syTrapPos(T) { const p = DATA.P.find(x => x.id === SY_TRAPS[T.id].place) || { x: 0, z: 0, face: 0 }, [ox, oz] = outDir(p); return { x: p.x + ox * 3.4, z: p.z + oz * 3.4, p }; }
+  function syOpenTrap(id) { const st = sy(); if (syTrap(id)) return syTrap(id); const T = { id, name: SY_TRAPS[id].name, stock: 0, cash: 0, workers: [], cams: 0, sold: 0, heat: 0, opened: S.day }; syTraps().push(T); save(); return T; }
+  // every 30 s of play the workers move some of the stock
+  function syTrapTick() {
+    const st = sy(), wk = syFlag('lookout') ? 0.55 : 1;
+    for (const T of syTraps()) {
+      if (!T.workers.length || T.stock <= 0 || T.raided) continue;
+      const rate = T.workers.reduce((a, w) => a + (SY_WORKERS[w] ? SY_WORKERS[w].spd : 1), 0), n = Math.min(T.stock, Math.max(0, Math.round(rate * (0.6 + Math.random() * 1.2))));
+      if (!n) continue;
+      const each = st.flags.brick ? 60 : 55, skim = T.workers.reduce((a, w) => a * (SY_WORKERS[w] ? SY_WORKERS[w].honest : 0.95), 1);
+      T.stock -= n; T.sold += n; T.cash += Math.round(n * each * skim); T.short = (T.short || 0) + Math.round(n * each * (1 - skim)); T.heat = Math.min(100, T.heat + n * 0.35 * wk);
+      // a raid: only in free roam, never while a mission is running
+      const prot = st.flags.calloway === 1 && !st.flags.callowayLate, risk = prot ? 0 : (T.heat / 100) * 0.05 * (T.cams ? 0.5 : 1) * wk;
+      if (!SY.busy && !SY.lock && Math.random() < risk) {
+        const lost = T.stock, lostCash = Math.round(T.cash * 0.7); T.stock = 0; T.cash -= lostCash; T.raided = S.day + 1; T.heat = 0;
+        text('mook', `12 just ran up in ${T.name}. They took ${lost} and ${money(lostCash)}. Workers got out the back.`); syMeter('heat', 6, `${T.name} got raided`); syNote(`FWPD raided ${T.name}. You lost ${lost} and ${money(lostCash)}.`);
+      }
+    }
+    save();
+  }
+  function syTrapMenu(T) {
+    const st = sy(), W = T.workers.map(w => SY_WORKERS[w].n).join(', ') || 'nobody';
+    const rows = [
+      { t: 'Pick up the cash', s: `${money(T.cash)} waiting · sold ${T.sold} total`, btn: T.cash ? money(T.cash) : 'Empty', off: !T.cash, act: () => { earn(T.cash, `Pickup at ${T.name}`); T.cash = 0; sy().pickups = (sy().pickups || 0) + 1; } },
+      { t: 'Drop off stock', s: `${T.stock} in the spot · ${st.pack} on you`, btn: st.pack ? `Drop ${Math.min(st.pack, 40)}` : 'Empty pack', off: !st.pack, act: () => { const n = Math.min(st.pack, 40); st.pack -= n; T.stock += n; } },
+      { t: 'Take stock back', s: 'Grab some for your own customers', btn: T.stock ? `Take ${Math.min(T.stock, 20)}` : '—', off: !T.stock, act: () => { const n = Math.min(T.stock, 20); T.stock -= n; st.pack += n; } },
+      { t: 'Cameras', s: T.cams ? 'Installed. Raids are half as likely.' : 'See 12 coming. Halves raid risk.', btn: T.cams ? 'Installed' : money(600), off: !!T.cams, act: () => { if (spend(600, 'Trap cameras')) T.cams = 1; } },
+      { t: 'Heat on this spot', s: T.heat > 60 ? 'Hot. Slow down or pay somebody.' : T.heat > 25 ? 'Warm. Neighbors talking.' : 'Quiet.', bar: 100 - T.heat, btn: `${Math.round(T.heat)}%`, off: true, act: () => {} },
+      { t: 'Workers', s: W, btn: `${T.workers.length}`, off: true, act: () => {} },
+    ];
+    if (T.raided) rows.unshift({ t: 'Raided', s: 'Spot is shut down until tomorrow (sleep).', btn: '—', off: true, act: () => {} });
+    return { title: T.name, sub: `Your trap · ${T.workers.length} working`, rows };
+  }
+  // the door prompt when you walk up to one of your traps
+  function syStepTraps(dt) {
+    const st = sy(); if (!st.on || !st.traps || !st.traps.length) return;
+    SY.trapT = (SY.trapT || 0) + dt; if (SY.trapT > 30) { SY.trapT = 0; syTrapTick(); }
+    if (SY.lock || SY.talk || SY.serveFor || !foot.on || inside || menuFn) { if (SY.trapFor) { SY.trapFor = null; syUI().talk.classList.remove('on'); } return; }
+    const [mx, mz] = syMe(); let near = null;
+    if (!(SY.act && SY.act.id === 't2g')) for (const T of st.traps) { const q = syTrapPos(T); if (Math.hypot(q.x - mx, q.z - mz) < 4) near = T; }
+    const el = syUI().talk;
+    if (near) { if (SY.trapFor !== near.id) { SY.trapFor = near.id; el.innerHTML = `Run ${esc(near.name)}<small>E</small>`; el.onclick = () => openMenu(() => syTrapMenu(near)); } el.classList.add('on'); }
+    else if (SY.trapFor) { SY.trapFor = null; el.classList.remove('on'); el.onclick = () => { if (SY.talk) SY.talk.go(); }; }
+  }
+  addEventListener('keydown', e => { if (e.code === 'KeyE' && SY.trapFor && !SY.talk && !SY.lock && !menuFn) { const T = syTrap(SY.trapFor); if (T) openMenu(() => syTrapMenu(T)); } });
+  // sleeping: raided spots reopen, Calloway gets paid every 7 days (or he gets mad), Lou's clock runs
+  const _sySleep = sleep;
+  sleep = function (p) {
+    const r = _sySleep.apply(this, arguments);
+    try {
+      const st = S.story; if (!st || !st.on) return r;
+      for (const T of st.traps || []) { if (T.raided && S.day >= T.raided) T.raided = 0; T.heat = Math.max(0, T.heat - 12); }
+      if (st.flags.calloway === 1 && S.day % 7 === 0) { if (S.cash >= 2500) { S.cash -= 2500; S.log.unshift('-$2,500 Calloway'); st.flags.callowayLate = 0; text('narr', 'Calloway\'s envelope: $2,500. Paid.', { quiet: true }); } else { st.flags.callowayLate = 1; text('mook', 'Calloway came by for his envelope and you was short. He not happy.'); } }
+      save();
+    } catch (e) { console.warn('story sleep: ' + e.message); }
+    return r;
+  };
+  // drag strip results for the racing life (Ironline / Yello Belly)
+  const _syStripEnd = stripEnd;
+  stripEnd = function (why) {
+    const r0 = S.rep, opp = STRIP.racer, pl = STRIP.p; const r = _syStripEnd.apply(this, arguments);
+    try { const st = S.story; if (st) { st.drags = (st.drags || 0) + 1; if (opp && S.rep > r0) { st.dragWins = (st.dragWins || 0) + 1; st.lastDragAt = pl && pl.id || ''; } save(); } } catch (e) {}
+    return r;
+  };
+
+  // ---------- TIER 2: The Trap ----------
+  mis('t2a', 2, 'Tier 2', 'Four Walls', 'You can\'t stand on a corner forever. Mook found a spot on Ramey.', [
+    async () => {
+      await call('mook', [['mook', 'Ayo. Ms. Odessa\'s duplex on Ramey, the one that been empty since her son went to Huntsville.'], ['mook', 'She want three thousand up front and she don\'t ask questions. Come look.']], { mustAnswer: true });
+      const q = syTrapPos({ id: 'ramey' }); actor('mook', q.x + 1.5, q.z, 0); face('mook', q.p.x, q.p.z);
+      await talkTo('mook', 'Talk to', { obj: 'Meet Mook at the Ramey Ave spot', pin: 'Ramey Ave Trap House' });
+    },
+    async () => {
+      await syUntil(() => S.cash >= 3000, `Get ${money(3000)} for Ms. Odessa's rent`);
+      if (!SY.actors.get('mook')) { const q = syTrapPos({ id: 'ramey' }); actor('mook', q.x + 1.5, q.z, 0); }
+      await cut(async () => {
+        faceEach('me', 'mook'); two('me', 'mook', 1, 3.4);
+        await lines([['mook', 'Two bedrooms, burglar bars, back door to the alley. And she deaf in one ear.'], ['narr', 'You hand Ms. Odessa three thousand in a grocery bag. She counts it on the porch and goes back inside.'],
+          ['mook', 'A spot means you ain\'t standing out there. People come to you. Workers move it while you sleep.'], ['mook', 'But a spot is a address. And 12 can read addresses.']]);
+      });
+      spend(3000, 'Ms. Odessa\'s rent'); const T = syOpenTrap('ramey'); T.workers = ['pooh']; const st = sy(); const n = Math.min(st.pack, 20); st.pack -= n; T.stock += n; save();
+      syNote('You opened your first trap: the Ramey Ave duplex. Pooh, who worked for Smoke, is working it.');
+      toast('Ramey Ave is yours. Walk up to the door to run it.', 'good'); unactor('mook');
+    },
+  ], { label: 'Tier 2 · Four Walls', delay: 40 });
+
+  mis('t2b', 2, 'Tier 2', 'Hiring', 'Pooh can\'t work it alone. Three people want in.', [
+    async () => {
+      const q = syTrapPos({ id: 'ramey' }); actor('mook', q.x + 1.6, q.z + 1, 0);
+      await talkTo('mook', 'Talk to', { obj: 'Go to Ramey Ave. Mook lined up people who want to work.', pin: 'Ramey Ave Trap House' });
+      let a = 0, b = 0;
+      await cut(async () => {
+        faceEach('me', 'mook'); two('me', 'mook', -1, 3.4);
+        await lines([['mook', 'Keisha: slow, but she ain\'t never been short a dollar. Lil Man: fastest hands on the east side, but he count funny.'], ['mook', 'And Twin. Don\'t talk, don\'t miss a day. Pick two.']]);
+        a = await choose([{ t: 'Keisha. Slow money is still money.', tone: 'careful', d: { clean: 1 } }, { t: 'Lil Man. I need it moving.', tone: 'fast', d: { streets: 2 } }, { t: 'Twin.', tone: 'steady' }], { timer: 14, q: 'First hire' });
+        const rest = [['keisha', 'Keisha'], ['lilman', 'Lil Man'], ['twin', 'Twin']].filter((x, i) => i !== a);
+        b = await choose(rest.map(x => ({ t: x[1] })), { timer: 12, q: 'Second hire' });
+        const pick = [['keisha', 'lilman', 'twin'][a], rest[b][0]]; const T = syTrap('ramey') || syOpenTrap('ramey'); T.workers = ['pooh', ...pick]; syFlag('hired', pick); save();
+        close('mook'); await say('mook', `${SY_WORKERS[pick[0]].n} and ${SY_WORKERS[pick[1]].n}. Bet. I\'ll tell \'em.`);
+        if (syFlag('lookout')) { await say('mook', 'And Lil Bit already on the porch. That boy don\'t blink.'); }
+      });
+      unactor('mook');
+    },
+    async () => {
+      await call('mook', [['mook', 'The spot moving. Keep it stocked and come get the money. Don\'t let it sit there.'], ['mook', 'Money sitting in a trap is money for whoever kick the door in.']]);
+      await syUntil(() => { const T = syTrap('ramey'); return T && T.sold >= 6; }, 'Keep Ramey Ave stocked (walk up to the door, drop off stock)');
+      const pk0 = sy().pickups || 0; await syUntil(() => (sy().pickups || 0) > pk0, 'Pick up the cash at Ramey Ave');
+    },
+  ], { label: 'Tier 2 · Hiring', delay: 30 });
+
+  mis('t2c', 2, 'Tier 2', 'The Brick', 'Dre pulls up with something heavier than a zip.', [
+    async () => {
+      text('dre', 'Lou heard about the spot. Im outside it');
+      const q = syTrapPos({ id: 'ramey' }); actor('dre', q.x - 3, q.z + 2, 0); face('dre', q.p.x, q.p.z);
+      await talkTo('dre', 'Talk to', { obj: 'Dre is waiting outside Ramey Ave', pin: 'Ramey Ave Trap House' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'dre'); ots('me', 'dre');
+        await lines([['dre', 'Lou likes that you got four walls now. He wants to front you real weight.'], ['dre', 'Two hundred. On consignment. That\'s nine more on the tab.']]);
+        i = await choose([{ t: 'Bet. Put it on the tab.', tone: 'all in', d: { streets: 4, heat: 3 } }, { t: 'Half. I don\'t want to owe more than I can move.', tone: 'careful', d: { clean: 1 } }], { timer: 14 });
+        close('dre', 1, 1.8); await say('dre', i === 0 ? 'That\'s the spirit Smoke had.' : 'Careful. Lou respects careful. For now.');
+      });
+      const st = sy(), n = i === 0 ? 200 : 100; st.pack += n; st.debt += i === 0 ? 9000 : 4500; st.flags.brick = 1; save();
+      toast(`+${n}. Lou's tab: ${money(st.debt - st.paid)}`, 'good'); unactor('dre');
+      syNote(`Lou fronted you ${n} on consignment. You owe him ${money(st.debt - st.paid)} now.`);
+    },
+  ], { label: 'Tier 2 · The Brick', delay: 50 });
+
+  mis('t2d', 2, 'Tier 2', 'Count', 'The money from Ramey came up short. Somebody\'s skimming.', [
+    async () => {
+      const T = syTrap('ramey') || syOpenTrap('ramey'); const short = Math.max(800, T.short || 0);
+      text('pooh', `count off ${money(short)} this week. wasnt me. u need to come see`);
+      const q = syTrapPos(T); const ws = T.workers.filter(w => w !== 'pooh'); actor('pooh', q.x + 1.4, q.z, 0);
+      await talkTo('pooh', 'Talk to', { obj: `Ramey Ave came up ${money(short)} short. Go find out who.`, pin: 'Ramey Ave Trap House' });
+      const thief = T.workers.includes('lilman') ? 'lilman' : ws[0] || 'twin';
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'pooh'); ots('me', 'pooh');
+        await lines([['pooh', 'I been doing this since your brother was in middle school. I know a short count.'], ['pooh', thief === 'lilman' ? 'Lil Man got new Jordans yesterday. Bred 11s. Two-fifty.' : `${SY_WORKERS[thief].n} been leaving early. Every night this week.`], ['pooh', 'Ain\'t saying. Just saying.']]);
+        i = await choose([{ t: `Fire ${SY_WORKERS[thief].n}.`, tone: 'fire', d: { loyalty: 2 } }, { t: 'Give them one more chance.', tone: 'forgive', d: { loyalty: 4, streets: -2 } }, { t: `Make an example of ${SY_WORKERS[thief].n}.`, tone: 'example', d: { streets: 5, heat: 5, loyalty: -3 } }], { timer: 14 });
+        syFlag('count', i);
+        close('pooh'); await say('pooh', i === 0 ? 'I\'ll find somebody. Deja, from the nursing home. Nobody suspect her.' : i === 1 ? 'Your call. Smoke would\'ve did the same. Once.' : '...Alright. Everybody gon\' hear about it. That\'s the point, huh.');
+      });
+      if (i === 0 || i === 2) T.workers = T.workers.map(w => w === thief ? 'deja' : w);
+      if (i === 1 && SY_WORKERS[thief]) T.forgiven = thief; T.short = 0; save(); unactor('pooh');
+      syNote(i === 0 ? `You fired ${SY_WORKERS[thief].n} for skimming. Deja replaced them.` : i === 1 ? `You gave ${SY_WORKERS[thief].n} another chance after skimming.` : `You made an example of ${SY_WORKERS[thief].n}. Every worker on the east side heard.`);
+    },
+  ], { label: 'Tier 2 · Count', delay: 70 });
+
+  mis('t2e', 2, 'Tier 2', 'Calloway', 'An unmarked Charger has been behind you for six blocks.', [
+    async () => {
+      await syUntil(() => syInSix(...syMe()), 'Head back to Stop Six');
+      const [mx, mz] = syMe(), s = sySide(mx + 10, mz + 6, 1, 2.4);
+      actor('calloway', s.x, s.z, 0); face('calloway', mx, mz);
+      await talkTo('calloway', 'Talk to', { obj: 'A man in a FWPD jacket is waving you over', r: 4 });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'calloway'); ots('me', 'calloway'); syName('calloway');
+        await lines([['calloway', 'Relax. If I wanted you in cuffs you\'d be in cuffs.'], ['calloway', 'Detective Calloway. Narcotics. I worked your brother\'s case. The accident.'], ['calloway', 'Ramey Ave is a nice little spot. Be a shame if it got a warrant.']]);
+        close('calloway', 1, 1.8); await say('calloway', 'Twenty-five hundred a week, and the warrants go in my bottom drawer.');
+        ots('me', 'calloway');
+        i = await choose([{ t: 'Pay him.', tone: 'pay', d: { heat: -8, clean: -2 } }, { t: 'I don\'t pay police.', tone: 'refuse', d: { streets: 4, heat: 6 } }, { t: 'You worked Smoke\'s case. What really happened?', tone: 'probe' }], { timer: 14 });
+        if (i === 2) { close('calloway', -1, 1.8); await lines([['calloway', 'Your brother drove too fast in a car held together with Rusty\'s welding. That\'s what happened.'], ['calloway', 'Now. Twenty-five hundred. Yes or no.']]); i = await choose([{ t: 'Pay him.', tone: 'pay', d: { heat: -8 } }, { t: 'No.', tone: 'refuse', d: { streets: 3, heat: 6 } }], { timer: 12 }); syNote('Calloway blamed Rusty\'s welding for Smoke\'s crash. Rusty said someone swapped the bolts.'); }
+        syFlag('calloway', i === 0 ? 1 : 2);
+        close('calloway', -1, 1.8); await say('calloway', i === 0 ? 'Smart. First envelope every Sunday. Don\'t make me come looking.' : 'Okay. We\'ll do it the other way, then.');
+      });
+      if (syFlag('calloway') === 1) { if (!spend(2500, 'Calloway, first envelope')) { syFlag('callowayLate', 1); } }
+      syMeet('calloway'); unactor('calloway');
+      syNote(syFlag('calloway') === 1 ? 'You\'re paying Det. Calloway (FWPD narcotics) $2,500 a week to keep warrants off Ramey Ave.' : 'You refused to pay Det. Calloway. Expect raids.');
+    },
+  ], { label: 'Tier 2 · Calloway', delay: 60 });
+
+  mis('t2f', 2, 'Tier 2', 'Flashback: The Keys', 'Three weeks before Ironline. Smoke at Hollis Motors.', [
+    async () => {
+      await syUntil(() => foot.on && !inside, 'Get out and walk (another memory)');
+      const st = sy(); st.flags.flashBack = { look: Object.assign({}, S.look), wear: Object.assign({}, S.wear) }; save();
+      await cut(async () => {
+        await syBlack('<span style="font-size:.8em;opacity:.7">HOLLIS MOTORS · COWTOWN AUTO ROW · 3 WEEKS BEFORE</span>', 2.4);
+        const L = syLook('smoke'); S.look = Object.assign({}, S.look, { body: 'm', skin: L.skin, hair: L.hair, hairStyle: 'locs', facialHair: 'goatee', build: 1, height: 2, face: L.face, extras: ['cuban'] }); S.wear = Object.assign({}, S.wear, { top: 'racing_jacket', bottom: 'jeans_black', shoes: 'mk_jordan_bred', hat: '' }); dressAvatar(); if (foot.holder) wearMe(foot.holder);
+        SY.flash = true; document.body.classList.add('sy-flash'); setTime('night');
+        const a = DATA.P.find(x => x.id === 'auto_row') || { x: 75, z: -163, face: 0 }, [ox, oz] = outDir(a), s = { x: a.x + ox * 6, z: a.z + oz * 6 };
+        placeMe(s.x, s.z, 0); actor('hollis', s.x + 1.4, s.z - 1.2, 0); actor('calloway', s.x - 5, s.z - 3, 0); faceEach('me', 'hollis'); face('calloway', s.x, s.z); SY.actors.get('calloway').pose = 'cross';
+        await syUnblack(); two('me', 'hollis', 1, 3.6);
+        await lines([['narr', 'You are Smoke. Twenty-seven. The fastest name in Fort Worth.'], ['hollis', 'Darius. Keys to the car. Whatever you need for Ironline, it\'s on Hollis Motors.'], ['hollis', 'And the other thing. The haulers go out Tuesday. Your boys just drive. No questions.']]);
+        ots('me', 'hollis'); await lines([['me', 'I said I\'d race for you, Deacon. I ain\'t moving your trucks.'], ['hollis', '...Everybody moves my trucks eventually, son.']]);
+        close('me', -1); await lines([['narr', 'Across the lot, a man in a FWPD jacket is leaning on an unmarked Charger. Watching.'], ['me', '(Who is that?)']]);
+        await syBlack('', 1.2);
+        const B = sy().flags.flashBack; if (B) { S.look = B.look; S.wear = B.wear; delete sy().flags.flashBack; dressAvatar(); if (foot.holder) wearMe(foot.holder); }
+        SY.flash = false; document.body.classList.remove('sy-flash'); unactAll();
+        await syUnblack();
+      });
+      syNote('Three weeks before he died, Smoke refused to drive Hollis\'s car haulers. Calloway was on the lot that night.');
+    },
+  ], { label: 'Tier 2 · Flashback', delay: 80 });
+
+  mis('t2g', 2, 'Tier 2', 'Raid', 'Lil Bit is texting in all caps.', [
+    async () => {
+      const T = syTrap('ramey') || syOpenTrap('ramey'); if (T.stock < 15) T.stock = 15; save();
+      text(syFlag('lookout') ? 'bit' : 'pooh', syFlag('lookout') ? 'BLUE LIGHTS ON STALCUP TURNING ON RAMEY RN' : '12 outside. alot of em');
+      if (syFlag('calloway') === 1 && !syFlag('callowayLate')) { await syWait(2); text('calloway', 'Not mine. County task force. Get your stuff out.'); }
+      await reach(syTrapPos(T).x, syTrapPos(T).z, 10, 'Ramey Ave Trap House', { obj: 'Get to Ramey Ave before the raid hits' });
+    },
+    async () => {
+      const T = syTrap('ramey'), q = syTrapPos(T); let i = 0;
+      await cut(async () => {
+        placeMe(q.x, q.z, syYawTo(q.x, q.z, q.p.x, q.p.z)); actor('pooh', q.x + 1.2, q.z + 0.8, 0); face('pooh', foot.x, foot.z);
+        shot([q.x + 8, 2.6, q.z + 6], [q.x, 1.4, q.z], { to: [q.x + 6, 2.2, q.z + 5], dur: 6 });
+        await lines([['pooh', 'They two blocks out! What we doing?!']]);
+        i = await choose([{ t: 'Grab the stock and run out the back.', tone: 'run', d: { streets: 3, heat: 4 } }, { t: 'Leave it. Everybody walk out the front calm.', tone: 'walk away', d: { heat: -3 } }, { t: 'Flush it all.', tone: 'flush', d: { heat: -6, streets: -2 } }], { timer: 8, def: 1 });
+        syFlag('raid', i);
+      });
+      if (i === 0) {
+        sy().pack += T.stock; T.stock = 0; S.heat = Math.max(S.heat || 0, 2); save();
+        const [mx, mz] = syMe(), t0 = performance.now();
+        await syUntil(() => { if (performance.now() - t0 > 75000) throw SY_FAIL('Task force caught you with the stock.'); const [x, z] = syMe(); return Math.hypot(x - mx, z - mz) > 320; }, 'Get away from Ramey Ave (300+ yards)', 'Tier 2 · Raid').catch(e => { throw e; });
+        syNote('You ran the stock out the back of Ramey Ave during a raid.');
+      } else if (i === 1) { T.stock = 0; T.cash = 0; syNote('You walked away from Ramey Ave during a raid and lost everything inside.'); }
+      else { T.stock = 0; syNote('You flushed everything at Ramey Ave before the raid.'); }
+      T.raided = S.day + 1; T.heat = 0; save(); unactAll();
+      await syWait(3);
+      if (syFlag('lookout')) await call('bit', [['bit', 'I did good, right? I seen them first. I seen them first!']]);
+    },
+  ], { label: 'Tier 2 · Raid', delay: 70 });
+
+  // the throw in the raid loop above can't escape syUntil's poller; make predicates that throw fail the mission
+  {
+    const _u = syUntil;
+    syUntil = function (pred, obj, sub) { return new Promise((res, rej) => { const p = _u(() => { try { return pred(); } catch (e) { rej(e); return true; } }, obj, sub); p.then(res, rej); }); };
+  }
+
+  mis('t2h', 2, 'Tier 2', 'Second Spot', 'One spot gets raided, you need two. Riverside Duplex is empty.', [
+    async () => {
+      await call('mook', [['mook', 'Ramey gon\' be hot for a minute. My cousin got the Riverside Duplex, off Belknap. Forty-five hundred.'], ['mook', 'Two spots, they can\'t shut us down at once.']], { mustAnswer: true });
+      await syUntil(() => S.cash >= 4500, `Get ${money(4500)} for the Riverside Duplex`);
+      const q = syTrapPos({ id: 'riverside' }); actor('mook', q.x + 1.4, q.z, 0);
+      await talkTo('mook', 'Talk to', { obj: 'Meet Mook at the Riverside Duplex', pin: 'Riverside Duplex' });
+      await cut(async () => { faceEach('me', 'mook'); two('me', 'mook', 1, 3.4); await lines([['mook', 'Twin can run this one. And I\'ll be here myself some nights.'], ['mook', 'Two spots. Smoke never had two spots.']]); });
+      spend(4500, 'Riverside Duplex'); const T = syOpenTrap('riverside'); T.workers = ['twin', 'deja'].filter(w => !(syTrap('ramey') || { workers: [] }).workers.includes(w)); if (!T.workers.length) T.workers = ['keisha'];
+      const st = sy(), n = Math.min(st.pack, 30); st.pack -= n; T.stock += n; save(); unactor('mook');
+      syMeter('streets', 4, 'Two spots'); syNote('You opened a second trap at the Riverside Duplex.');
+    },
+  ], { label: 'Tier 2 · Second Spot', delay: 50 });
+
+  mis('t2i', 2, 'Tier 2', "Nia's Pictures", 'Nia has the photos from the night Smoke died. She wants to show you in person.', [
+    async () => {
+      text('nia', 'I finally went through the Ironline pics. You need to see something. Gran Plaza lot tonight?');
+      setTime('night'); const g = DATA.P.find(x => x.id === 'gran_plaza') || { x: 225, z: 613, face: 3.1 }, [ox, oz] = outDir(g);
+      actor('nia', g.x + ox * 4, g.z + oz * 4, 0); SY.actors.get('nia').pose = 'phone';
+      await talkTo('nia', 'Meet', { obj: 'Meet Nia at La Gran Plaza Lot', pin: 'La Gran Plaza Lot' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'nia'); SY.actors.get('nia').pose = 'phone'; two('me', 'nia', 1, 3.2);
+        await lines([['nia', 'I shot two hundred pictures that night. I never looked at them. Couldn\'t.'], ['nia', 'Look. Behind the staging lanes. Eleven-oh-four PM. Fifteen minutes before his run.']]);
+        close('nia', -1, 1.5); await lines([['narr', 'In the photo: Smoke\'s car on jack stands in the pits. A man in a dark jacket underneath it. A Hollis Motors hauler behind him.'], ['me', 'Who is that?'], ['nia', 'I can\'t see his face. But that\'s a FWPD jacket. Look at the back.']]);
+        SY.actors.get('nia').pose = null; ots('me', 'nia');
+        await say('nia', 'I don\'t know what you\'re doing out here. I don\'t want to know. But be careful. Please.');
+        i = await choose([{ t: 'Can I see you again? Not about this.', tone: 'flirt', d: { family: 3 } }, { t: 'Delete these. Don\'t show anybody.', tone: 'protect' }, { t: 'Send me everything you shot that night.', tone: 'business' }], { timer: 14 });
+        syFlag('nia', i);
+        close('nia', -1, 1.6); await say('nia', i === 0 ? '...Yeah. I\'d like that.' : i === 1 ? 'They\'re in three places. I\'m not stupid.' : 'Airdropping now. All two hundred.');
+      });
+      unactor('nia'); syNote('Nia\'s photo, 11:04 PM the night Smoke died: a man in a FWPD jacket under Smoke\'s car in the Ironline pits, a Hollis Motors hauler behind him.');
+      if (syFlag('nia') === 0) text('nia', 'Next Friday. You\'re buying the tacos 😌');
+    },
+  ], { label: "Tier 2 · Nia's Pictures", delay: 60 });
+
+  mis('t2j', 2, 'Tier 2', 'Lil Bit', 'The thing you decided about Lil Bit comes back around.', [
+    async () => {
+      const bit = syFlag('bit'), s = sySide(1475, -238, 1, 2.6);
+      if (bit === 0) {
+        text('mama', 'They took Bryson to juvenile last night. His mama is at my house crying. Come home.');
+        actor('mama', s.x, s.z, 0); await talkTo('mama', 'Talk to', { obj: 'Go to Big Mama\'s. Lil Bit got picked up.', pin: "Big Mama's house" });
+        let i = 0;
+        await cut(async () => {
+          faceEach('me', 'mama'); SY.actors.get('mama').pose = 'cross'; ots('me', 'mama');
+          await lines([['mama', 'Caught him on the porch of that duplex with a phone and four hundred dollars.'], ['mama', 'Fifteen years old. Who you think he was working for?']]);
+          i = await choose([{ t: 'I\'ll pay his lawyer. Whatever it costs.', tone: 'own it', d: { family: 3, loyalty: 4 } }, { t: 'That\'s on him. He asked me.', tone: 'cold', d: { family: -8, streets: 2 } }], { timer: 14 });
+          SY.actors.get('mama').pose = null; close('mama');
+          await say('mama', i === 0 ? 'You\'ll pay his lawyer. And then you\'ll look his mama in the face.' : 'Then you ain\'t who I raised.');
+        });
+        if (i === 0) spend(Math.min(S.cash, 3500), 'Lil Bit\'s lawyer'); syFlag('bitJuvie', 1); unactor('mama');
+        syNote(i === 0 ? 'Lil Bit (15) got picked up working your spot. You paid his lawyer.' : 'Lil Bit (15) got picked up working your spot. You told Big Mama that was on him.');
+      } else if (bit === 1) {
+        actor('bit', s.x, s.z, 0); SY.actors.get('bit').pose = 'phone';
+        await talkTo('bit', 'Talk to', { obj: 'Lil Bit is waiting on the porch with something', pin: 'Lil Bit' });
+        await cut(async () => {
+          faceEach('me', 'bit'); SY.actors.get('bit').pose = null; two('me', 'bit', 1, 3);
+          await lines([['bit', 'You said you\'d check it. So. Here.'], ['narr', 'A report card. Three Bs, two Cs, an A in Algebra.'], ['bit', 'Coach said I could start JV if my grades stay up.'], ['me', 'An A in Algebra? Who you cheating off?'], ['bit', 'Nobody! I\'m just smart, bro.']]);
+        });
+        syMeter('family', 4, 'Lil Bit\'s report card'); syFlag('bitGood', 1); unactor('bit');
+        syNote('Lil Bit brought you his report card. An A in Algebra. He\'s trying out for JV.');
+      } else {
+        text('bit', 'u was right. i dont need nobody 50. got a job at the car wash on Lancaster');
+        syNote('Lil Bit got a job at the car wash on Lancaster.');
+      }
+    },
+  ], { label: 'Tier 2 · Lil Bit', delay: 60 });
+
+  mis('t2k', 2, 'Tier 2', 'Paid in Full', 'Every dollar Smoke owed Lou. Then you owe nobody.', [
+    async () => {
+      const st = sy();
+      await syUntil(() => S.cash >= Math.max(0, st.debt - st.paid), `Pay off Big Lou: ${money(Math.max(0, st.debt - st.paid))} (run your traps, serve, race)`);
+      await call('dre', [['dre', 'Lou wants to see you himself. Bring all of it. Oak Cliff is too far for you, so he\'s coming to Carsen\'s.']], { mustAnswer: true });
+      const p = DATA.P.find(x => x.id === 'plug_carson') || { x: 2095, z: -143, face: 3.1 }, [ox, oz] = outDir(p);
+      actor('lou', p.x + ox * 3, p.z + oz * 3, Math.atan2(-ox, -oz) + Math.PI); actor('dre', p.x + ox * 3 + oz * 1.6, p.z + oz * 3 - ox * 1.6, Math.atan2(-ox, -oz) + Math.PI);
+      await talkTo('lou', 'Pay', { obj: 'Bring Big Lou everything you owe at Carsen\'s Lounge', pin: "Carsen's Lounge" });
+    },
+    async () => {
+      const st = sy(), owe = Math.max(0, st.debt - st.paid); if (S.cash < owe) throw SY_FAIL(`You need ${money(owe)} on you.`);
+      if (!SY.actors.get('lou')) { const p = DATA.P.find(x => x.id === 'plug_carson'), [ox, oz] = outDir(p); actor('lou', p.x + ox * 3, p.z + oz * 3, 0); actor('dre', p.x + ox * 3 + 1.5, p.z + oz * 3, 0); }
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'lou'); face('dre', foot.x, foot.z); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 9, 3); await syWait(1.5);
+        ots('me', 'lou'); syName('lou');
+        await lines([['lou', 'So you the little brother.'], ['narr', 'Dre counts it. Lou doesn\'t watch. He\'s watching you.'], ['lou', 'Smoke never paid me all at once. Not one time. You know why?']]);
+        close('lou', 1, 1.8); await lines([['lou', 'Because the last month he wasn\'t buying from me. He was buying from the man I buy from.'], ['lou', 'Hollis. Deacon Hollis. The car lot man. He moves it all in those car haulers. I-30, I-35, I-20.'], ['lou', 'Smoke cut me out to go straight to the top. And then he told Hollis no.']]);
+        ots('me', 'lou');
+        i = await choose([{ t: 'Did you have anything to do with Ironline?', tone: 'direct', d: { streets: 2 } }, { t: 'Why are you telling me this?', tone: 'careful' }, { t: 'Put me on. Directly. Like you did Smoke.', tone: 'ambitious', d: { streets: 4, heat: 2 } }], { timer: 14 });
+        syFlag('lou2', i);
+        close('lou', -1, 1.8);
+        await lines(i === 0 ? [['lou', 'If I wanted Smoke dead I would have done it at a red light. Not on a racetrack with cameras.'], ['lou', 'Somebody wanted it to look like an accident. That\'s a different kind of man.']] : i === 1 ? [['lou', 'Because Hollis is coming for you next. And I want you owing me a favor when he does.']] : [['lou', 'Ha. Same mouth as your brother.'], ['lou', 'Come see me in Oak Cliff when you can move a real load. Then we talk.']]);
+        await say('lou', 'Debt\'s clean. You owe nobody. That\'s a rare thing in Fort Worth. Enjoy it.');
+        unactor('lou'); unactor('dre');
+        st.paid += owe; spend(owe, 'Paid off Big Lou');
+        await syTitle('TIER 2 COMPLETE', 'THE TRAP', 'Smoke\'s debt is paid. Two spots running.', 3.4);
+        await syTitle('NEXT', 'TIER 3 · THE BLOCK', 'Coming in the next story update', 2.6);
+      });
+      st.tier = 3; syMeter('streets', 6, 'Debt free'); syMeter('loyalty', 3); save(); syMeet('lou');
+      syNote('Big Lou is paid in full. Lou says Smoke was buying straight from Deacon Hollis at the end, then told Hollis no. Hollis moves everything in his car haulers.');
+    },
+  ], { label: 'Tier 2 · Paid in Full', delay: 90 });
+
+  // ---------- LIFE: Street Racing Legend (Rusty). Opens after Tier 1; plays between story missions ----------
+  mis('r1', 1, 'Racing', "Rusty's Project", 'Rusty wants to turn your car into something people remember.', [
+    async () => {
+      await call('rusty', [['rusty', 'Saw your clip from Lancaster. You drive like your brother. Sloppy, but you got it.'], ['rusty', 'Bring whatever you\'re driving by the lot. Let\'s make it mean something.']], { mustAnswer: true });
+      await syUntil(() => !!S.car, 'Get a car to bring to Rusty');
+      const r = DATA.P.find(x => x.id === 'rusty_used') || { x: -75, z: 463, face: 0 }, [ox, oz] = outDir(r); actor('rusty', r.x + ox * 4, r.z + oz * 4, 0);
+      await talkTo('rusty', 'Talk to', { obj: 'Drive your car to Rusty\'s Used Autos', pin: "Rusty's Used Autos" });
+      await cut(async () => {
+        faceEach('me', 'rusty'); two('me', 'rusty', 1, 3.4);
+        await lines([['rusty', 'Speed costs money. How fast you want to go?'], ['rusty', 'Open the Engine Lab on your phone. Put any real parts in it. Then come race at the strip.'], ['rusty', 'Smoke ran the Yello Belly and Ironline every Friday. Start where he started.']]);
+      });
+      unactor('rusty'); syFlag('racing', 1);
+      syNote('Rusty is building your car for the strip. Street racing life unlocked.');
+    },
+  ], { label: 'Racing · Rusty\'s Project', life: 'racing', delay: 0 });
+  mis('r2', 1, 'Racing', 'Friday at the Strip', 'Win a drag race against somebody at the Yello Belly or Ironline.', [
+    async () => {
+      const w0 = sy().dragWins || 0;
+      text('rusty', 'Friday night. Yello Belly or Ironline. Beat somebody.');
+      await syUntil(() => (sy().dragWins || 0) > w0, 'Win a drag race at the Yello Belly or Ironline (pull into the lanes, pick a racer)');
+      syMeter('streets', 4, 'Strip win'); text('throttle', `${S.name || 'Lil Smoke'} just took money at the strip 🏁`);
+      syNote('You won your first drag race at the strip.');
+    },
+  ], { label: 'Racing · Friday at the Strip', life: 'racing', delay: 0 });
+  mis('r3', 1, 'Racing', "Hollis's Offer", 'Win at Ironline and Deacon Hollis wants to put his name on your car.', [
+    async () => {
+      const w0 = sy().dragWins || 0, ir = DATA.P.find(x => x.id === 'ironline') || { x: 34, z: 1260 };
+      setPin('Ironline Dragway', ir.x, ir.z);
+      await syUntil(() => (sy().dragWins || 0) > w0 && sy().lastDragAt === 'ironline', 'Win a drag race at Ironline Dragway, where Smoke died');
+      const [mx, mz] = syMe(); actor('hollis', mx + 5, mz + 3, 0); face('hollis', mx, mz);
+      await talkTo('hollis', 'Talk to', { obj: 'Deacon Hollis is walking over', r: 5 });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'hollis'); ots('me', 'hollis');
+        await lines([['hollis', 'Same lane. Same light. Same lean in the launch. It\'s like watching Darius.'], ['hollis', 'Race under the Hollis Motors banner. Full sponsorship. Parts, tires, entry fees, a car if you want one.']]);
+        i = await choose([{ t: 'Deal. Put your name on it.', tone: 'take it', d: { streets: 3, clean: 2 } }, { t: 'I race for Stop Six. Not for you.', tone: 'refuse', d: { streets: 4, loyalty: 3 } }, { t: 'Smoke raced for you too. Look where it got him.', tone: 'accuse', d: { heat: 3 } }], { timer: 14 });
+        syFlag('hollisSponsor', i);
+        close('hollis', -1, 1.8); await say('hollis', i === 0 ? 'Welcome to the family. Come by the dealership. We\'ll get you a real car.' : i === 1 ? 'Stop Six doesn\'t pay for tires. I do. Offer stands.' : 'Darius made choices. I hope you make better ones.');
+      });
+      if (i === 0) { earn(5000, 'Hollis Motors sponsorship'); syNote('You took Hollis Motors\' sponsorship. $5,000 up front.'); } else syNote(i === 1 ? 'You turned down Hollis\'s sponsorship.' : 'You told Hollis to his face that racing for him got Smoke killed.');
+      unactor('hollis');
+      text('narr', 'More of the racing life comes with the next story update.', { quiet: true });
+    },
+  ], { label: 'Racing · Hollis\'s Offer', life: 'racing', delay: 0 });
 
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
@@ -1079,17 +1475,25 @@
         body += `<button class="big" data-a="pause" style="background:rgba(255,255,255,.12);color:#fff">Pause the story (free roam only)</button>`;
       }
       for (const [t, k, nm] of TIERS) {
-        const ms = M.filter(m => m.tier === t); body += `<div class="sec">${k} · ${nm}</div>`;
-        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 2 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
+        const ms = M.filter(m => m.tier === t && !m.life); body += `<div class="sec">${k} · ${nm}</div>`;
+        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 3 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
         ms.forEach((m, i) => { const done = st.done.includes(m.id), now = st.m === m.id || (!st.m && st.next === m.id); body += `<div class="ms ${done ? 'done' : now ? 'now' : 'lock'}"><div class="n">${done ? '✓' : i + 1}</div><div><h5>${esc(m.title)}</h5><p>${done || now ? esc(m.brief) : 'Locked'}</p></div></div>`; });
       }
     } else if (tab === 'journal') body += st.journal.length ? st.journal.map(j => `<div class="jr">${esc(j)}</div>`).join('') : '<div class="jr">Nothing yet.</div>';
     else if (tab === 'people') body += st.met.length ? st.met.map(w => { const c = SY_CAST[w]; return c ? `<div class="ppl">${syAv(w)}<div><b>${esc(c.full || c.name)}</b><span>${esc(c.role)}</span></div></div>` : ''; }).join('') : '<div class="jr">You haven\'t met anyone yet.</div>';
-    else if (tab === 'lives') body += `<div class="jr">The dope game is the main road. Other lives open as you come up. Run several at once, or leave the game behind for one of them.</div>` + LIVES.map(([n, u, how]) => `<div class="life"><span>${n}<br><em>${how}</em></span><em>${n === 'Kingpin' && st.on ? 'Living it' : 'Unlocks ' + u}</em></div>`).join('');
+    else if (tab === 'lives') body += `<div class="jr">The dope game is the main road. Other lives open as you come up. Run several at once, or leave the game behind for one of them.</div>` + LIVES.map(([n, u, how]) => {
+      const k = Object.keys(SY_LIFE).find(x => SY_LIFE[x].n === n);
+      if (k && syLifeOpen(k)) {
+        const ch = M.filter(m => m.life === k), nx = syLifeNext(k), cur = st.m && misById(st.m);
+        return `<div class="life"><span>${n}<br><em>${ch.filter(m => st.done.includes(m.id)).length} of ${ch.length} done</em></span><em>${cur && cur.life === k ? 'On it' : nx ? '' : 'More soon'}</em></div>` + ch.map((m, i) => { const done = st.done.includes(m.id), now = cur === m; return `<div class="ms ${done ? 'done' : now || m === nx ? 'now' : 'lock'}"><div class="n">${done ? '✓' : i + 1}</div><div style="flex:1"><h5>${esc(m.title)}</h5><p>${done || now || m === nx ? esc(m.brief) : 'Locked'}</p></div>${m === nx && !now && !st.m ? `<button class="big" data-life="${k}" style="margin:0;padding:6px 12px;width:auto">Play</button>` : ''}</div>`; }).join('');
+      }
+      return `<div class="life"><span>${n}<br><em>${how}</em></span><em>${n === 'Kingpin' && st.on ? 'Living it' : 'Unlocks ' + u}</em></div>`;
+    }).join('');
     sc.innerHTML = phoneHead('Story') + `<div class="ph-body">${body}</div>`; syBack(sc);
     sc.querySelectorAll('[data-t]').forEach(b => b.onclick = () => syStoryApp(sc, b.dataset.t));
     const A = sc.querySelector('[data-a="start"]'); if (A) A.onclick = () => { closePhone(); syStart(); };
     const P = sc.querySelector('[data-a="pause"]'); if (P) P.onclick = () => { syPause(); syStoryApp(sc); };
+    sc.querySelectorAll('[data-life]').forEach(b => b.onclick = () => { if (syPlayLife(b.dataset.life)) closePhone(); });
     const N = sc.querySelector('[data-a="next"]'); if (N) N.onclick = () => { st.nextT = 0; closePhone(); };
   }
   function syTextsApp(sc, who) {
@@ -1118,10 +1522,10 @@
   function syStart() {
     const st = sy(); st.on = true; save(); syUI();
     if (!st.done.length && !st.m) { st.next = 'p1'; st.nextT = 0.5; }
-    else if (!st.m && !st.next) { const nx = M.find(m => !st.done.includes(m.id)); if (nx) { st.next = nx.id; st.nextT = 2; } }
+    else if (!st.m && !st.next) { const nx = M.find(m => !m.life && !st.done.includes(m.id)); if (nx) { st.next = nx.id; st.nextT = 2; } }
     syMural(); save();
   }
-  function syPause() { const st = sy(); st.on = false; if (SY.busy) { st.next = st.m; st.nextT = 3; st.m = null; } syAbortRun(); save(); syObjective(''); toast('Story paused. Start it again from the Story app.', 'good'); }
+  function syPause() { const st = sy(); st.on = false; if (SY.busy) { const cur = misById(st.m); if (!(cur && cur.life)) { st.next = st.m; st.nextT = 3; } st.m = null; } syAbortRun(); save(); syObjective(''); toast('Story paused. Start it again from the Story app.', 'good'); }
   function syAbortRun() {
     // stop whatever mission is waiting (its promises are dropped), clean the world up
     for (const w of SY.waits.splice(0)) { /* dropped */ }
@@ -1151,7 +1555,7 @@
     try {
       // waits: timers and conditions
       if (SY.waits.length) { const keep = []; for (const w of SY.waits) { if ((w.until && n >= w.until) || (w.pred && w.pred())) w.res(); else keep.push(w); } SY.waits = keep; }
-      syStepActors(dt); syStepCam(dt); syStepTalk(); syStepTrap(dt); syStepFlow(dt);
+      syStepActors(dt); syStepCam(dt); syStepTalk(); syStepTrap(dt); syStepTraps(dt); syStepFlow(dt);
       if (SY.mk && SY.mk.visible && !SY.talk) SY.mk.position.y = SY.mk.userData.y + Math.sin(n / 300) * 0.1;
       if (SY.mk) SY.mk.rotation.y += dt * 1.6;
     } catch (e) { if (SY.err++ < 5) console.warn('story frame: ' + e.message, e.stack); }
@@ -1168,9 +1572,10 @@
     try { const st = S && S.story; if (st) { const B = st.flags.flashBack; if (B && !st.m) { S.look = B.look; S.wear = B.wear; delete st.flags.flashBack; dressAvatar(); } if (st.loan && !st.m) endLoan(); syUI(); syMural(); } } catch (e) { console.warn('story load: ' + e.message); }
     return r;
   };
-  window.__story = { SY, M, sy, syRun, syStart, syPause, syAbortRun, syNewOrder, syServe, syMural, say, choose, call, text, cut, actor, unactor, unactAll, misById, sySide, spot, SY_CAST, SY_SPOT, syMeter,
+  window.__story = { SY, M, sy, syRun, syStart, syPause, syAbortRun, syNewOrder, syServe, syMural, say, choose, call, text, cut, actor, unactor, unactAll, misById, sySide, spot, SY_CAST, SY_SPOT, syMeter, syTraps, syTrap, syOpenTrap, syTrapMenu, syTrapTick, syTrapPos, syPlayLife, syLifeNext, SY_WORKERS,
     // test helpers: jump to a mission, fast-forward everything
-    jump(id) { const st = sy(); st.on = true; syAbortRun(); const i = M.findIndex(m => m.id === id); st.done = M.slice(0, i).map(m => m.id); st.m = null; st.next = id; st.nextT = 0; save(); },
+    jump(id) { const st = sy(); st.on = true; syAbortRun(); const i = M.findIndex(m => m.id === id), m = M[i]; if (m.life) { const ai = M.findIndex(x => x.id === SY_LIFE[m.life].after); st.done = M.filter((x, k) => (!x.life && k <= ai) || (x.life === m.life && k < i)).map(x => x.id); st.m = null; st.next = null; save(); syRun(m, 0); return; } st.done = M.slice(0, i).filter(x => !x.life).map(x => x.id); st.m = null; st.next = id; st.nextT = 0; save(); },
     auto(on) { SY.autoPick = on ? 0 : null; SY.autoAnswer = on; SY.autoTalk = on; SY.autoRetry = on; SY.fast = on; },
+    giveCar() { const c = newCar(BUILT[0], '#6b6f5a', 58); c.fuel = 0.6; S.car = c; syncCarModel(); deliverCar(); save(); },
     advance: syAdvance, pinAt: () => pin.visible ? [pin.position.x, pin.position.z] : null, mk: () => SY.mk && SY.mk.visible ? [SY.mk.position.x, SY.mk.position.z] : null };
   // ===== STORY END =====
