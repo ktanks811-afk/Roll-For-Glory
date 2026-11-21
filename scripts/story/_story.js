@@ -31,6 +31,8 @@
     bo: { name: 'Uncle Bo', full: 'Boyd "Uncle Bo" Jenkins', col: '#e0b070', role: 'Big Mama\'s brother. Cattle, hog dogs and a windmill out by Joshua.', seed: 191, look: { hairStyle: 'short', hair: '#bdbdbd', build: 2, height: 2, skin: '#4a2f1c', top: 'mw_pearlsnap', bottom: 'mw_wranglers', shoes: 'mm_botas', hat: 'mm_tejana', facialHair: 'full_beard', extras: [] } },
     garza: { name: 'Agent Garza', full: 'Special Agent Rosa Garza (DEA)', col: '#9fd3ff', role: 'DEA, Dallas field office. Was supposed to meet Smoke the night he died.', seed: 211, fem: 1, look: { hairStyle: 'bun', hair: '#1a120c', build: 0, height: 0, skin: '#a8714a', top: 'mx_leather', bottom: 'jeans_black', shoes: 'boots_black', hat: 'no_hat', extras: [] } },
     earl: { name: 'Earl', full: 'Earl Tate (Hook & Haul Towing)', col: '#ffa65c', role: 'Owns Hook & Haul. Moves cars at night for Hollis Motors, no questions.', seed: 221, look: { hairStyle: 'buzz', hair: '#bdbdbd', build: 2, height: 1, skin: '#c08a64', top: 'mw_carhartt', bottom: 'md_carpenter', shoes: 'boots_black', hat: 'mw_cap_ranch', facialHair: 'full_beard' } },
+    pruitt: { name: 'Officer Pruitt', full: 'Parole Officer Dana Pruitt', col: '#b8e0a0', role: 'Your parole officer. Strict, fair, hears everything.', seed: 231, look: { hairStyle: 'caesar', hair: '#2a2a2a', build: 1, height: 1, skin: '#6b4429', top: 'fleece_black', bottom: 'jeans_black', shoes: 'boots_black', hat: 'no_hat', facialHair: 'goatee' } },
+    reed: { name: 'Pastor Reed', full: 'Pastor Calvin Reed', col: '#f3e3a0', role: 'Pastor at Greater Stop Six Baptist. Buried Smoke. Runs Thursday nights for the young boys.', seed: 241, look: { hairStyle: 'buzz', hair: '#9a9a9a', build: 2, height: 1, skin: '#3f2a1a', top: 'mx_leather', bottom: 'jeans_black', shoes: 'boots_black', hat: 'no_hat', facialHair: 'goatee' } },
     virgil: { name: 'Virgil', full: 'Virgil (VirL Studios)', col: '#ffc21a', role: 'Owns VirL Studios. Has 11 of Smoke\'s unreleased songs in the vault.', seed: 201, look: { hairStyle: 'locs', hair: '#3a2a1a', build: 1, height: 1, skin: '#55341f', top: 'mx_monogram', bottom: 'jeans_black', shoes: 'kicks_blackout', facialHair: 'beard', extras: ['chain'] } },
     me: { name: 'You', col: '#ffffff' },
     narr: { name: '', col: '#ffffff' },
@@ -539,7 +541,7 @@
     finally { SY.busy = false; SY.act = null; }
   }
   // the lives: side chains you play from the Story app (Lives tab) between story beats
-  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' }, block: { n: 'Block boss', who: 'mook', after: 't3b' }, land: { n: 'Land and cattle', who: 'bo', after: 't3h' }, music: { n: 'Music mogul', who: 'virgil', after: 't3f' } , cars: { n: 'Car boss', who: 'rusty', after: 't4a' } };
+  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' }, block: { n: 'Block boss', who: 'mook', after: 't3b' }, land: { n: 'Land and cattle', who: 'bo', after: 't3h' }, music: { n: 'Music mogul', who: 'virgil', after: 't3f' } , cars: { n: 'Car boss', who: 'rusty', after: 't4a' }, informant: { n: 'Informant', who: 'garza', after: 't5f' }, straight: { n: 'Going straight', who: 'pruitt', after: 'p3' } };
   const syLifeNext = k => { const st = sy(); return M.find(m => m.life === k && !st.done.includes(m.id)) || null; };
   const syLifeOpen = k => { const L = SY_LIFE[k]; return L && sy().done.includes(L.after); };
   function syPlayLife(k) { const st = sy(); if (SY.busy || st.m) { toast('Finish the job you\'re on first.', 'bad'); return false; } const m = syLifeNext(k); if (!m || !syLifeOpen(k)) return false; st.on = true; syRun(m, 0); return true; }
@@ -690,6 +692,7 @@
         await syTitle('TIER 1', 'HAND TO HAND', 'Stop Six · the corner', 3.6);
       });
       sy().tier = 1; save();
+      text('pruitt', 'Officer Pruitt, your parole officer. Check in when you\'re ready to do this the right way. (Story app, Lives, Going straight)', { quiet: true });
     },
   ], { label: 'Prologue · The Funeral', delay: 30 });
 
@@ -2399,6 +2402,7 @@
       unactor('garza'); setTime('day');
       syFlag('garzaDeal', i === 0 ? 'yes' : i === 1 ? 'later' : 'no');
       if (i === 0) syMeter('heat', -10, 'Federal protection');
+      text('garza', i === 0 ? 'Your first job for me is in the Story app, Lives, Informant. Delete this.' : 'If you change your mind: Story app, Lives, Informant.', { quiet: true });
       syNote(i === 0 ? 'You took Agent Garza\'s deal. You\'re an informant now. One slip and you\'re done.' : i === 1 ? 'Agent Garza offered you a deal: wear a wire at Hollis\'s table. You said not yet.' : 'You told Agent Garza no. Smoke trusted her and he died.');
     },
   ], { label: "Tier 5 · Garza's Deal", delay: 40 });
@@ -2462,6 +2466,170 @@
       syNote(`Tier 5 done: a million clean and a seat at Hollis\'s table.${wire ? ' Garza\'s wire heard every word.' : ''} Next: Denver, and a woman named Wren.`);
     },
   ], { label: "Tier 5 · Hollis's Table", delay: 60 });
+
+  // ---------- LIFE: Informant (Garza). Wear the wire, feed the DEA, live a double life. Evidence piles up in st.evidence ----------
+  const syEv = n => { const st = sy(); st.evidence = (st.evidence || 0) + n; save(); toast(`🎙 Evidence for Garza: ${st.evidence}`, 'good'); };
+
+  mis('i1', 5, 'Informant', 'Wired', 'Garza wants Hollis on tape. You walk into his dealership with a wire under your shirt.', [
+    async () => {
+      if (syFlag('garzaDeal') !== 'yes') {
+        await call('garza', [['garza', 'The offer\'s still on the table. It won\'t be forever.']], { mustAnswer: true });
+        const j = await choose([{ t: 'Take the deal.', tone: 'informant', d: { clean: 4, streets: -4, loyalty: -3 } }, { t: 'Still no.', tone: 'no' }], { timer: 14, q: 'Agent Garza' });
+        if (j === 1) throw SY_FAIL('You told Garza no again.');
+        syFlag('garzaDeal', 'yes');
+      }
+      const a = syAt('sr_sundance', 0, 255, 6); setTime('night');
+      actor('garza', a.x, a.z, 0);
+      await talkTo('garza', 'Talk to', { obj: 'Meet Garza in Sundance Square', pin: 'Sundance Square Sprint' });
+      await cut(async () => {
+        faceEach('me', 'garza'); two('me', 'garza', 1, 3.2);
+        await lines([['garza', 'It\'s a button on your shirt. Don\'t touch it. Don\'t look at it. People who look at it die.'], ['garza', 'I need Hollis saying "Laredo" and "haulers" in the same sentence. That\'s all.']]);
+        close('garza', 1, 1.6); await lines([['garza', 'If it goes bad, say "Big Mama\'s cooking tonight." We come in.']]);
+      });
+      unactor('garza'); syMeet('garza'); setTime('day');
+      const h = syAt('auto_row', 75, -163, 5);
+      actor('hollis', h.x, h.z, 0); actor('calloway', h.x + h.oz * 2.6, h.z - h.ox * 2.6, 0);
+      await talkTo('hollis', 'Talk to', { obj: 'Go see Hollis at the dealership. Get him talking.', pin: 'Cowtown Auto Row' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'hollis'); face('calloway', foot.x, foot.z); two('me', 'hollis', 1, 3.4);
+        await lines([['hollis', 'You came by on a Tuesday. Nobody comes by on a Tuesday.']]);
+        close('calloway', 1, 1.6); await lines([['calloway', 'Arms up. Humor me.']]);
+        ots('me', 'calloway');
+        i = await choose([{ t: 'Raise your arms. Stay calm.', tone: 'calm', d: { heat: 2 } }, { t: '"You patted me down last week."', tone: 'push back', d: { streets: 2 } }, { t: 'Say "Big Mama\'s cooking tonight."', tone: 'abort' }], { timer: 10 });
+        if (i === 2) { close('hollis', 1, 1.8); await lines([['hollis', 'Tell Pearl I said hello. Go on home.']]); return; }
+        await lines([['narr', i === 0 ? 'Calloway\'s hands stop at your chest pocket. A long second. Then they move on.' : 'Calloway looks at Hollis. Hollis waves him off.']]);
+        two('me', 'hollis', 1, 3.4);
+        await lines([['hollis', 'Laredo moved three haulers this week. Four next week. The Port woman wants a raise.'], ['hollis', 'And Calloway gets his envelope Fridays, same as always. Right, Calloway?']]);
+      });
+      unactor('hollis'); unactor('calloway');
+      if (i === 2) { syNote('You aborted the wire at Hollis Motors when Calloway went to pat you down.'); throw SY_FAIL('You pulled out. Garza will set it up again.'); }
+      syEv(3); syMeter('clean', 4, 'Hollis on tape');
+      text('garza', 'Laredo. Haulers. Calloway\'s envelope. In his own voice. You did good. Now act normal');
+      syNote('You wore Garza\'s wire into Hollis Motors. He said Laredo, haulers and Calloway\'s Friday envelope on tape.');
+    },
+  ], { label: 'Informant · Wired', life: 'informant', delay: 0 });
+
+  mis('i2', 5, 'Informant', 'Dead Drop', 'A flash drive of Smoke\'s ledger pages goes to Garza. Nobody can see you do it.', [
+    async () => {
+      text('garza', 'Copy the ledger. Church, back steps, under the loose brick. Tonight. Make sure nobody is behind you');
+      await syUntil(() => syCops().COP.phase === 'none' || syCops().COP.phase === 'cool', 'Shake any cops before the drop');
+      const c = spot('church', -1, 4); setTime('night');
+      await reach(c.x, c.z, 6, 'Loose brick · church back steps', { obj: 'Drop the flash drive under the loose brick behind the church' });
+      let i = 0;
+      await cut(async () => {
+        face('me', c.x, c.z); shot([c.x + 5, 3, c.z + 5], [c.x, 0.6, c.z], { dur: 6 }); await syWait(1.2);
+        await lines([['narr', 'The brick slides out. You put the drive in. Headlights sweep the parking lot.'], ['narr', 'A white Charger. Mook\'s. He sits there with the engine running.']]);
+        i = await choose([{ t: 'Walk over like you were just praying.', tone: 'play it', d: { loyalty: 1 } }, { t: 'Stay in the dark till he leaves.', tone: 'hide', d: { heat: 2 } }], { timer: 12 });
+        await lines([['mook', i === 0 ? 'Praying? You? ...Big Mama got you going to church at midnight now?' : '...']]);
+      });
+      setTime('day');
+      syFlag('mookSawChurch', i === 0 ? 1 : 2); syEv(4);
+      if (i === 1) text('mook', 'saw ur car at the church last night. u good?');
+      syNote(i === 0 ? 'You made the dead drop at the church. Mook pulled up. You told him you were praying.' : 'You made the dead drop at the church and hid while Mook sat in the lot. He saw your car.');
+    },
+  ], { label: 'Informant · Dead Drop', life: 'informant', delay: 0 });
+
+  mis('i3', 5, 'Informant', 'Two Phones', 'Somebody inside Hollis\'s circle is asking who\'s talking.', [
+    async () => {
+      await call('hollis', [['hollis', 'Somebody is talking to the federal government. I\'d like everybody I trust to come to dinner Sunday. Bring your phone. Both of them.']], { mustAnswer: true });
+      const a = syAt('kessler_tudor', 4787, -825, 5); setTime('sunset');
+      actor('hollis', a.x, a.z, 0); actor('calloway', a.x + a.oz * 2.4, a.z - a.ox * 2.4, 0); actor('lou', a.x - a.oz * 2.4, a.z + a.ox * 2.4, 0);
+      await talkTo('hollis', 'Sit with', { obj: 'Sunday dinner. Kessler Park.', pin: 'Kessler Park' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'hollis'); face('calloway', foot.x, foot.z); face('lou', foot.x, foot.z); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 12, 4); await syWait(1.4);
+        await lines([['hollis', 'Phones on the table. Calloway is going to look through them. Nobody takes it personal.']]);
+        close('calloway', 1, 1.6); await lines([['calloway', 'Lou. You got a number saved as "Pastor." Pastor who?'], ['lou', 'Pastor of my church, man. Call him.']]);
+        ots('me', 'calloway'); await lines([['calloway', 'Your turn.']]);
+        i = await choose([{ t: 'Slide him the phone. Garza\'s number isn\'t in it.', tone: 'clean phone', d: { heat: 2 } }, { t: 'Point at Lou\'s phone. "Ask Pastor who."', tone: 'throw Lou', d: { streets: 3, loyalty: -6 } }], { timer: 12 });
+        close('hollis', 1, 1.8); await lines([['hollis', i === 0 ? 'Clean as a whistle. Like a choirboy. Eat, son.' : 'Louis. Stay after dinner.']]);
+      });
+      unactAll(); setTime('day');
+      syFlag('dinnerPhones', i);
+      if (i === 1) { text('dre', 'Lou ain\'t been home since Sunday. Nobody answering. What happened at that dinner'); syMeter('family', -2); }
+      syEv(2);
+      syNote(i === 0 ? 'Hollis had Calloway search everybody\'s phones at Sunday dinner. Yours was clean.' : 'At Hollis\'s Sunday dinner you pointed Calloway at Big Lou\'s phone. Lou hasn\'t been seen since.');
+      text('narr', 'More of the Informant life comes with the next story update.', { quiet: true });
+    },
+  ], { label: 'Informant · Two Phones', life: 'informant', delay: 0 });
+
+  // ---------- LIFE: Going straight (Officer Pruitt, Pastor Reed). A real job, a clean test, school, family ----------
+  mis('g1', 1, 'Going straight', 'Check-In', 'Parole. Officer Pruitt wants a urine sample and a pay stub.', [
+    async () => {
+      await call('pruitt', [['pruitt', 'This is Officer Pruitt, Tarrant County parole. You missed nothing yet. Let\'s keep it that way. My office, the courthouse.']], { mustAnswer: true });
+      const a = syAt('courthouse', -75, -163, 5);
+      actor('pruitt', a.x, a.z, 0);
+      await talkTo('pruitt', 'Report to', { obj: 'Report to Officer Pruitt at the Tarrant County Courthouse', pin: 'Tarrant County Courthouse' });
+      const dirty = (sy().meters.streets || 0) > 55;
+      await cut(async () => {
+        faceEach('me', 'pruitt'); two('me', 'pruitt', 1, 3.2);
+        await lines([['pruitt', 'Cup. Bathroom\'s on the left. Don\'t make me come in there.'], ['narr', dirty ? 'Ten minutes later. Pruitt holds the strip up to the light for a long time.' : 'Ten minutes later. Pruitt barely looks at the strip.']]);
+        close('pruitt', 1, 1.6);
+        await lines([['pruitt', dirty ? 'Clean. Barely. Your file says Stop Six, and Stop Six says your name a lot lately. I hear things.' : 'Clean. Good.'], ['pruitt', 'Now a job. A real one, with a pay stub. Two weeks.']]);
+      });
+      unactor('pruitt'); syMeet('pruitt');
+      await syUntil(() => hustle().jobs.length > 0, 'Take a real job in the Hustle app');
+      syMeter('clean', 5, 'Got a real job'); syMeter('family', 2);
+      text('pruitt', 'Got your pay stub. Look at you. See you next month');
+      text('mama', 'Pruitt called me. Said you was doing good. I almost dropped the phone');
+      syNote('You checked in with Officer Pruitt, passed the test, and took a real job.');
+    },
+  ], { label: 'Going straight · Check-In', life: 'straight', delay: 0 });
+
+  mis('g2', 1, 'Going straight', 'Pastor Reed', 'Big Mama\'s pastor needs somebody the young boys will actually listen to.', [
+    async () => {
+      text('mama', 'Pastor Reed asked about you after service. Go see him baby. Do it for me');
+      const c = spot('church', 1, 3);
+      actor('reed', c.x, c.z, c.yaw + Math.PI);
+      await talkTo('reed', 'Talk to', { obj: 'Go see Pastor Reed at Greater Stop Six Baptist', pin: 'Greater Stop Six Baptist Church' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'reed'); two('me', 'reed', 1, 3.2);
+        await lines([['reed', 'I buried your brother in that sanctuary. I don\'t want to bury you.'], ['reed', 'Thursday nights we got twenty boys in the fellowship hall. They don\'t listen to me. They\'d listen to Smoke\'s brother.']]);
+        close('reed', 1, 1.6); await lines([['reed', 'One of them they call Lil Bit. Fifteen. Already running packs on Ramey. Somebody needs to get to him first.']]);
+        ots('me', 'reed');
+        i = await choose([{ t: 'Show up Thursday.', tone: 'mentor', d: { family: 5, clean: 3, streets: -2 } }, { t: 'I\'m the last person who should.', tone: 'doubt' }], { timer: 14 });
+        close('reed', -1, 1.6); await say('reed', i === 0 ? 'Six o\'clock. Bring your story. The real one.' : 'That\'s exactly why it should be you.');
+      });
+      unactor('reed'); syMeet('reed');
+      syFlag('mentor', i === 0 ? 1 : 0);
+      if (i === 0) {
+        setTime('sunset'); const h = spot('church', -1, 3); actor('reed', h.x, h.z, 0);
+        await talkTo('reed', 'Sit with', { obj: 'Thursday night. Fellowship hall.', pin: 'Greater Stop Six Baptist Church' });
+        await cut(async () => {
+          faceEach('me', 'reed'); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.5, 10, 3.4); await syWait(1.2);
+          await lines([['narr', 'Twenty boys in folding chairs. Phones out. Nobody looking up.'], ['narr', 'You tell them about four years in TDCJ. About the funeral. About Big Mama\'s light bill. Phones go down one at a time.'], ['narr', 'In the back row, a skinny kid with a Ramey Ave hoodie never stops looking at you. Lil Bit.']]);
+        });
+        unactor('reed'); setTime('day'); syFlag('lilBit', 'met');
+      }
+      syNote(i === 0 ? 'You started mentoring boys at Greater Stop Six Baptist on Thursday nights. You met Lil Bit, 15, already running packs on Ramey.' : 'Pastor Reed asked you to mentor the young boys at church. You said you\'re the last person who should.');
+    },
+  ], { label: 'Going straight · Pastor Reed', life: 'straight', delay: 0 });
+
+  mis('g3', 1, 'Going straight', 'Trade School', 'Tarrant County College has an HVAC program at night. Big Mama already printed the form.', [
+    async () => {
+      await call('mama', [['mama', 'I put a paper on your bed. TCC, nights. Heating and air. Them men make good money and nobody shoots at them.']]);
+      await syUntil(() => S.cash + S.bank >= 3500, 'Get $3,500 for TCC tuition (cash or bank)');
+      syFromBank(3500); S.log.unshift('-$3,500 TCC HVAC program'); save();
+      const st = sy(); st.school = { start: S.day }; save();
+      toast('📚 Enrolled at TCC: HVAC, nights. Sleep 3 nights to finish the certificate.', 'good');
+      await syUntil(() => S.day - st.school.start >= 3, 'Go to class: sleep 3 nights to finish your HVAC certificate');
+      const a = spot('mama', 1, 2.6); actor('mama', a.x, a.z, a.yaw + Math.PI); actor('reed', a.x + 2, a.z + 1, 0);
+      await talkTo('mama', 'Show', { obj: 'Bring your certificate home to Big Mama', pin: "Big Mama's house" });
+      await cut(async () => {
+        faceEach('me', 'mama'); face('reed', foot.x, foot.z); two('me', 'mama', 1, 3.2);
+        await lines([['narr', 'A certificate in a cheap frame. EPA 608 UNIVERSAL. Your name spelled right.'], ['mama', 'Smoke never finished nothing but a race. You finished something.'], ['reed', 'Frame\'s from the dollar store. The paper ain\'t.']]);
+        await syTitle('CERTIFIED', 'HVAC · EPA 608', 'Tarrant County College', 3);
+      });
+      unactor('mama'); unactor('reed');
+      syMeter('clean', 8, 'Finished school'); syMeter('family', 6);
+      syFlag('hvac', 1);
+      text('pruitt', 'TCC sent me your certificate. Parole board is going to like that. A lot.');
+      syNote('You finished the HVAC program at Tarrant County College. Big Mama framed it.');
+      text('narr', 'More of the Going straight life comes with the next story update.', { quiet: true });
+    },
+  ], { label: 'Going straight · Trade School', life: 'straight', delay: 0 });
 
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
