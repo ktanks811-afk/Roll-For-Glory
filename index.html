@@ -37188,6 +37188,10 @@ body.pm #pm-root { display: block; }
     robber2: { name: 'Second dude', full: 'Second dude', col: '#ff6b6b', role: '', seed: 141, look: { hairStyle: 'cornrows', build: 2, height: 1, skin: '#3f2a1a', top: 'hoodie_grey', bottom: 'cargo_black', shoes: 'boots_tactical', mask: 'bandana_black' } },
     calloway: { name: 'Det. Calloway', full: 'Det. Wade Calloway (FWPD Narcotics)', col: '#9db4ff', role: 'FWPD narcotics detective. Worked Smoke\'s case. Takes envelopes.', seed: 151, look: { hairStyle: 'buzz', hair: '#5a4632', build: 2, height: 2, skin: '#d8a888', top: 'mx_leather', bottom: 'jeans_black', shoes: 'kicks_blackout', facialHair: 'stubble', extras: [] } },
     pooh: { name: 'Pooh', full: 'Pooh', col: '#ffe08a', role: 'Old head. Worked Smoke\'s spot. Now works yours.', seed: 161, look: { hairStyle: 'short', hair: '#7a7a7a', build: 2, height: 1, skin: '#4a2f1c', top: 'mw_carhartt', bottom: 'cargo_black', shoes: 'kicks_blackout', facialHair: 'beard', extras: [] } },
+    saint: { name: 'Saint', full: 'Santiago "Saint" Ortega', col: '#f2d94e', role: 'Northside Reyes. Chuy Ortega\'s nephew. Half the city thinks he killed Smoke.', seed: 171, look: { hairStyle: 'buzz', hair: '#111111', build: 1, height: 2, skin: '#a0704c', top: 'mw_carhartt', bottom: 'mw_wranglers', shoes: 'mk_af1_white', hat: 'no_hat', facialHair: 'goatee', extras: ['chain'] } },
+    saint2: { name: 'Lalo', full: 'Lalo Ortega', col: '#f2d94e', role: 'Saint\'s cousin. Doesn\'t listen to anybody.', seed: 181, look: { hairStyle: 'short', hair: '#111111', build: 2, height: 1, skin: '#8a5a3a', top: 'mm_mexico_blk', bottom: 'cargo_tan', shoes: 'mm_botas', hat: 'mw_cap_ranch', facialHair: 'stubble', extras: [] } },
+    bo: { name: 'Uncle Bo', full: 'Boyd "Uncle Bo" Jenkins', col: '#e0b070', role: 'Big Mama\'s brother. Cattle, hog dogs and a windmill out by Joshua.', seed: 191, look: { hairStyle: 'short', hair: '#bdbdbd', build: 2, height: 2, skin: '#4a2f1c', top: 'mw_pearlsnap', bottom: 'mw_wranglers', shoes: 'mm_botas', hat: 'mm_tejana', facialHair: 'full_beard', extras: [] } },
+    virgil: { name: 'Virgil', full: 'Virgil (VirL Studios)', col: '#ffc21a', role: 'Owns VirL Studios. Has 11 of Smoke\'s unreleased songs in the vault.', seed: 201, look: { hairStyle: 'locs', hair: '#3a2a1a', build: 1, height: 1, skin: '#55341f', top: 'mx_monogram', bottom: 'jeans_black', shoes: 'kicks_blackout', facialHair: 'beard', extras: ['chain'] } },
     me: { name: 'You', col: '#ffffff' },
     narr: { name: '', col: '#ffffff' },
     throttle: { name: 'Throttle', full: 'Throttle (app)', col: '#ff5a1f', role: '' },
@@ -37684,6 +37688,8 @@ body.pm #pm-root { display: block; }
         const main = M.filter(x => !x.life), nx = main[main.indexOf(m) + 1];
         if (nx) { st.next = nx.id; st.nextT = nx.delay != null ? nx.delay : 25; }
         else { st.next = null; syObjective(''); text('narr', 'More of the story is coming in the next update.', { quiet: true }); }
+        if (m.id === 't3b' && syLifeNext('block')) text('mook', 'We got a block now. If you want to build the set up for real, Story app, Lives, Block boss.');
+        if (m.id === 't3h' && syLifeNext('land')) text('bo', 'Come back out when you want to learn cattle. Story app, Lives, Land and cattle.');
         if (m.id === 't12' && syLifeNext('racing')) text('rusty', 'Heard you put money in Lou\'s hand. Now come build something people remember. Story app, Lives, Street racing.');
       }
       save();
@@ -37692,7 +37698,7 @@ body.pm #pm-root { display: block; }
     finally { SY.busy = false; SY.act = null; }
   }
   // the lives: side chains you play from the Story app (Lives tab) between story beats
-  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' } };
+  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' }, block: { n: 'Block boss', who: 'mook', after: 't3b' }, land: { n: 'Land and cattle', who: 'bo', after: 't3h' } };
   const syLifeNext = k => { const st = sy(); return M.find(m => m.life === k && !st.done.includes(m.id)) || null; };
   const syLifeOpen = k => { const L = SY_LIFE[k]; return L && sy().done.includes(L.after); };
   function syPlayLife(k) { const st = sy(); if (SY.busy || st.m) { toast('Finish the job you\'re on first.', 'bad'); return false; } const m = syLifeNext(k); if (!m || !syLifeOpen(k)) return false; st.on = true; syRun(m, 0); return true; }
@@ -38402,7 +38408,7 @@ body.pm #pm-root { display: block; }
   mis('t2f', 2, 'Tier 2', 'Flashback: The Keys', 'Three weeks before Ironline. Smoke at Hollis Motors.', [
     async () => {
       await syUntil(() => foot.on && !inside, 'Get out and walk (another memory)');
-      const st = sy(); st.flags.flashBack = { look: Object.assign({}, S.look), wear: Object.assign({}, S.wear) }; save();
+      const st = sy(); st.flags.flashBack = { look: Object.assign({}, S.look), wear: Object.assign({}, S.wear), at: [foot.on ? foot.x : drv.x, foot.on ? foot.z : drv.z, foot.yaw] }; save();
       await cut(async () => {
         await syBlack('<span style="font-size:.8em;opacity:.7">HOLLIS MOTORS · COWTOWN AUTO ROW · 3 WEEKS BEFORE</span>', 2.4);
         const L = syLook('smoke'); S.look = Object.assign({}, S.look, { body: 'm', skin: L.skin, hair: L.hair, hairStyle: 'locs', facialHair: 'goatee', build: 1, height: 2, face: L.face, extras: ['cuban'] }); S.wear = Object.assign({}, S.wear, { top: 'racing_jacket', bottom: 'jeans_black', shoes: 'mk_jordan_bred', hat: '' }); dressAvatar(); if (foot.holder) wearMe(foot.holder);
@@ -38414,7 +38420,7 @@ body.pm #pm-root { display: block; }
         ots('me', 'hollis'); await lines([['me', 'I said I\'d race for you, Deacon. I ain\'t moving your trucks.'], ['hollis', '...Everybody moves my trucks eventually, son.']]);
         close('me', -1); await lines([['narr', 'Across the lot, a man in a FWPD jacket is leaning on an unmarked Charger. Watching.'], ['me', '(Who is that?)']]);
         await syBlack('', 1.2);
-        const B = sy().flags.flashBack; if (B) { S.look = B.look; S.wear = B.wear; delete sy().flags.flashBack; dressAvatar(); if (foot.holder) wearMe(foot.holder); }
+        const B = sy().flags.flashBack; if (B) { S.look = B.look; S.wear = B.wear; delete sy().flags.flashBack; dressAvatar(); if (foot.holder) wearMe(foot.holder); if (B.at) placeMe(B.at[0], B.at[1], B.at[2]); } setTime('day');
         SY.flash = false; document.body.classList.remove('sy-flash'); unactAll();
         await syUnblack();
       });
@@ -38551,7 +38557,7 @@ body.pm #pm-root { display: block; }
         unactor('lou'); unactor('dre');
         st.paid += owe; spend(owe, 'Paid off Big Lou');
         await syTitle('TIER 2 COMPLETE', 'THE TRAP', 'Smoke\'s debt is paid. Two spots running.', 3.4);
-        await syTitle('NEXT', 'TIER 3 · THE BLOCK', 'Coming in the next story update', 2.6);
+        await syTitle('NEXT', 'TIER 3 · THE BLOCK', 'Corners. Colors. Northside.', 2.6);
       });
       st.tier = 3; syMeter('streets', 6, 'Debt free'); syMeter('loyalty', 3); save(); syMeet('lou');
       syNote('Big Lou is paid in full. Lou says Smoke was buying straight from Deacon Hollis at the end, then told Hollis no. Hollis moves everything in his car haulers.');
@@ -38603,6 +38609,365 @@ body.pm #pm-root { display: block; }
     },
   ], { label: 'Racing · Hollis\'s Offer', life: 'racing', delay: 0 });
 
+  // ---------- TIER 3: The Block. Uses the hood's turf system (HOOD, hS, hOwner): take blocks, hold them, the war with Saint's Northside ----------
+  const syH = () => (typeof hS === 'function' && HOOD.ready ? hS() : null);
+  const syMine = () => { const h = syH(); return h && h.set ? HOOD.blocks.filter(b => hOwner(b) === h.set) : []; };
+  // the block to go after: the closest one to Stop Six (or to p) that isn't yours, optionally only a given set's
+  function syBlockFor(x, z, gid) {
+    const h = syH(); if (!h) return null; let best = null, bd = 1e9;
+    for (const b of HOOD.blocks) { const o = hOwner(b); if (o === h.set || (gid && o !== gid)) continue; const d = Math.hypot(b.cx - x, b.cz - z); if (d < bd) { bd = d; best = b; } }
+    return best;
+  }
+  // a set rolls on a spot: 2-3 shooters walk in from up the street (same people the hood's own slides use)
+  async function sySlide(gid, x, z, n = 3) {
+    let bases = null;
+    for (let k = 0; k < 40; k++) { bases = [0, 1].map(v => hBase(gid, v)); if (bases.every(Boolean)) break; await syWait(0.25); }
+    if (!bases || !bases.every(Boolean)) return [];
+    const a = Math.random() * Math.PI * 2, out = [];
+    for (let k = 0; k < n; k++) {
+      const ex = x + Math.cos(a) * 42 + k * 2, ez = z + Math.sin(a) * 42, name = H_NICKS[(hHash(gid) + k * 5 + frame) % H_NICKS.length], gunId = k ? 'g19' : 'arp';
+      const e = hEnt({ id: hXid('s'), own: 'me', ct: hNow(), desc: { k: 'member', g: hToNet(gid), n: name, gn: gunId, v: k % 2 }, kind: 'member', gang: gid, blk: null, slider: true, sy: true, name, x: ex, z: ez, hx: ex, hz: ez, mode: 'fight', gunId });
+      hDress(e, hClone(bases[k % 2])); hLabel(e); out.push(e);
+    }
+    return out;
+  }
+  const syAlive = list => list.filter(e => !e.gone && !e.down);
+  function syTakeBlock(b) { const h = syH(); if (!h || !h.set) return; h.turf[b.id] = h.set; h.turfAt[b.id] = hNow(); h.stats.taken++; if (hOn()) { HNET.turf[b.id] = [h.set, hNow()]; HNET.tfOut.push([b.id, hToNet(h.set), hNow()]); } for (const e of b.crew.slice()) hKill(e); save(); }
+  // flashbacks put you back where you stood when they end
+  function syFlashIn(look, wear, time) {
+    const st = sy(); st.flags.flashBack = { look: Object.assign({}, S.look), wear: Object.assign({}, S.wear), at: [foot.on ? foot.x : drv.x, foot.on ? foot.z : drv.z, foot.yaw] }; save();
+    const L = syLook('smoke'); S.look = Object.assign({}, S.look, { body: 'm', skin: L.skin, hair: L.hair, hairStyle: 'locs', facialHair: 'goatee', build: 1, height: 2, face: L.face, extras: ['cuban'] }, look || {});
+    S.wear = Object.assign({}, S.wear, { top: 'racing_jacket', bottom: 'jeans_black', shoes: 'mk_jordan_bred', hat: '' }, wear || {}); dressAvatar(); if (foot.holder) wearMe(foot.holder);
+    SY.flash = true; document.body.classList.add('sy-flash'); if (time) setTime(time);
+  }
+  function syFlashOut() {
+    const B = sy().flags.flashBack; if (B) { S.look = B.look; S.wear = B.wear; delete sy().flags.flashBack; dressAvatar(); if (foot.holder) wearMe(foot.holder); if (B.at) placeMe(B.at[0], B.at[1], B.at[2]); }
+    SY.flash = false; document.body.classList.remove('sy-flash'); unactAll(); setTime('day');
+  }
+  // running the dogs at the kennel counts for the ranch life
+  if (MENUS.dogs) { const _syDogs = MENUS.dogs; MENUS.dogs = function () { const m = _syDogs.apply(this, arguments); try { for (const r of m.rows) if (/Run the dogs/.test(r.t)) { const a = r.act; r.act = () => { a(); const st = S.story; if (st) { st.hunts = (st.hunts || 0) + 1; save(); } }; } } catch (e) {} return m; }; }
+
+  mis('t3a', 3, 'Tier 3', 'A Name', 'Two spots and no debt. Mook says it\'s time the block had a name.', [
+    async () => {
+      await call('mook', [['mook', 'Two traps and Lou paid off. You know what we ain\'t got? A name.'], ['mook', 'Big Tre and Six Block run every corner from Rosedale to Stalcup. Pull up on Ramey.']], { mustAnswer: true });
+      const q = syTrapPos({ id: 'ramey' }); actor('mook', q.x + 1.5, q.z + 0.6, 0); face('mook', q.p.x, q.p.z);
+      await talkTo('mook', 'Talk to', { obj: 'Meet Mook at Ramey Ave', pin: 'Ramey Ave Trap House' });
+      const h = syH();
+      await cut(async () => {
+        faceEach('me', 'mook'); two('me', 'mook', 1, 3.4);
+        if (h && h.set && h.set !== 'own') {
+          await lines([['mook', `You already rocking with ${setOf(h.set).name}. Smoke never wore nobody's colors but his own.`]]);
+          const i = await choose([{ t: `I'm ${setOf(h.set).short}. We take blocks for them.`, tone: 'loyal', d: { loyalty: 2 } }, { t: 'Then we start our own.', tone: 'own', d: { streets: 3, heat: 2 } }], { timer: 14 });
+          if (i === 1) { hLeave(); } else { syFlag('setName', setOf(h.set).name); close('mook'); await say('mook', 'Aight. Then we put work in for them.'); return; }
+        }
+        if (h && h.set === 'own') { syFlag('setName', h.own.name); await lines([['mook', `${h.own.name}. I like it. Now it gotta mean something.`]]); return; }
+        await lines([['mook', 'Smoke ran with no name. Everybody just said "Smoke people." That was cool when he was here.'], ['mook', 'Now it\'s us. What we calling it?']]);
+        const names = [['Six Side', '#ff6a3a'], ['Smoke Gang', '#9b5cff'], ['Ramey Boyz', '#3dd1a0']];
+        const i = await choose(names.map(n => ({ t: n[0] })), { timer: 14, q: 'Name your set' });
+        const H = syH(); if (H) { H.own = { name: names[i][0], color: names[i][1] }; H.set = 'own'; H.respect = 0; H.job = null; }
+        syFlag('setName', names[i][0]); save();
+        close('mook', -1); await say('mook', `${names[i][0]}. Say it again. ${names[i][0]}. Yeah.`);
+      });
+      unactor('mook'); syMeter('streets', 3, 'A name');
+      syNote(`You named your set: ${syFlag('setName')}.`);
+    },
+  ], { label: 'Tier 3 · A Name', delay: 40 });
+
+  mis('t3b', 3, 'Tier 3', 'First Block', 'A name means nothing without a corner. Take one.', [
+    async () => {
+      const b = syBlockFor(1100, -300); if (!b) throw SY_FAIL('The hood map is still loading.');
+      syFlag('firstBlock', b.id);
+      text('mook', `${b.name}. ${hOwner(b) ? setOf(hOwner(b)).short + ' got like 3 people on it and they lazy' : 'Nobody holding it'}. Thats ours`);
+      setPin(b.name, b.corner.x, b.corner.z); syMarker(b.corner.x, b.corner.z, 3);
+      await syUntil(() => { const h = syH(); return h && h.set && hOwner(b) === h.set; }, `Take ${b.name}: clear the corner, then stand on it for 30 seconds`, 'Tier 3 · First Block');
+      syMarkerOff();
+      await syWait(1.5);
+      text('throttle', `${syFlag('setName') || 'Somebody new'} just took ${b.name} 👀 east side moving different`);
+      syMeter('streets', 5, 'First block'); syMeter('heat', 3);
+      syNote(`You took your first block: ${b.name}.`);
+    },
+  ], { label: 'Tier 3 · First Block', delay: 30 });
+
+  mis('t3c', 3, 'Tier 3', 'Saint', 'Throttle is saying the man who killed Smoke runs Northside. He wants to talk.', [
+    async () => {
+      text('throttle', 'Word is SAINT from Northside the one who did Smoke at Ironline. Now Smoke lil brother out here taking blocks 🍿');
+      await syWait(4);
+      text('saint', 'This Saint. I seen what they posting. I didnt touch your brother. Northside Quick Stop, come alone');
+      const p = DATA.P.find(x => x.id === 'corner_northside') || { x: 75, z: -463, face: 0 }, [ox, oz] = outDir(p);
+      actor('saint', p.x + ox * 4, p.z + oz * 4, 0); actor('saint2', p.x + ox * 4 + oz * 2.4, p.z + oz * 4 - ox * 2.4, 0); face('saint', p.x, p.z); SY.actors.get('saint2').pose = 'cross';
+      await talkTo('saint', 'Talk to', { obj: 'Meet Saint at Northside Quick Stop', pin: 'Northside Quick Stop' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'saint'); face('saint2', foot.x, foot.z); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.55, 10, 3.4); await syWait(1.6);
+        ots('me', 'saint'); syName('saint');
+        await lines([['saint', 'Santiago Ortega. Everybody say Saint. Chuy is my uncle.'], ['saint', 'Half this city think I killed your brother. You probably think it too.']]);
+        close('saint', 1, 1.8);
+        await lines([['saint', 'I was at Ironline that night. I had ten thousand on the other car. Me and Smoke had words in the pits. Loud ones.'], ['saint', 'Then he\'s dead, and two days later a detective is at my mama\'s house asking about my "argument."'], ['saint', 'Calloway. You know him?']]);
+        ots('me', 'saint');
+        i = await choose([{ t: 'I believe you. For now.', tone: 'listen', d: { loyalty: 2 } }, { t: 'Calloway knows me. What did he want?', tone: 'probe' }, { t: 'If I find out you lying, I\'m coming north.', tone: 'threat', d: { streets: 4, heat: 2 } }], { timer: 14 });
+        syFlag('saint', i);
+        close('saint', -1, 1.8);
+        await lines(i === 0 ? [['saint', 'For now is all anybody gets.'], ['saint', 'My people don\'t all see it like me, though. Some of my cousins want that block you took.']]
+          : i === 1 ? [['saint', 'He wanted me to say it was me. Said he\'d make it a manslaughter. Said it would go away.'], ['saint', 'Why would a cop want me to confess to a racing accident?']]
+          : [['saint', 'Come north, then. We\'ll be here.'], ['saint', 'But you\'re looking at the wrong man. Remember I told you that.']]);
+      });
+      unactor('saint'); unactor('saint2'); syMeet('saint');
+      syNote(i === 1 ? 'Saint says Calloway pushed him to confess to Smoke\'s "accident" and offered to make it a manslaughter.' : 'Saint (Northside Reyes, Chuy Ortega\'s nephew) says he argued with Smoke in the Ironline pits that night over a $10,000 bet, but didn\'t kill him.');
+    },
+  ], { label: 'Tier 3 · Saint', delay: 60 });
+
+  mis('t3d', 3, 'Tier 3', 'Slide', 'Northside is on your block. Not Saint. His cousins.', [
+    async () => {
+      const b = HOOD.byId.get(syFlag('firstBlock')) || syMine()[0]; if (!b) throw SY_FAIL('You need a block first.');
+      text(syFlag('lookout') ? 'bit' : 'mook', `NORTHSIDE ON ${b.name.toUpperCase()}. 3 of em`);
+      await reach(b.corner.x, b.corner.z, 70, b.name, { obj: `Get to ${b.name}. Northside is sliding.` });
+      const ens = await sySlide('northside', b.corner.x, b.corner.z, 3); SY.slide = ens;
+      toast(`${HOOD_SETS.northside.name} are sliding on ${b.name}. Hold it down.`, 'bad');
+      await syUntil(() => !syAlive(ens).length, `Hold ${b.name}: drop the Northside shooters (${'3'})`, 'Tier 3 · Slide');
+      SY.slide = null;
+      if (syH()) hBeef('northside', 25);
+      syMeter('streets', 4, 'Held the block'); syMeter('heat', 4);
+      await call('mook', [['mook', 'That was Saint\'s cousin Lalo and them. Saint ain\'t send them. But he ain\'t stop them neither.'], ['mook', 'Everybody watching what we do next.']]);
+      syNote(`Northside (Saint's cousins, not Saint) slid on ${b.name}. You held it.`);
+    },
+  ], { label: 'Tier 3 · Slide', delay: 50 });
+
+  mis('t3e', 3, 'Tier 3', 'Answer', 'They slid. The whole east side is waiting on your answer.', [
+    async () => {
+      const q = syTrapPos({ id: 'ramey' }); actor('mook', q.x + 1.4, q.z + 0.6, 0);
+      await talkTo('mook', 'Talk to', { obj: 'Go to Ramey Ave. Mook wants to talk about Northside.', pin: 'Ramey Ave Trap House' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'mook'); ots('me', 'mook');
+        await lines([['mook', 'Three ways to do this, and you know all three.'], ['mook', 'Talk to Saint and make him check his own people. Walk up on a Northside corner. Or I drive and you hang out the window.']]);
+        i = await choose([{ t: 'Talk it down. Saint handles his cousins.', tone: 'talk-down', d: { loyalty: 2, heat: -3, streets: -2 } }, { t: 'Walk up. Face to face.', tone: 'walk-up', d: { streets: 5, heat: 5 } }, { t: 'Drive-by. You drive.', tone: 'drive-by', d: { streets: 6, heat: 8, family: -2 } }], { timer: 14, q: 'How do you answer Northside?' });
+        syFlag('answer', i);
+        close('mook', 1); await say('mook', i === 0 ? 'Talking. Smoke would\'ve talked first too.' : i === 1 ? 'Bet. I\'m right behind you.' : 'Get in.');
+      });
+      unactor('mook');
+      if (i === 0) {
+        text('saint', 'Pull up. Same spot');
+        const p = DATA.P.find(x => x.id === 'corner_northside') || { x: 75, z: -463 }, [ox, oz] = outDir(p); actor('saint', p.x + ox * 4, p.z + oz * 4, 0);
+        await talkTo('saint', 'Talk to', { obj: 'Meet Saint at Northside Quick Stop', pin: 'Northside Quick Stop' });
+        let j = 0;
+        await cut(async () => {
+          faceEach('me', 'saint'); ots('me', 'saint');
+          await lines([['saint', 'Lalo don\'t listen to nobody. Not even Chuy.'], ['saint', 'But I\'ll put the word out: your block is off limits. That cost me something with my own people.']]);
+          j = await choose([{ t: 'Then I owe you one.', tone: 'respect', d: { loyalty: 3 } }, { t: 'You did the right thing. That\'s all.', tone: 'cold' }], { timer: 12 });
+          close('saint', -1, 1.8); await say('saint', j === 0 ? 'I\'ll remember that. One day I\'m gonna need it.' : 'Okay. Right thing. Sure.');
+        });
+        unactor('saint'); syFlag('saintAlly', j === 0 ? 2 : 1); if (syH()) hBeef('northside', -40);
+        syNote('You talked it down with Saint. He told Northside to leave your block alone.' + (j === 0 ? ' You told him you owe him one.' : ''));
+      } else {
+        const h = syH(), nb = syBlockFor(foot.x, foot.z, 'northside') || syBlockFor(0, -750);
+        if (nb) { setPin(nb.name, nb.corner.x, nb.corner.z); }
+        const d0 = h ? h.stats.drops : 0;
+        if (i === 2) await syUntil(() => driving && !foot.on, 'Get in a car. Mook is driving, you\'re shooting.');
+        await syUntil(() => { const H = syH(); return H && H.stats.drops >= d0 + 2; }, i === 1 ? `Walk up on ${nb ? nb.name : 'a Northside corner'} and drop 2 of them` : `Ride by ${nb ? nb.name : 'a Northside corner'} and drop 2 of them`, 'Tier 3 · Answer');
+        if (h) hBeef('northside', 40);
+        syNote(i === 1 ? 'You walked up on a Northside corner and dropped two of theirs.' : 'You did a drive-by on a Northside corner. Two of theirs got hit.');
+        text('saint', i === 1 ? 'You came north. Ok.' : 'A drive by. Ok. Thats how we doing it');
+      }
+    },
+  ], { label: 'Tier 3 · Answer', delay: 60 });
+
+  mis('t3f', 3, 'Tier 3', 'Too Much Cash', 'You have more money than a man with no job can explain.', [
+    async () => {
+      await call('mama', [['mama', 'Baby, the lady at the bank asked me where all my "gift money" coming from. In front of the whole line.'], ['mama', 'I don\'t want to know. But you better figure it out before somebody else does.']], { mustAnswer: true });
+      await syWait(3);
+      await call('rusty', [['rusty', 'Heard you got a cash problem. A car lot is a laundromat with a sign out front.'], ['rusty', 'Cars sell for whatever I write down. Come see me.']]);
+      await syWait(2);
+      text('virgil', 'This Virgil, VirL Studios. Smoke booked studio time he never used. Lot of it. Studio money is the cleanest money in Texas. Pull up');
+      let i = await choose([{ t: 'Rusty\'s car lot', tone: 'cars' }, { t: 'VirL Studios', tone: 'music' }], { timer: 20, q: 'Who washes your money?' });
+      syFlag('wash', i === 0 ? 'rusty' : 'virl');
+      const pid = i === 0 ? 'rusty_used' : 'virl_studios', who = i === 0 ? 'rusty' : 'virgil', p = DATA.P.find(x => x.id === pid) || { x: 0, z: 0 }, [ox, oz] = outDir(p);
+      actor(who, p.x + ox * 4, p.z + oz * 4, 0);
+      await syUntil(() => S.cash >= 5000, `Get $5,000 to put in the front`);
+      await talkTo(who, 'Talk to', { obj: `Bring $5,000 to ${who === 'rusty' ? "Rusty's Used Autos" : 'VirL Studios'}`, pin: p.name });
+      await cut(async () => {
+        faceEach('me', who); two('me', who, 1, 3.4);
+        await lines(who === 'rusty' ? [['rusty', 'Five thousand comes in as a down payment on a Monte Carlo that don\'t exist. Comes out as a commission check with your name on it.'], ['rusty', 'And you on my books as a salesman now. Pay stubs and everything. Pruitt will love that.']]
+          : [['virgil', 'Five thousand in studio time, booked. Engineer gets paid. Producer gets paid. You get paid as a producer.'], ['virgil', 'And Smoke\'s tapes are still in the vault. Eleven songs. When you\'re ready, we should talk about those.']]);
+      });
+      if (spend(5000, who === 'rusty' ? 'Rusty: front' : 'VirL: studio time')) { earn(4200, who === 'rusty' ? 'Commission check (clean)' : 'Producer fee (clean)'); syMeter('clean', 12, 'Money washed'); }
+      unactor(who); syMeet(who);
+      syNote(who === 'rusty' ? 'Rusty washes your money through the car lot. You\'re on his books as a salesman.' : 'Virgil washes your money through VirL Studios. He still has 11 of Smoke\'s unreleased songs in the vault.');
+    },
+  ], { label: 'Tier 3 · Too Much Cash', delay: 70 });
+
+  mis('t3g', 3, 'Tier 3', 'Flashback: Ironline Night', 'The night Smoke died. 10:40 PM, the Ironline pits.', [
+    async () => {
+      await syUntil(() => foot.on && !inside, 'Get out and walk (another memory)');
+      const ir = DATA.P.find(x => x.id === 'ironline') || { x: 34, z: 1260, face: 0 }, [ox, oz] = outDir(ir), s = { x: ir.x + ox * 10, z: ir.z + oz * 10 };
+      await cut(async () => {
+        await syBlack('<span style="font-size:.8em;opacity:.7">IRONLINE DRAGWAY · THE NIGHT SMOKE DIED · 10:40 PM</span>', 2.4);
+        syFlashIn(null, null, 'night');
+        placeMe(s.x, s.z, 0); actor('saint', s.x + 1.6, s.z - 1.2, 0); actor('calloway', s.x - 6, s.z - 4, 0); actor('mook', s.x + 4, s.z + 3, 0);
+        faceEach('me', 'saint'); face('calloway', s.x, s.z); face('mook', s.x, s.z); SY.actors.get('calloway').pose = 'cross'; SY.actors.get('mook').pose = 'phone';
+        await syUnblack(); two('me', 'saint', 1, 3.6);
+        await lines([['saint', 'Ten thousand says your car don\'t make it to the eighth.'], ['me', 'Then you about to be ten thousand short, Saint.'], ['saint', 'Your mouth gonna get you hurt one day, Darius.']]);
+        ots('me', 'saint'); await lines([['me', 'Not tonight. Tonight I got a meeting after this. A real one.']]);
+        close('me', -1); await lines([['narr', 'Behind the staging lanes, Calloway is on the phone. Across the pits, Mook is on his phone too.'], ['narr', 'Neither of them is watching the race.']]);
+        await syBlack('', 1.2); syFlashOut(); await syUnblack();
+      });
+      syNote('The night he died, Smoke told Saint he had "a meeting after this, a real one." Calloway and Mook were both on their phones in the pits.');
+    },
+  ], { label: 'Tier 3 · Flashback', delay: 80 });
+
+  mis('t3h', 3, 'Tier 3', 'Uncle Bo', 'Big Mama\'s brother has a ranch in Johnson County. He says Smoke left something there.', [
+    async () => {
+      await call('mama', [['mama', 'My brother Bo called. You remember Uncle Bo? Out by Joshua with the cows and them crazy dogs.'], ['mama', 'He said Smoke came out there a month before he passed. He wants to see you. Go. Get out the city a day.']], { mustAnswer: true });
+      const p = DATA.P.find(x => x.id === 'land_homestead') || { x: 18, z: 4090 };
+      actor('bo', p.x + 34, p.z - 6, 0);
+      await talkTo('bo', 'Talk to', { obj: 'Drive to Uncle Bo\'s place on Old Cleburne Rd (Johnson County)', pin: 'Uncle Bo\'s place', r: 4 });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'bo'); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 12, 4); await syWait(1.8);
+        ots('me', 'bo'); syName('bo');
+        await lines([['bo', 'Look at you. Last time I saw you, you was scared of my cows.'], ['bo', 'Your brother came out here with a duffel bag and a shovel. Didn\'t say a word. Dug for an hour by the windmill.'], ['bo', 'Then he told me: "If something happen to me, give it to my little brother when he ready. Not before."']]);
+        close('bo', 1, 1.8); await say('bo', 'And you ain\'t ready. Not running blocks with cops on you. When you ready, I\'ll know.');
+        ots('me', 'bo');
+        i = await choose([{ t: 'Then teach me something out here.', tone: 'humble', d: { family: 4, clean: 2 } }, { t: 'That\'s my brother\'s money. Give it to me.', tone: 'demand', d: { family: -4, streets: 2 } }], { timer: 14 });
+        close('bo', -1, 1.8); await say('bo', i === 0 ? 'Now that\'s the first smart thing out your mouth. Come back. I\'ll show you cattle.' : 'It\'s in the ground, boy. Ain\'t going nowhere. Neither am I.');
+      });
+      syFlag('bo', i); unactor('bo'); syMeet('bo');
+      syNote('Uncle Bo says Smoke buried a duffel bag by the windmill on his land a month before he died, for you, "when you\'re ready." Land and cattle life unlocked.');
+    },
+  ], { label: 'Tier 3 · Uncle Bo', delay: 60 });
+
+  mis('t3i', 3, 'Tier 3', 'Three Blocks', 'One block is a corner. Three is a set.', [
+    async () => {
+      text('mook', 'One block is a corner. Three blocks is a set. Lets eat');
+      const pinNext = () => { const b = syBlockFor(foot.on ? foot.x : drv.x, foot.on ? foot.z : drv.z); if (b) setPin(b.name, b.corner.x, b.corner.z); return b; };
+      let last = -1;
+      await syUntil(() => { const n = syMine().length; if (n !== last) { last = n; if (n < 3) pinNext(); } return n >= 3; }, 'Hold 3 blocks (take two more: clear each corner and stand on it)', 'Tier 3 · Three Blocks');
+      syMeter('streets', 6, 'Three blocks'); syMeter('heat', 4);
+      text('throttle', `${syFlag('setName') || 'Them east side boys'} got 3 blocks now. City getting small 😳`);
+      syNote('Your set holds three blocks.');
+    },
+  ], { label: 'Tier 3 · Three Blocks', delay: 40 });
+
+  mis('t3j', 3, 'Tier 3', 'The Hit', 'Somebody is coming for you tonight. Where you sleep.', [
+    async () => {
+      const ally = (syFlag('saintAlly') || 0) > 0;
+      setTime('night');
+      if (ally) await call('saint', [['saint', 'Listen. Lalo and four of them going to your grandmother\'s street tonight. I couldn\'t stop it.'], ['saint', 'I\'m coming too. On your side. Don\'t shoot me.']], { mustAnswer: true });
+      else await call('mama', [['mama', 'Baby there\'s a car been going up and down the street with the lights off. Three times now.'], ['mama', 'I\'m scared. Come home.']], { mustAnswer: true });
+      const s = sySide(1440, -238, 1, 2.6);
+      await reach(s.x, s.z, 40, "Big Mama's house", { obj: 'Get to Big Mama\'s house. Now.' });
+      if (ally) { actor('saint', s.x + 3, s.z + 2, 0); face('saint', s.x + 40, s.z); }
+      const ens = await sySlide('northside', s.x, s.z, ally ? 3 : 4); SY.slide = ens;
+      toast('Northside is on Big Mama\'s street.', 'bad');
+      await syUntil(() => !syAlive(ens).length, `Protect Big Mama's house: drop the shooters`, 'Tier 3 · The Hit');
+      SY.slide = null; actor('mama', s.x, s.z, 0);
+      await cut(async () => {
+        faceEach('me', 'mama'); SY.actors.get('mama').pose = 'cross'; ots('me', 'mama');
+        await lines([['mama', 'They shot my front window out. My front window. Where I sit and read my Bible.'], ['mama', 'Your brother never brought it to my door. Not one time in nine years.']]);
+        if (ally) { face('saint', foot.x, foot.z); two('me', 'saint', 1, 3.8); await lines([['saint', 'That was my family that did that. I\'m sorry, ma\'am.'], ['mama', 'Sorry don\'t fix glass, baby. But thank you for standing in front of it.']]); }
+        close('mama'); SY.actors.get('mama').pose = null;
+        const i = await choose([{ t: 'I\'ll move you somewhere safe. Tonight.', tone: 'protect', d: { family: 4 } }, { t: 'It won\'t happen again. I promise.', tone: 'promise', d: { family: 2 } }, { t: 'This is what the life is, Mama.', tone: 'cold', d: { family: -6, streets: 3 } }], { timer: 14 });
+        syFlag('hit', i);
+        await say('mama', i === 0 ? 'I\'m not leaving this house. Your granddaddy built this porch.' : i === 1 ? 'Don\'t promise me. Your brother promised me.' : 'Then I don\'t want no part of your life.');
+      });
+      unactAll(); setTime('day');
+      if (syH()) hBeef('northside', ally ? 10 : 30);
+      syNote('Northside shot up Big Mama\'s house the night of the hit.' + (ally ? ' Saint stood on your side against his own cousins.' : ''));
+    },
+  ], { label: 'Tier 3 · The Hit', delay: 70 });
+
+  mis('t3k', 3, 'Tier 3', 'Oak Cliff Calling', 'Lou heard about the blocks. He has an offer.', [
+    async () => {
+      await call('lou', [['lou', 'Three blocks and you held them against Chuy\'s people. People in Dallas talk about you now.'], ['lou', 'I\'m done fronting you zips like a kid. You want to buy weight, real weight, you come to Oak Cliff. Bring a car with a stash spot.']], { mustAnswer: true });
+      const st = sy();
+      await cut(async () => {
+        const [mx, mz] = syMe(); shot([mx + 8, 6, mz + 8], [mx, 1.2, mz], { to: [mx + 14, 12, mz + 14], dur: 8 });
+        await syTitle('TIER 3 COMPLETE', 'THE BLOCK', `${syFlag('setName') || 'Your set'} holds ${syMine().length} blocks.`, 3.4);
+        await syTitle('NEXT', 'TIER 4 · THE PLUG', 'Coming in the next story update', 2.6);
+      });
+      st.tier = 4; syMeter('streets', 6, 'The Block'); save(); syMeet('lou');
+      syNote('Lou wants to sell to you directly in Oak Cliff. He says to bring a car with a stash spot.');
+    },
+  ], { label: 'Tier 3 · Oak Cliff Calling', delay: 80 });
+
+  // ---------- LIFE: Block Boss (Mook). Opens after your first block ----------
+  mis('b1', 3, 'Block boss', 'Colors', 'A set needs colors people can see from a block away.', [
+    async () => {
+      const h = syH(); if (!h || h.set !== 'own') { text('mook', 'You riding for somebody else set. Block boss is for people with they own name. Start one at the Hood app or in the story.'); throw SY_FAIL('You need your own set for this life.'); }
+      await call('mook', [['mook', 'People see us and don\'t know who we are. We need colors.']]);
+      const i = await choose([['Purple', '#9b5cff'], ['Orange', '#ff6a3a'], ['Teal', '#3dd1a0'], ['Pink', '#ff3ea5']].map(c => ({ t: c[0] })), { timer: 20, q: 'Your set\'s color' });
+      h.own.color = ['#9b5cff', '#ff6a3a', '#3dd1a0', '#ff3ea5'][i]; save(); if (typeof bmDirty === 'function' && BM.open) bmDirty();
+      toast(`${h.own.name} wears ${['purple', 'orange', 'teal', 'pink'][i]} now. Look at the map.`, 'good');
+      syNote(`Your set's color is ${['purple', 'orange', 'teal', 'pink'][i]}.`);
+    },
+  ], { label: 'Block boss · Colors', life: 'block', delay: 0 });
+  mis('b2', 3, 'Block boss', 'Put In Work', 'Your homies want to see the boss put in work with them.', [
+    async () => {
+      const h = syH(); const d0 = h ? h.stats.drops : 0;
+      text('mook', 'Homies want to see you put in work. Hemphill been talking crazy on Throttle');
+      const nb = syBlockFor(foot.x, foot.z, 'hemphill'); if (nb) setPin(nb.name, nb.corner.x, nb.corner.z);
+      await syUntil(() => { const H = syH(); return H && H.stats.drops >= d0 + 3; }, `Drop 3 Hemphill Boyz${nb ? ' at ' + nb.name : ''}`, 'Block boss · Put In Work');
+      syMeter('streets', 4, 'Put in work'); syMeter('loyalty', 3);
+      syNote('You put in work against Hemphill with your homies.');
+    },
+  ], { label: 'Block boss · Put In Work', life: 'block', delay: 0 });
+  mis('b3', 3, 'Block boss', 'Five Blocks', 'Five blocks and your set is on every map in the city.', [
+    async () => {
+      const pinNext = () => { const b = syBlockFor(foot.on ? foot.x : drv.x, foot.on ? foot.z : drv.z); if (b) setPin(b.name, b.corner.x, b.corner.z); };
+      let last = -1;
+      await syUntil(() => { const n = syMine().length; if (n !== last) { last = n; if (n < 5) pinNext(); } return n >= 5; }, 'Hold 5 blocks', 'Block boss · Five Blocks');
+      syMeter('streets', 6, 'Five blocks');
+      text('throttle', `${syFlag('setName') || 'East side'} on 5 blocks now. Thats a whole side of town`);
+      syNote('Your set holds five blocks.');
+      text('narr', 'More of the Block boss life comes with the next story update.', { quiet: true });
+    },
+  ], { label: 'Block boss · Five Blocks', life: 'block', delay: 0 });
+
+  // ---------- LIFE: Land and Cattle (Uncle Bo). Opens after you visit him ----------
+  mis('c1', 3, 'Land and cattle', 'First Head', 'Bo says a man with cattle has a reason to wake up early.', [
+    async () => {
+      await call('bo', [['bo', 'You want to learn? Buy ten head at the Joshua sale barn. Fourteen thousand. Don\'t let them sell you a sick one.']], { mustAnswer: true });
+      const c0 = S.cattle || 0, p = DATA.P.find(x => x.id === 'salebarn') || { x: 580, z: 4518 };
+      setPin('Joshua Livestock Auction', p.x, p.z);
+      await syUntil(() => (S.cattle || 0) >= c0 + 10, 'Buy 10 head at Joshua Livestock Auction (walk in, Auction desk)', 'Land and cattle · First Head');
+      text('bo', 'Ten head. Thats a start. Now you a cattleman with a record lol');
+      syMeter('clean', 6, 'Cattle'); syMeter('family', 2);
+      syNote('You bought your first ten head of cattle at the Joshua sale barn.');
+    },
+  ], { label: 'Land and cattle · First Head', life: 'land', delay: 0 });
+  mis('c2', 3, 'Land and cattle', 'Hog Dogs', 'Bo\'s dogs are the best in Johnson County. He wants to see yours.', [
+    async () => {
+      await call('bo', [['bo', 'Hogs tearing up the whole county. Get you a catch dog at Cross Timbers and run him.']]);
+      const h0 = sy().hunts || 0, p = DATA.P.find(x => x.id === 'dog_kennel') || { x: 380, z: 4482 };
+      setPin('Cross Timbers Hog Dogs', p.x, p.z);
+      await syUntil(() => (S.dogs || 0) > 0 && (sy().hunts || 0) > h0, 'Get a dog at Cross Timbers Hog Dogs and run the dogs on hogs', 'Land and cattle · Hog Dogs');
+      text('bo', 'Thats a good dog. Smoke had one named Lil Smoke. Ran off chasing a boar in 2019');
+      syMeter('family', 2); syNote('You ran your own hog dogs for the first time.');
+    },
+  ], { label: 'Land and cattle · Hog Dogs', life: 'land', delay: 0 });
+  mis('c3', 3, 'Land and cattle', 'By the Windmill', 'Bo thinks you might be ready.', [
+    async () => {
+      const ready = (sy().meters.heat || 0) < 60 || syFlag('bo') === 0;
+      await call('bo', ready ? [['bo', 'You been coming out here. Working. Not bringing trouble to my gate.'], ['bo', 'Bring a shovel. I\'ll show you where.']] : [['bo', 'Cops been by asking about you. Twice.'], ['bo', 'Come anyway. Your brother would want you to have it before they get it.']], { mustAnswer: true });
+      const p = DATA.P.find(x => x.id === 'land_homestead') || { x: 18, z: 4090 }, wx = p.x + 120, wz = p.z + 40;
+      actor('bo', wx + 1.6, wz + 1, 0);
+      await talkTo('bo', 'Dig with', { obj: 'Meet Uncle Bo at the windmill on his land', pin: 'The windmill', r: 4 });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'bo'); two('me', 'bo', 1, 3.6);
+        await lines([['narr', 'Two feet down, the shovel hits a duffel bag wrapped in a feed sack.'], ['narr', 'Inside: rubber-banded cash, a cheap flip phone, and a business card.'], ['bo', 'What\'s the card say?']]);
+        close('me', -1); await lines([['me', '"Special Agent R. Garza. Drug Enforcement Administration." There\'s a date on the back. The night Smoke died.']]);
+        close('bo', 1, 1.8); await say('bo', 'Lord. Your brother wasn\'t meeting no plug that night. He was meeting the law.');
+        ots('me', 'bo');
+        i = await choose([{ t: 'Keep it quiet. Nobody knows about this card.', tone: 'quiet', d: { loyalty: 1 } }, { t: 'I need to find Garza.', tone: 'find', d: { heat: 2 } }, { t: 'Smoke was a snitch?', tone: 'angry', d: { streets: 2, family: -2 } }], { timer: 14 });
+        syFlag('garzaCard', i);
+        close('bo', -1, 1.8); await say('bo', i === 2 ? 'Your brother was trying to get out. That\'s all I know. Don\'t you put that word on him.' : 'Whatever you do, do it slow. Whoever killed him knows about that meeting.');
+      });
+      earn(25000, 'Smoke\'s duffel bag'); unactor('bo');
+      syNote('By Uncle Bo\'s windmill: Smoke\'s duffel bag with $25,000, a flip phone, and DEA Special Agent R. Garza\'s card dated the night Smoke died. Smoke was going to meet the DEA after the race.');
+      text('narr', 'More of the Land and cattle life comes with the next story update.', { quiet: true });
+    },
+  ], { label: 'Land and cattle · By the Windmill', life: 'land', delay: 0 });
+
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
   PHONE_APPS.splice(1, 0, { id: 'texts', name: 'Messages', icon: '💬', bg: 'linear-gradient(135deg,#5bd36b,#1e9e3a)' });
@@ -38638,7 +39003,7 @@ body.pm #pm-root { display: block; }
       }
       for (const [t, k, nm] of TIERS) {
         const ms = M.filter(m => m.tier === t && !m.life); body += `<div class="sec">${k} · ${nm}</div>`;
-        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 3 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
+        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 4 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
         ms.forEach((m, i) => { const done = st.done.includes(m.id), now = st.m === m.id || (!st.m && st.next === m.id); body += `<div class="ms ${done ? 'done' : now ? 'now' : 'lock'}"><div class="n">${done ? '✓' : i + 1}</div><div><h5>${esc(m.title)}</h5><p>${done || now ? esc(m.brief) : 'Locked'}</p></div></div>`; });
       }
     } else if (tab === 'journal') body += st.journal.length ? st.journal.map(j => `<div class="jr">${esc(j)}</div>`).join('') : '<div class="jr">Nothing yet.</div>';
@@ -38738,6 +39103,12 @@ body.pm #pm-root { display: block; }
     // test helpers: jump to a mission, fast-forward everything
     jump(id) { const st = sy(); st.on = true; syAbortRun(); const i = M.findIndex(m => m.id === id), m = M[i]; if (m.life) { const ai = M.findIndex(x => x.id === SY_LIFE[m.life].after); st.done = M.filter((x, k) => (!x.life && k <= ai) || (x.life === m.life && k < i)).map(x => x.id); st.m = null; st.next = null; save(); syRun(m, 0); return; } st.done = M.slice(0, i).filter(x => !x.life).map(x => x.id); st.m = null; st.next = id; st.nextT = 0; save(); },
     auto(on) { SY.autoPick = on ? 0 : null; SY.autoAnswer = on; SY.autoTalk = on; SY.autoRetry = on; SY.fast = on; },
+    // tier 3 test helpers: take blocks, drop the sliders, buy cattle, run dogs
+    takeNear(n = 1) { const h = syH(); if (!h || !h.set) return 0; for (let k = 0; k < n; k++) { const b = syBlockFor(foot.on ? foot.x : drv.x, foot.on ? foot.z : drv.z); if (b) syTakeBlock(b); } return syMine().length; },
+    takeAt(x, z) { const h = syH(); if (!h || !h.set) return 0; let best = null, bd = 1e9; for (const b of HOOD.blocks) { if (hOwner(b) === h.set) continue; const d = Math.hypot(b.corner.x - x, b.corner.z - z); if (d < bd) { bd = d; best = b; } } if (best) syTakeBlock(best); return syMine().length; },
+    dropSlide() { for (const e of (SY.slide || [])) if (!e.gone && !e.down) hDrop(e, 'me'); S.heat = 0; },
+    addDrops(n) { const h = syH(); if (h) h.stats.drops += n; S.heat = 0; },
+    hoodReady: () => !!(HOOD.ready && syH()), mine: () => syMine().length, sySlide, syBlockFor,
     giveCar() { const c = newCar(BUILT[0], '#6b6f5a', 58); c.fuel = 0.6; S.car = c; syncCarModel(); deliverCar(); save(); },
     advance: syAdvance, pinAt: () => pin.visible ? [pin.position.x, pin.position.z] : null, mk: () => SY.mk && SY.mk.visible ? [SY.mk.position.x, SY.mk.position.z] : null };
   // ===== STORY END =====

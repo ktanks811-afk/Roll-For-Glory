@@ -4,7 +4,7 @@
 // walks/teleports to each objective, serves trap phone customers, fakes the roll race, and shoots the cutscenes.
 const { chromium } = require('playwright');
 const path = require('path'), fs = require('fs');
-const S = process.env.S, OUT = process.env.OUT || '.', ROOT = path.resolve(__dirname, '..'), UNTIL = process.env.UNTIL || 't12', PICK = +(process.env.PICK || 0), MAXSHOTS = +(process.env.SHOTS || 60), LIFE = process.env.LIFE || '';
+const S = process.env.S, OUT = process.env.OUT || '.', ROOT = path.resolve(__dirname, '..'), UNTIL = process.env.UNTIL || 't12', PICK = +(process.env.PICK || 0), MAXSHOTS = +(process.env.SHOTS || 60), LIFE = process.env.LIFE || '', LIFEAFTER = process.env.LIFEAFTER || 't2k';
 const TYPES = { html: 'text/html', js: 'application/javascript', json: 'application/json', png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', m4a: 'audio/mp4', mp3: 'audio/mpeg', css: 'text/css', svg: 'image/svg+xml', glb: 'model/gltf-binary' };
 (async () => {
   const b = await chromium.launch();
@@ -26,7 +26,7 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
   const ev = (f, a) => pg.evaluate(f, a);
   let nShot = 0; const seen = new Set(), log = [];
   { const _p = log.push.bind(log); log.push = (...a) => { console.log(new Date().toISOString().slice(11, 19), ...a); return _p(...a); }; }
-  const shot = async n => { if (nShot >= MAXSHOTS) return; nShot++; await pg.screenshot({ path: path.join(OUT, String(nShot).padStart(2, '0') + '-' + n.replace(/[^a-z0-9]+/gi, '-').slice(0, 40) + '.png') }); };
+  const shot = async n => { if (nShot >= MAXSHOTS) return; nShot++; await pg.screenshot({ timeout: 120000, path: path.join(OUT, String(nShot).padStart(2, '0') + '-' + n.replace(/[^a-z0-9]+/gi, '-').slice(0, 40) + '.png') }).catch(e => log.push('shot failed: ' + n)); };
   // fresh save: the creator is open; finish it -> the story offer
   await ev(() => { document.getElementById('cr-go').click(); });
   await pg.waitForTimeout(2500);
@@ -50,13 +50,19 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
     // satisfy objectives
     const o = st.obj || '';
     if (st.talk) { await ev(() => { const T = window.__story; const A = T.SY.actors.get(T.SY.talk.who); const M = window.__map; if (A) { if (!M.foot.on) M.getOut && M.getOut(); M.foot.x = A.x + 1.4; M.foot.z = A.z + 0.4; } }); await pg.waitForTimeout(700); await ev(() => { const T = window.__story; if (T.SY.talk) T.SY.talk.go(); }); continue; }
-    if (/Get in/.test(o)) { await ev(() => { const M = window.__map; if (M.foot.on) M.getIn(); }); await pg.waitForTimeout(600); continue; }
+    if (/Get in/.test(o)) { await ev(() => { const M = window.__map; if (M.foot.on) { if (/Mook is driving/.test(window.__story.SY.obj || '')) window.__story.giveCar(); M.getIn(); } }); await pg.waitForTimeout(600); continue; }
     if (/Serve|serve|Keep serving/.test(o) || (/new number/.test(o))) {
       if (st.orders.length) { const [x, z, set] = st.orders[0]; await ev(([x, z]) => { const M = window.__map; if (!M.foot.on) M.getOut(); M.foot.x = x + 1.2; M.foot.z = z + 0.8; }, [x, z]); await pg.waitForTimeout(900);
         if (!set) await ev(() => { const T = window.__story, s = T.sy(), M = window.__map; const o = s.orders.find(o => !o.set && Math.hypot(o.x - M.foot.x, o.z - M.foot.z) < 3); if (o) { if (s.pack < o.qty) s.pack = o.qty + 5; T.syServe(o); } });
       } else await ev(() => { const s = window.__story.sy(); if (s.pack < 3) s.pack = 10; window.__story.syNewOrder(); });
       continue;
     }
+    if (/^Take .*clear the corner/.test(o) && st.pin) { await ev(p => { const M = window.__map; if (!M.foot.on) M.getOut(); M.foot.x = p[0] + 2; M.foot.z = p[1] + 2; }, st.pin); await pg.waitForTimeout(1500); await shot('block-corner'); await ev(p => window.__story.takeAt(p[0], p[1]), st.pin); await pg.waitForTimeout(600); continue; }
+    if (/^Hold (\d) blocks/.test(o)) { const n = +/^Hold (\d)/.exec(o)[1]; await ev(n => { const T = window.__story; for (let k = T.mine(); k < n; k++) T.takeNear(1); }, n); await pg.waitForTimeout(800); continue; }
+    if (/drop the (Northside )?shooters/.test(o)) { await pg.waitForTimeout(2500); await shot('slide'); await ev(() => window.__story.dropSlide()); await pg.waitForTimeout(800); continue; }
+    if (/drop 2 of them|Drop 3 Hemphill/.test(o)) { await ev(() => window.__story.addDrops(3)); await pg.waitForTimeout(600); continue; }
+    if (/Buy 10 head/.test(o)) { await ev(() => { window.__map.S.cattle = (window.__map.S.cattle || 0) + 10; }); await pg.waitForTimeout(600); continue; }
+    if (/run the dogs/.test(o)) { await ev(() => { const M = window.__map; M.S.dogs = Math.max(1, M.S.dogs || 0); const s = window.__story.sy(); s.hunts = (s.hunts || 0) + 1; }); await pg.waitForTimeout(600); continue; }
     if (/Keep Ramey Ave stocked/.test(o)) { await ev(() => { const T = window.__story, s = T.sy(), R = T.syTrap('ramey'); s.pack += 40; T.syTrapMenu(R).rows.find(r => /Drop off/.test(r.t)).act(); for (let i = 0; i < 6; i++) T.syTrapTick(); }); await shot('trap-menu'); await pg.waitForTimeout(500); continue; }
     if (/Pick up the cash/.test(o)) { await ev(() => { const T = window.__story, R = T.syTrap('ramey'), M = window.__map; const q = T.syTrapPos(R); if (!M.foot.on) M.getOut(); M.foot.x = q.x; M.foot.z = q.z; if (!R.cash) R.cash = 500; }); await pg.waitForTimeout(900); await ev(() => { const T = window.__story; window.__map.openMenu && window.__map.openMenu(() => T.syTrapMenu(T.syTrap('ramey'))); }).catch(() => {}); await pg.waitForTimeout(500); await shot('trap-run-menu'); await ev(() => { const T = window.__story; T.syTrapMenu(T.syTrap('ramey')).rows[0].act(); window.__map.closeMenu && window.__map.closeMenu(); }); await pg.waitForTimeout(500); continue; }
     if (/Get away from Ramey/.test(o)) { await ev(() => { const M = window.__map; if (M.foot.on) { M.foot.x += 400; } else { M.drvS().x += 400; } }); await pg.waitForTimeout(900); continue; }
@@ -68,7 +74,7 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
     if (/Run a roll race/.test(o)) { await shot('roll-spot'); await ev(() => { const M = window.__map; M.S.streetRuns = (M.S.streetRuns || 0) + 1; M.S.streetWins = (M.S.streetWins || 0) + 1; }); await pg.waitForTimeout(600); continue; }
     if (/Walk around Stop Six|Head back to Stop Six/.test(o)) { await ev(() => { const M = window.__map; if (!M.foot.on) M.getOut(); M.foot.x = 1700; M.foot.z = -300; }); await pg.waitForTimeout(800); continue; }
     if (st.pin && o) { await ev(([x, z, s]) => { const M = window.__map; if (M.foot.on) { M.foot.x = x + 1; M.foot.z = z + 1; } else { M.drvS().x = x; M.drvS().z = z; } }, [st.pin[0], st.pin[1]]).catch(async () => { await ev(([x, z]) => { const M = window.__map; if (M.foot.on) { M.foot.x = x + 1; M.foot.z = z + 1; } }, [st.pin[0], st.pin[1]]); }); await pg.waitForTimeout(900); continue; }
-    if (!o && !st.m && !st.next && LIFE && st.done.includes('t2k')) { await ev(k => window.__story.syPlayLife(k), LIFE); await pg.waitForTimeout(800); continue; }
+    if (!o && !st.m && !st.next && LIFE && st.done.includes(LIFEAFTER)) { await ev(ks => { const T = window.__story; for (const k of ks.split(',')) if (T.syLifeNext(k) && T.syPlayLife(k)) return; }, LIFE); await pg.waitForTimeout(800); continue; }
     if (!o && !st.m && st.next) { await ev(() => { window.__story.sy().nextT = 0; }); await pg.waitForTimeout(800); continue; }
     stuck++; if (stuck > 60) { log.push('STUCK ' + JSON.stringify(st).slice(0, 400)); await shot('stuck'); break; }
     await pg.waitForTimeout(500);
