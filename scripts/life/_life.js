@@ -257,9 +257,18 @@
     let t = W.t[W.t.length - 1];
     for (let i = 1; i < pts.length; i++) {
       const [px, pz] = pts[i - 1], [qx, qz] = pts[i], L = Math.hypot(qx - px, qz - pz); if (L < 0.05) continue;
-      const cross = L > 4 && lvOnRoad((px + qx) / 2, (pz + qz) / 2) && lvOnRoad(px + (qx - px) * 0.3, pz + (qz - pz) * 0.3);
-      if (cross) { t += 0.7 + R() * 1.6; W.x.push(px); W.z.push(pz); W.t.push(t); W.f.push(1); }   // stop at the curb, look both ways
-      t += L / (sp * (cross ? 1.18 : 1)); W.x.push(qx); W.z.push(qz); W.t.push(t); W.f.push(cross ? 3 : 0);
+      // cut the stretch where it goes over a road (a side street meeting the block, the street at the corner) so they
+      // stop at the curb and cross there instead of strolling through the lane
+      const n = Math.max(1, Math.ceil(L)), cuts = [0]; let on = lvOnRoad(px, pz);
+      for (let k = 1; k <= n; k++) { const u = k / n, o = lvOnRoad(px + (qx - px) * u, pz + (qz - pz) * u); if (o !== on) { cuts.push(on ? u : (k - 1) / n); on = o; } }
+      cuts.push(1);
+      for (let k = 1; k < cuts.length; k++) {
+        const u0 = cuts[k - 1], u1 = cuts[k], l = L * (u1 - u0); if (l < 0.05) continue;
+        const ax = px + (qx - px) * u0, az = pz + (qz - pz) * u0, bx = px + (qx - px) * u1, bz = pz + (qz - pz) * u1;
+        const cross = lvOnRoad((ax + bx) / 2, (az + bz) / 2);
+        if (cross && l > 4) { t += 0.7 + R() * 1.6; W.x.push(ax); W.z.push(az); W.t.push(t); W.f.push(1); }   // stop at the curb, look both ways
+        t += l / (sp * (cross ? 1.18 : 1)); W.x.push(bx); W.z.push(bz); W.t.push(t); W.f.push(cross ? 3 : 0);
+      }
     }
     return true;
   }
@@ -464,7 +473,7 @@
   // ---------- the brain ----------
   function lifePed(e, dt, mx, mz, d) {
     e.far = d > (phone ? 65 : 125) && e.own !== 'me';   // too far to matter on a phone: not drawn
-    if (e.own && e.own !== 'me') return;
+    if (e.down || (e.own && e.own !== 'me')) return;
     e.t = (e.t || 0) + dt;
     const G = window.__guns, aiming = !!(G && G.GUN && G.GUN.want && foot.on);
     // your car coming at them: jump out the way, or get hit
@@ -631,7 +640,7 @@
     const now = performance.now(); LVW.scenes = LVW.scenes.filter(s => now - s.t < 60000);
     for (const sc of LVW.scenes) {
       if (now - sc.t < 7000 || sc.filled) continue; sc.filled = true; let n = 0;
-      for (const e of HOOD.ents) { if (n >= 4 || e.gone || e.down || e.hide || e.kind !== 'ped' || e.local || (e.own && e.own !== 'me')) continue; const d = Math.hypot(e.x - sc.x, e.z - sc.z); if (d > 70 || d < 6) continue; if (e.mode === 'panic' && e.who.brave < 0.5) continue; if (!lvClaim(e)) continue; e.mode = 'film'; e.t = 0; e.scene = sc; e.spot = null; n++; }
+      for (const e of HOOD.ents) { if (n >= 4 || e.gone || e.down || e.hide || e.kind !== 'ped' || e.local || (e.own && e.own !== 'me')) continue; const d = Math.hypot(e.x - sc.x, e.z - sc.z); if (d > 95 || d < 6) continue; if (e.mode === 'panic' && e.who.brave < 0.5) continue; if (!lvClaim(e)) continue; e.mode = 'film'; e.t = 0; e.scene = sc; e.spot = null; n++; }
     }
   }
 

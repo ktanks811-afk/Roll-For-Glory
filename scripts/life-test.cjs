@@ -21,7 +21,7 @@ const log = o => console.log(JSON.stringify(o));
     await p.waitForFunction(() => { window.__hood.tick(0.05); return window.__hood.HOOD.ready; }, null, { timeout: 120000, polling: 500 });
   };
   const fill = (p, n = 40) => p.evaluate(n => { const L = window.__life, f = window.__guns.foot; for (let i = 0; i < n; i++) { L.lvSpawn(f.x, f.z); window.__step(2); } }, n);
-  const shot = async (p, name, cam) => { if (!OUT) return; const u = await p.evaluate(a => window.__map.snap(...a), cam); fs.writeFileSync(`${OUT}/${name}.jpg`, Buffer.from(u.split(',')[1], 'base64')); };
+  const shot = async (p, name, cam) => { if (!OUT || !cam) return; const u = await p.evaluate(a => window.__map.snap(...a), cam); fs.writeFileSync(`${OUT}/${name}.jpg`, Buffer.from(u.split(',')[1], 'base64')); };
   // a camera a few meters off somebody, looking at them
   const camOn = (p, id, back = 5, side = 2.5, h = 1.9) => p.evaluate(([id, back, side, h]) => { const e = window.__hood.HOOD.byEnt.get(id); if (!e) return null; const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw); return [e.x + fx * back + fz * side, h, e.z + fz * back - fx * side, e.x, 1.1, e.z]; }, [id, back, side, h]);
 
@@ -119,11 +119,11 @@ const log = o => console.log(JSON.stringify(o));
 
     // 8. your car: they jump out the way
     await A.evaluate(() => { const f = window.__guns.foot; f.x = -700; f.z = -100; window.__hood.HNET.clk += 600000; }); await fill(A, 30);
-    const car = await A.evaluate(() => { const h = window.__hood, L = window.__life, f = window.__guns.foot, T = window.__guns.test, drv = T.drv, e = h.HOOD.ents.filter(e => e.kind === 'ped' && !e.gone && !e.hide && !e.own && !e.local)[0]; if (!e) return null;
+    const car = await A.evaluate(() => { const h = window.__hood, L = window.__life, f = window.__guns.foot, T = window.__guns.test, drv = T.drv, e = h.HOOD.ents.filter(e => e.kind === 'ped' && !e.gone && !e.down && !e.hide && !e.own && !e.local)[0]; if (!e) return null;
       const yaw = 0.3; drv.x = e.x + Math.sin(yaw) * 9; drv.z = e.z + Math.cos(yaw) * 9; drv.yaw = yaw; drv.v = 12; f.on = false;
       L.lifePed(e, 0.05, drv.x, drv.z, 9); const r = { mode: e.mode, own: e.own, mem: L.lvMem(e) && L.lvMem(e).ev.map(v => v[0]) };
       // and one that doesn't move: hit
-      const e2 = h.HOOD.ents.filter(o => o.kind === 'ped' && !o.gone && !o.hide && !o.own && !o.local && o !== e)[0]; if (e2) { drv.x = e2.x + Math.sin(yaw) * 1.5; drv.z = e2.z + Math.cos(yaw) * 1.5; drv.v = 6; L.lifePed(e2, 0.05, drv.x, drv.z, 1.5); r.hit = { mode: e2.mode, hp: Math.round(e2.hp), down: !!e2.down, news: L.lvS().news[0] && L.lvS().news[0].txt }; }
+      const e2 = h.HOOD.ents.filter(o => o.kind === 'ped' && !o.gone && !o.down && !o.hide && !o.own && !o.local && o !== e)[0]; if (e2) { drv.x = e2.x + Math.sin(yaw) * 1.5; drv.z = e2.z + Math.cos(yaw) * 1.5; drv.v = 6; L.lifePed(e2, 0.05, drv.x, drv.z, 1.5); r.hit = { mode: e2.mode, hp: Math.round(e2.hp), down: !!e2.down, news: L.lvS().news[0] && L.lvS().news[0].txt }; }
       f.on = true; drv.v = 0; return r; });
     log({ test: '8. your car', ...car });
 
