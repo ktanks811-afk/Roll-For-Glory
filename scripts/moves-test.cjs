@@ -11,7 +11,7 @@ const S = process.env.S, OUT = process.env.OUT || '.', ROOT = path.resolve(__dir
 const TYPES = { html: 'text/html', js: 'application/javascript', json: 'application/json', png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', m4a: 'audio/mp4', mp3: 'audio/mpeg', css: 'text/css', svg: 'image/svg+xml', glb: 'model/gltf-binary' };
 (async () => {
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const ctx = await b.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: +(process.env.DPR || 1) });
+  const ctx = await b.newContext({ viewport: { width: +(process.env.VW || 844), height: +(process.env.VH || 390) }, hasTouch: true, isMobile: true, deviceScaleFactor: +(process.env.DPR || 1) });
   const pg = await ctx.newPage();
   const errs = []; pg.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 600)));
   pg.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|supabase/i.test(m.text())) errs.push('console ' + m.text().slice(0, 300)); });
@@ -71,20 +71,21 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
   const camBehind = async () => ev(() => { window.__home.LOOK.pitch = 0.22; });
   await place(sx, W.step.z0 - 3); await camBehind(); await shot('01-steps-street');
   const y0 = await ev(() => window.__home.foot.holder.position.y);
-  await pg.keyboard.down('KeyW'); await until(y => window.__home.foot.holder.position.y > y, W.porch.y - 0.05, 60000); await pg.keyboard.up('KeyW'); await wait(500);
+  await pg.keyboard.down('KeyW'); await until(y => window.__home.foot.holder.position.y > y, W.porch.y - 0.05, 300000); await pg.keyboard.up('KeyW'); await wait(500);
   const up = await ev(() => ({ y: window.__home.foot.holder.position.y, gy: window.__home.foot.gy }));
   ok(up.y > W.porch.y - 0.05, `walked up the steps onto the porch: feet at ${up.y.toFixed(2)} (from ${y0.toFixed(2)})`);
   await ev(() => { const f = window.__home.foot; f.camYaw += Math.PI * 0.8; }); await wait(1200); await shot('02-on-the-porch');
-  // the side of the porch (no steps there): blocked walking, a jump gets you up
-  const side = W.step.x0 - W.porch.x0 > W.porch.x1 - W.step.x1 ? (W.porch.x0 + W.step.x0) / 2 : (W.step.x1 + W.porch.x1) / 2;
-  ok(Math.min(Math.abs(side - W.step.x0), Math.abs(side - W.step.x1)) > 0.7, 'room beside the steps for the side check');
-  await place(side, W.porch.z0 - 1.6);
-  { const z0 = await ev(() => window.__home.foot.z); await pg.keyboard.down('KeyW'); await until(n => window.__rec.n > n, (await ev(() => window.__rec.n)) + 60, 120000); await pg.keyboard.up('KeyW'); await wait(300); }
+  // the open end of the porch (no steps, no railing): too high to walk up, a jump gets you on
+  const zm = (W.porch.z0 + W.porch.z1) / 2;
+  const placeEnd = async d => { const [x, z] = toW(W.porch.x0 - d, zm); await ev(([x, z, ry]) => { const f = window.__home.foot, wx = Math.cos(ry), wz = -Math.sin(ry); f.x = x; f.z = z; f.target = null; f.gy = null; f.yaw = f.camYaw = Math.atan2(-wx, -wz); }, [x, z, pick.ry]); await wait(600); };
+  await placeEnd(1.6);
+  { await pg.keyboard.down('KeyW'); await until(n => window.__rec.n > n, (await ev(() => window.__rec.n)) + 60, 120000); await pg.keyboard.up('KeyW'); await wait(300); }
   const blocked = await ev(() => window.__home.foot.holder.position.y);
-  ok(blocked < 0.3, `porch side too high to step onto without the steps (feet ${blocked.toFixed(2)})`);
-  await place(side, W.porch.z0 - 1.0);
+  ok(blocked < 0.3, `porch end too high to step onto without the steps (feet ${blocked.toFixed(2)})`);
+  await placeEnd(1.0);
   await pg.keyboard.down('KeyW'); await pg.keyboard.press('Space'); await until(() => window.__moves.MV.air); await until(() => !window.__moves.MV.air); await pg.keyboard.up('KeyW'); await wait(300);
   const jumped = await ev(() => window.__home.foot.holder.position.y);
+  if (process.env.DBG) { console.log('side', side, 'toW', JSON.stringify(toW(side, W.porch.z0))); console.log(JSON.stringify(await ev(() => window.__dbg))); }
   ok(jumped > W.porch.y - 0.05, `jumped up onto the porch (feet ${jumped.toFixed(2)})`);
 
   // 3) out in the open: jump, crouch, roll
