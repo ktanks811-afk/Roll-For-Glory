@@ -37689,6 +37689,7 @@ body.pm #pm-root { display: block; }
         if (nx) { st.next = nx.id; st.nextT = nx.delay != null ? nx.delay : 25; }
         else { st.next = null; syObjective(''); text('narr', 'More of the story is coming in the next update.', { quiet: true }); }
         if (m.id === 't3b' && syLifeNext('block')) text('mook', 'We got a block now. If you want to build the set up for real, Story app, Lives, Block boss.');
+        if (m.id === 't3f' && syLifeNext('music')) text('virgil', 'Smoke left songs in my vault. When you want to hear them: Story app, Lives, Music mogul.');
         if (m.id === 't3h' && syLifeNext('land')) text('bo', 'Come back out when you want to learn cattle. Story app, Lives, Land and cattle.');
         if (m.id === 't12' && syLifeNext('racing')) text('rusty', 'Heard you put money in Lou\'s hand. Now come build something people remember. Story app, Lives, Street racing.');
       }
@@ -37698,7 +37699,7 @@ body.pm #pm-root { display: block; }
     finally { SY.busy = false; SY.act = null; }
   }
   // the lives: side chains you play from the Story app (Lives tab) between story beats
-  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' }, block: { n: 'Block boss', who: 'mook', after: 't3b' }, land: { n: 'Land and cattle', who: 'bo', after: 't3h' } };
+  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' }, block: { n: 'Block boss', who: 'mook', after: 't3b' }, land: { n: 'Land and cattle', who: 'bo', after: 't3h' }, music: { n: 'Music mogul', who: 'virgil', after: 't3f' } };
   const syLifeNext = k => { const st = sy(); return M.find(m => m.life === k && !st.done.includes(m.id)) || null; };
   const syLifeOpen = k => { const L = SY_LIFE[k]; return L && sy().done.includes(L.after); };
   function syPlayLife(k) { const st = sy(); if (SY.busy || st.m) { toast('Finish the job you\'re on first.', 'bad'); return false; } const m = syLifeNext(k); if (!m || !syLifeOpen(k)) return false; st.on = true; syRun(m, 0); return true; }
@@ -38968,6 +38969,119 @@ body.pm #pm-root { display: block; }
     },
   ], { label: 'Land and cattle · By the Windmill', life: 'land', delay: 0 });
 
+  // ---------- LIFE: Music Mogul (Virgil, VirL Studios). Smoke's 11 unreleased songs; uses the record label system (label(), lbStart, lbSigned) ----------
+  const SY_ALBUM_TITLES = ['Before Ironline', 'Stop Six Saint', 'Darius'];
+  // Smoke's album pays out every night you sleep, like the label's releases (story-only record, not an artist on your roster)
+  {
+    const _syAlbSleep = sleep;
+    sleep = function () {
+      const r = _syAlbSleep.apply(this, arguments);
+      try {
+        const A = S.story && S.story.album; if (A && A.out && A.daily > 200) {
+          const pay = Math.round(A.daily * 0.01 * (A.split || 1)); A.total += A.daily; A.daily = Math.round(A.daily * 0.93); S.bank += pay; A.earned = (A.earned || 0) + pay;
+          if (!A.gold && A.total >= 500000) { A.gold = 1; text('virgil', `${A.title} just went GOLD. Half a million. Smoke would have lost his mind`); syMeter('clean', 6, 'Gold record'); }
+          save();
+        }
+      } catch (e) { console.warn('story album: ' + e.message); }
+      return r;
+    };
+  }
+  const syLabel = () => (typeof label === 'function' ? label() : null);
+
+  mis('m1', 3, 'Music mogul', 'The Vault', 'Virgil has eleven of Smoke\'s songs nobody has ever heard.', [
+    async () => {
+      if (syFlag('wash') !== 'virl') text('virgil', 'This Virgil from VirL. Smoke left songs in my vault. Eleven of them. Come hear your brother');
+      else await call('virgil', [['virgil', 'You been washing money through my studio. Least I can do is play you what\'s in the vault.']]);
+      const p = DATA.P.find(x => x.id === 'virl_studios') || { x: 225, z: 137 }, [ox, oz] = outDir(p);
+      actor('virgil', p.x + ox * 4, p.z + oz * 4, 0);
+      await talkTo('virgil', 'Talk to', { obj: 'Go to VirL Studios', pin: 'VirL Studios' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'virgil'); two('me', 'virgil', 1, 3.4);
+        await lines([['virgil', 'He cut these at two in the morning, after the strip. Every one of them.'], ['narr', 'Virgil presses play. Smoke\'s voice fills the room. A song about Big Mama\'s porch. A song about a little brother in Huntsville.'], ['virgil', 'Track six is about you. He never let me mix it.']]);
+        close('virgil', 1, 1.8);
+        await lines([['virgil', 'I can\'t put these out. They\'re his, so now they\'re yours.'], ['virgil', 'But you\'d need a label. Paperwork, distribution, a name on the back of the album.']]);
+        ots('me', 'virgil');
+        i = await choose([{ t: 'Then I\'m starting a label.', tone: 'mogul', d: { clean: 4 } }, { t: 'Leave them in the vault. They\'re his.', tone: 'keep' }], { timer: 16 });
+        close('virgil', -1, 1.8); await say('virgil', i === 0 ? 'Smoke said you was the smart one. Twenty-five thousand gets you the paperwork.' : 'Okay. They\'ll be here. They ain\'t going nowhere.');
+      });
+      unactor('virgil'); syMeet('virgil');
+      if (i === 1) { syNote('You heard Smoke\'s 11 unreleased songs at VirL Studios. Track six is about you.'); throw SY_FAIL('Come back when you\'re ready to put them out.'); }
+      const L = syLabel();
+      if (L && !L.name) {
+        await syUntil(() => S.cash + S.bank >= 25000, 'Get $25,000 to start the label (cash or bank)');
+        const names = ['Smoke Season Records', 'Six Side Music', 'Ramey Ave Records'];
+        const j = await choose(names.map(n => ({ t: n })), { timer: 20, q: 'Name your label' });
+        const r = lbStart(names[j]); toast(r.text, r.ok ? 'good' : 'bad');
+      }
+      syNote(`You started ${syLabel() && syLabel().name || 'a label'} to put out Smoke's songs.`);
+    },
+  ], { label: 'Music mogul · The Vault', life: 'music', delay: 0 });
+
+  mis('m2', 3, 'Music mogul', "Smoke's Album", 'Eleven songs. Mix them, name the album, put it out.', [
+    async () => {
+      await call('virgil', [['virgil', 'Mixing and mastering eleven songs right is eight thousand. I\'ll get my best engineer on it.'], ['virgil', 'And we need a title. Something he would have said.']]);
+      await syUntil(() => S.cash >= 8000, 'Get $8,000 for mixing and mastering');
+      const i = await choose(SY_ALBUM_TITLES.map(t => ({ t })), { timer: 20, q: 'Name Smoke\'s album' });
+      spend(8000, 'Smoke\'s album: mix and master');
+      const st = sy(); st.album = { title: SY_ALBUM_TITLES[i], out: 0, daily: 0, total: 0, split: 1 }; save();
+      const p = DATA.P.find(x => x.id === 'virl_studios') || { x: 225, z: 137 }, [ox, oz] = outDir(p);
+      actor('virgil', p.x + ox * 4, p.z + oz * 4, 0); actor('mama', p.x + ox * 4 + oz * 2, p.z + oz * 4 - ox * 2, 0);
+      await talkTo('virgil', 'Listen with', { obj: 'Release night at VirL Studios. Big Mama came.', pin: 'VirL Studios' });
+      await cut(async () => {
+        setTime('night'); faceEach('me', 'virgil'); face('mama', foot.x, foot.z); two('me', 'mama', 1, 3.6);
+        await lines([['mama', 'I ain\'t never been in a studio. It\'s cold in here.'], ['virgil', 'Three, two, one. It\'s live.'], ['narr', `"${SY_ALBUM_TITLES[i]}" by Smoke is out everywhere.`]]);
+        close('mama'); await lines([['mama', 'That\'s my baby. That\'s my baby singing.']]);
+        await syTitle('OUT NOW', SY_ALBUM_TITLES[i].toUpperCase(), 'Smoke · the album', 3);
+      });
+      st.album.out = 1; st.album.day = S.day; st.album.daily = 60000; save();
+      unactAll(); setTime('day'); syMeter('family', 6, 'Smoke\'s album'); syMeter('streets', 3);
+      text('throttle', `SMOKE ALBUM DROPPED 😭🕊 "${SY_ALBUM_TITLES[i]}" go stream it east side`);
+      syNote(`You released Smoke's album "${SY_ALBUM_TITLES[i]}". It pays out every night you sleep.`);
+    },
+  ], { label: 'Music mogul · Smoke\'s Album', life: 'music', delay: 0 });
+
+  mis('m3', 3, 'Music mogul', 'First Signing', 'A label with one dead artist is a memorial. Sign somebody alive.', [
+    async () => {
+      const L = syLabel(); const n0 = L ? L.roster.length : 0;
+      text('virgil', 'Smoke album bringing people to the studio. Open the Label app, go meet somebody in person, and sign them');
+      await syUntil(() => { const l = syLabel(); return !!l && l.roster.length > n0; }, 'Sign an artist to your label (Label app: Scene, then meet them in person)', 'Music mogul · First Signing');
+      syMeter('clean', 4, 'Signed an artist');
+      const r = syLabel().roster[syLabel().roster.length - 1], a = r && LB_BY[r.id];
+      text('throttle', `${syLabel().name} just signed ${a ? a.name : 'somebody new'} 🎤 Smoke lil brother building something`);
+      syNote(`You signed ${a ? a.name : 'your first artist'} to ${syLabel().name}.`);
+    },
+  ], { label: 'Music mogul · First Signing', life: 'music', delay: 0 });
+
+  mis('m4', 3, 'Music mogul', 'Half the Studio', 'Somebody owns half of VirL. Virgil has been afraid to say who.', [
+    async () => {
+      await call('virgil', [['virgil', 'I need to tell you something before you hear it somewhere else. Come by. Not on the phone.']], { mustAnswer: true });
+      const p = DATA.P.find(x => x.id === 'virl_studios') || { x: 225, z: 137 }, [ox, oz] = outDir(p);
+      actor('virgil', p.x + ox * 4, p.z + oz * 4, 0);
+      await talkTo('virgil', 'Talk to', { obj: 'Go to VirL Studios. Virgil won\'t say it on the phone.', pin: 'VirL Studios' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'virgil'); ots('me', 'virgil');
+        await lines([['virgil', 'In 2019 I was going under. A man walked in and paid off my notes. All of them.'], ['virgil', 'He owns fifty percent of this building. Of the vault. Of Smoke\'s masters.']]);
+        close('virgil', 1, 1.8); await lines([['virgil', 'Deacon Hollis.'], ['virgil', 'His lawyer called this morning. He wants half of everything Smoke\'s album makes.']]);
+        ots('me', 'virgil');
+        i = await choose([{ t: 'Buy him out. Whatever it costs.', tone: 'buy out', d: { clean: 4 } }, { t: 'Give him his half. Not worth the war.', tone: 'pay', d: { loyalty: -2 } }, { t: 'Move the masters. Tonight.', tone: 'steal', d: { streets: 4, heat: 4 } }], { timer: 14 });
+        syFlag('hollisMasters', i);
+        close('virgil', -1, 1.8); await say('virgil', i === 0 ? 'He\'ll want a hundred thousand. And he\'ll know it\'s you.' : i === 1 ? 'Then he gets paid off your brother twice.' : 'I didn\'t hear that. I didn\'t see nothing.');
+      });
+      unactor('virgil');
+      const st = sy();
+      if (i === 0) {
+        await syUntil(() => S.cash + S.bank >= 100000, 'Get $100,000 to buy Hollis out of VirL (cash or bank)');
+        const fromBank = Math.max(0, 100000 - S.cash); S.bank -= fromBank; S.cash -= 100000 - fromBank; S.log.unshift('-$100,000 Bought Hollis out of VirL'); save(); refreshStats();
+        text('hollis', 'You paid full price for something that was mine. Your brother did that too.');
+        syNote('You bought Deacon Hollis out of VirL Studios for $100,000. Smoke\'s masters are yours.');
+      } else if (i === 1) { if (st.album) st.album.split = 0.5; save(); syNote('You let Hollis keep half of Smoke\'s album money. He owns 50% of VirL Studios.'); }
+      else { syFlag('mastersMoved', 1); text('hollis', 'Interesting thing happened at VirL last night. Tapes went missing. I hope you have a good lawyer, son.'); syNote('You moved Smoke\'s masters out of VirL in the middle of the night. Hollis knows it was you.'); }
+      text('narr', 'More of the Music mogul life comes with the next story update.', { quiet: true });
+    },
+  ], { label: 'Music mogul · Half the Studio', life: 'music', delay: 0 });
+
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
   PHONE_APPS.splice(1, 0, { id: 'texts', name: 'Messages', icon: '💬', bg: 'linear-gradient(135deg,#5bd36b,#1e9e3a)' });
@@ -39109,6 +39223,7 @@ body.pm #pm-root { display: block; }
     dropSlide() { for (const e of (SY.slide || [])) if (!e.gone && !e.down) hDrop(e, 'me'); S.heat = 0; },
     addDrops(n) { const h = syH(); if (h) h.stats.drops += n; S.heat = 0; },
     hoodReady: () => !!(HOOD.ready && syH()), mine: () => syMine().length, sySlide, syBlockFor,
+    signAny() { const L = label(); if (!L.name) lbStart('Test Records'); const a = LB_ARTISTS.find(a => !a.five && !lbSigned(a.id)); if (a) L.roster.push({ id: a.id, cut: 0.2, advance: 0, buzz: a.buzz, day: S.day }); save(); return L.roster.length; },
     giveCar() { const c = newCar(BUILT[0], '#6b6f5a', 58); c.fuel = 0.6; S.car = c; syncCarModel(); deliverCar(); save(); },
     advance: syAdvance, pinAt: () => pin.visible ? [pin.position.x, pin.position.z] : null, mk: () => SY.mk && SY.mk.visible ? [SY.mk.position.x, SY.mk.position.z] : null };
   // ===== STORY END =====
