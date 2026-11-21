@@ -23596,6 +23596,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     // which way is -right in this frame: local x axis = (cos yaw, -sin yaw) in world
     const lxw = [Math.cos(yaw), -Math.sin(yaw)], sgn = Math.sign(lxw[0] * -Rx + lxw[1] * -Rz) || 1;
     lcyl(a, F, 0, 0, ST_WALK_Y, 6.6, 0.16, 8, STC.pole, 0.12);
+    (window.__sigPoles || (window.__sigPoles = [])).push([px, pz]);   // solid (crashes)
     const reach = Math.max(3, half * 0.9 + 1.1);
     lbox(a, F, Math.min(0, sgn * reach), 6.05, -0.08, Math.max(0, sgn * reach), 6.25, 0.08, STC.pole);
     lbox(a, F, sgn * 0, 5.2, -0.06, sgn * 1.4 * 1, 5.3, 0.06, STC.pole);
@@ -30717,7 +30718,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     geysers: [], fallen: [], fx: null, stats: { hits: 0, dvMax: 0 },
   };
   window.__crash = CRX;
-  CRX.dbg = { crImpact, step: dt => stepDrive(dt), street: t => stepStreet(t), fx: dt => { crMoversStep(dt); crFxStep(dt); }, solids, crBox, crPosts, crPlants, crMovers, crashStep, crDentRestore, crDentMesh, crSpawn, crBits, crCrunch, get car() { return car; } };
+  CRX.dbg = { crImpact, crFind, crFootPush, crRigs, step: dt => stepDrive(dt), street: t => stepStreet(t), fx: dt => { crMoversStep(dt); crFxStep(dt); }, solids, crBox, crPosts, crPlants, crMovers, crashStep, crDentRestore, crDentMesh, crSpawn, crBits, crCrunch, get car() { return car; } };
   const crRot = (x, z, c, s) => [x * c + z * s, -x * s + z * c];   // car-local (x right, z back) -> world offset, yaw = rotation.y
 
   // ---- the car's real footprint: off its wheels, plus the overhangs ----
@@ -30744,6 +30745,14 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
 
   // ---- what's out there to hit, besides the buildings and parked cars (solids) ----
   // street lights and hydrants are instanced per bucket: read them back out of their InstancedMeshes once
+  const CR_POST_R = { lamp: 0.17, hyd: 0.2, sign: 0.1, can: 0.33, bench: 0.62, trunk: 0.13 };
+  // windmills and pumpjacks out in the country (the environment pass streams the near ones)
+  function crRigs(x, z, R, out) {
+    const E = window.__env && window.__env.debug, P = E && E.EP; if (!P) return out;
+    for (const m of P.mills) if (Math.abs(m.x - x) < R + 3 && Math.abs(m.z - z) < R + 3) out.push({ x: m.x, z: m.z, r: 1.1, kind: 'mill', c: 1 });
+    for (const j of P.jacks) if (Math.abs(j.x - x) < R + 5 && Math.abs(j.z - z) < R + 5) out.push({ x: j.x, z: j.z, yaw: j.yaw, hw: 0.9, hl: 2.9, kind: 'jack' });
+    return out;
+  }
   function crPosts() {
     if (CRX.posts) return CRX.posts;
     const G = new Grid(40), m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
@@ -30753,10 +30762,10 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       const kids = b.group.children, heads = kids.find(o => o.isInstancedMesh && o.geometry === SHAPES.lampHead), pools = kids.find(o => o.isInstancedMesh && o.geometry === SHAPES.pool);
       for (const im of kids) {
         if (!im.isInstancedMesh) continue;
-        const kind = im.geometry === SHAPES.lamp ? 'lamp' : im.geometry === SHAPES.stHyd ? 'hyd' : null; if (!kind) continue;
+        const gm = im.geometry, kind = gm === SHAPES.lamp ? 'lamp' : gm === SHAPES.stHyd ? 'hyd' : gm === SHAPES.stStop ? 'sign' : gm === SHAPES.stCan ? 'can' : gm === SHAPES.stBench ? 'bench' : (gm === SHAPES.tree || gm === SHAPES.pine || gm === SHAPES.palm || gm === SHAPES.cactus) ? 'trunk' : null; if (!kind) continue;
         for (let i = 0; i < im.count; i++) {
           im.getMatrixAt(i, m); m.decompose(p, q, s);
-          const o = { x: p.x, z: p.z, r: kind === 'lamp' ? 0.17 : 0.2, kind, im, i, heads: kind === 'lamp' ? heads : null, pools: kind === 'lamp' ? pools : null, yaw: new THREE.Euler().setFromQuaternion(q).y, y: p.y };
+          const o = { x: p.x, z: p.z, r: CR_POST_R[kind] * (kind === 'trunk' ? Math.max(0.6, s.x) : 1), kind, im, i, heads: kind === 'lamp' ? heads : null, pools: kind === 'lamp' ? pools : null, yaw: new THREE.Euler().setFromQuaternion(q).y, y: p.y };
           G.add(o, o.x - 1, o.z - 1, o.x + 1, o.z + 1); n++;
         }
       }
@@ -30764,6 +30773,8 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     // wooden utility poles (scenery): they don't give
     const D = window.__scn && window.__scn.debug;
     if (D && D.POLES) for (const P of D.POLES) { if (!P) continue; const o = { x: P.x, z: P.z, r: 0.16, kind: 'pole' }; G.add(o, o.x - 1, o.z - 1, o.x + 1, o.z + 1); n++; }
+    // traffic signal poles (built into the block meshes, so the builder notes where each one stands)
+    for (const P of window.__sigPoles || []) { const o = { x: P[0], z: P[1], r: 0.2, kind: 'signal' }; G.add(o, o.x - 1, o.z - 1, o.x + 1, o.z + 1); n++; }
     CRX.postsN = n; CRX.posts = G; return G;
   }
   // trees by trunk, bushes by their spread (the scenery's plant store)
@@ -30836,28 +30847,50 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
 
   // ---- the solve: called by stepDrive after the sim moved the car to (nx, nz) ----
   const _seen = new Set(), _list = [];
+  // what the car's box touches at (nx, nz): the deepest contact
+  function crFind(nx, nz, B) {
+    const yaw = drv.yaw, c = Math.cos(yaw), s = Math.sin(yaw), o = crRot(0, B.cz, c, s);
+    const A = { x: nx + o[0], z: nz + o[1], ax: [c, -s], az: [s, c], hw: B.hw, hl: B.hl }, R = Math.hypot(B.hw, B.hl);
+    // gather what's near
+    _list.length = 0; _seen.clear();
+    for (const [qx, qz] of [[A.x, A.z], [A.x + R, A.z + R], [A.x - R, A.z - R], [A.x + R, A.z - R], [A.x - R, A.z + R]]) for (const b of solids.at(qx, qz)) if (!_seen.has(b)) { _seen.add(b); _list.push(b); }
+    let best = null, bestObj = null;
+    const take = (r, obj) => { if (r && (!best || r.d > best.d)) { best = r; bestObj = obj; } };
+    for (const b of _list) {
+      if (A.x + R < b.x0 || A.x - R > b.x1 || A.z + R < b.z0 || A.z - R > b.z1) continue;
+      take(crBoxBox(A, { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2, ax: [1, 0], az: [0, 1], hw: (b.x1 - b.x0) / 2, hl: (b.z1 - b.z0) / 2 }), { kind: b.park ? 'parked' : b.rail ? 'rail' : 'wall', b });
+    }
+    const PG = crPosts(); _seen.clear();
+    for (const [qx, qz] of [[A.x, A.z], [A.x + R, A.z + R], [A.x - R, A.z - R], [A.x + R, A.z - R], [A.x - R, A.z + R]]) for (const p of PG.at(qx, qz)) { if (_seen.has(p) || p.down) continue; _seen.add(p); take(crBoxCircle(A, p.x, p.z, p.r), p); }
+    const pl = crPlants(A.x, A.z, R, []);
+    for (const p of pl) take(crBoxCircle(A, p.x, p.z, p.r), p);
+    const mv = crMovers(A.x, A.z, R, []);
+    for (const q of crRigs(A.x, A.z, R, [])) { if (q.c) take(crBoxCircle(A, q.x, q.z, q.r), q); else { const qc = Math.cos(q.yaw), qs = Math.sin(q.yaw); take(crBoxBox(A, { x: q.x, z: q.z, ax: [qc, -qs], az: [qs, qc], hw: q.hw, hl: q.hl }), q); } }
+    for (const q of mv) { const qc = Math.cos(q.yaw), qs = Math.sin(q.yaw); take(crBoxBox(A, { x: q.x, z: q.z, ax: [qc, -qs], az: [qs, qc], hw: q.hw, hl: q.hl }), q); }
+    return { best, obj: bestObj, A };
+  }
+  // things that snap or get knocked away at this speed don't stop the sweep
+  function crGives(O) { const sp = Math.hypot(TIRE.vx, TIRE.vz); return O.kind === 'can' || (O.kind === 'sign' && sp > 4) || (O.kind === 'bench' && sp > 6) || (O.kind === 'hyd' && sp > 4) || (O.kind === 'lamp' && sp > 8.5) || (O.kind === 'tree' && O.r < 0.13 && sp > 7); }
+  function crFootPush(nx, nz, R) {
+    const push = (x, z, r) => { const dx = nx - x, dz = nz - z, d = Math.hypot(dx, dz), m = r + R; if (d < m) { if (d < 1e-4) { nx = x + m; return; } nx = x + dx / d * m; nz = z + dz / d * m; } };
+    const box = (x, z, yaw, hw, hl) => { const c = Math.cos(yaw), s = Math.sin(yaw), cx = nx - x, cz = nz - z, ax = cx * c - cz * s, az = cx * s + cz * c; if (Math.abs(ax) < hw + R && Math.abs(az) < hl + R) { let px = ax, pz = az; if (hw + R - Math.abs(ax) < hl + R - Math.abs(az)) px = Math.sign(ax || 1) * (hw + R); else pz = Math.sign(az || 1) * (hl + R); nx = x + px * c + pz * s; nz = z - px * s + pz * c; } };
+    try {
+      for (const p of crPosts().at(nx, nz)) if (!p.down) push(p.x, p.z, p.kind === 'bench' ? 0.35 : p.r);
+      for (const p of crPlants(nx, nz, 1, [])) if (p.kind === 'tree') push(p.x, p.z, p.r);
+      for (const q of crRigs(nx, nz, 1, [])) if (q.c) push(q.x, q.z, q.r); else box(q.x, q.z, q.yaw, q.hw, q.hl);
+      for (const q of crMovers(nx, nz, 1, [])) box(q.x, q.z, q.yaw, q.hw, q.hl);
+    } catch (e) {}
+    return [nx, nz];
+  }
   function crashStep(nx, nz, dt, vBefore) {
     CRX.simT = (CRX.simT || 0) + dt * 1000;   // a clock that runs with the sim (cool-downs work at any frame rate)
     const V = TIRE.vd && TIRE.vd.V, m = V ? V.m : 1600, Iz = V ? V.Iz : m * 1.9, B = crBox();
     let hit = false, dvMax = 0, ev = null;
+    // fast cars move metres a frame: check the path in short hops and stop at the first thing in the way (no tunneling)
+    { const ox = drv.x, oz = drv.z, L = Math.hypot(nx - ox, nz - oz);
+      if (L > 0.45 && L < 30) { const n = Math.ceil(L / 0.4); for (let k = 1; k < n; k++) { const px = ox + (nx - ox) * k / n, pz = oz + (nz - oz) * k / n, f = crFind(px, pz, B); if (f.best && f.best.d > 0.2 && ((nx - ox) * f.best.nx + (nz - oz) * f.best.nz) / L < -0.5 && !f.best.soft && !f.obj.soft && !crGives(f.obj)) { nx = px; nz = pz; CRX.stats.swept = (CRX.stats.swept || 0) + 1; break; } } } }
     for (let it = 0; it < 4; it++) {
-      const yaw = drv.yaw, c = Math.cos(yaw), s = Math.sin(yaw), o = crRot(0, B.cz, c, s);
-      const A = { x: nx + o[0], z: nz + o[1], ax: [c, -s], az: [s, c], hw: B.hw, hl: B.hl }, R = Math.hypot(B.hw, B.hl);
-      // gather what's near
-      _list.length = 0; _seen.clear();
-      for (const [qx, qz] of [[A.x, A.z], [A.x + R, A.z + R], [A.x - R, A.z - R], [A.x + R, A.z - R], [A.x - R, A.z + R]]) for (const b of solids.at(qx, qz)) if (!_seen.has(b)) { _seen.add(b); _list.push(b); }
-      let best = null, bestObj = null;
-      const take = (r, obj) => { if (r && (!best || r.d > best.d)) { best = r; bestObj = obj; } };
-      for (const b of _list) {
-        if (A.x + R < b.x0 || A.x - R > b.x1 || A.z + R < b.z0 || A.z - R > b.z1) continue;
-        take(crBoxBox(A, { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2, ax: [1, 0], az: [0, 1], hw: (b.x1 - b.x0) / 2, hl: (b.z1 - b.z0) / 2 }), { kind: b.park ? 'parked' : b.rail ? 'rail' : 'wall', b });
-      }
-      const PG = crPosts(); _seen.clear();
-      for (const [qx, qz] of [[A.x, A.z], [A.x + R, A.z + R], [A.x - R, A.z - R]]) for (const p of PG.at(qx, qz)) { if (_seen.has(p) || p.down) continue; _seen.add(p); take(crBoxCircle(A, p.x, p.z, p.r), p); }
-      const pl = crPlants(A.x, A.z, R, []);
-      for (const p of pl) take(crBoxCircle(A, p.x, p.z, p.r), p);
-      const mv = crMovers(A.x, A.z, R, []);
-      for (const q of mv) { const qc = Math.cos(q.yaw), qs = Math.sin(q.yaw); take(crBoxBox(A, { x: q.x, z: q.z, ax: [qc, -qs], az: [qs, qc], hw: q.hw, hl: q.hl }), q); }
+      const F = crFind(nx, nz, B), best = F.best, bestObj = F.obj, A = F.A;
       if (!best) break;
       const r = crResolve(best, bestObj, A, m, Iz, dt);
       if (r.pos) { nx += r.pos[0]; nz += r.pos[1]; }
@@ -30892,9 +30925,9 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       return res;
     }
     // a hydrant or a street light snaps off when you hit it hard enough: it takes some speed and lets you through
-    if ((O.kind === 'hyd' && -vn > 4) || (O.kind === 'lamp' && -vn > 8.5) || (O.kind === 'tree' && O.r < 0.13 && -vn > 7)) breakable = O;
+    if ((O.kind === 'hyd' && -vn > 4) || (O.kind === 'lamp' && -vn > 8.5) || (O.kind === 'tree' && O.r < 0.13 && -vn > 7) || (O.kind === 'can' && -vn > 0.8) || (O.kind === 'sign' && -vn > 4) || (O.kind === 'bench' && -vn > 6)) breakable = O;
     if (breakable) {
-      const take = O.kind === 'hyd' ? 2.2 : O.kind === 'lamp' ? 4.5 : 3.5, sp = Math.hypot(TIRE.vx, TIRE.vz), k = Math.max(0, 1 - take / Math.max(sp, 0.1));
+      const take = O.kind === 'hyd' ? 2.2 : O.kind === 'lamp' ? 4.5 : O.kind === 'can' ? 0.3 : O.kind === 'sign' ? 1.2 : O.kind === 'bench' ? 2.5 : 3.5, sp = Math.hypot(TIRE.vx, TIRE.vz), k = Math.max(0, 1 - take / Math.max(sp, 0.1));
       TIRE.vx *= k; TIRE.vz *= k; TIRE.w += (Math.random() - 0.5) * 0.4;
       crBreak(O, rvx, rvz); res.dv = take * 0.8; res.knock = O.kind; res.jn = 0; return res;
     }
@@ -30970,6 +31003,12 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       g.add(msh); g.add(hd); g.position.set(O.x, O.y || 0, O.z); msh.rotation.y = hd.rotation.y = O.yaw; scene.add(g);
       CRX.fallen.push({ g, t: 0, ax: [vz / sp, -vx / sp], ang: 0, x: O.x, z: O.z });
       crCrunch(1, 'metal');
+    } else if (O.kind === 'sign' || O.kind === 'can' || O.kind === 'bench') {
+      // a stop sign folds over, a bench flips, a trash can goes flying down the street
+      const g = new THREE.Group(), msh = new THREE.Mesh(O.im.geometry, O.im.material); g.add(msh); g.position.set(O.x, O.y || 0, O.z); msh.rotation.y = O.yaw; scene.add(g);
+      const fly = O.kind === 'can' ? 1 : O.kind === 'bench' ? 0.45 : 0.15;
+      CRX.fallen.push({ g, t: 0, ax: [vz / sp, -vx / sp], ang: 0, x: O.x, z: O.z, vx: vx * fly, vz: vz * fly, lim: O.kind === 'bench' ? Math.PI : Math.PI / 2 - 0.08 });
+      crCrunch(O.kind === 'can' ? 0.35 : 0.6, 'metal');
     } else if (O.kind === 'hyd') {
       CRX.geysers.push({ x: O.x, z: O.z, t: 0, T: 28 }); crCrunch(0.6, 'metal');
       toast('Knocked the fire hydrant clean off. Water everywhere.', 'bad');
@@ -31017,7 +31056,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   function crFxStep(dt) {
     const F = CRX.fx;
     // fallen street lights tip over and lie there
-    for (const f of CRX.fallen) if (f.ang < Math.PI / 2 - 0.08) { f.t += dt; f.ang = Math.min(Math.PI / 2 - 0.08, 0.5 * 4.2 * f.t * f.t); f.g.quaternion.setFromAxisAngle(new THREE.Vector3(f.ax[0], 0, f.ax[1]), f.ang); if (f.ang >= Math.PI / 2 - 0.08) crCrunch(0.5, 'metal', f.x, f.z); }
+    for (const f of CRX.fallen) { if (f.vx) { f.g.position.x += f.vx * dt; f.g.position.z += f.vz * dt; const d = Math.exp(-dt * 2.2); f.vx *= d; f.vz *= d; if (Math.abs(f.vx) + Math.abs(f.vz) < 0.05) f.vx = f.vz = 0; } } for (const f of CRX.fallen) if (f.ang < (f.lim || Math.PI / 2 - 0.08)) { f.t += dt; f.ang = Math.min(f.lim || Math.PI / 2 - 0.08, 0.5 * 4.2 * f.t * f.t); f.g.quaternion.setFromAxisAngle(new THREE.Vector3(f.ax[0], 0, f.ax[1]), f.ang); if (f.ang >= (f.lim || Math.PI / 2 - 0.08)) crCrunch(0.5, 'metal', f.x, f.z); }
     if (!F) return;
     let k = 0;
     for (let i = F.P.length - 1; i >= 0; i--) { const p = F.P[i]; p.t += dt; if (p.t > p.life) { F.P.splice(i, 1); continue; } p.vy -= p.grav * dt; const dr = Math.exp(-p.drag * dt); p.vx *= dr; p.vz *= dr; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; if (p.y < 0.03) { p.y = 0.03; p.vy *= -0.25; p.vx *= 0.5; p.vz *= 0.5; } }
@@ -31755,6 +31794,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       // the parked car is in the way too
       if (foot.park) { const cx = nx - foot.park.x, cz = nz - foot.park.z, cs = Math.cos(foot.park.yaw), sn = Math.sin(foot.park.yaw), ax = cx * cs - cz * sn, az = cx * sn + cz * cs;
       if (Math.abs(ax) < 1.05 + R && Math.abs(az) < 2.5 + R) { if (1.05 + R - Math.abs(ax) < 2.5 + R - Math.abs(az)) { const px = Math.sign(ax) * (1.05 + R); nx = foot.park.x + px * cs + az * sn; nz = foot.park.z - px * sn + az * cs; } else { const pz = Math.sign(az) * (2.5 + R); nx = foot.park.x + ax * cs + pz * sn; nz = foot.park.z - ax * sn + pz * cs; } } }
+      { const q = crFootPush(nx, nz, R); nx = q[0]; nz = q[1]; }   // poles, trunks, signs, cars (crashes)
       if (foot.target && Math.hypot(nx - foot.x, nz - foot.z) < 0.0004 * sp) foot.target = null;
       foot.x = clamp(nx, WB.x0, WB.x1); foot.z = clamp(nz, WB.z0, WB.z1);
       foot.yaw = Math.atan2(-wx, -wz); foot.walk += dt * sp * k * Math.PI * 2 / lerp(1.55, 3.8, foot.runB);
