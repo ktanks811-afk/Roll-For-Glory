@@ -37192,6 +37192,7 @@ body.pm #pm-root { display: block; }
     saint2: { name: 'Lalo', full: 'Lalo Ortega', col: '#f2d94e', role: 'Saint\'s cousin. Doesn\'t listen to anybody.', seed: 181, look: { hairStyle: 'short', hair: '#111111', build: 2, height: 1, skin: '#8a5a3a', top: 'mm_mexico_blk', bottom: 'cargo_tan', shoes: 'mm_botas', hat: 'mw_cap_ranch', facialHair: 'stubble', extras: [] } },
     bo: { name: 'Uncle Bo', full: 'Boyd "Uncle Bo" Jenkins', col: '#e0b070', role: 'Big Mama\'s brother. Cattle, hog dogs and a windmill out by Joshua.', seed: 191, look: { hairStyle: 'short', hair: '#bdbdbd', build: 2, height: 2, skin: '#4a2f1c', top: 'mw_pearlsnap', bottom: 'mw_wranglers', shoes: 'mm_botas', hat: 'mm_tejana', facialHair: 'full_beard', extras: [] } },
     garza: { name: 'Agent Garza', full: 'Special Agent Rosa Garza (DEA)', col: '#9fd3ff', role: 'DEA, Dallas field office. Was supposed to meet Smoke the night he died.', seed: 211, fem: 1, look: { hairStyle: 'bun', hair: '#1a120c', build: 0, height: 0, skin: '#a8714a', top: 'mx_leather', bottom: 'jeans_black', shoes: 'boots_black', hat: 'no_hat', extras: [] } },
+    earl: { name: 'Earl', full: 'Earl Tate (Hook & Haul Towing)', col: '#ffa65c', role: 'Owns Hook & Haul. Moves cars at night for Hollis Motors, no questions.', seed: 221, look: { hairStyle: 'buzz', hair: '#bdbdbd', build: 2, height: 1, skin: '#c08a64', top: 'mw_carhartt', bottom: 'md_carpenter', shoes: 'boots_black', hat: 'mw_cap_ranch', facialHair: 'full_beard' } },
     virgil: { name: 'Virgil', full: 'Virgil (VirL Studios)', col: '#ffc21a', role: 'Owns VirL Studios. Has 11 of Smoke\'s unreleased songs in the vault.', seed: 201, look: { hairStyle: 'locs', hair: '#3a2a1a', build: 1, height: 1, skin: '#55341f', top: 'mx_monogram', bottom: 'jeans_black', shoes: 'kicks_blackout', facialHair: 'beard', extras: ['chain'] } },
     me: { name: 'You', col: '#ffffff' },
     narr: { name: '', col: '#ffffff' },
@@ -37700,7 +37701,7 @@ body.pm #pm-root { display: block; }
     finally { SY.busy = false; SY.act = null; }
   }
   // the lives: side chains you play from the Story app (Lives tab) between story beats
-  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' }, block: { n: 'Block boss', who: 'mook', after: 't3b' }, land: { n: 'Land and cattle', who: 'bo', after: 't3h' }, music: { n: 'Music mogul', who: 'virgil', after: 't3f' } };
+  const SY_LIFE = { racing: { n: 'Street racing legend', who: 'rusty', after: 't12' }, block: { n: 'Block boss', who: 'mook', after: 't3b' }, land: { n: 'Land and cattle', who: 'bo', after: 't3h' }, music: { n: 'Music mogul', who: 'virgil', after: 't3f' } , cars: { n: 'Car boss', who: 'rusty', after: 't4a' } };
   const syLifeNext = k => { const st = sy(); return M.find(m => m.life === k && !st.done.includes(m.id)) || null; };
   const syLifeOpen = k => { const L = SY_LIFE[k]; return L && sy().done.includes(L.after); };
   function syPlayLife(k) { const st = sy(); if (SY.busy || st.m) { toast('Finish the job you\'re on first.', 'bad'); return false; } const m = syLifeNext(k); if (!m || !syLifeOpen(k)) return false; st.on = true; syRun(m, 0); return true; }
@@ -39083,6 +39084,156 @@ body.pm #pm-root { display: block; }
     },
   ], { label: 'Music mogul · Half the Studio', life: 'music', delay: 0 });
 
+  // ---------- LIFE: Car boss (Rusty). Own the shop, then Hook & Haul, then a lot of your own in Stop Six. Income pays out every night you sleep ----------
+  const syCars = () => { const st = sy(); return st.cars || (st.cars = { shop: '', tow: 0, lot: 0, earned: 0, days: 0 }); };
+  const syCarsDaily = () => { const c = sy().cars; if (!c) return 0; return (c.shop ? 1500 : 0) + (c.tow ? 2500 : 0) + (c.lot ? 5000 : 0); };
+  {
+    const _syCarSleep = sleep;
+    sleep = function () {
+      const r = _syCarSleep.apply(this, arguments);
+      try {
+        const c = S.story && S.story.cars, pay = syCarsDaily();
+        if (c && pay > 0) {
+          const day = Math.round(pay * (0.8 + Math.random() * 0.4)); S.bank += day; c.earned = (c.earned || 0) + day; c.days = (c.days || 0) + 1;
+          S.log.unshift(`+${money(day)} ${c.shop || 'Your shop'}${c.tow ? ' + Hook & Haul' : ''}${c.lot ? ' + the lot' : ''}`); toast(`🔧 Your businesses made ${money(day)} while you slept (bank).`, 'good');
+          if (c.days === 7) text('rusty', `First week in the books. ${money(c.earned)} clean. Smoke never had a week like that with a wrench in his hand`);
+          save();
+        }
+      } catch (e) { console.warn('story cars: ' + e.message); }
+      return r;
+    };
+  }
+  const syLotName = () => ((sy().cars && sy().cars.shop) || 'Six Side Customs').replace(/ (Customs|Auto|Garage)$/, '') + ' Auto Sales';
+  const syPlace = (id, fx, fz) => { const p = DATA.P.find(x => x.id === id) || { x: fx, z: fz }, [ox, oz] = outDir(p); return { p, ox, oz }; };
+
+  mis('k1', 3, 'Car boss', "Rusty's Keys", 'Rusty is tired. Forty years under a hood. He wants you to have the shop.', [
+    async () => {
+      await call('rusty', [['rusty', 'Come by the shop. I got something to say and I only want to say it once.']], { mustAnswer: true });
+      const { p, ox, oz } = syPlace('rusty_used', -75, 463);
+      actor('rusty', p.x + ox * 4, p.z + oz * 4, 0);
+      await talkTo('rusty', 'Talk to', { obj: 'Go see Rusty at Rusty\'s Used Autos', pin: "Rusty's Used Autos" });
+      let i = 0; const cost = syFlag('wash') === 'rusty' ? 30000 : 40000;
+      await cut(async () => {
+        faceEach('me', 'rusty'); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.5, 11, 3.6); await syWait(1.4);
+        two('me', 'rusty', 1, 3.4);
+        await lines([['rusty', 'My back is done. My knees been done. My daughter wants me in Galveston, fishing.'], ['rusty', 'I built every car your brother ever raced in this bay. I ain\'t selling it to some kid from Southlake.']]);
+        close('rusty', 1, 1.8); await lines([['rusty', `${money(cost)}. The building, the lifts, the tools, the customers. Name on the sign is yours.`]]);
+        ots('me', 'rusty');
+        i = await choose([{ t: 'Shake his hand. It\'s mine.', tone: 'buy', d: { clean: 4, family: 2 } }, { t: 'Not yet. I got other things going.', tone: 'wait' }], { timer: 16 });
+        close('rusty', -1, 1.8); await say('rusty', i === 0 ? 'That\'s what I wanted to hear. Bring the money and we\'ll do the paper.' : 'Don\'t wait too long. Galveston ain\'t going nowhere but I am.');
+      });
+      if (i === 1) { unactor('rusty'); syNote('Rusty offered you his shop. You told him not yet.'); throw SY_FAIL('Come back when you\'re ready to take Rusty\'s shop.'); }
+      await syUntil(() => S.cash + S.bank >= cost, `Get ${money(cost)} to buy Rusty's shop (cash or bank)`);
+      const fromBank = Math.max(0, cost - S.cash); S.bank -= fromBank; S.cash -= cost - fromBank; S.log.unshift(`-${money(cost)} Bought Rusty's shop`); refreshStats();
+      const names = ['Six Side Customs', 'Ramey Ave Auto', "Smoke's Garage"];
+      const j = await choose(names.map(n => ({ t: n })), { timer: 20, q: 'Name the shop' });
+      const c = syCars(); c.shop = names[j]; save();
+      await cut(async () => {
+        faceEach('me', 'rusty'); two('me', 'rusty', -1, 3.2);
+        await lines([['rusty', 'Keys. Alarm code is Smoke\'s birthday. It always was.'], ['narr', `Rusty takes down his sign. A new one goes up: ${names[j].toUpperCase()}.`]]);
+        await syTitle('NOW OPEN', names[j].toUpperCase(), 'Car boss · your first business', 3);
+      });
+      unactor('rusty'); syMeter('clean', 5, 'Bought the shop'); syMeter('family', 3);
+      text('mama', `Rusty told me. ${names[j]}. Lord, a business. I'm proud of you baby`);
+      syNote(`You bought Rusty's shop and named it ${names[j]}. It makes money every night you sleep.`);
+    },
+  ], { label: "Car boss · Rusty's Keys", life: 'cars', delay: 0 });
+
+  mis('k2', 3, 'Car boss', 'Hook & Haul', 'A shop needs cars coming in. Earl at Hook & Haul is ready to sell.', [
+    async () => {
+      await call('earl', [['earl', 'Earl Tate, Hook & Haul. Rusty said you might want some trucks.'], ['earl', 'I\'m sixty-eight. My boy don\'t want it. Come look.']]);
+      const { p, ox, oz } = syPlace('hook_haul', 675, 137);
+      actor('earl', p.x + ox * 4, p.z + oz * 4, 0);
+      await talkTo('earl', 'Talk to', { obj: 'Go to Hook & Haul Towing', pin: 'Hook & Haul Towing' });
+      await cut(async () => {
+        faceEach('me', 'earl'); two('me', 'earl', 1, 3.4);
+        await lines([['earl', 'Four trucks, the yard, and the city rotation list. Every wreck on I-30 and Loop 820, we get a call.'], ['earl', 'Sixty thousand. And one more thing you ought to know.']]);
+        close('earl', 1, 1.8); await lines([['earl', 'Hollis Motors pays me to move cars at night. No paperwork. I never asked. You might want to.']]);
+      });
+      unactor('earl'); syMeet('earl');
+      await syUntil(() => S.cash + S.bank >= 60000, 'Get $60,000 to buy Hook & Haul (cash or bank)');
+      const fromBank = Math.max(0, 60000 - S.cash); S.bank -= fromBank; S.cash -= 60000 - fromBank; S.log.unshift('-$60,000 Bought Hook & Haul Towing'); refreshStats();
+      const c = syCars(); c.tow = 1; save();
+      toast('🛻 Hook & Haul is yours. Wrecks go to your shop now.', 'good');
+      // the first night call: a Hollis car on the side of I-30
+      text('earl', 'Night call. Dealer car broke down on I-30 by the Beach St exit. Hollis job. You want to ride on this one');
+      const wx = 2900, wz = -1333;
+      let wreck = null; try { wreck = putCar(scene, 'dodge_charger_scat_pack_2015', '#0b0b0d'); wreck.position.set(wx, 0, wz); wreck.rotation.y = Math.PI / 2 + 0.08; } catch (e) {}
+      setTime('night');
+      await reach(wx, wz + 12, 18, 'Broken-down dealer car (I-30)', { obj: 'Drive to the broken-down Hollis car on I-30' });
+      let i = 0;
+      await cut(async () => {
+        placeMe(wx + 2.5, wz + 4.5, Math.PI); face('me', wx, wz); wide(wx, wz, Math.PI * 0.25, 10, 3.5); await syWait(1.2);
+        await lines([['narr', 'A black Charger with a dealer plate. Hood up. Nobody with it. The driver\'s door panel is loose.'], ['narr', 'Behind the panel: shrink-wrapped cash. Lots of it. And a bill of lading for a hauler going to Laredo.']]);
+        shot([wx + 3, 1.6, wz + 3], [wx, 0.8, wz]);
+        i = await choose([{ t: 'Tow it to Hollis. Touch nothing.', tone: 'deliver', d: { loyalty: 2, clean: 2 } }, { t: 'Take the cash.', tone: 'take', d: { streets: 4, heat: 6 } }, { t: 'Photograph everything for Nia.', tone: 'photos', d: { clean: 2, heat: 2 } }], { timer: 14 });
+      });
+      setTime('day'); if (wreck) { wreck.userData.dead = true; scene.remove(wreck); try { CARS3D.slots.delete(wreck); } catch (e) {} }
+      syFlag('haulerCar', i);
+      if (i === 0) { S.bank += 5000; text('hollis', 'Earl\'s new owner delivered my car without a scratch. Five thousand is in your account. I remember people who know how to not look.'); syNote('You towed a Hollis car full of cash back to him and didn\'t look. He paid you $5,000.'); }
+      else if (i === 1) { S.cash += 22000; refreshStats(); text('hollis', 'A car of mine came back light last night. Twenty-two thousand light. Your tow company, son. Think about that.'); syNote('You took $22,000 out of a Hollis car on I-30. He knows it was your truck.'); }
+      else { syFlag('niaPhotos', 1); text('nia', 'Got the pics. Dealer plate, Laredo hauler, cash in the doors. I\'m not posting this. Not yet. This is how they did Smoke'); syNote('You photographed the cash in a Hollis car and sent it to Nia. The hauler was headed to Laredo.'); }
+      save();
+    },
+  ], { label: 'Car boss · Hook & Haul', life: 'cars', delay: 0 });
+
+  mis('k3', 3, 'Car boss', "Smoke's Box Chevy", 'Smoke\'s old Caprice is at auction. Hollis\'s buyer is there too.', [
+    async () => {
+      await call('rusty', [['rusty', 'You sitting down? Smoke\'s box Chevy. The purple one. It\'s on the auction list at Auto Row tomorrow.'], ['rusty', 'Calloway impounded it the night he died. Now they selling it. And Hollis sent a buyer.']], { mustAnswer: true });
+      const { p, ox, oz } = syPlace('auto_row', 75, -163);
+      actor('rusty', p.x + ox * 5, p.z + oz * 5, 0); actor('hollis', p.x + ox * 5 + oz * 3, p.z + oz * 5 - ox * 3, 0);
+      await talkTo('rusty', 'Stand with', { obj: 'Go to the auction at Cowtown Auto Row', pin: 'Cowtown Auto Row' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'rusty'); face('hollis', foot.x, foot.z); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 12, 4); await syWait(1.4);
+        await lines([['narr', 'Lot 31. 1986 Chevrolet Caprice Classic. Purple. Rusty\'s 454 still under the hood.'], ['narr', 'The auctioneer opens at fifteen thousand. Hollis raises one finger without looking at you.']]);
+        close('hollis', 1, 1.8); await lines([['hollis', 'Forty-five. It\'s just a car, son.']]);
+        ots('me', 'hollis');
+        i = await choose([{ t: 'Sixty-five thousand.', tone: 'outbid', d: { family: 4, streets: 2 } }, { t: 'Forty-six. (he\'ll go higher)', tone: 'test him' }, { t: 'Let him have it.', tone: 'walk', d: { family: -3 } }], { timer: 12 });
+        close('hollis', -1, 1.8); await say('hollis', i === 0 ? 'Sentimental. Your brother was too.' : i === 1 ? 'Seventy. You can\'t afford grief, son.' : 'Smart. Cars don\'t love you back.');
+      });
+      unactor('hollis');
+      if (i === 0) {
+        await syUntil(() => S.cash + S.bank >= 65000, 'Get $65,000 for Smoke\'s Caprice (cash or bank)');
+        const fromBank = Math.max(0, 65000 - S.cash); S.bank -= fromBank; S.cash -= 65000 - fromBank; S.log.unshift('-$65,000 Smoke\'s box Chevy (auction)'); refreshStats();
+        const c = newCar('chevrolet_caprice_classic_box_chevy_1986', '#4b1f6e', 82); c.smoke = 1; c.stash = 1;
+        if (!S.car) { S.car = c; deliverCar(); } else S.garage.push(c);
+        await cut(async () => { faceEach('me', 'rusty'); close('rusty', 1, 1.8); await lines([['rusty', 'Stash spot still in the back seat. Same switch. He never told nobody about that but me.']]); await syTitle('YOURS', "SMOKE'S BOX CHEVY", '1986 Caprice Classic · purple', 3); });
+        syMeter('family', 4, 'Got Smoke\'s car back'); syFlag('smokeCar', 1);
+        text('throttle', 'SMOKE PURPLE BOX BACK ON THE EAST SIDE 💜🕊 his lil brother got it at auction');
+        syNote('You outbid Hollis at the auction and got Smoke\'s purple box Chevy back. It\'s in your garage.');
+      } else { syFlag('smokeCar', 0); text('rusty', 'Hollis got it. He gon park it at the dealership like a trophy. I know he will'); syNote('Hollis bought Smoke\'s purple box Chevy at auction. It sits in his showroom.'); }
+      unactor('rusty'); save();
+    },
+  ], { label: "Car boss · Smoke's Box Chevy", life: 'cars', delay: 0 });
+
+  mis('k4', 3, 'Car boss', 'The Lot', 'A car lot of your own, in Stop Six. Two blocks from where you grew up.', [
+    async () => {
+      text('rusty', 'Empty lot on the east side by Stalcup. City selling it cheap. Cars from your yard, sold off your lot. That\'s how Hollis started');
+      const { p } = syPlace('land_stopsix', 2265, -293);
+      await syUntil(() => S.cash + S.bank >= 120000, 'Get $120,000 for the lot and the first cars (cash or bank)');
+      await reach(p.x, p.z, 16, 'Empty Lot · Stop Six', { obj: 'Go to the empty lot in Stop Six' });
+      const fromBank = Math.max(0, 120000 - S.cash); S.bank -= fromBank; S.cash -= 120000 - fromBank; S.log.unshift('-$120,000 Your car lot in Stop Six'); refreshStats();
+      const c = syCars(); c.lot = 1; save();
+      actor('rusty', p.x + 3, p.z + 2, 0); actor('mook', p.x - 3, p.z + 2, 0); actor('mama', p.x, p.z + 4, 0);
+      await cut(async () => {
+        setTime('sunset'); face('rusty', foot.x, foot.z); face('mook', foot.x, foot.z); face('mama', foot.x, foot.z);
+        wide(p.x, p.z, Math.PI * 0.3, 16, 5); await syWait(1.6);
+        await lines([['narr', `Thirty cars under string lights. A sign: ${syLotName().toUpperCase()}. Buy here, pay here.`], ['mook', 'Big Mama brought a pound cake. To a car lot.']]);
+        two('me', 'mama', 1, 3.4); await lines([['mama', 'Your granddaddy sold cars off a lot like this on Rosedale. Nobody remembers that but me.']]);
+        await lines([['narr', 'A black Escalade rolls by slow. The window comes down halfway. Hollis looks at the sign, then at you. The window goes back up.']]);
+        close('rusty', 1, 1.8); await lines([['rusty', 'He seen it. Good. Two dealers in this city, and one of them is family.']]);
+        await syTitle('GRAND OPENING', syLotName().toUpperCase(), 'Shop · Hook & Haul · the lot', 3);
+      });
+      unactAll(); setTime('day');
+      syMeter('clean', 6, 'Opened the lot'); syMeter('family', 3); syMeter('streets', 2);
+      text('hollis', 'Buy here, pay here. In Stop Six. That\'s cute. I\'ve been selling cars in this city since before you were born.');
+      text('throttle', 'NEW CAR LOT ON THE EAST SIDE 🚗 Smoke lil brother own the shop, the tow trucks AND the lot now');
+      syNote(`You opened a car lot in Stop Six. With the shop and Hook & Haul, your businesses make about ${money(syCarsDaily())} a night.`);
+      text('narr', 'More of the Car boss life comes with the next story update.', { quiet: true });
+    },
+  ], { label: 'Car boss · The Lot', life: 'cars', delay: 0 });
+
   // ---------- TIER 4: The Plug. Runs to Oak Cliff and back with weight in the car; FWPD/DPS on the way (COP) ----------
   const SY_LOU_SPOT = 'gas_oakcliff';
   // the police and jail modules live in their own scopes; reach them through what they expose
@@ -39136,6 +39287,7 @@ body.pm #pm-root { display: block; }
       });
       spend(cost, 'Rusty: stash spot'); S.car.stash = 1; save(); unactor('rusty');
       syNote('Rusty built a stash spot in your car. Traffic stops won\'t find the load.');
+      text('rusty', 'One more thing. I\'m getting old. Come talk to me about the shop sometime. Story app, Lives, Car boss', { quiet: true });
     },
   ], { label: 'Tier 4 · Stash Spot', delay: 40 });
 
