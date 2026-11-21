@@ -37195,6 +37195,8 @@ body.pm #pm-root { display: block; }
     earl: { name: 'Earl', full: 'Earl Tate (Hook & Haul Towing)', col: '#ffa65c', role: 'Owns Hook & Haul. Moves cars at night for Hollis Motors, no questions.', seed: 221, look: { hairStyle: 'buzz', hair: '#bdbdbd', build: 2, height: 1, skin: '#c08a64', top: 'mw_carhartt', bottom: 'md_carpenter', shoes: 'boots_black', hat: 'mw_cap_ranch', facialHair: 'full_beard' } },
     pruitt: { name: 'Officer Pruitt', full: 'Parole Officer Dana Pruitt', col: '#b8e0a0', role: 'Your parole officer. Strict, fair, hears everything.', seed: 231, look: { hairStyle: 'caesar', hair: '#2a2a2a', build: 1, height: 1, skin: '#6b4429', top: 'fleece_black', bottom: 'jeans_black', shoes: 'boots_black', hat: 'no_hat', facialHair: 'goatee' } },
     reed: { name: 'Pastor Reed', full: 'Pastor Calvin Reed', col: '#f3e3a0', role: 'Pastor at Greater Stop Six Baptist. Buried Smoke. Runs Thursday nights for the young boys.', seed: 241, look: { hairStyle: 'buzz', hair: '#9a9a9a', build: 2, height: 1, skin: '#3f2a1a', top: 'mx_leather', bottom: 'jeans_black', shoes: 'boots_black', hat: 'no_hat', facialHair: 'goatee' } },
+    wren: { name: 'Ms. Wren', full: 'Margaret Wren (Wren Botanicals, Denver)', col: '#9be3c9', role: 'Licensed grower in Commerce City. Grows more than Colorado can sell.', seed: 251, fem: 1, look: { hairStyle: 'bun', hair: '#c9c2b8', build: 0, height: 1, skin: '#e3c3a8', top: 'fleece_black', bottom: 'jeans_black', shoes: 'boots_black', hat: 'no_hat', extras: [] } },
+    lilbit: { name: 'Lil Bit', full: 'Jamal "Lil Bit" Carter', col: '#ffd36b', role: 'Fifteen. Runs packs on Ramey. Comes to Pastor Reed\'s Thursday nights.', seed: 261, look: { hairStyle: 'twists', hair: '#111111', build: 0, height: 0, skin: '#55341f', top: 'mh_hoodie_box', bottom: 'joggers_black', shoes: 'mk_jordan_bred', hat: 'no_hat', facialHair: 'none', extras: [] } },
     virgil: { name: 'Virgil', full: 'Virgil (VirL Studios)', col: '#ffc21a', role: 'Owns VirL Studios. Has 11 of Smoke\'s unreleased songs in the vault.', seed: 201, look: { hairStyle: 'locs', hair: '#3a2a1a', build: 1, height: 1, skin: '#55341f', top: 'mx_monogram', bottom: 'jeans_black', shoes: 'kicks_blackout', facialHair: 'beard', extras: ['chain'] } },
     me: { name: 'You', col: '#ffffff' },
     narr: { name: '', col: '#ffffff' },
@@ -39793,6 +39795,201 @@ body.pm #pm-root { display: block; }
     },
   ], { label: 'Going straight · Trade School', life: 'straight', delay: 0 });
 
+  // ---------- TIER 6: The Pipeline. Ms. Wren in Denver; product by truck, plane and boat; felony stop; Mook is the rat; the raid; booked or run ----------
+  // a flight in the story: fade out, land on foot at the other airport (your car stays where you left it)
+  async function syFly(id, fx, fz, txt) {
+    const p = DATA.P.find(x => x.id === id) || { x: fx, z: fz }, [ox, oz] = outDir(p);
+    await syBlack(txt, 2.2); try { closePhone(); } catch (e) {} placeMe(p.x + ox * 6, p.z + oz * 6, 0); try { setPin(p.name, p.x, p.z); } catch (e) {} await syWait(0.6); await syUnblack();
+  }
+  const syMookRat = () => syFlag('mookFate');
+
+  mis('t6a', 6, 'Tier 6', 'Mile High', 'Hollis\'s jet to Denver. A woman named Wren grows more than Colorado can smoke.', [
+    async () => {
+      const hol = syFlag('table');
+      await call('hollis', [['hollis', hol ? 'My plane leaves Alliance at six. Ms. Wren doesn\'t meet people twice, so be impressive the first time.' : 'Lou is gone. That makes you the only one I trust with Denver. Alliance Airport, six a.m.']], { mustAnswer: true });
+      const a = syAt('air_alliance', 910, -4116, 6);
+      await reach(a.x, a.z, 18, 'Alliance Airport Terminal', { obj: 'Go to Alliance Airport. Hollis\'s plane is waiting.' });
+      await syFly('air_den', 13670, 6614, 'Two hours later<br>Denver International');
+      const w = syAt('grow_commerce', 15530, 6124, 6);
+      actor('wren', w.x, w.z, 0);
+      await talkTo('wren', 'Talk to', { obj: 'Meet Ms. Wren at the Commerce City Warehouse', pin: 'Commerce City Warehouse' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'wren'); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 12, 4); await syWait(1.4);
+        await lines([['narr', 'Forty thousand square feet of grow lights. Licensed. Inspected. Every plant has a barcode.'], ['wren', 'Colorado lets me grow it. Colorado doesn\'t let me sell all of it. Texas has eight hundred miles of people who want it.']]);
+        two('me', 'wren', 1, 3.2);
+        await lines([['wren', 'Hollis says you never got chased. That\'s the only reference I care about.'], ['wren', 'Two hundred pounds a week. Truck, plane, or boat. You pick how. You lose a load, you owe me a load.']]);
+        ots('me', 'wren');
+        i = await choose([{ t: '"Two hundred. Every week."', tone: 'in', d: { streets: 5 } }, { t: '"Start with one truck. Let\'s see."', tone: 'careful', d: { clean: 2 } }], { timer: 14 });
+        close('wren', -1, 1.6); await say('wren', i === 0 ? 'Confident. Your brother was confident. Hollis told me.' : 'Careful. I like careful. Careful lives.');
+      });
+      unactor('wren'); syMeet('wren');
+      await syFly('air_alliance', 910, -4116, 'Back to Texas<br>Alliance Airport');
+      syNote('You flew to Denver on Hollis\'s plane and met Ms. Wren. Two hundred pounds a week, by truck, plane or boat.');
+    },
+  ], { label: 'Tier 6 · Mile High', delay: 40 });
+
+  mis('t6b', 6, 'Tier 6', 'By Truck', 'A refrigerated semi full of "produce" comes down I-35 from Denver.', [
+    async () => {
+      text('wren', 'Truck left Commerce City last night. Reefer trailer, lettuce on the back two pallets. Meets you at Alliance Truck & Diesel');
+      const a = syAt('alliance_diesel', 190, -3886, 8);
+      await syUntil(() => driving && !foot.on && !!S.car, 'Get in your car');
+      await reach(a.x, a.z, 18, 'Alliance Truck & Diesel', { obj: 'Meet the truck at Alliance Truck & Diesel' });
+      let i = 0;
+      await cut(async () => {
+        const [mx, mz] = syMe(); shot([mx + 14, 7, mz + 10], [mx, 1.5, mz], { to: [mx + 8, 4, mz + 14], dur: 7 }); await syWait(1.2);
+        await lines([['narr', 'A white Peterbilt with a reefer trailer. The driver doesn\'t get out. He hands down a clipboard.'], ['narr', 'A DPS trooper is parked at the Shell across the road. Eating. Watching.']]);
+        i = await choose([{ t: 'Unload right here. Fast.', tone: 'fast', d: { heat: 4, streets: 2 } }, { t: 'Have the truck follow you to Rusty\'s.', tone: 'move it', d: { clean: 1 } }], { timer: 12 });
+        await lines([['narr', i === 0 ? 'Eight minutes. The trooper finishes his burrito and drives off without looking.' : 'You lead the truck south to Rusty\'s. Nobody follows.']]);
+      });
+      const T = syTrap('ramey') || syOpenTrap('ramey'); T.stock += 2000; const st = sy(); st.pipeline = (st.pipeline || 0) + 1; save();
+      toast('🚚 200 lb from Denver. Ramey Ave is stocked for weeks.', 'good');
+      syMeter('streets', 4, 'First pipeline load');
+      syNote('The first Denver truck came in at Alliance. Two hundred pounds.');
+    },
+  ], { label: 'Tier 6 · By Truck', delay: 40 });
+
+  mis('t6c', 6, 'Tier 6', 'By Air', 'A King Air out of Denver. No flight plan. You\'re in the right seat.', [
+    async () => {
+      text('wren', 'Trucks get weighed. Planes don\'t. Fly back with my pilot Friday');
+      await syFly('air_den', 13670, 6614, 'Friday<br>Denver International, private side');
+      let i = 0;
+      await cut(async () => {
+        await syBlack('Somewhere over the Panhandle', 1.6); await syUnblack();
+        const [mx, mz] = syMe(); shot([mx, 60, mz - 40], [mx, 0, mz + 40], { to: [mx + 20, 50, mz], dur: 7 });
+        await lines([['narr', 'Twin turboprops. Twelve duffels strapped where the seats used to be.'], ['narr', 'The pilot taps the radio. "Customs and Border wants us to squawk and land at Alliance. That\'s not a request."']]);
+        i = await choose([{ t: 'Dump the bags over the pastures.', tone: 'dump', d: { heat: -2, streets: -3 } }, { t: 'Divert to Mineral Wells. Lights off.', tone: 'divert', d: { heat: 6, streets: 5 } }], { timer: 12 });
+        await lines([['narr', i === 0 ? 'Twelve duffels fall into the dark over a cow pasture outside Decatur. You owe Wren a load.' : 'The plane drops onto the Mineral Wells strip with no lights. A van is already there. Nobody follows.']]);
+      });
+      if (i === 0) { syFlag('owesWren', 1); await syFly('air_alliance', 910, -4116, 'Alliance Airport<br>Customs finds nothing'); text('wren', 'You owe me a load. I don\'t forget loads.'); syNote('Customs came on the radio over the Panhandle. You dumped twelve duffels over Decatur. You owe Wren a load.'); }
+      else { const p = DATA.P.find(x => x.id === 'mineral_wells_drag') || { x: -9000, z: -650 }; await syBlack('Mineral Wells', 1.2); placeMe(p.x + 6, p.z + 6, 0); await syUnblack(); const T = syTrap('ramey') || syOpenTrap('ramey'); T.stock += 1500; syFlag('cbpFlag', 1); syNote('You diverted the plane to Mineral Wells with the lights off. The load made it. Customs has the tail number.'); }
+      save();
+    },
+  ], { label: 'Tier 6 · By Air', delay: 40 });
+
+  mis('t6d', 6, 'Tier 6', 'By Water', 'A bass boat on the Trinity at 3 a.m. Nobody checks a bass boat.', [
+    async () => {
+      text('wren', 'Last way in. Boat comes up the river to Trinity Harbor. 3am. Be on the dock');
+      const a = syAt('marina_harbor', 996, 880, 10); setTime('night');
+      await reach(a.x, a.z, 14, 'Trinity Harbor dock', { obj: 'Be on the dock at Trinity Harbor at 3 a.m.' });
+      let i = 0;
+      await cut(async () => {
+        const [mx, mz] = syMe(); shot([mx - 8, 3, mz + 10], [mx, 0.5, mz], { dur: 7 }); await syWait(1.2);
+        await lines([['narr', 'A bass boat, running lights off. Two coolers. A man in a fishing hat who has never fished.'], ['narr', 'Then: blue strobes on the water, a quarter mile down. A DEA boat. Coming slow.']]);
+        i = await choose([{ t: 'Cut the coolers loose. Let them sink.', tone: 'sink it', d: { heat: -2 } }, { t: 'Load them and drive. Now.', tone: 'run', d: { heat: 8, streets: 4 } }], { timer: 10 });
+        if (syFlag('garzaDeal') === 'yes') await lines([['narr', 'Your second phone buzzes. Garza: "That\'s my boat. Walk away. I\'ll explain later."']]);
+      });
+      setTime('day');
+      if (i === 1) { syHeatUp(2); const T = syTrap('ramey') || syOpenTrap('ramey'); T.stock += 800; }
+      syFlag('boatRun', i);
+      syNote(i === 0 ? 'A DEA boat showed up at Trinity Harbor. You sank the coolers.' : 'A DEA boat showed up at Trinity Harbor. You loaded the coolers and ran.');
+    },
+  ], { label: 'Tier 6 · By Water', delay: 40 });
+
+  mis('t6e', 6, 'Tier 6', 'Felony Stop', 'Somebody gave them your plate. Six cars. Guns out.', [
+    async () => {
+      await syUntil(() => driving && !foot.on && !!S.car, 'Get in your car');
+      await syWait(SY.fast ? 0.2 : 6);
+      let i = 0;
+      await cut(async () => {
+        const [mx, mz] = syMe(); actor('calloway', mx + 8, mz + 6, 0); face('calloway', mx, mz);
+        shot([mx + 14, 4, mz + 12], [mx, 1, mz], { to: [mx + 9, 2.4, mz + 7], dur: 7 });
+        await lines([['narr', 'Spotlights from every side. A loudspeaker: "DRIVER. TURN OFF THE ENGINE. DROP THE KEYS OUT THE WINDOW."'], ['narr', 'Six units. Rifles. You walk backwards toward the voices with your hands up.']]);
+        await lines([['narr', syStash() ? 'They tear the car apart for forty minutes. The stash spot holds. Nothing.' : 'They tear the car apart for forty minutes. They find the cash in the trunk.']]);
+        close('calloway', 1, 1.8); await lines([['calloway', 'Somebody close to you called in your plate, my man. Somebody real close.'], ['calloway', syStash() ? 'Go home. Next time you won\'t be lucky.' : 'That cash is evidence now. Go home before I change my mind.']]);
+        ots('me', 'calloway');
+        i = await choose([{ t: '"Who called it in?"', tone: 'ask', d: { heat: 2 } }, { t: 'Say nothing. Get in your car.', tone: 'silent', d: { clean: 1 } }], { timer: 10 });
+        if (i === 0) await say('calloway', 'Ask your best friend. Ask him what he does on Tuesdays.');
+      });
+      unactor('calloway');
+      if (!syStash()) { const took = Math.min(S.cash, 15000); S.cash -= took; S.log.unshift(`-${money(took)} Seized at a felony stop`); refreshStats(); }
+      syFlag('felonyStop', 1); save();
+      syNote('Six FWPD units did a felony stop on you. Calloway said somebody close called in your plate.');
+    },
+  ], { label: 'Tier 6 · Felony Stop', delay: 40 });
+
+  mis('t6f', 6, 'Tier 6', 'The Rat', 'Tuesdays. Mook goes somewhere every Tuesday.', [
+    async () => {
+      text('nia', 'You asked me to follow Mook on a Tuesday. I did. Come to the Dickies lot. You need to see it yourself');
+      const a = syAt('dickies_arena', -375, -13, 10); setTime('night');
+      actor('nia', a.x, a.z, 0); SY.actors.get('nia').pose = 'phone';
+      await talkTo('nia', 'Talk to', { obj: 'Meet Nia in the Dickies Arena lot', pin: 'Dickies Arena' });
+      await cut(async () => {
+        faceEach('me', 'nia'); close('nia', 1, 1.6);
+        await lines([['narr', 'Photos. Mook\'s white Charger in Calloway\'s driveway in Benbrook. Mook handing Calloway a phone. Mook laughing.'], ['nia', 'Six Tuesdays in a row. And the night Smoke died? Mook\'s Charger was parked at Ironline. I checked the old pit photos.']]);
+        await lines([['nia', 'Mook didn\'t pull the trigger. But he told Calloway where Smoke would be. Smoke told him. His best friend.']]);
+      });
+      SY.actors.get('nia').pose = null; unactor('nia');
+      const s = spot('trap', 1, 3); actor('mook', s.x, s.z, 0);
+      await talkTo('mook', 'Talk to', { obj: 'Find Mook at the Ramey Ave trap', pin: 'Ramey Ave Trap House' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'mook'); two('me', 'mook', 1, 3.2);
+        await lines([['mook', 'Why you looking at me like that.'], ['narr', 'You show him the photo. Calloway\'s driveway. His car.']]);
+        close('mook', 1, 1.6);
+        await lines([['mook', 'He caught me with a pack two years ago. It was that or fifteen years. I didn\'t know what he was gon do to Smoke. I swear on Big Mama I didn\'t know.'], ['mook', 'I been trying to make it right. Every day. With you.']]);
+        ots('me', 'mook');
+        i = await choose([{ t: 'Forgive him. Make him work for Garza now.', tone: 'forgive', d: { loyalty: 6, family: 2 } }, { t: 'Cut him off. He\'s dead to you.', tone: 'cut off', d: { loyalty: -4 } }, { t: 'Take him for a ride to the river.', tone: 'handle it', d: { streets: 10, loyalty: -12, family: -12, heat: 8 } }], { timer: 18 });
+        if (i === 0) { close('mook', 1, 1.6); await lines([['mook', 'Whatever you need. Whatever. I\'ll wear the wire on Calloway myself.']]); }
+        else if (i === 1) { close('mook', 1, 1.6); await lines([['mook', 'Twenty years, bro. Twenty years.'], ['narr', 'He walks to his car and doesn\'t look back.']]); }
+        else { await lines([['narr', 'The Trinity, below the Rosedale bridge. Two people walk down to the water.']]); await syBlack('', 2.4); await syUnblack(); await lines([['narr', 'One walks back up.']]); }
+      });
+      unactor('mook'); setTime('day');
+      syFlag('mookFate', ['forgive', 'cut', 'handled'][i]);
+      if (i === 2) { text('mama', 'Mook mama called me crying. Nobody seen him. Baby what happened. Look at me when you come home'); syMeter('family', -6); }
+      syNote(['You forgave Mook for giving Smoke up to Calloway. He\'s going to work against Calloway for you now.', 'Mook told Calloway where Smoke would be the night he died. You cut him off.', 'Mook told Calloway where Smoke would be the night he died. You took him to the river. He didn\'t come back.'][i]);
+    },
+  ], { label: 'Tier 6 · The Rat', delay: 40 });
+
+  mis('t6g', 6, 'Tier 6', 'The Raid', '5:40 a.m. Flash-bangs on Ramey Ave.', [
+    async () => {
+      const s = spot('trap', 1, 3); setTime('night');
+      actor('lilbit', s.x + 1.5, s.z + 1, 0);
+      await reach(s.x, s.z, 10, 'Ramey Ave Trap House', { obj: 'Lil Bit texted 911 from the trap. Get to Ramey Ave.' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'lilbit'); const [mx, mz] = syMe(); shot([mx + 12, 5, mz + 10], [mx, 1, mz], { to: [mx + 6, 2.2, mz + 6], dur: 6, shake: 0.4 });
+        await lines([['narr', 'A BearCat armored truck in the front yard. Flash-bangs. Glass everywhere. "SEARCH WARRANT. SEARCH WARRANT."'], ['lilbit', 'They coming in the back too! It\'s my pack in the kitchen, it\'s mine, I\'ll take it!']]);
+        close('lilbit', 1, 1.5); await lines([['narr', 'Fifteen years old. Shaking. Pastor Reed\'s Thursday-night program wristband still on.']]);
+        ots('me', 'lilbit');
+        i = await choose([{ t: 'Push Lil Bit out the side gate. Stay and get booked.', tone: 'take it', d: { family: 6, loyalty: 6, streets: 4 } }, { t: 'Grab Lil Bit and run for Uncle Bo\'s ranch.', tone: 'run', d: { heat: 10, streets: 3 } }], { timer: 14 });
+      });
+      unactor('lilbit'); setTime('day');
+      syFlag('raid', i === 0 ? 'booked' : 'run'); syFlag('lilBit', i === 0 ? 'free' : 'with you');
+    },
+    async () => {
+      if (syFlag('raid') === 'booked') {
+        await cut(async () => {
+          await syBlack('Tarrant County Jail<br>Booked: possession with intent', 2.4); await syUnblack();
+          await syTitle('TDCJ', 'BACK INSIDE', 'Ninety days while the appeal runs', 3);
+        });
+        await call('mama', [['mama', 'I\'m not crying. I\'m not. Lil Bit came to church Sunday. Sat right next to me. Said you saved his life.']]);
+        await syUntil(() => S.cash + S.bank >= 50000, 'Get $50,000 for the appeal lawyer (cash or bank)');
+        syFromBank(50000); S.log.unshift('-$50,000 Appeal lawyer'); save();
+        await cut(async () => { await syBlack('Ninety-one days later<br>Appeal granted: bad warrant', 2.6); await syUnblack(); });
+        syMeter('heat', -12, 'Appeal won'); syNote('You took the charge so Lil Bit could get out the gate. You did ninety-one days and won on appeal. Bad warrant.');
+      } else {
+        const p = DATA.P.find(x => x.id === 'land_homestead') || { x: 18, z: 4090 };
+        actor('bo', p.x + 34, p.z - 6, 0);
+        await talkTo('bo', 'Get to', { obj: 'Run to Uncle Bo\'s ranch in Johnson County', pin: 'Uncle Bo\'s land' });
+        await cut(async () => {
+          faceEach('me', 'bo'); two('me', 'bo', 1, 3.4);
+          await lines([['bo', 'Put the boy in the back bedroom. Put your phone in the stock tank.'], ['bo', 'They gon take the house on Ramey. Civil forfeiture. Pearl is staying with me now. Nobody knocks on this door without me hearing the dogs first.']]);
+        });
+        unactor('bo'); syFlag('lostHouse', 1); syMeter('family', -4, 'Lost the Ramey house');
+        syNote('You ran from the raid with Lil Bit to Uncle Bo\'s ranch. The county took the Ramey Ave house. Big Mama lives with Bo now.');
+      }
+      const st = sy();
+      await cut(async () => {
+        const [mx, mz] = syMe(); shot([mx + 8, 6, mz + 8], [mx, 1.2, mz], { to: [mx + 16, 14, mz + 16], dur: 8 });
+        await syTitle('TIER 6 COMPLETE', 'THE PIPELINE', syFlag('raid') === 'booked' ? 'You took the charge. You came home.' : 'On the run. Bo\'s dogs on the porch.', 3.4);
+        await syTitle('NEXT', 'TIER 7 · MURDA WORTH', 'Coming in the next story update', 2.6);
+      });
+      st.tier = 7; save();
+      text('hollis', syMookRat() === 'handled' ? 'I heard about your friend. That was a business decision. I respect business decisions.' : 'Ironline. Saturday after next. Pink slips. You and me. Let\'s end this like your brother would have.');
+    },
+  ], { label: 'Tier 6 · The Raid', delay: 60 });
+
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
   PHONE_APPS.splice(1, 0, { id: 'texts', name: 'Messages', icon: '💬', bg: 'linear-gradient(135deg,#5bd36b,#1e9e3a)' });
@@ -39828,7 +40025,7 @@ body.pm #pm-root { display: block; }
       }
       for (const [t, k, nm] of TIERS) {
         const ms = M.filter(m => m.tier === t && !m.life); body += `<div class="sec">${k} · ${nm}</div>`;
-        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 6 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
+        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 7 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
         ms.forEach((m, i) => { const done = st.done.includes(m.id), now = st.m === m.id || (!st.m && st.next === m.id); body += `<div class="ms ${done ? 'done' : now ? 'now' : 'lock'}"><div class="n">${done ? '✓' : i + 1}</div><div><h5>${esc(m.title)}</h5><p>${done || now ? esc(m.brief) : 'Locked'}</p></div></div>`; });
       }
     } else if (tab === 'journal') body += st.journal.length ? st.journal.map(j => `<div class="jr">${esc(j)}</div>`).join('') : '<div class="jr">Nothing yet.</div>';
