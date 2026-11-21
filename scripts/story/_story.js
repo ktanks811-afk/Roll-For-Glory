@@ -431,8 +431,8 @@
     g.fillStyle = '#e9c46a'; g.fillRect(250, 395, 100, 10);
     g.restore();
     g.font = 'bold 150px Bungee, Impact, sans-serif'; g.textBaseline = 'middle';
-    const word = 'SMOKE'; g.lineWidth = 14; g.strokeStyle = '#111'; g.fillStyle = '#ffd23f';
-    if (stage >= 1) { g.save(); g.beginPath(); g.rect(0, 0, W, 512); g.clip(); g.strokeText(word, 430, 190); g.fillText(word, 430, 190); g.font = 'bold 56px Bungee, Impact, sans-serif'; g.fillStyle = '#fff'; g.lineWidth = 8; g.strokeText('REST EASY', 470, 300); g.fillText('REST EASY', 470, 300); g.font = 'bold 40px "Barlow Condensed", sans-serif'; g.fillText('1998 – 2026 · STOP SIX FOREVER', 470, 370); g.restore(); }
+    const word = (stage >= 3 && syFlag('muralWord')) || 'SMOKE', sub = (stage >= 3 && syFlag('muralSub')) || 'REST EASY'; for (let fs = 150; fs > 40 && g.measureText(word).width > 570; ) { fs -= 8; g.font = `bold ${fs}px Bungee, Impact, sans-serif`; } g.lineWidth = 14; g.strokeStyle = '#111'; g.fillStyle = '#ffd23f';
+    if (stage >= 1) { g.save(); g.beginPath(); g.rect(0, 0, W, 512); g.clip(); g.strokeText(word, 430, 190); g.fillText(word, 430, 190); g.font = 'bold 56px Bungee, Impact, sans-serif'; g.fillStyle = '#fff'; g.lineWidth = 8; for (let fs = 56; fs > 24 && g.measureText(sub).width > 530; ) { fs -= 4; g.font = `bold ${fs}px Bungee, Impact, sans-serif`; } g.strokeText(sub, 470, 300); g.fillText(sub, 470, 300); g.font = 'bold 40px "Barlow Condensed", sans-serif'; for (let fs = 40; fs > 20 && g.measureText('1998 – 2026 · STOP SIX FOREVER').width > 520; ) { fs -= 2; g.font = `bold ${fs}px "Barlow Condensed", sans-serif`; } g.fillText('1998 – 2026 · STOP SIX FOREVER', 470, 370); g.restore(); }
     if (stage < 2) { g.fillStyle = 'rgba(210,205,195,.9)'; g.fillRect(W, 0, 1024 - W, 512); g.strokeStyle = 'rgba(120,110,100,.8)'; g.lineWidth = 3; g.strokeRect(W + 30, 40, 360, 420); g.fillStyle = '#6a5f55'; g.font = 'bold 34px "Barlow Condensed", sans-serif'; g.fillText('(still painting)', W + 80, 250); }
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return t;
   }
@@ -2821,12 +2821,177 @@
       await cut(async () => {
         const [mx, mz] = syMe(); shot([mx + 8, 6, mz + 8], [mx, 1.2, mz], { to: [mx + 16, 14, mz + 16], dur: 8 });
         await syTitle('TIER 6 COMPLETE', 'THE PIPELINE', syFlag('raid') === 'booked' ? 'You took the charge. You came home.' : 'On the run. Bo\'s dogs on the porch.', 3.4);
-        await syTitle('NEXT', 'TIER 7 · MURDA WORTH', 'Coming in the next story update', 2.6);
+        await syTitle('NEXT', 'TIER 7 · MURDA WORTH', 'Saint. The books. Pink slips.', 2.6);
       });
       st.tier = 7; save();
       text('hollis', syMookRat() === 'handled' ? 'I heard about your friend. That was a business decision. I respect business decisions.' : 'Ironline. Saturday after next. Pink slips. You and me. Let\'s end this like your brother would have.');
     },
   ], { label: 'Tier 6 · The Raid', delay: 60 });
+
+  // ---------- TIER 7: Murda Worth (finale). Saint, Hollis's books, Calloway at lane two, the pink-slip race, and your ending ----------
+  const SY_ENDINGS = {
+    legacy: { t: 'LEGACY', s: 'You finished what Smoke started.', word: 'SMOKE', sub: 'JUSTICE' },
+    king: { t: 'KING OF MURDA WORTH', s: 'Rich. Feared. Alone.', word: 'LIL SMOKE', sub: 'KING OF THE EAST SIDE' },
+    gone: { t: 'GONE', s: 'Big Mama, Smoke\'s money, and a one-way ticket.', word: 'SMOKE', sub: 'WE MADE IT OUT' },
+    legend: { t: 'ANOTHER LEGEND', s: 'Ironline took two brothers.', word: 'SMOKE & LIL SMOKE', sub: 'REST EASY' },
+    life: { t: 'LIFE', s: 'TDCJ. Visiting hours are Saturday.', word: 'FREE LIL SMOKE', sub: 'STOP SIX LOVES YOU' },
+  };
+
+  mis('t7a', 7, 'Tier 7', 'The Sit-Down', 'Saint wants to talk before Hollis\'s race. Northside or no side.', [
+    async () => {
+      const ally = (syFlag('saintAlly') || 0) > 0;
+      text('saint', ally ? 'We been good since the hit. Hollis asked me to sit on you Saturday. Come talk' : 'Hollis paying me to watch you Saturday. I ain\'t decided. Come to Northside');
+      const a = syAt('corner_northside', 75, -463, 4);
+      actor('saint', a.x, a.z, 0); actor('saint2', a.x + a.oz * 2.4, a.z - a.ox * 2.4, 0);
+      await talkTo('saint', 'Talk to', { obj: 'Sit down with Saint on the Northside', pin: 'Northside corner' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'saint'); face('saint2', foot.x, foot.z); two('me', 'saint', 1, 3.4);
+        await lines([['saint', 'Hollis put money on both of us our whole lives. Smoke knew that. That\'s why he was trying to get out.'], ['saint', 'Saturday Hollis wants me at Ironline with shooters. In case you win.']]);
+        ots('me', 'saint');
+        i = await choose([{ t: '"Split the city with me. Hollis is the problem."', tone: 'ally', d: { loyalty: 6, streets: 4, heat: -4 } }, { t: '"Northside is mine after Saturday."', tone: 'war', d: { streets: 8, heat: 10, loyalty: -4 } }], { timer: 16 });
+        close('saint', 1, 1.8); await say('saint', i === 0 ? 'East side and Northside on the same side. Smoke would have laughed. Saturday my people watch YOUR back.' : 'Then we see who still standing Sunday.');
+      });
+      unactor('saint'); unactor('saint2');
+      syFlag('finalSaint', i === 0 ? 'ally' : 'war');
+      if (i === 1 && syH()) try { hBeef('northside', 40); } catch (e) {}
+      syNote(i === 0 ? 'You and Saint made peace for good. On Saturday, Northside watches your back at Ironline.' : 'You told Saint Northside is yours after Saturday. It\'s war.');
+    },
+  ], { label: 'Tier 7 · The Sit-Down', delay: 40 });
+
+  mis('t7b', 7, 'Tier 7', 'The Books', 'Hollis keeps a second set of books. Every hauler, every payoff, every name.', [
+    async () => {
+      const c = sy().cars || {};
+      text('nia', 'Hollis keeps the real books in his office safe. Earl says the Laredo invoices go in a red binder');
+      const a = syAt('auto_row', 75, -163, 14); setTime('night');
+      await reach(a.x, a.z, 10, 'Hollis Motors back lot', { obj: 'Break into Hollis Motors after hours' });
+      const opts = [{ t: 'Pick the lock on the service door.', tone: 'break in', d: { heat: 6 } }];
+      if (c.tow) opts.unshift({ t: 'Pull up in a Hook & Haul truck. "Night pickup."', tone: 'tow truck', d: { clean: 2 } });
+      if (syFlag('mookFate') === 'forgive') opts.unshift({ t: 'Mook keeps the night guard talking.', tone: 'Mook', d: { loyalty: 4 } });
+      let i = 0;
+      await cut(async () => {
+        const [mx, mz] = syMe(); shot([mx + 10, 4, mz + 8], [mx, 1, mz], { dur: 7 }); await syWait(1);
+        await lines([['narr', 'Hollis Motors at 1 a.m. One night guard, one camera on the service bay, Smoke\'s purple Caprice under the showroom lights if Hollis won it.']]);
+        i = await choose(opts, { timer: 14 });
+        await lines([['narr', opts[i].tone === 'Mook' ? 'Mook talks to the guard about the Cowboys for twenty minutes. He doesn\'t look at you once.' : opts[i].tone === 'tow truck' ? 'The guard opens the gate for the tow truck without a question. Hollis trained him that way.' : 'The lock takes four minutes. The camera takes your picture.'], ['narr', 'The safe is behind a photo of Hollis with the mayor. The combination is the date Ironline opened. A red binder. Laredo. Port of Houston. CALLOWAY, $4,000 WEEKLY.']]);
+      });
+      setTime('day');
+      syFlag('books', 1); if (opts[i].tone === 'break in') syFlag('booksCam', 1);
+      syMeter('streets', 3, 'Hollis\'s books');
+      syNote('You took Hollis\'s red binder out of his office safe: the haulers, the Port of Houston, and Calloway\'s $4,000 a week.');
+    },
+  ], { label: 'Tier 7 · The Books', delay: 40 });
+
+  mis('t7c', 7, 'Tier 7', 'Lane Two', 'Calloway knows the binder is gone. He\'s running. He\'ll run to where it started.', [
+    async () => {
+      text('garza', 'Calloway cleared out his desk and turned off his phone. Every cop in Tarrant County is looking for him. Where would he go');
+      const ir = DATA.P.find(x => x.id === 'ironline') || { x: 34, z: 1260 }, [ox, oz] = outDir(ir), g = { x: ir.x - ox * 30 + oz * 20, z: ir.z - oz * 30 - ox * 20 };
+      setTime('night');
+      actor('calloway', g.x, g.z, 0);
+      await talkTo('calloway', 'Face', { obj: 'Find Calloway at the Ironline back gate, by lane two', pin: 'Ironline back gate', r: 4 });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'calloway'); wide(g.x, g.z, Math.PI * 0.3, 10, 3); await syWait(1.2);
+        await lines([['calloway', 'Right here. He was on his knees right here and he still talked trash. Y\'all don\'t ever stop talking.'], ['calloway', 'I didn\'t want to. Hollis said Smoke had the book. Mook said where. I just... did the job.']]);
+        close('calloway', 1, 1.6); await lines([['calloway', 'So what now, little brother.']]);
+        ots('me', 'calloway');
+        i = await choose([{ t: 'Cuff him to the gate. Call Garza.', tone: 'arrest', d: { clean: 8, family: 4, heat: -6 } }, { t: 'Film his confession. Send it to Nia.', tone: 'expose', d: { streets: 4, clean: 4 } }, { t: 'Lane two. Same as Smoke.', tone: 'end it', d: { streets: 10, heat: 18, family: -8 } }], { timer: 16 });
+        if (i === 2) { await syBlack('', 2.4); await syUnblack(); await lines([['narr', 'In the morning, a track worker finds an unmarked Tahoe at the back gate with the engine still running.']]); }
+        else await lines([['narr', i === 0 ? 'Blue lights fill the back lot. Garza walks up slow. "Detective Calloway. You have the right to remain silent."' : 'Nia posts it at 3 a.m. By breakfast it has four million views. Calloway turns himself in by lunch.']]);
+      });
+      unactor('calloway'); setTime('day');
+      syFlag('callowayFate', ['arrested', 'exposed', 'dead'][i]);
+      if (i === 1) text('throttle', 'FWPD DETECTIVE CONFESSES ON VIDEO TO THE IRONLINE MURDER 😳 #JusticeForSmoke');
+      syNote(['You cuffed Calloway to the Ironline back gate and called Garza. He confessed.', 'You filmed Calloway\'s confession at lane two. Nia posted it. He turned himself in.', 'You found Calloway at lane two. He never left Ironline.'][i]);
+    },
+  ], { label: 'Tier 7 · Lane Two', delay: 40 });
+
+  mis('t7d', 7, 'Tier 7', 'Pink Slips', 'Hollis bets everything on one race at Ironline. His dealership against everything you own.', [
+    async () => {
+      await call('hollis', [['hollis', 'You took my books and my detective. You haven\'t taken me. Ironline, Saturday night. Pink slips.'], ['hollis', 'Hollis Motors against everything you own. Your brother never beat me. He just died trying.']], { mustAnswer: true });
+      const w0 = sy().dragWins || 0;
+      await syUntil(() => (sy().dragWins || 0) > w0 && sy().lastDragAt === 'ironline', 'Win a drag race at Ironline Dragway against Hollis (pink slips)');
+      const a = syAt('ironline', 34, 1260, 8); setTime('night');
+      actor('hollis', a.x, a.z, 0);
+      if (syFlag('finalSaint') === 'ally') actor('saint', a.x + a.oz * 3, a.z - a.ox * 3, 0);
+      if (syFlag('mookFate') === 'forgive') actor('mook', a.x - a.oz * 3, a.z + a.ox * 3, 0);
+      await talkTo('hollis', 'Collect from', { obj: 'You won. Go collect Hollis\'s pink slip.', pin: 'Ironline Dragway' });
+      await cut(async () => {
+        faceEach('me', 'hollis'); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 12, 4); await syWait(1.4);
+        await lines([['narr', 'The win light on your lane. The stands go silent, then the east side section loses its mind.'], ['hollis', 'Forty years. Forty years I built this city.']]);
+        close('hollis', 1, 1.8); await lines([['narr', 'Hollis signs the title to Hollis Motors on the hood of your car. His hand shakes on the H.']]);
+        if (syFlag('books') && (syFlag('garzaDeal') === 'yes' || syFlag('callowayFate') === 'arrested')) await lines([['narr', 'Then the DEA comes through the pit gate. Garza holds up the red binder. "Deacon Raymond Hollis."']]);
+      });
+      unactAll(); setTime('day');
+      syFlag('beatHollis', 1); const c = syCars(); c.dealer = 1; save();
+      syMeter('streets', 6, 'Beat Hollis at Ironline');
+      syNote('You beat Deacon Hollis at Ironline for pink slips. Hollis Motors is yours.');
+    },
+  ], { label: 'Tier 7 · Pink Slips', delay: 40 });
+
+  mis('t7e', 7, 'Tier 7', 'Murda Worth', 'Everything you did comes due. This is how it ends.', [
+    async () => {
+      const st = sy(), m = st.meters;
+      let k = null;
+      if (m.heat >= 75 && m.loyalty <= 25) k = 'life';
+      else if (m.heat >= 60 && m.loyalty < 40) k = 'legend';
+      if (!k) {
+        const opts = [];
+        if (syFlag('books') && m.heat < 55 && m.family >= 45) opts.push({ k: 'legacy', t: 'Give Garza the books. Testify like Smoke was going to.', tone: 'Legacy' });
+        if (m.streets >= 40) opts.push({ k: 'king', t: 'Take Hollis\'s haulers. Run all of North Texas.', tone: 'King' });
+        opts.push({ k: 'gone', t: 'Take Big Mama and Smoke\'s money. Leave Texas.', tone: 'Gone' });
+        await call('mama', [['mama', 'Baby. It\'s over, ain\'t it? Whatever you decide, decide it with your whole chest. Like he never could.']]);
+        const i = await choose(opts.map(o => ({ t: o.t, tone: o.tone })), { timer: 25, q: 'How does it end?' });
+        k = opts[i].k;
+      }
+      st.ending = k; save();
+      const E = SY_ENDINGS[k];
+      const c = spot('church', 1, 3), h = spot('mama', 1, 2.6);
+      await cut(async () => {
+        if (k === 'legacy') {
+          await syBlack('Six months later<br>United States District Court, Northern District of Texas', 2.6); await syUnblack();
+          actor('mama', h.x, h.z, h.yaw + Math.PI); actor('garza', h.x + 2, h.z + 1, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3.2);
+          await lines([['narr', 'Hollis: forty years federal. The Port woman: twenty. Calloway testified to save himself and got thirty anyway.'], ['garza', 'Your brother tried to do this and they killed him for it. You did it and you\'re standing on Pearl\'s porch.'], ['mama', 'Come in and eat. Both of y\'all.']]);
+        } else if (k === 'king') {
+          await syBlack('One year later', 2); await syUnblack();
+          const [mx, mz] = syMe(); shot([mx + 30, 40, mz + 30], [mx, 0, mz], { to: [mx + 60, 70, mz + 10], dur: 8 });
+          await lines([['narr', 'Hollis\'s haulers paint over the H. Wren ships twice as much. Every corner from Stop Six to Northside pays you.'], ['narr', 'Big Mama stopped answering your calls in March. Rusty retired to Galveston and didn\'t leave a number.'], ['narr', 'Biggest house in Westover Hills. Fourteen rooms. You sleep in one.']]);
+        } else if (k === 'gone') {
+          await syBlack('DFW International<br>One way', 2.4); await syUnblack();
+          actor('mama', foot.x + 1.4, foot.z + 0.6, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3);
+          await lines([['mama', 'I ain\'t never been on a plane. You hold my hand when it goes up.'], ['narr', 'Smoke\'s duffel from Uncle Bo\'s windmill. Two tickets. Fort Worth gets small in the window, then it\'s gone.']]);
+        } else if (k === 'legend') {
+          await lines([['narr', 'Leaving Ironline. The win still ringing in your ears. A car with no plates rolls up slow on the access road.']]);
+          await syBlack('', 2.6); await syUnblack();
+          actor('mama', c.x, c.z, c.yaw + Math.PI); actor('reed', c.x + 2, c.z + 1, 0); face('mama', c.x + 1, c.z + 6);
+          shot([c.x + 8, 3, c.z + 8], [c.x, 1.2, c.z], { dur: 8 });
+          await lines([['narr', 'Greater Stop Six Baptist. The same pews. Two photos on the easel now.'], ['reed', 'We are here, again, for a son of Stop Six.'], ['mama', 'Both my babies. Both of them. Lord, what did that track want from me.']]);
+        } else {
+          await syBlack('Ten months later<br>TDCJ Coffield Unit · Life', 2.8); await syUnblack();
+          actor('mama', foot.x + 1.2, foot.z, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3);
+          await lines([['narr', 'Saturday. Visiting room. Plexiglass. Big Mama in her church hat.'], ['mama', 'Lil Bit graduated. Pastor Reed got him a job. He asked me to tell you he\'s doing it for you.'], ['mama', 'I\'ll be here next Saturday. And the one after. Till the Lord or the parole board says different.']]);
+        }
+        syFlag('muralWord', E.word); syFlag('muralSub', E.sub); syFlag('mural', 3); syMural();
+        await syTitle('THE END', E.t, E.s, 4);
+      });
+      unactAll();
+      if (k === 'legend' || k === 'life') st.flags.endedHard = 1;
+    },
+    async () => {
+      const st = sy(), E = SY_ENDINGS[st.ending] || SY_ENDINGS.gone;
+      const p = DATA.P.find(x => x.id === 'plug') || { x: 1915, z: -143 }, [ox, oz] = outDir(p), tx = -oz, tz = ox;
+      await reach(p.x + ox * 8 + tx * 6.5, p.z + oz * 8 + tz * 6.5, 8, 'The Stop Six mural', { obj: 'Go see the finished mural at Lil Tre\'s', foot: true });
+      const lives = Object.keys(SY_LIFE).filter(k => { const ch = M.filter(m => m.life === k); return ch.length && ch.every(m => st.done.includes(m.id)); }).map(k => SY_LIFE[k].n);
+      await cut(async () => {
+        const mx = p.x + ox * 8 + tx * 6.5, mz = p.z + oz * 8 + tz * 6.5; shot([mx + ox * 2, 1.8, mz + oz * 2], [p.x + tx * 6.5, 2.1, p.z + tz * 6.5], { dur: 8 });
+        await lines([['narr', `The wall is finished. ${E.word}. ${E.sub}.`], ['narr', lives.length ? `The block remembers more than the dope game: ${lives.join(', ')}.` : 'The block remembers.']]);
+        await syTitle('MURDA WORTH', 'STORY COMPLETE', 'Free roam continues. Your lives keep going.', 4);
+      });
+      st.tier = 8; st.flags.complete = 1; save();
+      text('throttle', `STOP SIX MURAL FINISHED 🎨 ${E.word} · ${E.sub}`);
+      syNote(`The end: ${E.t}. ${E.s} The Stop Six mural reads "${E.word}."`);
+    },
+  ], { label: 'Tier 7 · Murda Worth', delay: 60 });
 
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
@@ -2863,7 +3028,7 @@
       }
       for (const [t, k, nm] of TIERS) {
         const ms = M.filter(m => m.tier === t && !m.life); body += `<div class="sec">${k} · ${nm}</div>`;
-        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 7 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
+        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 8 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
         ms.forEach((m, i) => { const done = st.done.includes(m.id), now = st.m === m.id || (!st.m && st.next === m.id); body += `<div class="ms ${done ? 'done' : now ? 'now' : 'lock'}"><div class="n">${done ? '✓' : i + 1}</div><div><h5>${esc(m.title)}</h5><p>${done || now ? esc(m.brief) : 'Locked'}</p></div></div>`; });
       }
     } else if (tab === 'journal') body += st.journal.length ? st.journal.map(j => `<div class="jr">${esc(j)}</div>`).join('') : '<div class="jr">Nothing yet.</div>';
