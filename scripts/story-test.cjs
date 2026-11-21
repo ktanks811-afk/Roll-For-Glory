@@ -50,7 +50,8 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
     // satisfy objectives
     const o = st.obj || '';
     if (st.talk) { await ev(() => { const T = window.__story; const A = T.SY.actors.get(T.SY.talk.who); const M = window.__map; if (A) { if (!M.foot.on) M.getOut && M.getOut(); M.foot.x = A.x + 1.4; M.foot.z = A.z + 0.4; } }); await pg.waitForTimeout(700); await ev(() => { const T = window.__story; if (T.SY.talk) T.SY.talk.go(); }); continue; }
-    if (/Get in/.test(o)) { await ev(() => { const M = window.__map; if (M.foot.on) { if (/Mook is driving/.test(window.__story.SY.obj || '')) window.__story.giveCar(); M.getIn(); } }); await pg.waitForTimeout(600); continue; }
+    if (/Get in/.test(o)) { await ev(() => { const M = window.__map; if (M.foot.on) { if (/Mook is driving/.test(window.__story.SY.obj || '') || !M.S.car) window.__story.giveCar(); M.getIn(); } }); await pg.waitForTimeout(600); continue; }
+    if (/Drive the load back/.test(o) && st.pin) { await shot('load-run'); await ev(p => { const M = window.__map; window.__story.copClear(); if (M.foot.on) M.getIn(); M.drvS().x = p[0] + 3; M.drvS().z = p[1] + 3; }, st.pin); await pg.waitForTimeout(1200); continue; }
     if (/Serve|serve|Keep serving/.test(o) || (/new number/.test(o))) {
       if (st.orders.length) { const [x, z, set] = st.orders[0]; await ev(([x, z]) => { const M = window.__map; if (!M.foot.on) M.getOut(); M.foot.x = x + 1.2; M.foot.z = z + 0.8; }, [x, z]); await pg.waitForTimeout(900);
         if (!set) await ev(() => { const T = window.__story, s = T.sy(), M = window.__map; const o = s.orders.find(o => !o.set && Math.hypot(o.x - M.foot.x, o.z - M.foot.z) < 3); if (o) { if (s.pack < o.qty) s.pack = o.qty + 5; T.syServe(o); } });
