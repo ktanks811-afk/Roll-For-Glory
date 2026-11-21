@@ -41,7 +41,7 @@ const log = o => console.log(JSON.stringify(o));
 
   if (!ONLY || ONLY.includes('1')) {
     await lockUp(['pom', 'unl_carry']);
-    log(Object.assign({ test: '1a. county, cell' }, await st()));
+    log(Object.assign({ test: '1a. county, cell' }, await st(), { stations: await ev(() => window.__map.IN.stations.map(s => s.name)) }));
     await ev(() => { window.__map.S.bank = 2000; });
     // the connect
     const buy = await ev(() => { const Y = window.__yard, m = Y.ydConnect(); const r = m.rows.filter(r => /Weed|Squares|Shank|Bars/.test(r.t)); r.forEach(x => x.act()); r[0].act(); return { title: m.title, bought: r.map(x => x.t) }; });
