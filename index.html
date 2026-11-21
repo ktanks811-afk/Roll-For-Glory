@@ -2926,7 +2926,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   // build the hair for a look. hide: 'all' (ski mask), 'top' (hat or durag)
   function buildHair(look, hide) {
     const id = HAIR3D[look.hairStyle] ? look.hairStyle : 'short';
-    const groups = {}, fades = [];
+    const groups = {}, fades = [], hangs = {};
     const H = {
       shine: false,
       cap(kind, T, o = {}) {
@@ -2934,19 +2934,24 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         (groups[kind] = groups[kind] || []).push(shellGeo(d => { const c = cover(d, o); return c * T(d) - (1 - c) * 0.003; }));
       },
       add(kind, g) { if (!hide) (groups[kind] = groups[kind] || []).push(g); },
-      hang(kind, g) { if (hide === 'all' || (hide && !UNDER_HAT.has(id))) return; (groups[kind] = groups[kind] || []).push(g); },
+      hang(kind, g) { if (hide === 'all' || (hide && !UNDER_HAT.has(id))) return; (hangs[kind] = hangs[kind] || []).push(g); },   // FLUID-MOTION: swings on its own
       fade(fn) { fades.push(fn); },
     };
     HAIR3D[id](H);
     const g = new THREE.Group();
     const base = col(look.hair);
     const mats = {};
-    for (const k in groups) {
-      let m;
-      if (k === 'bead') m = beadMat;
-      else if (k === 'tie') m = tieMat;
-      else { m = HAIRMAT[k].clone(); m.color.copy(base).multiplyScalar(1.12); mats[k] = m; }
-      g.add(mesh(mergeGeos(groups[k].map(prep)), m));
+    const matFor = k => { if (k === 'bead') return beadMat; if (k === 'tie') return tieMat; if (!mats[k]) { const m = mats[k] = HAIRMAT[k].clone(); m.color.copy(base).multiplyScalar(1.12); } return mats[k]; };
+    for (const k in groups) g.add(mesh(mergeGeos(groups[k].map(prep)), matFor(k)));
+    // FLUID-MOTION: braids, locs, ponytails and long hair hang from a pivot at the top of the hanging part (hairHang)
+    const hk = Object.keys(hangs);
+    if (hk.length) {
+      const geos = {}, bb = new THREE.Box3();
+      for (const k of hk) { const ge = geos[k] = mergeGeos(hangs[k].map(prep)); ge.computeBoundingBox(); bb.union(ge.boundingBox); }
+      const hg = new THREE.Group(); hg.name = 'hairHang'; const px = (bb.min.x + bb.max.x) / 2, py = bb.max.y, pz = (bb.min.z + bb.max.z) / 2;
+      hg.position.set(px, py, pz);
+      for (const k of hk) { geos[k].translate(-px, -py, -pz); hg.add(mesh(geos[k], matFor(k))); }
+      g.add(hg);
     }
     const fade = fades.length && hide !== 'all' ? (d, p) => fades.reduce((a, f) => Math.max(a, f(d, p)), 0) : null;
     return { group: g, fade: hide ? (fade && UNDER_HAT.has(id) ? null : null) : fade, shine: H.shine };
@@ -4027,9 +4032,10 @@ uniform mat3 normalMatrix;
   }
   // w: 0 standing .. 1 full stride; ph/k/run as animPerson; t: idle clock
   function mtPose(P, w, ph, k, run, t) {
-    if (w >= 0.995) return animPerson(P, ph, k, run);
-    if (w <= 0.005) return idlePerson(P, t);
-    idlePerson(P, t); mtSnap(P, MT_BUF); animPerson(P, ph, k, run); mtMix(P, MT_BUF, 1 - w);
+    if (w >= 0.995) { animPerson(P, ph, k, run); return mtHair(P, w, ph, run, P._side); }
+    if (w <= 0.005) idlePerson(P, t);
+    else { idlePerson(P, t); mtSnap(P, MT_BUF); animPerson(P, ph, k, run); mtMix(P, MT_BUF, 1 - w); }
+    mtHair(P, w, ph, run, P._side);
   }
   // how much stride for a speed (m/s): short steps while speeding up or slowing down, full steps at a walk and up
   const mtWalkW = sp => { const x = clamp(sp / 1.1, 0, 1); return x * x * (3 - 2 * x); };
@@ -4043,6 +4049,35 @@ uniform mat3 normalMatrix;
   function mtCarYaw(dx, dz, gx, gz, dt) {
     const d = Math.hypot(dx, dz);
     return d > 0.6 * dt && dx * gx + dz * gz > 0 ? Math.atan2(-dx, -dz) : Math.atan2(-gx, -gz);
+  }
+  // hair that hangs swings back as you move, bounces with each step and settles with a little overshoot
+  function mtHair(P, w, ph, run, side) {
+    let H = P._hh; if (H === undefined) H = P._hh = (P.head && P.head.getObjectByName('hairHang')) || null; if (!H) return;
+    const U = H.userData, now = performance.now(), dt = Math.min(0.05, U.t ? (now - U.t) / 1000 : 0.016); U.t = now; if (dt <= 0) return;
+    const tx = clamp(w * (0.1 + 0.2 * run) + w * Math.cos(2 * ph) * (0.03 + 0.05 * run), -0.06, 0.38), tz = clamp(side || 0, -0.18, 0.18);
+    U.vx = (U.vx || 0) + (60 * (tx - H.rotation.x) - 5.2 * (U.vx || 0)) * dt; H.rotation.x += U.vx * dt;
+    U.vz = (U.vz || 0) + (60 * (tz - H.rotation.z) - 5.2 * (U.vz || 0)) * dt; H.rotation.z += U.vz * dt;
+  }
+  // going down: the knees give, the body goes over with gravity, arms fly out, a small bounce on the ground, then slack.
+  // W is what tips over (their wrap, or your holder); F keeps the fall clock. Returns how far over (0..1), or -1 standing.
+  function mtFall(P, W, lying, dt, F) {
+    if (!lying) { F.t = -1; return -1; }
+    if (!(F.t >= 0)) F.t = 0; F.t += dt || 0.016;
+    const t = F.t, b = clamp(t / 0.22, 0, 1), k = clamp((t - 0.1) / 0.5, 0, 1), a = k * k, Hs = (P && P.root.scale.y) || 1;
+    let bounce = 0; if (k >= 1) { const q = t - 0.6; bounce = Math.exp(-q * 9) * Math.sin(q * 22) * 0.06; }
+    W.rotation.x = -Math.PI / 2 * a + bounce;
+    if (P && P.legs) {
+      const slack = clamp((t - 0.7) / 0.5, 0, 1), go = b * (1 - 0.6 * k);
+      for (let i = 0; i < 2; i++) {
+        P.legs[i].rotation.x = -0.9 * go - 0.12 * k * (i ? 1 : 0.4); P.legs[i].rotation.z = 0;
+        if (P.knees) { P.knees[i].rotation.x = 1.3 * go + 0.2 * k; P.ankles[i].rotation.x = -0.3 * go; }
+        P.arms[i].rotation.x = -(0.4 * b + 1.0 * k * (1 - 0.45 * slack)) * (i ? 0.8 : 1); P.arms[i].rotation.z = (i ? 1 : -1) * (0.15 + 0.85 * k * (1 - 0.4 * slack));
+        if (P.fores) P.fores[i].rotation.x = -0.3 - 0.4 * b * (1 - slack);
+      }
+      P.upper.rotation.set(0.25 * go, 0, 0); if (P.head) P.head.rotation.set(-0.3 * k + bounce * 1.5, 0.4 * slack, 0);
+      P.root.position.set(0, -0.2 * go * (1 - a) * Hs, 0);
+    }
+    return a;
   }
   // ===== FLUID-MOTION END =====
 
@@ -16746,9 +16781,17 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   // ---------- the brains ----------
   function hFootMove(e, tx, tz, dt, run) {
     const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz); if (d < 0.4) return false;
-    const sp = run ? 6 : 2.2, nx = e.x + dx / d * sp * dt, nz = e.z + dz / d * sp * dt;
-    if (!solids.at(nx, nz).some(b => nx > b.x0 - 0.3 && nx < b.x1 + 0.3 && nz > b.z0 - 0.3 && nz < b.z1 + 0.3)) { e.x = nx; e.z = nz; } else return false;
-    e.yaw += hNorm(Math.atan2(-dx, -dz) - e.yaw) * Math.min(1, dt * 8); e.walk += dt * sp * Math.PI * 2 / (run ? 3.8 : 1.55); e.moving = run ? 2 : 1; e.mvT = performance.now(); e.mvR = run; return true;
+    // FLUID-MOTION: they pick up speed, step round you and the people near them instead of walking through, and slow for a crowd
+    const now = performance.now(); if (!e.mvT || now - e.mvT > 250) e.fsp = 0;
+    let ax = dx / d, az = dz / d, sx = 0, sz = 0;
+    const push = (ox, oz, r) => { const qx = e.x - ox, qz = e.z - oz, q = Math.hypot(qx, qz); if (q < 0.01 || q > r || qx * ax + qz * az > 0.3 * q) return; const w = (r - q) / r, sd = qx * -az + qz * ax >= 0 ? 1 : -1; sx += (qx / q + -az * sd * 0.9) * w; sz += (qz / q + ax * sd * 0.9) * w; };
+    for (const o of HOOD.ents) if (o !== e && !o.gone && !o.inCar && !o.down && Math.abs(o.x - e.x) < 1.6 && Math.abs(o.z - e.z) < 1.6) push(o.x, o.z, 1.5);
+    if (foot.on && d > 2.5) push(foot.x, foot.z, 1.7);
+    if (sx || sz) { ax += sx * 1.4; az += sz * 1.4; const l = Math.hypot(ax, az) || 1; ax /= l; az /= l; }
+    const top = (run ? 6 : 2.2) * (sx || sz ? 0.75 : 1); e.fsp = Math.min(top, (e.fsp || 0) + (run ? 12 : 8) * dt); if (d < 1.2 && !run) e.fsp = Math.min(e.fsp, 0.6 + d);
+    const sp = e.fsp, nx = e.x + ax * sp * dt, nz = e.z + az * sp * dt;
+    if (!solids.at(nx, nz).some(b => nx > b.x0 - 0.3 && nx < b.x1 + 0.3 && nz > b.z0 - 0.3 && nz < b.z1 + 0.3)) { e.x = nx; e.z = nz; } else { e.fsp = 0; return false; }
+    e.yaw += hNorm(Math.atan2(-ax, -az) - e.yaw) * Math.min(1, dt * 8); e.walk += dt * sp * Math.PI * 2 / (run ? 3.8 : 1.55); e.moving = run ? 2 : 1; e.mvT = performance.now(); e.mvR = run; return true;
   }
   const hFace = (e, x, z, dt) => { e.yaw += hNorm(Math.atan2(-(x - e.x), -(z - e.z)) - e.yaw) * Math.min(1, dt * 6); };
   function hMember(e, dt, mx, mz, d, aiming) {
@@ -17665,11 +17708,11 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
         P.wrap.visible = !e.inCar && !(e.ride);
         if (P.wrap.visible) {
           P.wrap.rotation.y = e.yaw;
-          if (!e.down) { const kk = Math.min(1, dt * 7); e.mw = (e.mw || 0) + ((e.moving ? 1 : 0) - (e.mw || 0)) * kk; e.mr = (e.mr || 0) + ((e.moving > 1 ? 1 : 0) - (e.mr || 0)) * kk; mtPose(P, e.mw, e.walk, 1, e.mr, now + e.ph); }   // FLUID-MOTION
+          if (!e.down) { const kk = Math.min(1, dt * 7); e.mw = (e.mw || 0) + ((e.moving ? 1 : 0) - (e.mw || 0)) * kk; e.mr = (e.mr || 0) + ((e.moving > 1 ? 1 : 0) - (e.mr || 0)) * kk; mtPose(P, e.mw, e.walk, mtStride(e.fsp || 2.2, e.mr), e.mr, now + e.ph); }   // FLUID-MOTION
           e.moving = 0;
           if (!e.gun && e.gunId) e.gun = (e.gd || e.kind !== 'reg') && d < 60 ? hGun(e.gunId) : null;
           if (G && G.pv && G.pv.pvDrawGun && e.gun) try { G.pv.pvDrawGun(e, e.view, dt, now); } catch (er) {}
-          else { P.wrap.rotation.x = e.down ? -Math.PI / 2 : 0; P.wrap.position.y = e.down ? 0.12 : 0; }
+          else { const F = e.view._mf || (e.view._mf = {}), a = mtFall(P, P.wrap, !!e.down, dt, F); if (a < 0) P.wrap.rotation.x = 0; P.wrap.position.y = a > 0 ? 0.12 * a : 0; }   // FLUID-MOTION: they fall
         }
       }
       if (e.wcar) wDrawCar(e, dt, now);
@@ -32670,7 +32713,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     // turn: quick but not instant, a bit slower at a full run
     const turn = dy * Math.min(1, dt * lerp(13, 9, foot.aRun)); h.rotation.y += turn;
     if (ME) {
-      mtPose(ME, mtWalkW(spd), foot.walk, mtStride(spd, foot.aRun), foot.aRun, performance.now() / 1000);
+      ME._side = -(foot.lean || 0) * 1.6; mtPose(ME, mtWalkW(spd), foot.walk, mtStride(spd, foot.aRun), foot.aRun, performance.now() / 1000);
       // lean into a turn (more when running) and into a push off / back on a stop
       const yr = dt > 1e-4 ? turn / dt : 0, lean = clamp(Math.atan(spd * yr / 9.8) * lerp(0.12, 0.42, foot.aRun), -0.2, 0.2);
       const acc = dt > 1e-4 ? (spd - (foot.pspd || 0)) / dt : 0; foot.pspd = spd;
@@ -32759,7 +32802,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     q = mtSpring(L.x, LV.x, lx, 8, dt); L.x = q[0]; LV.x = q[1]; q = mtSpring(L.z, LV.z, lz, 8, dt); L.z = q[0]; LV.z = q[1];
     drv.look.set(drv.x + L.x, 1.6, drv.z + L.z);
   }
-  setTimeout(() => { window.__motion = { MTC, mtPose, mtSpring, mtWalkW, mtStride, me: () => ME, foot: dt => stepFoot(dt), drive: dt => stepDrive(dt) }; }, 0);
+  setTimeout(() => { window.__motion = { MTC, mtPose, mtSpring, mtWalkW, mtStride, mtFall, mtHair, hFootMove: typeof hFootMove === "function" ? hFootMove : null, me: () => ME, foot: dt => stepFoot(dt), drive: dt => stepDrive(dt) }; }, 0);
   // off the chase camera (on foot, indoors, a race scene): take the speed lens back off
   function mtFrame() { if (MTC.fovAdd && (!driving || foot.on || inside || STRIP.on || ROLL.on || KS.on || creating)) { MTC.fov = 0; mtFov(0); } }
   function stepDrive(dt) {
@@ -35732,7 +35775,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     toast(`${name} dropped you.`, 'bad'); save(); refreshStats();
   }
   function pvUp() {
-    PV.down = 0; if (foot.holder) foot.holder.rotation.x = 0;
+    PV.down = 0; if (foot.holder) foot.holder.rotation.x = 0; if (PV._mf) PV._mf.t = -1;
     S.health = Math.max(S.health, PV_UP_HEALTH); save(); refreshStats();
     netSend({ k: 'pvp', t: 'alive', target: NET.id, to: '*' });
     toast(`You're back up with ${PV_UP_HEALTH} health. Get patched up at the ER.`, 'bad');
@@ -35752,7 +35795,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
     }
     if (PV.down > 0) {
       PV.down -= dt;
-      if (foot.on && foot.holder) { foot.x = PV.at.x; foot.z = PV.at.z; foot.target = null; foot.holder.position.x = foot.x; foot.holder.position.z = foot.z; foot.holder.position.y += 0.12; foot.holder.rotation.x = -Math.PI / 2; }
+      if (foot.on && foot.holder) { foot.x = PV.at.x; foot.z = PV.at.z; foot.target = null; foot.holder.position.x = foot.x; foot.holder.position.z = foot.z; const fa = mtFall(ME, foot.holder, true, dt, PV._mf || (PV._mf = {})); foot.holder.position.y += 0.12 * fa; }   // FLUID-MOTION: you fall
       PV.hurt = Math.max(PV.hurt, 0.7); pvEl.querySelector('span').textContent = `${PV.by} got you. Back up in ${Math.max(1, Math.ceil(PV.down))}…`;
       if (PV.down <= 0) pvUp();
     } else PV.hurt = Math.max(0, PV.hurt - dt * 1.4);
@@ -35764,7 +35807,7 @@ body.walking:not(.indoors):not(.phoning):not(.creating):not(.g-armed) #em-btn { 
   const pvDrawGun = (p, v, dt, now) => {
     const P = v.P; if (!P) return;
     if (p.dead && now - (p.deadAt || 0) > 15) p.dead = false;   // missed their 'alive'
-    const lying = !!p.dead && !p.inCar; P.wrap.rotation.x = lying ? -Math.PI / 2 : 0; P.wrap.position.y = lying ? 0.12 : 0;
+    const lying = !!p.dead && !p.inCar, fa = mtFall(P, P.wrap, lying, dt, v._mf || (v._mf = {})); if (fa < 0) P.wrap.rotation.x = 0; P.wrap.position.y = fa > 0 ? 0.12 * fa : 0;   // FLUID-MOTION: they fall
     const want = (!p.inCar || (p.ride && p.ho)) && p.gun ? gunKey(p.gun) : '';
     if (v.gun && (v.gun.key !== want || v.gun.P !== P)) { disposeGun(v.gun.b); v.gun = null; }
     if (!v.gun && want && P.wrap.visible) { const b = buildGun(p.gun); P.upper.add(b.rig); v.gun = { b, key: want, P, d: 0, flashT: 0, kick: 0 }; }
