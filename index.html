@@ -11341,6 +11341,7 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
     const hands = u > 4 && spinH > 0.05 ? spinH * clamp(1 - Math.abs(drv.steer) / GRIP.handsUp, 0, 1) : 0;
     const keep = hands ? hands * clamp(GRIP.handsB * betaR - GRIP.handsR * r * V.L / Math.max(u, 5), -0.25, 0.25) : 0;
     const delta = clamp(dIn + fade * (dCs - dIn) + cast * (1 - fade * Math.min(1, Math.abs(drv.steer))) + keep, -V.steerMax * 1.15, V.steerMax * 1.15); TIRE.delta = delta;
+    { const fb = TIRE.fb || (TIRE.fb = [0, 0, 0, 0, 0]); fb[0] = betaF; fb[1] = betaR; fb[2] = V.T[0].ap; fb[3] = apR; fb[4] = u; TIRE.fbN = (TIRE.fbN || 0) + 1; }   // steering feel (_steer.js)
 
     // ---- the gearbox ----
     const nA = V.auto.length; let G = 0, ratio = 0, mode;   // mode: 'clutch' (manual / DCT), 'tc' (converter), 'ev'
@@ -13912,7 +13913,7 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
   function perfOf(c) { const mine = S.car; S.car = c; try { return carPerf(); } finally { S.car = mine; } }
   function racerBlurb(r) { const c = racerCar(r), k = dragPack(c); return `${carHp(c)} hp${c.tparts && c.tparts.includes('e85') ? ' on E85' : c.tparts && c.tparts.includes('c16') ? ' on race gas' : ''}${k ? ` · ${k.brand} ${k.tire === 'slick' ? 'slicks' : 'radials'}` : ''}${c.rims ? ` · ${c.rims.dia}s` : ''}`; }
   // run one physics step as another car: swap the shared tire state in, step, swap it back out
-  const TIRE_KEYS = ['vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv', 'vd', 'nx', 'icw', 'ice', 'iat', 'lcT'];
+  const TIRE_KEYS = ['fb', 'fbN', 'vx', 'vz', 'w', 'ax', 'ay', 'wv', 'spin', 'slipR', 'slipF', 'delta', 'gA', 're', 'lit', 'shT', 'thr', 'axL', 'shW', 'boost', 'nosK', 'nosT', 'drv', 'vd', 'nx', 'icw', 'ice', 'iat', 'lcT'];
   function physAs(st, I, P, h) {
     const mine = { yaw: drv.yaw, v: drv.v, steer: drv.steer, wa: WHEELIE.a };
     for (const k of TIRE_KEYS) { const t = TIRE[k]; TIRE[k] = st.t[k]; st.t[k] = t; }
@@ -31805,8 +31806,9 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     if (keys.ArrowUp || keys.KeyW || hold.gas) gas = 1;
     if (keys.ArrowDown || keys.KeyS || hold.brake) brake = 1;
     if (keys.Space || keys.ShiftLeft || hold.hb) hb = 1;
-    if (keys.ArrowLeft || keys.KeyA || hold.left) steer += 1;
-    if (keys.ArrowRight || keys.KeyD || hold.right) steer -= 1;
+    if (keys.ArrowLeft || keys.KeyA) steer += 1;
+    if (keys.ArrowRight || keys.KeyD) steer -= 1;
+    steer = clamp(steer + sfTouch(), -1, 1);   // touch: eased buttons or the dynamic joystick (_steer.js)
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) { if (!p) continue; const ax = p.axes[0] || 0; if (Math.abs(ax) > 0.15) steer = -ax; const rt = p.buttons[7] ? p.buttons[7].value : 0, lt = p.buttons[6] ? p.buttons[6].value : 0; if (rt > 0.05) gas = rt; if (lt > 0.05) brake = lt; if (p.buttons[0] && p.buttons[0].pressed) gas = 1; if (p.buttons[1] && p.buttons[1].pressed) hb = 1; if (p.buttons[2] && p.buttons[2].pressed && cardMode === 'near') pullIn(); }
     return { gas, brake, steer, hb };
@@ -31855,11 +31857,188 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   const spdEl = document.getElementById('spd'), streetEl = document.getElementById('street');
   addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; keys[e.code] = true; if (creating) return; if (driving && e.code.startsWith('Arrow')) e.preventDefault(); if (inside) { if (e.code === 'Escape') { if (menuFn) closeMenu(); else leaveInterior(); } if (e.code === 'KeyE' && IN.near && !menuFn) useStation(); return; } if (e.code === 'Escape') { if (menuFn) closeMenu(); else if (cardPlace) showCard(null); } if (driving && e.code === 'KeyF') { if (foot.on) getIn(); else getOut(); return; } if (e.code === 'KeyE') { if (foot.on && foot.nearCar) getIn(); else if (cardMode === 'near') pullIn(); } });
   addEventListener('keyup', e => { keys[e.code] = false; });
-  for (const [id, k] of [['b-left', 'left'], ['b-right', 'right'], ['b-gas', 'gas'], ['b-brake', 'brake'], ['b-hb', 'hb']]) {
+  for (const [id, k] of [['b-gas', 'gas'], ['b-brake', 'brake'], ['b-hb', 'hb']]) {
     const el = document.getElementById(id);
     const on = e => { e.preventDefault(); hold[k] = true; el.classList.add('hold'); }, off = () => { hold[k] = false; el.classList.remove('hold'); };
     el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
   }
+
+  // ===== STEER-FEEL BEGIN =====
+  // Steering you can feel (2026-11-21, playtest: "the steering needs more feedback ... an option for a dynamic joystick").
+  //  - Settings → Steering: Buttons (default) or Dynamic joystick (it appears wherever your left thumb lands)
+  //  - a steering wheel on screen turns with the real front wheel angle (so you see the car's lock shrink at speed),
+  //    and goes amber when the front tires are at their limit (pushing) and red when the rear lets go (sliding)
+  //  - vibration: a click at center and at full lock, a buzz when the tires hit their limit or the tail steps out, a thud on hits;
+  //    controllers rumble with tire slip
+  //  - buttons ease the wheel in (slower the faster you go) and it springs back to center, and you can slide your thumb ◀ ▶
+  //    without lifting it. Physics untouched: this only shapes the input and reads TIRE.fb from vdStep.
+  const SF = { o: 0, mode: 'buttons', sens: 'normal', buzz: true, btn: 0, aF: 0, aR: 0, st: 0, slideT: 0, rumT: 0, hit: false, last: performance.now(), lastIn: performance.now(), fbN: -1, fbAge: 0, deg: 1e9,
+    k: { id: null, cx: 0, cy: 0, raw: 0, lock: false, mid: true, used: false } };
+  const SF_SENS = { low: 1.7, normal: 1.3, high: 1.0 }, SF_SENS_NAME = { low: 'Low', normal: 'Normal', high: 'High' };
+  function sfOpt() { const o = (S && S.ctl) || {}; SF.mode = o.steer === 'dynamic' ? 'dynamic' : 'buttons'; SF.sens = SF_SENS[o.sens] ? o.sens : 'normal'; SF.buzz = o.buzz !== false; document.body.classList.toggle('dynsteer', SF.mode === 'dynamic'); if (SF.mode !== 'dynamic') sfStickEnd(); sfHome(); }
+  function sfSet(k, v) { if (!S) return; S.ctl = Object.assign({}, S.ctl || {}, { [k]: v }); save(); }
+  // ---- vibration: navigator.vibrate where the browser has it (Android); on iPhone the only haptic a web page can reach is the
+  // system tick of a switch toggle, and Safari only plays it inside a touch, so ticks from the physics wait for your next touch move
+  const HAPT = { lab: null, t: 0, q: 0, qT: 0, ios: /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+    go(ms, user) {
+      if (!SF.buzz) return; const now = performance.now(); if (now - this.t < 45) return;
+      if (navigator.vibrate) { this.t = now; try { navigator.vibrate(ms); } catch (e) {} return; }
+      if (!this.ios) return; if (!user) { this.q = 1; this.qT = now; return; }
+      this.t = now; this.q = 0;
+      if (!this.lab) { const l = this.lab = document.createElement('label'), i = document.createElement('input'); i.type = 'checkbox'; i.setAttribute('switch', ''); i.tabIndex = -1; l.setAttribute('aria-hidden', 'true'); l.style.cssText = 'position:fixed;left:-80px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden'; l.append(i); l.addEventListener('click', e => e.stopPropagation()); i.addEventListener('click', e => e.stopPropagation()); document.body.append(l); }
+      try { this.lab.click(); } catch (e) {}
+    },
+    flush() { if (this.q && performance.now() - this.qT < 400) this.go(10, true); this.q = 0; } };
+  addEventListener('pointermove', () => { if (HAPT.q) HAPT.flush(); }, { capture: true, passive: true });
+  addEventListener('pointerdown', () => { if (HAPT.q) HAPT.flush(); }, { capture: true, passive: true });
+  // ---- the on-screen steering wheel (both modes)
+  const SF_WHEEL = '<svg class="sfw" viewBox="-50 -50 100 100" aria-hidden="true"><g class="sfw-rot"><circle r="40" class="sfw-rim"/><path d="M-38 4 L-11 7 M38 4 L11 7 M0 12 L0 38" class="sfw-sp"/><circle r="12" class="sfw-hub"/><rect x="-4" y="-49" width="8" height="12" rx="2" class="sfw-top"/></g></svg>';
+  function sfBuild() {
+    const pad = document.getElementById('pad'), sg = pad && pad.querySelector('.steer'); if (!pad || !sg || document.getElementById('dst')) return;
+    const w = document.createElement('div'); w.id = 'sfwheel'; w.innerHTML = SF_WHEEL + '<b class="sft"></b>'; sg.append(w);
+    const z = document.createElement('div'); z.id = 'dst'; z.innerHTML = `<div id="dst-base">${SF_WHEEL}<div id="dst-knob"></div><b class="sft"></b></div><div id="dst-tip">Touch &amp; drag here to steer</div>`; document.body.append(z);
+    const st = document.createElement('style'); st.textContent = `
+.pad .grp, .pad .pcol { position: relative; }
+#sfwheel { position: absolute; left: 50%; bottom: calc(100% + 6px); width: 50px; height: 50px; margin-left: -25px; pointer-events: none; }
+#sfwheel .sft { position: absolute; left: 50%; top: 100%; transform: translate(-50%, -2px); }
+.sfw { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 2px 5px rgba(0,0,0,.55)); }
+.sfw-rot { transition: none; }
+.sfw-rim { fill: none; stroke: rgba(241,236,228,.88); stroke-width: 8; }
+.sfw-sp { stroke: rgba(241,236,228,.7); stroke-width: 7; stroke-linecap: round; fill: none; }
+.sfw-hub { fill: rgba(24,20,30,.85); stroke: rgba(241,236,228,.7); stroke-width: 3; }
+.sfw-top { fill: var(--accent, #e0192e); }
+.sft { font: 800 10px var(--body, system-ui); letter-spacing: .12em; color: #fff; text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; }
+.sf-push .sfw-rim { stroke: #ffb02e; } .sf-push .sft { color: #ffb02e; }
+.sf-slide .sfw-rim { stroke: #ff3b30; } .sf-slide .sft { color: #ff5a4f; } .sf-slide .sfw { animation: sfpulse .28s ease-in-out infinite alternate; }
+@keyframes sfpulse { from { filter: drop-shadow(0 0 2px rgba(255,59,48,.4)); } to { filter: drop-shadow(0 0 9px rgba(255,59,48,.95)); } }
+#dst { position: fixed; z-index: 4; left: env(safe-area-inset-left, 0px); bottom: 0; width: 46vw; top: 30vh; display: none; pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+body.incar.dynsteer.sfpad #dst { display: block; }
+body.dynsteer .pad .steer { visibility: hidden; }
+body.lay-edit #dst { pointer-events: none; }
+#dst-base { position: absolute; left: 0; top: 0; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(24,20,30,.35) 0 58%, rgba(24,20,30,.0) 72%); opacity: .45; transition: transform .25s ease-out, opacity .2s; will-change: transform; }
+#dst.on #dst-base { opacity: 1; transition: opacity .1s; }
+#dst-base .sfw { position: absolute; inset: 0; }
+#dst-knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(241,236,228,.9); box-shadow: 0 2px 10px rgba(0,0,0,.5); transition: transform .14s ease-out; pointer-events: none; }
+#dst.on #dst-knob { transition: none; }
+#dst-base .sft { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 2px); }
+#dst-tip { position: absolute; left: 16px; bottom: 156px; font: 700 12px var(--body, system-ui); letter-spacing: .06em; text-transform: uppercase; color: rgba(241,236,228,.75); text-shadow: 0 1px 4px #000; pointer-events: none; }
+#dst.on #dst-tip, #dst.used #dst-tip { display: none; }
+@media (orientation: landscape) and (max-height: 500px) { #dst { top: 22vh; } #dst-base { width: 100px; height: 100px; } #dst-knob { width: 40px; height: 40px; margin: -20px 0 0 -20px; } #dst-tip { bottom: 130px; } #sfwheel { width: 42px; height: 42px; margin-left: -21px; } }
+@media (max-width: 600px) { #dst { top: 45vh; width: 46vw; } }
+`; document.head.append(st);
+    sfStickBind(); sfHome();
+  }
+  const sfR = () => { const b = document.getElementById('dst-base'); return b ? b.offsetWidth / 2 || 60 : 60; };
+  // where the joystick waits: bottom-left, where the steer buttons were
+  function sfHome() {
+    const z = document.getElementById('dst'), b = document.getElementById('dst-base'); if (!z || !b || SF.k.id !== null) return;
+    const R = sfR(), h = z.clientHeight || innerHeight * 0.6; b.style.transform = `translate(16px, ${Math.max(0, h - 2 * R - 34)}px)`;
+  }
+  function sfStickEnd() {
+    const z = document.getElementById('dst'), kn = document.getElementById('dst-knob'), K = SF.k; K.id = null; K.raw = 0;
+    if (z) z.classList.remove('on'); if (kn) kn.style.transform = ''; sfHome();
+  }
+  function sfStickBind() {
+    const z = document.getElementById('dst'), b = document.getElementById('dst-base'), kn = document.getElementById('dst-knob'), K = SF.k;
+    const place = () => { const r = z.getBoundingClientRect(), R = sfR(); b.style.transform = `translate(${K.cx - r.left - R}px, ${K.cy - r.top - R}px)`; };
+    const move = e => {
+      const R = sfR(); let dx = e.clientX - K.cx; const dy = e.clientY - K.cy;
+      // past the rim the stick slides after your thumb, so easing back always comes off the lock right away
+      const lim = R * 1.08; if (Math.abs(dx) > lim) { K.cx += dx - Math.sign(dx) * lim; dx = Math.sign(dx) * lim; place(); }
+      const x = clamp(dx / R, -1, 1); K.raw = x;
+      kn.style.transform = `translate(${(x * R).toFixed(1)}px, ${(clamp(dy, -R, R) * 0.18).toFixed(1)}px)`;
+      // a click as you cross the middle and when you reach full lock
+      const mid = Math.abs(x) < 0.05; if (mid && !K.mid) HAPT.go(6, true); K.mid = mid;
+      const lock = Math.abs(x) >= 0.99; if (lock && !K.lock) HAPT.go(14, true); K.lock = lock;
+    };
+    z.addEventListener('pointerdown', e => {
+      if (K.id !== null || SF.mode !== 'dynamic') return; e.preventDefault(); e.stopPropagation();
+      K.id = e.pointerId; try { z.setPointerCapture(K.id); } catch (_) {}
+      K.cx = e.clientX; K.cy = e.clientY; K.raw = 0; K.mid = true; K.lock = false; place(); z.classList.add('on', 'used'); kn.style.transform = ''; HAPT.go(8, true);
+    });
+    z.addEventListener('pointermove', e => { if (e.pointerId === K.id) move(e); });
+    const end = e => { if (e.pointerId === K.id) sfStickEnd(); };
+    z.addEventListener('pointerup', end); z.addEventListener('pointercancel', end); z.addEventListener('lostpointercapture', end);
+    addEventListener('resize', () => setTimeout(sfHome, 60));
+  }
+  // ---- the steer buttons: one touch area, slide your thumb between ◀ and ▶ without lifting it
+  function sfButtons() {
+    const g = document.querySelector('.pad .steer'), L = document.getElementById('b-left'), R = document.getElementById('b-right'); if (!g || !L || !R) return; let id = null;
+    const set = k => { const l = k === 'left', r = k === 'right'; if (hold.left !== l || hold.right !== r) { if (k) HAPT.go(6, true); } hold.left = l; hold.right = r; L.classList.toggle('hold', l); R.classList.toggle('hold', r); };
+    const pick = e => { const a = L.getBoundingClientRect(), b = R.getBoundingClientRect(), mid = (a.right + b.left) / 2; set(e.clientX < mid ? 'left' : 'right'); };
+    g.addEventListener('pointerdown', e => { if (!e.target.closest || !e.target.closest('.pbtn') || id !== null) return; e.preventDefault(); id = e.pointerId; try { g.setPointerCapture(id); } catch (_) {} pick(e); });
+    g.addEventListener('pointermove', e => { if (e.pointerId === id) pick(e); });
+    const off = e => { if (e.pointerId !== id) return; id = null; set(''); };
+    g.addEventListener('pointerup', off); g.addEventListener('pointercancel', off); g.addEventListener('lostpointercapture', off);
+  }
+  // ---- what the touch controls ask for (input() adds this to the keys): -1..1, left positive like the keys
+  function sfTouch() {
+    const now = performance.now(), dt = Math.min(0.05, Math.max(0, (now - SF.lastIn) / 1000)); SF.lastIn = now;
+    if (SF.mode === 'dynamic') {
+      SF.btn = 0; const x = SF.k.raw, a = Math.abs(x); if (a < 0.06) return 0;
+      return -Math.sign(x) * Math.pow((a - 0.06) / 0.94, SF_SENS[SF.sens]);
+    }
+    const want = (hold.left ? 1 : 0) - (hold.right ? 1 : 0), mph = Math.abs(drv.v || 0) * 2.237;
+    // in: quick when slow, slower at speed (the wheel gets heavier); out: it springs back to center
+    const back = want === 0 || want * SF.btn < 0, rate = back ? 10 + mph * 0.05 : clamp(12 - mph * 0.09, 3.5, 12) * (SF.sens === 'high' ? 1.5 : SF.sens === 'low' ? 0.7 : 1);
+    SF.btn += (want - SF.btn) * (1 - Math.exp(-dt * rate)); if (!want && Math.abs(SF.btn) < 0.003) SF.btn = 0;
+    return SF.btn;
+  }
+  function sfState(s) {
+    if (s === SF.st) return; const was = SF.st; SF.st = s;
+    const bc = document.body.classList; bc.toggle('sf-push', s === 1); bc.toggle('sf-slide', s === 2);
+    const t = s === 1 ? 'PUSHING' : s === 2 ? 'SLIDING' : ''; document.querySelectorAll('.sft').forEach(e => { e.textContent = t; });
+    if (s === 1 && was === 0) HAPT.go(16); else if (s === 2) { HAPT.go([22, 40, 22]); SF.slideT = 0; }
+  }
+  function sfRumble(weak, strong, ms) {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) { const a = p && p.vibrationActuator; if (!a || !a.playEffect) continue; try { const r = a.playEffect('dual-rumble', { startDelay: 0, duration: ms, weakMagnitude: clamp(weak, 0, 1), strongMagnitude: clamp(strong, 0, 1) }); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+  function sfFrame() {
+    requestAnimationFrame(sfFrame);
+    const now = performance.now(), dt = Math.min(0.05, (now - SF.last) / 1000); SF.last = now;
+    if (!document.getElementById('dst')) sfBuild();
+    // the joystick zone only while the driving controls are on screen (photo mode, menus, races hide them)
+    if ((SF.n = (SF.n || 0) + 1) % 8 === 0) { const pad = document.getElementById('pad'), on = !!(pad && pad.getClientRects().length); if (on !== document.body.classList.contains('sfpad')) document.body.classList.toggle('sfpad', on); }
+    const cur = (S && S.ctl) || null; if (SF.o !== cur) { SF.o = cur; sfOpt(); }
+    const incar = !!(driving && !foot.on && !inside && car);
+    if (!incar) { if (SF.st) sfState(0); if (SF.k.id !== null) sfStickEnd(); SF.aF = SF.aR = 0; SF.hit = false; return; }
+    // how hard the tires are working: front slip angle against its peak (pushing), rear slip angle against its peak (sliding)
+    let aF = 0, aR = 0; const f = TIRE.fb;
+    if (f && TIRE.fbN !== SF.fbN) { SF.fbN = TIRE.fbN; SF.fbAge = 0; } else SF.fbAge++;
+    if (f && SF.fbAge < 4 && f[4] > 4) { aF = Math.abs(TIRE.delta - f[0]) / Math.max(0.02, f[2]); aR = Math.abs(f[1]) / Math.max(0.02, f[3]); }
+    const k = 1 - Math.exp(-dt * 12); SF.aF += (aF - SF.aF) * k; SF.aR += (aR - SF.aR) * k;
+    let s = SF.aR > 1.05 || (SF.st === 2 && SF.aR > 0.8) ? 2 : SF.aF > 1.0 || (SF.st === 1 && SF.aF > 0.85) ? 1 : 0; if (SF.force != null) s = SF.force; sfState(s);
+    if (s === 2) { SF.slideT += dt; if (SF.slideT > 0.3) { SF.slideT = 0; HAPT.go(9); } }
+    const hit = !!drv.hitting; if (hit && !SF.hit) { HAPT.go(40); sfRumble(0.6, 1, 220); SF.rumT = -0.15; } SF.hit = hit;
+    // controller: light buzz as the fronts load up, heavy as the tail goes
+    SF.rumT += dt; if (SF.rumT > 0.1) { SF.rumT = 0; const w = clamp((SF.aF - 0.75) * 1.4, 0, 0.55), st2 = clamp((SF.aR - 0.75) * 1.3, 0, 0.85); if (w > 0.03 || st2 > 0.03) sfRumble(w, st2, 130); }
+    // the wheel on screen turns with the real front wheels (about 6:1 so you can read it), lock shrinks as speed builds
+    const deg = Math.round(clamp(-(TIRE.delta || 0) * 57.3 * 6, -270, 270));
+    if (deg !== SF.deg) { SF.deg = deg; document.querySelectorAll('.sfw-rot').forEach(g => { g.setAttribute('transform', `rotate(${deg})`); }); }
+  }
+  // ---- Settings: Steering (Buttons / Dynamic joystick), sensitivity, vibration
+  const _sfPhoneApp = phoneApp;
+  phoneApp = function (id) {
+    const r = _sfPhoneApp.apply(this, arguments);
+    if (id === 'settings') {
+      const sc = document.querySelector('.ph-screen .ph-list'); if (!sc || !S) return r; const o = S.ctl || {};
+      sc.insertAdjacentHTML('afterbegin', `<button class="ph-row" data-sf="steer"><b>Steering</b><span>${o.steer === 'dynamic' ? 'Dynamic joystick' : 'Buttons'}</span></button>`
+        + `<button class="ph-row" data-sf="sens"><b>Steering sensitivity</b><span>${SF_SENS_NAME[o.sens] || 'Normal'}</span></button>`
+        + `<button class="ph-row" data-sf="buzz"><b>Steering vibration</b><span>${o.buzz === false ? 'Off' : 'On'}</span></button>`);
+      sc.querySelectorAll('[data-sf]').forEach(b => b.onclick = () => {
+        const k = b.dataset.sf, c = S.ctl || {};
+        if (k === 'steer') sfSet('steer', c.steer === 'dynamic' ? 'buttons' : 'dynamic');
+        else if (k === 'sens') { const L = ['low', 'normal', 'high']; sfSet('sens', L[(L.indexOf(c.sens || 'normal') + 1) % 3]); }
+        else { sfSet('buzz', c.buzz === false); SF.buzz = S.ctl.buzz !== false; if (SF.buzz) HAPT.go(20, true); }
+        phoneApp('settings');
+      });
+    }
+    return r;
+  };
+  sfButtons(); requestAnimationFrame(sfFrame);
+  window.__steer = { SF, HAPT, sfTouch, sfOpt, sfSet, sfHome, sfState };
+  // ===== STEER-FEEL END =====
 
   // ---------- where am I ----------
   let DATA = null;
