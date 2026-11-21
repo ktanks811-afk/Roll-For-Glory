@@ -729,7 +729,8 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
   function Grid(cs) { this.cs = cs; this.m = new Map(); }
   Grid.prototype.add = function (o, x0, z0, x1, z1) { const cs = this.cs; for (let i = Math.floor(x0 / cs); i <= Math.floor(x1 / cs); i++) for (let j = Math.floor(z0 / cs); j <= Math.floor(z1 / cs); j++) { const k = i * 100003 + j; let l = this.m.get(k); if (!l) this.m.set(k, l = []); l.push(o); } };
   Grid.prototype.at = function (x, z) { return this.m.get(Math.floor(x / this.cs) * 100003 + Math.floor(z / this.cs)) || []; };
-  const solids = new Grid(40), streets = new Grid(80);
+  Grid.prototype.del = function (o) { const cs = this.cs; for (let i = Math.floor(o.x0 / cs); i <= Math.floor(o.x1 / cs); i++) for (let j = Math.floor(o.z0 / cs); j <= Math.floor(o.z1 / cs); j++) { const l = this.m.get(i * 100003 + j); if (l) { const at = l.indexOf(o); if (at >= 0) l.splice(at, 1); } } };
+  const solids = new Grid(40), streets = new Grid(80), walks = new Grid(40);   // walks: porches, steps and patios you stand on (MOVES)
 
   // ---------- signs (text atlas) ----------
   const SIGN = { canvases: [], slots: new Map(), mats: [] };
@@ -4281,13 +4282,13 @@ uniform mat3 normalMatrix;
   }
   // where the camera sits: behind and a little over your right shoulder, looking past your head
   function orbitCam(x, z, yaw, dist, side, out, look) {
-    const p = LOOK.pitch, rx = Math.cos(yaw), rz = -Math.sin(yaw), px = x + rx * side, pz = z + rz * side, hy = 1.55;
+    const p = LOOK.pitch, rx = Math.cos(yaw), rz = -Math.sin(yaw), px = x + rx * side, pz = z + rz * side, hy = 1.55 + (inside ? 0 : foot.camDY || 0);   // camDY: porch / jump / crouch (MOVES)
     look.set(px, hy, pz);
     out.set(px + Math.sin(yaw) * Math.cos(p) * dist, Math.max(0.35, hy + Math.sin(p) * dist), pz + Math.cos(yaw) * Math.cos(p) * dist);
     // walls and buildings between you and the camera pull it in so it never sees through them
     const blocked = (x, y, z) => inside
       ? IN.solids.some(b => y < (b.h || 4.2) && x > b.x0 - 0.15 && x < b.x1 + 0.15 && z > b.z0 - 0.15 && z < b.z1 + 0.15)
-      : solids.at(x, z).some(b => x > b.x0 - 0.2 && x < b.x1 + 0.2 && z > b.z0 - 0.2 && z < b.z1 + 0.2);
+      : solids.at(x, z).some(b => !b.walk && (b.h == null || y < b.h) && x > b.x0 - 0.2 && x < b.x1 + 0.2 && z > b.z0 - 0.2 && z < b.z1 + 0.2);
     for (let t = 0.1; t <= 1.0001; t += 0.05) {
       if (blocked(look.x + (out.x - look.x) * t, look.y + (out.y - look.y) * t, look.z + (out.z - look.z) * t)) { const k = Math.max(0.1, t - 0.08); out.set(look.x + (out.x - look.x) * k, look.y + (out.y - look.y) * k, look.z + (out.z - look.z) * k); break; }
     }
@@ -6491,7 +6492,8 @@ uniform mat3 normalMatrix;
           const c = fc(x, y); if (c === '.') { x++; continue; }
           let w = 1; while (x + w < GW && fc(x + w, y) === c) w++;
           const xa = X(x), xb = X(x + w), za = Z(y), zb = Z(y + 1), mx = (xa + xb) / 2, mz = (za + zb) / 2;
-          if (c === 'P') { B(L, xb - xa, 0.08, zb - za, roomM.P, mx, y0f - 0.12, mz); B(L, xb - xa - 0.04, y0f - 0.12, zb - za - 0.04, M.skirt, mx, 0, mz); }
+          if (c === 'P') { B(L, xb - xa, 0.08, zb - za, roomM.P, mx, y0f - 0.12, mz); B(L, xb - xa - 0.04, y0f - 0.12, zb - za - 0.04, M.skirt, mx, 0, mz);
+            if (withRoof && !k) for (let t = x; t < x + w; t++) for (const [ex, ey, ox, oz] of patioEdges(d, t, y)) B(L, ox ? PSTEP_D : TL - 0.04, PSTEP_H, oz ? PSTEP_D : TL - 0.04, M.conc, X(t) + TL / 2 + ox * (TL / 2 + PSTEP_D / 2), 0, Z(y) + TL / 2 + oz * (TL / 2 + PSTEP_D / 2)); }   // a step down off the patio (MOVES)
           else if (!k) { B(L, xb - xa, 0.05, zb - za, roomM[c], mx, BASE - 0.05, mz); B(L, xb - xa + 0.24, BASE - 0.05, zb - za + 0.24, M.conc, mx, 0, mz); }
           else { B(L, xb - xa, 0.05, zb - za, roomM[c], mx, y0f - 0.05, mz); B(L, xb - xa, 0.24, zb - za, M.paint, mx, y0f - 0.29, mz); }
           x += w;
@@ -6741,9 +6743,26 @@ uniform mat3 normalMatrix;
       scene.add(m); o.proxy = m;
     }
     // world solids: the house's rooms and the studio's garage, so you can't drive or walk through it
+    // MOVES: patio edges open to the yard get a step; patios and those steps are ground you stand on outside
+    const PSTEP_H = 0.16, PSTEP_D = 0.34;
+    function patioEdges(d, x, y) { const out = []; for (const [ox, oz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { const nx = x + ox, ny = y + oz; if (inGrid(nx, ny) && (tileAt(d, 0, nx, ny) !== '.' || (d.garage && inGarage(nx, ny)))) continue; out.push([nx, ny, ox, oz]); } return out; }
+    function setWalks(o, d, pl) {
+      for (const r of o.ws || []) walks.del(r);
+      o.ws = [];
+      if (!d) return;
+      withFrame(d, () => {
+        const put = (ax, az, bx, bz, y) => { const a = pl.toWorld(ax, az), b = pl.toWorld(bx, bz), r = { x0: Math.min(a[0], b[0]), z0: Math.min(a[1], b[1]), x1: Math.max(a[0], b[0]), z1: Math.max(a[1], b[1]), y }; walks.add(r, r.x0, r.z0, r.x1, r.z1); o.ws.push(r); };
+        for (let y = 0; y < GD; y++) for (let x = 0; x < GW; x++) {
+          if (tileAt(d, 0, x, y) !== 'P') continue;
+          put(X(x), Z(y), X(x + 1), Z(y + 1), 0.02 + BASE - 0.04);
+          for (const [ex, ey, ox, oz] of patioEdges(d, x, y)) { const cx = X(x) + TL / 2 + ox * (TL / 2 + PSTEP_D / 2), cz = Z(y) + TL / 2 + oz * (TL / 2 + PSTEP_D / 2), hx = (ox ? PSTEP_D : TL) / 2, hz = (oz ? PSTEP_D : TL) / 2; put(cx - hx, cz - hz, cx + hx, cz + hz, 0.02 + PSTEP_H); }
+        }
+      });
+    }
     function setSolids(o, d, pl) {
       for (const r of o.rs) unsolid(r);
       o.rs = [];
+      setWalks(o, d, pl);
       withFrame(d, () => {
         const boxes = rects((x, y) => isRoom(tileAt(d, 0, x, y))).map(r => [X(r.x0) - WT, Z(r.y0) - WT, X(r.x1) + WT, Z(r.y1) + WT]);
         if (d.garage) boxes.push([X(GAR.x0) - 0.2, Z(GAR.y0) - 0.2, X(GAR.x1), Z(GAR.y1) + 0.2]);
@@ -6757,7 +6776,7 @@ uniform mat3 normalMatrix;
     function unsolid(r) { const cs = solids.cs; for (let i = Math.floor(r.x0 / cs); i <= Math.floor(r.x1 / cs); i++) for (let j = Math.floor(r.z0 / cs); j <= Math.floor(r.z1 / cs); j++) { const l = solids.m.get(i * 100003 + j); if (l) { const at = l.indexOf(r); if (at >= 0) l.splice(at, 1); } } }
     function buildOut(o) {
       dropOut(o);
-      if (!hasHouse(o)) { for (const r of o.rs) unsolid(r); o.rs = []; return; }
+      if (!hasHouse(o)) { for (const r of o.rs) unsolid(r); o.rs = []; setWalks(o, null); return; }
       const d = design(o.p), sh = buildShell(d, true), pl = placeOf(o, d); o.sh = sh; o.d = d; o.pl = pl;
       o.group = sh.group; o.group.position.set(pl.pos[0], 0.02, pl.pos[1]); o.group.rotation.y = o.ry; scene.add(o.group);
       if (o.proxy) o.proxy.visible = false;
@@ -29860,7 +29879,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       // body inside the lot footprint
       const bw = lw * (fam === 'shotgun' ? 0.86 + r() * 0.12 : 0.78 + r() * 0.2), bd = ld * (fam === 'shotgun' ? 0.8 + r() * 0.15 : 0.7 + r() * 0.22);
       const floors = fam === 'modern' ? 2 + (nF > 2 && r() < 0.6 ? 1 : 0) : nF;
-      const fh = fam === 'shotgun' || (fam === 'starter' && r() < 0.35) || (fam === 'craftsman' && r() < 0.5) ? 0.55 + r() * 0.35 : 0.15 + r() * 0.15;
+      const fh = fam === 'shotgun' || (fam === 'starter' && r() < 0.35) || (fam === 'craftsman' && r() < 0.5) ? 0.36 + r() * 0.12 : 0.12 + r() * 0.1;   // lowered (MOVES): raised floors were up to 0.9 m
       const storyH = 2.75 + r() * 0.35;
       // wings and extras
       const garageR = r(), garage = fam === 'shotgun' ? (garageR < 0.12 ? 'carport' : null) : fam === 'starter' ? (garageR < 0.35 ? 'carport' : garageR < 0.55 ? 'one' : null) : fam === 'ranch' ? (garageR < 0.6 ? 'two' : garageR < 0.75 ? 'carport' : null) : fam === 'estate' ? 'three' : fam === 'modern' ? 'under' : (garageR < 0.55 ? 'two' : garageR < 0.7 ? 'detached' : null);
@@ -29927,6 +29946,24 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       if (o.roof === 'none') return top;
       return roof(x0, z0, x1, z1, top, ro);
     }
+    // MOVES: a house's porch, steps and door sill become ground you stand on (walks), and the lot's block solid is cut
+    // back to the house: the porch strip stays solid for cars only (walk), wing and garage fronts stay solid, rails block you
+    function uqGround(H, W, o) {
+      if (A === SINK || H.walked) return; H.walked = true;
+      const cs = Math.cos(H.ry), sn = Math.sin(H.ry);
+      const wr = (x0, z0, x1, z1) => { const P = [[x0, z0], [x1, z0], [x0, z1], [x1, z1]].map(([x, z]) => [H.cx + x * cs + z * sn, H.cz - x * sn + z * cs]); return { x0: Math.min(P[0][0], P[1][0], P[2][0], P[3][0]), z0: Math.min(P[0][1], P[1][1], P[2][1], P[3][1]), x1: Math.max(P[0][0], P[1][0], P[2][0], P[3][0]), z1: Math.max(P[0][1], P[1][1], P[2][1], P[3][1]) }; };
+      for (const [x0, z0, x1, z1, y] of W) { const r = wr(x0, z0, x1, z1); r.y = y + 0.04; walks.add(r, r.x0, r.z0, r.x1, r.z1); }
+      const lot = wr(-o.lw / 2, -o.ld / 2, o.lw / 2, o.ld / 2), near = (a, b) => Math.abs(a - b) < 0.06;
+      const old = solids.at(H.cx, H.cz).find(b => !b.walk && !b.park && near(b.x0, lot.x0) && near(b.z0, lot.z0) && near(b.x1, lot.x1) && near(b.z1, lot.z1));
+      if (!old) return;
+      solids.del(old);
+      const add = (r, ex) => { if (ex) Object.assign(r, ex); solids.add(r, r.x0, r.z0, r.x1, r.z1); };
+      add(wr(-o.lw / 2, o.pzF, o.lw / 2, o.ld / 2));
+      add(wr(-o.lw / 2, -o.ld / 2, o.lw / 2, o.pzF), { walk: 1 });
+      if (o.wing) add(wr(o.wing[0], o.wing[2], o.wing[1], o.pzF));
+      if (o.gar && o.gar[2] < o.pzF) add(wr(o.gar[0], o.gar[2], o.gar[1], o.pzF));
+      for (const [a, b] of o.rails) add(wr(a, o.railZ - 0.06, b, o.railZ + 0.06), { h: 1.1 });
+    }
     function buildHouse(H) {
       const Rc = recipe(H), { lw, ld, fam } = Rc, ox = Rc.off;
       // the porch sits inside the lot: the body steps back by the porch depth
@@ -29981,8 +30018,8 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
         if (fam === 'colonial' || fam === 'traditional' || fam === 'estate' || Rc.r4 < 0.35) { fWall(doorFace, dt0 - 0.3, dt0 - 0.05, yF, yF + 2.1, T.win, Rc.trim, 0, 0.03); fWall(doorFace, dt1 + 0.05, dt1 + 0.3, yF, yF + 2.1, T.win, Rc.trim, 0, 0.03); }
         const a = fp(doorFace, dt0 - 0.12, 0), b = fp(doorFace, dt1 + 0.12, 0.08);
         sbox(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1]), yF + 2.15, yF + 2.3, T.conc, Rc.trim);
-        if (yF > 0.3) { const n = Math.ceil(yF / 0.18); for (let k = 0; k < n; k++) { const s0 = fp(doorFace, dt0 - 0.2, 0), s1 = fp(doorFace, dt1 + 0.2, (n - k) * 0.28 + 0.1); sbox(Math.min(s0[0], s1[0]), Math.min(s0[1], s1[1]), Math.max(s0[0], s1[0]), Math.max(s0[1], s1[1]), 0, yF * (k + 1) / n - 0.01, T.conc, lin('#9a968c')); } }
-        // porch
+        // porch (slabR: the slab's x range once one is laid; rails: the railing runs, for the solids)
+        let slabR = null; const rails = [];
         const pz0 = doorFace.pz - pd, pzF = doorFace.pz;
         const pc = Rc.fh > 0.4 ? shade('#a08060', 1) : lin('#a8a49a');
         const posts = (xs, yTop) => { for (const x of xs) sbox(x - 0.09, pz0 + 0.05, x + 0.09, pz0 + 0.23, yF, yTop, fam === 'craftsman' ? Rc.acTile || T.conc : T.conc, fam === 'craftsman' && Rc.acc ? Rc.acc : Rc.trim); };
@@ -29990,20 +30027,30 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
         if (Rc.porch === 'full' || Rc.porch === 'wrap' || Rc.porch === 'grand') {
           const px0 = Rc.porch === 'grand' ? Math.max(x0 + 0.5, ax - 2.5) : x0 + (wingOn && Rc.wing < 0 ? ww : 0), px1 = Rc.porch === 'grand' ? Math.min(x1 - 0.5, bx + 2.5) : x1 - (wingOn && Rc.wing > 0 ? ww : 0);
           if (px1 - px0 > 2) {
-            sbox(px0, pz0, px1, pzF, 0, yF + 0.02, Rc.fh > 0.4 ? T.wood : T.conc, pc);
+            sbox(px0, pz0, px1, pzF, 0, yF + 0.02, Rc.fh > 0.4 ? T.wood : T.conc, pc); slabR = [px0, px1];
             if (Rc.fh > 0.4) fWall(face(px1, pz0, -1, 0, px1 - px0), 0, px1 - px0, 0, yF, T.lattice, Rc.trim, 0, 0.02);
             const ph = Rc.porch === 'grand' ? yF + Rc.storyH * Math.min(2, Rc.floors) - 0.1 : yF + 2.6;
             const n = Math.max(2, Math.round((px1 - px0) / 2.6) + 1), xs = []; for (let k = 0; k < n; k++) xs.push(px0 + 0.15 + (px1 - px0 - 0.3) * k / (n - 1));
             posts(xs, ph);
             if (Rc.porch === 'grand') { sbox(px0 - 0.1, pz0 - 0.1, px1 + 0.1, pzF, ph, ph + 0.5, T.conc, Rc.trim); roof(px0 - 0.1, pz0 - 0.1, px1 + 0.1, pzF + 0.3, ph + 0.5, { type: 'gable', alongX: false, pitch: 0.55, ov: 0.25, tile: Rc.rTile, rc: Rc.rc, wallTile: T.conc, wc: Rc.trim, trim: Rc.trim }); }
             else roof(px0 - 0.15, pz0 - 0.15, px1 + 0.15, pzF, ph, { type: 'shed', pitch: 0.18, ov: 0.15, tile: Rc.rTile === T.metalRoof || fam === 'farm' ? T.metalRoof : Rc.rTile, rc: fam === 'farm' && Rc.r6 < 0.5 ? lin('#5a6068') : Rc.rc, wallTile: T.conc, wc: Rc.trim, trim: Rc.trim });
-            if (Rc.fh > 0.3 || Rc.porch === 'wrap') for (const [a1, b1] of [[px0 + 0.15, Math.max(px0 + 0.2, ax)], [Math.min(px1 - 0.2, bx), px1 - 0.15]]) if (b1 - a1 > 0.4) { slab(a1, pz0 + 0.14, b1, pz0 + 0.14, yF + 0.85, yF + 0.95, 0.07, T.conc, Rc.trim); for (let x = a1; x < b1; x += 0.13) sbox(x - 0.02, pz0 + 0.12, x + 0.02, pz0 + 0.16, yF, yF + 0.86, T.conc, Rc.trim, false); }
+            if (Rc.fh > 0.3 || Rc.porch === 'wrap') for (const [a1, b1] of [[px0 + 0.15, Math.max(px0 + 0.2, ax)], [Math.min(px1 - 0.2, bx), px1 - 0.15]]) if (b1 - a1 > 0.4) { rails.push([a1, b1]); slab(a1, pz0 + 0.14, b1, pz0 + 0.14, yF + 0.85, yF + 0.95, 0.07, T.conc, Rc.trim); for (let x = a1; x < b1; x += 0.13) sbox(x - 0.02, pz0 + 0.12, x + 0.02, pz0 + 0.16, yF, yF + 0.86, T.conc, Rc.trim, false); }
           }
         } else if (Rc.porch === 'portico' || Rc.porch === 'stoop' || Rc.porch === 'inset') {
           const px0 = Math.max(x0, ax), px1 = Math.min(x1, bx);
-          sbox(px0, pz0, px1, pzF, 0, yF + 0.02, T.conc, lin('#a8a49a'));
+          sbox(px0, pz0, px1, pzF, 0, yF + 0.02, T.conc, lin('#a8a49a')); slabR = [px0, px1];
           if (Rc.porch === 'portico') { posts([px0 + 0.15, px1 - 0.15], yF + 2.7); roof(px0 - 0.1, pz0 - 0.1, px1 + 0.1, pzF, yF + 2.7, { type: 'gable', alongX: false, pitch: 0.6, ov: 0.15, tile: Rc.rTile, rc: Rc.rc, wallTile: T.conc, wc: Rc.trim, trim: Rc.trim }); }
           else if (Rc.porch === 'stoop') roof(px0, pz0 + 0.6, px1, pzF, yF + 2.45, { type: 'shed', pitch: 0.25, ov: 0.1, tile: Rc.rTile, rc: Rc.rc, wallTile: T.conc, wc: Rc.trim, trim: Rc.trim });
+        }
+        // steps out front at the door, up onto the porch (or the door sill); the porch and steps are ground you stand on (MOVES)
+        {
+          const top = yF + 0.02, o0 = slabR ? pd : 0, n = Math.max(1, Math.round(top / 0.18)), W = [];
+          const rect = (t0, t1, oa, ob) => { const a = fp(doorFace, t0, oa), b = fp(doorFace, t1, ob); return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]; };
+          if (!slabR && top > 0.1) { const r = rect(dt0 - 0.3, dt1 + 0.3, 0, 0.75); sbox(r[0], r[1], r[2], r[3], 0, top - 0.005, T.conc, lin('#a8a49a')); W.push([...r, top]); }
+          for (let k = 1; k < n; k++) { const r = rect(dt0 - 0.25, dt1 + 0.25, (slabR ? o0 : 0.75), (slabR ? o0 : 0.75) + (n - k) * 0.3), y = top * k / n; sbox(r[0], r[1], r[2], r[3], 0, y - 0.005, T.conc, lin('#9a968c')); W.push([...r, y]); }
+          if (slabR) W.push([slabR[0], pz0, slabR[1], pzF, top]);
+          const wx0 = Rc.wing > 0 ? x1 - ww : x0;
+          uqGround(H, W, { lw, ld, pzF, wing: wingOn ? [wx0, wx0 + ww, z0] : null, gar: garW > 0 ? [gx0, gx1, Math.max(-ld / 2, z0 + (fam === 'estate' ? -0.5 : Rc.r5 < 0.5 ? -1.2 : 0.5))] : null, rails, railZ: pz0 + 0.14 });
         }
         // porch light by the door
         const lp = fp(doorFace, dt1 + 0.35, 0.08); sbox(lp[0] - 0.07, lp[1] - 0.07, lp[0] + 0.07, lp[1] + 0.07, yF + 1.75, yF + 2.0, T.conc, lin('#2a2a2a'));
@@ -31750,6 +31797,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       const k = Math.min(1, l); wx /= l; wz /= l;
       let nx = foot.x + wx * sp * k * dt, nz = foot.z + wz * sp * k * dt; const R = 0.35;
       for (const b of solids.at(nx, nz)) {
+        if (b.walk) continue;   // porch strips: solid for cars, you walk on them (MOVES)
         if (nx > b.x0 - R && nx < b.x1 + R && nz > b.z0 - R && nz < b.z1 + R) { const pl = nx - (b.x0 - R), pr = b.x1 + R - nx, pt = nz - (b.z0 - R), pb = b.z1 + R - nz, m = Math.min(pl, pr, pt, pb); if (m === pl) nx = b.x0 - R; else if (m === pr) nx = b.x1 + R; else if (m === pt) nz = b.z0 - R; else nz = b.z1 + R; }
       }
       // the parked car is in the way too
@@ -34024,6 +34072,7 @@ body.g-armed #walkhint { display: none !important; }
   function groundAt(x, z) {
     let y = 0, roads = 0; const seen = new Set();
     for (const o of lots.at(x, z)) if (x >= o.x0 && x <= o.x1 && z >= o.z0 && z <= o.z1 && o.y > y) y = o.y;
+    for (const o of walks.at(x, z)) if (x >= o.x0 && x <= o.x1 && z >= o.z0 && z <= o.z1 && o.y > y) y = o.y;   // porches, steps, patios (MOVES)
     for (const [qx, qz] of [[x, z], [x - 3, z], [x + 3, z], [x, z - 3], [x, z + 3]]) for (const e of streets.at(qx, qz)) {
       if (seen.has(e)) continue; seen.add(e);
       const horiz = Math.abs(e.bz - e.az) < 0.01, a = horiz ? x : z, a0 = horiz ? Math.min(e.ax, e.bx) : Math.min(e.az, e.bz), a1 = horiz ? Math.max(e.ax, e.bx) : Math.max(e.az, e.bz), d = Math.abs(horiz ? z - e.az : x - e.ax), hw = e.w / 2;
@@ -34048,6 +34097,169 @@ body.g-armed #walkhint { display: none !important; }
     stepFx(dt);
     if (foot.on && window.__gcam) { const [ox, oy, oz] = window.__gcam, h = foot.holder.rotation.y, c = Math.cos(h), sn = Math.sin(h); camera.position.set(foot.x + ox * c + oz * sn, oy, foot.z - ox * sn + oz * c); camera.lookAt(foot.x, window.__gcam[3] || 1.2, foot.z); }
   };
+  // ---------- jump, crouch, roll (MOVES, 2026-11-21) ----------
+  // Space / A jumps, C / B (or L3) crouches (toggle), Z / LB rolls; three touch buttons sit bottom-right while you walk.
+  // You land on whatever groundAt says is under you (porches, steps, patios, curbs), so a jump gets you up onto things
+  // too high to step onto (more than ~0.34 m in one step is blocked on foot). Other players see you crouch, jump and roll.
+  const MV = { air: false, ay: 0, vy: 0, crouch: false, cw: 0, aw: 0, roll: 0, rdx: 0, rdz: -1, rcd: 0, land: 0, req: { j: 0, c: 0, r: 0 }, pad: {}, sent: -1 };
+  const MV_G = 13, MV_JV = 4.3, MV_RT = 0.8, MV_STEP = 0.34;
+  const mvOk = () => foot.on && !inside && !menuFn && !(PH && PH.open) && !creating && !PM.on && !document.body.classList.contains('boating') && !document.body.classList.contains('riding');
+  function mvFree(x, z) {   // walls and houses you can't walk into (porch strips flagged walk are fine)
+    const R = 0.35;
+    for (const b of solids.at(x, z)) {
+      if (b.walk || !(x > b.x0 - R && x < b.x1 + R && z > b.z0 - R && z < b.z1 + R)) continue;
+      const pl = x - (b.x0 - R), pr = b.x1 + R - x, pt = z - (b.z0 - R), pb = b.z1 + R - z, m = Math.min(pl, pr, pt, pb);
+      if (m === pl) x = b.x0 - R; else if (m === pr) x = b.x1 + R; else if (m === pt) z = b.z0 - R; else z = b.z1 + R;
+    }
+    return [clamp(x, WB.x0, WB.x1), clamp(z, WB.z0, WB.z1)];
+  }
+  // the pose on top of the walk / idle animation: c crouch, a in the air, rp roll progress 0..1 (or -1), ld landing dip
+  function mvPose(P, c, a, rp, ld, arms) {
+    if (!P || !P.legs) return;
+    const Hs = P.root.scale.y || 1, roll = rp >= 0 ? Math.max(0, Math.min(1, rp / 0.12, (1 - rp) / 0.2)) : 0;
+    const dip = ld > 0 ? Math.sin(Math.PI * (1 - ld / 0.22)) * 0.55 : 0, k = Math.max(c, dip);
+    const hip = 1.2 * k + 0.6 * a + 1.75 * roll, knee = 1.75 * k + 1.15 * a + 2.25 * roll, ank = -0.52 * k + 0.2 * a;
+    for (let i = 0; i < 2; i++) {
+      P.legs[i].rotation.x -= hip * (a && !roll ? (i ? 0.7 : 1.15) : 1);
+      if (P.knees) { P.knees[i].rotation.x += knee * (a && !roll ? (i ? 1.25 : 0.8) : 1); P.ankles[i].rotation.x += ank; }
+      if (arms) {
+        P.arms[i].rotation.x -= 0.35 * k + 0.85 * a + 1.05 * roll; P.arms[i].rotation.z += (i ? 1 : -1) * 0.25 * a;
+        if (P.fores) P.fores[i].rotation.x -= 0.45 * k + 0.4 * a + 1.5 * roll;
+      }
+    }
+    P.root.position.y -= (0.29 * k + 0.12 * roll) * Hs;
+    P.upper.rotation.x += 0.38 * k + 0.12 * a + 0.85 * roll;
+    if (P.head) P.head.rotation.x += -0.28 * k + 0.45 * roll;
+  }
+  // the somersault: the whole body turns round its middle
+  function mvSpin(W, rp, Hs, ry = 0) {   // ry: the wrap's own yaw (other players' wraps turn to face them)
+    W.rotation.order = 'YXZ';
+    if (rp < 0) { if (W.rotation.x) { W.rotation.x = 0; W.position.set(0, 0, 0); } return; }
+    const e = smooth01((rp - 0.06) / 0.86), ang = -Math.PI * 2 * e, hc = 0.45 * (Hs || 1), d = -hc * Math.sin(ang);
+    W.rotation.x = ang; W.position.set(d * Math.sin(ry), hc * (1 - Math.cos(ang)), d * Math.cos(ry));
+  }
+  function mvStartRoll() {
+    // roll the way the stick points (camera relative), else the way you face
+    let mx = joy.x, mz = joy.y;
+    if (keys.ArrowUp || keys.KeyW) mz -= 1; if (keys.ArrowDown || keys.KeyS) mz += 1; if (keys.ArrowLeft || keys.KeyA) mx -= 1; if (keys.ArrowRight || keys.KeyD) mx += 1;
+    for (const p of (navigator.getGamepads ? navigator.getGamepads() : [])) if (p) { if (Math.abs(p.axes[0]) > 0.15) mx += p.axes[0]; if (Math.abs(p.axes[1]) > 0.15) mz += p.axes[1]; }
+    const fx = -Math.sin(foot.camYaw), fz = -Math.cos(foot.camYaw), rx = Math.cos(foot.camYaw), rz = -Math.sin(foot.camYaw);
+    let wx = rx * mx - fx * mz, wz = rz * mx - fz * mz; const l = Math.hypot(wx, wz);
+    if (l < 0.2) { wx = -Math.sin(foot.yaw); wz = -Math.cos(foot.yaw); } else { wx /= l; wz /= l; }
+    MV.rdx = wx; MV.rdz = wz; MV.roll = 1e-4; MV.crouch = false; foot.target = null; foot.yaw = Math.atan2(-wx, -wz);
+    SND && SND.click && SND.click(220, 0.05);
+  }
+  function mvPadInput() {
+    for (const p of (navigator.getGamepads ? navigator.getGamepads() : [])) {
+      if (!p) continue; const P = MV.pad, b = i => !!(p.buttons[i] && p.buttons[i].pressed);
+      const A = b(0), B = b(1), L3 = b(10), LB = b(4);
+      if (A && !P.A && !foot.nearCar && cardMode !== 'near') MV.req.j = 1;
+      if (B && !P.B && !RIDE.first) MV.req.c = 1;
+      if (L3 && !P.L3) MV.req.c = 1;
+      if (LB && !P.LB) MV.req.r = 1;
+      P.A = A; P.B = B; P.L3 = L3; P.LB = LB;
+    }
+  }
+  addEventListener('keydown', e => {
+    if (e.repeat || !e.target || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || !mvOk()) return;
+    if (e.code === 'Space') { e.preventDefault(); MV.req.j = 1; }
+    else if (e.code === 'KeyC') MV.req.c = 1;
+    else if (e.code === 'KeyZ') MV.req.r = 1;
+  });
+  {   // touch buttons
+    const css = document.createElement('style');
+    css.textContent = `
+#mv-pad { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); display: none; gap: 10px; z-index: 7; user-select: none; -webkit-user-select: none; touch-action: none; align-items: flex-end; }
+body.walking:not(.indoors):not(.phoning):not(.creating):not(.boating):not(.riding):not(.strip-on):not(.roll-on):not(.pm) #mv-pad { display: flex; }
+#mv-pad button { -webkit-tap-highlight-color: transparent; touch-action: none; width: 58px; height: 58px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: rgba(24,20,30,0.55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff; font: 800 10px var(--body); letter-spacing: 0.05em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0; cursor: pointer; }
+#mv-pad button svg { width: 24px; height: 24px; }
+#mv-pad button.down { transform: scale(0.93); background: rgba(255,255,255,0.22); }
+#mv-pad #mv-jump { width: 66px; height: 66px; }
+#mv-pad #mv-crouch.on { background: rgba(255,170,40,0.75); border-color: rgba(255,220,150,0.8); color: #111; }
+body.g-has #mv-pad { bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); right: calc(max(16px, env(safe-area-inset-right, 0px)) + 104px); }
+@media (orientation: portrait) { body.g-has #mv-pad { right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); } body.g-has #g-pad { bottom: calc(env(safe-area-inset-bottom, 0px) + 110px); } }
+`;
+    document.head.appendChild(css);
+    const pad = document.createElement('div'); pad.id = 'mv-pad';
+    const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+    pad.innerHTML = `<button id="mv-roll" aria-label="Roll">${svg('<path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M17 2.5v4h-4"/>')}ROLL</button>`
+      + `<button id="mv-crouch" aria-label="Crouch">${svg('<path d="M6 13l6 5 6-5"/><path d="M12 4v13"/>')}CROUCH</button>`
+      + `<button id="mv-jump" aria-label="Jump">${svg('<path d="M6 11l6-6 6 6"/><path d="M12 5v14"/>')}JUMP</button>`;
+    document.body.appendChild(pad);
+    const tap = (id, k) => { const el = pad.querySelector('#' + id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); el.classList.add('down'); if (mvOk()) MV.req[k] = 1; }); for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, () => el.classList.remove('down')); };
+    tap('mv-jump', 'j'); tap('mv-crouch', 'c'); tap('mv-roll', 'r');
+    MV.crBtn = pad.querySelector('#mv-crouch');
+  }
+  const _stepFootMv = stepFoot;
+  stepFoot = function (dt) {
+    mvPadInput();
+    const ok = mvOk(), R = MV.req;
+    if (!ok || !foot.on) { R.j = R.c = R.r = 0; }
+    if (R.c) { R.c = 0; if (!MV.air && !(MV.roll > 0)) MV.crouch = !MV.crouch; }
+    if (R.j) { R.j = 0; if (!MV.air && !(MV.roll > 0)) { if (MV.crouch) MV.crouch = false; else { MV.air = true; MV.vy = MV_JV; MV.ay = foot.gy != null ? foot.gy : groundAt(foot.x, foot.z); SND && SND.click && SND.click(160, 0.04); } } }
+    if (R.r) { R.r = 0; if (!MV.air && !(MV.roll > 0) && MV.rcd <= 0) mvStartRoll(); }
+    MV.rcd -= dt; if (MV.land > 0) MV.land = Math.max(0, MV.land - dt);
+    const px = foot.x, pz = foot.z, g0 = groundAt(px, pz);
+    _stepFootMv(dt);
+    if (!foot.on) { MV.air = false; MV.roll = 0; MV.crouch = false; if (ME) mvSpin(ME.wrap, -1); return; }
+    let nx = foot.x, nz = foot.z;
+    if (MV.roll > 0) {
+      // our own motion: a quick dive the way you rolled, slowing at the end
+      MV.roll += dt; const p = MV.roll / MV_RT, sp = 5.4 * (p < 0.8 ? 1 : Math.max(0, (1 - p) / 0.2));
+      [nx, nz] = mvFree(px + MV.rdx * sp * dt, pz + MV.rdz * sp * dt);
+      foot.yaw = Math.atan2(-MV.rdx, -MV.rdz); foot.holder.rotation.y = foot.yaw; foot.walk = 0; foot.target = null;
+      if (p >= 1) { MV.roll = 0; MV.rcd = 0.25; }
+    } else if (MV.crouch && !MV.air) { nx = px + (nx - px) * 0.42; nz = pz + (nz - pz) * 0.42; }   // crouched: a slow creep
+    // too high to step up onto: you need the steps (or a jump)
+    if (nx !== px || nz !== pz) {
+      const base = MV.air ? MV.ay : g0, high = (x, z) => groundAt(x, z) - base > (MV.air ? 0.05 : MV_STEP);
+      if (high(nx, nz)) { if (!high(nx, pz)) nz = pz; else if (!high(px, nz)) nx = px; else { nx = px; nz = pz; } }
+    }
+    foot.x = nx; foot.z = nz; drv.x = nx; drv.z = nz;
+    const g = groundAt(nx, nz);
+    if (MV.air) {
+      MV.vy -= MV_G * dt; MV.ay += MV.vy * dt;
+      if (MV.ay <= g && MV.vy <= 0) { MV.air = false; MV.ay = g; foot.gy = g; MV.land = 0.22; }
+    }
+    if (!MV.air && Math.abs(g - (foot.gy == null ? g : foot.gy)) > 0.3) foot.gy = g;
+    foot.holder.position.set(nx, (MV.air ? MV.ay : foot.gy != null ? foot.gy : g) + 0.015, nz);
+    // the camera rides up the porch with you (and a little with a jump); crouched it drops
+    MV.cw += ((MV.crouch ? 1 : 0) - MV.cw) * Math.min(1, dt * 10);
+    MV.aw += ((MV.air ? 1 : 0) - MV.aw) * Math.min(1, dt * 14);
+    const camT = (foot.gy || 0) + (MV.air ? (MV.ay - g) * 0.45 : 0) - 0.42 * MV.cw - (MV.roll > 0 ? 0.5 : 0);
+    foot.camDY = (foot.camDY || 0) + (camT - (foot.camDY || 0)) * Math.min(1, dt * 9);
+    if (ME) {
+      const armsFree = !(GUN.d > 0.05);
+      mvPose(ME, MV.cw, MV.aw, MV.roll > 0 ? MV.roll / MV_RT : -1, MV.land, armsFree);
+      mvSpin(ME.wrap, MV.roll > 0 ? MV.roll / MV_RT : -1, ME.root.scale.y);
+    }
+    if (MV.crBtn) MV.crBtn.classList.toggle('on', MV.crouch);
+  };
+  // online: what you're doing rides on the state packet; their pose is drawn on top of the walk
+  const mvCode = () => !foot.on ? 0 : MV.roll > 0 ? 3 : MV.air ? 2 : MV.crouch ? 1 : 0;
+  NET_HOOK.urgent.push(() => mvCode() !== MV.sent);
+  NET_HOOK.state.push(() => {
+    const c = mvCode(); MV.sent = c; if (!c) return {};
+    const o = { mv: c }; if (c === 2) o.my = +Math.max(0, MV.ay - groundAt(foot.x, foot.z)).toFixed(2); if (c === 3) o.mr = +(MV.roll / MV_RT).toFixed(2); return o;
+  });
+  NET_HOOK.recv.push((p, m, now) => {
+    if (m.k !== 's') return;
+    const c = nNum(m.mv, 0, 3, 0); if (c === 3 && p.mv !== 3) p.mvAt = now - nNum(m.mr, 0, 1, 0) * MV_RT; p.mv = c;
+    p.my = c === 2 ? nNum(m.my, 0, 3, 0) : 0;
+  });
+  NET_HOOK.draw.push((p, v, dt, now) => {
+    const P = v.P; if (!P || p.inCar) { if (P) mvSpin(P.wrap, -1); return; }
+    v.mvC = (v.mvC || 0) + ((p.mv === 1 ? 1 : 0) - (v.mvC || 0)) * Math.min(1, dt * 10);
+    v.mvA = (v.mvA || 0) + ((p.mv === 2 ? 1 : 0) - (v.mvA || 0)) * Math.min(1, dt * 14);
+    const rp = p.mv === 3 && p.mvAt != null && now - p.mvAt < MV_RT ? (now - p.mvAt) / MV_RT : -1;
+    v.mvY = (v.mvY || 0) + ((p.my || 0) - (v.mvY || 0)) * Math.min(1, dt * 12);
+    v.g.position.y = groundAt(p.x, p.z) + v.mvY;
+    if (v.mvC > 0.01 || v.mvA > 0.01 || rp >= 0) mvPose(P, v.mvC, v.mvA, rp, 0, !p.gd);
+    // the walk wrap turns to face them: spin in its own frame
+    mvSpin(P.wrap, rp, P.root.scale.y, P.wrap.rotation.y);
+  });
+  window.__moves = { MV, mvPose, mvSpin, groundAt: (x, z) => groundAt(x, z), walks, req: k => { MV.req[k] = 1; } };
+  // ---------- end jump, crouch, roll ----------
   // ---------- look around from the car ----------
   // drag anywhere off the pedals (or the right stick) to swing the chase camera round the car, like on foot.
   // let go and it eases back behind you once you're moving.
