@@ -2261,13 +2261,207 @@
       await cut(async () => {
         const [mx, mz] = syMe(); shot([mx + 8, 6, mz + 8], [mx, 1.2, mz], { to: [mx + 14, 12, mz + 14], dur: 8 });
         await syTitle('TIER 4 COMPLETE', 'THE PLUG', `${st.runs || 5} runs to Oak Cliff. ${hol ? 'Buying from Hollis.' : 'Loyal to Lou.'}`, 3.4);
-        await syTitle('NEXT', 'TIER 5 · THE CITY', 'Coming in the next story update', 2.6);
+        await syTitle('NEXT', 'TIER 5 · THE CITY', 'Fundraisers. Clean money. The truth.', 2.6);
       });
       st.tier = 5; save();
       if (hol) text('calloway', 'Deacon says you with us now. Funny how that works.'); else text('calloway', 'Heard you told Deacon no. Your brother did that too.');
       syNote(`Tier 4 done: five clean runs. ${hol ? 'You\'re buying from Hollis now. Calloway says you\'re "with us."' : 'You stayed with Lou. Calloway says Smoke told Hollis no too.'}`);
     },
   ], { label: 'Tier 4 · Five Clean', delay: 60 });
+
+  // ---------- TIER 5: The City. Hollis brings you inside; wash the money; the midpoint twist (Smoke was meeting Garza); $1M clean ----------
+  const syAt = (id, fx, fz, d = 4) => { const p = DATA.P.find(x => x.id === id) || { x: fx, z: fz }, [ox, oz] = outDir(p); return { p, ox, oz, x: p.x + ox * d, z: p.z + oz * d }; };
+  const syFromBank = n => { const b = Math.max(0, n - S.cash); S.bank -= b; S.cash -= n - b; refreshStats(); };
+
+  mis('t5a', 5, 'Tier 5', 'The Fundraiser', 'Deacon Hollis is running for city council. He wants you at the yacht club in a suit.', [
+    async () => {
+      const hol = syFlag('plug') === 'hollis';
+      await call('hollis', [['hollis', hol ? 'Saturday. Trinity Harbor Yacht Club. Wear something without a logo on it.' : 'You said no to me once. Come say it to my face at the yacht club Saturday. Wear a suit.'], ['hollis', 'Half this city will be there. The other half works for them.']], { mustAnswer: true });
+      const a = syAt('marina_harbor', 996, 880, 5);
+      setTime('night');
+      actor('hollis', a.x, a.z, 0); actor('calloway', a.x + a.oz * 3, a.z - a.ox * 3, 0);
+      await talkTo('hollis', 'Talk to', { obj: 'Go to Hollis\'s fundraiser at Trinity Harbor Yacht Club', pin: 'Trinity Harbor Yacht Club' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'hollis'); face('calloway', foot.x, foot.z); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.6, 13, 4.5); await syWait(1.6);
+        await lines([['narr', 'String quartet. Shrimp on ice. A banner: HOLLIS FOR COUNCIL · DISTRICT 8 · "BUILDING FORT WORTH."'], ['narr', 'A county judge. Two councilmen. The man who runs the Stockyards. All of them shake Hollis\'s hand like they owe him.']]);
+        two('me', 'hollis', 1, 3.4);
+        await lines([['hollis', 'You see that man by the bar? Zoning. The woman in blue? Port of Houston. Every car on my haulers goes where she says.'], ['hollis', 'Your brother stood right where you\'re standing. He had the same look on his face.']]);
+        close('calloway', 1, 1.8); await lines([['calloway', 'Nice suit. Smoke wore one too. At the funeral.']]);
+        ots('me', 'hollis');
+        i = await choose([{ t: 'Shake his hand in front of everybody.', tone: 'in', d: { streets: 3, loyalty: -2 } }, { t: 'Smile. Say nothing. Learn names.', tone: 'watch', d: { clean: 2 } }, { t: 'Tell Calloway to say Smoke\'s name again.', tone: 'push', d: { streets: 4, heat: 4 } }], { timer: 14 });
+        close('hollis', -1, 1.8); await say('hollis', i === 0 ? 'Smile for the camera. The Star-Telegram is here.' : i === 1 ? 'Smart. Most young men talk. You listen. I can use that.' : 'Easy. Not here. Not in front of the judge.');
+      });
+      syFlag('fundraiser', i); unactor('hollis'); unactor('calloway'); setTime('day');
+      if (i === 0) text('throttle', 'SMOKE LIL BRO AT THE HOLLIS FUNDRAISER IN A SUIT 👀 east side asking questions');
+      syNote(['You shook Hollis\'s hand in front of the whole city at his fundraiser.', 'You watched Hollis\'s fundraiser and learned who he owns: a judge, zoning, the Port of Houston.', 'You got in Calloway\'s face at Hollis\'s fundraiser.'][i]);
+    },
+  ], { label: 'Tier 5 · The Fundraiser', delay: 40 });
+
+  mis('t5b', 5, 'Tier 5', 'Laundry', 'Dirty money gets you killed. Clean money gets you a seat. Wash it.', [
+    async () => {
+      const st = sy(); st.bank5 = S.bank; save();
+      const lives = ['label', 'shop', 'ranch', 'rentals'].filter(k => k === 'label' ? !!(syLabel() && syLabel().name) : k === 'shop' ? !!(st.cars && st.cars.shop) : k === 'ranch' ? (S.cattle || 0) > 0 : (S.props || []).length > 0);
+      await call('rusty', [['rusty', 'People asking where the money coming from. You need paper behind every dollar.'], ['rusty', lives.length ? `You got ${lives.join(', ')}. Run the cash through them. Slow. Little at a time.` : 'Get you a business. A shop, a label, some cattle. Then run the cash through it.']]);
+      await syUntil(() => S.bank >= (st.bank5 || 0) + 100000, 'Wash $100,000 into the bank (deposit through your businesses)');
+      syMeter('clean', 6, 'Washed $100,000');
+      text('hollis', 'My bank manager says your deposits look very... legitimate. Good. Now you can be seen with me.');
+      syNote('You washed $100,000 into the bank through your businesses.');
+    },
+  ], { label: 'Tier 5 · Laundry', delay: 40 });
+
+  mis('t5c', 5, 'Tier 5', 'Ironline VIP', 'Hollis\'s suite at Ironline Dragway. The track where Smoke died.', [
+    async () => {
+      text('hollis', 'Friday. My suite at Ironline. Come watch the big tire class with me');
+      const a = syAt('ironline', 34, 1260, 8);
+      setTime('night');
+      actor('hollis', a.x, a.z, 0);
+      await talkTo('hollis', 'Sit with', { obj: 'Go to Hollis\'s VIP suite at Ironline Dragway', pin: 'Ironline Dragway' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'hollis'); const ir = a.p; shot([ir.x + 30, 14, ir.z - 10], [ir.x, 1, ir.z], { to: [ir.x + 18, 10, ir.z + 20], dur: 7 }); await syWait(1.4);
+        await lines([['narr', 'Two cars stage under the lights. The tree drops. Somebody runs a six-second pass and the stands shake.']]);
+        two('me', 'hollis', 1, 3.4);
+        await lines([['hollis', 'Your brother ran a 6.1 on this track. Nobody from the east side ever did that.'], ['hollis', 'He got greedy at the end. Wanted more than his piece. That\'s all I\'ll say about it.']]);
+        close('hollis', 1, 1.8); await lines([['hollis', 'Lane two, by the back gate. That\'s where they found him. I paid for the funeral. Did anybody tell you that?']]);
+        ots('me', 'hollis');
+        i = await choose([{ t: '"Thank you for the funeral."', tone: 'play it', d: { loyalty: 2 } }, { t: '"Greedy how?"', tone: 'press', d: { heat: 2 } }, { t: 'Look at the back gate. Say nothing.', tone: 'remember', d: { family: 2 } }], { timer: 14 });
+        close('hollis', -1, 1.8); await say('hollis', i === 0 ? 'Manners. Pearl raised y\'all right.' : i === 1 ? 'He wanted to talk to people he shouldn\'t have. Enjoy the race.' : 'You\'ll stop looking at it. Everybody does.');
+      });
+      syFlag('ironlineVIP', i); unactor('hollis'); setTime('day');
+      syNote(i === 1 ? 'Hollis said Smoke "wanted to talk to people he shouldn\'t have."' : 'Hollis showed you lane two at Ironline, by the back gate, where they found Smoke. He says he paid for the funeral.');
+    },
+  ], { label: 'Tier 5 · Ironline VIP', delay: 40 });
+
+  mis('t5d', 5, 'Tier 5', "Nia's Video", 'Nia found something in the footage from the night Smoke died.', [
+    async () => {
+      text('nia', 'I need to show you something and I can\'t send it. Dickies Arena lot. Come alone');
+      const a = syAt('dickies_arena', -375, -13, 10);
+      setTime('night');
+      actor('nia', a.x, a.z, 0); SY.actors.get('nia').pose = 'phone';
+      await talkTo('nia', 'Talk to', { obj: 'Meet Nia in the Dickies Arena lot. Alone.', pin: 'Dickies Arena' });
+      await cut(async () => {
+        faceEach('me', 'nia'); two('me', 'nia', 1, 3.2);
+        await lines([['nia', 'That night I was filming the pit for Throttle. I never looked at the end of the clip. Too hard.'], ['nia', 'Last week I did. 2:07 in the morning. Back gate. Look.']]);
+        close('nia', 1, 1.6);
+        await lines([['narr', 'Nia\'s phone. Grainy. Headlights at the Ironline back gate. An unmarked Tahoe. A man gets out and walks toward lane two.'], ['narr', 'He turns once, into the light. Detective Calloway.'], ['nia', 'Four minutes later the ambulance call goes out. Calloway is never in a single report.']]);
+        if (syFlag('niaPhotos')) await lines([['nia', 'And the pics you sent me off that Hollis car? Same Laredo hauler number on a Hollis invoice from that week.']]);
+        await lines([['nia', 'If I post this, I\'m dead. If you do something stupid with it, you\'re dead. So we wait. We get more.']]);
+      });
+      SY.actors.get('nia').pose = null; unactor('nia'); setTime('day');
+      syFlag('niaVideo', 1); syMeter('family', 3, 'The truth about Smoke');
+      syNote('Nia\'s video: at 2:07 a.m. the night Smoke died, Detective Calloway walked through the Ironline back gate toward lane two.');
+    },
+  ], { label: "Tier 5 · Nia's Video", delay: 40 });
+
+  mis('t5e', 5, 'Tier 5', "Big Mama's Ledger", 'Big Mama found Smoke\'s ledger in the deep freezer.', [
+    async () => {
+      text('mama', 'Baby come home. I found something of your brother\'s. I was looking for a roast');
+      const h = spot('mama', 1, 2.6); actor('mama', h.x, h.z, h.yaw + Math.PI);
+      await talkTo('mama', 'Talk to', { obj: 'Go home to Big Mama', pin: "Big Mama's house" });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'mama'); two('me', 'mama', 1, 3.2);
+        await lines([['mama', 'Wrapped in foil like a pork chop. In the bottom of the deep freezer. That boy.'], ['narr', 'A black composition book. Every page is numbers. Pickups, drops, Hollis\'s haulers by plate number.']]);
+        close('mama', 1, 1.6);
+        await lines([['narr', 'The last page is in Smoke\'s handwriting. "Thurs. 2am. Ironline back gate. G. Bring the book. Then we out. Me, Mama, lil bro."'], ['mama', 'Who is G, baby?']]);
+        await syTitle('G', 'AGENT GARZA', 'Smoke was meeting the DEA the night he died', 3.4);
+        await lines([['narr', 'Smoke was going to give Hollis to the DEA. Calloway got to the back gate first.']]);
+        ots('me', 'mama');
+        i = await choose([{ t: 'Keep it between you and Big Mama.', tone: 'quiet', d: { family: 4 } }, { t: 'Call Mook. He was there back then.', tone: 'tell Mook', d: { loyalty: 3 } }, { t: 'Call Agent Garza.', tone: 'call Garza', d: { clean: 2, streets: -2 } }], { timer: 16 });
+        close('mama', -1, 1.6); await say('mama', i === 0 ? 'Then it stays in this house. Like everything else.' : i === 1 ? 'Mook. Hm. Be careful who you tell, baby. Smoke told people too.' : 'The police? Lord. Your brother trusted them and look.');
+      });
+      unactor('mama');
+      syFlag('ledger', 1); syFlag('ledgerTold', i);
+      syMeter('family', 4, 'Smoke\'s ledger');
+      if (i === 1) text('mook', 'Smoke was gon flip?? nah. nah bro. who else know about this book');
+      syNote('MIDPOINT: Smoke\'s ledger says he was meeting "G" (Agent Garza) at the Ironline back gate at 2 a.m. the night he died. He was going to give her Hollis. Calloway got there first.');
+    },
+  ], { label: "Tier 5 · Big Mama's Ledger", delay: 40 });
+
+  mis('t5f', 5, 'Tier 5', "Garza's Deal", 'Agent Garza knows you found the book.', [
+    async () => {
+      if (syFlag('ledgerTold') !== 2) await call('garza', [['garza', 'Don\'t hang up. I know about the book. Your grandmother called a church friend, the church friend called her nephew, her nephew works for me.'], ['garza', 'Greater Stop Six Baptist. Tonight. The back pew.']], { mustAnswer: true });
+      else await call('garza', [['garza', 'You called. Good. Not on the phone. Greater Stop Six Baptist, tonight. The back pew.']]);
+      const c = spot('church', 1, 3); setTime('night');
+      actor('garza', c.x, c.z, c.yaw + Math.PI);
+      await talkTo('garza', 'Talk to', { obj: 'Meet Agent Garza at Greater Stop Six Baptist Church', pin: 'Greater Stop Six Baptist Church' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'garza'); two('me', 'garza', 1, 3.2);
+        await lines([['garza', 'Your brother called me eleven times in two weeks. He was scared. Not of Hollis. Of Calloway.'], ['garza', 'I was at the Ironline gate at two fifteen. He was already on the ground.']]);
+        close('garza', 1, 1.6);
+        await lines([['garza', 'Finish what he started. Wear a wire at Hollis\'s table. Give me the haulers and the Laredo route, and the book.'], ['garza', 'Your charges go away. Big Mama gets moved somewhere safe. You get your brother\'s name back.']]);
+        ots('me', 'garza');
+        i = await choose([{ t: 'Take the deal.', tone: 'informant', d: { clean: 6, streets: -6, loyalty: -4 } }, { t: 'Not yet. I need to think.', tone: 'wait' }, { t: '"Smoke trusted you and he\'s dead."', tone: 'refuse', d: { streets: 4, heat: 2 } }], { timer: 18 });
+        close('garza', -1, 1.6); await say('garza', i === 0 ? 'Then you never met me. You never sat in this church. I\'ll find you.' : i === 1 ? 'Don\'t think too long. Calloway can count to the same number I can.' : 'He trusted me too late. Don\'t make the same mistake.');
+      });
+      unactor('garza'); setTime('day');
+      syFlag('garzaDeal', i === 0 ? 'yes' : i === 1 ? 'later' : 'no');
+      if (i === 0) syMeter('heat', -10, 'Federal protection');
+      syNote(i === 0 ? 'You took Agent Garza\'s deal. You\'re an informant now. One slip and you\'re done.' : i === 1 ? 'Agent Garza offered you a deal: wear a wire at Hollis\'s table. You said not yet.' : 'You told Agent Garza no. Smoke trusted her and he died.');
+    },
+  ], { label: "Tier 5 · Garza's Deal", delay: 40 });
+
+  mis('t5g', 5, 'Tier 5', 'The Tax', 'Calloway wants a piece of everything you touch. Every week.', [
+    async () => {
+      text('calloway', 'Back of the Dickies lot. Now. Don\'t make me come find you');
+      const a = syAt('dickies_arena', -375, -13, 14);
+      actor('calloway', a.x, a.z, 0);
+      await talkTo('calloway', 'Talk to', { obj: 'Meet Calloway behind Dickies Arena', pin: 'Dickies Arena' });
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'calloway'); ots('me', 'calloway');
+        await lines([['calloway', 'Shop. Tow trucks. Studio. Cattle. Whatever you got going, I see all of it from my desk.'], ['calloway', 'Twenty-five thousand a week. Or a judge I know signs a warrant for that house on Ramey.']]);
+        if (syFlag('niaVideo')) { close('calloway', 1, 1.6); await lines([['calloway', 'And tell your little Throttle girlfriend to delete what she\'s got. I know what she\'s got.']]); }
+        ots('me', 'calloway');
+        i = await choose([{ t: 'Pay him. Keep him close.', tone: 'pay', d: { loyalty: -2 } }, { t: 'Tell him you\'ll see him at lane two.', tone: 'threat', d: { streets: 6, heat: 8 } }, { t: 'Pay him, and record it.', tone: 'record', d: { clean: 3, heat: 2 } }], { timer: 14 });
+        close('calloway', -1, 1.6); await say('calloway', i === 1 ? 'Lane two. You really are his brother.' : 'Every Monday. Don\'t be late. I hate late.');
+      });
+      unactor('calloway');
+      syFlag('callowayTax', i);
+      if (i !== 1) { await syUntil(() => S.cash + S.bank >= 25000, 'Get $25,000 for Calloway\'s first payment (cash or bank)'); syFromBank(25000); S.log.unshift('-$25,000 Calloway'); save(); }
+      if (i === 2) syFlag('callowayTape', 1);
+      syNote(i === 0 ? 'Calloway is taxing you $25,000 a week. You paid.' : i === 1 ? 'You told Calloway you\'d see him at lane two. He didn\'t like that.' : 'You paid Calloway $25,000 and recorded the whole thing on your phone.');
+    },
+  ], { label: 'Tier 5 · The Tax', delay: 40 });
+
+  mis('t5h', 5, 'Tier 5', "Hollis's Table", 'A million clean. Then Hollis pulls out a chair for you.', [
+    async () => {
+      text('hollis', 'When you have a million dollars that can stand up in front of an auditor, call me. Not before');
+      await syUntil(() => S.bank >= 1000000, 'Have $1,000,000 clean in the bank');
+      syMeter('clean', 6, 'A million clean');
+    },
+    async () => {
+      const a = syAt('auto_row', 75, -163, 5); setTime('night');
+      actor('hollis', a.x, a.z, 0); actor('calloway', a.x + a.oz * 2.6, a.z - a.ox * 2.6, 0);
+      await talkTo('hollis', 'Sit down with', { obj: 'Hollis Motors. After hours. He\'s holding a seat for you.', pin: 'Cowtown Auto Row' });
+      const wire = syFlag('garzaDeal') === 'yes';
+      let i = 0;
+      await cut(async () => {
+        faceEach('me', 'hollis'); face('calloway', foot.x, foot.z); wide(foot.x, foot.z, foot.yaw + Math.PI * 0.5, 11, 3.6); await syWait(1.4);
+        if (wire) await lines([['narr', 'The wire is taped under your shirt. It feels like it\'s glowing.']]);
+        two('me', 'hollis', 1, 3.4);
+        await lines([['hollis', 'A million that can stand up. Your brother never got there. He wanted out instead of up.'], ['hollis', 'Laredo to Fort Worth. My haulers, your people, Calloway\'s badge. Next month, Denver. A woman named Wren grows more than Colorado can smoke.']]);
+        close('hollis', 1, 1.8); await lines([['hollis', 'Sit down. Or walk out like he did.']]);
+        ots('me', 'hollis');
+        i = await choose([{ t: 'Sit down.', tone: 'sit', d: { streets: 5 } }, { t: wire ? 'Sit down. Let the wire hear everything.' : 'Sit down, and remember every word.', tone: wire ? 'wire' : 'remember', d: { clean: 3 } }], { timer: 16 });
+        close('hollis', -1, 1.8); await say('hollis', 'Welcome to the city.');
+      });
+      syFlag('table', 1); if (wire && i === 1) syFlag('wireHollis', 1);
+      unactor('hollis'); unactor('calloway');
+      const st = sy();
+      await cut(async () => {
+        const [mx, mz] = syMe(); shot([mx + 8, 6, mz + 8], [mx, 1.2, mz], { to: [mx + 16, 14, mz + 16], dur: 8 });
+        await syTitle('TIER 5 COMPLETE', 'THE CITY', 'A million clean and a seat at Hollis\'s table', 3.4);
+        await syTitle('NEXT', 'TIER 6 · THE PIPELINE', 'Denver. Big rigs. Somebody is talking.', 2.6);
+      });
+      setTime('day'); st.tier = 6; save();
+      if (syFlag('ledgerTold') === 1) text('mook', 'we good right? you been quiet with me lately');
+      if (wire) text('garza', 'We heard all of it. Laredo, Denver, Wren. Stay alive.');
+      syNote(`Tier 5 done: a million clean and a seat at Hollis\'s table.${wire ? ' Garza\'s wire heard every word.' : ''} Next: Denver, and a woman named Wren.`);
+    },
+  ], { label: "Tier 5 · Hollis's Table", delay: 60 });
 
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
@@ -2304,7 +2498,7 @@
       }
       for (const [t, k, nm] of TIERS) {
         const ms = M.filter(m => m.tier === t && !m.life); body += `<div class="sec">${k} · ${nm}</div>`;
-        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 5 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
+        if (!ms.length) { body += `<div class="ms lock"><div class="n">·</div><div><h5>Coming soon</h5><p>${t === 6 ? 'Next story update' : 'Later updates'}</p></div></div>`; if (t >= 3) continue; continue; }
         ms.forEach((m, i) => { const done = st.done.includes(m.id), now = st.m === m.id || (!st.m && st.next === m.id); body += `<div class="ms ${done ? 'done' : now ? 'now' : 'lock'}"><div class="n">${done ? '✓' : i + 1}</div><div><h5>${esc(m.title)}</h5><p>${done || now ? esc(m.brief) : 'Locked'}</p></div></div>`; });
       }
     } else if (tab === 'journal') body += st.journal.length ? st.journal.map(j => `<div class="jr">${esc(j)}</div>`).join('') : '<div class="jr">Nothing yet.</div>';
