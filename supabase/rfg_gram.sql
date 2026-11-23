@@ -16,6 +16,8 @@ create table if not exists public.rfg_gram_posts (
   img text,                            -- small jpeg data URL (about 40 KB)
   at timestamptz not null default now()
 );
+-- unlike / unfollow / delete flip a flag instead of removing rows
+alter table public.rfg_gram_posts add column if not exists gone boolean not null default false;
 create index if not exists rfg_gram_posts_at on public.rfg_gram_posts(at desc);
 create index if not exists rfg_gram_posts_uid on public.rfg_gram_posts(uid);
 
@@ -26,6 +28,7 @@ create table if not exists public.rfg_gram_likes (
   at timestamptz not null default now(),
   primary key (post_id, uid)
 );
+alter table public.rfg_gram_likes add column if not exists on_ boolean not null default true;
 
 create table if not exists public.rfg_gram_comments (
   id text primary key,                 -- <uid>_<base36 time>
@@ -44,6 +47,7 @@ create table if not exists public.rfg_gram_follows (
   at timestamptz not null default now(),
   primary key (uid, who)
 );
+alter table public.rfg_gram_follows add column if not exists on_ boolean not null default true;
 create index if not exists rfg_gram_follows_who on public.rfg_gram_follows(who);
 
 alter table public.rfg_gram_posts enable row level security;
@@ -78,7 +82,7 @@ declare m public.rfg_server_members;
 begin
   m := public.rfg_srv_me(p_uid, p_tok);
   if m.uid is null then raise exception 'Pick a home server first'; end if;
-  delete from public.rfg_gram_posts where id = p_id and uid = m.uid;
+  update public.rfg_gram_posts set gone = true, img = null where id = p_id and uid = m.uid;
   return found;
 end $$;
 
@@ -87,17 +91,17 @@ create or replace function public.rfg_gram_feed(p_uid text, p_limit int default 
 returns table(id text, uid text, name text, handle text, cap text, loc text, has_img boolean, at timestamptz, likes int, comments int, liked boolean)
 language sql stable security definer set search_path = public as $$
   select p.id, p.uid, p.name, p.handle, p.cap, p.loc, p.img is not null, p.at,
-    (select count(*)::int from public.rfg_gram_likes l where l.post_id = p.id),
+    (select count(*)::int from public.rfg_gram_likes l where l.post_id = p.id and l.on_),
     (select count(*)::int from public.rfg_gram_comments c where c.post_id = p.id),
-    exists(select 1 from public.rfg_gram_likes l where l.post_id = p.id and l.uid = p_uid)
+    exists(select 1 from public.rfg_gram_likes l where l.post_id = p.id and l.uid = p_uid and l.on_)
   from public.rfg_gram_posts p
-  where p.at > now() - interval '14 days'
+  where not p.gone and p.at > now() - interval '14 days'
   order by p.at desc limit greatest(1, least(coalesce(p_limit, 40), 60))
 $$;
 
 create or replace function public.rfg_gram_img(p_id text) returns text
 language sql stable security definer set search_path = public as $$
-  select img from public.rfg_gram_posts where id = p_id
+  select img from public.rfg_gram_posts where id = p_id and not gone
 $$;
 
 create or replace function public.rfg_gram_like(p_uid text, p_tok text, p_id text, p_handle text, p_on boolean) returns int
@@ -106,13 +110,10 @@ declare m public.rfg_server_members; n int;
 begin
   m := public.rfg_srv_me(p_uid, p_tok);
   if m.uid is null then raise exception 'Pick a home server first'; end if;
-  if p_on then
-    insert into public.rfg_gram_likes(post_id, uid, handle) select p_id, m.uid, coalesce(nullif(public.rfg_gram_clean(lower(p_handle), 24), ''), 'racer')
-      where exists(select 1 from public.rfg_gram_posts where id = p_id) on conflict do nothing;
-  else
-    delete from public.rfg_gram_likes where post_id = p_id and uid = m.uid;
-  end if;
-  select count(*)::int into n from public.rfg_gram_likes where post_id = p_id;
+  insert into public.rfg_gram_likes(post_id, uid, handle, on_) select p_id, m.uid, coalesce(nullif(public.rfg_gram_clean(lower(p_handle), 24), ''), 'racer'), coalesce(p_on, false)
+    where exists(select 1 from public.rfg_gram_posts where id = p_id and not gone)
+    on conflict (post_id, uid) do update set on_ = excluded.on_, at = case when excluded.on_ then now() else public.rfg_gram_likes.at end;
+  select count(*)::int into n from public.rfg_gram_likes where post_id = p_id and on_;
   return n;
 end $$;
 
@@ -127,7 +128,7 @@ begin
   if (select count(*) from public.rfg_gram_comments where uid = m.uid and at > now() - interval '1 minute') >= 12 then raise exception 'Slow down'; end if;
   insert into public.rfg_gram_comments(id, post_id, uid, handle, body)
     select p_cid, p_id, m.uid, coalesce(nullif(public.rfg_gram_clean(lower(p_handle), 24), ''), 'racer'), b
-    where exists(select 1 from public.rfg_gram_posts where id = p_id) on conflict do nothing;
+    where exists(select 1 from public.rfg_gram_posts where id = p_id and not gone) on conflict do nothing;
   return found;
 end $$;
 
@@ -145,8 +146,8 @@ begin
   m := public.rfg_srv_me(p_uid, p_tok);
   if m.uid is null then raise exception 'Pick a home server first'; end if;
   if p_who = m.uid or p_who !~ '^[a-z0-9]{6,16}$' then return false; end if;
-  if p_on then insert into public.rfg_gram_follows(uid, who, handle) values (m.uid, p_who, coalesce(nullif(public.rfg_gram_clean(lower(p_handle), 24), ''), 'racer')) on conflict do nothing;
-  else delete from public.rfg_gram_follows where uid = m.uid and who = p_who; end if;
+  insert into public.rfg_gram_follows(uid, who, handle, on_) values (m.uid, p_who, coalesce(nullif(public.rfg_gram_clean(lower(p_handle), 24), ''), 'racer'), coalesce(p_on, false))
+    on conflict (uid, who) do update set on_ = excluded.on_, at = case when excluded.on_ then now() else public.rfg_gram_follows.at end;
   return true;
 end $$;
 
@@ -160,12 +161,12 @@ begin
   if m.uid is null then raise exception 'Pick a home server first'; end if;
   return query
     select 'like'::text, l.uid, l.handle, l.post_id, null::text, null::text, l.at from public.rfg_gram_likes l join public.rfg_gram_posts p on p.id = l.post_id
-      where p.uid = m.uid and l.uid <> m.uid and l.at > p_since
+      where p.uid = m.uid and l.on_ and l.uid <> m.uid and l.at > p_since
     union all
     select 'comment', c.uid, c.handle, c.post_id, c.id, c.body, c.at from public.rfg_gram_comments c join public.rfg_gram_posts p on p.id = c.post_id
       where p.uid = m.uid and c.uid <> m.uid and c.at > p_since
     union all
-    select 'follow', f.uid, f.handle, null, null, null, f.at from public.rfg_gram_follows f where f.who = m.uid and f.at > p_since
+    select 'follow', f.uid, f.handle, null, null, null, f.at from public.rfg_gram_follows f where f.who = m.uid and f.on_ and f.at > p_since
     order by 7 limit 200;
 end $$;
 
