@@ -33,6 +33,8 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
   await shot('offer');
   await ev(() => { const b = document.querySelector('#sy-banner .act button'); if (b) b.click(); });
   await ev(([p, f]) => { const T = window.__story; T.SY.autoPick = p; T.SY.autoAnswer = true; T.SY.autoRetry = true; T.SY.fast = f; }, [PICK, !!process.env.FAST]);
+  // METERS=heat=80,loyalty=20 and FLAGS=books=1,mookFate=cut set the story state after the jump (ending tests)
+  if (process.env.METERS || process.env.FLAGS) await ev(([m, f]) => { const st = window.__story.sy(); for (const kv of (m || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); st.meters[k] = +v; } for (const kv of (f || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); st.flags[k] = isNaN(+v) ? v : +v; } }, [process.env.METERS, process.env.FLAGS]);
   if (process.env.JUMP) await ev(id => window.__story.jump(id), process.env.JUMP);
   const t0 = Date.now();
   let lastObj = '', stuck = 0;
@@ -85,7 +87,8 @@ const TYPES = { html: 'text/html', js: 'application/javascript', json: 'applicat
     stuck++; if (stuck > 60) { log.push('STUCK ' + JSON.stringify(st).slice(0, 400)); await shot('stuck'); break; }
     await pg.waitForTimeout(500);
   }
-  const fin = await ev(() => { const s = window.__story.sy(); return { done: s.done, meters: s.meters, flags: s.flags, journal: s.journal.length, met: s.met, debt: s.debt, paid: s.paid, served: s.served, tier: s.tier, texts: Object.keys(s.texts) }; });
+  const greet = await ev(() => { const out = []; for (let i = 0; i < 40 && out.length < 6; i++) { const t = window.__storyGreet && window.__storyGreet({ kind: 'ped' }); if (t && !out.includes(t)) out.push(t); } return out; }).catch(() => []); log.push('GREET ' + JSON.stringify(greet));
+  const fin = await ev(() => { const s = window.__story.sy(); return { done: s.done, meters: s.meters, flags: s.flags, journal: s.journal.length, met: s.met, debt: s.debt, paid: s.paid, served: s.served, tier: s.tier, ending: s.ending, texts: Object.keys(s.texts) }; });
   // the phone apps
   for (const app of ['story', 'texts', 'trap']) { await ev(a => { const M = window.__map; M.openPhone ? M.openPhone() : document.getElementById('phonebtn').click(); }, app).catch(() => {}); await ev(a => { document.querySelector(`#ph-screen .app[data-id="${a}"]`)?.click(); }, app); await pg.waitForTimeout(500); await shot('app-' + app); }
   await ev(() => { document.querySelector('#ph-screen .app[data-id="story"]')?.click(); }).catch(() => {}); await pg.waitForTimeout(300); await ev(() => { document.querySelector('#ph-screen [data-t="lives"]')?.click(); }).catch(() => {}); await pg.waitForTimeout(500); await shot('app-lives');

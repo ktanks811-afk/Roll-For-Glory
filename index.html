@@ -2976,6 +2976,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   GAME.EXTRAS.push({ id: 'lashes', name: 'Lashes', group: 'glam' }, { id: 'lipgloss', name: 'Lip Gloss', group: 'glam' }, { id: 'nails', name: 'Nails Done', group: 'glam' });
   GAME.CLOTHES.push(
     { id: 'no_tcj_top', slot: 'top', style: 'tee', color: '#e8641a', name: 'County Orange Top', price: 0, shop: 'jail' }, { id: 'no_tcj_pants', slot: 'bottom', style: 'track', color: '#e8641a', name: 'County Orange Pants', price: 0, shop: 'jail' },
+    { id: 'no_tdcj_top', slot: 'top', style: 'tee', color: '#ecebe6', name: 'TDCJ Whites Top', price: 0, shop: 'jail' }, { id: 'no_tdcj_pants', slot: 'bottom', style: 'track', color: '#ecebe6', name: 'TDCJ Whites Pants', price: 0, shop: 'jail' },
     { id: 'crop_white', slot: 'top', style: 'crop', color: '#f2f2f2', name: 'White Crop Top', price: 30, shop: '' },
     { id: 'crop_pink', slot: 'top', style: 'crop', color: '#e05aa0', name: 'Pink Crop Top', price: 30, shop: '' },
     { id: 'corset_black', slot: 'top', style: 'crop', color: '#141414', name: 'Black Corset Top', price: 85, shop: '' },
@@ -4050,6 +4051,221 @@ uniform mat3 normalMatrix;
     const d = Math.hypot(dx, dz);
     return d > 0.6 * dt && dx * gx + dz * gz > 0 ? Math.atan2(-dx, -dz) : Math.atan2(-gx, -gz);
   }
+  // ==== smooth turns (begin) ====
+  // AI cars (hood regulars and opps, street-war cars, cops) drive real arcs through every corner, like a person would:
+  // they pick their next two turns early, blink that way about 3 s before the corner, brake on a steady curve down to
+  // the corner speed (brake lights on), sweep one clean arc (tight on a right, wide on a left, a U at a dead end) and roll
+  // back up to speed. Straight-through intersections don't slow anybody down. The regulars on the shared clock run the
+  // same arcs and blinkers off the clock, so every player sees the same car turning the same way with nothing sent.
+  const TRN = { brake: 2.6, acc: 3.2, alat: 2.6, hot: 10, lead: 3.2, near: 30, on: 0.5, per: 0.8 };
+  const trNorm = a => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
+  // the corner at node n, coming from p and leaving to q, for a car driving `lane` m right of the center line.
+  // u1 = where the arc starts on the p->n block, v2 = where it ends on the n->q block (both measured along the center line)
+  function trCorner(g, p, n, q, lane, hot) {
+    if (p == null || q == null || n == null || p === n || q === n) return null;
+    const ax = g.nx[p], az = g.nz[p], cx = g.nx[n], cz = g.nz[n], bx = g.nx[q], bz = g.nz[q];
+    const L1 = Math.hypot(cx - ax, cz - az), L2 = Math.hypot(bx - cx, bz - cz); if (!(L1 > 1 && L2 > 1)) return null;
+    const d1x = (cx - ax) / L1, d1z = (cz - az) / L1, d2x = (bx - cx) / L2, d2z = (bz - cz) / L2;
+    const cr = d1x * d2z - d1z * d2x, th = Math.abs(Math.atan2(cr, d1x * d2x + d1z * d2z)); if (th < 0.05) return null;
+    const r1x = -d1z, r1z = d1x;
+    let sg, R, sx, sz, u1, v2, TH = th;
+    if (th > 2.85) {   // dead end: swing a U around the end of the street
+      sg = -1; TH = Math.PI; R = Math.min(lane, 0.45 * L1, 0.45 * L2); if (R < 0.8) return null;
+      sx = cx + r1x * lane - d1x * R; sz = cz + r1z * lane - d1z * R; u1 = L1 - R; v2 = R;
+    } else {
+      sg = cr > 0 ? 1 : -1;
+      const p1x = cx + r1x * lane, p1z = cz + r1z * lane, p2x = cx - d2z * lane, p2z = cz + d2x * lane;
+      const t1 = ((p2x - p1x) * d2z - (p2z - p1z) * d2x) / cr, Px = p1x + d1x * t1, Pz = p1z + d1z * t1, t2 = (Px - cx) * d2x + (Pz - cz) * d2z, tn = Math.tan(th / 2);
+      const Rw = th < 0.6 ? 45 : hot ? (sg > 0 ? 9 : 11) : (sg > 0 ? 6 : 10.5);
+      const dT = Math.min(Rw * tn, 0.55 * L1 + t1, 0.45 * L2 - t2); if (dT < 0.3) return null;
+      R = dT / tn; sx = Px - d1x * dT; sz = Pz - d1z * dT; u1 = L1 + t1 - dT; v2 = t2 + dT;
+      if (u1 < 0 || v2 > L2) return null;
+    }
+    const pre = L1 - u1;
+    return { sg, th: TH, R, sx, sz, d1x, d1z, nx: sg * r1x, nz: sg * r1z, u1, v2, pre, zone: pre + v2, arc: R * TH, sig: TH > 0.55, v: Math.max(2.4, Math.sqrt((hot ? TRN.hot : TRN.alat) * R)) };
+  }
+  // a point on the corner's arc, f = 0..1 through it; o.dx/o.dz = the way the car points there
+  function trArc(c, f, o) {
+    const ph = clamp(f, 0, 1) * c.th, s = Math.sin(ph), k = Math.cos(ph), al = c.R * s, la = c.R * (1 - k);
+    o.x = c.sx + c.d1x * al + c.nx * la; o.z = c.sz + c.d1z * al + c.nz * la; o.dx = c.d1x * k + c.nx * s; o.dz = c.d1z * k + c.nz * s; return o;
+  }
+  // put the car on its line: anything that knocked it off (a crash, a shove, a new route) eases out over a second or so
+  function trPlace(e, p, dt) {
+    let ox = e._tx == null ? e.x - p.x : e.x - e._tx, oz = e._tx == null ? e.z - p.z : e.z - e._tz;
+    const px = e.x, pz = e.z;
+    if (!(ox * ox + oz * oz < 36)) {   // way off its line (it was off doing something else): glide back over like before
+      const k = 1 - Math.exp(-dt * 4); e.x += (p.x - e.x) * k; e.z += (p.z - e.z) * k; e._tx = null;
+      e.yaw += trNorm(mtCarYaw(e.x - px, e.z - pz, p.dx, p.dz, dt) - e.yaw) * Math.min(1, dt * 8); return;
+    }
+    const k = Math.exp(-dt * 2.5); ox *= k; oz *= k;
+    e.x = p.x + ox; e.z = p.z + oz; e._tx = p.x; e._tz = p.z;
+    const yw = ox * ox + oz * oz > 0.25 ? mtCarYaw(e.x - px, e.z - pz, p.dx, p.dz, dt) : Math.atan2(-p.dx, -p.dz);
+    e.yaw += trNorm(yw - e.yaw) * Math.min(1, dt * 10);
+  }
+  const _trP = { x: 0, z: 0, dx: 0, dz: -1 };
+  // one step for a car on the road graph (e.a -> e.b, e.u metres along). cap = the most it may do right now (somebody in
+  // front of it). next(o) picks the node after o.b. Sets e.sig (-1 left, 1 right, 0 none) and e.brk (brake lights).
+  function trDrive(e, dt, want, cap, lane, hot, next) {
+    const g = gpsGraph(); if (e.a == null || e.b == null) return;
+    // somebody else moved it onto a different block (a ride, a route, a cop rejoining the roads): start the lookahead over
+    if (e._ab !== e.a * 1e7 + e.b) { e._ab = e.a * 1e7 + e.b; e.pa = e._pa0 != null ? e._pa0 : null; e.nb = e._nb0 != null ? e._nb0 : null; e.nb2 = null; e._c0 = e._c1 = e._c2 = undefined; if (e._pa0 == null) e._tx = null; }
+    e._pa0 = e._nb0 = null;
+    if (e._hot !== hot) { e._hot = hot; e._c0 = e._c1 = e._c2 = undefined; }
+    // a new route came in (opps homing on you, cops chasing): keep the turns already picked if it starts with them
+    if (e.path !== e._np && e.nb != null) {
+      const P = e.path;
+      if (P && P[0] === e.nb) { P.shift(); if (e.nb2 != null) { if (P[0] === e.nb2) P.shift(); else { e.nb2 = null; e._c2 = undefined; } } }
+      else if (!e._c1 || e.u < e._c1.u1 - 2) { e.nb = e.nb2 = null; e._c1 = e._c2 = undefined; }
+      else { e.nb2 = null; e._c2 = undefined; e.path = null; }
+      e._np = e.path;
+    }
+    const look = () => {
+      if (e.nb == null) { e.nb = next(e); e.nb2 = null; e._c1 = e._c2 = undefined; }
+      if (e.nb2 == null && e.nb != null && e.nb !== e.b) { e.nb2 = next({ a: e.b, b: e.nb, path: e.path, u: 0, x: e.x, z: e.z }); e._c2 = undefined; }
+      e._np = e.path;
+      if (e._c0 === undefined) e._c0 = trCorner(g, e.pa, e.a, e.b, lane, hot);
+      if (e._c1 === undefined) e._c1 = trCorner(g, e.a, e.b, e.nb, lane, hot);
+      if (e._c2 === undefined) e._c2 = trCorner(g, e.b, e.nb, e.nb2, lane, hot);
+    };
+    look();
+    let ax = g.nx[e.a], az = g.nz[e.a], bx = g.nx[e.b], bz = g.nz[e.b], L = Math.max(0.1, Math.hypot(bx - ax, bz - az));
+    let c0 = e._c0, c1 = e._c1; const c2 = e._c2;
+    // the speed it wants: the corner coming up (or the one after it, across a short block), braking on a steady curve
+    const brk = hot ? 6 : TRN.brake;
+    let tgt = Math.min(want, cap);
+    if (c1) { const d = c1.u1 - e.u; tgt = Math.min(tgt, d > 0 ? Math.sqrt(c1.v * c1.v + 2 * brk * d) : c1.v); }
+    else if (c2) { const d = L - e.u + c2.u1; tgt = Math.min(tgt, Math.sqrt(c2.v * c2.v + 2 * brk * Math.max(0, d))); }
+    if (c0 && e.u < c0.v2 && !(c1 && e.u >= c1.u1)) tgt = Math.min(tgt, c0.v);   // hold the corner speed until it's out of the arc
+    const sp0 = e.sp, hard = cap < e.sp - 0.5;
+    e.sp += clamp(tgt - e.sp, -(hard ? 9 : 4.5) * dt, (hot ? 9 : TRN.acc) * dt);
+    e.brk = e.sp < sp0 - 0.6 * dt || (e.sp < 0.3 && tgt < 0.3);
+    // along the line: through a corner the progress is stretched to the arc, so the car really does the speed it shows
+    const sc = c1 && e.u >= c1.u1 ? c1.zone / c1.arc : c0 && e.u < c0.v2 ? c0.zone / c0.arc : 1;
+    e.u += Math.max(0, e.sp) * dt * sc;
+    if (e.u >= L) {
+      const nb = e.nb != null ? e.nb : next(e); e.u -= L; e.pa = e.a; e.a = e.b; e.b = nb; e.nb = e.nb2; e.nb2 = null;
+      e._c0 = c1 || null; e._c1 = e._c2 !== undefined && e.nb != null ? e._c2 : undefined; e._c2 = undefined; e._ab = e.a * 1e7 + e.b;
+      if (e.a === e.b) { e.sp = 0; e.u = 0; e.nb = null; e._c1 = undefined; }
+      look(); ax = g.nx[e.a]; az = g.nz[e.a]; bx = g.nx[e.b]; bz = g.nz[e.b]; L = Math.max(0.1, Math.hypot(bx - ax, bz - az)); c0 = e._c0; c1 = e._c1;
+    }
+    // where that puts it
+    const u = Math.min(e.u, L), p = _trP;
+    if (c1 && u >= c1.u1) trArc(c1, (u - c1.u1) / c1.zone, p);
+    else if (c0 && u < c0.v2) trArc(c0, (c0.pre + u) / c0.zone, p);
+    else { const gx = (bx - ax) / L, gz = (bz - az) / L; p.x = ax + gx * u - gz * lane; p.z = az + gz * u + gx * lane; p.dx = gx; p.dz = gz; }
+    trPlace(e, p, dt);
+    // the blinker: on for the next real turn from ~3 s out (30 m at least), through the arc, off once it's straight again
+    let sig = 0;
+    if (!hot) {
+      const lead = Math.max(TRN.near, e.sp * TRN.lead);
+      if (c1 && u >= c1.u1) sig = c1.sig ? c1.sg : 0;
+      else if (c0 && u < c0.v2 && c0.sig) sig = c0.sg;
+      else if (c1 && c1.sig && c1.u1 - u < lead) sig = c1.sg;
+      else if (!c1 && e._c2 && e._c2.sig && L - u + e._c2.u1 < lead) sig = e._c2.sg;
+    }
+    e.sig = sig; e.sigT = performance.now() / 1000;
+  }
+  // a car somebody else is driving (their copy on the network): brake lights from the speed dropping
+  function trRemote(e, sp, sig, dt) {
+    if (e._rsp != null && sp < e._rsp - 0.05) e._rbt = 0.7; else e._rbt = Math.max(0, (e._rbt || 0) - dt);
+    e._rsp = sp; e.brk = sp < 0.3 || e._rbt > 0; e.sig = sig || 0; e.sigT = performance.now() / 1000;
+  }
+
+  // ---------- the regulars' long loops: the same arcs, with the time each piece takes worked out once per loop ----------
+  // straight pieces brake into and roll out of each corner; arcs are run at the corner speed. tt = the clock along the loop.
+  function trTrack(R) {
+    if (R.tk) return R.tk;
+    const g = gpsGraph(), nd = R.nodes, N = nd.length, v = R.v, C = new Array(N).fill(null), VA = new Float32Array(N), LS = new Float32Array(N), TS = new Float32Array(N), T0 = new Float64Array(N);
+    for (let i = 1; i < N - 1; i++) C[i] = trCorner(g, nd[i - 1], nd[i], nd[i + 1], 3.6, false);
+    const segL = i => Math.max(0.1, Math.hypot(g.nx[nd[i + 1]] - g.nx[nd[i]], g.nz[nd[i + 1]] - g.nz[nd[i]]));
+    for (let i = 0; i < N; i++) VA[i] = C[i] ? Math.min(v, C[i].v) : v;
+    for (let i = 0; i < N - 1; i++) LS[i] = Math.max(0, (C[i + 1] ? C[i + 1].u1 : segL(i)) - (C[i] ? C[i].v2 : 0));
+    for (let i = N - 2; i >= 0; i--) VA[i] = Math.min(VA[i], Math.sqrt(VA[i + 1] * VA[i + 1] + 2 * TRN.brake * LS[i]));
+    for (let i = 0; i < N - 1; i++) VA[i + 1] = Math.min(VA[i + 1], Math.sqrt(VA[i] * VA[i] + 2 * TRN.acc * LS[i]));
+    let t = 0;
+    for (let i = 0; i < N - 1; i++) {
+      T0[i] = t; let ts = 0; const Ls = LS[i];
+      for (let k = 0; k < 6; k++) ts += Ls / 6 / trVel(v, VA[i], VA[i + 1], Ls, (k + 0.5) * Ls / 6);
+      TS[i] = ts; t += ts + (C[i + 1] ? C[i + 1].arc / VA[i + 1] : 0);
+    }
+    T0[N - 1] = t;
+    return R.tk = { C, VA, LS, TS, T0, Tl: Math.max(1, t) };
+  }
+  function trVel(v, v0, v1, Ls, x) { return Math.max(0.5, Math.min(v, Math.sqrt(v0 * v0 + 2 * TRN.acc * x), Math.sqrt(v1 * v1 + 2 * TRN.brake * Math.max(0, Ls - x)))); }
+  // where regular n is at clock T: position, heading, speed, the block it's on (a, b, u) with the turns before and after, its blinker
+  function trSched(R, T) {
+    const K = trTrack(R), g = gpsGraph(), nd = R.nodes, N = nd.length, tt = (((T + R.ph / R.v) % K.Tl) + K.Tl) % K.Tl;
+    let lo = 0, hi = N - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (K.T0[mid] <= tt) lo = mid; else hi = mid; }
+    const i = lo, a = nd[i], b = nd[i + 1], ax = g.nx[a], az = g.nz[a], L = Math.max(0.1, Math.hypot(g.nx[b] - ax, g.nz[b] - az)), gx = (g.nx[b] - ax) / L, gz = (g.nz[b] - az) / L;
+    const c0 = K.C[i], c1 = K.C[i + 1], Ls = K.LS[i], p = { x: 0, z: 0, dx: gx, dz: gz, yaw: 0, a, b, u: 0, v: R.v, cv: R.v, pa: i > 0 ? nd[i - 1] : null, nb: i + 2 < N ? nd[i + 2] : null, sig: 0 };
+    let tau = tt - K.T0[i];
+    if (tau < K.TS[i] || !c1) {
+      // the straight: walk the six slices the time was worked out with
+      let x = 0, sp = R.v; const dl = Ls / 6;
+      for (let k = 0; k < 6; k++) { sp = trVel(R.v, K.VA[i], K.VA[i + 1], Ls, x + dl / 2); const st = dl / sp; if (tau <= st || k === 5) { x += Math.min(dl, tau * sp); break; } tau -= st; x += dl; }
+      const u = (c0 ? c0.v2 : 0) + x; p.u = u; p.v = sp; p.x = ax + gx * u - gz * 3.6; p.z = az + gz * u + gx * 3.6;
+      if (c1 && c1.sig && Ls - x < Math.max(TRN.near, sp * TRN.lead)) p.sig = c1.sg;
+      else if (!c1 && i + 2 < N && K.C[i + 2] && K.C[i + 2].sig && L - u + K.C[i + 2].u1 < Math.max(TRN.near, sp * TRN.lead)) p.sig = K.C[i + 2].sg;
+    } else {
+      const f = clamp((tau - K.TS[i]) / Math.max(1e-3, c1.arc / K.VA[i + 1]), 0, 1); trArc(c1, f, p); p.v = K.VA[i + 1]; p.sig = c1.sig ? c1.sg : 0;
+      let u = c1.u1 + f * c1.zone; if (u >= L && i + 2 < N) { u -= L; p.a = b; p.b = nd[i + 2]; p.pa = a; p.nb = i + 3 < N ? nd[i + 3] : null; } p.u = Math.min(u, L);
+    }
+    p.yaw = Math.atan2(-p.dx, -p.dz); return p;
+  }
+
+  // ---------- the lamps: hero cars blink their own signal lamps (sequential where they have them), everything else gets
+  // small amber lamps at the four corners and red brake lamps, found on the real bumpers once per model and shared ----------
+  const TRL = { amber: null, red: null, kit: new Map(), rc: null, keys: [['turnL', -1], ['turnR', 1]] };
+  function trKit(m) {
+    const id = (m.parent && m.parent.userData.carId) || m.uuid; if (TRL.kit.has(id)) return TRL.kit.get(id);
+    let kit = null;
+    try {
+      m.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(m.matrixWorld).invert(), M = new THREE.Matrix4(), box = new THREE.Box3(), bb = new THREE.Box3(), meshes = [];
+      m.traverse(o => { if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return; const gg = o.geometry; if (!gg.boundingBox) gg.computeBoundingBox(); M.multiplyMatrices(inv, o.matrixWorld); bb.copy(gg.boundingBox).applyMatrix4(M); box.union(bb); meshes.push(o); });
+      const W = box.max.x - box.min.x, H = box.max.y - box.min.y, cxm = (box.max.x + box.min.x) / 2;
+      if (!box.isEmpty() && W > 1.2 && box.max.z - box.min.z > 2.6 && H > 0.7) {
+        const rc = TRL.rc || (TRL.rc = new THREE.Raycaster()), O = new THREE.Vector3(), D = new THREE.Vector3();
+        // the body surface at (x, y), looking in from the front (dir 1) or the back (dir -1), in the model's own frame
+        const hit = (x, y, dir) => {
+          O.set(x, y, dir > 0 ? box.min.z - 1 : box.max.z + 1).applyMatrix4(m.matrixWorld); D.set(0, 0, dir).transformDirection(m.matrixWorld);
+          rc.set(O, D); rc.far = box.max.z - box.min.z + 2; const h = rc.intersectObjects(meshes, false)[0];
+          if (!h) return dir > 0 ? box.min.z + 0.12 : box.max.z - 0.12;
+          return h.point.applyMatrix4(inv).z - dir * 0.012;
+        };
+        const sx = W / 2 - Math.min(0.3, W * 0.14), yF = box.min.y + H * 0.46, yR = box.min.y + H * 0.56, bxr = W / 2 - 0.55, yB = box.min.y + H * 0.6;
+        const side = s => [[cxm + s * sx, yF, hit(cxm + s * sx, yF, 1), 0.24, 0.1, 0.05], [cxm + s * sx, yR, hit(cxm + s * sx, yR, -1), 0.24, 0.13, 0.05]];
+        kit = { L: trGeo(side(-1)), R: trGeo(side(1)), B: trGeo([-1, 1].map(s => [cxm + s * bxr, yB, hit(cxm + s * bxr, yB, -1), 0.26, 0.07, 0.05])) };
+      }
+    } catch (er) { console.warn('turn lamps: ' + er.message); kit = null; }
+    TRL.kit.set(id, kit); return kit;
+  }
+  function trGeo(list) {
+    const arrs = list.map(([x, y, z, w, h, d]) => { const b = new THREE.BoxGeometry(w, h, d).toNonIndexed(); b.translate(x, y, z); const a = b.attributes.position.array.slice(); b.dispose(); return a; });
+    const P = new Float32Array(arrs.reduce((s, a) => s + a.length, 0)); let o = 0; for (const a of arrs) { P.set(a, o); o += a.length; }
+    const G = new THREE.BufferGeometry(); G.setAttribute('position', new THREE.BufferAttribute(P, 3)); G.computeBoundingSphere(); return G;
+  }
+  function trLampMake(m) {
+    const kit = trKit(m); if (!kit) return m.userData.trM = null;
+    TRL.amber = TRL.amber || new THREE.MeshBasicMaterial({ color: 0xffa21a, toneMapped: false });
+    TRL.red = TRL.red || new THREE.MeshBasicMaterial({ color: 0xff1a12, toneMapped: false });
+    const mk = (G, mat) => { const o = new THREE.Mesh(G, mat); o.visible = false; o.castShadow = o.receiveShadow = false; o.name = 'trLamp'; m.add(o); return o; };
+    return m.userData.trM = { l: mk(kit.L, TRL.amber), r: mk(kit.R, TRL.amber), b: mk(kit.B, TRL.red) };
+  }
+  // light a car: sig -1 left / 1 right / 0, brk brake lamps, t seconds, ph its own blink phase
+  function trLamps(m, sig, brk, t, ph) {
+    if (!m) return; const U = m.userData, L = U.lamps, p = ((t + ph) % TRN.per + TRN.per) % TRN.per;
+    if (L && L.turnL) {
+      for (const [key, s] of TRL.keys) { const G = L[key]; if (!G) continue; const act = sig === s; for (let i = 0; i < G.length; i++) G[i].visible = act && (i === 0 ? p < TRN.on : p > (i - 1) * 0.11 && p < TRN.on + 0.05); }
+      if (L.brake) for (const g of L.brake) g.visible = !!brk;
+      return;
+    }
+    let M = U.trM; if (M === null) return;
+    if (!M) { if (!sig && !brk) return; M = trLampMake(m); if (!M) return; }
+    const on = p < TRN.on; M.l.visible = sig < 0 && on; M.r.visible = sig > 0 && on; M.b.visible = !!brk;
+  }
+  window.__turns = { TRN, TRL, trCorner, trArc, trDrive, trTrack, trSched, trLamps, trKit, graph: () => gpsGraph() };
+  // ==== smooth turns (end) ====
   // hair that hangs swings back as you move, bounces with each step and settles with a little overshoot
   function mtHair(P, w, ph, run, side) {
     let H = P._hh; if (H === undefined) H = P._hh = (P.head && P.head.getObjectByName('hairHang')) || null; if (!H) return;
@@ -16642,19 +16858,16 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     return (ok.length ? hPick(ok) : hPick(opts.length ? opts : adj) || [e.a])[0];
   }
   function hDrive(e, dt, want) {
-    const g = gpsGraph(); if (e.a == null) return;
-    const ax = g.nx[e.a], az = g.nz[e.a], bx = g.nx[e.b], bz = g.nz[e.b], L = Math.max(0.1, Math.hypot(bx - ax, bz - az)), fx = (bx - ax) / L, fz = (bz - az) / L;
-    // ease off into turns and for your car sitting in the lane
-    let tgt = want; if (L - e.u < 16) tgt = Math.min(tgt, 6);
-    const [mx, mz] = hMe(), ex = mx - e.x, ez = mz - e.z, ahead = ex * fx + ez * fz, side = Math.abs(ex * -fz + ez * fx);
-    if (ahead > 0 && ahead < 11 && side < 3.2 && !(e.ride && hInCar())) tgt = 0;
-    for (const o of HOOD.ents) { if (o === e || !o.inCar || o.gone || o.a !== e.a || o.b !== e.b) continue; const d = o.u - e.u; if (d > 0 && d < 10) tgt = 0; }
-    e.sp += clamp(tgt - e.sp, -9 * dt, 4.5 * dt); e.u += e.sp * dt;
-    if (e.u >= L) { e.u -= L; const nb = hNext(e); e.a = e.b; e.b = nb; if (e.a === e.b) { e.sp = 0; e.u = 0; } }
-    const ax2 = g.nx[e.a], az2 = g.nz[e.a], bx2 = g.nx[e.b], bz2 = g.nz[e.b], L2 = Math.max(0.1, Math.hypot(bx2 - ax2, bz2 - az2)), gx = (bx2 - ax2) / L2, gz = (bz2 - az2) / L2;
-    const u = Math.min(e.u, L2), lane = 3.6, tx = ax2 + gx * u - gz * lane, tz = az2 + gz * u + gx * lane;
-    const k = 1 - Math.exp(-dt * 6), ox = e.x, oz = e.z; e.x += (tx - e.x) * k; e.z += (tz - e.z) * k;
-    const yw = mtCarYaw(e.x - ox, e.z - oz, gx, gz, dt); e.yaw += hNorm(yw - e.yaw) * Math.min(1, dt * 8);   // FLUID-MOTION
+    if (e.a == null) return;
+    // stop for your car sitting in its lane, and follow (or stop behind) anybody in front of it, around corners too
+    const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw), [mx, mz] = hMe(), ex = mx - e.x, ez = mz - e.z, ahead = ex * fx + ez * fz, side = Math.abs(ex * -fz + ez * fx);
+    let cap = 99; if (ahead > 0 && ahead < 11 && side < 3.2 && !(e.ride && hInCar())) cap = 0;
+    for (const o of HOOD.ents) {
+      if (o === e || !o.inCar || o.gone || o.down) continue; const dx = o.x - e.x, dz = o.z - e.z; if (dx * dx + dz * dz > 196) continue;
+      const fa = dx * fx + dz * fz, sd = Math.abs(dx * -fz + dz * fx); if (fa < 1 || sd > 2.4 || Math.abs(hNorm(o.yaw - e.yaw)) > 1.3) continue;
+      cap = Math.min(cap, fa < 7.5 ? 0 : Math.max(0, o.sp || 0) * (fa - 7.5) / 4);
+    }
+    trDrive(e, dt, want, cap, 3.6, false, hNext);   // SMOOTH-TURNS
   }
   function hPlaceOnRoad(e, x, z) {
     const g = gpsGraph(), n = hNearestNode(x, z); if (n < 0) return false; const adj = g.adj[n]; if (!adj.length) return false;
@@ -16916,16 +17129,11 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     }
     return HNET.routes = { seed: HNET.seed, list };
   }
-  function hSched(n, T) {
-    const R = hRoutes().list[n], g = gpsGraph(), s = ((T * R.v + R.ph) % R.L + R.L) % R.L;
-    let lo = 0, hi = R.cum.length - 1; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (R.cum[mid] <= s) lo = mid; else hi = mid; }
-    const a = R.nodes[lo], b = R.nodes[lo + 1], u = s - R.cum[lo], L = Math.max(0.1, R.cum[lo + 1] - R.cum[lo]), gx = (g.nx[b] - g.nx[a]) / L, gz = (g.nz[b] - g.nz[a]) / L;
-    return { x: g.nx[a] + gx * u - gz * 3.6, z: g.nz[a] + gz * u + gx * 3.6, yaw: Math.atan2(-gx, -gz), a, b, u, v: R.v };
-  }
+  function hSched(n, T) { return trSched(hRoutes().list[n], T); }   // SMOOTH-TURNS
   function hRegSched(n, p) {
     p = p || hSched(n, hNow() / 1000);
     const e = hReg(`r:${HNET.seed}:${n}`, { mode: 'cruise', inCar: true, want: p.v, sn: n }); if (!e) return null;
-    e.x = p.x; e.z = p.z; e.yaw = p.yaw; e.sp = p.v; e.sch = p; return e;
+    e.x = p.x; e.z = p.z; e.yaw = p.yaw; e.sp = p.v; e.sch = p; e._tx = null; return e;
   }
   function hSpots() { return HNET.spots || (HNET.spots = DATA.P.filter(p => /gas|food|corner|meet|carshow|club|liquor/.test(p.type) && Math.abs(p.x) < 1000 && Math.abs(p.z) < 1000 && /^[\w-]{1,40}$/.test(p.id))); }
   function hRegHang(id, sp) {
@@ -16935,12 +17143,12 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
   }
   // a regular nobody is dealing with: right where the clock says it is
   function hRegAmbient(e, dt, mx, mz, d) {
-    const p = hSched(e.sn, hNow() / 1000); e.sch = p; e.inCar = true; e.sp = p.v; e.want = p.v;
+    const p = hSched(e.sn, hNow() / 1000); e.sch = p; e.inCar = true; e.brk = p.v < (e.sp || 0) - 0.02; e.sp = p.v; e.want = p.cv; e.sig = p.sig; e.sigT = performance.now() / 1000;
     // you're sitting in its lane: it stops for you, and from here on it drives itself (for everyone)
     const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), ex = mx - e.x, ez = mz - e.z, ahead = ex * fx + ez * fz, side = Math.abs(-ex * fz + ez * fx);
     if (ahead > 0 && ahead < 16 && side < 3.4) { hClaim(e); return; }
     const dx = p.x - e.x, dz = p.z - e.z;
-    if (dx * dx + dz * dz > 900) { e.x = p.x; e.z = p.z; e.yaw = p.yaw; } else { const k = 1 - Math.exp(-dt * 6); e.x += dx * k; e.z += dz * k; e.yaw += hNorm(p.yaw - e.yaw) * Math.min(1, dt * 5); }
+    if (dx * dx + dz * dz > 900) { e.x = p.x; e.z = p.z; e.yaw = p.yaw; e._tx = null; } else trPlace(e, p, dt);   // SMOOTH-TURNS
     if (hInCar() && d < 12 && Math.abs(drv.v) > 3 && Math.abs(hNorm(drv.yaw - e.yaw)) < 0.4 && !e.asked && e.pr.temper < 0.85) { e.asked = true; hSay(e, hPick(['wanna run it?', 'you tryna roll?', 'run it 40?', 'what that do?']), true); }
   }
   // an opp pulls up every few minutes
@@ -17176,7 +17384,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     const t = hNow();
     for (const m of (e.kind === 'member' && e.blk ? e.blk.crew : [e])) if (!m.own) {
       m.own = 'me'; m.ct = t;
-      if (m.sch) { m.a = m.sch.a; m.b = m.sch.b; m.u = m.sch.u; m.path = null; m.sp = m.sch.v; m.want = m.sch.v; m.sch = null; }
+      if (m.sch) { m.a = m.sch.a; m.b = m.sch.b; m.u = m.sch.u; m.path = null; m.sp = m.sch.v; m.want = m.sch.cv || m.sch.v; m._pa0 = m.sch.pa; m._nb0 = m.sch.nb; m._ab = null; m.sch = null; }
     }
     return true;
   }
@@ -17218,8 +17426,11 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       else if (e.mode !== 'hang') e.mode = 'leave';
       return;
     }
-    const dx = r.x - e.x, dz = r.z - e.z, k = Math.min(1, dt * 8);
-    if (dx * dx + dz * dz > 900) { e.x = r.x; e.z = r.z; e.yaw = r.yaw; } else { e.x += dx * k; e.z += dz * k; e.yaw += hNorm(r.yaw - e.yaw) * Math.min(1, dt * 8); }
+    // run their car ahead by its speed since the last word, so it rolls instead of stepping
+    const ag = r.inCar ? Math.min(0.5, now - e.seen) : 0, rx = r.x - Math.sin(r.yaw) * r.sp * ag, rz = r.z - Math.cos(r.yaw) * r.sp * ag;
+    const dx = rx - e.x, dz = rz - e.z, k = 1 - Math.exp(-dt * 8);
+    if (dx * dx + dz * dz > 900) { e.x = rx; e.z = rz; e.yaw = r.yaw; } else { e.x += dx * k; e.z += dz * k; e.yaw += hNorm(r.yaw - e.yaw) * Math.min(1, dt * 8); }
+    if (r.inCar) trRemote(e, r.sp, r.sig, dt);   // SMOOTH-TURNS
     e.inCar = r.inCar; e.sp = r.sp; e.gd = r.gd; e.ge = r.ge; e.hide = r.hide; e.parked = r.p;
     if (e.wcar) { const o = r.wo; e.wo = (e.wo || 0) + ((o ? o[0] / 100 : 0) - (e.wo || 0)) * Math.min(1, dt * 8); if (o) { e.wseat = o[1]; e.wy += hNorm(o[2] / 100 - e.wy) * Math.min(1, dt * 10); } } if (r.ab) { e.a = r.ab[0]; e.b = r.ab[1]; e.u = r.ab[2]; }
     if (!r.down && !e.down) e.mode = r.m;
@@ -17241,7 +17452,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     if (e.id[0] === 'x') x.d = e.desc;
     if (e.wcar && e.wo > 0.02) x.wo = [Math.round(e.wo * 100), e.wseat || 0, Math.round(hNorm(e.wy || 0) * 100)];
     const walk = !e.inCar && performance.now() - (e.mvT || 0) < 250 ? (e.mvR ? 6 : 2.2) : 0;
-    return [e.id, Math.round(e.x * 10), Math.round(e.z * 10), Math.round(hNorm(e.yaw) * 100), Math.round((e.inCar ? e.sp : walk) * 10), Math.max(0, H_MODES.indexOf(e.mode)), (e.inCar ? 1 : 0) | (e.down ? 2 : 0) | (e.gd ? 4 : 0) | (e.kind === 'homie' && hInCar() ? 8 : 0), e.ct || 0, x];
+    return [e.id, Math.round(e.x * 10), Math.round(e.z * 10), Math.round(hNorm(e.yaw) * 100), Math.round((e.inCar ? e.sp : walk) * 10), Math.max(0, H_MODES.indexOf(e.mode)), (e.inCar ? 1 : 0) | (e.down ? 2 : 0) | (e.gd ? 4 : 0) | (e.kind === 'homie' && hInCar() ? 8 : 0) | (e.inCar && e.sig ? (e.sig < 0 ? 16 : 32) : 0), e.ct || 0, x];
   }
   // somebody else's people: the corner's crew and the server's regulars we can work out ourselves, the rest come described
   function hMake(id, d) {
@@ -17271,7 +17482,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     e.own = p.id; e.ct = ct; e.seen = now;
     const P = Array.isArray(ext.p) && ext.p.length === 3 && ext.p.every(v => hNum(v, -3e5, 3e5)) ? { x: ext.p[0] / 10, z: ext.p[1] / 10, yaw: ext.p[2] / 100 } : null;
     const N = gpsGraph().nx.length, ab = ext.ab, AB = Array.isArray(ab) && ab.length === 3 && Number.isInteger(ab[0]) && Number.isInteger(ab[1]) && ab[0] >= 0 && ab[0] < N && ab[1] >= 0 && ab[1] < N && hNum(ab[2], 0, 1e5) ? [ab[0], ab[1], ab[2] / 10] : null;
-    e.rt = { x: X, z: Z, yaw: y100 / 100, sp: sp10 / 10, m: H_MODES[mi] || 'idle', inCar: !!(fl & 1), down: !!(fl & 2), gd: fl & 4 ? 1 : 0, hide: !!(fl & 8), ge: hNum(ext.ge, -100, 100) ? ext.ge / 100 : 0, p: P, ab: AB, by: typeof ext.by === 'string' && ext.by.length <= 16 ? ext.by : '', wo: Array.isArray(ext.wo) && ext.wo.length === 3 && hNum(ext.wo[0], 0, 100) && (ext.wo[1] === 0 || ext.wo[1] === 2) && hNum(ext.wo[2], -400, 400) ? ext.wo : null };
+    e.rt = { x: X, z: Z, yaw: y100 / 100, sp: sp10 / 10, m: H_MODES[mi] || 'idle', inCar: !!(fl & 1), down: !!(fl & 2), gd: fl & 4 ? 1 : 0, hide: !!(fl & 8), sig: fl & 16 ? -1 : fl & 32 ? 1 : 0, sig: fl & 16 ? -1 : fl & 32 ? 1 : 0, sig: fl & 16 ? -1 : fl & 32 ? 1 : 0, sig: fl & 16 ? -1 : fl & 32 ? 1 : 0, sig: fl & 16 ? -1 : fl & 32 ? 1 : 0, ge: hNum(ext.ge, -100, 100) ? ext.ge / 100 : 0, p: P, ab: AB, by: typeof ext.by === 'string' && ext.by.length <= 16 ? ext.by : '', wo: Array.isArray(ext.wo) && ext.wo.length === 3 && hNum(ext.wo[0], 0, 100) && (ext.wo[1] === 0 || ext.wo[1] === 2) && hNum(ext.wo[2], -400, 400) ? ext.wo : null };
   }
   function hShotOut(e, t, k) { if (hOn() && HNET.shots.length < 24) HNET.shots.push([e.id, Math.round(t.x * 10), Math.round(t.y * 10), Math.round(t.z * 10), k]); }
   function hShotIn(s) {
@@ -17704,7 +17915,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       e.gy = gnd && !e.inCar ? gnd(e.x, e.z) : 0;
       e.g.position.set(e.x, e.inCar ? 0 : e.gy, e.z);
       const P = e.view.P;
-      if (e.slot) { e.slot.visible = e.inCar || !!e.parked; if (e.inCar) { e.slot.position.set(0, 0.12, 0); e.slot.rotation.y = e.yaw; if (e.model) spinWheels(e.model, e.sp * dt); } else if (e.parked) { e.slot.position.set(e.parked.x - e.x, 0.12 - e.gy, e.parked.z - e.z); e.slot.rotation.y = e.parked.yaw; } }
+      if (e.slot) { e.slot.visible = e.inCar || !!e.parked; if (e.inCar) { e.slot.position.set(0, 0.12, 0); e.slot.rotation.y = e.yaw; if (e.model) { spinWheels(e.model, e.sp * dt); trLamps(e.model, !e.down && now - (e.sigT || 0) < 0.5 ? e.sig : 0, !e.down && now - (e.sigT || 0) < 0.5 && e.brk, now, e.ph); } } else if (e.model && (e.sig || e.brk)) { e.sig = 0; e.brk = false; trLamps(e.model, 0, false, now, 0); } else if (e.parked) { e.slot.position.set(e.parked.x - e.x, 0.12 - e.gy, e.parked.z - e.z); e.slot.rotation.y = e.parked.yaw; } }
       if (P) {
         P.wrap.visible = !e.inCar && !(e.ride);
         if (P.wrap.visible) {
@@ -18180,6 +18391,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   }
   // what somebody says first: what they remember, how the block sees you, what's going on, how they feel about you
   function lvGreetLine(e) {
+    { const sg = window.__storyGreet && (() => { try { return window.__storyGreet(e); } catch (er) { return null; } })(); if (sg) return sg; }
     const [mx, mz] = hMe(), tier = lvTier(e), rt = lvRepTier(mx, mz), m = lvMem(e), ph = lvPhase(), G = window.__guns, keys = [];
     const ev = m && m.ev.find(v => LV_L['m.' + v[0]]); if (ev && Date.now() - ev[1] < 3 * 3600000 && hRnd() < 0.7) return lvPick(['m.' + ev[0]], e);
     if (tier === 'scared' || tier === 'enemy') return lvPick(['g.' + tier], e);
@@ -22313,17 +22525,18 @@ body.walking:not(.indoors):not(.boating):not(.phoning).near-boats #boatbtn{displ
     return (ok.length ? cPick(ok) : cPick(opts.length ? opts : adj) || [u.a])[0];
   }
   function copRoad(u, dt, want, hot) {
-    const g = gpsGraph(); if (u.join != null) { copJoined(u, dt, want); return; } if (u.a == null) return;
-    const ax = g.nx[u.a], az = g.nz[u.a], bx = g.nx[u.b], bz = g.nz[u.b], L = Math.max(0.1, Math.hypot(bx - ax, bz - az)), fx = (bx - ax) / L, fz = (bz - az) / L;
-    let tgt = want; if (L - u.u < (hot ? 22 : 16)) tgt = Math.min(tgt, hot ? 13 : 6);
-    if (!hot) { const [mx, mz] = copMe(), ex = mx - u.x, ez = mz - u.z, ahead = ex * fx + ez * fz, side = Math.abs(ex * -fz + ez * fx); if (ahead > 0 && ahead < 12 && side < 3.2) tgt = 0;
-      for (const o of COP.units) { if (o === u || o.a !== u.a || o.b !== u.b) continue; const d = o.u - u.u; if (d > 0 && d < 11) tgt = 0; } }
-    u.sp += clamp(tgt - u.sp, -11 * dt, (hot ? 9 : 4.5) * dt); u.u += u.sp * dt;
-    if (u.u >= L) { u.u -= L; const nb = copNext(u); u.a = u.b; u.b = nb; if (u.a === u.b) { u.sp = 0; u.u = 0; } }
-    const ax2 = g.nx[u.a], az2 = g.nz[u.a], bx2 = g.nx[u.b], bz2 = g.nz[u.b], L2 = Math.max(0.1, Math.hypot(bx2 - ax2, bz2 - az2)), gx = (bx2 - ax2) / L2, gz = (bz2 - az2) / L2;
-    const uu = Math.min(u.u, L2), lane = hot ? 1.6 : 3.6, tx = ax2 + gx * uu - gz * lane, tz = az2 + gz * uu + gx * lane;
-    const k = 1 - Math.exp(-dt * 6), ox = u.x, oz = u.z; u.x += (tx - u.x) * k; u.z += (tz - u.z) * k;
-    u.yaw += cNorm(mtCarYaw(u.x - ox, u.z - oz, gx, gz, dt) - u.yaw) * Math.min(1, dt * 8);   // FLUID-MOTION
+    if (u.join != null) { copJoined(u, dt, want); return; } if (u.a == null) return;
+    let cap = 99;
+    if (!hot) {
+      const fx = -Math.sin(u.yaw), fz = -Math.cos(u.yaw), [mx, mz] = copMe(), ex = mx - u.x, ez = mz - u.z, ahead = ex * fx + ez * fz, side = Math.abs(ex * -fz + ez * fx);
+      if (ahead > 0 && ahead < 12 && side < 3.2) cap = 0;
+      for (const o of COP.units) {
+        if (o === u || o.gone || o.mode === 'park') continue; const dx = o.x - u.x, dz = o.z - u.z; if (dx * dx + dz * dz > 196) continue;
+        const fa = dx * fx + dz * fz, sd = Math.abs(dx * -fz + dz * fx); if (fa < 1 || sd > 2.4 || Math.abs(cNorm(o.yaw - u.yaw)) > 1.3) continue;
+        cap = Math.min(cap, fa < 8 ? 0 : Math.max(0, o.sp || 0) * (fa - 8) / 4);
+      }
+    }
+    trDrive(u, dt, want, cap, hot ? 1.6 : 3.6, hot, copNext);   // SMOOTH-TURNS
   }
   function copOnRoad(u, x, z) {
     const g = gpsGraph(), n = hNearestNode(x, z); if (n < 0) return false; const adj = g.adj[n]; if (!adj.length) return false;
@@ -22717,7 +22930,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       copThink(u, dt, mx, mz, d); if (u.gone) continue;
       copBump(u);
       u.g.position.set(u.x, 0.12, u.z); u.g.rotation.y = u.yaw; u.g.visible = d < 520;
-      const m = u.model; if (m && u.g.visible) { spinWheels(m, Math.hypot(u.x - ox, u.z - oz)); copLights(m, u.lights, t, u.ph); const C = m.userData.cop; if (C) C.liv.uInv.value.copy(C.inner.matrixWorld).invert(); }
+      const m = u.model; if (m && u.g.visible) { spinWheels(m, Math.hypot(u.x - ox, u.z - oz)); copLights(m, u.lights, t, u.ph); trLamps(m, u.mode === 'park' || u.lights || t - (u.sigT || 0) > 0.5 ? 0 : u.sig, u.mode !== 'park' && t - (u.sigT || 0) < 0.5 && u.brk, t, u.ph); trLamps(m, u.mode === 'park' || u.lights || t - (u.sigT || 0) > 0.5 ? 0 : u.sig, u.mode !== 'park' && t - (u.sigT || 0) < 0.5 && u.brk, t, u.ph); trLamps(m, u.mode === 'park' || u.lights || t - (u.sigT || 0) > 0.5 ? 0 : u.sig, u.mode !== 'park' && t - (u.sigT || 0) < 0.5 && u.brk, t, u.ph); trLamps(m, u.mode === 'park' || u.lights || t - (u.sigT || 0) > 0.5 ? 0 : u.sig, u.mode !== 'park' && t - (u.sigT || 0) < 0.5 && u.brk, t, u.ph); trLamps(m, u.mode === 'park' || u.lights || t - (u.sigT || 0) > 0.5 ? 0 : u.sig, u.mode !== 'park' && t - (u.sigT || 0) < 0.5 && u.brk, t, u.ph); const C = m.userData.cop; if (C) C.liv.uInv.value.copy(C.inner.matrixWorld).invert(); }
     }
     copRemStep(dt, t, mx, mz);
     copSiren(dt);
@@ -22795,7 +23008,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   function copRemNear(x, z, r) { let n = 0; for (const u of CNET.rem.values()) if (!u.lights && Math.hypot(u.x - x, u.z - z) < r) n++; return n; }
   function copMine() { const [mx, mz] = copMe(); return COP.units.filter(u => !u.gone && u.mode !== 'park' && Math.hypot(u.x - mx, u.z - mz) < 1100); }
   function copPack(u) {
-    const o = u.officer, f = (u.lights ? 1 : 0) | (u.siren ? 2 : 0) | (o ? 4 : 0) | (/chase|stop/.test(u.mode) ? 8 : 0);
+    const o = u.officer, f = (u.lights ? 1 : 0) | (u.siren ? 2 : 0) | (o ? 4 : 0) | (/chase|stop/.test(u.mode) ? 8 : 0) | (u.sig && !u.lights && performance.now() / 1000 - (u.sigT || 0) < 0.5 ? (u.sig < 0 ? 16 : 32) : 0);
     const a = [copNid(u), Math.round(u.x * 10), Math.round(u.z * 10), Math.round(cNorm(u.yaw) * 100), Math.round(u.sp * 10), C_KINDS.indexOf(u.kind), f, u.num || 0];
     if (o) a.push(Math.round(o.x * 10), Math.round(o.z * 10), Math.round(cNorm(o.yaw) * 100), Math.round((o.mv || 0) * 10));
     return a;
@@ -22815,7 +23028,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     let r = CNET.rem.get(nid);
     if (!r) { if (Math.hypot(X - mx, Z - mz) > 520) return; r = copUnit(C_KINDS[ki], X, Z, y100 / 100, 'remote', num || 100, true); r.nid = nid; r.remote = true; CNET.rem.set(nid, r); }
     r.by = p.id; r.seen = now; r.lights = !!(f & 1); r.siren = !!(f & 2);
-    r.rt = { x: X, z: Z, yaw: y100 / 100, sp: sp10 / 10, t: now, hot: !!(f & 8) };
+    r.rt = { x: X, z: Z, yaw: y100 / 100, sp: sp10 / 10, t: now, hot: !!(f & 8), sig: f & 16 ? -1 : f & 32 ? 1 : 0 };
     r.ort = f & 4 && a.length >= 12 && [8, 9].every(i => hNum(a[i], -3e5, 3e5)) && hNum(a[10], -400, 400) && hNum(a[11], 0, 200) ? { x: a[8] / 10, z: a[9] / 10, yaw: a[10] / 100, mv: a[11] / 10 } : null;
   }
   function copRemDrop(r) { CNET.rem.delete(r.nid); copKill(r); }
@@ -22828,7 +23041,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       if (dx * dx + dz * dz > 900) { r.x = px; r.z = pz; r.yaw = q.yaw; } else { const k = 1 - Math.exp(-dt * 8); r.x += dx * k; r.z += dz * k; r.yaw += cNorm(q.yaw - r.yaw) * Math.min(1, dt * 8); }
       r.sp = q.sp; copBump(r);
       const d = Math.hypot(r.x - mx, r.z - mz); r.g.position.set(r.x, 0.12, r.z); r.g.rotation.y = r.yaw; r.g.visible = d < 520;
-      const m = r.model; if (m && r.g.visible) { spinWheels(m, Math.hypot(r.x - ox, r.z - oz)); copLights(m, r.lights, t, r.ph); const C = m.userData.cop; if (C) C.liv.uInv.value.copy(C.inner.matrixWorld).invert(); }
+      const m = r.model; if (m && r.g.visible) { spinWheels(m, Math.hypot(r.x - ox, r.z - oz)); copLights(m, r.lights, t, r.ph); trRemote(r, q.sp, r.lights ? 0 : q.sig, dt); trLamps(m, r.sig, r.brk, t, r.ph); trRemote(r, q.sp, r.lights ? 0 : q.sig, dt); trLamps(m, r.sig, r.brk, t, r.ph); trRemote(r, q.sp, r.lights ? 0 : q.sig, dt); trLamps(m, r.sig, r.brk, t, r.ph); trRemote(r, q.sp, r.lights ? 0 : q.sig, dt); trLamps(m, r.sig, r.brk, t, r.ph); trRemote(r, q.sp, r.lights ? 0 : q.sig, dt); trLamps(m, r.sig, r.brk, t, r.ph); const C = m.userData.cop; if (C) C.liv.uInv.value.copy(C.inner.matrixWorld).invert(); }
       // the officer out of their car: walking up to a window, or running somebody down
       const o = r.ort;
       if (o && !r.officer && copOfficer(r)) { r.officer.x = o.x; r.officer.z = o.z; }
@@ -22886,6 +23099,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   const NPC_CHG = [['warrant'], ['pom'], ['pi'], ['theft'], ['warrant', 'pom'], ['unl_carry']];
   const jS = () => { if (!S.jail) S.jail = {}; const j = S.jail; j.rec = j.rec || []; j.npcs = j.npcs || []; j.open = j.open || []; return j; };
   const jIn = () => !!(S && S.jail && S.jail.in);
+  const jIsJail = p => !!(p && (p.type === 'jail' || p.type === 'tdcj'));
   const jBusy = () => !!JL.st || jIn();
   const jClass = k => JCLASS[(CHG[k] || ['B'])[0]];
   const jName = k => (CHG[k] || ['B', k])[1];
@@ -23088,7 +23302,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     rbox(-5.5, 0, cz - 0.1, W / 2, 0.02, cz + 0.1, '#e8c21a', false);
     station('Release desk', -6.3 + 1.6, FZ - 1.0, () => jReleaseDesk());
   };
-  function jStart() { return jIn() ? [3, 1] : [0, 13 - 1.8]; }
+  function jStart() { if (IN.place && IN.place.type === 'tdcj') return [0, 4]; return jIn() ? [3, 1] : [0, 13 - 1.8]; }
   // inmates, guards and the people you saw get picked up
   function jPeople() {
     if (!IN.people) return;
@@ -23113,7 +23327,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   const _jEnter = enterInterior;
   enterInterior = function (p) {
     const r = _jEnter.apply(this, arguments);
-    if (p && p.type === 'jail') {
+    if (jIsJail(p)) {
       if (jIn()) { IN.stations = IN.stations.filter(s => s.name !== 'Leave'); const [x, z] = jStart(); IN.pos.set(x, 0, z); IN.avatar.position.copy(IN.pos); IN.yaw = IN.camYaw = Math.PI; IN.avatar.rotation.y = Math.PI; IN.camPos.set(x, 3, z - 4); }
       jPeople(); jHud();
     }
@@ -23121,7 +23335,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   };
   const _jLeave = leaveInterior;
   leaveInterior = function (silent) {
-    if (inside && IN.place && IN.place.type === 'jail' && jIn() && !JL.releasing) { toast('🔒 You\'re locked up. The door only opens at the release desk.', 'bad'); return; }
+    if (inside && jIsJail(IN.place) && jIn() && !JL.releasing) { toast('🔒 You\'re locked up. The door only opens at the release desk.', 'bad'); return; }
     return _jLeave.apply(this, arguments);
   };
   const _jPhone = openPhone;
@@ -23129,7 +23343,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   const _jEnterWorld = enterWorld;
   enterWorld = function () {
     const r = _jEnterWorld.apply(this, arguments);
-    if (jIn()) setTimeout(() => { if (!inside && jailPlace()) { if (!S.jail.stage) S.jail.stage = 'cell'; enterInterior(jailPlace()); if (S.jail.stage === 'book') jBookUI(); } }, 300);
+    if (jIn()) setTimeout(() => { if (!inside && jCellPlace()) { if (!S.jail.stage) S.jail.stage = 'cell'; enterInterior(jCellPlace()); if (S.jail.stage === 'book') jBookUI(); } }, 300);
     return r;
   };
 
@@ -23383,11 +23597,11 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   // ---------- inside: the clock, the stations ----------
   function jHud() {
     if (!JL.hud) { JL.hud = document.createElement('div'); JL.hud.id = 'jlhud'; document.body.append(JL.hud); }
-    const on = jIn() && inside && IN.place && IN.place.type === 'jail' && S.jail.stage === 'cell';
+    const on = jIn() && inside && jIsJail(IN.place) && S.jail.stage === 'cell';
     JL.hud.hidden = !on; if (!on) return;
-    const j = S.jail, left = jLeft(), bond = jBond(j.ch);
-    const html = left > 0 ? `🔒 <b>Tarrant County Jail</b> · release in <b>${jClock(left)}</b> <small>(${Math.ceil(left / JDAY)} day${Math.ceil(left / JDAY) > 1 ? 's' : ''})</small>${bond > 0 ? ` · bond ${money(bond)}` : bond < 0 ? ' · no bond' : ''}` : '🔓 <b>Time served.</b> Go to the release desk.';
-    if (html !== JL.hudKey) { JL.hudKey = html; JL.hud.innerHTML = html; }
+    const j = S.jail, left = jLeft(), bond = j.unit === 'tdcj' ? 0 : jBond(j.ch);
+    const html = left > 0 ? `🔒 <b>${yUnitName()}</b> · release in <b>${jClock(left)}</b> <small>(${Math.ceil(left / JDAY)} day${Math.ceil(left / JDAY) > 1 ? 's' : ''})</small>${bond > 0 ? ` · bond ${money(bond)}` : bond < 0 ? ' · no bond' : ''}` : '🔓 <b>Time served.</b> Go to the release desk.';
+    const h2 = html + yHudX(); if (h2 !== JL.hudKey) { JL.hudKey = h2; JL.hud.innerHTML = h2; }
   }
   function jReleaseDesk() {
     const j = jS(); if (!j.in) return { title: 'Release desk', sub: 'Nobody to release', rows: [] };
@@ -23472,7 +23686,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   sleep = function (p) {
     const j = S && S.jail;
     // a warrant gets served where you sleep, sometimes before you get the chance
-    if (j && j.warrant && !jBusy() && p && p.type !== 'jail' && copRand() < (j.warrant.ch.some(k => jClass(k).r >= 3) ? 0.55 : 0.35)) {
+    if (j && j.warrant && !jBusy() && p && !jIsJail(p) && copRand() < (j.warrant.ch.some(k => jClass(k).r >= 3) ? 0.55 : 0.35)) {
       closeMenu(); toast('🚔 BANG BANG BANG. "FWPD! We have a warrant!"', 'bad');
       setTimeout(() => { try { if (inside) { JL.releasing = true; try { leaveInterior(); } finally { JL.releasing = false; } } setTimeout(() => jlArrest('warrant'), 400); } catch (e) { console.warn('jail: ' + e.message); } }, 900);
       return;
@@ -23557,11 +23771,11 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
 
   // ---------- online: you in cuffs for everybody, and they can post your bond ----------
   function jNetStage() { const st = JL.st; if (jIn()) return 4; if (!st) return 0; return st.ph === 'hands' ? 1 : st.ph === 'in' || st.ph === 'ride' || st.ph === 'wait' || st.ph === 'booked' ? 3 : 2; }
-  NET_HOOK.state.push(() => { const a = jNetStage(); if (!a) return {}; const o = { ja: a }; if (a === 4) { o.jr = Math.round((S.jail.until || Date.now()) / 1000); o.jb = jBond(S.jail.ch || []); } return o; });
+  NET_HOOK.state.push(() => { const a = jNetStage(); if (!a) return {}; const o = { ja: a }; if (a === 4) { o.jr = Math.round((S.jail.until || Date.now()) / 1000); o.jb = S.jail.unit === 'tdcj' ? 0 : jBond(S.jail.ch || []); o.ju = S.jail.unit === 'tdcj' ? 1 : 0; } return o; });
   NET_HOOK.urgent.push(() => jNetStage() !== ((NET.sent && NET.sent.ja) || 0));
   NET_HOOK.key.push(() => 'ja' + jNetStage());
   NET_HOOK.recv.push((p, m) => {
-    if (m.k === 's') { p.ja = clamp(m.ja | 0, 0, 4); p.jr = nNum(m.jr, 0, 1e11, 0); p.jb = nNum(m.jb, -1, 1e8, 0); }
+    if (m.k === 's') { p.ja = clamp(m.ja | 0, 0, 4); p.jr = nNum(m.jr, 0, 1e11, 0); p.jb = nNum(m.jb, -1, 1e8, 0); p.ju = m.ju ? 1 : 0; }
     if (m.k === 'jb' && m.to === NET.id) {
       const j = S.jail, bond = j && j.in ? jBond(j.ch) : 0;
       if (bond > 0 && nNum(m.amt, 0, 1e9, 0) >= bond) { netSend({ k: 'jbo', to: m.id, ok: 1, amt: bond }); jBondOut('', p.name); } else netSend({ k: 'jbo', to: m.id, ok: 0 });
@@ -23590,7 +23804,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const r = _jOnline.apply(this, arguments);
     try {
       if (!netOn()) return r;
-      for (const b of sc.querySelectorAll('[data-go]')) { const p = NET.peers.get(b.dataset.go); if (!p || !(p.ja >= 1)) continue; const s = b.querySelector('span'); if (s) s.textContent = p.ja === 4 ? `🔒 Tarrant County jail${p.jb > 0 ? ` · bond ${money(p.jb)}` : p.jb < 0 ? ' · no bond' : ''}` : '🚔 being arrested'; if (p.ja === 4 && p.jb > 0) { const x = document.createElement('button'); x.className = 'ph-row'; x.innerHTML = `<b>Post ${esc(p.name)}'s bond</b><span>${money(p.jb)}</span>`; x.onclick = () => jPostFor(p); b.after(x); } }
+      for (const b of sc.querySelectorAll('[data-go]')) { const p = NET.peers.get(b.dataset.go); if (!p || !(p.ja >= 1)) continue; const s = b.querySelector('span'); if (s) s.textContent = p.ja === 4 ? p.ju ? '⛓ TDCJ Huntsville Unit' : `🔒 Tarrant County jail${p.jb > 0 ? ` · bond ${money(p.jb)}` : p.jb < 0 ? ' · no bond' : ''}` : '🚔 being arrested'; if (p.ja === 4 && p.jb > 0) { const x = document.createElement('button'); x.className = 'ph-row'; x.innerHTML = `<b>Post ${esc(p.name)}'s bond</b><span>${money(p.jb)}</span>`; x.onclick = () => jPostFor(p); b.after(x); } }
     } catch (e) {}
     return r;
   };
@@ -23604,7 +23818,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   const _jCopStep = copStep;
   copStep = function (dt) { _jCopStep.apply(this, arguments); jStep(dt); };
   // the jail clock and the HUD run whether you're inside or not
-  setInterval(() => { if (!S || !worldOn) return; jHud(); if (jIn() && !inside && !JL.st && jailPlace() && !creating) { try { enterInterior(jailPlace()); } catch (e) {} } if (JL.book && !JL.book.hidden && !(jIn() && inside)) JL.book.hidden = true; }, 500);
+  setInterval(() => { if (!S || !worldOn) return; jHud(); if (jIn() && !inside && !JL.st && jCellPlace() && !creating) { try { enterInterior(jCellPlace()); } catch (e) {} } if (JL.book && !JL.book.hidden && !(jIn() && inside)) JL.book.hidden = true; }, 500);
   {
     const st = document.createElement('style');
     st.textContent = `#jlfade{position:fixed;inset:0;background:#000;opacity:0;z-index:60;pointer-events:none}#jlfade[hidden]{display:none}
@@ -23627,6 +23841,492 @@ body.indoors.jl-in #phonebtn{opacity:.4}`;
   // tests: run the arrest/ride/cops a fixed number of steps without waiting on frames
   function jPump(n, dt) { for (let i = 0; i < n; i++) { frame++; if (driving && foot.on && !inside) stepFoot(dt); try { if (window.__hood && window.__hood.tick) window.__hood.tick(dt); } catch (e) {} copStep(dt); } }
   window.__jail = { jPump, JL, JCLASS, CHG, jS, jIn, jBusy, jDays, jBond, jLeft, jlArrest, jBook, jBookNext, jServe, jBondOut, jRelease, jHud, jTurnIn, jTrusty, jMop, jPhone, jRoster, jBailWindow, jailPlace, jlPose, jlCuffOn, jNpcStart, jNpcStep, jStep, jSearchStep, jWarrantStep, jlSearchFor, jPostFor, jMugshot, jCharge, jRide, jArrive, jAbort, jNetStage, BOOK };
+  // ---------- jail life: fights, contraband, shakedowns, the TDCJ unit (2026-11-21) ----------
+  // county time and TDCJ time: step to people (or get stepped to), hustle contraband from the connect, ride out shakedowns, lift on the yard
+  const YD = { fight: null, amb: null, ui: null, card: null, tick: 0, segSolid: null };
+  const YD_SETS = ['Six Block', 'Riverside', 'Hemphill', 'Everman', 'Poly', 'Como', 'Northside', 'Southside', 'Stop Six', 'Lake Como'];
+  const YD_NAMES = ['Big Dre', 'Lil Mook', 'Tre Pound', 'Smoke', 'Pooh', 'Boobie', 'Ced', 'Peanut', 'Bam', 'Slim Jim', 'Kaine', 'Rell', 'Juice', 'Man Man', 'Scooter', 'Lil Hot', 'Duke', 'Big Lo', 'Hollywood', 'Bird', 'Gutta', 'Twin', 'Unc', 'Shorty Mac', 'Doughboy', 'Dirty Red'];
+  // what moves inside: buy from the connect with money on your books, sell to whoever needs it
+  const YD_CB = {
+    squares: { n: 'Squares', s: 'Loose cigarettes, a pack split up', buy: 4, sell: [10, 16], heat: 0.4, wu: 2, e: '🚬' },
+    weed: { n: 'Weed', s: 'A dime bag somebody\'s girl brought in', buy: 30, sell: [70, 110], heat: 1, wu: 3, e: '🌿' },
+    pills: { n: 'Bars', s: 'Pills, a strip of them', buy: 18, sell: [40, 70], heat: 1, wu: 3, e: '💊' },
+    tune: { n: 'Tune', s: 'K2-soaked paper. Sells fast, gets you caught fast', buy: 45, sell: [110, 190], heat: 1.6, wu: 4, e: '📄' },
+    phone: { n: 'Burner phone', s: 'A contraband cell. Use your phone inside, or sell it', buy: 450, sell: [800, 1200], heat: 2.2, wu: 5, e: '📱' },
+    shank: { n: 'Shank', s: 'Sharpened toothbrush. Hits hard in a fight, a new charge if they find it', buy: 35, sell: [60, 90], heat: 1, wu: 5, e: '🔪' },
+  };
+  const YD_A = { jab: { wind: 0.12, hit: 0.18, end: 0.36, dmg: [6, 9], st: 8 }, hook: { wind: 0.3, hit: 0.4, end: 0.72, dmg: [12, 17], st: 18 }, shank: { wind: 0.22, hit: 0.3, end: 0.6, dmg: [22, 30], st: 12 } };
+  const ydJ = () => { const j = jS(); j.cb = j.cb || {}; j.st = j.st || {}; j.owe = j.owe || {}; j.im = j.im || {}; j.rep = j.rep || 0; j.str = j.str || 0; return j; };
+  const ydTDCJ = () => !!(S && S.jail && S.jail.unit === 'tdcj');
+  const ydHere = () => jIn() && inside && jIsJail(IN.place) && S.jail.stage === 'cell';
+  const ydSolo = () => !!(S && S.jail && S.jail.solo && S.jail.solo > Date.now());
+  const ydCount = o => Object.values(o || {}).reduce((a, b) => a + (b | 0), 0);
+  const ydRepName = r => r >= 90 ? 'Shot caller' : r >= 50 ? 'Respected' : r >= 20 ? 'Known' : 'Nobody';
+  const ydPrice = (lo, hi, k) => Math.round(lo + (hi - lo) * k);
+  function ydRand(seed) { let sd = Math.abs(seed | 0) % 2147483646 || 7; return () => (sd = (sd * 16807) % 2147483647) / 2147483647; }
+  function ydHash(s) { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 2147483646; return h || 7; }
+  function yUnitName() { return ydTDCJ() ? 'TDCJ Huntsville Unit' : 'Tarrant County Jail'; }
+
+  // ---------- the TDCJ unit: felony time goes to prison, not the county ----------
+  const TDCJ_P = { id: 'tdcj_walls', name: 'TDCJ Huntsville Unit', type: 'tdcj', x: 0, z: 0, face: 0, color: '#eceae4', icon: 'court', blurb: 'Texas Department of Criminal Justice' };
+  function jCellPlace() { const jp = jailPlace(); if (ydTDCJ() && jp) { TDCJ_P.x = jp.x; TDCJ_P.z = jp.z; TDCJ_P.face = jp.face; return TDCJ_P; } return jp; }
+  STYLE.tdcj = 'tdcj'; ROOM.tdcj = { W: 40, D: 34, floor: 'concrete', wall: '#d8d4c8', rep: 4 };
+  // chain-link: a see-through fence you can't walk through
+  let YD_LINK = null;
+  function ydFence(x0, z0, x1, z1, h = 3.4) {
+    if (!YD_LINK) { const c = document.createElement('canvas'), k = c.getContext('2d'); c.width = c.height = 64; k.strokeStyle = '#9aa0a8'; k.lineWidth = 2.2; k.beginPath(); k.moveTo(0, 0); k.lineTo(64, 64); k.moveTo(64, 0); k.lineTo(0, 64); k.stroke(); YD_LINK = new THREE.CanvasTexture(c); YD_LINK.wrapS = YD_LINK.wrapT = THREE.RepeatWrapping; }
+    const L = Math.hypot(x1 - x0, z1 - z0), t = YD_LINK.clone(); t.needsUpdate = true; t.repeat.set(L / 0.12, h / 0.12);
+    addMesh(new THREE.PlaneGeometry(L, h), new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide }), (x0 + x1) / 2, h / 2, (z0 + z1) / 2, Math.atan2(-(z1 - z0), x1 - x0));
+    const n = Math.max(1, Math.round(L / 3)); for (let i = 0; i <= n; i++) { const x = x0 + (x1 - x0) * i / n, z = z0 + (z1 - z0) * i / n; rbox(x - 0.04, 0, z - 0.04, x + 0.04, h + 0.1, z + 0.04, '#7a8088', false); }
+    rbox(Math.min(x0, x1), h - 0.05, Math.min(z0, z1) - 0.03, Math.max(x0, x1), h + 0.03, Math.max(z0, z1) + 0.03, '#7a8088', false);
+    // razor wire on top
+    addMesh(new THREE.TorusGeometry(0.22, 0.012, 4, 10).scale(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.8, roughness: 0.3 }), (x0 + x1) / 2, h + 0.25, (z0 + z1) / 2);
+    IN.solids.push({ x0: Math.min(x0, x1) - 0.05, z0: Math.min(z0, z1) - 0.05, x1: Math.max(x0, x1) + 0.05, z1: Math.max(z0, z1) + 0.05, h });
+  }
+  FURNISH.tdcj = function (p, W, D) {
+    // front: the picket (officers behind glass), phones, commissary, laundry where the connect works
+    counter(-4, 12.2, 4, 12.9, '#8a8d92', '#2a2c30'); glassWall(-4, 12.9, 4, 12.95, 1.5);
+    wallSign('Texas Department of Criminal Justice', '#eceae4', 0, 3.5, 16.7, 12);
+    station('Chain bus (release)', -15, 14.5, () => jReleaseDesk());
+    for (let i = 0; i < 3; i++) rbox(-W / 2 + 0.05, 1.2, 10.8 + i * 1.1, -W / 2 + 0.25, 1.7, 11.2 + i * 1.1, '#24262a', false);
+    station('Phone', -18.4, 11.9, () => jPhone());
+    counter(W / 2 - 1.2, 10.8, W / 2 - 0.2, 14.2, '#8a8d92', '#2a2c30'); station('Commissary', W / 2 - 2.3, 12.5, () => jCommissary());
+    counter(10, 15.3, 14.5, 16, '#6f737a', '#2a2c30'); for (let i = 0; i < 3; i++) rbox(10.4 + i * 1.4, 0, 16.2, 11.4 + i * 1.4, 1.2, 16.9, '#b8b2a4', false);
+    station('Laundry', 12.2, 14.1, () => ydConnect());
+    rbox(-W / 2, 0, 10.4, W / 2, 0.02, 10.6, '#e8c21a', false);
+    // the dorm: open bays of steel bunks
+    for (const bz of [-3, 1.5, 6]) for (const bx of [-18, -15, -12, -9, -6]) jBunk(bx, bz);
+    station('Your bunk', -13.5, 1.5, () => jBunkMenu(), 1.6);
+    // dayroom: steel tables, TV, the work desk
+    for (const [tx, tz] of [[6, 0], [11, 0], [16, 0], [6, 5], [11, 5]]) { rbox(tx - 0.8, 0.72, tz - 0.6, tx + 0.8, 0.78, tz + 0.6, '#9a9ea4', false); rbox(tx - 0.12, 0, tz - 0.12, tx + 0.12, 0.72, tz + 0.12, '#7a7e84'); for (const [sx, sz] of [[-1.1, 0], [1.1, 0]]) rbox(tx + sx - 0.18, 0, tz + sz - 0.18, tx + sx + 0.18, 0.46, tz + sz + 0.18, '#7a7e84', false); }
+    station('Dayroom tables', 8.5, 2.5, () => ydPeople());
+    const news = (() => { try { const l = wS().log; return l && l[0] ? l[0].text : ''; } catch (e) { return ''; } })() || 'Back in Fort Worth: police say arrests are up across the east side this week.';
+    jScreen(news, W / 2 - 0.3, 2.7, -3, 2.6, -Math.PI / 2); station('TV', W / 2 - 1.8, -3, () => jTV());
+    station('Work assignment', 3, 9, () => jTrusty());
+    // the rec yard behind the fence: court, hoop, pull-up bar, the weight pile
+    ydFence(-W / 2, -7, -1.6, -7); ydFence(1.6, -7, W / 2, -7);
+    for (const [a, b, c, d] of [[6, -16.8, 6.1, -7.4], [19, -16.8, 19.1, -12.8], [6, -7.5, 15, -7.4], [6, -16.8, 15, -16.7], [10, -12.6, 14, -12.5]]) rbox(a, 0, b, c, 0.015, d, '#e9e6dc', false);
+    rbox(11.92, 0, -16.9, 12.08, 3.05, -16.6, '#5a5d62'); rbox(11.1, 2.9, -16.62, 12.9, 3.95, -16.55, '#f4f4f0', false);
+    addMesh(new THREE.TorusGeometry(0.23, 0.02, 6, 18).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xe0581a, metalness: 0.4, roughness: 0.5 }), 12, 3.05, -16.25);
+    rbox(-14.8, 0, -12.1, -14.65, 2.4, -11.95, '#4a4d52'); rbox(-12.35, 0, -12.1, -12.2, 2.4, -11.95, '#4a4d52'); rbox(-14.8, 2.3, -12.08, -12.2, 2.36, -11.98, '#3a3d42', false);
+    station('Pull-up bar', -13.5, -11.2, () => ydWorkMenu('pull'), 1.6);
+    rbox(-11, 0.42, -14.6, -9, 0.52, -14.1, '#2a2c30'); rbox(-10.9, 0, -14.5, -10.7, 0.42, -14.2, '#4a4d52'); rbox(-9.3, 0, -14.5, -9.1, 0.42, -14.2, '#4a4d52');
+    addMesh(new THREE.CylinderGeometry(0.025, 0.025, 2.0, 8).rotateZ(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.9, roughness: 0.3 }), -10, 1.0, -14.35);
+    for (const s of [-1, 1]) addMesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 16).rotateZ(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1a1a1e, roughness: 0.6 }), -10 + s * 0.85, 1.0, -14.35);
+    station('Weight pile', -10, -13, () => ydWorkMenu('lift'), 1.8);
+    station('The yard', 8, -11, () => ydPeople());
+    // seg (solitary): a closed cell of bars in the yard's back corner
+    jBars(15, -13, W / 2, -13, 3.2); jBars(15, -D / 2, 15, -13, 3.2); jBunk(19.3, -15.3); jToilet(16, -16.5);
+  };
+
+  // the county dayroom gets the same people and the trusty who sells
+  const _ydFurnJail = FURNISH.jail;
+  FURNISH.jail = function () { const r = _ydFurnJail.apply(this, arguments); if (jIn()) { station('Dayroom tables', 6.5, -0.3, () => ydPeople()); station('Trusty · Slim', -3.5, -6.4, () => ydConnect(), 1.8); } return r; };
+  // ---------- who's in here ----------
+  function ydInmates() {
+    const j = ydJ(), tdcj = ydTDCJ(), R = ydRand(ydHash((j.n || 'x') + (tdcj ? 't' : 'c'))), n = tdcj ? 7 : 5, used = new Set(), out = [];
+    // people you watched get picked up are in here too
+    for (const q of j.npcs.filter(m => m.until > Date.now()).slice(0, 2)) { const m = /^(.*?) \((.*)\)$/.exec(q.name) || [0, q.name, 'No set']; out.push({ name: m[1], set: m[2] }); used.add(m[1]); }
+    while (out.length < n) { const nm = YD_NAMES[Math.floor(R() * YD_NAMES.length)]; if (used.has(nm)) continue; used.add(nm); out.push({ name: nm, set: YD_SETS[Math.floor(R() * YD_SETS.length)] }); }
+    const day = Math.floor(Date.now() / JDAY / 3), keys = Object.keys(YD_CB);
+    return out.map((o, i) => {
+      const id = 'im' + i + '_' + o.name.replace(/\W/g, ''), r = ydRand(ydHash(id + day)), st = j.im[id] || {};
+      const tough = 0.65 + ydRand(ydHash(id))() * 0.75;
+      const want = r() < 0.75 ? keys[Math.floor(r() * (keys.length - (r() < 0.8 ? 2 : 0)))] : null;
+      return { id, i, name: o.name, set: o.set, tough, want, k: r(), beat: st.beat || 0, mad: st.mad || 0 };
+    });
+  }
+  // replaces the plain jail crowd: guards, the connect, and inmates you can talk to
+  jPeople = function () {
+    if (!IN.people) return;
+    const tdcj = IN.place && IN.place.type === 'tdcj';
+    if (!COP.officerBase) { try { COP.officerBase = hNameParts(PEOPLE.build(copOfficerLook(), 1)); } catch (e) {} }
+    const guards = tdcj ? [[-2, 13.6], [2, 13.6], [0, -6.2]] : [[-10, -1.0], [-9, 7.2]];
+    if (COP.officerBase) for (const [x, z] of guards) { const P = hClone(COP.officerBase); IN.crowd.add(P.wrap); P.wrap.position.set(x, 0, z); IN.people.push({ kind: 'staff', idx: 0, x, z, yaw: Math.PI, ph: Math.random() * 6, P, guard: 1 }); }
+    if (!jIn()) return;
+    const L0 = tdcj ? { top: 'no_tdcj_top', bottom: 'no_tdcj_pants' } : { top: 'no_tcj_top', bottom: 'no_tcj_pants' };
+    const mk = (seed, label, col) => {
+      let sd = seed; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647; R();
+      const L = { ...PEOPLE.randomLook(R, false), ...L0, shoes: 'mk_slides', hat: 'no_hat', mask: 'no_mask', bag: 'no_bag' };
+      let P; try { P = PEOPLE.build(L, 1); } catch (e) { return null; }
+      P.wrap = new THREE.Group(); P.root.rotation.y = Math.PI; P.wrap.add(P.root); IN.crowd.add(P.wrap);
+      if (label) { const sp = textSprite(label, 26, col || '#ffb066'); sp.position.set(0, 2.15, 0); sp.scale.set(0.028 * sp.userData.aspect, 0.028, 1); P.wrap.add(sp); }
+      return P;
+    };
+    // the connect: a trusty in the county, a laundry worker on the unit
+    const cn = tdcj ? [12.2, 15.0, Math.PI] : [-3.5, -7.6, 0], cP = mk(4242, tdcj ? 'Laundry · Pops' : 'Trusty · Slim', '#9be37a');
+    if (cP) { cP.wrap.position.set(cn[0], 0, cn[1]); cP.wrap.rotation.y = cn[2]; IN.people.push({ kind: 'staff', idx: 0, x: cn[0], z: cn[1], yaw: cn[2], ph: 1, P: cP, connect: 1 }); }
+    const ims = ydInmates();
+    ims.forEach((m, i) => {
+      const P = mk(31 + ydHash(m.id) % 9000, `${m.name} · ${m.set}`); if (!P) return;
+      const x = tdcj ? [6, 11, 3, 8, -4, 13, 6][i] : -1 + (i % 4) * 3.2, z = tdcj ? [2.5, -2, 7.5, -11, 8.5, 7.5, -13][i] : -2.8 + (i % 2) * 2.2 - (i >= 4 ? 3 : 0);
+      P.wrap.position.set(x, 0, z);
+      IN.people.push({ kind: 'walk', idx: 0, x, z, yaw: R0() * 6.28, ph: 0, wait: 1 + R0() * 4, tx: x, tz: z, P, inm: m });
+    });
+  };
+  const R0 = () => Math.random();
+  function ydQ(m) { return IN.people && IN.people.find(q => q.inm && q.inm.id === m.id); }
+
+  // ---------- the dayroom / yard menu: talk, sell, collect, step to somebody ----------
+  function ydPeople() {
+    const j = ydJ(); if (ydSolo()) return { title: 'Seg', sub: 'You\'re in solitary', rows: [{ t: 'Nobody to talk to', s: `Out of seg in ${jClock(j.solo - Date.now())}`, btn: '🔒', off: true, act: () => {} }] };
+    const ims = ydInmates(), now = Date.now();
+    return { title: ydTDCJ() ? 'The yard' : 'Dayroom', sub: `Rep: ${ydRepName(j.rep)} (${Math.round(j.rep)}) · Strength ${j.str} · on you: ${ydCount(j.cb) || 'nothing'}`, rows: ims.map(m => {
+      const owe = j.owe[m.id], hurt = m.beat > now;
+      return { t: `${m.name} · ${m.set}`, s: hurt ? 'Still hurting from last time' : `${'★'.repeat(Math.round(m.tough * 3))} ${owe ? `· owes you ${money(owe)}` : m.want ? `· looking for ${YD_CB[m.want].n.toLowerCase()}` : '· just chilling'}`, btn: 'Talk', act: () => openMenu(() => ydTalk(m)) };
+    }) };
+  }
+  function ydTalk(m) {
+    const j = ydJ(), cb = m.want && YD_CB[m.want], have = m.want && (j.cb[m.want] | 0), owe = j.owe[m.id], hurt = m.beat > Date.now();
+    const pay = cb ? Math.round(ydPrice(cb.sell[0], cb.sell[1], m.k) * (ydTDCJ() ? 1.3 : 1) * (1 + j.rep / 250)) : 0;
+    const rows = [];
+    if (owe) rows.push({ t: 'Collect what he owes', s: `${money(owe)}. He might pay, he might not`, btn: 'Collect', act: () => ydCollect(m) });
+    if (cb) rows.push({ t: `Sell him ${cb.e} ${cb.n.toLowerCase()}`, s: have ? `He'll pay ${money(pay)} to your books. You have ${have}` : `He wants it (${money(pay)}). Get it from the connect`, btn: money(pay), off: !have || hurt, act: () => ydSell(m, pay) });
+    rows.push({ t: 'Call him out', s: hurt ? 'He\'s still hurt' : `Fight him. ${m.tough > 1.15 ? 'He\'s big.' : m.tough < 0.85 ? 'He looks soft.' : 'Even fight.'} Guards come running`, btn: '👊 Fight', off: hurt, act: () => { closeMenu(); ydFight(m, 'callout'); } });
+    rows.push({ t: 'Back', s: '', btn: '←', act: () => openMenu(() => ydPeople()) });
+    return { title: `${m.name} · ${m.set}`, sub: ['"What you need?"', '"Talk to me."', '"You good?"', '"Speak."'][m.i % 4], rows };
+  }
+  function ydSell(m, pay) {
+    const j = ydJ(); if (!(j.cb[m.want] > 0)) return;
+    j.cb[m.want]--; j.ih = (j.ih || 0) + YD_CB[m.want].heat;
+    if (Math.random() < 0.8 + Math.min(0.15, j.rep / 300)) { S.bank = (S.bank || 0) + pay; S.log.unshift(`+${money(pay)} Books (${m.name})`); toast(`${m.name}'s people sent ${money(pay)} to your books.`, 'good'); }
+    else { j.owe[m.id] = (j.owe[m.id] || 0) + pay; toast(`"I got you tomorrow." ${m.name} owes you ${money(pay)}.`, ''); }
+    j.rep += 0.5; save(); jHud();
+  }
+  function ydCollect(m) {
+    const j = ydJ(), owe = j.owe[m.id] || 0; if (!owe) return;
+    if (Math.random() < 0.45 + j.rep / 200) { S.bank = (S.bank || 0) + owe; delete j.owe[m.id]; S.log.unshift(`+${money(owe)} Books (${m.name} paid up)`); toast(`${m.name} paid up: ${money(owe)} on your books.`, 'good'); save(); return; }
+    closeMenu(); ydCard(`${m.name} laughs. "I ain't paying you nothing."`, [['👊 Make him pay', () => ydFight(m, 'debt')], ['Let it go', () => { delete j.owe[m.id]; j.rep = Math.max(0, j.rep - 3); toast('Word gets around that you let it slide.', 'bad'); jHud(); }]]);
+  }
+
+  // ---------- the connect ----------
+  function ydConnect() {
+    const j = ydJ(); if (ydSolo()) return { title: 'Seg', sub: '', rows: [{ t: 'You can\'t get to him from seg', s: '', btn: '🔒', off: true, act: () => {} }] };
+    const day = Math.floor(Date.now() / JDAY / 3), up = ydTDCJ() ? 1.25 : 1;
+    return { title: ydTDCJ() ? 'Laundry · Pops' : 'Trusty · Slim', sub: `"Money on your books, I can get it." Books: ${money(S.bank || 0)}`, rows: Object.entries(YD_CB).map(([k, c]) => {
+      const p = Math.round(c.buy * up * (0.9 + ydRand(ydHash(k + day))() * 0.35));
+      return { t: `${c.e} ${c.n}`, s: `${c.s}. On you: ${j.cb[k] | 0}${j.st[k] ? `, stashed: ${j.st[k]}` : ''}`, btn: money(p), off: (S.bank || 0) < p, act: () => { S.bank -= p; j.cb[k] = (j.cb[k] | 0) + 1; j.ih = (j.ih || 0) + c.heat * 0.5; S.log.unshift(`-${money(p)} ${c.n} (the connect)`); toast(`${c.e} ${c.n}. Keep it tucked.`, 'good'); } };
+    }) };
+  }
+
+  // ---------- your bunk: stash it, push-ups ----------
+  const _ydBunk = jBunkMenu;
+  jBunkMenu = function () {
+    const m = _ydBunk.apply(this, arguments), j = ydJ(), on = ydCount(j.cb), st = ydCount(j.st);
+    m.rows.splice(1, 0,
+      { t: 'Stash it in your mattress', s: on ? `${on} item${on > 1 ? 's' : ''} on you. Harder to find in a shakedown, but you can't sell what's stashed` : 'Nothing on you to stash', btn: 'Stash', off: !on, act: () => { for (const k in j.cb) { j.st[k] = (j.st[k] | 0) + (j.cb[k] | 0); } j.cb = {}; toast('Tucked in the mattress.', 'good'); } },
+      { t: 'Take your stash out', s: st ? `${st} item${st > 1 ? 's' : ''} in the mattress` : 'Nothing stashed', btn: 'Take', off: !st, act: () => { for (const k in j.st) { j.cb[k] = (j.cb[k] | 0) + (j.st[k] | 0); } j.st = {}; toast('On you now.', ''); } },
+      { t: 'Push-ups', s: `Strength ${j.str}/40. Stronger hands in a fight`, btn: '💪', act: () => { closeMenu(); ydWork('push'); } });
+    return m;
+  };
+  function ydWorkMenu(kind) {
+    const j = ydJ(), wait = Math.max(0, 40 - (Date.now() - (j.liftT || 0)) / 1000);
+    return { title: kind === 'pull' ? 'Pull-up bar' : 'Weight pile', sub: `Strength ${j.str}/40 · Energy ${Math.round(S.energy || 0)}`, rows: [{ t: kind === 'pull' ? 'Knock out a set of pull-ups' : 'Bench a set', s: wait > 0 ? `Rest ${Math.ceil(wait)}s` : j.str >= 40 ? 'You\'re as strong as you get' : '+1 strength, costs energy', btn: '💪 Work out', off: wait > 0 || j.str >= 40 || (S.energy || 0) < 10, act: () => { closeMenu(); ydWork(kind); } }] };
+  }
+  function ydWork(kind) {
+    const j = ydJ(), wait = Math.max(0, 40 - (Date.now() - (j.liftT || 0)) / 1000);
+    if (wait > 0) { toast(`Rest ${Math.ceil(wait)}s first.`, ''); return; }
+    let n = 0; const N = kind === 'lift' ? 8 : 10;
+    if (!JL.book) { JL.book = document.createElement('div'); JL.book.id = 'jlbook'; document.body.append(JL.book); }
+    const el = JL.book, name = { push: 'Push-ups', pull: 'Pull-ups', lift: 'Bench press' }[kind];
+    const draw = () => { el.innerHTML = `<div class="jl-h"><b>${name}</b><span>${n}/${N}</span></div><div class="jl-b"><div class="jl-bar"><i style="width:${n / N * 100}%"></i></div></div><div class="jl-f"><button class="btn go" data-go="1">💪 Rep</button></div>`; el.hidden = false; el.querySelector('[data-go]').onclick = () => { n++; YD.rep = 0.5; if (n >= N) { el.hidden = true; j.str = Math.min(40, j.str + 1); j.liftT = Date.now(); S.energy = Math.max(0, (S.energy || 0) - 10); save(); toast(`Strength ${j.str}.`, 'good'); jHud(); } else draw(); }; };
+    YD.workK = kind; draw();
+  }
+
+  // ---------- fights ----------
+  function ydFightSpot() { return IN.place && IN.place.type === 'tdcj' ? [4, -11] : [4, -4.2]; }
+  function ydFight(m, why) {
+    if (YD.fight || !ydHere() || ydSolo()) return false;
+    const q = ydQ(m); if (!q || !q.P) return false;
+    closeMenu(); showPrompt(null); IN.near = null; if (JL.book) JL.book.hidden = true;
+    const [cx, cz] = ydFightSpot(), j = ydJ();
+    q.hold = 1; q.x = cx + 0.85; q.z = cz; q.P.wrap.position.set(q.x, 0, q.z); q.P.wrap.rotation.y = Math.PI / 2;
+    IN.pos.set(cx - 0.85, 0, cz); IN.avatar.position.copy(IN.pos); IN.yaw = -Math.PI / 2; IN.avatar.rotation.y = -Math.PI / 2; IN.target = null;
+    const max = Math.round(60 + 50 * m.tough);
+    YD.fight = { m, q, why, t: 0, cx, cz, me: { a: null, at: 0, k: null, blk: 0, hit: 0, st: 100 }, op: { hp: max, max, a: null, at: 0, k: null, blk: 0, hit: 0, next: 1.1 }, guardT: 9 + Math.random() * 9, res: null, over: 0, start: S.health };
+    YD.fight.ring = IN.people.filter(w => w.inm && w.P && !w.hold).slice(0, 4);
+    YD.fight.ring.forEach((w, i) => { w.hold = 2; const a = [-2.55, -1.95, -1.2, -0.6][i]; w.rx = cx + Math.cos(a) * 2.8; w.rz = cz + Math.sin(a) * 2.1; });
+    document.body.classList.add('yd-fight'); ydFightUI();
+    hSayAt(q, why === 'beef' ? '"Square up then."' : why === 'debt' ? '"You want your money? Come get it."' : '"Oh you want smoke?"');
+    return true;
+  }
+  function hSayAt(q, text) { try { const sp = textSprite(text, 24, '#ffffff'); sp.position.set(0, 2.5, 0); sp.scale.set(0.024 * sp.userData.aspect, 0.024, 1); q.P.wrap.add(sp); setTimeout(() => { sp.parent && sp.parent.remove(sp); }, 2200); } catch (e) {} }
+  function ydAct(k) {
+    const F = YD.fight; if (!F || F.res) return;
+    const me = F.me, j = ydJ();
+    if (k === 'block') { if (!me.a) me.blk = 0.6; return; }
+    if (me.a || me.hit > 0) return;
+    if (k === 'shank' && !(j.cb.shank > 0)) return;
+    const A = YD_A[k]; if (me.st < A.st * 0.6) { toast('Out of gas.', ''); return; }
+    me.a = A; me.k = k; me.at = 0; me.done = false; me.st = Math.max(0, me.st - A.st);
+    // he might see it coming
+    if (!F.op.a && Math.random() < 0.12 + 0.14 * F.m.tough) F.op.blk = 0.45;
+  }
+  function ydThud(hard) { try { const ac = audioCtx(); if (!ac) return; const t = ac.currentTime, n = ac.createBufferSource(), b = ac.createBuffer(1, ac.sampleRate * 0.12, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3); n.buffer = b; const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = hard ? 600 : 1100; const g = ac.createGain(); g.gain.value = hard ? 0.5 : 0.3; n.connect(f); f.connect(g); g.connect(ac.destination); n.start(t); } catch (e) {} }
+  // poses: guard, jab, hook, block, hit, down; k 0..1 through the swing
+  function ydPose(P, kind, k, t, side) {
+    if (!P || !P.arms) return;
+    const s = i => i ? 1 : -1, b = Math.sin(t * 7) * 0.025;
+    for (let i = 0; i < 2; i++) {
+      const A = P.arms[i], Fo = P.fores && P.fores[i];
+      A.rotation.set(-0.55, 0, s(i) * 0.14); if (Fo) Fo.rotation.set(-2.1, 0, 0);
+      if (kind === 'block') { A.rotation.set(-0.95, 0, -s(i) * 0.06); if (Fo) Fo.rotation.set(-2.5, 0, 0); }
+    }
+    const lead = side ? 0 : 1, rear = 1 - lead, e = Math.sin(Math.min(1, k) * Math.PI);
+    if (kind === 'jab' || kind === 'shank') { const A = P.arms[lead], Fo = P.fores && P.fores[lead]; A.rotation.x = -0.55 - 0.95 * e; A.rotation.z = s(lead) * 0.14 * (1 - e); if (Fo) Fo.rotation.x = -2.1 + 1.95 * e; }
+    if (kind === 'hook') { const A = P.arms[rear], Fo = P.fores && P.fores[rear]; A.rotation.x = -0.55 - 0.8 * e; A.rotation.z = s(rear) * (0.14 + 1.0 * e); A.rotation.y = -s(rear) * 0.7 * e; if (Fo) Fo.rotation.x = -2.1 + 0.5 * e; }
+    if (P.legs) { P.legs[lead].rotation.x = -0.28; P.legs[rear].rotation.x = 0.22; if (P.knees) { P.knees[0].rotation.x = P.knees[1].rotation.x = 0.28; P.ankles[0].rotation.x = P.ankles[1].rotation.x = -0.1; } }
+    P.upper.rotation.set(kind === 'hit' ? -0.38 * e : 0.12, kind === 'hook' ? -s(rear) * 0.55 * e : kind === 'jab' ? s(lead) * 0.25 * e : 0.18, 0);
+    if (P.head) P.head.rotation.set(kind === 'hit' ? -0.35 * e : -0.08, kind === 'hit' ? 0.3 * e : 0, 0);
+    P.root.position.set(0, -0.06 + b, 0);
+  }
+  function ydDown(P, wrap, k) { if (!P) return; idlePerson(P, 0); P.arms[0].rotation.z = -1.2; P.arms[1].rotation.z = 1.2; wrap.rotation.order = 'YXZ'; wrap.rotation.x = Math.PI / 2 * Math.min(1, k); P.root.position.set(0, 0, 0); wrap.position.y = 0.14 * Math.min(1, k); }
+  function ydStepFight(dt) {
+    const F = YD.fight, me = F.me, op = F.op, m = F.m, j = ydJ(), t = performance.now() / 1000;
+    F.t += dt; const mult = 1 + j.str / 50, opm = 0.75 + 0.35 * m.tough;
+    if (!F.res) {
+      me.st = Math.min(100, me.st + dt * 22); me.blk = Math.max(0, me.blk - dt); op.blk = Math.max(0, op.blk - dt); me.hit = Math.max(0, me.hit - dt); op.hit = Math.max(0, op.hit - dt);
+      // your swing
+      if (me.a) {
+        me.at += dt;
+        if (!me.done && me.at >= me.a.hit) {
+          me.done = true; let d = me.a.dmg[0] + Math.random() * (me.a.dmg[1] - me.a.dmg[0]); d *= mult;
+          if (op.blk > 0 && me.k !== 'shank') { d *= 0.2; ydThud(false); } else { ydThud(true); op.hit = 0.28; if (op.a && op.at < op.a.hit) op.a = null; }
+          op.hp -= d; if (me.k === 'shank') F.shanked = 1;
+        }
+        if (me.at >= me.a.end) me.a = null;
+      }
+      // his
+      op.next -= dt;
+      if (!op.a && op.next <= 0 && op.hit <= 0) { const k = Math.random() < 0.6 ? 'jab' : 'hook'; op.a = YD_A[k]; op.k = k; op.at = -0.22; op.done = false; op.next = (0.55 + Math.random() * 0.9) / m.tough; }
+      if (op.a) {
+        op.at += dt;
+        if (!op.done && op.at >= op.a.hit) {
+          op.done = true; let d = (op.a.dmg[0] + Math.random() * (op.a.dmg[1] - op.a.dmg[0])) * opm;
+          if (me.blk > 0) { d *= 0.15; me.st = Math.max(0, me.st - 6); ydThud(false); } else { ydThud(true); me.hit = 0.28; if (me.a && me.at < me.a.hit) me.a = null; try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {} }
+          S.health = clamp100((S.health || 0) - d);
+        }
+        if (op.at >= op.a.end) op.a = null;
+      }
+      F.guardT -= dt;
+      if (op.hp <= 0) F.res = 'win'; else if ((S.health || 0) <= 6) { S.health = 6; F.res = 'lose'; } else if (F.guardT <= 0) F.res = 'broken';
+      if (F.res) { F.over = 0; ydThud(true); }
+    } else F.over += dt;
+    // pose both
+    const P = ME, Q = F.q.P;
+    if (F.res === 'lose') ydDown(P, ME.wrap, F.over * 3); else if (P) ydPose(P, me.hit > 0 ? 'hit' : me.a ? me.k : me.blk > 0 ? 'block' : 'guard', me.hit > 0 ? 1 - me.hit / 0.28 : me.a ? me.at / me.a.end : 0, t, 0);
+    if (F.res === 'win') ydDown(Q, Q.wrap, F.over * 3); else ydPose(Q, op.hit > 0 ? 'hit' : op.a && op.at > 0 ? op.k : op.blk > 0 ? 'block' : 'guard', op.hit > 0 ? 1 - op.hit / 0.28 : op.a ? Math.max(0, op.at) / op.a.end : 0, t + 1.3, 1);
+    // little steps in and out
+    const sway = Math.sin(F.t * 2.2) * 0.12;
+    if (!F.res) { IN.pos.x = F.cx - 0.85 + sway * 0.5; F.q.P.wrap.position.x = F.cx + 0.85 + sway * 0.4; }
+    IN.avatar.position.copy(IN.pos); IN.avatar.rotation.y = -Math.PI / 2; Q.wrap.rotation.y = Math.PI / 2;
+    // side-on camera
+    const cam = IN.cam; cam.position.set(F.cx + Math.sin(F.t * 0.25) * 0.8, 1.85, F.cz + (IN.place.type === 'tdcj' ? 3.5 : 4.1)); cam.lookAt(F.cx, 1.15, F.cz); IN.camPos.copy(cam.position); IN.look = null;
+    for (const w of F.ring || []) { const dx = w.rx - w.x, dz = w.rz - w.z, d = Math.hypot(dx, dz); if (d > 0.08) { const k = Math.min(d, dt * 2.6); w.x += dx / d * k; w.z += dz / d * k; w.ph += dt * 7; animPerson(w.P, w.ph, 0.8); } else { idlePerson(w.P, t + w.rx); if (w.P.arms && Math.sin(t * 3 + w.rx) > 0.7) { w.P.arms[1].rotation.x = -2.4; } } w.P.wrap.position.set(w.x, 0, w.z); w.P.wrap.rotation.y = d > 0.08 ? Math.atan2(-dx, -dz) : Math.atan2(-(F.cx - w.x), -(F.cz - w.z)); }
+    stepCrowd(dt, t);
+    ydFightUI();
+    if (F.res && F.over > 2.2) ydEndFight();
+  }
+  function ydFightUI() {
+    const F = YD.fight; if (!YD.ui) { YD.ui = document.createElement('div'); YD.ui.id = 'ydfight'; document.body.append(YD.ui); }
+    const el = YD.ui; if (!F) { el.hidden = true; return; }
+    const j = ydJ(), tell = F.op.a && F.op.at < F.op.a.hit && !F.res;
+    if (!el.dataset.on) {
+      el.dataset.on = '1';
+      el.innerHTML = `<div class="yd-top"><div class="yd-hp"><b>You</b><div class="yd-bar"><i data-h="me"></i></div><div class="yd-bar st"><i data-h="st"></i></div></div><div class="yd-vs" data-h="msg">VS</div><div class="yd-hp r"><b>${esc(F.m.name)}</b><div class="yd-bar"><i data-h="op"></i></div></div></div>
+        <div class="yd-btns"><button data-a="block">🛡<span>Block</span></button><button data-a="jab">👊<span>Jab</span></button><button data-a="hook">💥<span>Hook</span></button><button data-a="shank" data-sh="1">🔪<span>Shank</span></button></div>`;
+      el.querySelectorAll('[data-a]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); ydAct(b.dataset.a); }));
+    }
+    el.hidden = false;
+    el.querySelector('[data-h="me"]').style.width = clamp(S.health || 0, 0, 100) + '%';
+    el.querySelector('[data-h="st"]').style.width = F.me.st + '%';
+    el.querySelector('[data-h="op"]').style.width = clamp(F.op.hp / F.op.max * 100, 0, 100) + '%';
+    el.querySelector('[data-sh]').hidden = !(j.cb.shank > 0);
+    const msg = F.res === 'win' ? 'KNOCKED OUT' : F.res === 'lose' ? 'YOU\'RE DOWN' : F.res === 'broken' ? 'GUARDS!' : tell ? '⚠ BLOCK' : 'VS';
+    const mm = el.querySelector('[data-h="msg"]'); if (mm.textContent !== msg) { mm.textContent = msg; mm.className = 'yd-vs' + (tell ? ' tell' : F.res ? ' end' : ''); }
+  }
+  function ydEndFight() {
+    const F = YD.fight; if (!F) return; YD.fight = null;
+    const j = ydJ(), m = F.m, q = F.q;
+    q.hold = 0; q.wait = 3; if (q.P) { q.P.wrap.rotation.x = 0; q.P.wrap.position.y = 0; q.P.root.position.set(0, 0, 0); } if (ME) { ME.wrap.rotation.x = 0; ME.wrap.position.y = 0; ME.root.position.set(0, 0, 0); }
+    for (const w of F.ring || []) { w.hold = 0; w.wait = 1 + Math.random() * 3; }
+    document.body.classList.remove('yd-fight'); if (YD.ui) { YD.ui.hidden = true; YD.ui.dataset.on = ''; }
+    const st = j.im[m.id] = j.im[m.id] || {};
+    let msg = '', seen = 0;
+    if (F.res === 'win') {
+      const gain = Math.round(6 + 5 * m.tough); j.rep += gain; st.beat = Date.now() + JDAY * 2;
+      if (F.why === 'debt' && j.owe[m.id]) { const o = j.owe[m.id]; S.bank = (S.bank || 0) + o; delete j.owe[m.id]; msg = `You dropped ${m.name}. He paid the ${money(o)} he owed.`; }
+      else { const take = Math.round(15 + Math.random() * 45); S.bank = (S.bank || 0) + take; msg = `You dropped ${m.name}. +${gain} rep, and you took ${money(take)} of his commissary.`; }
+      seen = Math.random() < (F.shanked ? 0.85 : 0.5);
+    } else if (F.res === 'lose') {
+      j.rep = Math.max(0, j.rep - 4); const ks = Object.keys(j.cb).filter(k => j.cb[k] > 0);
+      if (ks.length) { const k = ks[Math.floor(Math.random() * ks.length)]; j.cb[k]--; msg = `${m.name} put you down and took your ${YD_CB[k].n.toLowerCase()}.`; }
+      else { const take = Math.min(S.bank || 0, Math.round(20 + Math.random() * 40)); S.bank -= take; msg = `${m.name} put you down${take ? ` and made you buy his commissary (${money(take)})` : ''}.`; }
+      seen = Math.random() < 0.35;
+    } else { const up = F.op.hp / F.op.max < (S.health || 0) / 100; if (up) j.rep += 2; msg = `Guards rushed in and broke it up${up ? '. Everybody saw you winning' : ''}.`; seen = 1; }
+    if (F.why === 'beef' || F.why === 'callout') st.mad = 0;
+    toast(msg, F.res === 'lose' ? 'bad' : 'good');
+    if (seen && !F.quiet) setTimeout(() => ydWriteUp(F.shanked ? 'Assault with a weapon (shank)' : 'Fighting', F.shanked ? 6 : ydTDCJ() ? 3 : 2), 900);
+    IN.target = null; IN.camYaw = -Math.PI / 2 + 0.2; save(); jHud();
+  }
+  // a write-up: more days and a stretch in seg
+  function ydWriteUp(why, days) {
+    const j = ydJ(); if (!j.in) return;
+    j.until = (j.until || Date.now()) + days * JDAY; j.days = (j.days || 0) + days; j.wu = (j.wu || 0) + 1; (j.wus = j.wus || []).unshift({ why, days, at: Date.now() }); j.wus.length = Math.min(j.wus.length, 8);
+    if (j.good > 0 && ydTDCJ()) j.good = Math.max(0, j.good - 1);
+    toast(`📝 Write-up: ${why}. +${days} days, and 45 seconds in seg.`, 'bad');
+    ydSeg(45); save(); jHud();
+  }
+  function ydSegSpot() { return IN.place && IN.place.type === 'tdcj' ? { at: [17.5, -15], out: [13, -10] } : { at: [-3, -11.6], out: [-3, -6.6], gap: [-5.5 + 5.125 * 0.55 - 0.05, -8.95, -5.5 + 5.125 * 0.55 + 1.05, -8.65] }; }
+  function ydSeg(sec) {
+    const j = ydJ(); j.solo = Date.now() + sec * 1000; save();
+    if (!inside || !jIsJail(IN.place)) return;
+    const s = ydSegSpot(); IN.pos.set(s.at[0], 0, s.at[1]); IN.avatar.position.copy(IN.pos); IN.target = null; closeMenu();
+    if (s.gap && !YD.segSolid) { YD.segSolid = { x0: s.gap[0], z0: s.gap[1], x1: s.gap[2], z1: s.gap[3], h: 3.2 }; IN.solids.push(YD.segSolid); }
+  }
+  function ydSegStep() {
+    const j = S && S.jail; if (!j || !j.solo) return;
+    if (j.solo > Date.now()) { if (inside && jIsJail(IN.place)) { const s = ydSegSpot(); if (Math.hypot(IN.pos.x - s.at[0], IN.pos.z - s.at[1]) > 3.2) { IN.pos.set(s.at[0], 0, s.at[1]); IN.target = null; } if (s.gap && !YD.segSolid) { YD.segSolid = { x0: s.gap[0], z0: s.gap[1], x1: s.gap[2], z1: s.gap[3], h: 3.2 }; IN.solids.push(YD.segSolid); } } return; }
+    j.solo = 0; if (YD.segSolid) { const i = IN.solids.indexOf(YD.segSolid); if (i >= 0) IN.solids.splice(i, 1); YD.segSolid = null; }
+    if (inside && jIsJail(IN.place)) { const s = ydSegSpot(); if (!s.gap) { IN.pos.set(s.out[0], 0, s.out[1]); IN.avatar.position.copy(IN.pos); } }
+    toast('Out of seg. Back to general population.', ''); save(); jHud();
+  }
+
+  // ---------- things that happen on their own: beef, shakedowns, other people's fights ----------
+  function ydCard(text, btns) {
+    if (!JL.book) { JL.book = document.createElement('div'); JL.book.id = 'jlbook'; document.body.append(JL.book); }
+    const el = JL.book; el.innerHTML = `<div class="jl-h"><b>${ydTDCJ() ? 'The unit' : 'The dayroom'}</b><span></span></div><div class="jl-b"><p>${esc(text)}</p></div><div class="jl-f">${btns.map((b, i) => `<button class="btn${i ? '' : ' go'}" data-c="${i}">${esc(b[0])}</button>`).join('')}</div>`;
+    el.hidden = false; el.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { el.hidden = true; btns[+b.dataset.c][1](); });
+  }
+  function ydBeef() {
+    if (YD.fight || !ydHere() || ydSolo() || menuFn) return false;
+    const j = ydJ(), ims = ydInmates().filter(m => m.beat < Date.now() && ydQ(m)); if (!ims.length) return false;
+    const m = ims[Math.floor(Math.random() * ims.length)], q = ydQ(m);
+    // he walks up on you
+    q.tx = IN.pos.x + 1.1; q.tz = IN.pos.z; q.wait = 0;
+    const line = ['"You in my seat, lil bro."', '"Where my soups at? I know you took em."', '"You been looking at me sideways all day."', '"Run me them shoes."', `"You ${ydCount(j.cb) ? 'serving on my side of the dayroom' : 'new here, huh'}?"`][Math.floor(Math.random() * 5)];
+    hSayAt(q, line);
+    ydCard(`${m.name} (${m.set}) walks up on you: ${line}`, [['👊 Square up', () => ydFight(m, 'beef')], ['Back down', () => {
+      j.rep = Math.max(0, j.rep - 4); const take = Math.min(S.bank || 0, 25);
+      if (take) { S.bank -= take; S.log.unshift(`-${money(take)} Books (${m.name})`); }
+      toast(`You backed down. ${m.name} made you buy his commissary${take ? ` (${money(take)})` : ''}. Word gets around.`, 'bad'); save(); jHud();
+    }]]);
+    return true;
+  }
+  function ydShake() {
+    if (!ydHere() || YD.fight) return false;
+    const j = ydJ(), tdcj = ydTDCJ();
+    const on = Object.keys(j.cb).filter(k => j.cb[k] > 0), st = Object.keys(j.st).filter(k => j.st[k] > 0);
+    const fOn = on.length && Math.random() < 0.55, fSt = st.length && Math.random() < (tdcj ? 0.3 : 0.2);
+    j.ih = 0;
+    if (!fOn && !fSt) { toast(`🚨 Shakedown! ${on.length || st.length ? 'They tossed everything and found nothing.' : 'Everybody on the wall. You\'re clean.'}`, on.length || st.length ? 'good' : ''); save(); return true; }
+    const lost = [...(fOn ? on : []), ...(fSt ? st : [])]; let days = 0;
+    for (const k of lost) days = Math.max(days, YD_CB[k].wu);
+    const names = lost.map(k => YD_CB[k].n.toLowerCase()).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+    if (fOn) j.cb = {}; if (fSt) j.st = {};
+    toast(`🚨 Shakedown! They found your ${names}.`, 'bad');
+    setTimeout(() => ydWriteUp(lost.includes('shank') ? 'Possession of a weapon in a correctional facility' : 'Contraband in a correctional facility', days + (tdcj ? 1 : 0)), 700);
+    return true;
+  }
+  // two inmates go at it in the dayroom; the guards break it up
+  function ydAmbient() {
+    if (YD.amb || YD.fight || !ydHere()) return false;
+    const qs = IN.people.filter(q => q.inm && q.P && !q.hold && Math.hypot(q.x - IN.pos.x, q.z - IN.pos.z) > 2.5); if (qs.length < 2) return false;
+    const a = qs[0], b = qs.slice(1).sort((u, v) => Math.hypot(u.x - a.x, u.z - a.z) - Math.hypot(v.x - a.x, v.z - a.z))[0];
+    a.hold = b.hold = 1; const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+    YD.amb = { a, b, mx, mz, t: 0, dur: 6 + Math.random() * 3, ax: a.x, az: a.z, bx: b.x, bz: b.z };
+    hSayAt(a, '"Say it again!"');
+    return true;
+  }
+  function ydAmbStep(dt) {
+    const A = YD.amb; if (!A) return; A.t += dt; const t = performance.now() / 1000;
+    const k = Math.min(1, A.t / 1.2), place = (q, sx, sz, side) => { q.x = sx + (A.mx + side * 0.8 - sx) * k; q.z = sz + (A.mz - sz) * k; q.P.wrap.position.set(q.x, 0, q.z); q.P.wrap.rotation.y = side < 0 ? -Math.PI / 2 : Math.PI / 2; };
+    place(A.a, A.ax, A.az, -1); place(A.b, A.bx, A.bz, 1);
+    if (A.t < 1.2) { animPerson(A.a.P, t * 6.5, 0.8); animPerson(A.b.P, t * 6.5 + 1, 0.8); }
+    else { const ph = (A.t * 1.6) % 1, ph2 = (A.t * 1.6 + 0.5) % 1; ydPose(A.a.P, ph < 0.4 ? (Math.floor(A.t * 1.6) % 2 ? 'hook' : 'jab') : 'guard', ph / 0.4, t, 0); ydPose(A.b.P, ph2 < 0.4 ? 'jab' : ph < 0.4 ? 'hit' : 'guard', ph2 < 0.4 ? ph2 / 0.4 : ph / 0.4, t, 1); if (ph < dt * 1.6) ydThud(Math.random() < 0.5); }
+    if (A.t > A.dur) { YD.amb = null; for (const q of [A.a, A.b]) { q.hold = 0; q.wait = 2 + Math.random() * 3; } toast(`Guards broke up a fight between ${A.a.inm.name} and ${A.b.inm.name}. Both went to seg.`, ''); }
+  }
+  // the clocks inside run off real time
+  function ydTick() {
+    if (!S || !S.jail) return;
+    ydSegStep();
+    if (!ydHere() || YD.fight) return;
+    const j = ydJ(), now = Date.now();
+    if (S.health < 100 && (YD.tick++ % 10 === 0)) S.health = clamp100(S.health + 1);   // the infirmary patches you up slowly
+    if (!j.shakeT) j.shakeT = now + (100 + Math.random() * 140) * 1000;
+    if (!j.beefT) j.beefT = now + (90 + Math.random() * 120) * 1000;
+    if (!YD.ambT) YD.ambT = now + (50 + Math.random() * 90) * 1000;
+    if (now > j.shakeT) { j.shakeT = now + (110 + Math.random() * 150) * 1000 * (1 - Math.min(0.55, (j.ih || 0) / 12)); ydShake(); }
+    if (now > j.beefT && !ydSolo()) { j.beefT = now + (100 + Math.random() * 140) * 1000 * (1 + j.rep / 60); ydBeef(); }
+    if (now > YD.ambT) { YD.ambT = now + (70 + Math.random() * 110) * 1000; if (!ydSolo()) ydAmbient(); }
+  }
+  setInterval(() => { try { ydTick(); } catch (e) { if (!YD.err) { YD.err = 1; console.warn('yard: ' + e.message); } } }, 1000);
+
+  // ---------- hooks into the frame, the crowd, the jail ----------
+  const _ydStepIn = stepInterior;
+  stepInterior = function (dt) {
+    if (YD.fight) { try { ydStepFight(dt); } catch (e) { console.warn('fight: ' + e.message); YD.fight = null; document.body.classList.remove('yd-fight'); if (YD.ui) YD.ui.hidden = true; } return; }
+    const r = _ydStepIn.apply(this, arguments);
+    if (YD.amb) { try { ydAmbStep(dt); } catch (e) { YD.amb = null; } }
+    if (YD.rep > 0 && ME && inside) { YD.rep = Math.max(0, YD.rep - dt); const k = Math.sin((0.5 - YD.rep) / 0.5 * Math.PI); if (YD.workK === 'push') { ME.wrap.rotation.x = -1.25; ME.root.position.y = 0.2 + 0.12 * k; ME.arms[0].rotation.x = ME.arms[1].rotation.x = -1.4; if (ME.fores) ME.fores[0].rotation.x = ME.fores[1].rotation.x = -1.2 * (1 - k); } else { ME.arms[0].rotation.x = ME.arms[1].rotation.x = -2.6 - 0.3 * k; if (ME.fores) ME.fores[0].rotation.x = ME.fores[1].rotation.x = -1.4 * (1 - k); } if (YD.rep <= 0) { ME.wrap.rotation.x = 0; ME.root.position.y = 0; } }
+    return r;
+  };
+  function ydStop() { if (YD.fight) { YD.fight.res = YD.fight.res || 'broken'; YD.fight.quiet = 1; ydEndFight(); } if (YD.amb) { for (const q of [YD.amb.a, YD.amb.b]) q.hold = 0; YD.amb = null; } }
+  const _ydEnterIn = enterInterior;
+  enterInterior = function () { ydStop(); YD.segSolid = null; return _ydEnterIn.apply(this, arguments); };
+  const _ydLeaveIn = leaveInterior;
+  leaveInterior = function () { if (YD.fight && !(jIn() && inside && jIsJail(IN.place) && !JL.releasing)) ydStop(); return _ydLeaveIn.apply(this, arguments); };
+  const _ydCrowd = stepCrowd;
+  stepCrowd = function (dt, t) {
+    if (!IN.people || !IN.people.some(q => q.hold)) return _ydCrowd.apply(this, arguments);
+    const all = IN.people; IN.people = all.filter(q => !q.hold); try { return _ydCrowd.apply(this, arguments); } finally { IN.people = all; }
+  };
+  // white on the unit, orange in the county
+  const _ydLook = myLook;
+  myLook = function () { const L = _ydLook.apply(this, arguments); if (S && S.jail && S.jail.orange && S.jail.unit === 'tdcj') return { ...L, top: 'no_tdcj_top', bottom: 'no_tdcj_pants' }; return L; };
+  // felony time (state jail and up) means TDCJ after booking
+  const _ydServe = jServe;
+  jServe = function () {
+    const r = _ydServe.apply(this, arguments), j = ydJ();
+    if (!j.unit && j.ch && j.ch.length && JCLASS[jTop(j.ch)].r >= 3) setTimeout(() => ydTransfer(), 1200);
+    return r;
+  };
+  function ydTransfer() {
+    const j = ydJ(); if (!j.in || j.unit === 'tdcj') return;
+    toast(`⛓ Felony time. You're riding the chain bus to the TDCJ Huntsville Unit for ${j.days} days.`, 'bad');
+    jFadeTo(() => { j.unit = 'tdcj'; j.shakeT = 0; j.beefT = 0; save(); dressAvatar(); enterInterior(jCellPlace()); jHud(); });
+    return true;
+  }
+  const _ydRelease = jRelease;
+  jRelease = function () { const j = ydJ(), tdcj = j.unit === 'tdcj'; j.cb = {}; j.st = {}; j.owe = {}; j.im = {}; j.solo = 0; j.shakeT = 0; j.beefT = 0; j.ih = 0; const r = _ydRelease.apply(this, arguments); j.unit = ''; if (tdcj) toast('The chain bus dropped you back off downtown in Fort Worth.', ''); return r; };
+  // on the unit there's no bond: you got sentenced
+  const _ydPhone = jPhone;
+  jPhone = function () { const m = _ydPhone.apply(this, arguments); if (ydTDCJ()) { m.rows = m.rows.filter(r => !/bondsman|cash bond|bail|without bond/i.test(r.t)); m.sub = 'TDCJ inmate phone · calls are recorded'; } return m; };
+  // a burner phone means your real phone works inside (and every use is a risk)
+  const _ydOpen = openPhone;
+  openPhone = function () {
+    if (jIn() && !JL.st && S.jail.stage === 'cell' && (ydJ().cb.phone > 0)) { const j = ydJ(); j.ih = (j.ih || 0) + 0.5; return _jPhone.apply(this, arguments); }
+    return _ydOpen.apply(this, arguments);
+  };
+  function yHudX() { if (!jIn()) return ''; const j = ydJ(); return ` · rep <b>${Math.round(j.rep)}</b>${ydSolo() ? ` · <span class="yd-seg">SEG ${jClock(j.solo - Date.now())}</span>` : ''}`; }
+  {
+    const st = document.createElement('style');
+    st.textContent = `#ydfight{position:fixed;inset:0;z-index:41;pointer-events:none;font:600 14px var(--body);color:#f1ece4}#ydfight[hidden]{display:none}
+#ydfight .yd-top{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 44px);width:min(560px,94vw);display:flex;gap:10px;align-items:center}
+#ydfight .yd-hp{flex:1}#ydfight .yd-hp.r{text-align:right}#ydfight .yd-hp b{font:800 15px var(--body);text-shadow:0 1px 3px #000}
+#ydfight .yd-bar{height:12px;background:rgba(20,18,24,.8);border:2px solid #111;border-radius:7px;overflow:hidden;margin-top:3px}#ydfight .yd-bar i{display:block;height:100%;background:linear-gradient(#5fe07a,#2fa64a);transition:width .12s}
+#ydfight .yd-hp.r .yd-bar i{background:linear-gradient(#ff7a5a,#d23a2a);margin-left:auto}#ydfight .yd-bar.st{height:6px}#ydfight .yd-bar.st i{background:#ffd23f}
+#ydfight .yd-vs{font:900 18px var(--body);background:rgba(16,15,20,.85);border:2px solid #e8641a;border-radius:10px;padding:4px 10px;min-width:64px;text-align:center}#ydfight .yd-vs.tell{background:#d23a2a;border-color:#fff;animation:ydp .2s infinite alternate}#ydfight .yd-vs.end{background:#e8641a;color:#141016}
+@keyframes ydp{to{transform:scale(1.12)}}
+#ydfight .yd-btns{position:absolute;right:calc(env(safe-area-inset-right,0px) + 14px);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:grid;grid-template-columns:repeat(2,74px);gap:10px;pointer-events:auto}
+#ydfight .yd-btns button{width:74px;height:74px;border-radius:50%;border:3px solid rgba(255,255,255,.7);background:rgba(20,18,24,.78);color:#fff;font-size:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;touch-action:none;cursor:pointer}
+#ydfight .yd-btns button span{font:800 11px var(--body);margin-top:3px}#ydfight .yd-btns button[data-a="block"]{background:rgba(40,80,160,.8)}#ydfight .yd-btns button[data-a="shank"]{background:rgba(150,20,20,.85)}#ydfight .yd-btns button[hidden]{display:none}
+body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight #phonebtn,body.yd-fight #jlhud{display:none!important}
+.yd-seg{color:#ff5a4e;font-weight:800}`;
+    document.head.append(st);
+  }
+  window.addEventListener('keydown', e => { if (!YD.fight) return; const k = { KeyJ: 'jab', KeyK: 'hook', KeyL: 'block', KeyH: 'shank', Space: 'block' }[e.code]; if (k) { e.preventDefault(); ydAct(k); } });
+  window.__yard = { jPhoneW: () => jPhone(), jReleaseW: () => jRelease(), YD, YD_CB, ydJ, ydInmates, ydPeople, ydTalk, ydSell, ydCollect, ydConnect, ydFight, ydAct, ydEndFight, ydWriteUp, ydSeg, ydSegStep, ydBeef, ydShake, ydAmbient, ydTransfer, ydTick, ydWork, jCellPlace, TDCJ_P, ydQ };
   // ==== county jail (end) ====
   // test hooks
   window.__cops = { copEyes, copWitnesses, copReport, copWitnessCall, gunsOut, CNET, copIn, copRemStep, copTake, step: copStep, populate: copPopulate, COP, COP_KINDS, copUnit, copKill, copChase, copNotice, copEnd, copBusted, copLights, copOnRoad, copPark, copPrecincts, copTicketMenu };
@@ -40699,14 +41399,14 @@ body.pm #pm-root { display: block; }
       await cut(async () => {
         if (k === 'legacy') {
           await syBlack('Six months later<br>United States District Court, Northern District of Texas', 2.6); await syUnblack();
-          actor('mama', h.x, h.z, h.yaw + Math.PI); actor('garza', h.x + 2, h.z + 1, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3.2);
+          placeMe(h.x + 1.4, h.z + 0.6, 0);           actor('mama', h.x, h.z, h.yaw + Math.PI); actor('garza', h.x + 2, h.z + 1, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3.2);
           await lines([['narr', 'Hollis: forty years federal. The Port woman: twenty. Calloway testified to save himself and got thirty anyway.'], ['garza', 'Your brother tried to do this and they killed him for it. You did it and you\'re standing on Pearl\'s porch.'], ['mama', 'Come in and eat. Both of y\'all.']]);
         } else if (k === 'king') {
           await syBlack('One year later', 2); await syUnblack();
           const [mx, mz] = syMe(); shot([mx + 30, 40, mz + 30], [mx, 0, mz], { to: [mx + 60, 70, mz + 10], dur: 8 });
           await lines([['narr', 'Hollis\'s haulers paint over the H. Wren ships twice as much. Every corner from Stop Six to Northside pays you.'], ['narr', 'Big Mama stopped answering your calls in March. Rusty retired to Galveston and didn\'t leave a number.'], ['narr', 'Biggest house in Westover Hills. Fourteen rooms. You sleep in one.']]);
         } else if (k === 'gone') {
-          await syBlack('DFW International<br>One way', 2.4); await syUnblack();
+          await syBlack('DFW International<br>One way', 2.4); { const ap = DATA.P.find(x => x.id === 'air_alliance'); if (ap) { const [aox, aoz] = outDir(ap); placeMe(ap.x + aox * 6, ap.z + aoz * 6, 0); } } await syUnblack();
           actor('mama', foot.x + 1.4, foot.z + 0.6, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3);
           await lines([['mama', 'I ain\'t never been on a plane. You hold my hand when it goes up.'], ['narr', 'Smoke\'s duffel from Uncle Bo\'s windmill. Two tickets. Fort Worth gets small in the window, then it\'s gone.']]);
         } else if (k === 'legend') {
@@ -40716,7 +41416,7 @@ body.pm #pm-root { display: block; }
           shot([c.x + 8, 3, c.z + 8], [c.x, 1.2, c.z], { dur: 8 });
           await lines([['narr', 'Greater Stop Six Baptist. The same pews. Two photos on the easel now.'], ['reed', 'We are here, again, for a son of Stop Six.'], ['mama', 'Both my babies. Both of them. Lord, what did that track want from me.']]);
         } else {
-          await syBlack('Ten months later<br>TDCJ Coffield Unit · Life', 2.8); await syUnblack();
+          await syBlack('Ten months later<br>TDCJ Coffield Unit · Life', 2.8); { const jp = window.__jail && window.__jail.jailPlace && window.__jail.jailPlace(); if (jp) { const [jox, joz] = outDir(jp); placeMe(jp.x + jox * 5, jp.z + joz * 5, 0); } } await syUnblack();
           actor('mama', foot.x + 1.2, foot.z, 0); faceEach('me', 'mama'); two('me', 'mama', 1, 3);
           await lines([['narr', 'Saturday. Visiting room. Plexiglass. Big Mama in her church hat.'], ['mama', 'Lil Bit graduated. Pastor Reed got him a job. He asked me to tell you he\'s doing it for you.'], ['mama', 'I\'ll be here next Saturday. And the one after. Till the Lord or the parole board says different.']]);
         }
@@ -40741,6 +41441,53 @@ body.pm #pm-root { display: block; }
       syNote(`The end: ${E.t}. ${E.s} The Stop Six mural reads "${E.word}."`);
     },
   ], { label: 'Tier 7 · Murda Worth', delay: 60 });
+
+  // ---------- the street remembers the story: what locals say when you walk up (hooked into the living NPCs' greeting) ----------
+  const SY_GREET_END = {
+    legacy: ['That\'s Smoke\'s brother. Put Hollis away for forty years.', 'You did what the police wouldn\'t. Respect.', 'My granny got your picture on the fridge next to Obama.'],
+    king: ['Yes sir. Whatever you need.', 'I ain\'t seen nothing. I never see nothing.', 'You run all this now, huh. Must be lonely up there.'],
+    gone: ['Thought you moved to Atlanta? Visiting?', 'Big Mama sent a postcard to the church. Said y\'all good.', 'Back in Stop Six? Don\'t let it pull you back in.'],
+    legend: ['...Man. Thought I saw a ghost. You look just like him.', 'Two brothers on that wall now. Ironline don\'t forgive.'],
+    life: ['FREE LIL SMOKE. Shirts five dollars.', 'Big Mama still goes up to Coffield every Saturday.'],
+  };
+  function syGreet(e) {
+    const st = S.story; if (!st || !st.on || !st.done || st.done.length < 3) return null;
+    if (e && (e.kind === 'member' || e.kind === 'cop')) return null;
+    const [mx, mz] = syMe(), east = mx > 1100 && mx < 2600 && mz > -900 && mz < 200;   // Stop Six and around
+    if (Math.random() > (east ? 0.5 : 0.28)) return null;
+    const f = st.flags || {}, L = [];
+    if (st.ending && SY_GREET_END[st.ending]) L.push(...SY_GREET_END[st.ending], ...SY_GREET_END[st.ending]);
+    if (st.done.includes('p3') && (st.tier || 0) <= 2) L.push('You Smoke\'s little brother? Sorry about Smoke. For real.', 'Smoke used to give us twenties for good report cards.', 'Big Mama said you home. Welcome back.');
+    if (east && f.mural) L.push('That mural at Lil Tre\'s go hard. Smoke would\'ve loved it.');
+    if (st.album && st.album.out) L.push(`Been bumping "${st.album.title}" all week.`, 'Track six made my girl cry in the car.');
+    if (st.cars && st.cars.shop) L.push(`My cousin got his brakes done at ${st.cars.shop}. Said y'all didn't rob him.`);
+    if (st.cars && st.cars.lot) L.push('Y\'all got anything under five thousand on the lot?');
+    if (st.cars && st.cars.dealer) L.push('You really took Hollis\'s dealership?! In a race?!');
+    if ((st.dragWins || 0) >= 2) L.push('Saw you at the strip. You was moving.', 'Ironline is still talking about that pass.');
+    if (f.smokeCar) L.push('That purple box is back on the east side. Feels right.');
+    if (f.mookFate === 'cut') L.push('Mook been looking lost since y\'all fell out.');
+    if (f.mookFate === 'handled') L.push('Anybody seen Mook? His mama put flyers up at the Taco Stop.', 'Mook mama asked me if I seen him. I ain\'t know what to say.');
+    if (f.mookFate === 'forgive') L.push('You and Mook still tight? That\'s love.');
+    if (f.lilBit === 'free') L.push('Lil Bit say you saved his life. He at church every Thursday now.');
+    if (f.lilBit === 'met' && !f.raid) L.push('Lil Bit look up to you. Be careful what he sees.');
+    if (f.raid === 'run' || f.lostHouse) L.push('Heard they took the house on Ramey. That\'s cold.');
+    if (f.raid === 'booked') L.push('Welcome home. Ninety-one days, huh? Bad warrant.');
+    if (f.callowayFate === 'exposed') L.push('Saw that Calloway video. Four million views. #JusticeForSmoke');
+    if (f.callowayFate === 'arrested') L.push('They say Calloway singing like a bird downtown.');
+    if (f.callowayFate === 'dead') L.push('They found Calloway\'s Tahoe at Ironline. Nobody saying nothing.');
+    if (f.finalSaint === 'ally') L.push('East side and Northside at the same cookout. Never thought I\'d see it.');
+    if (f.finalSaint === 'war') L.push('Stay off Northside, bro. For real.');
+    if (f.garzaDeal === 'yes' && !st.ending) L.push('People saying somebody talking to the feds. Watch who you sit with.');
+    if (f.hvac) L.push('You do AC? My unit been blowing hot since June.', 'Pastor Reed said you got certified. That\'s big.');
+    if (f.mentor) L.push('My little brother go to your Thursday thing. He actually listens to you.');
+    if (f.table && !st.ending) L.push('Saw you with Hollis at the yacht club. In the paper. Hm.');
+    if (f.niaVideo && !f.callowayFate) L.push('Nia from Throttle been real quiet lately. That ain\'t like her.');
+    if (!L.length) return null;
+    const said = SY.greetSaid || (SY.greetSaid = []), fresh = L.filter(t => !said.includes(t)), t = (fresh.length ? fresh : L)[Math.floor(Math.random() * (fresh.length ? fresh : L).length)];
+    said.push(t); if (said.length > 12) said.shift();
+    return t;
+  }
+  window.__storyGreet = syGreet;
 
   // ---------- the phone apps: Story, Texts, Trap ----------
   PHONE_APPS.splice(0, 0, { id: 'story', name: 'Story', icon: '📖', bg: 'linear-gradient(135deg,#ffd23f,#b8321e)' });
