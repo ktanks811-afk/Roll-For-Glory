@@ -1,13 +1,13 @@
 // Phase 3E event, championship, ranking and leaderboard tests (headless Chromium, Playwright).
 // Serve the repo on http://localhost:8765 and set S to a folder that holds npm/node_modules/three (three@0.128.0).
-// ONLY=pass,logic,money,hr,yb,shots picks tests (default pass,logic,money,hr). Prints one JSON line per test; ERR lists page errors.
+// ONLY=pass,logic,money,yb,shots picks tests (default pass,logic,money). Prints one JSON line per test; ERR lists page errors.
 // pass:  off-screen passes (the ones the other pairs in a ladder run) next to a real pass, on the same physics
 // logic: whole events with your rounds stood in by a pass of your own car: ladder, purse, points, a full season, unlocks
 // money: no prize money for rounds that weren't raced (withdraw at once = only the entry spent)
-// hr:    a real I-20 40-roll event, every round of yours driven on the highway
+// (the I-20 roll events left with the old roll races on 2026-11-24; Roll Night is tested in roll-race-test.cjs)
 // yb:    a real Bracket Night round at Yello Belly: the dial-ins, the handicap tree, the slip with the ladder
 const { chromium } = require('playwright');
-const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money,hr').split(',');
+const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money').split(',');
 (async () => {
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] }); const pg = await b.newPage({ viewport: { width: +(process.env.VW || 844), height: +(process.env.VH || 390) }, isMobile: true, hasTouch: true, deviceScaleFactor: +(process.env.DSF || 1) });
   const errs = []; pg.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 600))); pg.on('console', m => { if (m.type() === 'error' || (m.type() === 'warning' && /event|roll|yello/i.test(m.text()))) errs.push(m.type() + ': ' + m.text().slice(0, 300)); });
@@ -22,10 +22,10 @@ const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money,hr').spli
     const vw = innerWidth, vh = innerHeight, vis = e => { if (!e || !e.getClientRects().length) return false; const cs = getComputedStyle(e); return cs.visibility !== 'hidden' && cs.display !== 'none' && +cs.opacity > 0.05; };
     const R = e => e.getBoundingClientRect(), all = sel => [...document.querySelectorAll(sel)].filter(vis), nm = e => (e.id ? '#' + e.id : '') + (e.dataset.k ? '[' + e.dataset.k + ']' : '') + (e.dataset.a ? '[' + e.dataset.a + ']' : '') + (e.dataset.tab ? '[tab ' + e.dataset.tab + ']' : '') + (e.textContent || '').trim().slice(0, 18);
     const out = { vw, vh, off: [], small: [], slipHidden: [], cover: [], tabs: null };
-    const ui = all('#pad button, #shifter, #ybhud .hud, #ybhud .roll, #ybhud .side button, #ybhud .slip, #ybhud .slip button, #ybpanel, #ybpanel button');
+    const ui = all('#pad button, #shifter, #ybhud .hud, #ybhud .side button, #ybhud .slip, #ybhud .slip button, #ybpanel, #ybpanel button');
     for (const e of ui) { const r = R(e); if (r.left < -1 || r.top < -1 || r.right > vw + 1 || r.bottom > vh + 1) out.off.push(nm(e) + ' ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',')); if (e.tagName === 'BUTTON' && Math.min(r.width, r.height) < 40) out.small.push(nm(e) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)); }
     const slip = all('#ybhud .slip')[0]; if (slip) { const sr = R(slip); for (const b of slip.querySelectorAll('button')) { const r = R(b); if (r.bottom > sr.bottom + 1 || r.top < sr.top - 1) out.slipHidden.push(nm(b)); } }
-    const ctl = all('#b-gas, #b-brake, #b-left, #b-right, #shifter'), top = all('#ybhud .slip, #ybhud .side button, #ybpanel, #ybhud .roll, #ybhud .hud');
+    const ctl = all('#b-gas, #b-brake, #b-left, #b-right, #shifter'), top = all('#ybhud .slip, #ybhud .side button, #ybpanel, #ybhud .hud');
     for (const a of top) for (const c of ctl) { const x = R(a), y = R(c), w = Math.min(x.right, y.right) - Math.max(x.left, y.left), h = Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top); if (w > 2 && h > 2) out.cover.push(nm(a) + ' over ' + nm(c) + ' ' + Math.round(w) + 'x' + Math.round(h)); }
     const t = all('#ybpanel .tabs')[0]; if (t) out.tabs = t.scrollWidth > t.clientWidth + 1 ? 'overflow ' + t.scrollWidth + '>' + t.clientWidth : 'fits';
     return out; }); console.log(JSON.stringify({ layout: tag, ...r })); };
@@ -77,26 +77,8 @@ const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money,hr').spli
       const ok = !!E.EV.cur; if (!ok) { E.enter('street'); } const fee = E.EV.cur.def.fee; E.withdraw(); return { entered: E.EV.cur.def.name, fee, spent: c0 - S.cash, over: E.EV.cur.over, champ: E.EV.cur.champ && E.EV.cur.champ.r.name, wins: E.EV.cur.wins, hist: S.evHist[0] }; });
     console.log(JSON.stringify({ test: 'money', ...r, ok: r.spent === r.fee }));
   }
-  if (ONLY.includes('hr')) {
-    await ev(() => { const M = window.__map, Y = window.__yb; M.S.day = 30; Y.ev.EV.cur = null; Y.roll.act = 'auto'; const c0 = M.S.cash; window.__t.c0 = c0; Y.ev.enter('r40'); const p = M.places().find(q => q.id === 'i20roll'); Y.ev.hrRace(p); });
-    const rs = [];
-    for (let k = 0; k < 3; k++) {
-      await ev(() => { const M = window.__map, Y = window.__yb, H = Y.roll, d = M.drvS(), T = window.__t; T.go = null; M.keys.ArrowUp = false;
-        T.drive = dt => { const zMe = Y.hw.lanes[1], st = H.st; if (!H.on) return; if (st === 'run' && T.go == null) T.go = H.t; if (T.go != null && H.t - T.go >= 0.2 && st === 'run') M.keys.ArrowUp = true; if (st === 'done') M.keys.ArrowUp = false; }; });
-      if (k === 0) { await runTo(`window.__yb.roll.st === 'run' && window.__yb.roll.t - window.__t.go > 2`, 200); await layout('hr_racing'); }
-      await runTo(`window.__yb.roll.shown || !window.__yb.roll.on`, 200);
-      const r = await ev(() => { const H = window.__yb.roll, E = window.__yb.ev.EV.cur, q = k => document.querySelector(`#ybhud [data-k="${k}"]`), M = window.__map;
-        return { on: H.on, shown: H.shown, me: H.me && { t: H.me.done && +H.me.done.toFixed(3), jump: H.me.jump }, ai: H.ai && { n: H.opp.name, t: H.ai.done && +H.ai.done.toFixed(3) }, ev: E && { ri: E.ri, wins: E.wins, over: E.over, out: E.out, champ: E.champ && (E.champ.me ? 'ME' : E.champ.r.name), cash: E.cash, log: E.log.slice(-2) },
-          slip: q('slip') && q('slip').innerText.replace(/\s+/g, ' ').slice(0, 500), next: !!document.querySelector('#ybhud [data-a="evnext"]'), cashNow: M.S.cash - window.__t.c0, hrMode: H.mode }; });
-      rs.push(r); console.log(JSON.stringify({ test: 'hr', round: k, ...r }));
-      if (k === 0) await shot('hr_slip');
-      const nx = await ev(() => { const b = document.querySelector('#ybhud [data-a="evnext"]'); window.__map.keys.ArrowUp = false; if (b) { b.click(); return true; } return false; });
-      if (!nx) break;
-    }
-    console.log(JSON.stringify({ test: 'hr-menu', rows: await ev(() => { const M = window.__map, p = M.places().find(q => q.id === 'i20roll'), m = window.__yb.roll.menu(p); return m.rows.filter(r => /🏁|rankings|Withdraw/.test(r.t)).map(r => `${r.t} | ${r.s} | ${r.btn}${r.off ? ' (off)' : ''}`); }) }));
-  }
   if (ONLY.includes('yb')) {
-    await ev(() => { const Y = window.__yb; if (Y.roll.on) Y.roll.close('left'); });
+    await ev(() => { const Y = window.__yb; if (Y.rr.on) Y.rr.close('left'); });
     await at(7056.5, 1162); await wait(3000);
     await ev(() => { const M = window.__map, Y = window.__yb, R = Y.race, d = M.drvS(); if (M.foot.on) M.getIn(); for (const A of R.ags.slice()) Y.agKill(A); R.ags.length = 0; R.run = null; R.fillT = 999; Object.assign(d, { x: 7056.5, z: 1162, yaw: 0, v: 0 }); M.physReset(); R.lane = 'L';
       M.S.day = 40; Y.ev.EV.cur = null; M.S.ybRec = M.S.ybRec || {}; M.S.ybRec[M.S.car.id] = Object.assign(M.S.ybRec[M.S.car.id] || {}, { e: { et: 7.54, mph: 98 } });

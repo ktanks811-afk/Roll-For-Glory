@@ -58,7 +58,7 @@ const S = process.env.S, SLOW = +(process.env.SLOW || 4), SCENES = (process.env.
   if (SCENES.includes('day')) await sample('open world, Stop Six by day (trees, bushes, power lines, birds)', async () => { await drive(1505, -700, 0); await ev(() => { window.__map.setTime('day'); const d = window.__map.drvS(); d.v = 12; }); });
   if (SCENES.includes('yb')) await sample('Yello Belly staging lanes, a pair racing', async () => { await drive(7056.5, 1162, 0); await wait(1500); await ev(() => { const Y = window.__yb; if (!Y.race.run) Y.test.startFill(); }); });
   if (SCENES.includes('ybev')) await sample('Yello Belly event night (full crowd), a pair racing', async () => { await drive(7056.5, 1162, 0); await ev(() => { const Y = window.__yb, E = Y.ev; E.EV.cur = { def: Object.values(E.DEFS).find(d => d.where === 'yb'), over: false, round: 0, field: [] }; if (!Y.race.run) Y.test.startFill(); }); });
-  if (SCENES.includes('hr')) await sample('I-20 roll race under way', async () => { await ev(() => { const E = window.__yb.ev; if (E) E.EV.cur = null; }); await drive(5600, 1363, -Math.PI / 2); await ev(() => { const M = window.__map, H = window.__yb.roll; Object.assign(H, { mode: 'roll60', act: 'auto', dist: 804.67 }); H.start(M.places().find(q => q.id === 'i20roll'), M.STREET3D[3]); }); });
+  if (SCENES.includes('hr')) await sample('roll race on I-20 under way', async () => { await ev(() => { const E = window.__yb.ev; if (E) E.EV.cur = null; }); await drive(5600, 1363, -Math.PI / 2); await ev(() => { const M = window.__map, RR = window.__yb.rr; RR.startSpot(M.places().find(q => q.id === 'i20roll'), { r: M.STREET3D[3], v0: 60 / 2.237, dist: 804.67 }); }); });
   // drive: follow the GPS route to Yello Belly from a few spots around Grand Prairie, on the real car physics (a simple
   // look-ahead driver holds ~30 mph and slows for the turns). Reports route length, time, wall hits and where it ended.
   if (SCENES.includes('drive')) {
@@ -91,7 +91,7 @@ const S = process.env.S, SLOW = +(process.env.SLOW || 4), SCENES = (process.env.
     }
     console.log(JSON.stringify({ scene: 'drive to Yello Belly on the GPS route', res }));
   }
-  // touch: with a race on (Yello Belly test & tune in the lanes, then an I-20 "I drive it" roll race), press and hold the
+  // touch: with a race on (Yello Belly test & tune in the lanes, then an I-20 roll race you pace yourself), press and hold the
   // on-screen gas and steering with real touch events: the pedal must be the thing under your finger and the car must get the input.
   // Then reload the page and check the save is still there.
   if (SCENES.includes('touch')) {
@@ -103,9 +103,9 @@ const S = process.env.S, SLOW = +(process.env.SLOW || 4), SCENES = (process.env.
     await drive(7056.5, 1162, 0); await ev(() => { const M = window.__map, Y = window.__yb; Y.test.manual = false; window.__drvIn = null; Y.start(M.places().find(q => q.id === 'yellowbelly'), null, 0); });
     await wait(1500); out.yb = { on: await ev(() => window.__yb.race.on), gas: await press('b-gas', 700), left: await press('b-left', 700) };
     await ev(() => { const Y = window.__yb; Y.close && Y.close('left'); });
-    await drive(5600, 1363, -Math.PI / 2); await ev(() => { const M = window.__map, H = window.__yb.roll; Object.assign(H, { mode: 'roll40', act: 'manual', dist: 402.34 }); H.start(M.places().find(q => q.id === 'i20roll'), M.STREET3D[3]); });
-    await wait(1500); out.hr = { on: await ev(() => window.__yb.roll.on), gas: await press('b-gas', 700), right: await press('b-right', 700) };
-    await ev(() => { const H = window.__yb.roll; if (H.on) H.close('left'); });
+    await drive(5600, 1363, -Math.PI / 2); await ev(() => { const M = window.__map, RR = window.__yb.rr; RR.startSpot(M.places().find(q => q.id === 'i20roll'), { r: M.STREET3D[3], v0: 40 / 2.237, dist: 402.34, pace: false }); });
+    await wait(1500); out.hr = { on: await ev(() => window.__yb.rr.on), gas: await press('b-gas', 700), right: await press('b-right', 700) };
+    await ev(() => { const RR = window.__yb.rr; if (RR.on) RR.close('left'); });
     const before = await ev(() => { const M = window.__map; M.S.ybTestMark = 'kept'; try { M.sleep && 0; } catch (e) {} const k = Object.keys(localStorage); return { keys: k.length, car: M.S.car && M.S.car.id, garage: (M.S.garage || []).length }; });
     await ev(() => { try { window.dispatchEvent(new Event('pagehide')); } catch (e) {} });
     await pg.reload(); await pg.waitForFunction(() => window.__map && window.__map.ready, null, { timeout: 240000 }); await wait(1500);
