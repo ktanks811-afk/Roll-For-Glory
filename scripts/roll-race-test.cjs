@@ -53,7 +53,7 @@ async function page(ctx, tag, q, errs) {
   };
   const runTo = async (p, cond, maxS = 120, dt = 1 / 60) => { for (let k = 0; k < maxS; k++) { const r = await p.evaluate(`window.__t.run(${Math.round(1 / dt)}, ${dt}, () => (${cond}))`); if (r > 0) return true; } return false; };
   const raceState = p => p.evaluate(() => { const RR = window.__yb.rr, T = RR.race, M = window.__map, H = M.S.rrHist || [];
-    const A = T && T.A, sl = RR.q && RR.q('slip'); return { on: RR.on, ph: T && T.ph, road: T && T.C.name, v0: T && Math.round(T.v0 * 2.237), dist: T && Math.round(T.dist), me: T && { rt: T.me.rt && +T.me.rt.toFixed(3), t: T.me.done && +T.me.done.toFixed(3), mph: T.me.mph && +T.me.mph.toFixed(1), jump: T.me.jump, dq: T.me.dq, split: T.me.split.map(x => +x[0].toFixed(3)) },
+    const A = T && T.A, sl = RR.q && RR.q('slip'); return { on: RR.on, ph: T && T.ph, info: T && T.info, gap: T && T.oF != null && +(RR.S(T.C, M.drvS().x, M.drvS().z) + T.fA - T.oF).toFixed(2), oV: T && T.oV, road: T && T.C.name, v0: T && Math.round(T.v0 * 2.237), dist: T && Math.round(T.dist), me: T && { rt: T.me.rt && +T.me.rt.toFixed(3), t: T.me.done && +T.me.done.toFixed(3), mph: T.me.mph && +T.me.mph.toFixed(1), jump: T.me.jump, dq: T.me.dq, split: T.me.split.map(x => +x[0].toFixed(3)) },
       ai: A && { name: A.r.name, rt: +A.rt.toFixed(3), t: A.done && +A.done.toFixed(3), mph: A.mph && +A.mph.toFixed(1), shifts: A.shifts, missed: A.missed, jump: A.jump, split: A.split.map(x => +x[0].toFixed(3)) },
       them: T && T.them, res: T && T.res && T.res.res, slip: sl && !sl.hidden ? sl.innerText.replace(/\s+/g, ' ').slice(0, 500) : null, hist0: H[0], rec: M.S.rrRec, runs: M.S.streetRuns, cash: Math.round(M.S.cash), log: RR.log.slice(-14).map(e => e.k + (e.n ? e.n : '') + (e.who ? ':' + e.who : '') + (e.why ? ':' + e.why : '') + (e.k === 'never' ? JSON.stringify(e) : '')) }; });
   // drive one race to its slip: gas RTD after the go (or on cue for a jump test)
@@ -161,6 +161,8 @@ async function page(ctx, tag, q, errs) {
     await P2.evaluate(() => { window.__map.S.name = 'Lawrence'; });
     await setup(P1, 'dodge_charger_srt_hellcat_widebody_2020', -6000, -1350 + 7, -Math.PI / 2);
     await setup(P2, 'chevrolet_camaro_ss_2016', -6000, -1350 + 2.6, -Math.PI / 2);
+    // two full game pages drawing in software GL starve the test of time; the test steps the game itself, so stop the frame loop
+    for (const p of [P1, P2]) await p.evaluate(() => { window.requestAnimationFrame = () => 0; });
     for (const p of [P1, P2]) await p.evaluate(() => window.__net.netJoin('eastgate'));
     for (const p of [P1, P2]) await p.waitForFunction(() => window.__net.NET.status === 'on', null, { timeout: 120000, polling: 500 });
     for (const p of [P1, P2]) await p.evaluate(() => setInterval(() => { for (const q of window.__net.NET.peers.values()) q.seen = Math.max(q.seen, performance.now() / 1000 - 1); }, 200));
@@ -170,12 +172,14 @@ async function page(ctx, tag, q, errs) {
     await pump(40);
     const seen = await P1.evaluate(() => [...window.__net.NET.peers.values()].map(p => [p.name, Math.round(p.x), Math.round(p.z), +(p.sp || 0).toFixed(1), p.d3, p.inCar]));
     log({ test: 'online: P1 sees P2', seen });
+    for (let i = 0; i < 20 && !(await P1.evaluate(() => window.__net.NET.peers.size)); i++) await pump(1);
     await P1.evaluate(() => { const RR = window.__yb.rr, p = [...window.__net.NET.peers.values()][0]; window.__map.S.rrPrefs = Object.assign(window.__map.S.rrPrefs || {}, { pace: true, call: 'them' }); RR.challenge(p, 40 / 2.237, 402.34, 500); });
     let asked = false; for (let i = 0; i < 40 && !asked; i++) { await pump(1); asked = await P2.evaluate(() => !!(window.__yb.rr.ask && window.__yb.rr.ask.kind === 'net')); }
-    if (OUT && asked) await shot(P2, 'rr-online-invite');
+    // (no invite screenshot here: a slow shot runs out the 15 s answer window)
     log({ test: 'online: P2 got the challenge', asked, text: asked && await P2.evaluate(() => window.__yb.rr.q('ask').innerText.replace(/\s+/g, ' ')) });
     if (asked) {
-      const yes = await P2.evaluate(() => { window.__t.hold = null; window.__yb.rr.q('ask').querySelector('.y').click(); const d = window.__map.drvS(), RR = window.__yb.rr; return { toast: document.getElementById('toast').textContent, on: RR.on, lat: RR.race ? null : [d.x, d.z, d.yaw] }; });
+      const yes = await P2.evaluate(() => { window.__t.hold = null; const RR = window.__yb.rr, a0 = RR.ask, d = window.__map.drvS(), C0 = a0 && a0.C, mine = RR.course(d.x, d.z, d.yaw), pre = { ask: !!a0, C: C0 && [C0.dx, C0.dz, C0.w], mine: mine && [mine.dx, mine.dz], lat: C0 && RR.lat(C0, d.x, d.z), v: d.v, cash: window.__map.S.cash, driving: window.__map.driving };
+        RR.q('ask').querySelector('.y').click(); return { pre, toast: document.getElementById('toast').textContent, on: RR.on, lat: RR.race ? null : [d.x, d.z, d.yaw] }; });
       log({ test: 'online: P2 said yes', yes });
       for (const p of [P1, P2]) await p.evaluate(() => { const RR = window.__yb.rr, t = window.__t; t.hold = null; t.gas = 0; t.goT = null;
         t.each = () => { const T = RR.race; if (!T) return; if (T.go != null && t.goT == null) t.goT = T.t; if (t.goT != null && T.t - t.goT > 0.22 && T.ph === 'run') t.gas = 1; if (T.ph === 'done') t.gas = 0; }; });

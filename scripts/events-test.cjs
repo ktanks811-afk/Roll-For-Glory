@@ -1,18 +1,23 @@
 // Phase 3E event, championship, ranking and leaderboard tests (headless Chromium, Playwright).
-// Serve the repo on http://localhost:8765 and set S to a folder that holds npm/node_modules/three (three@0.128.0).
+// The repo is served to the page by Playwright (no web server). Set S to a folder that holds npm/node_modules/three (three@0.128.0).
 // ONLY=pass,logic,money,yb,shots picks tests (default pass,logic,money). Prints one JSON line per test; ERR lists page errors.
 // pass:  off-screen passes (the ones the other pairs in a ladder run) next to a real pass, on the same physics
 // logic: whole events with your rounds stood in by a pass of your own car: ladder, purse, points, a full season, unlocks
 // money: no prize money for rounds that weren't raced (withdraw at once = only the entry spent)
 // (the I-20 roll events left with the old roll races on 2026-11-24; Roll Night is tested in roll-race-test.cjs)
 // yb:    a real Bracket Night round at Yello Belly: the dial-ins, the handicap tree, the slip with the ladder
-const { chromium } = require('playwright');
+const { chromium } = require('playwright'), fs = require('fs'), path = require('path');
+const ROOT = path.resolve(__dirname, '..'), TYPES = { html: 'text/html', js: 'application/javascript', mjs: 'application/javascript', css: 'text/css', json: 'application/json', png: 'image/png', jpg: 'image/jpeg', svg: 'image/svg+xml', mp3: 'audio/mpeg', glb: 'model/gltf-binary', webp: 'image/webp', wav: 'audio/wav' };
 const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money').split(',');
 (async () => {
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] }); const pg = await b.newPage({ viewport: { width: +(process.env.VW || 844), height: +(process.env.VH || 390) }, isMobile: true, hasTouch: true, deviceScaleFactor: +(process.env.DSF || 1) });
   const errs = []; pg.on('pageerror', e => errs.push(String(e.stack || e).slice(0, 600))); pg.on('console', m => { if (m.type() === 'error' || (m.type() === 'warning' && /event|roll|yello/i.test(m.text()))) errs.push(m.type() + ': ' + m.text().slice(0, 300)); });
   await pg.route(/cdn\.jsdelivr\.net\/npm\/three@0\.128\.0\/(.*)$/, (r, req) => { const p = req.url().split('three@0.128.0/')[1]; r.fulfill({ path: S + '/npm/node_modules/three/' + p, contentType: 'application/javascript' }); });
   await pg.route(/supabase/, r => r.fulfill({ body: 'export const createClient=()=>({channel:()=>({on(){return this},subscribe(){return this},send(){},track(){} }),from:()=>({select(){return this},eq(){return this},upsert:async()=>({}),insert:async()=>({}),then(f){f({data:[]})}}),auth:{getSession:async()=>({data:{}}),onAuthStateChange(){} } });', contentType: 'application/javascript' }));
+  // no web server needed: localhost:8765 is served straight from the repo
+  await pg.route(/^http:\/\/localhost:8765\/(.*)$/, r => { const u = decodeURIComponent(new URL(r.request().url()).pathname).replace(/^\/+/, ''), f = path.join(ROOT, u);
+    if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) return r.fulfill({ status: 404, body: '' });
+    r.fulfill({ path: f, contentType: TYPES[path.extname(f).slice(1)] || 'application/octet-stream' }); });
   await pg.goto('http://localhost:8765/index.html?test=1');
   await pg.waitForFunction(() => window.__map && window.__map.ready, null, { timeout: 180000 });
   const ev = (f, a) => pg.evaluate(f, a), wait = ms => pg.waitForTimeout(ms);
@@ -45,12 +50,12 @@ const S = process.env.S, ONLY = (process.env.ONLY || 'pass,logic,money').split('
     const r = await ev(() => { const Y = window.__yb, E = Y.ev, M = window.__map, out = [];
       const me = { name: 'me', car: M.S.car, skill: 0.9 };
       for (const r of [me, ...M.STREET3D.filter((x, i) => [0, 3, 7, 9].includes(i)), ...E.POOL.filter(x => ['Slim', 'Marco', 'J-Rock', 'Ky'].includes(x.name))]) {
-        const yb = E.pass(r, E.DEFS.street), r60 = E.pass(r, E.DEFS.r60), dig = E.pass(r, E.DEFS.rdig);
-        out.push({ n: r.name, car: r.car ? r.car.id : r.id, yb: { rt: +yb.rt.toFixed(3), et: yb.et && +yb.et.toFixed(3), mph: yb.mph && +yb.mph.toFixed(1), red: yb.red }, r60: { rt: +r60.rt.toFixed(3), t: r60.t && +r60.t.toFixed(3), mph: r60.mph && +r60.mph.toFixed(1) }, dig: dig.t && +dig.t.toFixed(3) }); }
+        const yb = E.pass(r, E.DEFS.street);
+        out.push({ n: r.name, car: r.car ? r.car.id : r.id, yb: { rt: +yb.rt.toFixed(3), et: yb.et && +yb.et.toFixed(3), mph: yb.mph && +yb.mph.toFixed(1), red: yb.red } }); }
       return out; });
     for (const x of r) console.log(JSON.stringify({ test: 'pass', ...x }));
   }
-  // whole events: your rounds stood in by a pass of your car (the real-race version is the hr/yb tests)
+  // whole events: your rounds stood in by a pass of your car (the real-race version is the yb test)
   const logicEvent = id => ev(id => { const Y = window.__yb, E = Y.ev, M = window.__map, S = M.S; S.cash = Math.max(S.cash, 1e6); const c0 = S.cash, r0 = S.rep;
     const meR = { name: 'me', car: S.car, skill: 0.85 };
     if (!E.enter(id, 7.52)) return { id, entered: false, why: document.querySelector('#toast') && document.querySelector('#toast').textContent };

@@ -27688,7 +27688,8 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
     const I = input(), T = RR.race; if (!T || !RR.on) return I;
     if (T.ph !== 'pace' && T.ph !== 'honk') return I;
     if ((I.gas || 0) > 0.5) { if (T.ph === 'honk' && T.honks > 0) T.me.jump = true; return I; }
-    const e = T.v0 - drv.v;
+    // online: the one behind eases up to even, the one ahead lets them (both sides run this, so they meet in the middle)
+    const vT = T.v0 + (T.kind === 'net' && T.oF != null && T.ph === 'pace' ? clamp((T.oF - (rrS(T.C, drv.x, drv.z) + T.fA)) * 0.25, -1.2, 1.2) : 0), e = vT - drv.v;
     return Object.assign({}, I, { gas: clamp(0.08 + e * 0.24, 0, drv.v < T.v0 * 0.6 ? 0.8 : 0.55), brake: e < -1.2 && drv.v > 3 ? clamp(-e * 0.13, 0, 0.45) : 0, hb: 0 });
   }
   function rrClose(why) {
@@ -27709,9 +27710,10 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
     if (!driving || foot.on || !S.car) { rrClose('left'); return; }
     T.t += dt;
     const C = T.C, A = T.A, v = Math.max(0, drv.v), sMe = rrS(C, drv.x, drv.z), front = sMe + T.fA, latMe = rrLat(C, drv.x, drv.z), I = input(), pre = T.ph === 'pace' || T.ph === 'honk' || T.ph === 'line';
-    // the other car: the AI on its physics, or the other player where the network says they are
+    // the other car: the AI on its physics, or the other player from their newest packet carried forward by its age
+    // (the car you see is drawn a beat behind, so it can't be used for even)
     let oF = front, oV = v;
-    if (T.kind === 'net') { const p = NET.peers.get(T.peer); if (!p) { rrMsg('They left.', ''); T.me.dq = T.me.dq || ''; T.them = T.them || { gone: true }; if (!T.shown) rrEnd(); return; } oF = rrS(C, p.x, p.z) + 1.4; oV = Math.max(0, p.sp || 0); T.oF = oF; T.oV = oV; }
+    if (T.kind === 'net') { const p = NET.peers.get(T.peer); if (!p) { rrMsg('They left.', ''); T.me.dq = T.me.dq || ''; T.them = T.them || { gone: true }; if (!T.shown) rrEnd(); return; } const st = p.st || p, age = p.st ? clamp(performance.now() / 1000 - (p.t || 0), 0, 0.25) : 0; oV = Math.max(0, (p.st ? p.st.v : p.sp) || 0); oF = rrS(C, st.x, st.z) + 1.4 + oV * age; T.oF = oF; T.oV = oV; }
     else if (A) {
       if (A._crk) { rrCrk(A, dt); T.me.dq = T.me.dq || `Got into ${T.r.name}'s car`; }
       else if (pre && A.jump) rrRun(A, dt, () => ({ gas: 1, brake: 0, steer: 0, hb: 0 }), T);
@@ -27740,7 +27742,7 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
       if (T.ph === 'honk' && !T.pace && T.v0 > 0.5) { T.gasT = (drv.gas || 0) > 0.85 ? T.gasT + dt : 0; if (v > T.v0 + 2.3 || T.gasT > 0.35) T.me.jump = true; }
       if (T.me.jump) { T.ph = 'done'; T.end = T.t; T.goS = front; rrMsg('YOU JUMPED IT', ''); honk(0.2); rrLog('jump'); if (T.kind === 'net') netSend({ k: 'rr', t: 'fin', to: T.peer, et: null, jump: 1 }); }
       else if (T.ph === 'pace' || T.ph === 'line') {
-        const even = Math.abs(front - oF) < (T.v0 > 0.5 ? 1.6 : 0.6), onIt = T.v0 > 0.5 ? Math.abs(v - T.v0) < 1.1 && Math.abs(oV - T.v0) < 1.3 : v < 0.3 && oV < 0.4;
+        const even = Math.abs(front - oF) < (T.v0 > 0.5 ? (T.kind === 'net' ? 2.4 : 1.6) : T.kind === 'net' ? 1 : 0.6), onIt = T.v0 > 0.5 ? Math.abs(v - T.v0) < 1.1 && Math.abs(oV - T.v0) < 1.3 : v < 0.3 && oV < 0.4;
         T.okT = even && onIt ? T.okT + dt : 0; T.info = T.v0 > 0.5 ? (onIt ? (even ? 'Even. Hold it…' : 'Get even with them') : v < T.v0 ? `Get up to ${Math.round(T.v0 * RR_MPH)}` : 'Too fast, back it down') : (onIt && even ? 'Both on the line' : 'Sit on the line');
         const ready = T.okT > (T.v0 > 0.5 ? 0.9 : T.setT);
         if (ready) {
