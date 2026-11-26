@@ -8229,7 +8229,7 @@ registerProcessor('mw-engine', MWEngProc);`;
   // under one set of tabs. They all work on the same engine (c.eb, the engine model), and the Build and Parts tabs share
   // one draft: try parts anywhere, see them on the dyno, install the lot at once ----------
   const EL = { sess: false, tab: 'build' };
-  const EL_TABS = [['build', 'Build'], ['parts', 'Parts'], ['boost', 'Boost'], ['nitrous', 'Nitrous'], ['ecu', 'ECU'], ['swap', 'Swap'], ['health', 'Health'], ['chassis', 'Chassis tune']];
+  const EL_TABS = [['build', 'Build'], ['parts', 'Parts'], ['boost', 'Boost'], ['nitrous', 'Nitrous'], ['ecu', 'ECU'], ['swap', 'Swap'], ['health', 'Health'], ['dyno', 'Dyno sheets'], ['chassis', 'Chassis tune']];
   const draftKeys = () => ENG_CATS.concat(['sku', 'camC', 'valve']);
   function elRoot() {
     let el = $('englab'); if (el) return el;
@@ -8281,8 +8281,8 @@ registerProcessor('mw-engine', MWEngProc);`;
     LAB.draft = JSON.parse(JSON.stringify(c.eb)); LAB.draftOf = c; LAB.run = null;
     toast(`Installed. ${carHp(c)} hp.`, 'good'); if (car && c.engX) applyMotor(car.userData.model); elRefresh();
   }
-  function elRefresh() { ({ build: labRender, parts: pcRender, boost: fiRender, nitrous: nxRender, ecu: ecuRender, swap: swRender, health: dmgRender })[EL.tab](); }
-  function elHide() { LAB.open = false; ENGLAB.prev = false; ENGLAB.thr = 0; LAB.hold = false; PCL.open = NXL.open = FIL.open = ECL.open = DHL.open = SWL.open = false; EL.sess = false; const el = $('englab'); if (el) el.hidden = true; }
+  function elRefresh() { ({ build: labRender, parts: pcRender, boost: fiRender, nitrous: nxRender, ecu: ecuRender, swap: swRender, health: dmgRender, dyno: dySheetsRender })[EL.tab](); }
+  function elHide() { LAB.open = false; ENGLAB.prev = false; ENGLAB.thr = 0; LAB.hold = false; PCL.open = NXL.open = FIL.open = ECL.open = DHL.open = SWL.open = DYS.open = false; EL.sess = false; const el = $('englab'); if (el) el.hidden = true; }
   // open it fresh (from the Car menu, a shop, the phone)
   function elOpen(tab) {
     const c = S.car; if (!c) { toast('No car out.', 'bad'); return; }
@@ -8294,9 +8294,9 @@ registerProcessor('mw-engine', MWEngProc);`;
     if (tab === 'chassis') { elHide(); openTune(TUI.place); return; }
     if (!EL.sess || !LAB.draft || LAB.draftOf !== c) { LAB.draft = JSON.parse(JSON.stringify(c.eb || {})); LAB.draftOf = c; LAB.run = null; }
     if (LAB.open && tab !== 'build') { LAB.open = false; ENGLAB.prev = false; ENGLAB.thr = 0; LAB.hold = false; }
-    PCL.open = NXL.open = FIL.open = ECL.open = DHL.open = SWL.open = false; const tu = $('tune'); if (tu) tu.hidden = true;
+    PCL.open = NXL.open = FIL.open = ECL.open = DHL.open = SWL.open = DYS.open = false; const tu = $('tune'); if (tu) tu.hidden = true;
     EL.sess = true; EL.tab = tab;
-    ({ build: labOpen, parts: () => pcOpen(), boost: fiOpen, nitrous: nxOpen, ecu: ecuOpen, swap: swOpen, health: dmgOpen })[tab]();
+    ({ build: labOpen, parts: () => pcOpen(), boost: fiOpen, nitrous: nxOpen, ecu: ecuOpen, swap: swOpen, health: dmgOpen, dyno: dySheetsOpen })[tab]();
     const r = $('englab'); if (r) r.scrollTop = 0; elAfter();
   }
   // the header every tab shares: the tabs, what the motor makes right now, and the draft waiting to go in
@@ -14948,7 +14948,7 @@ ${set.s2by === 'gear' ? nxSlider('s2g', 'from gear', 2, 6, 1, set.s2g, '') : set
     const kTxt = ke < 0.05 ? 'Safe' : e.ks ? `Sensors pulling ${pull.toFixed(1)}°` : `Detonating (${ke.toFixed(1)}° past)`;
     h += `<div class="g">${stat('Power', `${Math.round(R.hp)} hp · ${Math.round(R.tq / 1.3558)} lb-ft`)}${stat('Knock', kTxt)}${stat('Limiter', `${Math.round(red).toLocaleString()} rpm`)}${stat('Fuel', FUELS[fuel] ? FUELS[fuel].label : fuel)}</div>`;
     h += `<div class="row" style="margin-top:8px">${Object.entries(ECU_TABS).filter(([k]) => k !== 'cams' || ecuHasVvt(D)).map(([k, v]) => `<button data-tab="${k}" class="${ECL.tab === k ? 'on' : ''}">${v}</button>`).join('')}</div>`;
-    const cols = ECU_N.filter((n, i) => i === 0 || ECU_N[i - 1] < red);
+    const cols = ECU_N.filter((n, i) => (i === 0 || ECU_N[i - 1] < red) && Math.round(n / 100) < T.length);   // (a limiter raised past the model's table no longer reads off its end)
     if (ECL.tab === 'spark') {
       const st = ECU_STOICH[fuel] || 14.7, lam = e.lam || ECU_N.map(() => R.X.lam0);
       h += `<h3>Spark map (wide open)</h3><div class="row lg"><span><i style="background:#888"></i>Factory</span><span><i style="background:#3ddc84"></i>Best torque (MBT)</span><span><i style="background:#ff5a5a"></i>Knock limit</span><span><i style="background:#5aa0ff"></i>Your map</span><span><i style="background:#fff"></i>What it runs</span></div><canvas id="ecusp" width="720" height="260"></canvas>`;
@@ -30207,6 +30207,607 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   };
   window.__ks = { KS, KS_SHOTS, ksOpen, ksSkip, ksLeave, ksActivate, ksMove, ksSelect, ksBack, ksCat, ksHome, ksPaint, ksWheels, ksTintPage, ksNeonPage, ksStance, ksBody, ksShop, ksCan, ksTintOf, places: () => DATA.P, gpu: () => Object.assign({}, renderer.info.memory) };
   // ==== drive-in custom bay (end) ====
+  // ==== dyno cell (begin) ====
+  // Kimari 2026-11-26: "enhance the engine building and car things". The shop Dyno used to roll a random number. Now it's a
+  // real chassis dyno cell at every performance shop: your own car rolls onto the drums and gets strapped down, you make
+  // pulls in the 1:1 gear (or any gear) and the engine you built sings through the sweep. What the drums read comes from the
+  // same engine model, boost spool, nitrous system, ECU maps and wear the car drives on:
+  // - an inertia dyno: the drums' own mass is what the wheels spin up, so the power it takes to spin the motor, the
+  //   converter and the wheels up isn't counted (lower gears read lower, like a real Dynojet),
+  // - drivetrain loss from the car's own gearbox and driveline, converter slip on automatics, the tires on the drums,
+  // - the weather in the cell: Fort Worth air (650 ft, hot days, cool nights, humid rain), shown uncorrected, SAE or STD,
+  // - heat soak: back-to-back pulls heat the intake charge and the coolant and read lower until the fans cool it,
+  // - AFR and boost traces, knock marks where the ECU map knocks (it wears the pistons, like on the street).
+  // Every pull is saved on the car (c.dyn) with its curve; the Engine Lab's "Dyno sheets" tab overlays them. Each shop
+  // keeps a wall of its best pulls (the regulars' cars and yours).
+  const DY = { on: false, p: null, scene: null, cam: null, root: null, slot: null, model: null, trash: [], ui: null, ph: '', t: 0, last: 0,
+    u: 0, rpm: 0, thr: 0, cut: false, psi: 0, boost: 0, B: 0, run: false, fan: false, fanA: 0, iat: 30, clt: 90, amb: 30, Pd: 97, corr: 'sae',
+    gear: -1, nos: false, X: null, rec: null, live: null, sheet: null, shot: 'quarter', autoCam: true, camPos: new THREE.Vector3(), camLook: new THREE.Vector3(),
+    drums: [], fanB: null, mon: null, monT: 0, fromBay: false, exp: 1, wasKs: false, fast: false, axleZ: 0, frontZ: 0, front: null, snd: null, shake: 0 };
+  const DY_W = 12, DY_D = 16, DY_H = 5.2, DY_DRUM = 0.61, DY_MDRUM = 1400, DY_PRICE = 150;
+  const DY_SHOTS = { quarter: [-3.4, 1.15, -3.6, 0, 0.7, 0], wheel: [-2.1, 0.45, 1.6, 0, 0.35, 0], rear: [-1.5, 1.25, 5.4, 0, 0.6, 0], side: [-5.2, 1.4, -0.4, 0, 0.75, -0.6], screen: [2.05, 1.55, -2.3, 3.3, 1.45, -4.1], top: [-1.2, 4.6, 2.6, 0, 0.4, -0.6] };
+  const DY_CAMS = ['quarter', 'wheel', 'rear', 'side', 'screen', 'top'];
+  const DY_CAM_NAME = { quarter: 'Front', wheel: 'Drums', rear: 'Rear', side: 'Side', screen: 'Screen', top: 'Above' };
+  const DY_REG = ['Dre', 'Tasha', 'Big Mike', 'Lupe', 'Kendrick', 'Javi', 'Tre', 'Keisha', 'Rudy', 'Monique', 'Hector', 'Pops', 'Nikki', 'Slim', 'Boogie', 'Coop', 'Lil Ray', 'Marisol'];
+  // the cell's air: Fort Worth sits near 650 ft (about 98.9 kPa), hot by day, cooler at night, humid when it rains
+  function dyAir() {
+    const wx = window.__wx, rain = wx ? (wx.rain || 0) : 0, base = { day: 31, sunset: 28, night: 24 }[typeof timeName !== 'undefined' ? timeName : 'day'] || 30;
+    const T = base - 4 * rain, pv = 1.5 + 1.4 * rain;   // vapor pressure, kPa
+    return { T, Pd: 98.9 - pv, rh: Math.round(Math.min(98, pv / (0.6108 * Math.exp(17.27 * T / (T + 237.3))) * 100)) };
+  }
+  // correction factors: SAE J1349 (77 °F, 99 kPa dry) and the old STD / J607 (60 °F, 29.92 inHg) that most shops print
+  const dyCF = (mode, T, Pd) => mode === 'sae' ? 1.18 * (99 / Pd) * Math.sqrt((T + 273.15) / 298.15) - 0.18 : mode === 'std' ? (101.32 / Pd) * Math.sqrt((T + 273.15) / 288.7) : 1;
+  const DY_CORR = { sae: 'SAE', std: 'STD', none: 'Uncorrected' };
+  // which shop the player is at right now (for the Engine Lab's button)
+  function dyHere() {
+    if (KS.on && KS.p && KS.p.type === 'perf') return KS.p;
+    if (inside && IN.place && IN.place.type === 'perf') return IN.place;
+    return null;
+  }
+  function dyWhy(c) {
+    if (!c) return 'Bring a car.';
+    if (isEV(c)) return 'Electric: this cell is set up for engines.';
+    if (typeof simBike === 'function' && simBike(c)) return 'Bikes go on the bike dyno at the Moto Shop.';
+    if (engDead(c)) return 'The motor won\'t run. Get it fixed first.';
+    if (c.fuel <= 0) return 'Out of gas.';
+    try { const V = carPerf().veh; if (!V || !V.E || !V.E.pkW || !(V.auto || V.man)) return 'No engine model for this one.'; } catch (e) { return 'No engine model for this one.'; }
+    return '';
+  }
+  // the car on the drums: gears, the drivetrain, what the drums feel
+  function dySpec(c) {
+    const P = carPerf(), V = P.veh, E = V.E, man = V.tt === 'man', ratios = (man ? V.man : V.auto) || V.auto, fd = man ? V.fdMan : V.fd;
+    const crankW = Math.max(0, P.pw || 0) * (P.kg || V.kg) / 634 * 745.7, ks = crankW / E.pkW;
+    const drv = [0, 1, 2, 3].filter(i => V.s[i] > 0), rw = drv.reduce((a, i) => a + V.R[i], 0) / drv.length, Iw = drv.reduce((a, i) => a + V.Iw[i], 0);
+    const fnD = drv.reduce((a, i) => a + V.Fn[i], 0) + 2600;   // the straps pull it down onto the drums
+    // the shop's gear: the one that tops out closest to 145 mph at the limiter (4th or 5th in most cars; 1:1 on an old 4-speed)
+    let g = 0, best = 1e9; ratios.forEach((r, i) => { const u = V.red / (r * fd) * Math.PI / 30 * rw, d = Math.abs(u - 65) + (u > 95 ? 1e3 : 0); if (i > 0 && d < best) { best = d; g = i; } });
+    const R = !c.swap ? engOf(c) : null, X = nxSpec(c);
+    return { P, V, E, man, ratios, fd, ks, rw, Iw, fnD, g1: g, R, X, awd: V.drive === 'A', fwd: V.drive === 'F', tc: V.tt === 'tc', red: V.red, idle: V.idle,
+      nS: clamp(Math.round(Math.max(V.idle * 2.1, V.red * 0.3) / 100) * 100, 1500, 3800), lossK: (man ? 0.93 : V.tt === 'tc' ? 0.9 : 0.92) - (V.drive === 'A' ? 0.04 : 0) };
+  }
+  // ---------- the room ----------
+  function dyMat(o, basic) { const m = new (basic ? THREE.MeshBasicMaterial : THREE.MeshStandardMaterial)(o); DY.trash.push(m); return m; }
+  function dyGeo(g) { DY.trash.push(g); return g; }
+  function dyBox(par, w, h, d, mat, x, y, z, cast) { const m = new THREE.Mesh(dyGeo(new THREE.BoxGeometry(w, h, d)), mat); m.position.set(x, y, z); m.castShadow = !!cast; m.receiveShadow = true; par.add(m); return m; }
+  function dyCanvas(w, h, draw) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d'), w, h); const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; DY.trash.push(t); return t; }
+  // a strap between two points (a flat yellow ratchet strap)
+  function dyStrap(par, a, b, mat) {
+    const d = new THREE.Vector3().subVectors(b, a), L = d.length(), m = new THREE.Mesh(dyGeo(new THREE.BoxGeometry(0.05, 0.006, L)), mat);
+    m.position.copy(a).addScaledVector(d, 0.5); m.lookAt(b); m.castShadow = true; par.add(m);
+    const rat = new THREE.Mesh(dyGeo(new THREE.BoxGeometry(0.08, 0.05, 0.16)), dyMat({ color: 0x9aa0a8, metalness: 0.9, roughness: 0.35 })); rat.position.copy(a).addScaledVector(d, 0.7); rat.lookAt(b); par.add(rat);
+    return m;
+  }
+  function dyBuild(p) {
+    const s = DY.scene = new THREE.Scene(); s.background = new THREE.Color(0x0d0d10);
+    try { const pm = new THREE.PMREMGenerator(renderer), room = new THREE.Scene(), gg = new THREE.SphereGeometry(30, 24, 12), gm = new THREE.MeshBasicMaterial({ color: 0x34363c, side: THREE.BackSide }); room.add(new THREE.Mesh(gg, gm));
+      const pg = new THREE.PlaneGeometry(20, 5), pmat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }); for (const z of [-6, 0, 6]) { const pl = new THREE.Mesh(pg, pmat.clone()); pl.position.set(0, 22, z); pl.lookAt(0, 0, 0); pl.material.color.multiplyScalar(1.6); room.add(pl); }
+      const rt = pm.fromScene(room, 0.04); pm.dispose(); gg.dispose(); gm.dispose(); pg.dispose(); pmat.dispose(); room.traverse(o => { if (o.material && o.material !== gm) o.material.dispose(); }); s.environment = rt.texture; DY.trash.push(rt); } catch (e) { console.warn('dyno env', e); }
+    DY.cam = new THREE.PerspectiveCamera(48, innerWidth / Math.max(1, innerHeight), 0.05, 80);
+    s.add(new THREE.HemisphereLight(0xf4f0ea, 0x1a1a1e, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 0.8); key.position.set(-3, 11, 4); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
+    const sc = key.shadow.camera; sc.left = sc.bottom = -7; sc.right = sc.top = 7; sc.near = 2; sc.far = 26; key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; s.add(key); s.add(key.target);
+    const W = DY_W, D = DY_D, H = DY_H;
+    // the floor: sealed grey concrete with the drum pit cut in at z = 0 and the front drum's rail trench ahead of it
+    const conc = dyCanvas(512, 512, (k, w) => { k.fillStyle = '#5b5c60'; k.fillRect(0, 0, w, w); for (let i = 0; i < 2600; i++) { const v = 70 + Math.random() * 40 | 0; k.fillStyle = `rgba(${v},${v},${v + 3},0.25)`; k.fillRect(Math.random() * w, Math.random() * w, 2 + Math.random() * 3, 2 + Math.random() * 3); }
+      for (let i = 0; i < 14; i++) { k.fillStyle = 'rgba(20,18,16,0.10)'; k.beginPath(); k.ellipse(Math.random() * w, Math.random() * w, 20 + Math.random() * 50, 10 + Math.random() * 30, Math.random() * 3, 0, 7); k.fill(); }
+      k.strokeStyle = 'rgba(0,0,0,0.35)'; k.lineWidth = 2; k.beginPath(); k.moveTo(0, 256); k.lineTo(w, 256); k.moveTo(256, 0); k.lineTo(256, w); k.stroke(); });
+    conc.wrapS = conc.wrapT = THREE.RepeatWrapping; conc.repeat.set(W / 4, D / 4);
+    const fm = dyMat({ map: conc, roughness: 0.62, metalness: 0.05, envMapIntensity: 0.5 });
+    const pitZ0 = -0.62, pitZ1 = 0.62, rail0 = -3.9, rail1 = -1.7;   // the rear pit and the front drum trench, room z
+    const floorAt = (z0, z1) => { const g = new THREE.Mesh(dyGeo(new THREE.PlaneGeometry(W, z1 - z0).rotateX(-Math.PI / 2)), fm); g.position.set(0, 0, (z0 + z1) / 2); g.receiveShadow = true; s.add(g); };
+    floorAt(-D / 2, rail0); floorAt(rail1, pitZ0); floorAt(pitZ1, D / 2);
+    for (const [z0, z1] of [[rail0, rail1], [pitZ0, pitZ1]]) for (const x of [-1, 1]) { const w2 = (W - 2.6) / 2, g = new THREE.Mesh(dyGeo(new THREE.PlaneGeometry(w2, z1 - z0).rotateX(-Math.PI / 2)), fm); g.position.set(x * (1.3 + w2 / 2), 0, (z0 + z1) / 2); g.receiveShadow = true; s.add(g); }
+    // inside the pit: dark, the drum frame, diamond plate covers either side of the tires
+    const pit = dyMat({ color: 0x15161a, roughness: 0.9 }), plate = dyCanvas(256, 256, (k, w) => { k.fillStyle = '#8d9096'; k.fillRect(0, 0, w, w); k.fillStyle = '#a9acb2'; for (let y = 0; y < w; y += 16) for (let x = (y / 16 % 2) * 8; x < w; x += 16) { k.save(); k.translate(x, y); k.rotate(0.6); k.fillRect(-5, -1.5, 10, 3); k.restore(); } });
+    plate.wrapS = plate.wrapT = THREE.RepeatWrapping; plate.repeat.set(2, 1); const pm2 = dyMat({ map: plate, metalness: 0.85, roughness: 0.38 });
+    dyBox(s, 2.6, 0.04, pitZ1 - pitZ0, pit, 0, -1.3, 0); dyBox(s, 2.6, 1.3, 0.04, pit, 0, -0.65, pitZ0); dyBox(s, 2.6, 1.3, 0.04, pit, 0, -0.65, pitZ1);
+    dyBox(s, 2.6, 0.03, 0.5, pm2, 0, -0.015, pitZ0 + 0.25); dyBox(s, 2.6, 0.03, 0.12, pm2, 0, -0.015, pitZ1 - 0.06);
+    dyBox(s, 2.6, 0.04, rail1 - rail0, pit, 0, -0.9, (rail0 + rail1) / 2);
+    const tread = dyCanvas(256, 64, (k, w, h) => { k.fillStyle = '#3a3c42'; k.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 12) { k.fillStyle = '#25262b'; k.fillRect(x, 0, 5, h); } k.fillStyle = '#ffb636'; k.fillRect(0, 0, 30, h); });
+    tread.wrapS = THREE.RepeatWrapping; tread.repeat.set(5, 1);
+    const drumMat = dyMat({ map: tread, metalness: 0.75, roughness: 0.4 }), drumG = dyGeo(new THREE.CylinderGeometry(DY_DRUM, DY_DRUM, 2.4, 40, 1, false).rotateZ(Math.PI / 2));
+    const mkDrum = z => { const g = new THREE.Group(); g.position.set(0, -DY_DRUM, z); const d = new THREE.Mesh(drumG, drumMat); d.receiveShadow = true; g.add(d); s.add(g); return g; };
+    DY.drums = [mkDrum(0)]; DY.front = mkDrum(-2.8); DY.front.visible = false;
+    // the yellow wheel chocks and the strap anchors in the floor
+    DY.chock = new THREE.Group(); s.add(DY.chock);
+    // walls, roof, the roll-up door behind the car, the extractor duct
+    const wall = dyMat({ color: 0x2a2b30, roughness: 0.92 }), block = dyCanvas(512, 256, (k, w, h) => { k.fillStyle = '#3c3d42'; k.fillRect(0, 0, w, h); k.strokeStyle = '#2b2c30'; k.lineWidth = 3; for (let y = 0; y < h; y += 32) { k.beginPath(); k.moveTo(0, y); k.lineTo(w, y); k.stroke(); for (let x = (y / 32 % 2) * 32; x < w; x += 64) { k.beginPath(); k.moveTo(x, y); k.lineTo(x, y + 32); k.stroke(); } } });
+    block.wrapS = block.wrapT = THREE.RepeatWrapping; block.repeat.set(3, 1.4); const bw = dyMat({ map: block, roughness: 0.95 });
+    dyBox(s, W, H, 0.3, bw, 0, H / 2, -D / 2 - 0.15); dyBox(s, 0.3, H, D, bw, -W / 2 - 0.15, H / 2, 0); dyBox(s, 0.3, H, D, bw, W / 2 + 0.15, H / 2, 0); dyBox(s, W, H, 0.3, wall, 0, H / 2, D / 2 + 0.15);
+    dyBox(s, W, 0.2, D, dyMat({ color: 0x1a1b1f, roughness: 0.9 }), 0, H + 0.1, 0);
+    const slats = dyCanvas(256, 256, (k, w) => { k.fillStyle = '#6a6d74'; k.fillRect(0, 0, w, w); for (let y = 0; y < w; y += 16) { k.fillStyle = '#4b4e55'; k.fillRect(0, y, w, 3); } });
+    dyBox(s, 4.6, 3.6, 0.06, dyMat({ map: slats, metalness: 0.5, roughness: 0.5 }), 0, 1.8, D / 2 - 0.02);
+    for (const x of [-1, 1]) dyBox(s, 0.1, 0.12, D - 0.6, dyMat({ color: 0xffb636, toneMapped: false }, true), x * (W / 2 - 0.05), 3.4, 0);
+    // lights: shop fixtures over the car
+    const panel = dyMat({ color: 0xffffff, toneMapped: false }, true);
+    for (const z of [-4.2, 0, 4.2]) { const pl = new THREE.Mesh(dyGeo(new THREE.PlaneGeometry(3.2, 0.5).rotateX(Math.PI / 2)), panel); pl.position.set(0, H - 0.05, z); s.add(pl); const pt = new THREE.PointLight(0xfff6ea, 0.35, 9); pt.position.set(0, H - 0.5, z); s.add(pt); }
+    // the shop's banner on the back wall
+    const name = (p && p.name || 'Dyno').replace(/ \(.*\)$/, '').toUpperCase();
+    const sign = dyCanvas(1024, 256, (k, w) => { k.fillStyle = '#101013'; k.fillRect(0, 0, w, 256); k.textAlign = 'center'; k.textBaseline = 'middle'; k.font = `${Math.min(104, Math.floor(1600 / Math.max(8, name.length)))}px Bungee, Impact, sans-serif`;
+      k.fillStyle = '#ff3d7f'; k.fillText(name, w / 2 - 4, 98, 980); k.fillStyle = '#ffb636'; k.fillText(name, w / 2, 96, 980);
+      k.font = '700 34px "Barlow Condensed", "Arial Narrow", sans-serif'; k.fillStyle = '#e9e2d6'; k.fillText('D Y N O   C E L L   ·   M U R D A   W O R T H', w / 2, 196, 980); });
+    const sg = new THREE.Mesh(dyGeo(new THREE.PlaneGeometry(7.2, 1.8)), dyMat({ map: sign, toneMapped: false }, true)); sg.position.set(0, 3.7, -D / 2 + 0.05); s.add(sg);
+    // the cooling fan in front of the car: a drum fan on a stand, the blades spin when it's on
+    { const fg = new THREE.Group(); fg.position.set(0, 0, -5.9); s.add(fg); const blk = dyMat({ color: 0x1b1c20, metalness: 0.5, roughness: 0.5 }), grill = dyMat({ color: 0x8a8d93, metalness: 0.9, roughness: 0.3, wireframe: true });
+      const ring = new THREE.Mesh(dyGeo(new THREE.CylinderGeometry(0.85, 0.85, 0.42, 36, 1, true).rotateX(Math.PI / 2)), dyMat({ color: 0x23242a, metalness: 0.6, roughness: 0.45, side: THREE.DoubleSide })); ring.position.y = 1.0; fg.add(ring);
+      const gr = new THREE.Mesh(dyGeo(new THREE.CircleGeometry(0.84, 18)), grill); gr.position.set(0, 1.0, 0.2); fg.add(gr);
+      DY.fanB = new THREE.Group(); DY.fanB.position.set(0, 1.0, 0.02); fg.add(DY.fanB);
+      for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(dyGeo(new THREE.BoxGeometry(0.2, 0.72, 0.02)), dyMat({ color: 0x3e4047, metalness: 0.7, roughness: 0.4 })); b.position.y = 0.38; const h2 = new THREE.Group(); h2.rotation.z = i * Math.PI * 2 / 5; b.rotation.y = 0.35; h2.add(b); DY.fanB.add(h2); }
+      dyBox(fg, 0.12, 0.6, 0.12, blk, -0.6, 0.3, 0, true); dyBox(fg, 0.12, 0.6, 0.12, blk, 0.6, 0.3, 0, true); dyBox(fg, 1.6, 0.08, 0.6, blk, 0, 0.04, 0, true); }
+    // the monitor on its roll stand, beside the car: it draws the pull live
+    { const mg = new THREE.Group(); mg.position.set(3.3, 0, -4.1); mg.rotation.y = -0.55; s.add(mg); const blk = dyMat({ color: 0x18191d, metalness: 0.4, roughness: 0.5 });
+      dyBox(mg, 0.1, 1.2, 0.1, blk, 0, 0.6, 0, true); dyBox(mg, 0.7, 0.05, 0.5, blk, 0, 0.03, 0, true); dyBox(mg, 1.34, 0.86, 0.06, blk, 0, 1.55, 0, true); dyBox(mg, 0.8, 0.04, 0.4, blk, 0, 1.0, 0.18, true);
+      DY.mon = dyCanvas(640, 400, (k, w, h) => { k.fillStyle = '#0b0c10'; k.fillRect(0, 0, w, h); });
+      const scr = new THREE.Mesh(dyGeo(new THREE.PlaneGeometry(1.26, 0.79)), dyMat({ map: DY.mon, toneMapped: false }, true)); scr.position.set(0, 1.55, 0.035); mg.add(scr); }
+    // a tool chest and a fire extinguisher on the wall: set dressing
+    { const red = dyMat({ color: 0xb8281c, roughness: 0.35, metalness: 0.5 }); dyBox(s, 0.7, 1.05, 1.5, red, -W / 2 + 0.55, 0.525, 3.6, true); dyBox(s, 0.7, 0.4, 1.5, red, -W / 2 + 0.55, 1.25, 3.6, true);
+      const ex = new THREE.Mesh(dyGeo(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 14)), dyMat({ color: 0xc81e1e, roughness: 0.35, metalness: 0.2 })); ex.position.set(W / 2 - 0.2, 1.1, -3); s.add(ex); }
+    // the extractor duct: a flexible hose from the tailpipes up to the roof
+    DY.duct = new THREE.Group(); s.add(DY.duct);
+    DY.root = new THREE.Group(); s.add(DY.root);
+    DY.straps = new THREE.Group(); s.add(DY.straps);
+  }
+  function dyDispose() {
+    if (DY.slot) { DY.slot.userData.dead = true; if (DY.slot.parent) DY.slot.parent.remove(DY.slot); }
+    for (const x of DY.trash) { try { x.dispose(); } catch (e) {} }
+    DY.trash = []; DY.scene = null; DY.root = DY.slot = DY.model = DY.fanB = DY.mon = DY.front = DY.duct = DY.straps = DY.chock = null; DY.drums = [];
+  }
+  // once the model is in: put the driven axle on the drum, the front drum on the front axle (all-wheel drive), straps, duct
+  function dyPlace(m) {
+    const c = S.car, sp = DY.sp, U = m.userData; DY.root.position.set(0, 0, 0); DY.root.rotation.y = 0; DY.root.updateMatrixWorld(true);
+    carDims(m); const wv = new THREE.Vector3(), F = [], Rr = [];
+    for (const w of U.wheels) { w.getWorldPosition(wv); (w.userData.front ? F : Rr).push(wv.clone()); }
+    if (!F.length || !Rr.length) return;
+    const fz = F.reduce((a, v) => a + v.z, 0) / F.length, rz = Rr.reduce((a, v) => a + v.z, 0) / Rr.length, cx = (F.concat(Rr)).reduce((a, v) => a + v.x, 0) / (F.length + Rr.length);
+    // the car's nose points to -z in the room (front axle further toward the fan)
+    if (fz > rz) DY.root.rotation.y = Math.PI;
+    DY.root.updateMatrixWorld(true); F.length = Rr.length = 0; for (const w of U.wheels) { w.getWorldPosition(wv); (w.userData.front ? F : Rr).push(wv.clone()); }
+    const fz2 = F.reduce((a, v) => a + v.z, 0) / F.length, rz2 = Rr.reduce((a, v) => a + v.z, 0) / Rr.length, cx2 = (F.concat(Rr)).reduce((a, v) => a + v.x, 0) / (F.length + Rr.length);
+    const onDrum = sp.fwd ? fz2 : rz2; DY.root.position.set(-cx2, 0, -onDrum); DY.root.updateMatrixWorld(true);
+    DY.frontZ = (sp.fwd ? rz2 : fz2) - onDrum; DY.axleZ = 0;
+    DY.front.visible = sp.awd; DY.front.position.z = DY.frontZ;
+    // wheel chocks on the axle that doesn't drive (on all-wheel drive both sit on drums)
+    const chk = dyMat({ color: 0xe8b43a, roughness: 0.6 });
+    if (!sp.awd) for (const x of [-1, 1]) { const half = 0.8; for (const dz of [-0.42, 0.42]) { const b = new THREE.Mesh(dyGeo(new THREE.BoxGeometry(0.28, 0.16, 0.18)), chk); b.position.set(x * half, 0.08, DY.frontZ + dz); b.rotation.x = dz > 0 ? -0.5 : 0.5; b.castShadow = true; DY.chock.add(b); } }
+    // the straps: from the tow points by each corner out to the floor anchors
+    const box = new THREE.Box3().setFromObject(m), hw = (box.max.x - box.min.x) / 2, sm = dyMat({ color: 0xf2c418, roughness: 0.7 }), an = dyMat({ color: 0x2a2b30, metalness: 0.8, roughness: 0.3 });
+    const zF = Math.min(DY.frontZ, 0) - 0.35, zR = Math.max(DY.frontZ, 0) + 0.35;
+    for (const [z, out] of [[zF, -1.25], [zR, 1.25]]) for (const x of [-1, 1]) {
+      const a = new THREE.Vector3(x * (hw - 0.28), 0.28, z), b = new THREE.Vector3(x * (hw + 0.7), 0.02, z + out);
+      dyStrap(DY.straps, a, b, sm); const k = new THREE.Mesh(dyGeo(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 10)), an); k.position.copy(b); DY.straps.add(k);
+    }
+    // the extractor hose behind the car
+    const tail = new THREE.Vector3(hw * 0.45, 0.35, box.max.z + 0.25), path = new THREE.CatmullRomCurve3([tail, new THREE.Vector3(hw * 0.6, 0.42, box.max.z + 0.7), new THREE.Vector3(hw + 0.8, 1.0, box.max.z + 1.0), new THREE.Vector3(hw + 1.5, 2.6, box.max.z + 1.1), new THREE.Vector3(hw + 1.6, DY_H, box.max.z + 1.1)]);
+    const hose = new THREE.Mesh(dyGeo(new THREE.TubeGeometry(path, 40, 0.14, 12)), dyMat({ color: 0x3a3b40, roughness: 0.65, metalness: 0.4 })); hose.castShadow = true; DY.duct.add(hose);
+    DY.box = box; DY.hw = hw;
+  }
+  // ---------- the pull ----------
+  function dyNewRun() {
+    const c = S.car, sp = DY.sp = dySpec(c), g = DY.gear >= 0 && DY.gear < sp.ratios.length ? DY.gear : sp.g1, G = sp.ratios[g] * sp.fd;
+    const X = DY.nos && sp.X ? sp.X : null, S0 = X ? nxState(X, nxLb(c) * 0.4536, nxTNow(c, X)) : null;
+    return { g, G, X, S0, pts: [], knock: [], t: 0, max: 0, n0: sp.nS, hot0: DY.iat, slip: sp.tc ? 0.015 : 0, lastN: 0, nosHp: 0, nosUsed: 0, b: 0 };
+  }
+  // one step (h seconds) of the drums, the drivetrain and the engine
+  function dyPhys(h) {
+    const sp = DY.sp, r = DY.rec, c = S.car; if (!sp || !r) return;
+    const E = sp.E, G = r.G, rw = sp.rw, ph = DY.ph;
+    const ne = Math.max(sp.idle, DY.u / rw * G * (1 + r.slip) * 30 / Math.PI);
+    // the operator: rolls into the gear at part throttle to the start rpm, then wide open, then off and on the drum brake
+    let a = 0;
+    if (ph === 'roll') a = clamp((r.n0 - ne) / 500, 0.18, 0.5);
+    else if (ph === 'pull') a = 1;
+    if (ne > sp.red) DY.cut = true; else if (ne < sp.red - 160) DY.cut = false;
+    if (DY.cut) { a = 0; if (ph === 'pull') DY.limHit = true; }
+    // turbo spool, the same lag the street physics uses
+    const i = Math.min(DY.sp.P.spT ? DY.sp.P.spT.length - 1 : 0, Math.max(0, Math.round(ne / 100)));
+    if (sp.P.turbo) { const up = sp.P.spT ? 1 / sp.P.spT[i] : 1.2; r.b += (a - r.b) * Math.min(1, h * (a > r.b ? up : 4)); }
+    const sh = sp.P.turbo ? (sp.P.shT ? sp.P.shT[i] : sp.P.turbo) : 0, boostK = sp.P.turbo ? 1 - sh * (1 - r.b) : 1;
+    // the air: thinner on a hot day (what correction undoes), hotter charge after back-to-back pulls (it doesn't)
+    const dens = 1 / dyCF('sae', DY.amb, DY.Pd), heat = Math.pow((DY.amb + 273.15) / (DY.iat + 273.15), sp.R && sp.R.boostKind ? 1.15 : 0.75);
+    let Tb = a * tqAt(E, ne) * sp.ks * boostK, Tn = 0, bk = 1;
+    if (r.X && r.S0 && ph === 'pull') { Tn = nxPhys(r.X, r.S0, { nos: true, purge: false }, ne, a, r.g + 1, G, false, DY.cut, Tb, E.tq * sp.ks, true, h) || 0; bk = r.S0.bk == null ? 1 : r.S0.bk; r.nosHp = Math.max(r.nosHp, r.S0.hp || 0); }
+    const Tf = E.tq * (0.04 + 0.1 * (ne / sp.red) ** 2);
+    const Te = (Tb * bk + Tn) * dens * heat - (1 - a) * Tf;
+    // at the drums: the gearbox and driveline lose their share, the converter slips a little, the tires roll on the drums
+    const Tw = Te * G * (Te > 0 ? sp.lossK * (1 - r.slip) : 1 / sp.lossK), Floss = sp.fnD * 0.008 + 20 + 0.5 * DY.u;
+    const brake = ph === 'lift' ? 16000 : 0, Meff = DY_MDRUM + (sp.Iw + sp.V.Ie * G * G) / (rw * rw);
+    const acc = (Tw / rw - Floss - brake * Math.sign(DY.u)) / Meff;
+    DY.u = Math.max(0, DY.u + acc * h);
+    // what the dyno reads: only the drums' own mass speeding up (plus its own drag, calibrated out)
+    const Pm = Math.max(0, DY_MDRUM * acc + Floss * 0.35) * DY.u;
+    DY.rpm = ne; DY.thr = a; const pi = Math.min(sp.R ? sp.R.psiTab.length - 1 : 0, Math.max(0, Math.round(ne / (sp.R ? sp.R.step : 100))));
+    DY.psi = sp.R ? (sp.R.psiTab[pi] || 0) * a * (sp.P.turbo ? r.b : 1) + (r.S0 && r.S0.k ? 0 : 0) : 0; DY.boost = sp.P.turbo ? r.b : 1;
+    // the ECU's map at this rpm: knock (it wears the pistons like on the road) and the mixture
+    let lam = sp.R && sp.R.D && sp.R.D.diesel ? 1.45 - 0.35 * a : sp.R && sp.R.boostKind ? 0.8 : 0.88, kn = 0;
+    if (sp.R && sp.R.ecuT && a > 0.6) { const e = sp.R.ecuT[Math.min(sp.R.ecuT.length - 1, Math.round(ne / 100))]; if (e) { lam = e.lam || lam; kn = e.ke || 0;
+      if (kn > 0.05 && dmgOn()) { const k = kn * a * (sp.R.ecuKs ? 0.02 : 1); wrHit(c, 'pist', h * 0.45 * Math.pow(k, 1.3), 'det'); wrHit(c, 'gask', h * 0.12 * k, 'det'); } } }
+    if (r.S0 && r.S0.det > 0.02) kn = Math.max(kn, r.S0.det);
+    r.lam = lam;
+    if (ph === 'pull') {
+      r.t += h;
+      // sample each 50 rpm: what it read, the mixture, the boost, knock
+      if (ne >= r.n0 && ne - r.lastN >= 50) { r.lastN = ne - (ne % 50); const whp = Pm / 745.7; r.pts.push([Math.round(ne), whp, lam, DY.psi, kn > 0.05 ? 1 : 0]); }
+      if (ne >= sp.red - 40 || r.t > 45) { DY.ph = 'lift'; DY.t = 0; DY.uiQ = true; }
+    }
+    if (ph === 'roll' && ne >= r.n0 - 150) { DY.ph = 'pull'; DY.t = 0; r.lastN = ne - 60; DY.uiQ = true; }
+    if (ph === 'lift' && DY.u < 0.4) { DY.u = 0; dyDone(); }
+  }
+  function dyStartPull() {
+    const c = S.car, why = dyWhy(c); if (why) { toast(why, 'bad'); return; }
+    if (DY.ph === 'roll' || DY.ph === 'pull' || DY.ph === 'lift') return;
+    if (!spend(DY_PRICE, 'Dyno pull')) return;
+    DY.rec = dyNewRun(); DY.u = DY.rec.n0 * 0.25 / 30 * Math.PI / DY.rec.G * DY.sp.rw;   // rolls in at a quarter of the start rpm
+    DY.ph = 'roll'; DY.t = 0; DY.sheet = null; dyUI();
+    if (DY.autoCam) DY.shot = 'wheel';
+  }
+  // the pull is done: smooth it like the dyno software does, save it, put the sheet up
+  function dyDone() {
+    const r = DY.rec, c = S.car, sp = DY.sp; DY.ph = 'idle'; DY.t = 0; DY.cut = false;
+    // heat soak from that pull: the charge and the coolant
+    DY.iat += sp.R && sp.R.boostKind ? 7 + 0.003 * carHp(c) : 3.5; DY.clt = Math.min(112, DY.clt + 2.5 + 0.004 * carHp(c));
+    if (r.X && r.S0) { c.nosLb = r.S0.m / 0.4536; c.nosT = r.S0.T; c.nosAt = Date.now(); c.nos = r.S0.m / r.X.cap; if (TIRE.nx) TIRE.nx = null; }
+    const P = r.pts; if (P.length < 8) { toast('That pull was too short to read.', 'bad'); dyUI(); return; }
+    const sm = P.map((p, i) => { let s = 0, n = 0; for (let j = Math.max(0, i - 3); j <= Math.min(P.length - 1, i + 3); j++) { s += P[j][1]; n++; } return s / n; });
+    // a real sweep has a little ripple from the drums' encoder: a hair of it, seeded per pull
+    const seed = Math.random() * 1000, run = 1 + (Math.random() - 0.5) * 0.005;
+    const pts = P.map((p, i) => { const whp = sm[i] * run * (1 + 0.0025 * Math.sin(seed + p[0] / 137) + 0.0015 * Math.sin(seed * 3 + p[0] / 61)); return [p[0], +whp.toFixed(1), +(whp * 5252 / p[0]).toFixed(1), +p[2].toFixed(3), +p[3].toFixed(1), p[4]]; });
+    let pk = pts[0], tk = pts[0]; for (const p of pts) { if (p[1] > pk[1]) pk = p; if (p[2] > tk[2]) tk = p; }
+    const fuel = engFuel(c), R = sp.R;
+    const sheet = { id: 'dy' + Date.now().toString(36), at: Date.now(), day: S.day, shop: DY.p ? (DY.p.name || '').replace(/ \(.*\)$/, '') : 'Dyno', shopId: DY.p ? DY.p.id : '', g: r.g + 1, gN: sp.ratios.length, gS: sp.g1 + 1, man: sp.man,
+      amb: +DY.amb.toFixed(1), Pd: +DY.Pd.toFixed(1), iat: +r.hot0.toFixed(1), nos: !!r.X, nosHp: Math.round(r.nosHp || 0), fuel, motor: motorName(c), crank: Math.round(carHp(c) - (partsSpec(c).nos || 0)), psi: R ? +(R.psi || 0).toFixed(1) : 0,
+      cfS: +dyCF('sae', DY.amb, DY.Pd).toFixed(4), cfT: +dyCF('std', DY.amb, DY.Pd).toFixed(4), pts, whp: pk[1], nP: pk[0], wtq: tk[2], nT: tk[0], car: c.id, health: carHealth(c), drv: sp.V.drive, tt: sp.V.tt, lim: DY.limHit || false };
+    sheet.notes = dyNotes(sheet, c);
+    c.dyn = (c.dyn || []); const best = dyBest(c); c.dyn.unshift(sheet);
+    // keep the last 12, and always the best one
+    if (c.dyn.length > 12) { const b = dyBest(c); c.dyn = c.dyn.slice(0, 12); if (b && !c.dyn.includes(b)) c.dyn[11] = b; }
+    c.dyno = Math.round(pk[1] * sheet.cfS);   // the old field, for anything that still reads it
+    dyWall(DY.p, c, sheet);
+    DY.sheet = sheet; DY.prevBest = best; save(); dyUI(); dyMonitor(true);
+    if (DY.autoCam) DY.shot = 'screen';
+    const v = Math.round(pk[1] * dyCFof(sheet)); toast(`${v} whp · ${Math.round(tk[2] * dyCFof(sheet))} lb-ft at the wheels (${DY_CORR[DY.corr]}).`, 'good');
+  }
+  const dyCFof = (s, mode) => { mode = mode || DY.corr; return mode === 'sae' ? s.cfS : mode === 'std' ? s.cfT : 1; };
+  const dyPeak = (s, mode) => Math.round(s.whp * dyCFof(s, mode));
+  function dyBest(c) { let b = null; for (const s of c.dyn || []) if (!b || s.whp * s.cfS > b.whp * b.cfS) b = s; return b; }
+  // what a tuner would say looking at the sheet
+  function dyNotes(s, c) {
+    const n = [], cf = s.cfS, whp = s.whp * cf, loss = 1 - whp / Math.max(1, s.crank + (s.nos ? s.nosHp || 0 : 0));
+    n.push(`About ${Math.round(loss * 100)}% between the crank and the drums: ${s.drv === 'A' ? 'all-wheel drive eats the most' : s.tt === 'tc' ? 'the automatic and its converter take their share' : 'a manual is the most efficient'}.`);
+    if (s.g < (s.gS || s.g)) n.push(`Pulled in ${ord(s.g)}: lower gears read lower, because spinning the motor and the wheels up faster takes power the drums never see.`);
+    const k = s.pts.find(p => p[5]); if (k) n.push(`Knock from ${k[0].toLocaleString()} rpm. ${c.eb && c.eb.ecu && c.eb.ecu.ks === false ? 'The knock sensors are off: that\'s eating the pistons.' : 'The sensors pulled timing. Better fuel or less timing up there.'}`);
+    const hiLam = s.pts.filter(p => p[0] > s.nP * 0.8).reduce((a, p) => Math.max(a, p[3]), 0); if (hiLam > (s.psi > 1 ? 0.86 : 0.95)) n.push(`Lean up top (λ ${hiLam.toFixed(2)}). That burns pistons and valves: richen it in the ECU or add fuel.`);
+    if (s.psi > 1) { const max = s.pts.reduce((a, p) => Math.max(a, p[4]), 0), at = (s.pts.find(p => p[4] >= max * 0.9) || [0])[0]; if (at) n.push(`Full boost (${max.toFixed(1)} psi) by ${at.toLocaleString()} rpm.`); }
+    const last = s.pts[s.pts.length - 1], drop = (s.whp - last[1]) / s.whp; if (drop < 0.03 && s.nP > s.pts[0][0] + 1000) n.push('Still pulling at the limiter: there may be more up top if the valve springs can take a higher rev limit.');
+    if (s.iat > s.amb + 6) n.push(`Heat soaked: the intake was ${Math.round(s.iat)}°C. Let the fans cool it between pulls.`);
+    if (s.nos) n.push(`On the bottle: ${s.nosHp ? 'about ' + s.nosHp + ' hp of spray at its peak' : 'the window never opened'}.`);
+    if (s.health < 70) n.push(`Car health ${s.health}%: worn parts are costing power.`);
+    return n;
+  }
+  const ord = g => g + (['th', 'st', 'nd', 'rd'][g % 10 > 3 || Math.floor(g / 10) === 1 ? 0 : g % 10] || 'th');
+  // each shop's wall: the regulars' cars (made up once per shop) and your best pulls there
+  function dyWallOf(p) {
+    S.dynoWall = S.dynoWall || {}; const id = p ? p.id : 'x'; if (S.dynoWall[id]) return S.dynoWall[id];
+    let seed = 0; for (const ch of id) seed = (seed * 31 + ch.charCodeAt(0)) % 2147483647; seed = seed || 7; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const ids = BUILT.filter(x => !/tahoe|maybach|f_150/.test(x)), L = [];
+    for (let i = 0; i < 7; i++) { const cid = ids[Math.floor(rr() * ids.length)], m = carOf(cid), base = (m.hp || 400) * (0.82 + rr() * 0.55);
+      L.push({ who: DY_REG[Math.floor(rr() * DY_REG.length)], car: cid, whp: Math.round(base * 0.85), nos: rr() < 0.2, me: false }); }
+    L.sort((a, b) => b.whp - a.whp); return (S.dynoWall[id] = L);
+  }
+  function dyWall(p, c, s) {
+    const L = dyWallOf(p), whp = Math.round(s.whp * s.cfS), mine = L.find(x => x.me && x.car === c.id);
+    if (mine) { if (whp > mine.whp) { mine.whp = whp; mine.nos = s.nos; } } else L.push({ who: 'You', car: c.id, whp, nos: s.nos, me: true });
+    L.sort((a, b) => b.whp - a.whp); if (L.length > 10) { const keep = L.filter((x, i) => i < 10 || x.me); L.length = 0; L.push(...keep); }
+  }
+  // ---------- drawing a dyno sheet (the cell's monitor, the results card, the Engine Lab tab) ----------
+  // pulls: [{s, col, dash}] ; live: points of the pull in progress
+  function dyChart(k, W, H, pulls, opt) {
+    opt = opt || {}; const mode = opt.mode || DY.corr, mono = !!opt.mono, pad = { l: 42, r: 40, t: 22, b: 26 }, band = Math.round((H - pad.t - pad.b) * 0.26);
+    k.fillStyle = mono ? '#0b0c10' : '#15111b'; k.fillRect(0, 0, W, H);
+    const all = pulls.filter(q => q.s && q.s.pts && q.s.pts.length); if (opt.live && opt.live.pts.length) all.push({ s: opt.live, col: opt.live.col || '#ffb636', live: true });
+    let n0 = 1e9, n1 = 0, y1 = 100; for (const q of all) { const cf = dyCFof(q.s, mode); for (const p of q.s.pts) { n0 = Math.min(n0, p[0]); n1 = Math.max(n1, p[0]); y1 = Math.max(y1, p[1] * cf, p[2] * cf); } }
+    if (opt.n1) n1 = Math.max(n1, opt.n1); if (opt.n0) n0 = Math.min(n0, opt.n0); if (n0 > n1) { n0 = 2000; n1 = 7000; }
+    n0 = Math.floor(n0 / 500) * 500; n1 = Math.ceil(n1 / 500) * 500; y1 = Math.ceil(y1 * 1.1 / 100) * 100;
+    const top = pad.t, bot = H - pad.b - band - 8, X = n => pad.l + (W - pad.l - pad.r) * (n - n0) / Math.max(1, n1 - n0), Y = v => bot - (bot - top) * v / y1;
+    const fs = Math.max(11, Math.round(W / 52)); k.font = `${fs}px sans-serif`; k.lineWidth = 1; k.strokeStyle = mono ? '#20242c' : '#2b2533'; k.fillStyle = '#8a8394';
+    for (let n = n0; n <= n1; n += 500) { k.beginPath(); k.moveTo(X(n), top); k.lineTo(X(n), H - pad.b); k.stroke(); if (n % 1000 === 0) k.fillText((n / 1000) + 'k', X(n) - fs * 0.6, H - 7); }
+    const sY = y1 > 1200 ? 200 : 100; for (let v = sY; v < y1; v += sY) { k.beginPath(); k.moveTo(pad.l, Y(v)); k.lineTo(W - pad.r, Y(v)); k.stroke(); k.fillText(v, 4, Y(v) + 4); }
+    // the bottom band: air-fuel ratio (left, 10-16) and boost (right)
+    const bt = H - pad.b - band, bb = H - pad.b, aY = afr => bb - band * clamp((afr - 9.5) / 7, 0, 1); let pMax = 5; for (const q of all) for (const p of q.s.pts) pMax = Math.max(pMax, p[4] * 1.15);
+    const bY = v => bb - band * v / pMax; k.strokeStyle = mono ? '#20242c' : '#2b2533'; k.strokeRect(pad.l, bt, W - pad.l - pad.r, band);
+    k.fillStyle = '#6fd3ff'; k.fillText('AFR', 4, bt + fs); k.fillStyle = '#c792ff'; if (pMax > 5.5) k.fillText('psi', W - pad.r + 4, bt + fs);
+    for (const q of all) {
+      const cf = dyCFof(q.s, mode), P = q.s.pts, col = q.col;
+      const line = (f, c2, dash, w2) => { k.strokeStyle = c2; k.setLineDash(dash || []); k.lineWidth = w2 || 2.2; k.beginPath(); P.forEach((p, i) => { const y = f(p); i ? k.lineTo(X(p[0]), y) : k.moveTo(X(p[0]), y); }); k.stroke(); };
+      line(p => Y(p[1] * cf), col, q.dash ? [7, 5] : [], q.live ? 3 : 2.4); line(p => Y(p[2] * cf), col, [3, 4], 1.8);
+      if (!q.dash) { line(p => aY(p[3] * 14.7), '#6fd3ff', [], 1.4); if (pMax > 5.5) line(p => bY(p[4]), '#c792ff', [], 1.4); }
+      k.setLineDash([]); k.fillStyle = '#ff4d4d'; for (const p of P) if (p[5]) k.fillRect(X(p[0]) - 1, bb - 6, 2, 6);
+    }
+    k.setLineDash([]);
+    if (opt.title) { k.fillStyle = mono ? '#e9e2d6' : '#cfc7da'; k.font = `bold ${fs + 1}px sans-serif`; k.fillText(opt.title, pad.l, 15); }
+    k.fillStyle = '#8a8394'; k.font = `${fs - 1}px sans-serif`; const tag = `${DY_CORR[mode]} · whp solid, lb-ft dotted`; k.fillText(tag, W - pad.r - k.measureText(tag).width, 15);
+  }
+  // the cell's monitor: the live sweep, the numbers big when it's done
+  function dyMonitor(force) {
+    if (!DY.mon) return; const now = performance.now(); if (!force && now - DY.monT < 90) return; DY.monT = now;
+    const cv = DY.mon.image, k = cv.getContext('2d'), W = cv.width, H = cv.height, c = S.car;
+    const prev = (c.dyn || [])[DY.sheet ? 1 : 0], live = DY.rec && (DY.ph === 'pull' || DY.ph === 'lift') ? { pts: DY.rec.pts.map(p => [p[0], p[1], p[1] * 5252 / p[0], p[2], p[3], p[4]]), fuel: engFuel(c), cfS: dyCF('sae', DY.amb, DY.Pd), cfT: dyCF('std', DY.amb, DY.Pd) } : null;
+    const list = []; if (prev) list.push({ s: prev, col: '#7d7788', dash: true }); if (DY.sheet) list.push({ s: DY.sheet, col: '#ffb636' });
+    dyChart(k, W, H, list, { live, mono: true, title: DY.sheet ? `${dyPeak(DY.sheet)} whp · ${Math.round(DY.sheet.wtq * dyCFof(DY.sheet))} lb-ft` : `RPM ${Math.round(DY.rpm).toLocaleString()}  ·  ${Math.round(DY.u * 2.237)} mph`, n0: DY.sp ? DY.sp.nS : 2000, n1: DY.sp ? DY.sp.red : 7000 });
+    DY.mon.needsUpdate = true;
+  }
+  // ---------- sound: the drums roar and whine with speed, the fan hums ----------
+  function dySound(on) {
+    const ctx = audioCtx(); if (!ctx) return;
+    if (on && !DY.snd) {
+      const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0); let b = 0; for (let i = 0; i < len; i++) { b = 0.97 * b + 0.03 * (Math.random() * 2 - 1); d[i] = b * 6; }
+      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 120; bp.Q.value = 0.8;
+      const wh = ctx.createOscillator(); wh.type = 'triangle'; wh.frequency.value = 80; const wg = ctx.createGain(); wg.gain.value = 0;
+      const g = ctx.createGain(); g.gain.value = 0; const fan = ctx.createBiquadFilter(); fan.type = 'lowpass'; fan.frequency.value = 380; const fg = ctx.createGain(); fg.gain.value = 0;
+      src.connect(bp).connect(g).connect(ctx.destination); src.connect(fan).connect(fg).connect(ctx.destination); wh.connect(wg).connect(ctx.destination); src.start(); wh.start();
+      DY.snd = { src, bp, g, wh, wg, fg };
+    }
+    if (!on && DY.snd) { const s = DY.snd; DY.snd = null; const t = ctx.currentTime; for (const x of [s.g, s.wg, s.fg]) x.gain.setTargetAtTime(0, t, 0.1); setTimeout(() => { try { s.src.stop(); s.wh.stop(); s.src.disconnect(); s.wh.disconnect(); } catch (e) {} }, 600); }
+  }
+  function dySoundStep() {
+    const s = DY.snd, ctx = audioCtx(); if (!s || !ctx) return; const t = ctx.currentTime, v = DY.u;
+    s.g.gain.setTargetAtTime(Math.min(0.5, v / 50) * 0.6, t, 0.08); s.bp.frequency.setTargetAtTime(90 + v * 9, t, 0.08);
+    s.wh.frequency.setTargetAtTime(40 + v * 14, t, 0.05); s.wg.gain.setTargetAtTime(Math.min(0.05, v / 900), t, 0.08); s.fg.gain.setTargetAtTime(DY.fanA * 0.18, t, 0.3);
+  }
+  // the engine voice: the car's own generator, fed the drums' rpm instead of the street physics
+  const _dyEngSnd = stepEngineSound;
+  stepEngineSound = function (dt, on, v, top, gas, vol, pan) {
+    if (!DY.on || !S.car) return _dyEngSnd.apply(this, arguments);
+    const c = S.car, R = DY.sp && DY.sp.R, alive = !engDead(c) && c.fuel > 0;
+    const rpm = alive ? (DY.ph === 'idle' || DY.ph === 'in' || !DY.rec ? (ENGFREE.on ? ENGFREE.rpm : (R ? R.idle : 800)) : DY.rpm) : 0;
+    if (alive && (DY.ph === 'idle' || DY.ph === 'in') && R) { const F = stepEngFree(dt, R, DY.blip || 0, true); DY.rpm = F.rpm; }
+    stepEngTemp(dt, c, alive, clamp(DY.thr * DY.rpm / Math.max(1, DY.sp ? DY.sp.red : 6000), 0, 1));
+    eaFrame(dt, c, { on: alive, rpm: DY.ph === 'idle' || DY.ph === 'in' ? DY.rpm : rpm, thr: DY.ph === 'idle' || DY.ph === 'in' ? DY.blip || 0 : DY.thr, cut: DY.cut, psi: DY.psi, boost: DY.boost, inCar: false, vol: 1, pan: 0 });
+    EA.rpm = DY.rpm;
+  };
+  // ---------- in and out ----------
+  function dyOpen(p) {
+    const c = S.car, why = dyWhy(c); if (why) { toast(why, 'bad'); return false; }
+    if (DY.on) return true;
+    try { closeMenu(); } catch (e) {} try { elHide(); } catch (e) {} const tu = document.getElementById('tune'); if (tu) tu.hidden = true;
+    DY.p = p || dyHere(); DY.sp = dySpec(c); DY.rec = null; DY.sheet = null; DY.ph = 'in'; DY.t = 0; DY.u = 0; DY.rpm = DY.sp.idle; DY.thr = 0; DY.cut = false; DY.blip = 0; DY.gear = -1; DY.nos = false;
+    const air = dyAir(); DY.amb = air.T; DY.Pd = air.Pd; DY.rh = air.rh; DY.iat = air.T + 2; DY.clt = 90; DY.fan = true; DY.fanA = 0; DY.shot = 'quarter'; DY.autoCam = true; DY.limHit = false;
+    dyBuild(DY.p);
+    DY.slot = putCar(DY.root, c.id, c.color, m => { DY.model = m; m.position.y = 0;
+      try { if (m.userData.paint) m.userData.paint.color.copy(lin(c.color)); applyDrag(m, c); applyMotor(m, c); const b = audioBuild(c); setCarAudio(m, b.subs.id, b.doors.id); } catch (e) { console.warn('dyno look', e); }
+      try { dyPlace(m); } catch (e) { console.warn('dyno place', e); } });
+    DY.on = true; DY.wasKs = document.body.classList.contains('ks-on'); document.body.classList.remove('ks-on'); document.body.classList.add('dy-on');
+    DY.exp = renderer.toneMappingExposure; renderer.toneMappingExposure = 1.0;
+    DY.camPos.set(-4.5, 1.6, -5.5); DY.camLook.set(0, 0.6, 0); DY.last = 0;
+    ENGFREE.on = false; dySound(true); dyUI(); DY.ui.hidden = false;
+    return true;
+  }
+  function dyClose(force) {
+    if (!DY.on) return; if (!force && (DY.ph === 'roll' || DY.ph === 'pull' || DY.ph === 'lift')) { toast('Let it finish the pull.', ''); return; }
+    DY.on = false; DY.ph = ''; dySound(false); if (DY.ui) DY.ui.hidden = true; document.body.classList.remove('dy-on'); if (DY.wasKs && KS.on) document.body.classList.add('ks-on');
+    renderer.toneMappingExposure = DY.exp; dyDispose(); ENGFREE.on = false; save(); refreshStats();
+    if (KS.on) { try { ksRender(); } catch (e) {} }
+  }
+  // ---------- each frame ----------
+  const _dyA = new THREE.Vector3(), _dyB = new THREE.Vector3();
+  function dyStep(dt) {
+    const now = performance.now(); dt = Math.min(0.1, Math.max(0, (now - (DY.last || now)) / 1000)); DY.last = now;
+    if (!S.car) { dyClose(); return; }
+    DY.t += dt;
+    if (DY.ph === 'in' && ((DY.t > 1.2 && DY.model) || DY.t > 8)) { DY.ph = 'idle'; DY.t = 0; dyUI(); }
+    // the physics at 240 Hz (a test can run it faster)
+    if (DY.ph === 'roll' || DY.ph === 'pull' || DY.ph === 'lift') { const h = 1 / 240; const fk = DY.fast === true ? 8 : DY.fast || 1; let n = Math.min(200 * fk, Math.ceil(dt * fk / h)); while (n-- > 0 && (DY.ph === 'roll' || DY.ph === 'pull' || DY.ph === 'lift')) dyPhys(h); }
+    else { DY.thr = 0; DY.psi = 0; }
+    // fans: cool the charge and the coolant back toward the air in the cell
+    DY.fanA += ((DY.fan ? 1 : 0) - DY.fanA) * Math.min(1, dt * 1.5);
+    const busy = DY.ph === 'roll' || DY.ph === 'pull' || DY.ph === 'lift', tau = DY.fan ? 9 : 40; if (!busy) DY.iat += (DY.amb + (DY.fan ? 1 : 3) - DY.iat) * Math.min(1, dt / tau * (DY.fast ? 8 : 1)); if (!busy) DY.clt += (90 - DY.clt) * Math.min(1, dt / (DY.fan ? 14 : 60) * (DY.fast ? 8 : 1));
+    if (DY.fanB) DY.fanB.rotation.z -= dt * 26 * DY.fanA;
+    // the drums and the driven wheels turn with the drum speed
+    const m = DY.model, du = DY.u * dt;
+    for (const d of DY.drums) d.rotation.x -= du / DY_DRUM; if (DY.front && DY.front.visible) DY.front.rotation.x -= du / DY_DRUM;
+    if (m) { const r = m.userData.r || 0.34, sp = DY.sp; for (const w of m.userData.wheels) { const fr = !!w.userData.front; if (sp.awd || (sp.fwd ? fr : !fr)) w.rotation.z -= du / r; }
+      // squat on the throttle and a shake with the revs (the straps hold it)
+      const ld = DY.thr * (DY.ph === 'pull' ? 1 : 0.3), shake = DY.rpm / Math.max(1, DY.sp.red);
+      DY.shake += (ld - DY.shake) * Math.min(1, dt * 4);
+      const jit = (Math.random() - 0.5) * 0.004 * shake * (0.4 + DY.thr);
+      const b0 = m.userData.dyB || (m.userData.dyB = { y: m.position.y, rz: m.rotation.z }); m.position.y = b0.y - 0.012 * DY.shake + jit; m.rotation.z = b0.rz + 0.006 * DY.shake + jit * 0.4;
+      stepPanels(m, dt); try { stepEngineAnim(m, true, DY.thr); } catch (e) {} }
+    if (DY.uiQ && DY.ph !== 'idle') { DY.uiQ = false; dyUI(); }
+    dySoundStep(); dyMonitor(false); dyLive();
+    // the camera: the shot, a slow drift; during a pull it follows the sweep
+    if (DY.autoCam && DY.ph === 'pull' && DY.shot === 'wheel' && DY.rec && DY.rec.t > 2.2) DY.shot = 'quarter';
+    const sh = DY_SHOTS[DY.shot] || DY_SHOTS.quarter, asp = innerWidth / Math.max(1, innerHeight), cam = DY.cam, drift = Math.sin(now / 4000) * 0.25;
+    const k = asp < 0.8 ? 1.35 : 1; _dyA.set(sh[0] * k + drift, sh[1] * (asp < 0.8 ? 1.1 : 1), sh[2] * k); _dyB.set(sh[3], sh[4], sh[5]);
+    if (DY.shot === 'screen') { _dyA.set(sh[0], sh[1], sh[2]); }
+    _dyA.x = clamp(_dyA.x, -DY_W / 2 + 0.4, DY_W / 2 - 0.4); _dyA.z = clamp(_dyA.z, -DY_D / 2 + 0.4, DY_D / 2 - 0.4);
+    if (DY.ph === 'pull') _dyA.y += (Math.random() - 0.5) * 0.006 * DY.shake;
+    const kk = 1 - Math.exp(-dt * 2.6); DY.camPos.lerp(_dyA, kk); DY.camLook.lerp(_dyB, 1 - Math.exp(-dt * 4));
+    cam.aspect = asp; cam.fov = asp < 0.8 ? 62 : 48; cam.position.copy(DY.camPos); cam.lookAt(DY.camLook);
+    // leave room for the panel (right side in landscape, the bottom sheet in portrait)
+    const pn = DY.ui && DY.ui.querySelector('.dy-panel'); if (pn && (DY.f = (DY.f || 0) + 1) % 15 === 1) { const b = pn.getBoundingClientRect(); DY.offX = asp >= 0.8 ? (innerWidth - b.left) / 2 : 0; DY.offY = asp < 0.8 ? (innerHeight - b.top) / 2 : 0; }
+    if (DY.offX || DY.offY) cam.setViewOffset(innerWidth, innerHeight, DY.offX || 0, DY.offY || 0, innerWidth, innerHeight); else cam.clearViewOffset();
+    cam.updateProjectionMatrix(); renderer.shadowMap.needsUpdate = true;
+  }
+  // ---------- the panel ----------
+  function dyCss() {
+    if (document.getElementById('dy-css')) return; const st = document.createElement('style'); st.id = 'dy-css';
+    st.textContent = `body.dy-on > *:not(#stage):not(#dyno):not(#toast):not(#englab):not(#loading):not(script):not(style):not(link) { visibility: hidden !important; }
+#dyno{position:fixed;inset:0;z-index:8;pointer-events:none;font-family:var(--body);color:var(--fg)}#dyno[hidden]{display:none}
+#dyno .dy-top{position:absolute;left:calc(env(safe-area-inset-left,0px) + 12px);top:calc(env(safe-area-inset-top,0px) + 10px);display:flex;gap:8px;align-items:flex-start;pointer-events:auto}
+#dyno .dy-brand b{display:block;font-family:var(--display);font-weight:400;font-size:20px;color:#ffb636;text-shadow:-2px 0 #ff3d7f,2px 0 #36e0ff;line-height:1.05}#dyno .dy-brand span{display:block;font-size:11px;letter-spacing:.3em;color:#e9e2d6;opacity:.85;margin-top:2px}
+#dyno .dy-gauges{position:absolute;left:calc(env(safe-area-inset-left,0px) + 12px);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);display:grid;grid-template-columns:repeat(4,auto);gap:5px;pointer-events:none}
+#dyno .dy-g{background:rgba(12,10,16,.82);border:1px solid #3a3244;border-radius:9px;padding:3px 9px;min-width:64px}#dyno .dy-g span{display:block;font-size:10px;letter-spacing:.08em;color:#a89fb2;text-transform:uppercase}#dyno .dy-g b{font-size:18px;font-variant-numeric:tabular-nums}#dyno .dy-g b.hot{color:#ff7a45}
+#dyno .dy-panel{position:absolute;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 10px);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:min(360px,44vw);display:flex;flex-direction:column;pointer-events:auto;background:linear-gradient(180deg,rgba(20,17,26,.95),rgba(12,10,16,.95));border:1px solid #3a3244;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+#dyno .dy-panel::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#ffb636,#ff3d7f 70%,#36e0ff)}
+#dyno .dy-body{flex:1;overflow-y:auto;padding:8px 10px 10px 14px;-webkit-overflow-scrolling:touch}
+#dyno h3{margin:8px 0 4px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#a89fb2;font-weight:600}
+#dyno button{font:inherit;color:var(--fg);background:#2a2433;border:1px solid #3a3244;border-radius:9px;padding:6px 10px;cursor:pointer;touch-action:manipulation;font-size:14px}#dyno button.on{background:var(--accent);color:#1a1208;border-color:var(--accent)}#dyno button[disabled]{opacity:.4}
+#dyno .dy-go{width:100%;padding:11px;font-size:17px;font-weight:700;background:linear-gradient(90deg,#ffb636,#ff8a3d);color:#1a1208;border:0;margin:4px 0}
+#dyno .row{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:4px 0}#dyno .note{font-size:12px;color:#a89fb2}
+#dyno .dy-big{display:flex;gap:10px;align-items:baseline;margin:6px 0 2px}#dyno .dy-big b{font-family:var(--display);font-weight:400;font-size:34px;color:#ffb636;line-height:1}#dyno .dy-big span{font-size:13px;color:#cfc7da}
+#dyno .dy-d{font-size:13px;margin-bottom:4px}#dyno .dy-d .up{color:#3ddc84}#dyno .dy-d .dn{color:#ff7a45}
+#dyno canvas{width:100%;height:auto;aspect-ratio:16/10;border:1px solid #3a3244;border-radius:10px;display:block;background:#15111b}
+#dyno ul{margin:4px 0;padding-left:16px;font-size:13px;line-height:1.35}#dyno li{margin:2px 0}
+#dyno .dy-wall{font-size:13px;border-collapse:collapse;width:100%}#dyno .dy-wall td{padding:3px 4px;border-bottom:1px solid rgba(255,255,255,.06)}#dyno .dy-wall tr.me td{color:#ffb636;font-weight:700}#dyno .dy-wall td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+@media (max-aspect-ratio:4/5){#dyno .dy-panel{left:calc(env(safe-area-inset-left,0px) + 8px);right:calc(env(safe-area-inset-right,0px) + 8px);top:auto;width:auto;height:52vh}#dyno .dy-gauges{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 62px);grid-template-columns:repeat(4,auto)}#dyno .dy-g b{font-size:15px}}`;
+    document.head.appendChild(st);
+  }
+  function dyUIel() {
+    if (DY.ui) return DY.ui; dyCss();
+    const el = DY.ui = document.createElement('div'); el.id = 'dyno'; el.hidden = true;
+    el.innerHTML = `<div class="dy-top"><div class="dy-brand"><b></b><span>DYNO CELL</span></div></div><div class="dy-gauges"></div><div class="dy-panel"><div class="dy-body"></div></div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b || b.disabled) return; const d = b.dataset;
+      if (d.go != null) dyStartPull(); else if (d.leave != null) dyClose(); else if (d.gear != null) { DY.gear = +d.gear; DY.sp = dySpec(S.car); dyUI(); }
+      else if (d.corr) { DY.corr = d.corr; dyUI(); dyMonitor(true); } else if (d.fan != null) { DY.fan = !DY.fan; dyUI(); } else if (d.nos != null) { DY.nos = !DY.nos; dyUI(); }
+      else if (d.cam) { DY.shot = d.cam; DY.autoCam = false; dyUI(); } else if (d.auto != null) { DY.autoCam = true; dyUI(); }
+      else if (d.lab != null) { elOpen('dyno'); } else if (d.again != null) { DY.sheet = null; dyUI(); }
+    });
+    const blip = on => { if (DY.ph === 'idle') DY.blip = on ? 1 : 0; };
+    el.addEventListener('pointerdown', e => { if (e.target.closest('[data-blip]')) { e.preventDefault(); blip(true); } });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) el.addEventListener(ev, e => { if (e.target.closest && e.target.closest('[data-blip]')) blip(false); });
+    return el;
+  }
+  function dyUI() {
+    const el = dyUIel(), c = S.car; if (!c || !DY.sp) return; const sp = DY.sp, busy = DY.ph === 'roll' || DY.ph === 'pull' || DY.ph === 'lift';
+    el.querySelector('.dy-brand b').textContent = DY.p ? (DY.p.name || '').replace(/ \(.*\)$/, '') : 'Dyno';
+    const g = DY.gear >= 0 ? DY.gear : sp.g1, s = DY.sheet;
+    let h = '';
+    if (s) {
+      const prev = (c.dyn || [])[1], best = DY.prevBest, pk = dyPeak(s), dl = prev ? pk - dyPeak(prev) : 0, db = best ? pk - dyPeak(best) : 0;
+      h += `<h3>Pull #${(c.dyn || []).length} · ${esc(motorName(c))}</h3><div class="dy-big"><b>${pk}</b><span>whp @ ${s.nP.toLocaleString()}</span><b style="font-size:26px;color:#e9e2d6">${Math.round(s.wtq * dyCFof(s))}</b><span>lb-ft @ ${s.nT.toLocaleString()}</span></div>`;
+      h += `<div class="dy-d">${prev ? `<span class="${dl >= 0 ? 'up' : 'dn'}">${dl >= 0 ? '+' : ''}${dl} whp</span> vs your last pull` : 'First pull on this car'}${best && best !== s ? ` · ${db > 0 ? '<span class="up">New best!</span>' : `best ${dyPeak(best)}`}` : ''}</div>`;
+      h += `<canvas id="dycv" width="640" height="400"></canvas><div class="row">${Object.keys(DY_CORR).map(k => `<button data-corr="${k}" class="${DY.corr === k ? 'on' : ''}">${DY_CORR[k]}</button>`).join('')}</div>`;
+      h += `<div class="note">Cell ${Math.round(s.amb)}°C, ${s.Pd} kPa dry · SAE ×${s.cfS.toFixed(3)}, STD ×${s.cfT.toFixed(3)} · ${ord(s.g)} gear · rated ${s.crank} hp at the crank</div><ul>${s.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`;
+      h += `<button class="dy-go" data-go ${busy ? 'disabled' : ''}>Make another pull · ${money(DY_PRICE)}</button><div class="row"><button data-again>Pull settings</button><button data-lab>All dyno sheets</button><button data-leave>Leave</button></div>`;
+    } else {
+      h += `<h3>${esc(carLabel(carOf(c.id)))}</h3><div class="note">${esc(motorName(c))} · rated ${carHp(c)} hp at the crank · ${sp.drv === 'A' || sp.awd ? 'all-wheel drive (both drums)' : sp.fwd ? 'front-wheel drive' : 'rear-wheel drive'} · ${sp.man ? 'manual' : sp.tc ? 'automatic' : 'dual-clutch'}</div>`;
+      h += busy ? `<div class="dy-big"><b>${DY.ph === 'roll' ? 'Rolling…' : DY.ph === 'pull' ? 'PULL' : 'Off it'}</b><span>${DY.ph === 'pull' ? 'wide open' : DY.ph === 'roll' ? 'into ' + ord(g + 1) + ' gear' : 'drum brake'}</span></div>` : `<button class="dy-go" data-go ${DY.ph !== 'idle' ? 'disabled' : ''}>Make a pull · ${money(DY_PRICE)}</button>`;
+      h += `<h3>Gear</h3><div class="row">${sp.ratios.map((r, i) => i < 1 ? '' : `<button data-gear="${i}" class="${g === i ? 'on' : ''}" ${busy ? 'disabled' : ''}>${ord(i + 1)}${i === sp.g1 ? ' (shop)' : ''}</button>`).join('')}</div><div class="note">Shops pull in a gear that tops out near 145 mph (marked shop). Lower gears read lower.</div>`;
+      h += `<h3>Correction</h3><div class="row">${Object.keys(DY_CORR).map(k => `<button data-corr="${k}" class="${DY.corr === k ? 'on' : ''}">${DY_CORR[k]}</button>`).join('')}</div><div class="note">The cell: ${Math.round(DY.amb)}°C (${Math.round(DY.amb * 9 / 5 + 32)}°F), ${DY.rh}% humidity, ${DY.Pd.toFixed(1)} kPa dry air. SAE is the honest number, STD reads about 4% higher, uncorrected is what the air gave you today.</div>`;
+      h += `<h3>Cell</h3><div class="row"><button data-fan class="${DY.fan ? 'on' : ''}">Fans ${DY.fan ? 'on' : 'off'}</button>${sp.X ? `<button data-nos class="${DY.nos ? 'on' : ''}" ${busy ? 'disabled' : ''}>Spray the nitrous: ${DY.nos ? 'yes' : 'no'}</button>` : ''}<button data-blip ${DY.ph === 'idle' ? '' : 'disabled'}>Hold to rev</button></div>`;
+      if (sp.X) h += `<div class="note">Bottle: ${nxLb(c).toFixed(1)} lb. A dyno pull with the spray uses some.</div>`;
+      const L = (c.dyn || []).slice(0, 3); if (L.length) h += `<h3>Last pulls</h3><div class="note">${L.map(x => `${dyPeak(x)} whp · ${ord(x.g)} · ${esc(x.shop)}${x.nos ? ' · spray' : ''}`).join('<br>')}</div><div class="row"><button data-lab>All dyno sheets</button></div>`;
+      h += `<h3>The wall</h3><table class="dy-wall">${dyWallOf(DY.p).slice(0, 8).map((x, i) => `<tr class="${x.me ? 'me' : ''}"><td>${i + 1}</td><td>${esc(x.who)}</td><td>${esc(carLabel(carOf(x.car)))}${x.nos ? ' (spray)' : ''}</td><td>${x.whp} whp</td></tr>`).join('')}</table>`;
+      h += `<div class="row" style="margin-top:8px"><button data-leave ${busy ? 'disabled' : ''}>Leave</button></div>`;
+    }
+    h += `<h3>Camera</h3><div class="row">${DY_CAMS.map(k => `<button data-cam="${k}" class="${DY.shot === k && !DY.autoCam ? 'on' : ''}">${DY_CAM_NAME[k]}</button>`).join('')}<button data-auto class="${DY.autoCam ? 'on' : ''}">Auto</button></div>`;
+    const body = el.querySelector('.dy-body'), keep = body.scrollTop; body.innerHTML = h; body.scrollTop = keep;
+    const cv = body.querySelector('#dycv'); if (cv && s) { const prev = (c.dyn || [])[1]; dyChart(cv.getContext('2d'), cv.width, cv.height, [prev ? { s: prev, col: '#7d7788', dash: true } : null, { s, col: '#ffb636' }].filter(Boolean), {}); }
+    dyLive(true);
+  }
+  function dyLive(force) {
+    const el = DY.ui; if (!el || !DY.on) return; const now = performance.now(); if (!force && now - (DY.liveT || 0) < 120) return; DY.liveT = now;
+    const g = (k, v, hot) => `<div class="dy-g"><span>${k}</span><b class="${hot ? 'hot' : ''}">${v}</b></div>`;
+    const r = DY.rec, last = r && r.pts.length ? r.pts[r.pts.length - 1] : null, cf = dyCF(DY.corr, DY.amb, DY.Pd), st = 14.7;
+    el.querySelector('.dy-gauges').innerHTML = g('RPM', Math.round(DY.rpm).toLocaleString(), DY.cut) + g('MPH', Math.round(DY.u * 2.237)) + g('WHP', last && DY.ph !== 'idle' ? Math.round(last[1] * cf) : '–') + g(DY.sp && DY.sp.R && DY.sp.R.boostKind ? 'Boost' : 'AFR', DY.sp && DY.sp.R && DY.sp.R.boostKind ? DY.psi.toFixed(1) + ' psi' : (r && DY.ph === 'pull' ? (r.lam * st).toFixed(1) : '–'))
+      + g('Intake', Math.round(DY.iat) + '°C', DY.iat > DY.amb + 6) + g('Coolant', Math.round(DY.clt) + '°C', DY.clt > 100) + g('Cell air', Math.round(DY.amb) + '°C') + g('Fans', DY.fan ? 'ON' : 'off');
+  }
+  // ---------- the Engine Lab's Dyno sheets tab ----------
+  const DYS = { open: false, sel: null, mode: null };
+  function dySheetsOpen() { const c = S.car; if (!c) return; labCss(); const el = elRoot(); DYS.open = true; el.hidden = false; dySheetsRender(); }
+  function dySheetsRender() {
+    const el = $('englab'), c = S.car; if (!el || !c || !DYS.open) return; const L = c.dyn || [], best = dyBest(c), mode = DYS.mode || DY.corr;
+    if (!DYS.sel || DYS.selOf !== c) { DYS.sel = new Set(L.slice(0, 1).map(s => s.id)); if (best) DYS.sel.add(best.id); DYS.selOf = c; }
+    const here = dyHere(), why = dyWhy(c);
+    let h = elHd('dyno', 'Dyno sheets');
+    h += `<div class="note">Every pull on a chassis dyno is saved here with its curve. Tap pulls to lay them over each other. Pulls happen in the dyno cell at any performance shop (walk in and use the Dyno, or the Dyno row in the drive-in bay).</div>`;
+    h += `<div class="row"><button data-dygo class="on" ${here && !why ? '' : 'disabled'}>Strap it on the dyno here${here ? '' : ' (at a performance shop)'}</button>${why && here ? `<span class="note">${esc(why)}</span>` : ''}</div>`;
+    if (!L.length) { h += `<div class="note" style="margin-top:10px">No pulls on this car yet.</div>`; }
+    else {
+      const cols = ['#ffb636', '#5aa0ff', '#3ddc84', '#ff4fb8', '#c792ff'], pick = L.filter(s => DYS.sel.has(s.id)).slice(0, 5);
+      h += `<div class="row">${Object.keys(DY_CORR).map(k => `<button data-dyc="${k}" class="${mode === k ? 'on' : ''}">${DY_CORR[k]}</button>`).join('')}</div><canvas id="dyscv" width="720" height="420" style="height:auto;aspect-ratio:12/7"></canvas>`;
+      h += `<div class="g" style="margin-top:6px">${best ? `<div class="s"><span>Best</span><b>${dyPeak(best, mode)} whp</b></div><div class="s"><span>Best torque</span><b>${Math.round(best.wtq * dyCFof(best, mode))} lb-ft</b></div>` : ''}<div class="s"><span>Pulls saved</span><b>${L.length}</b></div><div class="s"><span>Rated at the crank</span><b>${carHp(c)} hp</b></div></div>`;
+      h += `<h3>Pulls</h3>`;
+      L.forEach((s, i) => { const on = DYS.sel.has(s.id), ci = pick.indexOf(s), d = new Date(s.at);
+        h += `<div class="pcr ${on ? 'sel' : ''}" data-dys="${s.id}"><div class="pct"><b>${ci >= 0 ? `<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${cols[ci]};margin-right:6px"></i>` : ''}${dyPeak(s, mode)} whp · ${Math.round(s.wtq * dyCFof(s, mode))} lb-ft${s === best ? ' · best' : ''}</b><span>Day ${s.day}</span></div>
+<div class="note">${esc(s.shop)} · ${ord(s.g)} gear · ${esc(s.motor)}${s.psi > 0.5 ? ' · ' + s.psi + ' psi' : ''}${s.nos ? ' · on the spray' : ''} · cell ${Math.round(s.amb)}°C${s.iat > s.amb + 6 ? ', heat soaked' : ''} · ${d.toLocaleDateString()}</div>${on ? `<ul style="margin:4px 0;padding-left:16px;font-size:12px">${s.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul><div class="row"><button data-dydel="${s.id}">Delete</button></div>` : ''}</div>`; });
+      el.innerHTML = h; const cv = el.querySelector('#dyscv'); if (cv) dyChart(cv.getContext('2d'), cv.width, cv.height, pick.map((s, i) => ({ s, col: cols[i] })), { mode });
+    }
+    if (!L.length) el.innerHTML = h;
+    el.querySelector('[data-x]').onclick = () => { DYS.open = false; el.hidden = true; EL.sess = false; }; elAfter();
+    const go = el.querySelector('[data-dygo]'); if (go) go.onclick = () => { DYS.open = false; el.hidden = true; EL.sess = false; dyOpen(dyHere()); };
+    el.querySelectorAll('[data-dyc]').forEach(b => b.onclick = () => { DYS.mode = b.dataset.dyc; dySheetsRender(); });
+    el.querySelectorAll('[data-dys]').forEach(b => b.onclick = e => { if (e.target.closest('button')) return; const id = b.dataset.dys; if (DYS.sel.has(id)) DYS.sel.delete(id); else DYS.sel.add(id); dySheetsRender(); });
+    el.querySelectorAll('[data-dydel]').forEach(b => b.onclick = () => { const id = b.dataset.dydel; if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Tap again to delete'; return; } c.dyn = (c.dyn || []).filter(s => s.id !== id); DYS.sel.delete(id); save(); dySheetsRender(); });
+  }
+  // ---------- the ways in ----------
+  // the walk-in shop's Dyno station
+  MENUS.dyno = function (p) {
+    if (!S.car) return noCar(p); const c = S.car, why = dyWhy(c), L = c.dyn || [], b = dyBest(c);
+    return { title: 'Dyno', sub: 'Strap it down and pull', rows: [
+      { t: 'Strap it on the dyno', s: why || `${money(DY_PRICE)} a pull · ${L.length ? 'best ' + dyPeak(b, 'sae') + ' whp (SAE)' : 'no pulls on this car yet'}`, btn: 'Go', act: () => { closeMenu(); dyOpen(p); } },
+      { t: 'Dyno sheets', s: L.length ? `${L.length} saved pull${L.length > 1 ? 's' : ''}` : 'Your pulls end up here', btn: 'Open', act: () => { closeMenu(); elOpen('dyno'); } }] };
+  };
+  // the drive-in bay at a performance shop gets a Dyno row
+  const _dyKsHome = ksHome;
+  ksHome = function () {
+    const r = _dyKsHome.apply(this, arguments);
+    try { if (KS.p && KS.p.type === 'perf' && S.car) { const b = dyBest(S.car); r.rows.splice(1, 0, { ic: '📈', t: 'Dyno cell', s: b ? `Best ${dyPeak(b, 'sae')} whp · ${money(DY_PRICE)} a pull` : `Strap it down and pull · ${money(DY_PRICE)}`, act: () => dyOpen(KS.p), cam: 'wheel' }); } } catch (e) { console.warn('dyno bay row', e); }
+    return r;
+  };
+  window.__dy = { DY, DYS, dyOpen, dyClose, dyStartPull, dySpec, dyCF, dyAir, dyHere, dyWallOf, dyBest, dySheetsOpen, dyChart, DY_SHOTS };
+  // ==== dyno cell (end) ====
+  // ==== ECU map slots (begin) ====
+  // Real tuners flash more than one map and switch between them on the fly. The ECU tab gets three slots (Street, Strip,
+  // Race): the slot that's on is the live map, every edit on the ECU tab saves into it, and switching loads another slot's
+  // spark, fuel, limiter, launch, boost-by-gear, pedal, nitrous window and the turbo's base boost. Valet locks it down
+  // (3,500 rpm limiter, soft pedal, less timing, low boost, no spray) until you switch back. The Car menu has a quick switch.
+  const EM_NAMES = ['Street', 'Strip', 'Race'];
+  const emOn = c => !!c && hasPart(c, 'ecu') && !!engDefOf(c) && !isEV(c);
+  function emOf(c) {
+    if (!c.ecuM) c.ecuM = { on: 0, valet: false, s: [null, null, null] };
+    const M = c.ecuM; if (!M.s[0]) M.s[0] = emSnap(c); return M;
+  }
+  function emSnap(c) { const f = c.eb && c.eb.fi; return { e: JSON.parse(JSON.stringify(ecuFull(c))), fiT: f && f.target != null ? f.target : null }; }
+  function emLoad(c, snap) {
+    c.eb = Object.assign({}, c.eb || {}, { ecu: JSON.parse(JSON.stringify(snap.e)) });
+    if (snap.fiT != null && c.eb.fi) c.eb.fi = Object.assign({}, c.eb.fi, { target: snap.fiT });
+    VEH_CACHE.clear(); if (typeof ECL !== 'undefined') ECL.run = null; save(); refreshStats();
+  }
+  // keep the live slot in step with what's on the car (every ECU edit lands here)
+  function emSync(c) { if (!emOn(c)) return; const M = emOf(c); if (!M.valet) M.s[M.on] = emSnap(c); }
+  function emSwitch(c, i) {
+    const M = emOf(c); if (!M.valet) M.s[M.on] = emSnap(c);
+    if (i === 'v') { const e = ecuFull(c), R = engOf(c); M.keep = M.on; M.valet = true;
+      const v = Object.assign({}, e, { rev: Math.min(3500, e.rev || (R ? R.red : 6500)), ped: 'eco', lc: 0, lcRet: 0, tm: e.tm.map(t => Math.min(t, 0) - 3), bst: e.bst.map(() => 4), nos: Object.assign({}, e.nos, { en: 0 }) });
+      emLoad(c, { e: v, fiT: c.eb && c.eb.fi && c.eb.fi.target != null ? Math.min(c.eb.fi.target, 5) : null }); M.vFi = M.s[M.on] ? M.s[M.on].fiT : null;
+      toast('Valet map: 3,500 rpm limit, soft pedal, low boost, no spray.', ''); return; }
+    M.valet = false; if (!M.s[i]) M.s[i] = emSnap(c); M.on = i; emLoad(c, M.s[i]);
+    toast(`${EM_NAMES[i]} map on: ${carHp(c)} hp.`, 'good');
+  }
+  const emName = c => { const M = emOf(c); return M.valet ? 'Valet' : EM_NAMES[M.on]; };
+  // the ECU tab: the slots above its own tabs
+  const _emEcuRender = ecuRender;
+  ecuRender = function () {
+    const c = S.car; try { if (emOn(c)) emSync(c); } catch (e) { console.warn('ecu maps', e); }
+    const r = _emEcuRender.apply(this, arguments);
+    try {
+      const el = $('englab'); if (!emOn(c) || !el) return r; const M = emOf(c), tabs = el.querySelector('[data-tab]'); if (!tabs) return r;
+      const row = tabs.parentElement, box = document.createElement('div');
+      box.innerHTML = `<h3>Maps</h3><div class="row">${EM_NAMES.map((n, i) => `<button data-em="${i}" class="${!M.valet && M.on === i ? 'on' : ''}">${n}${M.s[i] ? '' : ' (empty)'}</button>`).join('')}<button data-em="v" class="${M.valet ? 'on' : ''}">Valet</button></div>
+<div class="note">${M.valet ? 'Valet is on: 3,500 rpm limit, soft pedal, less timing, low boost, no spray. Switch to a map to get it back.' : `The ${EM_NAMES[M.on]} map is live: every change here saves into it. An empty slot starts as a copy of this one. Switch maps here or from the Car menu, any time.`}</div>`;
+      row.parentElement.insertBefore(box, row);
+      box.querySelectorAll('[data-em]').forEach(b => b.onclick = () => { const v = b.dataset.em; emSwitch(c, v === 'v' ? 'v' : +v); ecuRender(); });
+    } catch (e) { console.warn('ecu maps', e); }
+    return r;
+  };
+  // the Car menu: one button cycles the maps you've filled, then Valet
+  const _emCarPanel = renderCarPanel;
+  renderCarPanel = function () {
+    const r = _emCarPanel.apply(this, arguments);
+    try {
+      const c = S.car, el = $('carpanel'); if (!emOn(c) || !el) return r; const M = emOf(c), filled = M.s.map((x, i) => x ? i : -1).filter(i => i >= 0);
+      if (filled.length < 2 && !M.valet) return r;
+      const lab = el.querySelector('[data-lab]'), b = document.createElement('button'); b.className = 'btn go'; b.dataset.emq = '1'; b.textContent = `ECU map: ${emName(c)}`;
+      if (lab) lab.parentElement.insertBefore(b, lab); else el.appendChild(b);
+      b.onclick = () => { const order = filled.concat(['v']), cur = M.valet ? 'v' : M.on, nx = order[(order.indexOf(cur) + 1) % order.length]; emSwitch(c, nx); renderCarPanel(); };
+    } catch (e) { console.warn('ecu maps', e); }
+    return r;
+  };
+  window.__em = { emOf, emSwitch, emSync, emName, EM_NAMES };
+  // ==== ECU map slots (end) ====
   // ==== motorcycles (_moto.js): real two-wheel physics for every bike, the 2025 Suzuki Hayabusa hero build (moving
   // chassis, rider on the bars and pegs, S.I.R.S. electronics, TFT), and the Moto Shop. Bikes used to ride on the car
   // simulation with the body leaned for looks; now a bike is its own vehicle: two tires, a lean you countersteer into,
@@ -35413,6 +36014,7 @@ body.lay-edit #dst { pointer-events: none; }
     const walking = inside || foot.on, bc = document.body.classList; if (walking !== bc.contains('walking')) { bc.toggle('walking', walking); resize(); }
     const incar = driving && !foot.on && !inside; if (incar !== bc.contains('incar')) bc.toggle('incar', incar); if (inside !== bc.contains('indoors')) bc.toggle('indoors', inside);
     cockpitFrame(dt);
+    if (DY.on) { dyStep(dt); if (DY.on && DY.scene) { renderer.render(DY.scene, DY.cam); return; } }
     if (KS.on) { ksStep(dt); if (KS.on && KS.scene) { renderer.render(KS.scene, KS.cam); return; } }
     if (STRIP.on) { stepStrip(dt); renderer.render(STRIP.scene, STRIP.cam); return; }
     if (creating) { crStep(dt); renderer.render(CR.scene, CR.cam); return; }
