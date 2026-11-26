@@ -10690,11 +10690,38 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
       a2w: { name: 'Air-to-water + heat exchanger', price: 2400, ic: 'a2w' }, ice: { name: 'Air-to-water, ice tank', price: 3100, ic: 'ice' } } },
     wgate: { label: 'Wastegates / blow-off', opts: { stock: { name: 'Internal wastegate', price: 0 }, ext44: { name: '44 mm external wastegates', price: 650, gate: 'ext44' }, ext60: { name: '60 mm external wastegates', price: 900, gate: 'ext60' } } },
     meth: { label: 'Water-methanol injection', opts: { stock: { name: 'None', price: 0 }, kit: { name: 'Water-methanol kit', price: 750, oct: 1.6 } } },
+    // bulletproofing (2026-11-26): the parts that keep a built motor alive. They make no power; they raise what the motor
+    // and transmission take before they wear (see bpStr), or catch trouble before it hurts anything (the failsafes)
+    block: { label: 'Block', opts: { stock: { name: 'Factory block', price: 0 },
+      fill: { name: 'Half-fill block (hard block)', price: 280, bpG: 1.15, coolK: 0.94 },
+      girdle: { name: 'Main girdle + billet main caps', price: 1150, bpB: 1.22 },
+      sleeve: { name: 'Ductile-iron sleeves + closed deck', price: 4800, bpP: 1.15, bpG: 1.35, bpB: 1.05 },
+      billet: { name: 'Billet aluminum block', price: 16500, bpP: 1.3, bpG: 1.6, bpB: 1.45, fitB: b => b.crank && b.crank !== 'stock', why2: 'A billet block is built around a forged or billet crank: put one in first' } } },
+    valves: { label: 'Valves', opts: { stock: { name: 'Factory valves', price: 0 },
+      sodium: { name: 'Sodium-filled exhaust valves', price: 700, vLean: 0.5 },
+      inconel: { name: 'Inconel exhaust valves', price: 1100, vLean: 0.3, flt: 150 },
+      ti: { name: 'Titanium intakes + Inconel exhausts', price: 2300, vLean: 0.3, flt: 500, fitB: b => b.springs && b.springs !== 'stock', why2: 'Light valves still need upgraded valve springs to control them' } } },
+    coat: { label: 'Coatings & bearings', opts: { stock: { name: 'Factory finish', price: 0 },
+      crown: { name: 'Thermal-barrier piston crowns + skirt coat', price: 550, cHeat: 0.55, cLean: 0.6, cDet: 0.85 },
+      brg: { name: 'Coated race bearings', price: 380, cOil: 0.55, bpB: 1.08 },
+      full: { name: 'Full coating package (crowns, skirts, bearings)', price: 850, cHeat: 0.55, cLean: 0.6, cDet: 0.85, cOil: 0.55, bpB: 1.08 } } },
+    safe: { label: 'Engine safety', opts: { stock: { name: 'Factory warning lights', price: 0 },
+      wb: { name: 'Wideband failsafe (pulls boost and timing when lean)', price: 450, sLean: 0.25, sDet: 0.6 },
+      oilp: { name: 'Oil pressure + coolant temp safety (limp mode)', price: 380, sOil: 0.35, sHeat: 0.4 },
+      full: { name: 'Full protection suite: wideband, EGT, oil, coolant, overboost cut', price: 1400, sLean: 0.2, sDet: 0.5, sOil: 0.3, sHeat: 0.35, sBoost: 0.6 } } },
+    tprot: { label: 'Turbo / blower protection', opts: { stock: { name: 'Factory', price: 0 },
+      oilf: { name: 'Turbo oil feed, restrictor + turbo timer', price: 320, tOil: 0.3, tAls: 0.6 },
+      bb: { name: 'Ball-bearing cartridges + billet compressor wheels', price: 2600, tBoost: 0.45, tAls: 0.7 },
+      rotor: { name: 'Billet rotor pack + blower bearing kit', price: 1800, tBoost: 0.5 } } },
+    tbuild: { label: 'Transmission build', opts: { stock: { name: 'Factory transmission', price: 0 },
+      s2: { name: 'Built, stage 2: clutch packs / hardened gears', price: 2400, sTr: 1.35, tHeat: 0.75 },
+      s3: { name: 'Stage 3: billet input + output shafts', price: 4200, sTr: 1.8, tHeat: 0.6 },
+      s4: { name: 'Full race build: billet everything', price: 7800, sTr: 2.6, tHeat: 0.45 } } },
   };
-  const ENG_CATS = ['cam', 'rockers', 'lifters', 'springs', 'timing', 'intake', 'tb', 'heads', 'gasket', 'studs', 'hdr', 'cats', 'exh', 'inj', 'pump', 'fpr', 'fuelk', 'ign', 'plugs', 'tuner', 'pistons', 'rods', 'crank', 'bal', 'fly', 'power', 'icool', 'wgate', 'meth', 'cool', 'oil', 'tcool', 'conv', 'clutch'];
+  const ENG_CATS = ['cam', 'rockers', 'lifters', 'springs', 'timing', 'intake', 'tb', 'heads', 'gasket', 'studs', 'hdr', 'cats', 'exh', 'inj', 'pump', 'fpr', 'fuelk', 'ign', 'plugs', 'tuner', 'pistons', 'rods', 'crank', 'bal', 'fly', 'power', 'icool', 'wgate', 'meth', 'cool', 'oil', 'tcool', 'conv', 'clutch', 'block', 'valves', 'coat', 'safe', 'tprot', 'tbuild'];
   // the Engine Lab groups them like a build sheet
   const ENG_GROUPS = [['Valvetrain', ['cam', 'rockers', 'lifters', 'springs', 'timing']], ['Heads & intake', ['heads', 'gasket', 'studs', 'intake', 'tb']], ['Exhaust', ['hdr', 'cats', 'exh']],
-    ['Fuel & tune', ['inj', 'pump', 'fpr', 'fuelk', 'tuner', 'ign', 'plugs']], ['Bottom end', ['pistons', 'rods', 'crank', 'bal', 'fly']], ['Boost', ['power', 'icool', 'wgate', 'meth']], ['Cooling & drivetrain', ['cool', 'oil', 'tcool', 'conv', 'clutch']]];
+    ['Fuel & tune', ['inj', 'pump', 'fpr', 'fuelk', 'tuner', 'ign', 'plugs']], ['Bottom end', ['pistons', 'rods', 'crank', 'bal', 'fly']], ['Boost', ['power', 'icool', 'wgate', 'meth']], ['Cooling & drivetrain', ['cool', 'oil', 'tcool', 'conv', 'clutch']], ['Bulletproofing', ['block', 'valves', 'coat', 'safe', 'tprot', 'tbuild']]];
   // the build on this car (saved with it): part id per category, a custom cam, the valved exhaust state
   // PartsHub parts (stages from the 2D game) and the old one-tap mods become real parts here, so they change the physics
   // instead of multiplying horsepower. Anything set in the Engine Lab (c.eb) wins.
@@ -10952,6 +10979,29 @@ c11|Sauber-Mercedes 5.0 twin turbo V8 (Group C)|v8f|96.5x85|8.5|tt15|720@7000|60
     const AB = [['Hellwig', 0.9], ['Eibach', 1.0], ['Whiteline', 0.95], ['BMR', 0.8], ['Hotchkis', 1.0], ['Addco', 0.75], ['ST Suspensions', 0.85], ['Steeda', 0.85], ['Cusco', 1.1], ['Progress', 0.8]];
     for (const [br, pk] of AB) for (const [w, f, r, p0] of [['front', 1, 0, 260], ['rear', 0, 1, 230], ['front + rear', 1, 1, 450]]) for (const [nm, x] of [['soft', 1.2], ['medium', 1.45], ['stiff', 1.8]])
       pcAdd('arb', 'x', br, `${br} ${w} sway bar${f && r ? 's' : ''}, ${nm} setting`, p0 * pk * (1 + (x - 1.2) * 0.3), { arbF: f ? x : 1, arbR: r ? x : 1 });
+  })();
+  // bulletproofing brands (2026-11-26): each brand's take on the part, priced and rated a little differently
+  (function bpCatalog() {
+    const B = (cat, base, rows) => { const o0 = ENG_PARTS[cat].opts[base]; for (const [br, tn, pk, q] of rows) { const o = {}; for (const f in o0) if (typeof o0[f] === 'number' && f !== 'price') o[f] = /^(bp|sTr|flt)/.test(f) ? (f === 'flt' ? Math.round(o0[f] * q) : 1 + (o0[f] - 1) * q) : o0[f] < 1 ? 1 - (1 - o0[f]) * q : o0[f]; pcAdd(cat, base, br, `${br} ${tn}`, o0.price * pk, o, cat); } };
+    B('block', 'fill', [['Hard Blok', 'half-fill block compound', 0.9, 1], ['Moroso', 'block fill + install', 1.2, 1.05]]);
+    B('block', 'girdle', [['Pro-Gram', 'main girdle + billet caps', 1, 1], ['Moroso', 'main girdle', 0.8, 0.85], ['Bullet Racing', 'billet main cap set + girdle', 1.35, 1.2]]);
+    B('block', 'sleeve', [['Darton', 'MID ductile sleeves, closed deck', 1.1, 1.1], ['LA Sleeve', 'ductile-iron sleeves, closed deck', 0.95, 1], ['Golden Eagle', 'ductile sleeves + deck plate', 0.9, 0.95]]);
+    B('block', 'billet', [['Bullet Racing', 'billet aluminum block', 1, 1], ['Dart', 'billet race block', 1.12, 1.08], ['Brodix', 'billet block, dry-sump ready', 1.2, 1.12]]);
+    B('valves', 'sodium', [['Manley', 'sodium-filled exhaust valves', 1, 1], ['Supertech', 'sodium-filled exhaust valves', 0.9, 0.95]]);
+    B('valves', 'inconel', [['Ferrea', 'Inconel exhaust valves', 1.1, 1.08], ['Supertech', 'Inconel exhaust valves', 0.9, 1], ['Manley', 'Inconel exhaust valves', 1, 1]]);
+    B('valves', 'ti', [['Del West', 'titanium intakes + Inconel exhausts', 1.15, 1.12], ['Ferrea', 'titanium valve set', 1, 1], ['Xceldyne', 'titanium valve set', 1.05, 1.06]]);
+    B('coat', 'crown', [['Swain Tech', 'thermal-barrier crowns + skirts', 1.1, 1.1], ['Line2Line', 'piston crown + skirt coat', 1, 1], ['Calico', 'piston coating', 0.95, 0.95]]);
+    B('coat', 'brg', [['King Racing', 'XP pMaxBlack bearings', 1, 1.1], ['Clevite', 'H-series coated bearings', 0.85, 1], ['ACL', 'Race Series coated bearings', 0.95, 1.05]]);
+    B('coat', 'full', [['Calico', 'full coating package', 1, 1], ['Swain Tech', 'full engine coating package', 1.15, 1.1]]);
+    B('safe', 'wb', [['AEM', 'wideband failsafe gauge', 1, 1], ['Innovate', 'wideband + boost safe', 0.85, 0.9], ['Holley', 'EFI wideband safety', 1.1, 1.05]]);
+    B('safe', 'oilp', [['AEM', 'oil pressure + temp safety', 1, 1], ['Holley', 'oil + coolant safety module', 1.1, 1.05]]);
+    B('safe', 'full', [['Haltech', 'engine protection suite', 1.15, 1.1], ['MoTeC', 'engine protection + datalogging', 1.6, 1.15], ['AEM', 'full engine protection kit', 1, 1]]);
+    B('tprot', 'oilf', [['Turbosmart', 'oil feed + restrictor + timer', 1, 1], ['Garrett', 'oil feed kit + timer', 1.1, 1.05]]);
+    B('tprot', 'bb', [['Garrett', 'GTX ball-bearing cartridges, billet wheels', 1.1, 1.08], ['Precision', 'ball-bearing CEA cartridges', 1, 1.05], ['BorgWarner', 'EFR ball-bearing cartridges', 1.05, 1.06]]);
+    B('tprot', 'rotor', [['Whipple', 'billet rotor pack + bearings', 1.05, 1.05], ['Kenne Bell', 'billet rotor + bearing kit', 1, 1], ['Magnuson', 'rotor pack rebuild, billet', 0.9, 0.95]]);
+    B('tbuild', 's2', [['Circle D', 'built transmission, stage 2', 1, 1], ['Performance Automatic', 'stage 2 build', 0.9, 0.95], ['Liberty', 'stage 2 gear set + build', 1.05, 1.02]]);
+    B('tbuild', 's3', [['Rossler', 'stage 3, billet shafts', 1.1, 1.06], ['RPM Transmissions', 'stage 3, billet input/output', 1, 1], ['Dodson', 'stage 3 shafts + clutch packs', 1.05, 1.04]]);
+    B('tbuild', 's4', [['Rossler', 'full race transmission', 1.1, 1.08], ['RPM Transmissions', 'Level 5 race build', 1, 1], ['Andrews', 'billet race gearbox', 1.25, 1.12]]);
   })();
   // what the car's suspension parts add up to (all 1 / 0 on a factory car)
   function susOf(c) {
@@ -30808,6 +30858,138 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
   };
   window.__em = { emOf, emSwitch, emSync, emName, EM_NAMES };
   // ==== ECU map slots (end) ====
+  // ==== bulletproof (begin) ====
+  // Bulletproofing a motor (2026-11-26): the Engine Lab's Bulletproofing parts (block, valves, coatings, engine safety,
+  // turbo / blower protection, transmission build) feed the same wear model as everything else. bpStr works out what
+  // each part of the motor and the transmission is built to take (as torque against the factory number, the valve-float
+  // rpm, and how much slower lean, knock, heat, oil and boost stress wear things). bpCalc puts that next to what the motor
+  // actually makes, part by part, with a score, the weakest link and the parts that fix it. The Health tab and the Build
+  // tab (for the draft) show it.
+  const BP = { fsT: 0 };
+  function bpStr(R, c) {
+    // (the factory torque is the engine sheet's, already in N·m: the first wear model converted it again, which left every
+    // limit 36% looser than meant)
+    if (!R) return null; const b = R.b || {}, pk = k => partOpt(b, k), n = (v, d) => v == null ? d : v;
+    const blk = pk('block'), vl = pk('valves'), co = pk('coat'), sf = pk('safe'), tp = pk('tprot'), tb = pk('tbuild');
+    const forged = !!R.X.forged, crank = b.crank && b.crank !== 'stock', bqD = (b.bq && b.bq.dur) || 1, hub = c ? partLv(c, 'transmission') : 0;
+    const o = { tq0: R.D.tq, float: R.red + n(vl.flt, 0),
+      sPist: (forged ? 1.9 : 1.4) * bqD * n(blk.bpP, 1),
+      sGask: 1.6 * bqD * n(pk('gasket').gask, 1) * n(pk('studs').gask, 1) * n(blk.bpG, 1),
+      sBrg: ((crank ? 2.3 : 1.7) + (R.X.rodK || 0)) * bqD * n(pk('studs').brg, 1) * n(pk('bal').brg, 1) * n(blk.bpB, 1) * n(co.bpB, 1),
+      sTr: 1.6 * Math.max(n(tb.sTr, 1), hub >= 3 ? 1.3 : hub >= 2 ? 1.15 : 1), coolK: n(blk.coolK, 1), res: {}, safe: b.safe && b.safe !== 'stock' ? b.safe : '' };
+    // how much slower each kind of stress wears each part ('*' is any part)
+    const r = o.res, m = (k, f) => { if (f != null && f !== 1) r[k] = (r[k] || 1) * f; };
+    m('valv.lean', vl.vLean); m('pist.heat', co.cHeat); m('gask.heat', co.cHeat != null ? 0.8 : null); m('pist.lean', co.cLean); m('pist.det', co.cDet); m('brg.oil', co.cOil);
+    m('*.lean', sf.sLean); m('*.det', sf.sDet); m('brg.oil', sf.sOil); m('fi.oil', sf.sOil != null ? Math.sqrt(sf.sOil) : null); m('*.heat', sf.sHeat); m('fi.boost', sf.sBoost); m('gask.boost', sf.sBoost);
+    m('fi.oil', tp.tOil); m('fi.als', tp.tAls); m('fi.boost', tp.tBoost); m('trans.conv', tb.tHeat); m('clutch.conv', tb.tHeat);
+    return o;
+  }
+  // the wear model reads the new limits
+  const _bpCtx = dmgCtx;
+  dmgCtx = function (c, P) {
+    const fresh = !(DMG.ctx && DMG.ctxF === frame && DMG.ctx.c === c), X = _bpCtx.apply(this, arguments);
+    if (fresh && X) { const s = X.R ? bpStr(X.R, c) : null; if (s) { X.tq0 = s.tq0; X.sPist = s.sPist; X.sGask = s.sGask; X.sBrg = s.sBrg; X.sTr = s.sTr; X.float = s.float; X.coolK *= s.coolK; X.res = s.res; X.safe = s.safe; } else { X.res = null; X.safe = ''; } }
+    return X;
+  };
+  const BP_SAFE_WHY = { lean: 'running lean', det: 'knock', heat: 'overheating', oil: 'oil pressure / oil temp', boost: 'overboost' };
+  const _bpHit = wrHit;
+  wrHit = function (c, k, amt, why) {
+    const X = DMG.ctx;
+    if (amt > 0 && X && X.c === c && X.res) {
+      const f = (X.res[k + '.' + why] || 1) * (X.res['*.' + why] || 1); amt *= f;
+      // the failsafe caught it: say so now and then
+      if (X.safe && BP_SAFE_WHY[why] && f < 1 && c === S.car && performance.now() - BP.fsT > 12000) { BP.fsT = performance.now(); c.fsN = (c.fsN || 0) + 1; toast(`Failsafe: ${BP_SAFE_WHY[why]}. It pulled timing and boost to save the motor.`, 'bad'); }
+    }
+    return _bpHit.call(this, c, k, amt, why);
+  };
+  // the turbo / blower protection parts need the right kind of boost
+  const _bpFits = engFits;
+  engFits = function (D, b, cat, id) {
+    const r = _bpFits.apply(this, arguments); if (r || cat !== 'tprot' || id === 'stock') return r;
+    const pkO = (pcOf(b, 'power') || {}).o || ENG_PARTS.power.opts[b.power] || {}, kind = pkO.kit ? pkO.kit.kind : D && D.power ? D.power.kind : '';
+    if (!kind) return 'Needs a turbo or supercharger first';
+    if ((id === 'oilf' || id === 'bb') && kind !== 'turbo') return 'Turbo engines only';
+    if (id === 'rotor' && kind === 'turbo') return 'Supercharged engines only';
+    return '';
+  };
+  // how the tune and wear scale the engine model's torque on the road (the same factor the physics uses), and the rev limiter
+  function bpTq(c) {
+    try { const P = carPerf(), V = P.veh, E = V && V.E; if (!E) return null; const ks = Math.max(0, P.pw || 0) * (P.kg || V.kg) / 634 * 745.7 / E.pkW;
+      return { ks: clamp(ks || 1, 0.3, 3), red: V.red };
+    } catch (e) { return null; }
+  }
+  // the fixes, cheapest first, for each kind of limit
+  const BP_FIX = { pist: [['pistons', 'forged0'], ['pistons', 'boost'], ['block', 'sleeve'], ['block', 'billet']], gask: [['gasket', 'mls'], ['studs', 'head'], ['block', 'fill'], ['block', 'sleeve']],
+    brg: [['rods', 'forged'], ['crank', 'forged'], ['studs', 'kit'], ['block', 'girdle'], ['coat', 'brg'], ['block', 'billet']], tr: [['tbuild', 's2'], ['tbuild', 's3'], ['tbuild', 's4']],
+    valv: [['springs', 'up'], ['valves', 'ti']], safe: [['safe', 'full'], ['safe', 'wb']], cool: [['cool', 'up'], ['oil', 'up'], ['coat', 'full']], fi: [['tprot', 'oilf'], ['tprot', 'bb'], ['tprot', 'rotor']] };
+  // c = the car (for the tune and the transmission), R = the engine model (the car's or the draft's)
+  function bpCalc(c, R, tqK) {
+    const s = bpStr(R, c); if (!s) return null; const D = R.D, b = R.b || {}, base = bpTq(c);
+    const tq = R.tq * (tqK || 1), lim = base ? base.red : R.red;
+    const sp = nxConf(c) ? nxSpec(c) : null, spray = sp && sp.rated ? sp.rated * 745.7 / (Math.max(3500, R.nT || 4000) * Math.PI / 30) : 0, load = tq + spray;
+    const row = (k, name, cap, fix) => { const mg = cap / load - 1; return { k, name, cap, load, mg, sc: clamp(mg / 0.5, 0, 1), fix }; };
+    const rows = [row('pist', 'Pistons, rings and cylinder walls', s.tq0 * s.sPist, 'pist'), row('gask', 'Head gaskets and head clamp', s.tq0 * s.sGask, 'gask'),
+      row('brg', 'Rods, crank and bearings', s.tq0 * s.sBrg, 'brg'), row('tr', 'Transmission', s.tq0 * s.sTr, 'tr')];
+    // valve float: the springs and valves against the rev limiter
+    const fm = s.float / lim - 1; rows.push({ k: 'valv', name: 'Valvetrain (float)', rpm: true, cap: s.float, load: lim, mg: fm, sc: fm >= 0 ? 1 : clamp(1 + fm / 0.05, 0, 1), fix: 'valv' });
+    // the things that kill a motor that's strong enough: lean, knock, heat, oil, the boost hardware
+    const pv = k => b[k] && b[k] !== 'stock', boosted = !!R.fiH;
+    const prot = [['Failsafe', pv('safe') ? (b.safe === 'full' ? 1 : 0.6) : 0, pv('safe') ? partOpt(b, 'safe').name : 'None: lean or knock goes unchecked', 'safe'],
+      ['Cooling', Math.min(1, (pv('cool') ? 0.6 : 0) + (pv('oil') ? 0.4 : 0) + (pv('coat') ? 0.2 : 0)), [pv('cool') ? 'radiator' : '', pv('oil') ? 'oiling' : '', pv('coat') ? 'coatings' : ''].filter(Boolean).join(', ') || 'Factory radiator and oiling', 'cool']];
+    if (boosted) prot.push(['Boost hardware', pv('tprot') ? 1 : R.fiH.bov === false && R.fiH.kind === 'turbo' ? 0 : 0.35, pv('tprot') ? partOpt(b, 'tprot').name : 'Factory' + (R.fiH.kind === 'turbo' && R.fiH.bov === false ? ', no blow-off valve' : ''), 'fi']);
+    // the score: the torque limits count double
+    let w = 0, t = 0; for (const r of rows) { const k = r.k === 'valv' ? 1 : 2; w += k; t += r.sc * k; } for (const p of prot) { w += 1; t += p[1]; }
+    const score = Math.round(t / w * 100), weak = rows.filter(r => r.mg < (r.rpm ? 0 : 0.25)).sort((a, b) => a.mg - b.mg)[0] || null;
+    const weakP = !weak ? prot.filter(p => p[1] < 0.6).sort((a, b) => a[1] - b[1])[0] : null;
+    // the next parts that help the weakest link (that fit and aren't on it yet)
+    const fixes = []; const fk = weak ? weak.fix : weakP ? weakP[3] : null;
+    if (fk) for (const [cat, id] of BP_FIX[fk]) { if (fixes.length >= 2) break; if (cat === 'pistons' && (R.X.forged || pv('pistons') || (id === 'boost') !== boosted)) continue;
+      if (b[cat] === id || (cat === 'tbuild' && pv('tbuild') && 's2s3s4'.indexOf(b.tbuild) >= 's2s3s4'.indexOf(id)) || (cat === 'safe' && pv('safe') && id === 'wb')) continue;
+      if (engFits(D, b, cat, id)) continue; const o = ENG_PARTS[cat].opts[id]; fixes.push({ cat, id, name: o.name, price: o.price }); }
+    return { s, rows, prot, score, weak, weakP, fixes, tq, spray, label: score >= 90 ? 'Bulletproof' : score >= 72 ? 'Stout' : score >= 50 ? 'Street safe' : score >= 30 ? 'On the edge' : 'Grenade' };
+  }
+  const bpTone = sc => sc >= 0.75 ? '#3ddc84' : sc >= 0.4 ? '#f5c542' : sc > 0 ? '#ff7a45' : '#ff4040';
+  function bpHtml(B, draft) {
+    const lb = n => Math.round(n / 1.3558).toLocaleString();
+    let h = `<h3>Bulletproof${draft ? ' (this draft)' : ''}</h3><div class="dmp bpsc"><div class="dmt"><b>${B.label}</b><span style="color:${bpTone(B.score / 100)}">${B.score} / 100</span></div><div class="dmb"><i style="width:${B.score}%;background:${bpTone(B.score / 100)}"></i></div>`
+      + `<small>${draft ? 'The draft' : 'It'} makes ${lb(B.tq)} lb-ft at the crank${B.spray ? ` (${lb(B.tq + B.spray)} on the spray)` : ''}. Every part below is built to take a certain amount; past it, it wears on every pull.</small></div><div class="dmparts">`;
+    for (const r of B.rows) { const pct = r.rpm ? r.mg * 100 : r.mg * 100, txt = r.rpm ? `floats at ${Math.round(r.cap).toLocaleString()} · limiter ${Math.round(r.load).toLocaleString()}` : `good to ${lb(r.cap)} lb-ft · ${r.mg >= 0 ? Math.round(pct) + '% to spare' : Math.round(-pct) + '% over'}`;
+      h += `<div class="dmp"><div class="dmt"><b>${esc(r.name)}</b><span style="color:${bpTone(r.sc)}">${r.mg >= 0.25 || (r.rpm && r.mg >= 0) ? 'Safe' : r.mg >= 0 ? 'Close' : 'Overloaded'}</span></div><div class="dmb"><i style="width:${Math.max(3, Math.min(100, r.rpm ? 100 * r.load / r.cap : 100 * r.load / r.cap))}%;background:${bpTone(r.sc)}"></i></div><small>${txt}</small></div>`; }
+    for (const p of B.prot) h += `<div class="dmp"><div class="dmt"><b>${esc(p[0])}</b><span style="color:${bpTone(p[1])}">${p[1] >= 1 ? 'Protected' : p[1] >= 0.6 ? 'Good' : p[1] > 0 ? 'Basic' : 'None'}</span></div><small>${esc(p[2])}</small></div>`;
+    h += `</div>`;
+    const wk = B.weak ? B.weak.name : B.weakP ? B.weakP[0] : '';
+    if (wk) h += `<div class="note" style="margin-top:6px">Weakest link: <b>${esc(wk)}</b>${B.fixes.length ? '. Fix it with:' : '.'}</div>` + (B.fixes.length ? `<div class="row">${B.fixes.map(f => `<button data-bpfix="${f.cat}:${f.id}">${esc(f.name)} · ${money(f.price)}</button><button data-pcat="${f.cat}">Brands ›</button>`).join('')}</div>` : '');
+    else h += `<div class="note" style="margin-top:6px">Nothing is close to its limit. Keep the oil fresh and the tune safe.</div>`;
+    return h;
+  }
+  // put a fix on the draft and show it on the Build tab
+  function bpFix(cat, id) {
+    if (!LAB.open) elGo('build'); if (!LAB.draft) return;
+    LAB.draft[cat] = id; if (LAB.draft.sku) delete LAB.draft.sku[cat];
+    toast(`${ENG_PARTS[cat].opts[id].name}: on the draft. Install it from the bar up top.`, 'good'); labRender();
+  }
+  function bpBind(el) {
+    el.querySelectorAll('[data-bpfix]').forEach(x => x.onclick = () => { const [cat, id] = x.dataset.bpfix.split(':'); bpFix(cat, id); });
+    el.querySelectorAll('.bpbox [data-pcat]').forEach(x => x.onclick = e => { e.stopPropagation(); pcOpen(x.dataset.pcat); });
+  }
+  // Health tab: what the motor on the car is built for
+  const _bpDmgRender = dmgRender;
+  dmgRender = function () {
+    const r = _bpDmgRender.apply(this, arguments), el = $('englab'), c = S.car;
+    try { if (el && c && !isEV(c) && !c.swap && engDefOf(c)) { const B = bpCalc(c, engOf(c)), h3 = [...el.querySelectorAll('h3')].find(x => x.textContent === 'Parts');
+      if (B && h3) { const box = document.createElement('div'); box.className = 'bpbox'; box.innerHTML = bpHtml(B, false); h3.parentNode.insertBefore(box, h3); bpBind(box); } } } catch (e) { console.warn('bulletproof', e); }
+    return r;
+  };
+  // Build tab: the same for the draft, so you see a part's effect before you pay for it
+  const _bpLabRender = labRender;
+  labRender = function () {
+    const r = _bpLabRender.apply(this, arguments), el = $('englab'), c = S.car;
+    try { if (el && c && LAB.draft) { const keep = el.scrollTop, Rd = engOf(labCar(LAB.draft)), B = bpCalc(c, Rd), h3 = [...el.querySelectorAll('h3')].find(x => x.textContent === 'Parts');
+      if (B && h3) { const box = document.createElement('div'); box.className = 'bpbox'; box.innerHTML = bpHtml(B, true); h3.parentNode.insertBefore(box, h3); bpBind(box); el.scrollTop = keep; } } } catch (e) { console.warn('bulletproof', e); }
+    return r;
+  };
+  window.__bp = { BP, bpStr, bpCalc, bpTq, bpFix, BP_FIX, ctx: c => dmgCtx(c, carPerf()), hit: (c, k, a, w) => wrHit(c, k, a, w), fits: (D, b, k, id) => engFits(D, b, k, id), DMG };
+  // ==== bulletproof (end) ====
   // ==== motorcycles (_moto.js): real two-wheel physics for every bike, the 2025 Suzuki Hayabusa hero build (moving
   // chassis, rider on the bars and pegs, S.I.R.S. electronics, TFT), and the Moto Shop. Bikes used to ride on the car
   // simulation with the body leaned for looks; now a bike is its own vehicle: two tires, a lean you countersteer into,
