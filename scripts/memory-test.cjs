@@ -61,8 +61,8 @@ const S = process.env.S, STEPS = (process.env.STEPS || 'boot,cars,yb,hr,leave').
     await snap('after a tour of ' + pts.length + ' towns (' + pts.map(p => p[2]).slice(0, 4).join(', ') + '…)');
   }
   if (STEPS.includes('yb')) { await drive(7056.5, 1162, 0); await wait(1500); await ev(() => { const Y = window.__yb; if (Y && !Y.race.run) Y.test.startFill(); }); await wait(8000); await snap('Yello Belly racing'); }
-  if (STEPS.includes('hr')) { await ev(() => { const E = window.__yb && window.__yb.ev; if (E) E.EV.cur = null; }); await drive(5600, 1363, -Math.PI / 2); await ev(() => { const M = window.__map, H = window.__yb.roll; Object.assign(H, { mode: 'roll60', act: 'auto', dist: 804.67 }); H.start(M.places().find(q => q.id === 'i20roll'), M.STREET3D[3]); }); await wait(8000); await snap('I-20 roll race'); }
-  if (STEPS.includes('leave')) { await ev(() => { try { window.__yb.roll.stop && window.__yb.roll.stop(); } catch (e) {} }); await drive(1516, -560, 0); await wait(+(process.env.LEAVE || 5000)); await snap('back in Stop Six'); }
+  if (STEPS.includes('hr')) { await ev(() => { const E = window.__yb && window.__yb.ev; if (E) E.EV.cur = null; }); await drive(5600, 1363, -Math.PI / 2); await ev(() => { const M = window.__map, RR = window.__yb.rr; RR.startSpot(M.places().find(q => q.id === 'i20roll'), { r: M.STREET3D[3], v0: 60 / 2.237, dist: 804.67 }); }); await wait(8000); await snap('I-20 roll race'); }
+  if (STEPS.includes('leave')) { await ev(() => { try { window.__yb.rr.close('left'); } catch (e) {} }); await drive(1516, -560, 0); await wait(+(process.env.LEAVE || 5000)); await snap('back in Stop Six'); }
   console.log('errors: ' + errs.length); for (const e of errs.slice(0, 12)) console.log('  ' + e);
   await b.close();
 })();
