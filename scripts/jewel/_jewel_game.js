@@ -105,8 +105,14 @@
       for (const [nm, s] of [['EarringL', -1], ['EarringR', 1]]) { const e = g.getObjectByName(nm); if (e) { e.position.set(s * (B.HX + 0.0062), -0.026, -0.006); e.rotation.set(0, s * Math.PI / 2, 0); } }
     } };
     if (k === 'grillz') {
-      if (B.hideLower) return null; const m = B.surf(0, -0.051);
-      return { par: B.head, C: { biteGap: -0.0072 }, sig: '', put: g => { g.scale.set(1.1, 0.62, 1.15); g.position.set(0, -0.0508 + 0.0034, m[2] + 0.0011); } };   // front teeth just proud of the lip line, so the grill shows between closed lips
+      if (B.hideLower) return null;
+      const Mo = B.head.userData.mouth;
+      if (Mo) {   // on the character's own teeth: same arch, scaled to this mouth; caps end just past the tooth tips
+        const sy = 0.8, y = Mo.tipUp - 0.0004 + 0.0106 * sy, gap = ((Mo.tipLo + 0.0004) - y) / sy - 0.0082;
+        return { par: B.head, C: { biteGap: gap, lowInset: 0.0014 / Mo.km }, sig: gap.toFixed(4) + Mo.km, put: g => { g.scale.set(Mo.km, sy, Mo.km); g.position.set(0, y, Mo.front); g.traverse(o => { if (o.isMesh) o.receiveShadow = false; }); } };
+      }
+      const m = B.surf(0, -0.051);
+      return { par: B.head, C: { biteGap: -0.0072 }, sig: '', put: g => { g.scale.set(1.1, 0.62, 1.15); g.position.set(0, -0.0508 + 0.0034, m[2] + 0.0011); } };
     }
     return null;
   }

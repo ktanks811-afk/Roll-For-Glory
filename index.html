@@ -2342,8 +2342,9 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
         for (let k = 0; k < 7; k++) { const m = (lo + hi) / 2; if (at((i + di * m) / nu, (j + dj * m) / nv).o > 0) hi = m; else lo = m; }
         if (hi < best) { best = hi; bu = (i + di * hi) / nu; bv = (j + dj * hi) / nv; }
       }
-      if (best <= 1) { const e = at(bu, bv); out[j * W + i] = [e.p[0] - e.d[0] * 0.0003, e.p[1] - e.d[1] * 0.0003, e.p[2] - e.d[2] * 0.0003]; }
+      if (best <= 1) { const e = at(bu, bv); out[j * W + i] = [e.p[0] - e.d[0] * 0.0003, e.p[1] - e.d[1] * 0.0003, e.p[2] - e.d[2] * 0.0003]; S[j * W + i].snap = 1; }
     }
+    if (MOUTH_CUT) for (let k = 0; k < S.length; k++) if (S[k].o <= 0 && !S[k].snap) mouthCut(out[k]); /*MOUTH5*/
     return gridGeo(nu, nv, (u, v) => out[Math.round(v * nv) * W + Math.round(u * nu)], (u, v) => [u, 1 - (v0 + (v1 - v0) * v)]);
   }
   // point on the face at (x, y), front side
@@ -3167,6 +3168,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   }, false);
   skinMat.bumpMap = poreTex; skinMat.bumpScale = 0.0005; poreTex.repeat.set(3, 3);
   const headMat = new THREE.MeshStandardMaterial({ map: headTex, bumpMap: poreTex, bumpScale: 0.0005, roughnessMap: roughTex, roughness: 0.6, metalness: 0, envMapIntensity: 0.5 });
+  { const fp = poreTex.clone(); fp.needsUpdate = true; fp.wrapS = fp.wrapT = THREE.RepeatWrapping; fp.repeat.set(9, 7); headMat.bumpMap = fp; headMat.bumpScale = 0.00028; } /*FACEPORE*/
   const neckMat = new THREE.MeshStandardMaterial({ map: neckTex, roughness: 0.56, metalness: 0, envMapIntensity: 0.45 });
   neckTex.repeat.set(1, 4.6); neckTex.wrapS = neckTex.wrapT = THREE.RepeatWrapping;
   const lipMat = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0 });
@@ -3329,6 +3331,74 @@ uniform mat3 normalMatrix;
   // ---------------------------------------------------------------------
   // Face pieces.
   // ---------------------------------------------------------------------
+  // ==== mouth (begin) ====
+  // ---------------------------------------------------------------------
+  // A real mouth (2026-11-27): the lips part a little, with teeth, a dark
+  // mouth behind them, and lips that roll inward at the edge. Grillz (the
+  // jeweler's, or the old gold/platinum grill extras) sit on these teeth.
+  // The head mesh is too coarse for a lip line, so the lips are their own
+  // finer patch laid over the head (same skin texture), and the head under
+  // them is pushed back out of the way.
+  // ---------------------------------------------------------------------
+  // a rounded box (superellipsoid, n = 4): a tooth
+  function toothGeo(w, h, d, seg) {
+    const g = new THREE.BoxGeometry(1, 1, 1, seg, seg, Math.max(2, seg >> 1)), P = g.attributes.position;
+    for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), r = Math.pow(x ** 4 + y ** 4 + z ** 4, 0.25) || 1, k = 0.5 / r; P.setXYZ(i, x * k * w * 2, y * k * h * 2, z * k * d * 2); }
+    g.computeVertexNormals(); return g;
+  }
+  const MOUTH = { G: 0.0016, WM: 0.0198, XW: 0.031, YT: -0.031, YB: -0.075, km: 0.7 };
+  const mouthSeam = x => -0.0508 + 0.0012 * smooth(0.006, 0.022, Math.abs(x));
+  const mouthGap = x => MOUTH.G * Math.pow(Math.max(0, 1 - (x / MOUTH.WM) ** 2), 0.8);
+  // surf(), also giving the head direction the point came from (for the skin texture's uv)
+  function surfD(x, y) {
+    let dx = x / HX, dy = y / HY;
+    for (let k = 0; k < 10; k++) { const dz = Math.sqrt(Math.max(0.0001, 1 - dx * dx - dy * dy)), p = headPoint(dx, dy, dz); dx += (x - p[0]) / HX; dy += (y - p[1]) / HY; }
+    const dz = Math.sqrt(Math.max(0.0001, 1 - dx * dx - dy * dy)), L = Math.hypot(dx, dy, dz);
+    return { p: headPoint(dx, dy, dz), d: [dx / L, dy / L, dz / L] };
+  }
+  const headUV = d => [(Math.atan2(d[0], d[2]) + Math.PI) / (2 * Math.PI), 1 - Math.acos(clamp(d[1], -1, 1)) / Math.PI];
+  // push the head's own surface (and the hidden parts of beard/hair shells) back behind the lips; the lip patch
+  // covers where it starts. shellGeo calls this for its hidden, un-snapped vertices while MOUTH_CUT is on.
+  let MOUTH_CUT = false;
+  function mouthCut(o) {
+    const x = o[0], y = o[1], z = o[2]; if (z < 0.04) return;
+    const q = (x / 0.024) ** 2 + ((y + 0.051) / 0.014) ** 2; if (q >= 1) return;
+    o[2] = z - 0.026 * smooth(1, 0.55, q);
+  }
+  function buildMouth(look, g, lod) {
+    const nu = lod ? 26 : 52, nv = lod ? 7 : 14, M = MOUTH, zs = surf(0, mouthSeam(0))[2];
+    // wearing grillz (or the old grill extras) the lips part a little more, so they show
+    const showing = look.extras.includes('grill') || look.extras.includes('plat_grill') || (Array.isArray(look.jw) && look.jw.some(j => j && j.k === 'more' && j.o && j.o.kind === 'grillz'));
+    M.G = showing ? 0.0023 : 0.0016;
+    // a lip: rows from its outer edge (y0) to the seam; the seam row opens by the gap and rolls inward
+    const lip = top => gridGeo(nu, nv, (u, v) => {
+      const x = lerp(-M.XW, M.XW, u), ym = mouthSeam(x), y0 = top ? lerp(M.YT, ym, v) : lerp(ym, M.YB, v);
+      const S = surfD(x, y0), d = Math.abs(ym - y0), w = Math.exp(-((d / 0.0062) ** 2)), inM = smooth(M.WM, M.WM * 0.7, Math.abs(x));
+      const y = y0 + (top ? 1 : -1) * mouthGap(x) * w, curl = 0.0027 * Math.exp(-((d / 0.0017) ** 2)) * inM;
+      return [x, y, S.p[2] + 0.00025 - curl];
+    }, (u, v) => { const x = lerp(-M.XW, M.XW, u), ym = mouthSeam(x); return headUV(surfD(x, top ? lerp(M.YT, ym, v) : lerp(ym, M.YB, v)).d); });
+    g.add(mesh(lip(true), headMat, false)); g.add(mesh(lip(false), headMat, false));
+    // the inside of the mouth: a dark pocket seen from within
+    const inner = new THREE.MeshStandardMaterial({ color: col(mixHex(shadeHex(look.skin, -0.78), '#2a0c10', 0.55)), roughness: 0.9, side: THREE.BackSide });
+    { const im = mesh(ellipsoid([0, mouthSeam(0) - 0.001, zs - 0.0095], [0.021, 0.011, 0.0095], lod ? 10 : 16), inner, false); im.receiveShadow = false; g.add(im); }
+    // teeth on the same arch the jeweler's grillz are cut to, scaled to this mouth
+    const km = M.km, Ra = 0.027 * km, front = zs - 0.0042, tipUp = mouthSeam(0) - 0.0004, tipLo = mouthSeam(0) - 0.001;
+    const UP = [6.8, 7.6, 6.6, 8.6, 8.6, 6.6, 7.6, 6.8], LO = [7, 6.8, 5.8, 5.2, 5.2, 5.8, 6.8, 7], seg = lod ? 3 : 5, tg = [];
+    for (const [W, top] of [[UP, true], [LO, false]]) {
+      const ws = W.map(v => v / 1000 * km), inset = top ? 0 : 0.0014; let s = -ws.reduce((a, b) => a + b, 0) / 2;
+      ws.forEach((w, i) => {
+        const sc = s + w / 2; s += w; const th = sc / Ra, n = [Math.sin(th), 0, Math.cos(th)], h = top ? 0.009 : 0.008, back = 0.0009 + inset + 0.0026;
+        const tip = (top ? tipUp : tipLo) + 0.0002 * Math.abs(i - 3.5) / 3.5 * (top ? 1 : -1);
+        const c = [Ra * Math.sin(th) - n[0] * back, top ? tip + h / 2 : tip - h / 2, front - Ra * (1 - Math.cos(th)) - n[2] * back];
+        const t = toothGeo(w * 0.47, h / 2, 0.0026, seg); t.rotateY(th); t.translate(...c); tg.push(t);
+      });
+    }
+    const grill = look.extras.includes('grill') ? gold : look.extras.includes('plat_grill') ? plat : teethMat;
+    // inside the head's own shadow, so they don't take shadows (the lips still frame them)
+    const tm = mesh(mergeGeos(tg.map(prep)), grill, false); tm.receiveShadow = false; g.add(tm);
+    g.userData.mouth = { seam: mouthSeam(0), zs, front, km, tipUp, tipLo, ra: Ra };
+  }
+  // ==== mouth (end) ====
   function buildFace(look, g, hideLower, hideAll, lids) {
     const skin = look.skin;
     const gloss = look.extras.includes('lipgloss');
@@ -3351,7 +3421,7 @@ uniform mat3 normalMatrix;
     }
     if (hideAll) return;
     // a gold grill shows between the lips
-    if (!hideLower && (look.extras.includes('grill') || look.extras.includes('plat_grill'))) {
+    if (!g.userData.mouth && !hideLower && (look.extras.includes('grill') || look.extras.includes('plat_grill'))) { /*MOUTH2*/
       const m = surf(0, -0.051), teeth = new THREE.CylinderGeometry(0.034, 0.034, 0.0042, 32, 1, true, -0.5, 1.0);
       teeth.translate(0, -0.0508, m[2] - 0.034 + 0.0016);
       g.add(mesh(teeth, look.extras.includes('grill') ? gold : plat, false));
@@ -3676,17 +3746,18 @@ uniform mat3 normalMatrix;
     const mask = CLOTH[look.mask], hat = CLOTH[look.hat];
     const skimask = mask?.style === 'skimask', bandana = mask?.style === 'bandana';
     const hatOn = hat && hat.style !== 'none', durag = !hatOn && look.extras.includes('durag');
+    MOUTH_CUT = !(skimask || bandana); /*MOUTH3*/
     const hair = buildHair(look, skimask ? 'all' : (hatOn || durag) ? 'top' : null);
     head.add(hair.group);
     const fh = FACIAL[look.facialHair];
     paintHead(look, skimask ? null : hair.fade, fh && fh.paint && !skimask && !bandana ? (d, p) => fh.paint(p) : null);
     paintNeck(look);
     headMat.roughness = (hair.shine ? 0.46 : 0.6) - 0.12 * sheen;
-    head.add(mesh(shellGeo(() => 0), headMat));
+    head.add(mesh(shellGeo(() => 0), headMat)); if (MOUTH_CUT) buildMouth(look, head, HN < 100); /*MOUTH*/
     buildFace(look, head, skimask || bandana, skimask, lids);
     if (!skimask && !bandana) buildFacialHair(look, head);
     buildHeadwear(look, head, hair.group.children.length > 0 && !skimask);
-    buildEyewear(look, head);
+    buildEyewear(look, head); MOUTH_CUT = false; /*MOUTH4*/
 
     // --- chains sit on the chest
     const neckR = topRings(W, inflate, hem).slice(-2)[0];
@@ -3959,7 +4030,7 @@ uniform mat3 normalMatrix;
     const L = myLook(), key = JSON.stringify(L); if (ME && key === meKey) return;
     meKey = key; const parent = ME && ME.wrap.parent;
     if (ME) { if (parent) parent.remove(ME.wrap); PEOPLE.dispose(ME); }
-    ME = PEOPLE.build(L, phone ? 1 : 0); ME.wrap = new THREE.Group(); ME.root.rotation.y = Math.PI; ME.wrap.add(ME.root);
+    ME = PEOPLE.build(L, 0); /*MEHD*/ ME.wrap = new THREE.Group(); ME.root.rotation.y = Math.PI; ME.wrap.add(ME.root);
     const to = parent || (inside ? IN.avatar : foot.on ? foot.holder : IN.avatar); if (to) to.add(ME.wrap);
   }
   function wearMe(holder) { dressAvatar(); if (ME.wrap.parent !== holder) holder.add(ME.wrap); }
@@ -40750,7 +40821,7 @@ body.pm #pm-root { display: block; }
           const top = set === 'top', a0 = six ? 1 : 0, a1 = six ? 7 : 8, Ws = (top ? UP : LO).slice(a0, a1).map(v => v / 1000), Hs = (top ? UH : LH).slice(a0, a1).map(v => v / 1000);
           let s = -Ws.reduce((a, b) => a + b, 0) / 2; const yG = top ? 0 : (C.biteGap != null ? C.biteGap : -0.0235), list = [], pts = [];
           Ws.forEach((w, i) => {
-            const sc = s + w / 2; s += w; const th = sc / Ra, n = V(Math.sin(th), 0, Math.cos(th)), tt = V(Math.cos(th), 0, -Math.sin(th)), p = V(Ra * Math.sin(th), 0, -Ra * (1 - Math.cos(th)));
+            const sc = s + w / 2; s += w; const th = sc / Ra, n = V(Math.sin(th), 0, Math.cos(th)), tt = V(Math.cos(th), 0, -Math.sin(th)), p = V(Ra * Math.sin(th), 0, -Ra * (1 - Math.cos(th))).addScaledVector(n, top ? 0 : -(C.lowInset || 0));
             const canine = six ? (i === 0 || i === 5) : (i === 1 || i === 6), fang = S.fangs && canine, h = Hs[i] * (fang ? 1.4 : 1), c = p.clone().setY(top ? yG - h / 2 : yG + h / 2), q = basisQ(tt, Y, n).multiply(qa(X, top ? -0.08 : 0.08));
             let geo; if (fang) { const sh = new THREE.Shape(), hw = w * 0.44, hh = h / 2, sy = top ? 1 : -1; sh.moveTo(-hw, sy * hh); sh.lineTo(hw, sy * hh); sh.lineTo(hw, -sy * hh * 0.1); sh.lineTo(0, -sy * hh); sh.lineTo(-hw, -sy * hh * 0.1); sh.closePath(); geo = NI(new THREE.ExtrudeGeometry(sh, { depth: t * 0.5, bevelEnabled: true, bevelThickness: t * 0.25, bevelSize: w * 0.05, bevelSegments: C.q ? 3 : 1 })); geo.translate(0, 0, -t * 0.25); }
             else geo = RB(w * 0.95, h, t, w * 0.26, C.q);
@@ -40915,8 +40986,14 @@ body.pm #pm-root { display: block; }
       for (const [nm, s] of [['EarringL', -1], ['EarringR', 1]]) { const e = g.getObjectByName(nm); if (e) { e.position.set(s * (B.HX + 0.0062), -0.026, -0.006); e.rotation.set(0, s * Math.PI / 2, 0); } }
     } };
     if (k === 'grillz') {
-      if (B.hideLower) return null; const m = B.surf(0, -0.051);
-      return { par: B.head, C: { biteGap: -0.0072 }, sig: '', put: g => { g.scale.set(1.1, 0.62, 1.15); g.position.set(0, -0.0508 + 0.0034, m[2] + 0.0011); } };   // front teeth just proud of the lip line, so the grill shows between closed lips
+      if (B.hideLower) return null;
+      const Mo = B.head.userData.mouth;
+      if (Mo) {   // on the character's own teeth: same arch, scaled to this mouth; caps end just past the tooth tips
+        const sy = 0.8, y = Mo.tipUp - 0.0004 + 0.0106 * sy, gap = ((Mo.tipLo + 0.0004) - y) / sy - 0.0082;
+        return { par: B.head, C: { biteGap: gap, lowInset: 0.0014 / Mo.km }, sig: gap.toFixed(4) + Mo.km, put: g => { g.scale.set(Mo.km, sy, Mo.km); g.position.set(0, y, Mo.front); g.traverse(o => { if (o.isMesh) o.receiveShadow = false; }); } };
+      }
+      const m = B.surf(0, -0.051);
+      return { par: B.head, C: { biteGap: -0.0072 }, sig: '', put: g => { g.scale.set(1.1, 0.62, 1.15); g.position.set(0, -0.0508 + 0.0034, m[2] + 0.0011); } };
     }
     return null;
   }

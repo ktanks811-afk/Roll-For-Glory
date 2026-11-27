@@ -33,7 +33,7 @@ const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null, on = k => !O
   await pg.goto('http://game.test/index.html?test=1&net=local');
   await pg.waitForFunction(() => window.__map && window.__map.ready && window.__jewel && window.__photo, null, { timeout: 400000, polling: 1000 });
   const ev = (f, a) => pg.evaluate(f, a), wait = ms => pg.waitForTimeout(ms);
-  const shot = async (n, ms = 2500) => { await wait(ms); await pg.screenshot({ path: path.join(OUT, (process.env.TAG || '') + n + '.png') }); console.log('shot', n); };
+  const shot = async (n, ms = 2500) => { await wait(ms); await pg.screenshot({ path: path.join(OUT, (process.env.TAG || '') + n + '.png'), timeout: 120000 }); console.log('shot', n); };
   const fail = []; const ok = (c, m) => { if (!c) fail.push(m); console.log(c ? 'ok  ' : 'FAIL', m); };
   await ev(() => { const M = window.__map; try { M.closeCreator(); } catch (e) {} if (window.__cops) window.__cops.COP.noPop = true; });
   await wait(4000);
@@ -50,16 +50,18 @@ const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null, on = k => !O
   await ev(async () => { await window.__guns.ME.upper.userData.jwReady; const P = window.__photo; P.pmOpen(); P.PM.pose = 0; });
   const aim = async (n, find, yaw, dist, pitch, bare) => {
     if (process.env.FIT && !n.includes(process.env.FIT)) return;
-    await ev(([find, yaw, dist, pitch, bare]) => {
+    await ev(([find, yaw, dist, pitch, bare, hide]) => {
       const M = window.__guns.ME, P = window.__photo, f = window.__guns.foot; M.root.updateMatrixWorld(true);
       let o = null; M.root.traverse(x => { if (!o && x.name === find) o = x; });
-      const c = new THREE.Vector3(); if (o) new THREE.Box3().setFromObject(o).getCenter(c);
+      if (!o && find === 'jw:grillz') { const mo = M.head.userData.mouth; if (mo) { o = new THREE.Object3D(); o.position.set(0, mo.seam, mo.zs); M.head.add(o); o.updateMatrixWorld(true); } }
+      if (hide) hide.split(',').forEach(i => { const c = M.head.children[+i]; if (c) c.visible = false; });
+      const c = new THREE.Vector3(); if (o) { new THREE.Box3().setFromObject(o).getCenter(c); if (!o.children.length && !o.isMesh) o.getWorldPosition(c); }
       if (find === 'EarringR' && o) o.getWorldPosition(c);
       const h = f.holder.position; P.PM.off.set(c.x - h.x, 0, c.z - h.z); P.PM.lift = c.y - h.y - 1.45;
       P.PM.yaw = f.yaw + Math.PI + yaw; P.PM.dist = dist * 3.5; P.PM.pitch = pitch; P.PM.fov = 9; /* camera near plane is 0.5 m: back off and zoom in */
       M.upper.children[0].visible = !bare;
-    }, [find, yaw, dist, pitch, !!bare]);
-    await wait(2600); await pg.screenshot({ path: path.join(OUT, (process.env.TAG || '') + n + '.png') }); console.log('shot', n);
+    }, [find, yaw, dist, pitch, !!bare, process.env.HIDE || '']);
+    await wait(2600); await pg.screenshot({ path: path.join(OUT, (process.env.TAG || '') + n + '.png'), timeout: 120000 }); console.log('shot', n);
   };
   await aim('f-chest', 'jw:neck', 0, 0.55, 0.15);
   await aim('f-chest-side', 'jw:neck', 1.2, 0.55, 0.1);
@@ -72,5 +74,7 @@ const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null, on = k => !O
   await aim('f-ring-2', 'jw:ring', 0.2, 0.25, 0.4);
   await aim('f-ear', 'EarringR', 1.45, 0.22, 0.0);
   await aim('f-grillz', 'jw:grillz', 0.0, 0.25, 0.0);
+  await aim('f-grillz-side', 'jw:grillz', 0.75, 0.3, 0.05);
+  await aim('f-grillz-face', 'jw:grillz', 0.2, 0.6, 0.05);
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });

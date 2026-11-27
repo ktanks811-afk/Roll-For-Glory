@@ -600,7 +600,7 @@
           const top = set === 'top', a0 = six ? 1 : 0, a1 = six ? 7 : 8, Ws = (top ? UP : LO).slice(a0, a1).map(v => v / 1000), Hs = (top ? UH : LH).slice(a0, a1).map(v => v / 1000);
           let s = -Ws.reduce((a, b) => a + b, 0) / 2; const yG = top ? 0 : (C.biteGap != null ? C.biteGap : -0.0235), list = [], pts = [];
           Ws.forEach((w, i) => {
-            const sc = s + w / 2; s += w; const th = sc / Ra, n = V(Math.sin(th), 0, Math.cos(th)), tt = V(Math.cos(th), 0, -Math.sin(th)), p = V(Ra * Math.sin(th), 0, -Ra * (1 - Math.cos(th)));
+            const sc = s + w / 2; s += w; const th = sc / Ra, n = V(Math.sin(th), 0, Math.cos(th)), tt = V(Math.cos(th), 0, -Math.sin(th)), p = V(Ra * Math.sin(th), 0, -Ra * (1 - Math.cos(th))).addScaledVector(n, top ? 0 : -(C.lowInset || 0));
             const canine = six ? (i === 0 || i === 5) : (i === 1 || i === 6), fang = S.fangs && canine, h = Hs[i] * (fang ? 1.4 : 1), c = p.clone().setY(top ? yG - h / 2 : yG + h / 2), q = basisQ(tt, Y, n).multiply(qa(X, top ? -0.08 : 0.08));
             let geo; if (fang) { const sh = new THREE.Shape(), hw = w * 0.44, hh = h / 2, sy = top ? 1 : -1; sh.moveTo(-hw, sy * hh); sh.lineTo(hw, sy * hh); sh.lineTo(hw, -sy * hh * 0.1); sh.lineTo(0, -sy * hh); sh.lineTo(-hw, -sy * hh * 0.1); sh.closePath(); geo = NI(new THREE.ExtrudeGeometry(sh, { depth: t * 0.5, bevelEnabled: true, bevelThickness: t * 0.25, bevelSize: w * 0.05, bevelSegments: C.q ? 3 : 1 })); geo.translate(0, 0, -t * 0.25); }
             else geo = RB(w * 0.95, h, t, w * 0.26, C.q);
