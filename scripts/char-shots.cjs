@@ -8,6 +8,10 @@ const LOOKS = {
   man: { body: 'm', skin: '#8d5524', hairStyle: 'waves', hair: '#111111', eyes: '#3b2414', facialHair: 'goatee', build: 1, height: 1, mus: 0.5, face: 11, top: 'tee_white', bottom: 'jeans_blue' },
   dark: { body: 'm', skin: '#4a2c1a', hairStyle: 'locs', hair: '#111111', eyes: '#2a1a10', facialHair: 'beard', build: 1.3, height: 1.2, mus: 0.7, face: 77, top: 'tee_red', bottom: 'jeans_blue' },
   light: { body: 'm', skin: '#e0b48c', hairStyle: 'taper', hair: '#3a2614', eyes: '#4a6a8a', facialHair: 'none', build: 0.8, height: 1, mus: 0.3, face: 303, top: 'hoodie_grey', bottom: 'jeans_blue' },
+  chin: { body: 'm', skin: '#6b4429', hairStyle: 'caesar', hair: '#111111', eyes: '#2a1a10', facialHair: 'chinstrap', build: 1, height: 1, mus: 0.5, face: 21, top: 'tee_white', bottom: 'jeans_blue' },
+  long: { body: 'm', skin: '#c68e65', hairStyle: 'bald', hair: '#2a1a10', eyes: '#3b2414', facialHair: 'long_beard', build: 1.2, height: 1, mus: 0.4, face: 41, top: 'tee_red', bottom: 'jeans_blue' },
+  stache: { body: 'm', skin: '#e0b590', hairStyle: 'short', hair: '#6b4423', eyes: '#4a6a8a', facialHair: 'mustache', build: 1, height: 1, mus: 0.5, face: 61, top: 'tee_white', bottom: 'jeans_blue' },
+  stubble: { body: 'm', skin: '#9c6644', hairStyle: 'waves', hair: '#111111', eyes: '#3b2414', facialHair: 'stubble', build: 1, height: 1, mus: 0.5, face: 9, top: 'tee_white', bottom: 'jeans_blue' },
   woman: { body: 'f', skin: '#a0663a', hairStyle: 'silk_press', hair: '#1a0f0a', eyes: '#3b2414', facialHair: 'none', extras: ['lashes', 'lipgloss'], build: 1, height: 0.9, mus: 0.3, face: 5, top: 'crop_white', bottom: 'jeans_blue' },
 };
 const VIEWS = { face: ['head', 0.3], side: ['head', 1.25], bust: ['bust', 0.3], body: ['full', 0.35], back: ['full', 3.0] };
