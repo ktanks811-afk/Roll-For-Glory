@@ -298,7 +298,7 @@
     const A = e.jl; if (!A) return null;
     const u = A.u; if (u && !u.gone) { if (u.officer) copOfficerGone(u); u.jlE = null; u.mode = 'patrol'; u.lights = false; copJoin(u); }
     const j = jS(), set = e.gang && setOf(e.gang) ? setOf(e.gang).short : '';
-    j.npcs.unshift({ name: e.name + (set ? ` (${set})` : ''), ch: A.ch.map(jName).join(', '), until: Date.now() + jDays(A.ch) * JDAY }); j.npcs.length = Math.min(j.npcs.length, 12);
+    j.npcs.unshift({ id: e.id, name: e.name + (set ? ` (${set})` : ''), ch: A.ch.map(jName).join(', '), until: Date.now() + jDays(A.ch) * JDAY }); j.npcs.length = Math.min(j.npcs.length, 12);
     if (A.scene) scBooked(e, A);
     scMarkJailed(e); hKill(e); JL.npc = JL.npc.filter(q => q !== e);
     return e.name + (set ? ` (${set})` : '');

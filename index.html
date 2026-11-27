@@ -23219,7 +23219,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   const _jEnterWorld = enterWorld;
   enterWorld = function () {
     const r = _jEnterWorld.apply(this, arguments);
-    if (jIn()) setTimeout(() => { if (!inside && jCellPlace()) { if (!S.jail.stage) S.jail.stage = 'cell'; enterInterior(jCellPlace()); if (S.jail.stage === 'book') jBookUI(); } }, 300);
+    if (jIn()) setTimeout(() => { if (!inside && jCellPlace() && !ydServed()) { if (!S.jail.stage) S.jail.stage = 'cell'; enterInterior(jCellPlace()); if (S.jail.stage === 'book') jBookUI(); } }, 300);
     return r;
   };
 
@@ -23476,7 +23476,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
     const on = jIn() && inside && jIsJail(IN.place) && S.jail.stage === 'cell';
     JL.hud.hidden = !on; if (!on) return;
     const j = S.jail, left = jLeft(), bond = j.unit === 'tdcj' ? 0 : jBond(j.ch);
-    const html = left > 0 ? `🔒 <b>${yUnitName()}</b> · release in <b>${jClock(left)}</b> <small>(${Math.ceil(left / JDAY)} day${Math.ceil(left / JDAY) > 1 ? 's' : ''})</small>${bond > 0 ? ` · bond ${money(bond)}` : bond < 0 ? ' · no bond' : ''}` : '🔓 <b>Time served.</b> Go to the release desk.';
+    const html = left > 0 ? `🔒 <b>${yUnitName()}</b> · release in <b>${jClock(left)}</b> <small>(${Math.ceil(left / JDAY)} day${Math.ceil(left / JDAY) > 1 ? 's' : ''})</small>${bond > 0 ? ` · bond ${money(bond)}` : bond < 0 ? ' · no bond' : ''}` : '🔓 <b>Time served.</b> A CO is walking you out…';
     const h2 = html + yHudX(); if (h2 !== JL.hudKey) { JL.hudKey = h2; JL.hud.innerHTML = h2; }
   }
   function jReleaseDesk() {
@@ -23601,7 +23601,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
       if (A.t > 2.5) {
         if (o) copOfficerGone(u);
         const j = jS(), until = Date.now() + jDays(A.ch) * JDAY, set = e.gang && setOf(e.gang) ? setOf(e.gang).short : '';
-        j.npcs.unshift({ name: e.name + (set ? ` (${set})` : ''), ch: A.ch.map(jName).join(', '), until }); j.npcs.length = Math.min(j.npcs.length, 12);
+        j.npcs.unshift({ id: e.id, name: e.name + (set ? ` (${set})` : ''), ch: A.ch.map(jName).join(', '), until }); j.npcs.length = Math.min(j.npcs.length, 12);
         try { wNews(`FWPD arrested ${e.name}${set ? ` from ${set}` : ''}: ${A.ch.map(jName).join(', ')}. Booked into Tarrant County.`, e.x, e.z); } catch (er) {}
         hKill(e); JL.npc = JL.npc.filter(q => q !== e); u.jlE = null; u.mode = 'patrol'; u.lights = false; copJoin(u);
       }
@@ -23694,7 +23694,7 @@ body.phoning #copbar,body.creating #copbar,body.indoors #copbar{display:none}`;
   const _jCopStep = copStep;
   copStep = function (dt) { _jCopStep.apply(this, arguments); jStep(dt); };
   // the jail clock and the HUD run whether you're inside or not
-  setInterval(() => { if (!S || !worldOn) return; jHud(); if (jIn() && !inside && !JL.st && jCellPlace() && !creating) { try { enterInterior(jCellPlace()); } catch (e) {} } if (JL.book && !JL.book.hidden && !(jIn() && inside)) JL.book.hidden = true; }, 500);
+  setInterval(() => { if (!S || !worldOn) return; jHud(); if (jIn() && !inside && !JL.st && jCellPlace() && !creating && !ydServed()) { try { enterInterior(jCellPlace()); } catch (e) {} } if (JL.book && !JL.book.hidden && !(jIn() && inside)) JL.book.hidden = true; }, 500);
   {
     const st = document.createElement('style');
     st.textContent = `#jlfade{position:fixed;inset:0;background:#000;opacity:0;z-index:60;pointer-events:none}#jlfade[hidden]{display:none}
@@ -24136,6 +24136,27 @@ body.indoors.jl-in #phonebtn{opacity:.4}`;
     if (now > j.beefT && !ydSolo()) { j.beefT = now + (100 + Math.random() * 140) * 1000 * (1 + j.rep / 60); ydBeef(); }
     if (now > YD.ambT) { YD.ambT = now + (70 + Math.random() * 110) * 1000; if (!ydSolo()) ydAmbient(); }
   }
+  // ---------- auto release: when the time's up you walk out, nobody has to go find the release desk ----------
+  function ydServed() { const j = S && S.jail; return !!(j && j.in && j.stage === 'cell' && j.until && Date.now() >= j.until); }
+  function ydAutoRelease() {
+    if (!ydServed() || YD.autoT || JL.releasing || JL.st) return false;
+    if (YD.fight) return false;   // finish the fight first
+    const j = S.jail, tdcj = j.unit === 'tdcj';
+    if (!inside || !jIsJail(IN.place)) { jRelease(); return true; }   // the game was closed while the clock ran out
+    YD.autoT = 1; closeMenu(); if (JL.book) JL.book.hidden = true;
+    toast(tdcj ? '🔓 Time served. They call your name for the chain bus home.' : '🔓 Time served. A CO calls your name and walks you out to the release desk.', 'good');
+    setTimeout(() => { try { jFadeTo(() => { YD.autoT = 0; if (S.jail && S.jail.in) jRelease(); }); } catch (e) { YD.autoT = 0; if (S.jail && S.jail.in) jRelease(); } }, 2600);
+    return true;
+  }
+  // NPCs walk out when their time's up too: they're back on their corner, and it makes the news
+  let YD_SCJ = null;
+  function ydNpcRelease() {
+    const j = S && S.jail; if (!j || !j.npcs) return;
+    const now = Date.now();
+    if (window.__scJailed && window.__scJailed !== YD_SCJ) { const orig = window.__scJailed; YD_SCJ = window.__scJailed = id => { const n = S && S.jail && S.jail.npcs && S.jail.npcs.find(m => m.id === id); return n ? n.until > Date.now() : orig(id); }; }
+    for (const n of j.npcs) if (!n.out && n.until <= now) { n.out = 1; try { wNews(`${n.name} got out of Tarrant County.`, null, null); } catch (e) {} if (inside && jIsJail(IN.place)) toast(`${n.name} got released.`, ''); }
+  }
+  setInterval(() => { try { ydAutoRelease(); ydNpcRelease(); } catch (e) { if (!YD.errA) { YD.errA = 1; console.warn('auto release: ' + e.message); } } }, 1000);
   setInterval(() => { try { ydTick(); } catch (e) { if (!YD.err) { YD.err = 1; console.warn('yard: ' + e.message); } } }, 1000);
 
   // ---------- hooks into the frame, the crowd, the jail ----------
@@ -24202,7 +24223,7 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
     document.head.append(st);
   }
   window.addEventListener('keydown', e => { if (!YD.fight) return; const k = { KeyJ: 'jab', KeyK: 'hook', KeyL: 'block', KeyH: 'shank', Space: 'block' }[e.code]; if (k) { e.preventDefault(); ydAct(k); } });
-  window.__yard = { jPhoneW: () => jPhone(), jReleaseW: () => jRelease(), YD, YD_CB, ydJ, ydInmates, ydPeople, ydTalk, ydSell, ydCollect, ydConnect, ydFight, ydAct, ydEndFight, ydWriteUp, ydSeg, ydSegStep, ydBeef, ydShake, ydAmbient, ydTransfer, ydTick, ydWork, jCellPlace, TDCJ_P, ydQ };
+  window.__yard = { ydServed, ydAutoRelease, ydNpcRelease, jPhoneW: () => jPhone(), jReleaseW: () => jRelease(), YD, YD_CB, ydJ, ydInmates, ydPeople, ydTalk, ydSell, ydCollect, ydConnect, ydFight, ydAct, ydEndFight, ydWriteUp, ydSeg, ydSegStep, ydBeef, ydShake, ydAmbient, ydTransfer, ydTick, ydWork, jCellPlace, TDCJ_P, ydQ };
   // ==== shooting scenes (begin) ====
   // When FWPD pulls up on a shooting they lock the whole scene down: everybody who was shooting (both sets, the drive-by
   // car, your homies and you) gets told to get on the ground, and every one of them gets cuffed and taken in. One unit per
@@ -24503,7 +24524,7 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
     const A = e.jl; if (!A) return null;
     const u = A.u; if (u && !u.gone) { if (u.officer) copOfficerGone(u); u.jlE = null; u.mode = 'patrol'; u.lights = false; copJoin(u); }
     const j = jS(), set = e.gang && setOf(e.gang) ? setOf(e.gang).short : '';
-    j.npcs.unshift({ name: e.name + (set ? ` (${set})` : ''), ch: A.ch.map(jName).join(', '), until: Date.now() + jDays(A.ch) * JDAY }); j.npcs.length = Math.min(j.npcs.length, 12);
+    j.npcs.unshift({ id: e.id, name: e.name + (set ? ` (${set})` : ''), ch: A.ch.map(jName).join(', '), until: Date.now() + jDays(A.ch) * JDAY }); j.npcs.length = Math.min(j.npcs.length, 12);
     if (A.scene) scBooked(e, A);
     scMarkJailed(e); hKill(e); JL.npc = JL.npc.filter(q => q !== e);
     return e.name + (set ? ` (${set})` : '');
