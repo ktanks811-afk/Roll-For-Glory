@@ -8101,6 +8101,12 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
         if (!this.cfg.pO) this.cfg.pO = this.cfg.pS;
         this.ev = c.ev.slice().sort((a, b) => a[0] - b[0]); this.carry = new Float32Array(16); this.burn = new Float32Array(16).fill(1);
         this.ebar = 1; this.pl = [[], []]; this.pi = []; this.tk = [];
+        // realism pass 2: no engine is perfectly even. Each cylinder has its own breathing (a little more or less charge,
+        // its own primary), its own spark timing a degree or two off, so a V8 has texture instead of a machine-gun beat
+        let sd = 9001 + Math.round(c.ncyl * 131 + (c.amp || 0) * 1e4); const rn = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296 * 2 - 1; };
+        this.cg = new Float32Array(16); this.cto = new Float32Array(16); for (let k = 0; k < 16; k++) { this.cg[k] = 1 + 0.11 * rn(); this.cto[k] = 2.2 + 1.8 * rn(); }
+        // the block and heads ring a little with every firing (the thrum you feel standing next to it)
+        const fB = this.cfg.blockF || 210, rB = Math.exp(-Math.PI * 130 / this.sr); this.b1 = 2 * rB * Math.cos(2 * Math.PI * fB / this.sr); this.b2 = rB * rB; this.by1 = this.by2 = this.bx = 0;
         for (const d of this.hd.concat(this.pa, this.pb, this.chm)) d.b.fill(0); this.f.fill(0);
       }
       set(p) { Object.assign(this.p, p); }
@@ -8140,8 +8146,9 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
         // early-opening exhaust valve (long duration) lets it out at higher pressure: louder and sharper. Unequal header
         // primaries delay some cylinders a little (the log-manifold mumble)
         const dur = 70 / (6 * Math.max(120, rpm)) * c.hdrT * c.cylT, A = (E * Math.pow(chg, 0.9) + 0.1 * chg) * c.amp * (0.75 + 0.25 * c.evo + 0.2 * (c.evo - 1) * lo);
-        const pls = this.pl[e[1] & 1], wait = c.hoff ? c.hoff[i] || 0 : 0;
-        if (pls.length < 10) pls.push(this.pulse(A, dur * 0.18 / c.evo, dur * 0.55, wait, { rz: c.rasp * (0.35 + 0.65 * Math.min(1, rpm / c.red)) * (0.6 + 0.4 * Math.min(1.5, chg)) }));
+        const pls = this.pl[e[1] & 1], wait = (c.hoff ? c.hoff[i] || 0 : 0) + Math.max(0, this.cto[i] + this.gauss() * 0.6) / (6 * Math.max(300, rpm));
+        this.bx += E * chg * c.amp * (0.6 + 0.4 * p.thr) * this.cg[i];
+        if (pls.length < 10) pls.push(this.pulse(A * this.cg[i], dur * (0.94 + 0.12 * (this.cg[i] - 0.89) / 0.22) * 0.18 / c.evo, dur * 0.55, wait, { rz: c.rasp * (0.35 + 0.65 * Math.min(1, rpm / c.red)) * (0.6 + 0.4 * Math.min(1.5, chg)) }));
         // intake pulse on the same cylinder, a bit later (induction roar), and on a big cam at idle the reversion huff
         if (this.pi.length < 10) this.pi.push(this.pulse((0.25 + 0.75 * p.thr) * chg * c.amp * (0.25 + 0.75 * Math.min(1, rpm / c.red)), 1e-4, dur * 0.35, dur * 2.4));
         if (lo > 0.05 && this.pi.length < 10) this.pi.push(this.pulse(c.amp * 0.9 * lo * r * (1.1 - map) * (0.6 + 0.8 * (1 - b)), 0.002, dur * 0.9, dur * 1.6));
@@ -8227,6 +8234,8 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
           }
           // ---- the crossover: an X-pipe or a single collector shares the banks, true duals keep them apart ----
           const s0 = (1 - x) * h0 + x * h1, s1 = x * h0 + (1 - x) * h1;
+          // ---- the block's ring ----
+          const thrum = (this.by1 * this.b1 - this.by2 * this.b2 + this.bx) * 0.0016; this.by2 = this.by1; this.by1 = thrum / 0.0016; this.bx = 0;
           // ---- each side: the pipe to the muffler, the muffler, the tailpipe, the open end ----
           // no muffler (straight pipes): the whole run rings between the collector and the tip
           const Da = 2 * c.La / cs * sr, open = Math.max(0, 1 - rm / 0.25), Db = 2 * (c.Lt + c.La * open) / cs * sr, Rb = 0.18 + 0.3 * rm + 0.12 * open;
@@ -8237,7 +8246,9 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
             CH.w(ya); let m = ya * (1 - 0.55 * rm) + chg * CH.r(0.00045 * sr); f[o + 1] += this.aM * (m - f[o + 1]); m = m * (1 - mab) + f[o + 1] * mab;
             const fb = PB.r(Db); f[o + 2] += this.aP * (fb - f[o + 2]); const yb = m + Rb * f[o + 2]; PB.w(yb);
             // the open end radiates the highs better than the lows
-            f[o + 3] += this.aR * (yb - f[o + 3]); const out = yb - 0.3 * f[o + 3];
+            f[o + 3] += this.aR * (yb - f[o + 3]); let out = yb - 0.3 * f[o + 3];
+            // big pressure waves don't stay clean: they steepen and growl (more through open pipes)
+            const sa = c.sat || 1.5, ax = Math.abs(out); out = (out + 0.3 * sa * out * ax) / (1 + 0.6 * sa * ax) + thrum;
             if (sd) oR[k] = out; else oL[k] = out;
           }
           // ---- intake side: induction pulses, reversion, the valvetrain, the starter, the blower, the turbo, the blow-off valve ----
@@ -8338,7 +8349,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       rasp: clamp(0.08 + (1.05 - H.t) * 1.6 + 0.5 * ex.open.o, 0, 1.2) * (turbo ? 0.35 : 1),
       evo: clamp(1 + ((cs.dE || 200) - (c0.dE || cs.dE || 200)) * 0.014, 0.85, 1.7), lope: clamp((R.ov - 4) / 42, 0, 1),
       tick: gen.amp * (ohv ? 0.035 : 0.016) * (1 + lift * 9) * (b.springs && b.springs !== 'stock' ? 1.2 : 1) * (D.fuel === 'carb' ? 1.15 : 1), tickF: ohv ? 3100 : 4300, di: /di/.test(D.fuel || '') ? gen.amp * 0.035 : 0,
-      La: moto ? 0.45 : big ? 2.5 : 1.9, Lt: moto ? 0.28 : big ? 0.9 : 0.75, pS: pst(ex.shut), pO: pst(ex.open), x: ex.shut.x, xO: ex.open.x,
+      sat: 1 + 2.4 * ex.open.o, blockF: clamp(150 + 60 * 5.7 / Math.max(1, R.disp), 140, 320), La: moto ? 0.45 : big ? 2.5 : 1.9, Lt: moto ? 0.28 : big ? 0.9 : 0.75, pS: pst(ex.shut), pO: pst(ex.open), x: ex.shut.x, xO: ex.open.x,
     };
   }
   // engine temperature per car: warms while it runs (faster under load), cools when it's off; a cold motor fast-idles
@@ -8394,8 +8405,27 @@ registerProcessor('mw-engine', MWEngProc);`;
     // the cabin: from inside, the body soaks up the highs; outside you hear it all, by distance
     const cab = mk('lowpass', 2600, 0.5), comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.15;
     const out = G(0), pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    mg.connect(cab).connect(comp).connect(out); if (pan) out.connect(pan).connect(ctx.destination); else out.connect(ctx.destination);
-    return { src, sp, mg, side, ib, ilp, ig, mgn, cab, comp, out, pan, post };
+    // realism pass 2: outside, the sound also bounces off the road a few ms late; inside, the cabin booms low
+    const gbd = ctx.createDelay(0.05); gbd.delayTime.value = 0.0042; const gbl = mk('lowpass', 2200, 0.6), gbg = G(0.4), boom = mk('peaking', 72, 1.2, 0);
+    mg.connect(gbd).connect(gbl).connect(gbg).connect(cab);
+    mg.connect(cab).connect(boom).connect(comp).connect(out); if (pan) out.connect(pan).connect(ctx.destination); else out.connect(ctx.destination);
+    // and off the buildings and the street around you (one shared reverb per audio context)
+    const sp2 = eaSpace(ctx), rv = G(0.12); if (sp2) { out.connect(rv).connect(sp2); }
+    return { src, sp, mg, side, ib, ilp, ig, mgn, cab, comp, out, pan, post, gbg, boom, rv };
+  }
+  // the street: a few early reflections (a wall, a parked car, the building across) and a short tail, a little darker
+  function eaSpace(ctx) {
+    if (ctx.__mwSpace !== undefined) return ctx.__mwSpace;
+    try {
+      const sr = ctx.sampleRate, len = Math.floor(sr * 0.75), b = ctx.createBuffer(2, len, sr); let sd = 77;
+      const rn = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296 * 2 - 1; };
+      for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch);
+        for (const [t, g] of [[0.011, 0.5], [0.019, 0.35], [0.027 + ch * 0.004, 0.42], [0.041, 0.25], [0.058 - ch * 0.006, 0.22]]) d[Math.floor(t * sr)] += g * (ch ? -1 : 1) * (0.8 + 0.2 * rn());
+        let lp = 0; for (let i = Math.floor(0.02 * sr); i < len; i++) { lp += 0.35 * (rn() - lp); d[i] += lp * 0.16 * Math.exp(-(i / sr - 0.02) / 0.17); } }
+      const cv = ctx.createConvolver(); cv.normalize = false; cv.buffer = b; const lo = ctx.createBiquadFilter(); lo.type = 'lowpass'; lo.frequency.value = 3800;
+      const inp = ctx.createGain(); inp.connect(lo).connect(cv).connect(ctx.destination); ctx.__mwSpace = inp;
+    } catch (e) { ctx.__mwSpace = null; }
+    return ctx.__mwSpace;
   }
   function eaSend(m) { if (EA.node && EA.node.post) EA.node.post(m); else if (EA.gen) { const g = EA.gen; if (m.cfg) g.config(m.cfg); if (m.p) g.set(m.p); if (m.start) g.start(); if (m.stop) g.stop(); if (m.bov) { g.bov = m.bov; g.bovT = 0; } if (m.run) { g.mode = 'run'; g.ws = g.w = (g.p.rpm || 0) * Math.PI / 30; } } }
   function eaTeardown(fade = 0.25) {
@@ -8412,8 +8442,9 @@ registerProcessor('mw-engine', MWEngProc);`;
     for (const s of n.side) { s.muf.frequency.setTargetAtTime(lp * 1.35 * tb, t, 0.1); s.muf2.frequency.setTargetAtTime(lp * 2.6 * tb, t, 0.1); s.res.gain.setTargetAtTime(notch, t, 0.1); s.lvl.gain.setTargetAtTime(g * EA_LVL * (cfg.turbo ? 0.6 : 1), t, 0.1); }
     n.cab.frequency.setTargetAtTime(inCar ? 2400 + 900 * B.o * k : 9000, t, 0.1);
     if (n.mgn) n.mgn.gain.setTargetAtTime(inCar ? 0.25 : 0.6, t, 0.1);
+    if (n.gbg) { n.gbg.gain.setTargetAtTime(inCar ? 0 : 0.4, t, 0.1); n.boom.gain.setTargetAtTime(inCar ? 5 : 0, t, 0.1); n.rv.gain.setTargetAtTime(inCar ? 0.02 : 0.12, t, 0.1); }
   }
-  const EA_LVL = 2;   // the pipes' overall level next to the old sound
+  const EA_LVL = 1.6;   // the pipes' overall level next to the old sound
   // what the generator and the graph get this frame: manifold pressure, exhaust heat, decel fuel cut, the blow-off valve,
   // turbo spool, blower load. S keeps the running state (EA for your car)
   function eaParams(dt, cfg, st, S) {
