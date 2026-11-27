@@ -88,14 +88,14 @@ const log = o => console.log(JSON.stringify(o));
     log({ test: '2a. drive-by started', ok });
     for (let i = 0; i < 6; i++) await pump(8);
     // (the car takes minutes to get there at swiftshader speed: count it as shooting from where it is, like on the way out)
-    await ev(() => { const X = window.__scenes, e = window.__hood.WAR.ev.ents[0], f = window.__map.foot; for (let k = 0; k < 6; k++) X.scShot(e, e.x, e.z); f.x = e.x + 30; f.z = e.z + 25; f.holder.position.set(f.x, 0, f.z); });
+    await ev(() => { const X = window.__scenes, e = window.__hood.WAR.ev.ents[0], f = window.__map.foot; for (let k = 0; k < 6; k++) X.scShot(e, e.x, e.z); });
     log({ test: '2b. shots then the car peels off', war: await ev(() => { const e = window.__hood.WAR.ev; return e && { ph: e.phase, shots: e.shots, car: e.ents.map(q => [Math.round(q.x), Math.round(q.z), q.gone, q.down, q.war && q.war.peel]) }; }), incs: (await scState()).incs, at: await litUnit(-40, 0) });
     for (let i = 0; i < 20; i++) { await pump(6); if (await ev(() => !!window.__scenes.SC.sc)) break; }
     log(Object.assign({ test: '2c. scene' }, await scState()));
     let pic = 0;
     for (let i = 0; i < 160; i++) {
       await pump(10); const s = await scState();
-      if (pic === 0 && s.scene && s.scene.cars.some(c => c[1] === 'gone' || c[1] === 'stop')) { }
+      if (pic === 0 && s.scene && s.scene.cars.some(c => c[1] === 'stopping')) await ev(() => { const e = window.__scenes.SC.sc.cars[0], f = window.__map.foot; f.x = e.x + 22; f.z = e.z + 18; f.holder.position.set(f.x, 0, f.z); });
       const out = await ev(() => { const X = window.__scenes.SC, sc = X.sc; if (!sc) return null; const e = sc.cars[0]; return e && !e.gone && e.parked && !e.inCar ? [e.x, e.z, e.yaw] : null; });
       if (pic === 0 && out) { pic = 1; await pump(30); log(Object.assign({ test: '2d. felony stop: both out' }, await scState())); await snap('scene-08-felony-stop', () => { const e = window.__scenes.SC.sc.cars[0]; return window.__map.snap(e.x + Math.cos(e.yaw) * 9 + Math.sin(e.yaw) * 6, 3.2, e.z - Math.sin(e.yaw) * 9 + Math.cos(e.yaw) * 6, e.parked ? e.parked.x : e.x, 0.8, e.parked ? e.parked.z : e.z); }); }
       if (!s.scene) break;
