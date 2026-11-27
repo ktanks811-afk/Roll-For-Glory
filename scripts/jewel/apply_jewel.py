@@ -16,7 +16,7 @@ def once(old, new, tag):
     assert s.count(old) == 1, old
     s = s.replace(old, new)
 once('    return { root, upper, head, arms, lids, legs, knees, ankles, fores };\n',
-     "    /*JWHOOK*/ if (look.jw && window.__jwHook) { try { window.__jwHook(look, { upper, head, fores, U, ringAt, seZ, neckR, inflate, HX, surf, Wl, W, fingers, lo: HN < 100, hideLower: !!(skimask || bandana) }); } catch (e) { console.warn('jewel', e); } }\n    return { root, upper, head, arms, lids, legs, knees, ankles, fores };\n", '/*JWHOOK*/')
+     "    /*JWHOOK*/ if (look.jw && window.__jwHook) { try { window.__jwHook(look, { upper, head, fores, U, ringAt, seZ, neckR, inflate, HX, surf, Wl, W, fingers, lo: HN < 100, hideLower: !!(skimask || bandana), sleeveLong }); } catch (e) { console.warn('jewel', e); } }\n    return { root, upper, head, arms, lids, legs, knees, ankles, fores };\n", '/*JWHOOK*/')
 once("P.root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); mats.add(o.material); } });",
      "P.root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (!o.material.userData.jwKeep) mats.add(o.material); } }); /*JWKEEP*/", '/*JWKEEP*/')
 once("mask: w.mask || 'no_mask', bag: w.bag || 'no_bag' }; }",

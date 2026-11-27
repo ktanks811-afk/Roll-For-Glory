@@ -329,7 +329,7 @@
       SPH.dispose(); return merge(L);
     }
     async function buildChain(S, M, root, st, C) {
-      const G = qg(C.q), w = S.width / 1000, L = S.length * 0.0254, c = C.curve ? C.curve(L) : neckCurve(L), metal = [], gems = [], gem = gemFn(gems, st, C);
+      const G = qg(C.q), w = S.width / 1000, L = S.length * 0.0254, c = C.curve ? C.curve(L, w * (S.style === 'cuban' ? 0.36 : S.style === 'tennis' ? 0.42 : 0.5)) : neckCurve(L), metal = [], gems = [], gem = gemFn(gems, st, C);
       if (S.style === 'tennis') { const d = w, pitch = d * 1.06; const n = Math.round(c.getLength() / pitch); for (let i = 0; i < n; i++) { const f = frame(c, i / n); metal.push(bake(G.SETTING, f.p, f.q, V(d, d, d))); gem(f.p.clone(), f.z, d * 0.96); } }
       else if (S.style === 'rope') {
         const N = Math.max([90, 160, 260][C.q], Math.ceil(L / (w * [0.4, 0.24, 0.14][C.q]))), F = []; for (let i = 0; i < N; i++) F.push(frame(c, i / N));

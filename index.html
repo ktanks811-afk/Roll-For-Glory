@@ -3881,7 +3881,7 @@ uniform mat3 normalMatrix;
       for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(M); b[i * 4] = v.x; b[i * 4 + 1] = v.y; b[i * 4 + 2] = v.z; b[i * 4 + 3] = w; }
       o.geometry.setAttribute('bpos', new THREE.BufferAttribute(b, 4));
     });
-    /*JWHOOK*/ if (look.jw && window.__jwHook) { try { window.__jwHook(look, { upper, head, fores, U, ringAt, seZ, neckR, inflate, HX, surf, Wl, W, fingers, lo: HN < 100, hideLower: !!(skimask || bandana) }); } catch (e) { console.warn('jewel', e); } }
+    /*JWHOOK*/ if (look.jw && window.__jwHook) { try { window.__jwHook(look, { upper, head, fores, U, ringAt, seZ, neckR, inflate, HX, surf, Wl, W, fingers, lo: HN < 100, hideLower: !!(skimask || bandana), sleeveLong }); } catch (e) { console.warn('jewel', e); } }
     return { root, upper, head, arms, lids, legs, knees, ankles, fores };
   }
 
@@ -40479,7 +40479,7 @@ body.pm #pm-root { display: block; }
       SPH.dispose(); return merge(L);
     }
     async function buildChain(S, M, root, st, C) {
-      const G = qg(C.q), w = S.width / 1000, L = S.length * 0.0254, c = C.curve ? C.curve(L) : neckCurve(L), metal = [], gems = [], gem = gemFn(gems, st, C);
+      const G = qg(C.q), w = S.width / 1000, L = S.length * 0.0254, c = C.curve ? C.curve(L, w * (S.style === 'cuban' ? 0.36 : S.style === 'tennis' ? 0.42 : 0.5)) : neckCurve(L), metal = [], gems = [], gem = gemFn(gems, st, C);
       if (S.style === 'tennis') { const d = w, pitch = d * 1.06; const n = Math.round(c.getLength() / pitch); for (let i = 0; i < n; i++) { const f = frame(c, i / n); metal.push(bake(G.SETTING, f.p, f.q, V(d, d, d))); gem(f.p.clone(), f.z, d * 0.96); } }
       else if (S.style === 'rope') {
         const N = Math.max([90, 160, 260][C.q], Math.ceil(L / (w * [0.4, 0.24, 0.14][C.q]))), F = []; for (let i = 0; i < N; i++) F.push(frame(c, i / N));
@@ -40827,24 +40827,55 @@ body.pm #pm-root { display: block; }
     g.userData.jw = t.userData.jw; return g;
   }
   const jwSm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-  // a chain's path on this body: round the base of the neck, over the shoulders, down the chest by its length
+  // a chain's path on this body: round the base of the neck, over the shoulders, down the chest by its length.
+  // The shirt/torso is treated as a surface (the same rings PEOPLE builds it from), and every point of the chain is
+  // pushed out until it rests on that surface by half the chain's thickness: on top of the collar at the back, on the
+  // trapezius at the sides, flat on the chest at the front. Nothing sinks in, nothing floats.
   function jwBodyCurve(B, lay) {
-    const rx = B.neckR.rx * 0.62, rz = B.neckR.rz * 0.95, y0 = B.U(1.47);
-    const front = (x, y) => { const r = B.ringAt(y + 0.95); return r.rz * B.seZ(x / (r.rx + 0.001), r.n) + r.zo + 0.005; };
-    const pt = (a, D) => {
-      const ca = Math.cos(a), w = (1 + ca) / 2, x = Math.sin(a) * (rx + D * 0.16 * w), y = y0 - D * Math.pow(w, 1.5) - 0.012 * (1 - Math.abs(ca));
-      const zb = ca * rz - 0.004 + B.inflate * 0.3 + 0.004; let z = zb;
-      if (ca > -0.2) z = zb + (Math.max(zb, front(x, y) + lay) - zb) * jwSm(-0.2, 0.35, ca);
-      return new THREE.Vector3(x, y, z);
+    const top = B.ringAt(1.6), rx = top.rx + 0.004, rz = top.rz + 0.004, y0 = B.U(1.478);   // round the collar at the base of the neck
+    const F = (x, y, z) => { const r = B.ringAt(y + 0.95), n = r.n || 2; return Math.pow(Math.pow(Math.abs(x) / r.rx, n) + Math.pow(Math.abs(z - r.zo) / r.rz, n), 1 / n); };
+    const grad = (x, y, z) => { const e = 0.0015; return new THREE.Vector3(F(x + e, y, z) - F(x - e, y, z), F(x, y + e, z) - F(x, y - e, z), F(x, y, z + e) - F(x, y, z - e)).divideScalar(2 * e); };
+    // sw: how much this point is lifted straight up instead of pushed out (the sides ride up onto the trapezius
+    // next to the neck rather than sliding out across the shoulders)
+    const UP = new THREE.Vector3(0, 1, 0);
+    const push = (p, off, sw = 0) => {
+      for (let k = 0; k < 12; k++) {
+        const g = grad(p.x, p.y, p.z), gl = g.length() || 1, d = (F(p.x, p.y, p.z) - 1) / gl;
+        if (d >= off - 0.0002) break;
+        const gn = g.clone().divideScalar(gl), su = sw * Math.min(1, Math.max(0, gn.y * 2.5)), dir = gn.clone().multiplyScalar(1 - su).addScaledVector(UP, su).normalize();   // only lift where there's a slope to ride up
+        p.addScaledVector(dir, (off - d) / Math.max(0.3, dir.dot(gn)));
+      }
+      return p;
     };
-    const mk = D => { const pts = []; for (let i = 0; i < 96; i++) pts.push(pt(Math.PI + i / 96 * Math.PI * 2, D)); return new THREE.CatmullRomCurve3(pts, true, 'centripetal'); };
-    const curveFor = L => {
-      let lo = 0, hi = 0.5; for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2; if (mk(m).getLength() < L) lo = m; else hi = m; }
-      const c = mk((lo + hi) / 2); c.arcLengthDivisions = 1500;
-      c.normalAt = (p, u) => { const w = (1 - Math.cos(u * Math.PI * 2)) / 2; return new THREE.Vector3(p.x, 0, p.z).normalize().multiplyScalar(0.35 + 0.65 * w).add(new THREE.Vector3(0, 0.75 * (1 - w), 0)).normalize(); };
+    const swOf = a => Math.pow(Math.sin(a), 2) * (1 - jwSm(-0.1, 0.55, Math.cos(a)));
+    const front = (x, y) => { const r = B.ringAt(y + 0.95); return r.rz * B.seZ(x / (r.rx + 0.001), r.n) + r.zo; };
+    const pt = (a, D, off) => {
+      const ca = Math.cos(a), w = (1 + ca) / 2, x = Math.sin(a) * (rx + D * 0.16 * w), y = y0 - D * Math.pow(w, 2.2) - 0.006 * (1 - Math.abs(ca));
+      let z = top.zo + ca * rz; if (ca > -0.2) z += (front(x, y) - z) * jwSm(-0.2, 0.35, ca);
+      return push(new THREE.Vector3(x, y, z), off, swOf(a));
+    };
+    const mk = (D, off) => {
+      let pts = []; for (let i = 0; i < 96; i++) pts.push(pt(Math.PI + i / 96 * Math.PI * 2, D, off));
+      // a real chain hangs in smooth curves: relax the bumps the shoulders put in, then make sure it is still outside
+      for (let k = 0; k < 4; k++) pts = pts.map((p, i) => p.clone().multiplyScalar(0.5).addScaledVector(pts[(i + 95) % 96], 0.25).addScaledVector(pts[(i + 1) % 96], 0.25));
+      pts.forEach((p, i) => push(p, off, swOf(Math.PI + i / 96 * Math.PI * 2)));
+      return new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+    };
+    // h = half the chain's thickness (the build passes it)
+    const curveFor = (L, h) => {
+      const off = (h || 0.002) + lay + 0.0006;
+      // the game's collar runs ~12% bigger round than a real neck base: scale so a 20" still lands at the collarbone
+      L *= 1.12;
+      let lo = 0, hi = 0.5; for (let k = 0; k < 22; k++) { const m = (lo + hi) / 2; if (mk(m, off).getLength() < L) lo = m; else hi = m; }
+      const c = mk((lo + hi) / 2, off); c.arcLengthDivisions = 1500;
+      // the links lie flat on the body: their face follows the surface under them
+      c.normalAt = (p, u) => {
+        const w = (1 - Math.cos(u * Math.PI * 2)) / 2, soft = new THREE.Vector3(p.x, 0, p.z - top.zo).normalize().multiplyScalar(0.35 + 0.65 * w).add(new THREE.Vector3(0, 0.75 * (1 - w), 0)).normalize();
+        const g = grad(p.x, p.y, p.z); return g.lengthSq() > 1e-9 ? g.normalize().multiplyScalar(0.55).addScaledVector(soft, 0.45).normalize() : soft;
+      };
       return c;
     };
-    return { curve: curveFor, chestFront: y => front(0, y) - 0.005 + lay };
+    return { curve: curveFor, chestFront: y => front(0, y) + lay + 0.001 };
   }
   function jwBodySig(B) { const r = y => { const q = B.ringAt(y); return [q.rx, q.rz, q.zo].map(v => v.toFixed(3)).join(','); }; return [B.neckR.rx.toFixed(3), B.neckR.rz.toFixed(3), B.inflate, r(1.45), r(1.35), r(1.25), r(1.15)].join('|'); }
   // where each slot goes on this body, and what it needs to fit
@@ -40852,14 +40883,17 @@ body.pm #pm-root { display: block; }
     const k = JW.kindOf(sp), V3 = (x, y, z) => new THREE.Vector3(x, y, z);
     const forearm = s => { const el = V3(s * 0.03, -0.285, -0.008), wr = V3(s * 0.042, -0.545, 0.024), d = wr.clone().sub(el); const a = d.clone().normalize(); return { wr: d, a, el }; };
     if (k === 'chain') { // stacked chains hang a little lower each, so a second chain layers under the first instead of on top of it
-      const lay = idx * 0.0018, bc = jwBodyCurve(B, lay); const more = idx * 0.06; return { par: B.upper, C: { curve: L => bc.curve(L + more), chestFront: bc.chestFront }, sig: jwBodySig(B) + '|' + idx, put: g => {} }; }
+      const lay = idx * 0.0018, bc = jwBodyCurve(B, lay); const more = idx * 0.06; return { par: B.upper, C: { curve: (L, h) => bc.curve(L + more, h), chestFront: bc.chestFront }, sig: jwBodySig(B) + '|' + idx, put: g => {} }; }
     if (k === 'watch' || (k === 'bracelet')) {
       const s = k === 'watch' ? 1 : idx === 0 ? -1 : 1, F = forearm(s), rw = 0.027 * (B.Wl || 1);
-      const f = V3(s, 0, 0.3).normalize(); f.addScaledVector(F.a, -f.dot(F.a)).normalize();
+      // with the arms hanging, the back of the wrist faces out (x = s) and the wrist is wider front-to-back than it is
+      // thick: the body's forearm is round r at the wrist, stretched 1.22x along z (FOREARM's sq)
+      const f = V3(s, 0, 0.08).normalize(); f.addScaledVector(F.a, -f.dot(F.a)).normalize();
       if (k === 'watch') {
-        const C = { wrist: { A: rw * 1.16, B: rw * 1.04 } };
-        return { par: B.fores[s > 0 ? 1 : 0], C, sig: (rw * 1000).toFixed(1), put: g => {
-          const zc = g.userData.pillowZ, cen = F.wr.clone().addScaledVector(F.a, -0.03), y = new THREE.Vector3().crossVectors(f, F.a);
+        const up = B.sleeveLong ? 0.013 : 0.025, t = 1 - up / F.wr.length(), rr = rw + (0.036 * (B.Wl || 1) * 0.96 - rw) * (1 - Math.pow(t, 0.9)), sq = 1 + 0.22 * jwSm(0.4, 1, t);
+        const C = { wrist: { A: rr * sq + 0.0014, B: rr + 0.0012 } };
+        return { par: B.fores[s > 0 ? 1 : 0], C, sig: (rw * 1000).toFixed(1) + (B.sleeveLong ? 'L' : ''), put: g => {   // long sleeves end 3 cm above the wrist: the watch sits below the cuff
+          const zc = g.userData.pillowZ, cen = F.wr.clone().addScaledVector(F.a, -up), y = new THREE.Vector3().crossVectors(f, F.a);
           g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(F.a, y, f)); g.position.copy(cen).addScaledVector(f, -zc);
         } };
       }
@@ -40875,14 +40909,14 @@ body.pm #pm-root { display: block; }
       const seg = fs ? fs[fi].segs[0] : { a: [hp[0], hp[1] - 0.04, hp[2]], b: [hp[0] - s * 0.01, hp[1] - 0.07, hp[2]], r0: 0.009 };
       const a = V3(...seg.a).sub(F.el), b = V3(...seg.b).sub(F.el), d = b.clone().sub(a), len = d.length(); d.normalize();
       const bk = V3(s, 0, 0); bk.addScaledVector(d, -bk.dot(d)).normalize(); const zz = new THREE.Vector3().crossVectors(d, bk);
-      return { par: B.fores[0], C: { fingerR: seg.r0 }, sig: seg.r0.toFixed(4) + fi, put: g => { g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(d, bk, zz)); g.position.copy(a).addScaledVector(d, len * 0.42); } };
+      const fr = (seg.r0 + ((seg.r1 || seg.r0) - seg.r0) * 0.42) * 1.05; /* the finger is 6% wider one way */ return { par: B.fores[0], C: { fingerR: fr }, sig: fr.toFixed(4) + fi, put: g => { g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(d, bk, zz)); g.position.copy(a).addScaledVector(d, len * 0.42); } };
     }
     if (k === 'studs') return { par: B.head, C: {}, sig: '', put: g => {
       for (const [nm, s] of [['EarringL', -1], ['EarringR', 1]]) { const e = g.getObjectByName(nm); if (e) { e.position.set(s * (B.HX + 0.0062), -0.026, -0.006); e.rotation.set(0, s * Math.PI / 2, 0); } }
     } };
     if (k === 'grillz') {
       if (B.hideLower) return null; const m = B.surf(0, -0.051);
-      return { par: B.head, C: { biteGap: -0.0072 }, sig: '', put: g => { g.scale.set(1.22, 0.62, 1.15); g.position.set(0, -0.0508 + 0.0034, m[2] - 0.0014); } };
+      return { par: B.head, C: { biteGap: -0.0072 }, sig: '', put: g => { g.scale.set(1.1, 0.62, 1.15); g.position.set(0, -0.0508 + 0.0034, m[2] + 0.0011); } };   // front teeth just proud of the lip line, so the grill shows between closed lips
     }
     return null;
   }
