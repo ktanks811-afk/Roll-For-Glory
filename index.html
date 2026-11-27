@@ -8055,44 +8055,73 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     ENGS.gas = gas;
   }
 
-  // ---------- engine sound (Phase 2): a per-sample engine running in the audio thread ----------
+  // ---------- engine sound (Phase 2, exhaust + cam pass 2026-11-27): a per-sample engine running in the audio thread ----------
   // The crank turns at the physics rpm. Every cylinder fires at its own crank angle from the real firing order, onto its own
   // bank, so a cross-plane V8 burbles (its banks fire unevenly), a flat-plane screams and a V6 or a four sounds like itself.
-  // Each firing is an exhaust blowdown pulse: its strength comes from how much charge the cylinder had (manifold pressure)
-  // and how well it burned, its length from the crank angle the exhaust valve is open (so it gets shorter and brighter as
-  // the revs climb, without pitch-shifting anything). How well each cycle burns is a residual-gas model in the style of
-  // Daw et al.: a cam with lots of overlap leaves exhaust in the cylinder at low manifold pressure; past a critical dilution
-  // the burn goes partial, the unburned fuel carries into that cylinder's next cycle, which then burns harder. That
-  // feedback is what makes a big cam lope unevenly. Each weak or strong burn also kicks the crankshaft (torque impulse over
-  // the engine's rotating inertia), so the idle rpm really swings. Misfires on a hot overrun can light off in the exhaust.
-  // Starter, catch and flare, the limiter (it's the physics' fuel cut), supercharger whine and turbo whistle live here too.
+  // Each firing is an exhaust blowdown pulse: its strength comes from how much charge the cylinder had (manifold pressure),
+  // how well it burned and how early the exhaust valve cracks open (a long exhaust duration blows down at higher pressure:
+  // a sharper, louder bark), its length from the crank angle the valve is open (shorter and brighter as the revs climb,
+  // without pitch-shifting anything). How well each cycle burns is a residual-gas model in the style of Daw et al.: a cam
+  // with lots of overlap leaves exhaust in the cylinder at low manifold pressure; past a critical dilution the burn goes
+  // partial, the unburned fuel carries into that cylinder's next cycle, which then burns harder. On a big cam the dilution
+  // also builds and lets go every few engine cycles (the lope: the whomp-whomp rhythm), each weak or strong burn kicks the
+  // crankshaft (torque impulse over the rotating inertia) so the idle rpm really swings, and reversion huffs back out of
+  // the intake. Then the pulses go down real pipes: each bank's header primaries ring at their length (the gas is hotter
+  // the harder it works, so the ring climbs), the banks cross over (H / X pipe), the pipe to the muffler, the muffler
+  // (reflects, absorbs, chambered ones bark), the tailpipe ringing between the muffler and the open end, and the open end
+  // radiates the highs better than the lows. Thin pipes and big pulses turn raspy (turbulence on every blowdown).
+  // The valvetrain ticks (louder with lift, pushrod motors loudest), direct injectors tick at idle. Misfires on a hot
+  // overrun light off in the exhaust. Starter, catch and flare, the limiter (the physics' fuel cut), supercharger whine and
+  // turbo whistle live here too.
   function MWGenFactory() {
     const TAU = Math.PI * 2;
+    // a delay line, read with linear interpolation (a pipe's length in samples isn't a whole number); r(1) = newest
+    class DL {
+      constructor(n) { this.b = new Float32Array(n); this.n = n; this.i = 0; }
+      w(x) { this.b[this.i] = x; this.i = this.i + 1 === this.n ? 0 : this.i + 1; }
+      r(d) { const n = this.n; d = d < 1 ? 1 : d > n - 2 ? n - 2 : d; let p = this.i - d; if (p < 0) p += n; const k = p | 0, f = p - k, a = this.b[k], b = this.b[k + 1 === n ? 0 : k + 1]; return a + (b - a) * f; }
+    }
     class MWGen {
       constructor(sr) {
         this.sr = sr; this.th = 0; this.w = 0; this.dw = 0; this.ws = 0; this.mode = 'off'; this.t = 0; this.cfg = null; this.seed = 12345;
-        this.p = { rpm: 0, map: 0.3, thr: 0, cut: 0, dfco: 0, boost: 0, spool: 0, sc: 0, hot: 0, cold: 0, ev: 0, evRpm: 0 };
-        this.pl = [[], []]; this.pi = []; this.ebar = 1; this.dc = [0, 0, 0]; this.dcx = [0, 0, 0]; this.scPh = 0; this.tPh = 0; this.stPh = 0; this.stPh2 = 0; this.bov = 0; this.bovT = 0; this.pops = [];
+        this.p = { rpm: 0, map: 0.3, thr: 0, cut: 0, dfco: 0, boost: 0, spool: 0, sc: 0, hot: 0, cold: 0, ev: 0, evRpm: 0, vk: 0 };
+        this.pl = [[], []]; this.pi = []; this.tk = []; this.ebar = 1; this.dc = [0, 0, 0]; this.dcx = [0, 0, 0]; this.scPh = 0; this.tPh = 0; this.stPh = 0; this.stPh2 = 0; this.bov = 0; this.bovT = 0; this.pops = [];
+        this.lph = 0; this.lN = 3.5; this.vk = 0; this.hotS = 0; this.seq = null; this.seqI = 0; this.tAll = 0;
         this.stat = { fires: 0, weak: 0, sumE: 0, sumE2: 0, minRpm: 1e9, maxRpm: 0, pops: 0 };
+        // the pipes: per bank a header, per side the pipe to the muffler, the muffler's chambers, the tailpipe
+        const big = Math.ceil(sr * 0.03), sm = Math.ceil(sr * 0.006);
+        this.hd = [new DL(sm), new DL(sm)]; this.pa = [new DL(big), new DL(big)]; this.pb = [new DL(big), new DL(big)]; this.chm = [new DL(sm), new DL(sm)];
+        this.f = new Float32Array(24);   // one-pole filter states
+        const a = fc => 1 - Math.exp(-TAU * fc / sr); this.aH = a(2600); this.aP = a(1800); this.aR = a(160); this.aN = a(1400); this.aL = a(700); this.aM = a(900); this.aX = a(4800);
       }
       rnd() { this.seed = (this.seed * 1664525 + 1013904223) >>> 0; return this.seed / 4294967296; }
       gauss() { return Math.sqrt(-2 * Math.log(this.rnd() + 1e-9)) * Math.cos(TAU * this.rnd()); }
       config(c) {
-        this.cfg = c; this.ev = c.ev.slice().sort((a, b) => a[0] - b[0]); this.carry = new Float32Array(16); this.burn = new Float32Array(16).fill(1);
-        this.ebar = 1; this.pl = [[], []]; this.pi = [];
+        this.cfg = Object.assign({ hdrL: 0.4, hdrR: -0.3, hoff: null, rasp: 0.2, evo: 1, lope: 0, tick: 0, tickF: 3400, di: 0, La: 1.9, Lt: 0.75, pS: { rm: 0.6, chg: 0, mab: 0.6 }, pO: null }, c);
+        if (!this.cfg.pO) this.cfg.pO = this.cfg.pS;
+        this.ev = c.ev.slice().sort((a, b) => a[0] - b[0]); this.carry = new Float32Array(16); this.burn = new Float32Array(16).fill(1);
+        this.ebar = 1; this.pl = [[], []]; this.pi = []; this.tk = [];
+        for (const d of this.hd.concat(this.pa, this.pb, this.chm)) d.b.fill(0); this.f.fill(0);
       }
       set(p) { Object.assign(this.p, p); }
       start() { this.mode = 'crank'; this.t = 0; this.cn = 0; this.catchN = this.cfg ? Math.round(this.cfg.ncyl * (0.9 + 0.8 * this.p.cold) + this.rnd() * 3) : 6; this.w = 0; }
       stop() { if (this.mode !== 'off') this.mode = 'stop'; this.t = 0; }
+      // a pulse whose envelope decays by multiplying (no exp() per sample): rise tr, decay td, starting after `wait` seconds
+      pulse(A, tr, td, wait, extra) { const sr = this.sr; return Object.assign({ n: Math.round(Math.max(0, wait) * sr), A, e1: 1, e2: 1, k1: Math.exp(-1 / (sr * td)), k2: Math.exp(-1 / (sr * Math.max(1e-5, tr))), life: Math.round(td * 7 * sr) }, extra || {}); }
       // a cylinder fires (or doesn't)
       fire(e, rpm) {
-        const c = this.cfg, p = this.p, i = e[2] - 1, map = Math.max(0.08, p.map);
+        const c = this.cfg, p = this.p, i = e[2] - 1, map = Math.max(0.08, p.map), chg = p.chg != null ? Math.max(0.08, p.chg) : map;   // map: what the gauge reads (a big cam's reversion pulls it up); chg: the charge actually trapped
         let E = 0, b = 1;
         const fuelOn = !(p.cut || p.dfco || this.mode === 'stop' || this.mode === 'off' || (this.mode === 'crank'));
+        // the lope: on a big cam the dilution builds over a few engine cycles and lets go (only near idle, off the gas)
+        this.lph += TAU / (c.ncyl * this.lN); if (this.lph > TAU) { this.lph -= TAU; this.lN = 2.4 + this.rnd() * 2.4; }
+        const lo = c.lope * Math.max(0, 1 - p.thr * 2.5) * Math.max(0, Math.min(1, (c.idle * 2.6 - rpm) / (c.idle * 1.3)));
+        let r = 0;
         if (fuelOn) {
           // residual exhaust left in the cylinder: overlap at low manifold pressure and low rpm (more time for reversion)
           // and a closed throttle at speed (overrun): a tiny charge diluted by a lot of exhaust, close to misfiring
-          const r = Math.min(0.55, c.res * Math.pow(c.mapIdle / map, 0.85) * Math.pow(c.idle / Math.max(300, rpm), 0.45) + 0.26 * Math.max(0, Math.min(1, (0.3 - map) / 0.13)));
+          r = Math.min(0.55, c.res * Math.pow(c.mapIdle / map, 0.85) * Math.pow(c.idle / Math.max(300, rpm), 0.45) + 0.26 * Math.max(0, Math.min(1, (0.3 - map) / 0.13)));
+          r *= 1 + lo * (0.42 * Math.sin(this.lph) + 0.16 * Math.sin(2 * this.lph + 1.1)) - lo * 0.1;
           const F = (this.mode === 'catch' ? 1.25 : 1 + 0.15 * p.cold) + this.carry[i] * 0.85;
           const eff = r / Math.sqrt(F) + this.gauss() * c.cov * 0.25 * (1 + 0.8 * p.cold);
           b = 1 / (1 + Math.exp((eff - c.rc) / 0.025)); if (b < 0.02) b = 0;
@@ -8104,24 +8133,38 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
         if (this.mode === 'run' && fuelOn) {
           this.ebar += (E - this.ebar) * 0.08;
           const w = Math.max(20, this.w), kick = c.tInd * (TAU * 2 / c.ncyl) / (c.Ie * w);
-          this.dw += (E - this.ebar) * kick * Math.max(0, 1.2 - p.thr);
+          this.dw += (E - this.ebar) * kick * Math.max(0, 1.2 - p.thr) * (1 + 0.25 * lo);
           this.dw = Math.max(-0.25 * w, Math.min(0.25 * w, this.dw));
         }
-        // exhaust blowdown on this cylinder's bank: about 70 degrees of crank, shorter through long tubes (scavenging)
-        const dur = 70 / (6 * Math.max(120, rpm)) * c.hdrT * c.cylT, A = (E * Math.pow(map, 0.9) + 0.1 * map) * c.amp;
-        const pls = this.pl[e[1] & 1]; if (pls.length < 8) pls.push({ t: 0, A, tr: dur * 0.18, td: dur * 0.55, nz: 0.18 + 0.55 * Math.min(1, rpm / c.red) });
-        // intake pulse on the same cylinder, a bit later (induction roar)
-        if (this.pi.length < 8) this.pi.push({ t: -dur * 2.4, A: (0.25 + 0.75 * p.thr) * map * c.amp * (0.25 + 0.75 * Math.min(1, rpm / c.red)), td: dur * 0.35 });
+        // exhaust blowdown on this cylinder's bank: about 70 degrees of crank, shorter through long tubes (scavenging); an
+        // early-opening exhaust valve (long duration) lets it out at higher pressure: louder and sharper. Unequal header
+        // primaries delay some cylinders a little (the log-manifold mumble)
+        const dur = 70 / (6 * Math.max(120, rpm)) * c.hdrT * c.cylT, A = (E * Math.pow(chg, 0.9) + 0.1 * chg) * c.amp * (0.75 + 0.25 * c.evo + 0.2 * (c.evo - 1) * lo);
+        const pls = this.pl[e[1] & 1], wait = c.hoff ? c.hoff[i] || 0 : 0;
+        if (pls.length < 10) pls.push(this.pulse(A, dur * 0.18 / c.evo, dur * 0.55, wait, { rz: c.rasp * (0.35 + 0.65 * Math.min(1, rpm / c.red)) * (0.6 + 0.4 * Math.min(1.5, chg)) }));
+        // intake pulse on the same cylinder, a bit later (induction roar), and on a big cam at idle the reversion huff
+        if (this.pi.length < 10) this.pi.push(this.pulse((0.25 + 0.75 * p.thr) * chg * c.amp * (0.25 + 0.75 * Math.min(1, rpm / c.red)), 1e-4, dur * 0.35, dur * 2.4));
+        if (lo > 0.05 && this.pi.length < 10) this.pi.push(this.pulse(c.amp * 0.9 * lo * r * (1.1 - map) * (0.6 + 0.8 * (1 - b)), 0.002, dur * 0.9, dur * 1.6));
+        // the valvetrain: each lobe slaps a lifter (exhaust opening now, intake about a turn later); direct injectors tick
+        if (c.tick > 0 && this.tk.length < 14) {
+          const tA = c.tick * (0.55 + 0.45 * this.rnd()) * Math.max(0.25, 1.1 - rpm / 4500), turn = 60 / Math.max(300, rpm);
+          this.tk.push(this.pulse(tA, 1e-4, 0.0007, 0, { f: c.tickF * (0.92 + 0.16 * this.rnd()), ph: 0 }), this.pulse(tA * 0.8, 1e-4, 0.0006, turn * 0.95, { f: c.tickF * 1.12, ph: 0 }));
+        }
+        if (c.di > 0 && fuelOn && this.tk.length < 16) this.tk.push(this.pulse(c.di * (0.7 + 0.3 * this.rnd()) * Math.max(0.2, 1 - rpm / 4000), 1e-4, 0.0004, 60 / Math.max(300, rpm) * 0.6, { f: 5200 + 600 * this.rnd(), ph: 0 }));
         // a misfire on a hot overrun: the fuel lights in the header (pops). Fuel-injected cars cut fuel on decel, so it's the
         // last few cycles before the cut (and carbs keep feeding)
-        if (fuelOn && p.thr < 0.05 && rpm > c.idle * 1.8 && b < 0.6 && p.hot > 0.35 && c.pop > 0 && this.rnd() < c.pop * (1 - b) * p.hot) {
-          this.pops.push({ t: -(0.004 + this.rnd() * 0.02), A: (0.7 + this.rnd() * 0.8) * c.amp * c.popA, b: e[1] & 1, td: 0.012 + this.rnd() * 0.02 }); this.stat.pops++;
+        if (fuelOn && p.thr < 0.05 && rpm > c.idle * 1.8 && b < 0.6 && p.hot > 0.35 && c.pop > 0 && this.rnd() < c.pop * 0.35 * (1 - b) * p.hot) {
+          this.pops.push({ t: -(0.004 + this.rnd() * 0.02), A: (0.7 + this.rnd() * 0.8) * c.amp * c.popA * 0.8, b: e[1] & 1, td: 0.003 + this.rnd() * 0.006 }); this.stat.pops++;
         }
         this.stat.fires++; if (b < 0.7 && fuelOn) this.stat.weak++; this.stat.sumE += E; this.stat.sumE2 += E * E;
       }
-      process(oL, oR, oI, n) {
-        const c = this.cfg, p = this.p, dt = 1 / this.sr, RPMk = 30 / Math.PI;
-        if (!c) { for (let k = 0; k < n; k++) oL[k] = oR[k] = oI[k] = 0; return; }
+      process(oL, oR, oI, n, oM) {
+        const c = this.cfg, p = this.p, dt = 1 / this.sr, RPMk = 30 / Math.PI, sr = this.sr;
+        if (!c) { for (let k = 0; k < n; k++) { oL[k] = oR[k] = oI[k] = 0; if (oM) oM[k] = 0; } return; }
+        // a scripted run (offline renders): the frames' parameters at their times
+        if (this.seq) { while (this.seqI < this.seq.length && this.seq[this.seqI][0] <= this.tAll) { const m = this.seq[this.seqI++][1]; if (m.p) this.set(m.p); if (m.start) this.start(); if (m.stop) this.stop(); if (m.bov) { this.bov = m.bov; this.bovT = 0; } } }
+        this.tAll += n * dt;
+        const f = this.f, hd = this.hd, pa = this.pa, pb = this.pb, chm = this.chm;
         for (let k = 0; k < n; k++) {
           this.t += dt;
           // ---- crank speed ----
@@ -8135,7 +8178,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
             // it catches: the revs flare well over idle, then the idle control brings them down to the physics rpm
             const fl = c.idle * (1.55 + 0.35 * p.cold) / RPMk, tgt = Math.max(p.rpm, 1) / RPMk;
             wT = this.t < 0.32 ? fl * Math.pow(this.t / 0.32, 0.6) + (1 - Math.pow(this.t / 0.32, 0.6)) * 230 / RPMk : tgt + (fl - tgt) * Math.exp(-(this.t - 0.32) / 0.45);
-            this.w += (wT - this.w) * Math.min(1, dt * 25); if (this.t > 2.4) this.mode = 'run';
+            this.w += (wT - this.w) * Math.min(1, dt * 25); if (this.t > 2.4) { this.mode = 'run'; this.ws = this.w; }
           } else if (this.mode === 'stop') {
             this.w = Math.max(0, this.w - dt * (40 + this.w * 2.2)); if (this.w <= 0.5) { this.mode = 'off'; this.w = 0; }
           } else if (this.mode === 'run') {
@@ -8150,56 +8193,85 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
           if (this.th >= 720) this.th -= 720;
           for (const e of this.ev) {
             const a = e[0]; if ((th0 < a && this.th >= a) || (this.th < th0 && (a > th0 || a <= this.th))) {
-              if (this.mode === 'crank') { this.cn++; if (this.cn >= this.catchN) { this.mode = 'catch'; this.t = 0; } this.pl[e[1] & 1].push({ t: 0, A: 0.08 * c.amp, tr: 0.004, td: 0.03, nz: 0.1 }); }
+              if (this.mode === 'crank') { this.cn++; if (this.cn >= this.catchN) { this.mode = 'catch'; this.t = 0; } this.pl[e[1] & 1].push(this.pulse(0.08 * c.amp, 0.004, 0.03, 0, { rz: 0 })); }
               else this.fire(e, rpm);
             }
           }
-          // ---- exhaust banks ----
-          let L = 0, R = 0;
+          // ---- noise: white, a low band (turbulent body) and a high band (rasp) ----
+          const wn = this.rnd() * 2 - 1; f[0] += this.aN * (wn - f[0]); f[20] += this.aX * (wn - f[0] - f[20]); const nh = f[20] * 1.5; f[1] += this.aL * (wn - f[1]); const nl = f[1] * 2.2;
+          // the pipes warm up with load (hotter gas, faster sound: the rings climb); the valve opens smoothly
+          this.hotS += (p.hot - this.hotS) * dt * 2; this.vk += ((p.vk || 0) - this.vk) * Math.min(1, dt * 6);
+          const cs = 470 + 190 * this.hotS + 40 * Math.min(1, rpm / c.red), vk = this.vk;
+          const rm = c.pS.rm + (c.pO.rm - c.pS.rm) * vk, chg = c.pS.chg + (c.pO.chg - c.pS.chg) * vk, mab = c.pS.mab + (c.pO.mab - c.pS.mab) * vk, x = c.x + ((c.xO == null ? c.x : c.xO) - c.x) * vk;
+          // ---- each bank: the blowdown pulses, the rasp riding on them, and the pops, into that bank's header ----
+          const Dh = 2 * c.hdrL / cs * sr, nzK = 0.1 + 0.3 * Math.min(1, rpm / c.red);
+          let h0 = 0, h1 = 0;
           for (let bk = 0; bk < 2; bk++) {
-            const ps = this.pl[bk]; let v = 0;
+            const ps = this.pl[bk]; let v = 0, rz = 0;
             for (let j = ps.length - 1; j >= 0; j--) {
-              const q = ps[j]; q.t += dt; const x = q.t;
-              if (x > q.td * 7) { ps.splice(j, 1); continue; }
-              const env = Math.exp(-x / q.td) - Math.exp(-x / q.tr);
-              v += q.A * env * (1 + q.nz * (this.rnd() * 2 - 1));
+              const q = ps[j]; if (q.n > 0) { q.n--; continue; }
+              const env = q.e1 - q.e2; q.e1 *= q.k1; q.e2 *= q.k2;
+              v += q.A * env * (1 + nzK * nl); rz += q.A * q.rz * (q.e1 * q.e1);
+              if (--q.life <= 0) ps.splice(j, 1);
             }
+            v += rz * nh * 1.1;
             for (let j = this.pops.length - 1; j >= 0; j--) {
-              const q = this.pops[j]; if (q.b !== bk) continue; q.t += dt * 0.5; if (q.t < 0) continue;
+              const q = this.pops[j]; if (q.b !== bk) continue; q.t += dt; if (q.t < 0) continue;
               if (q.t > q.td * 6) { this.pops.splice(j, 1); continue; }
-              v += q.A * Math.exp(-q.t / q.td) * (this.rnd() * 2 - 1) * (q.t < 0.0015 ? q.t / 0.0015 : 1);
+              v += q.A * Math.exp(-q.t / q.td) * (nh * 0.8 + nl * 0.9) * (q.t < 0.0006 ? q.t / 0.0006 : 1);
             }
-            if (bk) R = v; else L = v;
+            // the header: the pulse runs down the primaries to the collector, part of it bounces back (negative: the
+            // collector opens up, that's the scavenging pull) and rings at the primaries' length
+            const H = hd[bk], fb = H.r(Dh); f[2 + bk] += this.aH * (fb - f[2 + bk]); const y = v + c.hdrR * f[2 + bk]; H.w(y);
+            if (bk) h1 = y; else h0 = y;
           }
-          // ---- intake side: induction pulses, the starter, the blower, the turbo, the blow-off valve ----
+          // ---- the crossover: an X-pipe or a single collector shares the banks, true duals keep them apart ----
+          const s0 = (1 - x) * h0 + x * h1, s1 = x * h0 + (1 - x) * h1;
+          // ---- each side: the pipe to the muffler, the muffler, the tailpipe, the open end ----
+          // no muffler (straight pipes): the whole run rings between the collector and the tip
+          const Da = 2 * c.La / cs * sr, open = Math.max(0, 1 - rm / 0.25), Db = 2 * (c.Lt + c.La * open) / cs * sr, Rb = 0.18 + 0.3 * rm + 0.12 * open;
+          for (let sd = 0; sd < 2; sd++) {
+            const PA = pa[sd], PB = pb[sd], CH = chm[sd], o = 6 + sd * 6;
+            let fa = PA.r(Da); f[o] += this.aP * (fa - f[o]); const ya = (sd ? s1 : s0) - 0.32 * rm * f[o]; PA.w(ya);
+            // the muffler: what it reflects doesn't get through, chambers add a delayed copy (the bark), packing absorbs the highs
+            CH.w(ya); let m = ya * (1 - 0.55 * rm) + chg * CH.r(0.00045 * sr); f[o + 1] += this.aM * (m - f[o + 1]); m = m * (1 - mab) + f[o + 1] * mab;
+            const fb = PB.r(Db); f[o + 2] += this.aP * (fb - f[o + 2]); const yb = m + Rb * f[o + 2]; PB.w(yb);
+            // the open end radiates the highs better than the lows
+            f[o + 3] += this.aR * (yb - f[o + 3]); const out = yb - 0.3 * f[o + 3];
+            if (sd) oR[k] = out; else oL[k] = out;
+          }
+          // ---- intake side: induction pulses, reversion, the valvetrain, the starter, the blower, the turbo, the blow-off valve ----
           let I = 0;
           for (let j = this.pi.length - 1; j >= 0; j--) {
-            const q = this.pi[j]; q.t += dt; if (q.t < 0) continue; if (q.t > q.td * 6) { this.pi.splice(j, 1); continue; }
-            I += q.A * Math.exp(-q.t / q.td) * (this.rnd() * 2 - 1) * 0.6;
+            const q = this.pi[j]; if (q.n > 0) { q.n--; continue; } I += q.A * q.e1 * wn * 0.6; q.e1 *= q.k1; if (--q.life <= 0) this.pi.splice(j, 1);
+          }
+          let Mv = 0;
+          for (let j = this.tk.length - 1; j >= 0; j--) {
+            const q = this.tk[j]; if (q.n > 0) { q.n--; continue; } q.ph += TAU * q.f * dt; Mv += q.A * q.e1 * Math.sin(q.ph); q.e1 *= q.k1; if (--q.life <= 0) this.tk.splice(j, 1);
           }
           if (this.mode === 'crank') {   // starter: the motor's buzz and the pinion meshing with the flywheel, loaded by compression
-            const f = this.w * RPMk / 60, ld = 0.75 + 0.25 * Math.cos(this.th * Math.PI / 180 * c.ncyl / 2);
-            this.stPh = (this.stPh + f * 14 * dt) % 1; this.stPh2 = (this.stPh2 + f * 150 * dt) % 1;
+            const fq = this.w * RPMk / 60, ld = 0.75 + 0.25 * Math.cos(this.th * Math.PI / 180 * c.ncyl / 2);
+            this.stPh = (this.stPh + fq * 14 * dt) % 1; this.stPh2 = (this.stPh2 + fq * 150 * dt) % 1;
             I += c.amp * 0.22 * ((this.stPh * 2 - 1) * 0.6 + Math.sin(TAU * this.stPh2) * 0.4) * ld;
           }
           if (c.sc && p.sc > 0.001) {   // rotor mesh: crank speed x pulley ratio x lobes; louder with boost and throttle
             this.scPh = (this.scPh + rpm / 60 * c.sc * dt) % 1; const sw = Math.sin(TAU * this.scPh);
-            I += c.amp * p.sc * (c.scRoots ? 0.5 * sw + 0.25 * Math.sign(sw) : 0.7 * sw + 0.12 * Math.sin(TAU * this.scPh * 2));
+            I += c.amp * p.sc * 0.3 * (c.scRoots ? 0.5 * sw + 0.25 * Math.sign(sw) : 0.7 * sw + 0.12 * Math.sin(TAU * this.scPh * 2));
           }
           if (c.turbo && p.spool > 0.001) {   // turbine whistle rising with shaft speed; it eats some of the exhaust pulse
-            const f = 1800 + 5200 * p.spool; this.tPh = (this.tPh + f * dt) % 1;
+            const fq = 1800 + 5200 * p.spool; this.tPh = (this.tPh + fq * dt) % 1;
             I += c.amp * 0.18 * p.spool * p.spool * (0.6 + 0.4 * p.thr) * Math.sin(TAU * this.tPh);
           }
-          if (this.bov > 0) { this.bovT += dt; const a = this.bov * Math.exp(-this.bovT / 0.18) * Math.min(1, this.bovT / 0.01); I += c.amp * a * (this.rnd() * 2 - 1) * 0.5; if (this.bovT > 1) this.bov = 0; }
+          if (this.bov > 0) { this.bovT += dt; const a = this.bov * Math.exp(-this.bovT / 0.18) * Math.min(1, this.bovT / 0.01); I += c.amp * a * wn * 0.5; if (this.bovT > 1) this.bov = 0; }
           if (p.ev) {   // EV: inverter and motor whine, rising with motor speed
             this.tPh = (this.tPh + p.evRpm / 60 * 12 * dt) % 1; this.scPh = (this.scPh + p.evRpm / 60 * 48 * dt) % 1;
             I += 0.05 * Math.min(1, p.evRpm / 3000 + 0.1) * (Math.sin(TAU * this.tPh) * 0.6 + Math.sin(TAU * this.scPh) * 0.3 * (0.3 + p.thr));
           }
-          // DC blockers (the pulses are pressure, they sit above zero)
-          const o = [L, R, I];
-          for (let ch = 0; ch < 3; ch++) { const y = o[ch] - this.dcx[ch] + 0.995 * this.dc[ch]; this.dcx[ch] = o[ch]; this.dc[ch] = y; o[ch] = y; }
-          oL[k] = o[0]; oR[k] = o[1]; oI[k] = o[2];
+          oI[k] = I; if (oM) oM[k] = Mv;
         }
+        // DC blockers (the pulses are pressure, they sit above zero)
+        const outs = [oL, oR, oI];
+        for (let ch = 0; ch < 3; ch++) { const O = outs[ch]; let x1 = this.dcx[ch], y1 = this.dc[ch]; for (let k = 0; k < n; k++) { const xv = O[k], y = xv - x1 + 0.995 * y1; x1 = xv; y1 = y; O[k] = y; } this.dcx[ch] = x1; this.dc[ch] = y1; }
       }
     }
     return MWGen;
@@ -8245,7 +8317,29 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     const sc = pw && pw.kind !== 'turbo' ? (pw.kind === 'roots' ? 1.15 * 6 : pw.kind === 'centri' ? 40 : 2.4 * 8) : 0;
     const gen = { ev: FO[D.fo] || FO.sbc, ncyl: D.cyl, Ie: R.Ie, idle: R.idle, red: R.red, res: R.res, rc: 0.28, mapIdle: clamp(1 - R.vac / 29.9, 0.2, 0.85), cov: R.cov,
       tInd: fr * 3.0, amp: 0.32 * Math.pow(cylL / 0.7, 0.5), cylT: Math.pow(cylL / 0.7, 0.33), hdrT: H.t, pop, popA: 0.5 + ex.open.o, sc, scRoots: pw && pw.kind === 'roots', turbo: pw && pw.kind === 'turbo', carb: D.fuel === 'carb' };
+    Object.assign(gen, eaPipeCfg(c, D, R, b, H, ex, gen));
     return { key: R.key + '|' + (c.eb && c.eb.valve), D, R, gen, H, ex, valve: b.valve == null ? 1 : b.valve, turbo: gen.turbo, boostKind: R.boostKind, carb: gen.carb, flat: D.fo === 'flat8' };
+  }
+  // the exhaust + cam pass (2026-11-27): the real pipes and the cam's own sound for the generator.
+  // Header: the primaries' length from their ring (a long tube rings low, a log manifold high), how hard the collector
+  // reflects (long tubes scavenge hardest, a turbine soaks it up), and unequal primaries (a log manifold's cylinders reach
+  // the outlet at different times). Rasp: thin stainless walls, long tubes and open pipes; a turbo eats most of it.
+  // The pipe: how much the muffler reflects (rm), chambers (chg, the Flowmaster bark), packing (mab), shut vs valve open,
+  // the run lengths (trucks are longer, bikes short). The cam: how early the exhaust valve opens next to the factory cam
+  // (evo), how much it lopes (overlap), how loud the valvetrain is (lift, pushrods, springs), direct injectors tick.
+  const HDR_PIPE = { manifold: [-0.22, 0.0007], shorty: [-0.38, 0.00035], longtube: [-0.55, 0.00006], turbo: [-0.1, 0.0004], downpipe: [-0.14, 0.0003] };
+  function eaPipeCfg(c, D, R, b, H, ex, gen) {
+    const hk = R.X.hdrK, HP = HDR_PIPE[hk] || HDR_PIPE.manifold, turbo = gen.turbo, cs = R.cam || D.cam || {}, c0 = D.cam || cs;
+    const pst = e => { const rm = clamp(0.85 - 0.8 * e.o - (e.lp - 700) / 5000, 0, 0.8); return { rm, chg: rm > 0.12 && e.o >= 0.3 && e.o < 0.8 ? -0.45 : 0, mab: clamp(rm * 0.9 + (e.lp < 650 ? 0.2 : 0), 0, 0.85) }; };
+    const moto = D.exh === 'moto' || D.cyl <= 2, big = /f_150|ram_|tahoe|g63|gls|trackhawk|silverado|sierra|escalade|suburban|truck|peterbilt/.test(c.id || '');
+    const ohv = D.vt === 'ohv', lift = Math.max(0, ((cs.lI || 0) + (cs.lE || 0) - (c0.lI || 0) - (c0.lE || 0)) / 2);
+    return {
+      hdrL: clamp(560 / (4 * H.f), 0.12, 1.0), hdrR: HP[0], hoff: Array.from({ length: D.cyl }, (_, i) => HP[1] * ((i * 0.6180339 + 0.3) % 1)),
+      rasp: clamp(0.08 + (1.05 - H.t) * 1.6 + 0.5 * ex.open.o, 0, 1.2) * (turbo ? 0.35 : 1),
+      evo: clamp(1 + ((cs.dE || 200) - (c0.dE || cs.dE || 200)) * 0.014, 0.85, 1.7), lope: clamp((R.ov - 4) / 42, 0, 1),
+      tick: gen.amp * (ohv ? 0.035 : 0.016) * (1 + lift * 9) * (b.springs && b.springs !== 'stock' ? 1.2 : 1) * (D.fuel === 'carb' ? 1.15 : 1), tickF: ohv ? 3100 : 4300, di: /di/.test(D.fuel || '') ? gen.amp * 0.035 : 0,
+      La: moto ? 0.45 : big ? 2.5 : 1.9, Lt: moto ? 0.28 : big ? 0.9 : 0.75, pS: pst(ex.shut), pO: pst(ex.open), x: ex.shut.x, xO: ex.open.x,
+    };
   }
   // engine temperature per car: warms while it runs (faster under load), cools when it's off; a cold motor fast-idles
   const ENGT = { id: '', T: 25, add: 0, off: 0 };
@@ -8260,55 +8354,89 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
   // the engine audio: one generator (AudioWorklet, or a ScriptProcessor where worklets aren't supported) and its graph
   const EA = { st: 'idle', ctx: null, node: null, gen: null, cfg: null, key: '', on: false, nodes: null, last: {}, hot: 0, dfcoT: 0, lastThr: 0, spool: 0, err: '' };
   let MWGen = null;
+  // the worklet module: the generator plus a processor around it. processorOptions can carry the config and a scripted
+  // run (offline renders: scripts/exhaust-sound-render.cjs)
+  function eaModSrc() {
+    return `const MWGen = (${MWGenFactory.toString()})();
+class MWEngProc extends AudioWorkletProcessor {
+  constructor(o) { super(); this.g = new MWGen(sampleRate); this.n = 0; const po = o && o.processorOptions; if (po && po.cfg) this.g.config(po.cfg); if (po && po.seq) this.g.seq = po.seq;
+    this.port.onmessage = e => { try { const m = e.data; if (m.cfg) this.g.config(m.cfg); if (m.p) this.g.set(m.p); if (m.start) this.g.start(); if (m.stop) this.g.stop(); if (m.bov) { this.g.bov = m.bov; this.g.bovT = 0; } if (m.run) { this.g.mode = 'run'; this.g.ws = this.g.w = (this.g.p.rpm || 0) * Math.PI / 30; } if (m.stat) { this.port.postMessage({ stat: this.g.stat, mode: this.g.mode, rpm: this.g.w * 30 / Math.PI }); } } catch (er) { this.port.postMessage({ err: String(er && er.stack || er) }); } }; }
+  process(i, o) { const out = o[0]; try { if (out.length >= 4) this.g.process(out[0], out[1], out[2], out[0].length, out[3]); else if (out.length >= 3) this.g.process(out[0], out[1], out[2], out[0].length); } catch (er) { if (!this.e) { this.e = 1; this.port.postMessage({ err: String(er && er.stack || er) }); } } return true; }
+}
+registerProcessor('mw-engine', MWEngProc);`;
+  }
   function eaInit() {
     const ctx = audioCtx(); if (!ctx || EA.st !== 'idle') return; EA.ctx = ctx; MWGen = MWGenFactory();
     if (ctx.audioWorklet && typeof AudioWorkletNode === 'function') {
       EA.st = 'loading';
-      const src = `const MWGen = (${MWGenFactory.toString()})();
-class MWEngProc extends AudioWorkletProcessor {
-  constructor() { super(); this.g = new MWGen(sampleRate); this.n = 0; this.port.onmessage = e => { const m = e.data; if (m.cfg) this.g.config(m.cfg); if (m.p) this.g.set(m.p); if (m.start) this.g.start(); if (m.stop) this.g.stop(); if (m.bov) { this.g.bov = m.bov; this.g.bovT = 0; } if (m.run) { this.g.mode = 'run'; this.g.ws = this.g.w = (this.g.p.rpm || 0) * Math.PI / 30; } if (m.stat) { this.port.postMessage({ stat: this.g.stat, mode: this.g.mode, rpm: this.g.w * 30 / Math.PI }); } }; }
-  process(i, o) { const out = o[0]; if (out.length >= 3) this.g.process(out[0], out[1], out[2], out[0].length); return true; }
-}
-registerProcessor('mw-engine', MWEngProc);`;
-      const url = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+      const url = URL.createObjectURL(new Blob([eaModSrc()], { type: 'application/javascript' }));
       ctx.audioWorklet.addModule(url).then(() => { EA.st = 'worklet'; }).catch(e => { EA.err = String(e); EA.st = ctx.createScriptProcessor ? 'script' : 'none'; });
     } else EA.st = ctx.createScriptProcessor ? 'script' : 'none';
   }
-  function eaBuild(cfg) {
-    const ctx = EA.ctx; let src;
-    if (EA.st === 'worklet') { src = new AudioWorkletNode(ctx, 'mw-engine', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [3] }); src.port.onmessage = e => { if (e.data.stat) EA.stat = e.data; }; EA.gen = null; }
-    else if (ctx.createScriptProcessor) { const g = new MWGen(ctx.sampleRate); src = ctx.createScriptProcessor(1024, 0, 3); src.onaudioprocess = ev => { const B = ev.outputBuffer; g.process(B.getChannelData(0), B.getChannelData(1), B.getChannelData(2), B.length); }; EA.gen = g; }
+  // the graph around the generator: its two sides come out of the tailpipes already (headers, crossover, muffler, tailpipe
+  // ring in the generator); here each side gets the muffler's overall tone, the resonator, the level; the intake and the
+  // valvetrain sit in the engine bay, centered; then the cabin, a compressor, the distance and the side
+  function eaBuild(cfg, opts) {
+    const ctx = EA.ctx; let src, gen = null;
+    if (EA.st === 'worklet') { src = new AudioWorkletNode(ctx, 'mw-engine', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [4], processorOptions: opts || {} }); src.port.onmessage = e => { if (e.data.stat) EA.stat = e.data; if (e.data.err) { EA.err = e.data.err; console.warn('engine sound: ' + e.data.err); } }; EA.gen = null; }
+    else if (ctx.createScriptProcessor) { gen = new MWGen(ctx.sampleRate); src = ctx.createScriptProcessor(1024, 0, 4); src.onaudioprocess = ev => { const B = ev.outputBuffer; gen.process(B.getChannelData(0), B.getChannelData(1), B.getChannelData(2), B.length, B.numberOfChannels > 3 ? B.getChannelData(3) : null); }; EA.gen = gen; }
     else return null;
-    const sp = ctx.createChannelSplitter(3), mg = ctx.createChannelMerger(2); src.connect(sp);
+    const post = m => { if (src.port) src.port.postMessage(m); else if (gen) { if (m.cfg) gen.config(m.cfg); if (m.p) gen.set(m.p); if (m.start) gen.start(); if (m.stop) gen.stop(); if (m.bov) { gen.bov = m.bov; gen.bovT = 0; } if (m.run) { gen.mode = 'run'; gen.ws = gen.w = (gen.p.rpm || 0) * Math.PI / 30; } } };
+    const sp = ctx.createChannelSplitter(4), mg = ctx.createChannelMerger(2); src.connect(sp);
     const mk = (type, f, q, g) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f; if (q != null) n.Q.value = q; if (g != null) n.gain.value = g; return n; };
     const G = v => { const n = ctx.createGain(); n.gain.value = v; return n; };
-    // crossover: each side hears its own bank plus some of the other (H / X pipe)
-    const xs = [G(1), G(0), G(0), G(1)];   // L->L, R->L, L->R, R->R
-    const side = [0, 1].map(ch => { const sum = G(1), hp = mk('highpass', 28, 0.7), hdr = mk('peaking', cfg.H.f, cfg.H.q, cfg.H.db), pipe = mk('peaking', 75 + 2400 / Math.max(30, cfg.R.disp * 10), 1.1, 3), muf = mk('lowpass', 700, 0.75), muf2 = mk('lowpass', 1400, 0.6), res = mk('peaking', 130, 1.6, -6), lvl = G(0.5);
-      sum.connect(hp).connect(hdr).connect(pipe).connect(muf).connect(muf2).connect(res).connect(lvl).connect(mg, 0, ch); return { sum, hp, hdr, pipe, muf, muf2, res, lvl }; });
-    sp.connect(xs[0], 0); sp.connect(xs[1], 1); sp.connect(xs[2], 0); sp.connect(xs[3], 1);
-    xs[0].connect(side[0].sum); xs[1].connect(side[0].sum); xs[2].connect(side[1].sum); xs[3].connect(side[1].sum);
-    // the intake side: induction roar, the starter, blower whine, turbo whistle (engine bay, centered)
+    const side = [0, 1].map(ch => { const hp = mk('highpass', 28, 0.7), hdr = mk('peaking', cfg.H.f, cfg.H.q, cfg.H.db * 0.35), pipe = mk('peaking', 75 + 2400 / Math.max(30, cfg.R.disp * 10), 1.1, 2), muf = mk('lowpass', 700, 0.75), muf2 = mk('lowpass', 1400, 0.6), res = mk('peaking', 130, 1.6, -6), lvl = G(0.5);
+      sp.connect(hp, ch); hp.connect(hdr).connect(pipe).connect(muf).connect(muf2).connect(res).connect(lvl).connect(mg, 0, ch); return { hp, hdr, pipe, muf, muf2, res, lvl }; });
+    // the intake side: induction roar, reversion, the starter, blower whine, turbo whistle (engine bay, centered)
     const ib = mk('bandpass', 900, 0.6), ilp = mk('lowpass', 5000, 0.7), ig = G(0.5); sp.connect(ib, 2); ib.connect(ilp).connect(ig); ig.connect(mg, 0, 0); ig.connect(mg, 0, 1);
+    // the valvetrain and the injectors: clicks, so no band-pass (the hood takes the very top off)
+    const mhp = mk('highpass', 900, 0.7), mlp = mk('lowpass', 7000, 0.7), mgn = G(0.6); sp.connect(mhp, 3); mhp.connect(mlp).connect(mgn); mgn.connect(mg, 0, 0); mgn.connect(mg, 0, 1);
     // the cabin: from inside, the body soaks up the highs; outside you hear it all, by distance
     const cab = mk('lowpass', 2600, 0.5), comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.15;
     const out = G(0), pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
     mg.connect(cab).connect(comp).connect(out); if (pan) out.connect(pan).connect(ctx.destination); else out.connect(ctx.destination);
-    return { src, sp, mg, xs, side, ib, ilp, ig, cab, comp, out, pan };
+    return { src, sp, mg, side, ib, ilp, ig, mgn, cab, comp, out, pan, post };
   }
-  function eaSend(m) { if (EA.node && EA.node.src.port) EA.node.src.port.postMessage(m); else if (EA.gen) { const g = EA.gen; if (m.cfg) g.config(m.cfg); if (m.p) g.set(m.p); if (m.start) g.start(); if (m.stop) g.stop(); if (m.bov) { g.bov = m.bov; g.bovT = 0; } if (m.run) { g.mode = 'run'; g.ws = g.w = (g.p.rpm || 0) * Math.PI / 30; } } }
+  function eaSend(m) { if (EA.node && EA.node.post) EA.node.post(m); else if (EA.gen) { const g = EA.gen; if (m.cfg) g.config(m.cfg); if (m.p) g.set(m.p); if (m.start) g.start(); if (m.stop) g.stop(); if (m.bov) { g.bov = m.bov; g.bovT = 0; } if (m.run) { g.mode = 'run'; g.ws = g.w = (g.p.rpm || 0) * Math.PI / 30; } } }
   function eaTeardown(fade = 0.25) {
     const n = EA.node; if (!n) return; EA.node = null; EA.gen = null; const t = EA.ctx.currentTime;
     n.out.gain.cancelScheduledValues(t); n.out.gain.setValueAtTime(n.out.gain.value, t); n.out.gain.linearRampToValueAtTime(0, t + fade);
     setTimeout(() => { try { n.src.disconnect(); n.out.disconnect(); } catch (e) {} }, fade * 1000 + 200);
   }
-  // set the pipes for this exhaust and valve state (smoothly, so a valve opening sounds like one)
+  // set the pipes for this exhaust and valve state (smoothly, so a valve opening sounds like one): the generator moves
+  // the muffler and the crossover, the graph the overall tone and the level
   function eaPipes(cfg, open, inCar, t) {
-    const n = EA.node, E = cfg.ex, A = E.shut, B = E.open, k = open, mix = (a, b) => a + (b - a) * k, x = mix(A.x, B.x), lp = mix(A.lp, B.lp), g = mix(A.g, B.g), notch = mix(A.notch, B.notch);
-    n.xs[0].gain.setTargetAtTime(1 - x, t, 0.08); n.xs[3].gain.setTargetAtTime(1 - x, t, 0.08); n.xs[1].gain.setTargetAtTime(x, t, 0.08); n.xs[2].gain.setTargetAtTime(x, t, 0.08);
+    const n = EA.node, E = cfg.ex, A = E.shut, B = E.open, k = open, mix = (a, b) => a + (b - a) * k, lp = mix(A.lp, B.lp), g = mix(A.g, B.g), notch = mix(A.notch, B.notch);
+    if (n.post) n.post({ p: { vk: k } });
     const tb = cfg.turbo ? 0.55 : 1;   // the turbine sits in the way of the pulses
-    for (const s of n.side) { s.muf.frequency.setTargetAtTime(lp * tb, t, 0.1); s.muf2.frequency.setTargetAtTime(lp * 2.2 * tb, t, 0.1); s.res.gain.setTargetAtTime(notch, t, 0.1); s.lvl.gain.setTargetAtTime(g * (cfg.turbo ? 0.6 : 1), t, 0.1); }
+    for (const s of n.side) { s.muf.frequency.setTargetAtTime(lp * 1.35 * tb, t, 0.1); s.muf2.frequency.setTargetAtTime(lp * 2.6 * tb, t, 0.1); s.res.gain.setTargetAtTime(notch, t, 0.1); s.lvl.gain.setTargetAtTime(g * EA_LVL * (cfg.turbo ? 0.6 : 1), t, 0.1); }
     n.cab.frequency.setTargetAtTime(inCar ? 2400 + 900 * B.o * k : 9000, t, 0.1);
+    if (n.mgn) n.mgn.gain.setTargetAtTime(inCar ? 0.25 : 0.6, t, 0.1);
+  }
+  const EA_LVL = 2;   // the pipes' overall level next to the old sound
+  // what the generator and the graph get this frame: manifold pressure, exhaust heat, decel fuel cut, the blow-off valve,
+  // turbo spool, blower load. S keeps the running state (EA for your car)
+  function eaParams(dt, cfg, st, S) {
+    const R = cfg.R, rpm = Math.max(0, st.rpm), thr = clamp(st.thr, 0, 1), overrun = thr < 0.03 && rpm > R.idle * 1.5;
+    // manifold pressure: idle vacuum from the cam, opening with throttle (sooner at low rpm), boost on top; snapped shut on overrun
+    let map = cfg.gen.mapIdle + (0.97 - cfg.gen.mapIdle) * Math.min(1, thr * (1.2 + 2.4 * R.idle / Math.max(rpm, R.idle)));
+    const opn = Math.min(1, thr * (1.2 + 2.4 * R.idle / Math.max(rpm, R.idle)));
+    let chg = 0.35 + 0.62 * opn;   // the charge it traps: a big cam's low vacuum is reversion, not a bigger charge
+    if (overrun) map = chg = 0.17; map += (st.psi || 0) / 14.7; chg += (st.psi || 0) / 14.7;
+    // exhaust heat (pops need a hot header) and decel fuel cut on fuel-injected motors
+    S.hot += ((thr * Math.min(1, rpm / R.red) * 1.4) - S.hot) * Math.min(1, dt * (thr > S.hot ? 0.8 : 0.35)); S.hot = clamp(S.hot, 0, 1);
+    S.dfcoT = overrun ? S.dfcoT + dt : 0; const dfco = !cfg.carb && S.dfcoT > 0.45 ? 1 : 0;
+    // blow-off valve: the throttle snaps shut on boost
+    // (no blow-off valve: the boost has nowhere to go but back out through the compressor, and it flutters)
+    let bov = 0, flutter = false;
+    if (cfg.turbo && S.lastThr > 0.5 && thr < 0.15 && (st.boost || 0) > 0.45) { if (R.fiH && R.fiH.bov === false) flutter = true; else bov = 0.6 + 0.6 * st.boost; }
+    S.lastThr = thr; S.spool += ((cfg.turbo ? (st.boost || 0) * Math.min(1, rpm / (R.red * 0.6)) : 0) - S.spool) * Math.min(1, dt * 4);
+    const scK = cfg.gen.sc ? clamp(0.12 + 0.88 * thr, 0, 1) * Math.min(1, 0.25 + rpm / R.red) * (0.55 + 0.45 * (st.psi || 0) / Math.max(1, R.psi)) : 0;
+    // the valve: auto opens on load / revs; the Engine Lab can pin it open or shut
+    const v = cfg.ex.valved ? (cfg.valve === 2 ? 1 : cfg.valve === 0 ? 0 : (thr > 0.55 || rpm > R.red * 0.55 ? 1 : 0)) : 0;
+    S.vk = S.vk == null ? v : S.vk + (v - S.vk) * Math.min(1, dt * 5);
+    return { p: { rpm, map, chg, thr, cut: st.cut ? 1 : 0, dfco, hot: S.hot, spool: S.spool, sc: scK, cold: st.cold || 0, ev: 0 }, bov, flutter, vk: S.vk,
+      ig: (0.25 + 0.75 * thr) * (st.inCar ? 0.8 : 0.5) * (R.X.kin < 0.02 ? 1.4 : 1), ibf: 500 + 1600 * Math.min(1, rpm / R.red) };
   }
   // every frame: what the engine is doing right now -> the generator; the throttle and load -> the pipes and the intake
   // st = { on, rpm, thr, load (-1 overrun .. 1 WOT, >1 boost), cut, psi, boost (0..1 spooled), inCar, vol, pan, ev, evRpm }
@@ -8321,30 +8449,17 @@ registerProcessor('mw-engine', MWEngProc);`;
       const fresh = !EA.node || EA.cfgId !== c.id || !EA.on; eaTeardown(); EA.cfg = cfg; EA.key = cfg.key; EA.cfgId = c.id; EA.node = eaBuild(cfg); if (!EA.node) return false;
       eaSend({ cfg: cfg.ev ? { ev: [[0, 0, 1]], ncyl: 1, Ie: 0.1, idle: 0, red: 1e4, res: 0, rc: 1, mapIdle: 1, cov: 0, tInd: 0, amp: 0, cylT: 1, hdrT: 1, pop: 0, popA: 0, sc: 0, turbo: false } : cfg.gen });
       if (!cfg.ev) { if (fresh) eaSend({ start: 1 }); else eaSend({ p: { rpm: st.rpm }, run: 1 }); }
-      EA.node.out.gain.setValueAtTime(0, EA.ctx.currentTime); EA.on = true; EA.pipesT = -1;
+      EA.node.out.gain.setValueAtTime(0, EA.ctx.currentTime); EA.on = true; EA.pipesT = -1; EA.vk = null;
     }
     if (!EA.on) { EA.on = true; if (!cfg.ev) eaSend({ start: 1 }); }
     const t = EA.ctx.currentTime, n = EA.node;
     if (cfg.ev) { eaSend({ p: { ev: 1, evRpm: st.evRpm || 0, thr: st.thr } }); n.out.gain.setTargetAtTime(0.9 * st.vol, t, 0.1); if (n.pan) n.pan.pan.setTargetAtTime(st.pan, t, 0.08); return true; }
-    const R = cfg.R, rpm = Math.max(0, st.rpm), thr = clamp(st.thr, 0, 1), overrun = thr < 0.03 && rpm > R.idle * 1.5;
-    // manifold pressure: idle vacuum from the cam, opening with throttle (sooner at low rpm), boost on top; snapped shut on overrun
-    let map = cfg.gen.mapIdle + (0.97 - cfg.gen.mapIdle) * Math.min(1, thr * (1.2 + 2.4 * R.idle / Math.max(rpm, R.idle)));
-    if (overrun) map = 0.17; map += (st.psi || 0) / 14.7;
-    // exhaust heat (pops need a hot header) and decel fuel cut on fuel-injected motors
-    EA.hot += ((thr * Math.min(1, rpm / R.red) * 1.4) - EA.hot) * Math.min(1, dt * (thr > EA.hot ? 0.8 : 0.35)); EA.hot = clamp(EA.hot, 0, 1);
-    EA.dfcoT = overrun ? EA.dfcoT + dt : 0; const dfco = !cfg.carb && EA.dfcoT > 0.45 ? 1 : 0;
-    // blow-off valve: the throttle snaps shut on boost
-    // (no blow-off valve: the boost has nowhere to go but back out through the compressor, and it flutters)
-    if (cfg.turbo && EA.lastThr > 0.5 && thr < 0.15 && (st.boost || 0) > 0.45) { if (R.fiH && R.fiH.bov === false) fiFlutter(EA.ctx, st.boost, n && n.out); else eaSend({ bov: 0.6 + 0.6 * st.boost }); }
-    EA.lastThr = thr; EA.spool += ((cfg.turbo ? (st.boost || 0) * Math.min(1, rpm / (R.red * 0.6)) : 0) - EA.spool) * Math.min(1, dt * 4);
-    const scK = cfg.gen.sc ? clamp(0.12 + 0.88 * thr, 0, 1) * Math.min(1, 0.25 + rpm / R.red) * (0.55 + 0.45 * (st.psi || 0) / Math.max(1, R.psi)) : 0;
-    eaSend({ p: { rpm, map, thr, cut: st.cut ? 1 : 0, dfco, hot: EA.hot, spool: EA.spool, sc: scK, cold: ENGT.cold || 0, ev: 0 } });
-    // the valve: auto opens on load / revs; the Engine Lab can pin it open or shut
-    const v = cfg.ex.valved ? (cfg.valve === 2 ? 1 : cfg.valve === 0 ? 0 : (thr > 0.55 || rpm > R.red * 0.55 ? 1 : 0)) : 0;
-    EA.vk = EA.vk == null ? v : EA.vk + (v - EA.vk) * Math.min(1, dt * 5);
+    const P = eaParams(dt, cfg, Object.assign(st, { cold: ENGT.cold || 0 }), EA);
+    if (P.flutter) fiFlutter(EA.ctx, st.boost, n && n.out); else if (P.bov) eaSend({ bov: P.bov });
+    eaSend({ p: P.p });
     if (EA.pipesT < 0 || Math.abs(EA.vk - (EA.pipesV || 0)) > 0.02 || EA.pipesIn !== st.inCar) { eaPipes(cfg, EA.vk, st.inCar, t); EA.pipesV = EA.vk; EA.pipesIn = st.inCar; EA.pipesT = t; }
-    n.ig.gain.setTargetAtTime((0.25 + 0.75 * thr) * (st.inCar ? 0.8 : 0.5) * (cfg.R.X.kin < 0.02 ? 1.4 : 1), t, 0.06);
-    n.ib.frequency.setTargetAtTime(500 + 1600 * Math.min(1, rpm / R.red), t, 0.06);
+    n.ig.gain.setTargetAtTime(P.ig, t, 0.06);
+    n.ib.frequency.setTargetAtTime(P.ibf, t, 0.06);
     n.out.gain.setTargetAtTime(0.9 * st.vol, t, 0.08); if (n.pan) n.pan.pan.setTargetAtTime(st.pan, t, 0.08);
     return true;
   }
@@ -8371,6 +8486,7 @@ registerProcessor('mw-engine', MWEngProc);`;
   // every frame, in the car or listening from outside (key fob): the physics rpm when you're driving it, the free-revving
   // engine otherwise; the Engine Lab's preview drives it too
   function stepEngineSound(dt, on, v, top, gas, vol = 1, pan = 0) {
+    if (window.__eaHold) return;   // a test is driving the engine audio itself (scripts/exhaust-sound-test.cjs)
     if (EA.st === 'none') return stepEngineSoundOld(dt, on, v, top, gas, vol, pan);
     if (ENGLAB.prev && !LAB.open) ENGLAB.prev = false;
     if (ENGLAB.prev) { on = true; gas = ENGLAB.thr; vol = 1; pan = 0; }
@@ -8390,6 +8506,7 @@ registerProcessor('mw-engine', MWEngProc);`;
     EA.rpm = rpm;
   }
   const ENGLAB = { prev: false, thr: 0 };
+  window.__ea = { EA, eaCfgOf, eaBuild, eaPipes, eaParams, eaFrame, eaModSrc, MWGenFactory, stepEngFree, ENGFREE, ENGT, EXH_SND, HDR_SND };
   // ---------- Engine Lab (Phase 2 test bench): the engine's real specs, its cam, a dyno sheet, parts on and off, and the
   // engine running on the stand so you can hear stock vs cammed, the exhaust options and the valves. Work happens on a
   // draft build (free to try); Install pays for the new parts and puts them on the car ----------
@@ -27734,11 +27851,11 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
     const t = EA.ctx.currentTime;
     for (const o of VO.list) {
       const A = o.A, Rr = o.cfg.R, rpm = agRpm(A), thr = clamp(A.gas, 0, 1), vd = vdOf(A), overrun = thr < 0.03 && rpm > Rr.idle * 1.5;
-      let map = o.cfg.gen.mapIdle + (0.97 - o.cfg.gen.mapIdle) * Math.min(1, thr * (1.2 + 2.4 * Rr.idle / Math.max(rpm, Rr.idle))); if (overrun) map = 0.17;
+      const opn = Math.min(1, thr * (1.2 + 2.4 * Rr.idle / Math.max(rpm, Rr.idle))); let map = o.cfg.gen.mapIdle + (0.97 - o.cfg.gen.mapIdle) * opn, chg = 0.35 + 0.62 * opn; if (overrun) map = chg = 0.17;
       let psi = 0; if (Rr.psiTab) { const i = Math.min(Rr.psiTab.length - 1, Math.max(0, Math.round(rpm / Rr.step))); psi = (Rr.psiTab[i] || 0) * Math.min(1, thr * 1.4) * (Rr.boostKind === 'turbo' ? (A.st.t.boost || 0) : 1); }
-      map += psi / 14.7; o.hot += ((thr * Math.min(1, rpm / Rr.red) * 1.4) - o.hot) * Math.min(1, dt * (thr > o.hot ? 0.8 : 0.35));
+      map += psi / 14.7; chg += psi / 14.7; o.hot += ((thr * Math.min(1, rpm / Rr.red) * 1.4) - o.hot) * Math.min(1, dt * (thr > o.hot ? 0.8 : 0.35));
       const scK = o.cfg.gen.sc ? clamp(0.12 + 0.88 * thr, 0, 1) * Math.min(1, 0.25 + rpm / Rr.red) : 0;
-      o.send({ p: { rpm, map, thr, cut: vd && vd.cut ? 1 : 0, dfco: 0, hot: clamp(o.hot, 0, 1), spool: o.cfg.turbo ? (A.st.t.boost || 0) : 0, sc: scK, cold: 0, ev: 0 } });
+      o.send({ p: { rpm, map, chg, thr, cut: vd && vd.cut ? 1 : 0, dfco: 0, hot: clamp(o.hot, 0, 1), spool: o.cfg.turbo ? (A.st.t.boost || 0) : 0, sc: scK, cold: 0, ev: 0 } });
       const v = o.cfg.ex.valved ? (thr > 0.55 || rpm > Rr.red * 0.55 ? 1 : 0) : 0; if (Math.abs(v - o.vk) > 0.02) { o.vk += (v - o.vk) * Math.min(1, dt * 5); const keep = EA.node; EA.node = o.n; try { eaPipes(o.cfg, o.vk, false, t); } finally { EA.node = keep; } }
       const dx = A.x - cam.x, dz = A.z - cam.z, d = Math.hypot(dx, dz), vol = clamp(14 / (d + 5), 0, 1) * (worldOn && !inside ? 1 : 0);
       o.n.out.gain.setTargetAtTime(0.9 * vol, t, 0.08); if (o.n.pan) o.n.pan.pan.setTargetAtTime(clamp((dx * rx + dz * rz) / Math.max(4, d), -0.85, 0.85), t, 0.08);
