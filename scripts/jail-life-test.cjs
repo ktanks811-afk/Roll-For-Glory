@@ -106,6 +106,29 @@ const log = o => console.log(JSON.stringify(o));
     await pg.waitForTimeout(1200);
     log({ test: '2e. released', inJail: await ev(() => !!window.__map.S.jail.in), unit: await ev(() => window.__map.S.jail.unit), inside: await ev(() => !!window.__map.IN.place && document.body.classList.contains('indoors')) });
   }
+  if (!ONLY || ONLY.includes('3')) {
+    // 3. auto release: the clock runs out and you're walked out, no release desk
+    await ev(() => { const S = window.__map.S; if (S.jail && S.jail.in) { S.jail.until = Date.now() - 1; window.__yard.jReleaseW(); } });
+    await pg.waitForTimeout(800);
+    await lockUp(['pom']);
+    await ev(() => { window.__map.S.jail.until = Date.now() + 2500; });
+    log(Object.assign({ test: '3a. locked up, 2.5 s left' }, await st()));
+    await pg.waitForTimeout(3500); await shot('life-10-time-served');
+    for (let i = 0; i < 20 && await ev(() => !!window.__map.S.jail.in); i++) await pg.waitForTimeout(500);
+    await pg.waitForTimeout(800);
+    log({ test: '3b. auto released', inJail: await ev(() => !!window.__map.S.jail.in), inside: await ev(() => !!(window.__map.IN.place && document.body.classList.contains('indoors'))), cash: await ev(() => window.__map.S.cash), rec: await ev(() => window.__map.S.jail.rec.slice(0, 1).map(r => [r.n, r.out])) });
+    await shot('life-11-walked-out');
+    // TDCJ time runs out while the game's closed: you come back already out
+    await lockUp(['agg_assault']); await pg.waitForTimeout(3000);
+    const unit = await ev(() => window.__map.S.jail.unit);
+    await ev(() => { window.__map.S.jail.until = Date.now() - 1; });
+    for (let i = 0; i < 20 && await ev(() => !!window.__map.S.jail.in); i++) await pg.waitForTimeout(500);
+    await pg.waitForTimeout(800);
+    log({ test: '3c. TDCJ auto release', unitBefore: unit, inJail: await ev(() => !!window.__map.S.jail.in), unit: await ev(() => window.__map.S.jail.unit), inside: await ev(() => document.body.classList.contains('indoors')) });
+    // NPCs: an arrested set member is gone while his time runs, back after, and it makes the news
+    const npc = await ev(async () => { const S = window.__map.S, j = S.jail; j.npcs.unshift({ id: 'test_npc', name: 'Tank (Six Block)', ch: 'warrant', until: Date.now() + 1500 }); const before = window.__scJailed ? window.__scJailed('test_npc') : null; await new Promise(r => setTimeout(r, 3500)); return { before, after: window.__scJailed ? window.__scJailed('test_npc') : null, news: window.__hood.wS().log.slice(0, 2).map(n => n.text) }; });
+    log({ test: '3d. NPC released', npc });
+  }
   log({ ERR: errs.slice(0, 12) });
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });
