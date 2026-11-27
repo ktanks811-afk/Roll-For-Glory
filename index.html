@@ -3193,7 +3193,7 @@ const GAME = {"SKIN_TONES":["#f6dcc6","#f1d1b5","#e8c19d","#e0b590","#d0a077","#
   skinMat.bumpMap = poreTex; skinMat.bumpScale = 0.0005; poreTex.repeat.set(3, 3);
   const headMat = new THREE.MeshStandardMaterial({ map: headTex, bumpMap: poreTex, bumpScale: 0.0005, roughnessMap: roughTex, roughness: 0.6, metalness: 0, envMapIntensity: 0.5 });
   { const fp = poreTex.clone(); fp.needsUpdate = true; fp.wrapS = fp.wrapT = THREE.RepeatWrapping; fp.repeat.set(9, 7); headMat.bumpMap = fp; headMat.bumpScale = 0.00028; } /*FACEPORE*/
-  const neckMat = new THREE.MeshStandardMaterial({ map: neckTex, roughness: 0.56, metalness: 0, envMapIntensity: 0.45 });
+  const neckMat = new THREE.MeshStandardMaterial({ map: neckTex, vertexColors: true, roughness: 0.56, metalness: 0, envMapIntensity: 0.45 }); /*REAL8 neckmat*/
   neckTex.repeat.set(1, 4.6); neckTex.wrapS = neckTex.wrapT = THREE.RepeatWrapping;
   const lipMat = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0 });
   const innerMat = new THREE.MeshStandardMaterial({ roughness: 0.7 });
@@ -3579,6 +3579,19 @@ uniform mat3 normalMatrix;
     const m = BCMAT.clone(); m.color.copy(mat.color).multiplyScalar(1.45);
     const ms = mesh(geo, m, false); ms.receiveShadow = false; return ms;
   }
+  /*REAL8 neckshade*/ function neckShade(geo, top, look) {
+    const P = geo.attributes.position, C = new Float32Array(P.count * 3), lum = (() => { const c = hex3(look.skin); return c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11; })();
+    for (let i = 0; i < P.count; i++) {
+      const x = P.getX(i), y = P.getY(i), z = P.getZ(i), a = Math.atan2(x, z), front = Math.max(0, Math.cos(a)), back = Math.max(0, -Math.cos(a));
+      const up = smooth(top - 0.11, top - 0.01, y);   // toward the head
+      let k = 1 - (0.2 + 0.08 * (1 - lum)) * up * (0.45 + 0.55 * front) - 0.1 * up * back;   // the jaw's shadow, the skull base
+      k *= 1 + 0.06 * (vnoise(x * 70 + 3, y * 70, z * 70) - 0.5) + 0.03 * (vnoise(x * 260, y * 260 + 5, z * 260) - 0.5);
+      const warm = 0.025 * front * (1 - up);   // a little blood colour low on the throat
+      C[i * 3] = k; C[i * 3 + 1] = k * (1 - warm); C[i * 3 + 2] = k * (1 - warm * 1.3);
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(C, 3));
+    return mesh(geo, neckMat);
+  }
   function buildFacialHair(look, g) {
     const f = FACIAL[look.facialHair];
     if (!f || !f.T) return;
@@ -3837,10 +3850,10 @@ uniform mat3 normalMatrix;
     if (whiteG.length || metalG.length) upper.add(mesh(mergeGeos([...whiteG, ...metalG].map(prep)), new THREE.MeshStandardMaterial({ color: 0xc8c8cc, metalness: 0.9, roughness: 0.3 }), false));
 
     // --- neck and head
-    { const n0 = 0.068 * lerp(1, W, 0.5) * (FEM ? 0.88 : 1), n1 = 0.054 * lerp(1, W, 0.3) * (FEM ? 0.86 : 1);
-      upper.add(mesh(limbP([0, U(1.4), -0.017], [0, U(1.62), 0.004], /*REAL7 neckslant*/ t => ({ r: lerp(n0, n1, smooth(0, 0.55, t)) + (FEM ? 0 : 0.002 * bump(t, 0.5, 0.15)), sq: 0.9 + 0.04 * t, zo: -0.004 * (1 - t) }), true, 28, 10), neckMat)); }
+    { const n0 = 0.074 * lerp(1, W, 0.5) * (FEM ? 0.87 : 1), n1 = 0.0605 * lerp(1, W, 0.3) * (FEM ? 0.86 : 1); /*REAL8 neck*/
+      upper.add(neckShade(limbP([0, U(1.4), -0.017], [0, U(1.62), 0.004], /*REAL7 neckslant*/ t => ({ r: lerp(n0, n1, smooth(0, 0.55, t)) + (FEM ? 0 : 0.002 * bump(t, 0.5, 0.15)), sq: 0.9 + 0.04 * t, zo: -0.004 * (1 - t) }), true, 28, 10), U(1.62), look)); }
     const head = new THREE.Group(); head.position.set(0, U(1.648 - (FEM ? 0.016 : 0.01)), 0.014); head.scale.setScalar(FEM ? 1.04 : 1.05);
-    NECK.r = 0.054 * lerp(1, W, 0.3) * (FEM ? 0.86 : 1) / (FEM ? 1.04 : 1.05) * 0.9; /*REAL7 neckr*/ /*REAL5C: a touch smaller, no bobble-heads on the fuller frame*/ upper.add(head);
+    NECK.r = 0.0605 * lerp(1, W, 0.3) * (FEM ? 0.86 : 1) / (FEM ? 1.04 : 1.05) * 0.9; /*REAL7 neckr*/ /*REAL5C: a touch smaller, no bobble-heads on the fuller frame*/ upper.add(head);
     const mask = CLOTH[look.mask], hat = CLOTH[look.hat];
     const skimask = mask?.style === 'skimask', bandana = mask?.style === 'bandana';
     const hatOn = hat && hat.style !== 'none', durag = !hatOn && look.extras.includes('durag');

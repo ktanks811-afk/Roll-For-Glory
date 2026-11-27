@@ -14,7 +14,7 @@ const LOOKS = {
   stubble: { body: 'm', skin: '#9c6644', hairStyle: 'waves', hair: '#111111', eyes: '#3b2414', facialHair: 'stubble', build: 1, height: 1, mus: 0.5, face: 9, top: 'tee_white', bottom: 'jeans_blue' },
   woman: { body: 'f', skin: '#a0663a', hairStyle: 'silk_press', hair: '#1a0f0a', eyes: '#3b2414', facialHair: 'none', extras: ['lashes', 'lipgloss'], build: 1, height: 0.9, mus: 0.3, face: 5, top: 'crop_white', bottom: 'jeans_blue' },
 };
-const VIEWS = { face: ['head', 0.3], side: ['head', 1.25], bust: ['bust', 0.3], body: ['full', 0.35], back: ['full', 3.0] };
+const VIEWS = { neck: ['bust', 0.6], neckb: ['head', 2.5], neckf: ['head', 0.75], face: ['head', 0.3], side: ['head', 1.25], bust: ['bust', 0.3], body: ['full', 0.35], back: ['full', 3.0] };
 (async () => {
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const ctx = await b.newContext({ viewport: { width: +(process.env.VW || 900), height: +(process.env.VH || 900) }, deviceScaleFactor: +(process.env.DPR || 1), hasTouch: true, isMobile: true });
