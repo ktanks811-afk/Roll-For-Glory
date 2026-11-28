@@ -8534,7 +8534,7 @@ registerProcessor('mw-engine', MWEngProc);`;
     }
     stepEngTemp(dt, c, on && !ev, clamp(load * rpm / Math.max(1, R ? R.red : 6000), 0, 1));
     const ok = eaFrame(dt, c, { on, rpm, thr: gas, cut, psi, boost, inCar, vol, pan, evRpm: Math.abs(v) * 160 });
-    EA.rpm = rpm;
+    EA.rpm = rpm; EA.thr = gas; EA.cut = cut; EA.psi = psi; EA.boost = boost;   // (online: other players hear these)
   }
   const ENGLAB = { prev: false, thr: 0 };
   window.__ea = { EA, eaCfgOf, eaBuild, eaPipes, eaParams, eaFrame, eaModSrc, MWGenFactory, stepEngFree, ENGFREE, ENGT, EXH_SND, HDR_SND };
@@ -16731,6 +16731,50 @@ body.phoning #ridepill,body.creating #ridepill{display:none}body.riding #em-btn,
     const m = v.model; if (!m || (v.bm === m && v.bk === p.buildKey)) return;
     v.bm = m; v.bk = p.buildKey; const b = p.build || {};
     try { applyDrag(m, b); applyMotor(m, b); peerRide(m, b.rh || 0); } catch (e) { console.warn('peer build: ' + e.message); }
+  });
+  // ---------- other players hear your car: the engine build rides on the hello, revs and throttle on the state ----------
+  // es = your motor (factory option, crate swap, Engine Lab build, parts, crate-page sound, fuel); er/eg/ec = rpm, gas,
+  // limiter. They run the same engine voice as your own car from it (nvStep). Revving changes send right away.
+  function myEngSnd() {
+    const c = S.car; if (!c || isEV(c)) return 0;
+    const o = {}; if (c.eng) o.e = c.eng; if (c.engX) o.x = c.engX; if (c.eb && Object.keys(c.eb).length) o.b = c.eb; if (c.parts && Object.keys(c.parts).length) o.p = c.parts;
+    if (c.swap && c.swap.snd) o.s = c.swap.snd; if (c.tune && c.tune.fuel) o.f = c.tune.fuel;
+    return JSON.stringify(o).length > 3500 ? { e: o.e, x: o.x, s: o.s } : o;
+  }
+  const NES = { sent: null, key: '', keyF: -1 };
+  function myRevs() {
+    const on = !!(S.car && driving && !foot.on && !inside && EA.on && !ENGLAB.prev && (EA.rpm || 0) > 50);
+    return on ? { r: Math.round((EA.rpm || 0) / 25) * 25, g: Math.round(clamp(EA.thr || 0, 0, 1) * 20) / 20, c: EA.cut ? 1 : 0, b: Math.round(clamp(EA.boost || 0, 0, 1) * 10) / 10 } : null;
+  }
+  NET_HOOK.hello.push(() => ({ es: myEngSnd() }));
+  NET_HOOK.key.push(() => { if (NES.keyF !== frame >> 4) { NES.keyF = frame >> 4; NES.key = JSON.stringify(myEngSnd()); } return NES.key; });
+  NET_HOOK.state.push(() => { const m = myRevs(); NES.sent = m; return m ? { er: m.r, eg: m.g, ec: m.c, eb: m.b } : { er: 0 }; });
+  NET_HOOK.urgent.push(() => { const m = myRevs(), s = NES.sent; if (!m !== !s) return true; if (!m) return false; return Math.abs(m.r - s.r) > 600 || Math.abs(m.g - s.g) > 0.3 || m.c !== s.c; });
+  // what they sent, checked: plain values only, short keys, nothing nested deep, no prototype keys
+  const ES_BAD = { __proto__: 1, constructor: 1, prototype: 1 };
+  function esVal(v, d) {
+    if (typeof v === 'number') return isFinite(v) ? v : 0; if (typeof v === 'boolean') return v; if (typeof v === 'string') return v.slice(0, 64);
+    if (d > 2 || !v || typeof v !== 'object') return undefined;
+    if (Array.isArray(v)) return v.slice(0, 32).map(x => esVal(x, d + 1)).filter(x => x !== undefined);
+    const o = {}; let n = 0;
+    for (const k of Object.keys(v)) { if (++n > 60) break; if (!/^\w{1,32}$/.test(k) || Object.prototype.hasOwnProperty.call(ES_BAD, k)) continue; const x = esVal(v[k], d + 1); if (x !== undefined) o[k] = x; }
+    return o;
+  }
+  function cleanEngSnd(e) {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
+    try { if (JSON.stringify(e).length > 6000) return null; } catch (x) { return null; }
+    const v = esVal(e, 0), o = {}, str = x => typeof x === 'string' && /^[\w.@:-]{1,40}$/.test(x);
+    if (str(v.e)) o.e = v.e; if (str(v.x)) o.x = v.x; if (str(v.f)) o.f = v.f;
+    for (const k of ['b', 'p', 's']) if (v[k] && typeof v[k] === 'object' && !Array.isArray(v[k])) o[k] = v[k];
+    return o;
+  }
+  NET_HOOK.recv.push((p, m, now) => {
+    if (m.k === 'h') { if (m.es !== undefined) { const e = cleanEngSnd(m.es), k = JSON.stringify(e); if (k !== p.esKey) { p.es = e; p.esKey = k; } } }
+    else if (m.k === 's') {
+      if (m.er === undefined) { p.er = undefined; return; }   // a 2D player (or an older 3D one): we guess their revs from their speed
+      const er = nNum(m.er, 0, 20000, 0); if (er > 0 && !(p.er > 0)) p.eOnT = now;
+      p.er = er; p.eg = nNum(m.eg, 0, 1, 0); p.ec = !!m.ec; p.eB = nNum(m.eb, 0, 1, 0);
+    }
   });
   // ---------- the hood (_hood.js): sets that claim blocks, their people on the corners, and AI players around town ----------
   // Fort Worth is cut into 300 m blocks, each named for the corner at its middle. Eight made-up sets (the 2D game's five
@@ -27895,6 +27939,81 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
     }
   }
 
+  // ---------- other online players' cars: the same engine voice, from their build, revs and throttle ----------
+  // The closest few players driving near you (2 on a phone) each get a generator built from the motor they sent (es), fed
+  // the rpm/gas/limiter they send (er/eg/ec), placed where their car is and faded by distance. 2D players and older
+  // clients don't send revs: theirs come from their speed through a six-speed gearbox.
+  const NV = { list: [], max: phone ? 2 : 3, t: 0 };
+  const nvKey = p => p.car + '|' + (p.esKey || '') + '|' + (p.build && p.build.eng || '');
+  function nvCar(p) {
+    const c = newCar(p.car), e = p.es || {}, eng = e.e || (p.build && p.build.eng);
+    if (eng) c.eng = eng; if (e.x) c.engX = e.x; if (e.b) c.eb = e.b; if (e.p) c.parts = e.p; if (e.s) c.swap = { snd: e.s }; if (e.f) c.tune = { fuel: e.f };
+    return c;
+  }
+  function nvFor(p, now) {
+    if (EA.st === 'idle') eaInit(); if (EA.st !== 'worklet' && EA.st !== 'script') return null;
+    const ctx = EA.ctx; if (!ctx || ctx.state !== 'running') return null;
+    let cfg; try { cfg = eaCfgOf(nvCar(p)); } catch (e) { return null; } if (!cfg || cfg.ev || !cfg.R) return null;
+    const keepGen = EA.gen, keepStat = EA.stat, n = eaBuild(cfg), gen = EA.gen; EA.gen = keepGen; EA.stat = keepStat; if (!n) return null;
+    if (n.src.port) n.src.port.onmessage = null;
+    const send = m => { if (n.post) n.post(m); else if (n.src.port) n.src.port.postMessage(m); else if (gen) { if (m.cfg) gen.config(m.cfg); if (m.p) gen.set(m.p); if (m.start) gen.start(); if (m.stop) gen.stop(); if (m.bov) { gen.bov = m.bov; gen.bovT = 0; } if (m.run) { gen.mode = 'run'; gen.ws = gen.w = (gen.p.rpm || 0) * Math.PI / 30; } } };
+    send({ cfg: cfg.gen });
+    // they just fired it up: you hear it crank; otherwise it's already running
+    const rpm0 = p.er > 0 ? p.er : cfg.R.idle; if (p.eOnT && now - p.eOnT < 1.2) send({ start: 1 }); else send({ p: { rpm: rpm0 }, run: 1 });
+    const keepNode = EA.node; EA.node = n; try { eaPipes(cfg, 0, false, ctx.currentTime); } finally { EA.node = keepNode; }
+    n.out.gain.setValueAtTime(0, ctx.currentTime);
+    return { p, key: nvKey(p), n, cfg, send, S: { hot: 0, dfcoT: 0, lastThr: 0, spool: 0, vk: null }, vkSent: -1, rpm: rpm0, thr: 0, gear: 1, dead: false };
+  }
+  function nvDrop(o) {
+    if (o.dead) return; o.dead = true; NV.list = NV.list.filter(x => x !== o);
+    try { o.n.out.gain.setTargetAtTime(0, EA.ctx.currentTime, 0.15); } catch (e) {}
+    setTimeout(() => { try { o.send({ stop: 1 }); o.n.src.disconnect(); o.n.out.disconnect(); } catch (e) {} }, 900);
+  }
+  // no revs sent: a six-speed box from their speed, gas from how hard they pull
+  function nvGuess(o, p, dt) {
+    const R = o.cfg.R, v = Math.abs(p.sp || 0), a = p.st ? p.st.a || 0 : 0, top = 85, ratios = [3.2, 2.1, 1.5, 1.15, 0.92, 0.75];
+    const wheel = v / top * R.red * 0.75;   // rpm in top gear at this speed
+    let g = o.gear; const at = i => R.idle + wheel * ratios[i - 1] / ratios[5];
+    if (at(g) > R.red * 0.9 && g < 6) g++; else if (g > 1 && at(g - 1) < R.red * 0.62) g--; if (v < 2) g = 1; o.gear = g;
+    const thr = v < 0.5 ? 0 : clamp(0.15 + a / 6, 0, 1);
+    return { rpm: Math.min(R.red, v < 0.5 ? R.idle : Math.max(R.idle * 1.05, at(g))), thr, cut: false, boost: thr };
+  }
+  function nvStep(dt) {
+    if (!EA.ctx || EA.ctx.state !== 'running') { if (NV.list.length && !netOn()) NV.list.slice().forEach(nvDrop); return; }
+    const cam = camera.position, rx = Math.cos(drv.camYaw || 0), rz = -Math.sin(drv.camYaw || 0), now = performance.now() / 1000;
+    NV.t -= dt;
+    if (NV.t <= 0) {
+      NV.t = 0.4;
+      const on = netOn() && worldOn && !(window.__eaHold);
+      const want = on ? [...NET.peers.values()].filter(p => p.car && p.inCar && !p.ride && !p.fresh && p.st && (p.er === undefined || p.er > 0))
+        .map(p => ({ p, d: Math.hypot(p.x - cam.x, p.z - cam.z) })).filter(o => o.d < 260).sort((a, b) => a.d - b.d).slice(0, NV.max).map(o => o.p) : [];
+      for (const o of NV.list.slice()) if (!want.includes(o.p) || o.key !== nvKey(o.p) || !NET.peers.has(o.p.id)) nvDrop(o);
+      for (const p of want) if (!NV.list.some(o => o.p === p)) { const o = nvFor(p, now); if (o) NV.list.push(o); break; }   // one new voice per pass
+    }
+    if (!NV.list.length) return;
+    const t = EA.ctx.currentTime, meIn = !!(driving && !foot.on);
+    for (const o of NV.list) {
+      const p = o.p, R = o.cfg.R;
+      let want;
+      if (p.er !== undefined) want = { rpm: p.er, thr: p.eg || 0, cut: p.ec, boost: R.boostKind === 'turbo' ? p.eB || 0 : 1 }; else want = nvGuess(o, p, dt);
+      // packets come 2-15 times a second: glide between them like a real tach
+      o.rpm += (want.rpm - o.rpm) * Math.min(1, dt * (want.rpm > o.rpm ? 9 : 6)); o.thr += (want.thr - o.thr) * Math.min(1, dt * 12);
+      const rpm = o.rpm, thr = o.thr;
+      let psi = 0; if (R.psiTab) { const i = Math.min(R.psiTab.length - 1, Math.max(0, Math.round(rpm / R.step))); psi = (R.psiTab[i] || 0) * Math.min(1, thr * 1.4) * (R.boostKind === 'turbo' ? want.boost : 1); }
+      const P = eaParams(dt, o.cfg, { rpm, thr, cut: want.cut, psi, boost: want.boost, inCar: false }, o.S);
+      if (P.bov) o.send({ bov: P.bov }); o.send({ p: P.p });
+      if (Math.abs(P.vk - o.vkSent) > 0.02) { o.vkSent = P.vk; const keep = EA.node; EA.node = o.n; try { eaPipes(o.cfg, P.vk, false, t); } finally { EA.node = keep; } }
+      // where their car is from where you're listening: louder up close, quieter from inside your own car, nothing indoors
+      const dx = p.x - cam.x, dz = p.z - cam.z, d = Math.hypot(dx, dz);
+      const vol = clamp(16 / (d + 6), 0, 1) * (worldOn && !inside ? 1 : 0) * (meIn ? 0.7 : 1);
+      o.n.out.gain.setTargetAtTime(0.9 * vol, t, 0.08);
+      if (o.n.pan) o.n.pan.pan.setTargetAtTime(clamp((dx * rx + dz * rz) / Math.max(4, d), -0.85, 0.85), t, 0.08);
+      o.n.cab.frequency.setTargetAtTime(clamp(9000 - d * 38, 1600, 9000) * (meIn ? 0.6 : 1), t, 0.1);
+      o.n.ig.gain.setTargetAtTime(P.ig, t, 0.06); o.n.ib.frequency.setTargetAtTime(P.ibf, t, 0.06);
+    }
+  }
+  window.__nv = { NV, nvStep, nvCar, nvKey };
+
   // ---------- the race (one pair on the tree at a time) ----------
   function newRun(kind, lanes, opts) {
     return Object.assign({ kind, lanes, dist: R.dist, tree: R.tree, st: 'stage', ta: null, gT: null, arm: null, toT: null, t0: R.t, done: false, shown: false }, opts || {});
@@ -37058,7 +37177,7 @@ body.lay-edit #dst { pointer-events: none; }
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
     if (now - MEM.last > 2000) { MEM.last = now; memStep(now); }
-    mtFrame(); netTick(dt); HOME.stepOut(dt); homeNetTick(dt); stepSpinners(dt);
+    mtFrame(); netTick(dt); if ((frame & 1) === 0 && window.__nv) try { window.__nv.nvStep(dt * 2); } catch (e) { if (!window.__nv.warned) { window.__nv.warned = true; console.warn('peer engine sound: ' + e.message); } } HOME.stepOut(dt); homeNetTick(dt); stepSpinners(dt);
     stepNos(dt, (driving && !foot.on) || ROLL.on || STRIP.on);
     if ((frame & 15) === 0) syncCarModel();
     if (car) stepPanels(car.userData.model, dt); if (car && driving) stepCarAudio();
