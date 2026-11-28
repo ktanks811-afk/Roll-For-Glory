@@ -8254,26 +8254,26 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     // to everybody on your server and on your deed, like your house does.
     // S.lots[landId] = { n, items: [{ k, x, z, r, n?, nm?, keys?: [{ u, n }] }] }: x, z metres from the lot's middle
     const RK = [
-      { k: 'plot', name: 'House lot', ico: '🏡', w: 34, d: 34, price: 25000, max: 12, s: 'Another house on your land. Build it room by room and give a friend the keys' },
-      { k: 'barn', name: 'Red barn', ico: '🛖', w: 18, d: 14, price: 85000, solid: [16, 12], s: 'Hay loft, big sliding doors' },
-      { k: 'stable', name: 'Horse stable', ico: '🐴', w: 22, d: 10, price: 70000, solid: [20, 8], s: 'Eight stalls under one long roof' },
-      { k: 'shop', name: 'Metal shop', ico: '🔧', w: 16, d: 12, price: 55000, solid: [14, 10], s: 'Two roll-up doors' },
-      { k: 'silo', name: 'Grain silo', ico: '🌾', w: 6, d: 6, price: 30000, solid: [5.2, 5.2], s: 'Fourteen metres of steel' },
+      { k: 'plot', name: 'House lot', ico: '🏡', w: 34, d: 34, pay: 250, payWhy: 'rent once a house is built on it', price: 25000, max: 12, s: 'Another house on your land. Build it room by room and give a friend the keys' },
+      { k: 'barn', name: 'Red barn', ico: '🛖', w: 18, d: 14, pay: 120, payWhy: 'storage rent', price: 85000, solid: [16, 12], s: 'Hay loft, big sliding doors' },
+      { k: 'stable', name: 'Horse stable', ico: '🐴', w: 22, d: 10, pay: 350, payWhy: 'boarding', price: 70000, solid: [20, 8], s: 'Eight stalls under one long roof' },
+      { k: 'shop', name: 'Metal shop', ico: '🔧', w: 16, d: 12, pay: 200, payWhy: 'rented to a mechanic', price: 55000, solid: [14, 10], s: 'Two roll-up doors' },
+      { k: 'silo', name: 'Grain silo', ico: '🌾', w: 6, d: 6, pay: 90, payWhy: 'grain storage', price: 30000, solid: [5.2, 5.2], s: 'Fourteen metres of steel' },
       { k: 'windmill', name: 'Windmill', ico: '🌬️', w: 4, d: 4, price: 9000, solid: [2.4, 2.4], s: 'Turns in the wind and fills the trough' },
       { k: 'pond', name: 'Stock pond', ico: '💧', w: 30, d: 22, price: 14000, s: 'Water for the herd' },
       { k: 'paddock', name: 'Paddock', ico: '🚧', w: 40, d: 30, price: 6000, s: 'Three-rail fence with a gate' },
-      { k: 'cattle', name: 'Cattle (8 head)', ico: '🐄', w: 30, d: 24, price: 16000, s: 'Fenced pasture, trough and eight head' },
-      { k: 'horses', name: 'Horses (4)', ico: '🐎', w: 24, d: 18, price: 28000, s: 'Fenced pen with four horses' },
-      { k: 'hay', name: 'Hay bales', ico: '🟫', w: 8, d: 6, price: 1500, s: 'Six round bales' },
-      { k: 'coop', name: 'Chicken coop', ico: '🐔', w: 5, d: 4, price: 3500, solid: [3, 2.4], s: 'Coop and wire run' },
-      { k: 'garden', name: 'Garden', ico: '🥬', w: 12, d: 10, price: 2000, s: 'Raised rows' },
+      { k: 'cattle', name: 'Cattle (8 head)', ico: '🐄', w: 30, d: 24, pay: 650, payWhy: 'calves sold at the sale barn', price: 16000, s: 'Fenced pasture, trough and eight head' },
+      { k: 'horses', name: 'Horses (4)', ico: '🐎', w: 24, d: 18, pay: 400, payWhy: 'boarding and trail rides', price: 28000, s: 'Fenced pen with four horses' },
+      { k: 'hay', name: 'Hay bales', ico: '🟫', w: 8, d: 6, pay: 60, payWhy: 'bales sold', price: 1500, s: 'Six round bales' },
+      { k: 'coop', name: 'Chicken coop', ico: '🐔', w: 5, d: 4, pay: 25, payWhy: 'eggs', price: 3500, solid: [3, 2.4], s: 'Coop and wire run' },
+      { k: 'garden', name: 'Garden', ico: '🥬', w: 12, d: 10, pay: 40, payWhy: 'farmers market', price: 2000, s: 'Raised rows' },
       { k: 'arch', name: 'Entrance arch', ico: '⛩️', w: 12, d: 2, price: 12000, s: 'Your ranch\'s name over the gate' },
       { k: 'road', name: 'Gravel road', ico: '🛣️', w: 8, d: 40, price: 3000, flat: 1, s: 'Forty metres of drive. Turn it to run the other way' },
       { k: 'court', name: 'Basketball court', ico: '🏀', w: 28, d: 15, price: 18000, flat: 1, s: 'Full court with lines and two hoops' },
       { k: 'helipad', name: 'Helipad', ico: '🚁', w: 20, d: 20, price: 40000, flat: 1, s: 'Lit pad for the chopper' },
-      { k: 'pumpjack', name: 'Pumpjack', ico: '🛢️', w: 8, d: 4, price: 120000, solid: [7, 2.6], s: 'Nods all day on its own well' },
-      { k: 'strip8', name: 'Drag strip · 1/8 mile', ico: '🏁', w: 26, d: 400, price: 250000, max: 2, flat: 1, len: 201.17, s: 'Two lanes on a Christmas tree, walls, bleachers, a tower and the shutdown. Race AI racers or friends online' },
-      { k: 'strip4', name: 'Drag strip · 1/4 mile', ico: '🏁', w: 26, d: 640, price: 450000, max: 2, flat: 1, len: 402.34, s: 'A full quarter mile: tree, walls, bleachers, tower, lights and a long shutdown. Race AI racers or friends online' },
+      { k: 'pumpjack', name: 'Pumpjack', ico: '🛢️', w: 8, d: 4, pay: 1800, payWhy: 'oil', price: 120000, solid: [7, 2.6], s: 'Nods all day on its own well' },
+      { k: 'strip8', name: 'Drag strip · 1/8 mile', ico: '🏁', w: 26, d: 400, pay: 900, payWhy: 'test-and-tune gate', price: 250000, max: 2, flat: 1, len: 201.17, s: 'Two lanes on a Christmas tree, walls, bleachers, a tower and the shutdown. Race AI racers or friends online' },
+      { k: 'strip4', name: 'Drag strip · 1/4 mile', ico: '🏁', w: 26, d: 640, pay: 1500, payWhy: 'test-and-tune gate', price: 450000, max: 2, flat: 1, len: 402.34, s: 'A full quarter mile: tree, walls, bleachers, tower, lights and a long shutdown. Race AI racers or friends online' },
     ];
     const RK_BY = Object.fromEntries(RK.map(r => [r.k, r]));
     const RMAX = 140;
@@ -8405,6 +8405,26 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       for (const v of STRIPS.values()) if (!v.on || !rr.tracks.includes(v.t)) { rr.addTrack(v.t); v.on = true; }
       return true;
     }
+    // ---- what your land pays (Kimari 2026-11-28 "and more"): every night you sleep, each thing on your land earns.
+    // Cattle and horses do better with water on the land (a stock pond or a windmill: +20%); a house lot pays rent once
+    // a house stands on it. Friends' land pays them, not you.
+    function ranchPay(p) {
+      const plan = owns(p) ? lotPlan(p) : null, rows = []; let total = 0;
+      if (!plan) return { total, rows };
+      const water = plan.items.some(i => i.k === 'pond' || i.k === 'windmill');
+      const by = {};
+      for (const it of plan.items) {
+        const R = RK_BY[it.k]; if (!R.pay) continue;
+        if (it.k === 'plot') { const q = PLOTS.get(plotId(p, it.n)), o = q && OUTS.get(q.id); if (!(o && hasHouse(o))) continue; }
+        const each = Math.round(R.pay * (water && (it.k === 'cattle' || it.k === 'horses') ? 1.2 : 1));
+        const r = by[it.k] || (by[it.k] = { k: it.k, name: R.name, ico: R.ico, why: R.payWhy, n: 0, each, sum: 0 }); r.n++; r.sum += each; total += each;
+      }
+      for (const r of Object.values(by)) rows.push(r);
+      rows.sort((a, b) => b.sum - a.sum);
+      return { total, rows, water };
+    }
+    function ranchPayAll() { let t = 0; const lands = []; for (const p of (DATA.P || [])) if (p.type === 'land' && !p.plotOf && owns(p)) { const r = ranchPay(p); if (r.total) { t += r.total; lands.push([p, r.total]); } } return { total: t, lands }; }
+    { const _rSleep = sleep; sleep = function () { const r = _rSleep.apply(this, arguments); try { const P = ranchPayAll(); if (P.total) { earn(P.total, `Ranch income (${P.lands.length} ${P.lands.length === 1 ? 'place' : 'places'})`); S.ranchLast = { day: S.day, total: P.total }; setTimeout(() => toast(`Your land made ${money(P.total)} overnight.`, 'good'), 2600); } } catch (e) { console.warn('ranch income ' + e.message); } return r; }; }
     function ranchInit(D) {
       for (const p of D.P) if (p.type === 'land' && (owns(p) || FOREIGN.has(p.id))) ranchSync(p.id);
     }
@@ -8728,7 +8748,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     function planOpen(p) {
       if (!owns(p) || kindOf(p) !== 'land' || p.plotOf) return;
       closeMenu();
-      LP.on = true; LP.p = p; LP.plan = planOwn(p); LP.pick = null; LP.sel = null; LP.keysFor = null; LP.ghost = null;
+      LP.on = true; LP.p = p; LP.plan = planOwn(p); LP.ledger = false; LP.pick = null; LP.sel = null; LP.keysFor = null; LP.ghost = null;
       const L = lotOfLand(p); LP.vx = 0; LP.vz = 0;
       let el = document.getElementById('lplan');
       if (!el) {
@@ -8819,7 +8839,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       if (LP.pick && D.moved && LP.ghost) { planPut(LP.ghost.x, LP.ghost.z); return; }
       if (D.moved) return;
       if (LP.pick) { planPut(lx, lz); return; }
-      LP.sel = planHit(lx, lz); LP.keysFor = null; planUI(); planDraw();
+      LP.sel = planHit(lx, lz); LP.keysFor = null; LP.ledger = false; planUI(); planDraw();
     }
     function planPut(lx, lz) {
       const R = RK_BY[LP.pick], plan = LP.plan;
@@ -8851,7 +8871,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     function planUI() {
       const p = LP.p, plan = LP.plan, L = lotOfLand(p), ac = Math.round(L.hw * L.hd * 4 / 4047 * 10) / 10;
-      document.getElementById('lp-head').innerHTML = `<div style="flex:1;min-width:0"><b style="font-size:16px">${esc(p.name)}</b><div style="font-size:12px;color:#9aa8b4">${ac} acres · ${plan.items.length} things built · Cash ${money(S.cash)}</div></div><button class="btn go" data-a="close">Done</button>`;
+      document.getElementById('lp-head').innerHTML = `<div style="flex:1;min-width:0"><b style="font-size:16px">${esc(p.name)}</b><div style="font-size:12px;color:#9aa8b4">${ac} acres · ${plan.items.length} things built · pays ${money(ranchPay(p).total)}/day · Cash ${money(S.cash)}</div></div><button class="btn go" data-a="close">Done</button>`;
       const f = document.getElementById('lp-foot'), it = LP.sel;
       if (it && LP.keysFor === it) {
         const peers = typeof NET !== 'undefined' && NET.peers ? [...NET.peers.values()].filter(q => q && q.uid && q.uid !== S.uid) : [];
@@ -8865,7 +8885,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       }
       if (it) {
         const R = RK_BY[it.k], q = it.k === 'plot' ? PLOTS.get(plotId(p, it.n)) : null, o = q && OUTS.get(q.id), built = o && hasHouse(o);
-        f.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:22px">${R.ico}</span><div style="flex:1;min-width:0"><b>${it.k === 'plot' ? `Lot ${it.n}` : esc(R.name)}</b><div style="font-size:12px;color:#9aa8b4">${it.k === 'plot' ? (built ? summary(design(q)) : 'Empty lot. Build a house on it.') + (it.keys && it.keys.length ? ` · Keys: ${it.keys.map(k => esc(k.n)).join(', ')}` : '') : esc(R.s)}</div></div><button class="btn" data-a="desel">✕</button></div>
+        f.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:22px">${R.ico}</span><div style="flex:1;min-width:0"><b>${it.k === 'plot' ? `Lot ${it.n}` : esc(R.name)}</b><div style="font-size:12px;color:#9aa8b4">${it.k === 'plot' ? (built ? summary(design(q)) : 'Empty lot. Build a house on it.') + (it.keys && it.keys.length ? ` · Keys: ${it.keys.map(k => esc(k.n)).join(', ')}` : '') : esc(R.s)}${R.pay ? ` · pays ${money(R.pay)}/day (${esc(R.payWhy)})` : ''}</div></div><button class="btn" data-a="desel">✕</button></div>
           <div style="display:flex;flex-wrap:wrap;gap:6px">
             ${it.k === 'plot' ? `<button class="btn go" data-a="build">${built ? 'Go in' : 'Build the house'}</button><button class="btn" data-a="keys">🔑 Keys</button>` : ''}
             ${it.k === 'arch' ? '<button class="btn" data-a="rename">Name on the sign</button>' : ''}
@@ -8874,8 +8894,16 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
             <span style="font-size:12px;color:#9aa8b4;align-self:center">Drag it to move it.</span></div>`;
         return;
       }
+      if (LP.ledger) {
+        const L2 = ranchPay(p);
+        f.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="flex:1">📒 Ranch ledger · ${money(L2.total)} a day</b><button class="btn" data-a="ledger">Back</button></div>
+          <div style="font-size:12px;color:#9aa8b4;margin-bottom:6px">Paid every night you sleep.${L2.water ? ' Water on the land: cattle and horses +20%.' : ' Put in a stock pond or a windmill and cattle and horses pay 20% more.'}${S.ranchLast ? ` Last night: ${money(S.ranchLast.total)} from all your land.` : ''}</div>
+          ${L2.rows.map(r => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-top:1px solid #2a3440"><span style="font-size:18px">${r.ico}</span><span style="flex:1;min-width:0">${esc(r.name)}${r.n > 1 ? ` ×${r.n}` : ''}<small style="display:block;color:#9aa8b4">${esc(r.why)} · ${money(r.each)} each</small></span><b>${money(r.sum)}</b></div>`).join('') || '<div style="color:#9aa8b4">Nothing on this land pays yet. Pumpjacks, cattle, horses, stables, strips and built house lots do.</div>'}`;
+        return;
+      }
       f.innerHTML = `<div style="font-size:12px;color:#9aa8b4;margin-bottom:6px">${LP.pick ? `Tap your land to put down the ${esc(RK_BY[LP.pick].name.toLowerCase())}. <button class="btn" data-a="gturn" style="padding:2px 8px">↻ Turn</button> <button class="btn" data-a="unpick" style="padding:2px 8px">Cancel</button>` : 'Pick something, then tap your land to put it down. Tap a thing to move, turn or remove it. Drag to look around, pinch to zoom.'}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">${RK.map(R => `<button class="btn${LP.pick === R.k ? ' go' : ''}" data-pick="${R.k}" style="display:flex;align-items:center;gap:8px;text-align:left;padding:6px 8px"><span style="font-size:20px">${R.ico}</span><span style="flex:1;min-width:0"><b style="display:block;font-size:13px">${R.name}</b><small>${money(R.price)}</small></span></button>`).join('')}</div>`;
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">${RK.map(R => `<button class="btn${LP.pick === R.k ? ' go' : ''}" data-pick="${R.k}" style="display:flex;align-items:center;gap:8px;text-align:left;padding:6px 8px"><span style="font-size:20px">${R.ico}</span><span style="flex:1;min-width:0"><b style="display:block;font-size:13px">${R.name}</b><small>${money(R.price)}${R.pay ? ` · ${money(R.pay)}/day` : ''}</small></span></button>`).join('')}</div>
+        <button class="btn" data-a="ledger" style="margin-top:8px;width:100%">📒 Ranch ledger · ${money(ranchPay(p).total)} a day</button>`;
     }
     function planClick(e) {
       const b = e.target.closest('button'); if (!b) return;
@@ -8885,6 +8913,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       if (b.dataset.keyOn && it) { const q = [...NET.peers.values()].find(v => v.uid === b.dataset.keyOn); if (q) { it.keys = cleanKeys((it.keys || []).concat([{ u: q.uid, n: q.name }])); planKeep(); toast(`${q.name} has keys to Lot ${it.n}.`, 'good'); } planUI(); return; }
       if (b.dataset.keyOff && it) { it.keys = (it.keys || []).filter(k => k.u !== b.dataset.keyOff); if (!it.keys.length) delete it.keys; planKeep(); planUI(); return; }
       if (a === 'close') return planClose();
+      if (a === 'ledger') { LP.ledger = !LP.ledger; LP.sel = null; LP.pick = null; LP.ghost = null; planUI(); planDraw(); return; }
       if (a === 'unpick') { LP.pick = null; LP.ghost = null; LP.msg = ''; planUI(); planDraw(); return; }
       if (a === 'gturn' && LP.ghost) { LP.ghost.r = (LP.ghost.r + 1) % 4; LP.ghost.bad = !!lotFits(LP.p, LP.plan, LP.ghost); planDraw(); return; }
       if (a === 'desel') { LP.sel = null; LP.armed = null; LP.msg = ''; planUI(); planDraw(); return; }
@@ -9097,7 +9126,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     // let into someone else's house: their design, their name on it
     function visit(p, sv, name, uid) { if (inside) leaveInterior(true); VISIT = { p, sv, name, uid }; enterInterior(p); toast(`At ${name}'s place.`, 'good'); }
     window.__home = { get foot() { return foot; }, get IN() { return IN; }, LOOK, H, DECO, buy, tap: (x, z) => tap({ x, z }), confirmPlace, turn, sell, OUTS, draw, design, decoStart, decoEnd, buildMode, usePreset, setFloor, goFloor, rebuildOutside, summary, kindOf,
-      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, gxEdit, cleanGx, undo, redo, nudge, finEdit, estimate, dragDown, dragMove, dragUp, DRAG, shellCost, furnCost, snap, FINISHES, garBox: d => withFrame(d, () => garBox(d)), GX_EX, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tileXZ: (tx, ty) => ({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), cornerXZ: (cx, cy) => ({ x: -X(cx), z: -Z(cy) }), PRESETS, canPlace, showPlace, cancelPlace, REALTY: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, blkOf, PIX }, STRIPS: { STRIPS, stripTrack, stripPush, stripName }, RANCH: { RK, LP, PLOTS, RL, owns, planOpen, planClose, planFit, planPut, planRemove, planTurn, planDraw, planUI, lotPlan, lotFits, homeZone, packOut, ranchSync, ranchStep, itBox, lotOfLand, hasKeys, toScr }, tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
+      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, gxEdit, cleanGx, undo, redo, nudge, finEdit, estimate, dragDown, dragMove, dragUp, DRAG, shellCost, furnCost, snap, FINISHES, garBox: d => withFrame(d, () => garBox(d)), GX_EX, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tileXZ: (tx, ty) => ({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), cornerXZ: (cx, cy) => ({ x: -X(cx), z: -Z(cy) }), PRESETS, canPlace, showPlace, cancelPlace, REALTY: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, blkOf, PIX }, STRIPS: { STRIPS, stripTrack, stripPush, stripName }, PAY: { ranchPay, ranchPayAll, sleep: () => sleep() }, RANCH: { RK, LP, PLOTS, RL, owns, planOpen, planClose, planFit, planPut, planRemove, planTurn, planDraw, planUI, lotPlan, lotFits, homeZone, packOut, ranchSync, ranchStep, itBox, lotOfLand, hasKeys, toScr }, tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
     return { place, skipB, furnish, leave, anim, tap, dragDown, dragMove, dragUp, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns, packOut, hasKeys, planOpen, PLOTS, realty: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, PIX } };
   })();
   // ---------- car button: open and close the doors, hood and trunk of your car ----------
