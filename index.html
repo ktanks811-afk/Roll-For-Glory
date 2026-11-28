@@ -8423,6 +8423,32 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       rows.sort((a, b) => b.sum - a.sum);
       return { total, rows, water };
     }
+    // ---- selling (Kimari 2026-11-28 "and more"): sell a house or land back on Realty. You get 85% of what the
+    // place is worth plus 60% of what you put into it (the furniture, a land house, everything on your acres and the
+    // houses on its lots). It's gone from your save, off your deed online, and it stands empty again for everybody.
+    const SOLD = [];
+    function sellQuote(p) {
+      if (!p || !owns(p) || p.plotOf || kindOf(p) === 'studio' || p.id === STUDIO) return null;
+      let built = 0; const land = kindOf(p) === 'land';
+      if (homesSave()[p.id]) { const d = design(p); built += furnCost(d) + (land ? shellCost(d) : 0); }
+      const plan = land ? lotPlan(p) : null;
+      if (plan) for (const it of plan.items) { built += RK_BY[it.k].price; if (it.k === 'plot') built += plotWorth(p, it); }
+      const base = propPrice(p);
+      return { base, built, price: Math.round((base * 0.85 + built * 0.6) / 100) * 100 };
+    }
+    function sellOut(p) {
+      const q = sellQuote(p); if (!q) return 0;
+      if (inside && IN.place && (IN.place.id === p.id || IN.place.plotOf === p.id)) leaveInterior(true);
+      if (LP.on && LP.p === p) planClose();
+      const plan = kindOf(p) === 'land' ? lotPlan(p) : null;
+      if (plan) for (const it of plan.items) if (it.k === 'plot') delete homesSave()[plotId(p, it.n)];
+      delete lotsSave()[p.id]; delete homesSave()[p.id];
+      S.props = S.props.filter(x => x !== p.id);
+      earn(q.price, `Sold ${p.name}`); save();
+      rebuildOutside(p.id); if (kindOf(p) === 'land') ranchSync(p.id);
+      for (const f of SOLD) try { f(p); } catch (e) {}
+      return q.price;
+    }
     function ranchPayAll() { let t = 0; const lands = []; for (const p of (DATA.P || [])) if (p.type === 'land' && !p.plotOf && owns(p)) { const r = ranchPay(p); if (r.total) { t += r.total; lands.push([p, r.total]); } } return { total: t, lands }; }
     { const _rSleep = sleep; sleep = function () { const r = _rSleep.apply(this, arguments); try { const P = ranchPayAll(); if (P.total) { earn(P.total, `Ranch income (${P.lands.length} ${P.lands.length === 1 ? 'place' : 'places'})`); S.ranchLast = { day: S.day, total: P.total }; setTimeout(() => toast(`Your land made ${money(P.total)} overnight.`, 'good'), 2600); } } catch (e) { console.warn('ranch income ' + e.message); } return r; }; }
     function ranchInit(D) {
@@ -9126,8 +9152,8 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     // let into someone else's house: their design, their name on it
     function visit(p, sv, name, uid) { if (inside) leaveInterior(true); VISIT = { p, sv, name, uid }; enterInterior(p); toast(`At ${name}'s place.`, 'good'); }
     window.__home = { get foot() { return foot; }, get IN() { return IN; }, LOOK, H, DECO, buy, tap: (x, z) => tap({ x, z }), confirmPlace, turn, sell, OUTS, draw, design, decoStart, decoEnd, buildMode, usePreset, setFloor, goFloor, rebuildOutside, summary, kindOf,
-      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, gxEdit, cleanGx, undo, redo, nudge, finEdit, estimate, dragDown, dragMove, dragUp, DRAG, shellCost, furnCost, snap, FINISHES, garBox: d => withFrame(d, () => garBox(d)), GX_EX, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tileXZ: (tx, ty) => ({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), cornerXZ: (cx, cy) => ({ x: -X(cx), z: -Z(cy) }), PRESETS, canPlace, showPlace, cancelPlace, REALTY: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, blkOf, PIX }, STRIPS: { STRIPS, stripTrack, stripPush, stripName }, PAY: { ranchPay, ranchPayAll, sleep: () => sleep() }, RANCH: { RK, LP, PLOTS, RL, owns, planOpen, planClose, planFit, planPut, planRemove, planTurn, planDraw, planUI, lotPlan, lotFits, homeZone, packOut, ranchSync, ranchStep, itBox, lotOfLand, hasKeys, toScr }, tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
-    return { place, skipB, furnish, leave, anim, tap, dragDown, dragMove, dragUp, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns, packOut, hasKeys, planOpen, PLOTS, realty: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, PIX } };
+      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, gxEdit, cleanGx, undo, redo, nudge, finEdit, estimate, dragDown, dragMove, dragUp, DRAG, shellCost, furnCost, snap, FINISHES, garBox: d => withFrame(d, () => garBox(d)), GX_EX, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tileXZ: (tx, ty) => ({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), cornerXZ: (cx, cy) => ({ x: -X(cx), z: -Z(cy) }), PRESETS, canPlace, showPlace, cancelPlace, REALTY: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, blkOf, PIX, sellQuote, sellOut }, STRIPS: { STRIPS, stripTrack, stripPush, stripName }, PAY: { ranchPay, ranchPayAll, sleep: () => sleep() }, RANCH: { RK, LP, PLOTS, RL, owns, planOpen, planClose, planFit, planPut, planRemove, planTurn, planDraw, planUI, lotPlan, lotFits, homeZone, packOut, ranchSync, ranchStep, itBox, lotOfLand, hasKeys, toScr }, tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
+    return { place, skipB, furnish, leave, anim, tap, dragDown, dragMove, dragUp, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns, packOut, hasKeys, planOpen, PLOTS, realty: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, PIX, sellQuote, sellOut, onSold: f => SOLD.push(f) } };
   })();
   // ---------- car button: open and close the doors, hood and trunk of your car ----------
   const backName = () => { const m = car && car.userData.model; const n = m && Object.keys(m.userData.panels).find(k => panelKind(k) === 'trunk'); return n === 'tailgate' ? 'Tailgate' : n === 'hatch' ? 'Hatch' : n === 'swing' ? 'Rear door' : n === 'liftgate' ? 'Liftgate' : 'Trunk'; };
@@ -11069,20 +11095,26 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   function rlDetail(sc, id) {
     const q = RL_APP.list.find(x => x.id === id) || DATA.P.find(x => x.id === id); if (!q) return realtyApp(sc);
     const land = HOME.kindOf(q) === 'land', own = S.props.includes(q.id), f = HOME.realty.listingFacts(q), views = land ? ['front'] : ['front', 'back', 'plan'];
-    const price = propPrice(q);
+    const price = propPrice(q), sq = own ? HOME.realty.sellQuote(q) : null;
     sc.innerHTML = `${phoneHead('Realty')}<div class="ph-body rl-detail">
       <div class="rl-photos">${views.map(v => `<img data-pic="${q.id}:${v}" alt="">`).join('')}</div>
       ${views.length > 1 ? `<div class="rl-dots">${views.map((v, i) => `<i${i ? '' : ' class="on"'}></i>`).join('')}</div>` : ''}
       <div class="mk-price">${own ? 'You own this' : money(price)}</div><div class="mk-title">${esc(q.name)}</div>
       <div class="mk-sub">${esc(f.text)}</div><div class="mk-sub">${esc(rlWhere(q))} · ${rlMi(q._dist || 0)} away${q.blk ? ' · on the block' : ''}${q.blk && q.wear > 0.5 ? ' · needs work' : ''}</div>
       ${land ? '<p class="mk-note">Raw land. Build your own house and garage on it, then plan the rest: house lots for your friends, barns, cattle, horses, roads.</p>' : '<p class="mk-note">Walk-in house. Change the paint and furniture, park cars in the garage, invite people over.</p>'}
-      <div class="row">${own ? '' : `<button class="btn go" id="rl-buy">Buy for ${money(price)}</button>`}<button class="btn" id="rl-gps">📍 GPS</button></div>
+      <div class="row">${own ? (sq ? `<button class="btn" id="rl-sell">Sell for ${money(sq.price)}</button>` : '') : `<button class="btn go" id="rl-buy">Buy for ${money(price)}</button>`}<button class="btn" id="rl-gps">📍 GPS</button></div>
+      ${own && sq ? `<p class="mk-note">Selling pays 85% of what it's worth (${money(sq.base)}) plus 60% of what you built on it (${money(sq.built)}).</p>` : ''}
       <p class="mk-note">You have ${money(S.cash)} cash.</p></div>`;
     for (const v of views) rlAsk(q, v);
     const ph = sc.querySelector('.rl-photos'), dots = sc.querySelectorAll('.rl-dots i');
     if (ph) ph.onscroll = () => { const k = Math.round(ph.scrollLeft / ph.clientWidth); dots.forEach((d, i) => d.classList.toggle('on', i === k)); };
     phoneEl('rl-gps').onclick = () => { setPin(q.name, q.x, q.z); toast(`GPS set to ${q.name}.`, 'good'); };
     const b = phoneEl('rl-buy'); if (b) b.onclick = () => rlBuy(sc, q);
+    const sb = phoneEl('rl-sell');
+    if (sb) sb.onclick = () => {
+      if (!sb.dataset.armed) { sb.dataset.armed = '1'; sb.textContent = `Tap again to sell for ${money(sq.price)}`; sb.classList.add('go'); return; }
+      const got = HOME.realty.sellOut(q); if (got) { toast(`Sold ${q.name} for ${money(got)}.`, 'good'); RL_APP.tab = 'mine'; realtyApp(sc); }
+    };
     sc.querySelector('.ph-back').onclick = () => realtyApp(sc);
   }
   function rlBuy(sc, q) {
@@ -20876,6 +20908,12 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       } catch (e) { return; }   // registry down: try again on the next load
     }
   }
+  HOME.realty.onSold(p => {
+    HN.owners.delete(p.id);
+    if (!netOn()) return;
+    hnRpc('rfg_deed_release', { p_uid: netMe().uid, p_tok: S.crewKey, p_prop: p.id }).catch(() => {});
+    netSend({ k: 'undeed', p: p.id, u: S.uid });
+  });
   function hnLose(p, name) {
     if (!S.props.includes(p.id)) return;
     if (inside && IN.place && IN.place.id === p.id) leaveInterior();
@@ -20938,6 +20976,11 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
       p.uid = m.u;
     }
     if (m.k === 's') { const ok = typeof m.hm === 'string' && m.hm.length < 64; p.hm = ok ? m.hm : null; if (ok) { p.hf = nNum(m.hf, 0, 2, 0); p.hx = nNum(m.hx, -80, 80, 0); p.hz = nNum(m.hz, -80, 80, 0); p.hy = nNum(m.hy, -20, 20, 0); } }
+    if (m.k === 'undeed' && typeof m.p === 'string' && typeof m.u === 'string') {
+      const o = HN.owners.get(m.p); if (o && o.uid === m.u) HN.owners.delete(m.p);
+      const f = HOME.FOREIGN.get(m.p); if (f && f.uid === m.u) { HOME.FOREIGN.delete(m.p); HOME.rebuildOutside(m.p); }
+      if (menuFn) renderMenu();
+    }
     if (m.k === 'deed' && typeof m.p === 'string' && typeof m.u === 'string') {
       const mine = HN.owners.get(m.p);
       if (!(mine && mine.uid === S.uid)) { HN.owners.set(m.p, { uid: m.u, name: nName(m.n) }); if (menuFn) renderMenu(); }
