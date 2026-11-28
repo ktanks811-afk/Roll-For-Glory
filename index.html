@@ -4716,7 +4716,7 @@ uniform mat3 normalMatrix;
     IN.camPos.set(0, Math.max(7.5, D * 0.6), D / 4 + Math.max(7.5, D * 0.6));
     wearMe(IN.avatar); inside = true; drv.v = 0; document.body.classList.add('busy');
     document.getElementById('pad').classList.remove('on'); document.getElementById('hud').classList.add('on', 'walk'); refreshStats();
-    document.getElementById('walkhint').hidden = false; showCard(null); document.body.classList.toggle('has-garage', ownsGarage(p)); document.body.classList.toggle('at-home', home && HOME.H.own); resize();
+    document.getElementById('walkhint').hidden = false; showCard(null); document.body.classList.toggle('has-garage', ownsGarage(p)); document.body.classList.toggle('at-home', home && HOME.H.own); document.body.classList.toggle('at-key', !!(home && HOME.H.kh)); resize();
   }
   function leaveInterior(silent) {
     if (!inside) return; HOME.leave(); inside = false; closeMenu(); if (!driving) document.body.classList.remove('busy'); IN.near = null; showPrompt(null);
@@ -6631,6 +6631,7 @@ uniform mat3 normalMatrix;
       return Object.assign(paint, { furn: d.furn.map(furnOut) }, d.kind === 'land' ? { floors: d.floors.slice(), walls: d.walls.map(w => w.map(q => ({ o: q.o, x: q.x, y: q.y, k: q.k }))), garN: d.garN | 0, gx: d.gx } : {});
     }
     function keep(d) {
+      if (H.visit && H.kh && H.d === d) return keyKeep(d);   // a friend's lot you have keys to: it goes to them
       if (H.visit) return;   // someone else's house: nothing of yours to save
       if (d.kind === 'studio') S.home = pack(d); else homesSave()[d.id] = pack(d);
       save();
@@ -6638,6 +6639,33 @@ uniform mat3 normalMatrix;
       for (const f of KEPT) try { f(kd); } catch (e) {}
     }
     const KEPT = [];   // who wants to know your house changed (online: your guests)
+    // ---- key holders build (Kimari 2026-11-28 "houses like neighborhoods for you and your friends"): a friend you gave
+    // keys to a lot can decorate and build the house on it, paying for it out of their own pocket. Each change goes to
+    // you (the land's owner) over the server, you check they're still on that lot's keys, save it on your land and
+    // send the land back out to everybody. You have to be on the server for them to build; taking things out of a
+    // house that isn't yours pays nothing back (no stripping a friend's furniture for cash).
+    const KH = { why: () => 'Your friend has to be on the server for you to build.', send: () => {} };   // set by the online code
+    function keyKeep(d) {
+      const p = H.p, sv = pack(d);
+      if (VISIT) VISIT.sv = sv;
+      const f = FOREIGN.get(p.id); if (f) f.sv = sv;
+      const lf = FOREIGN.get(p.plotOf); if (lf && lf.sv) { lf.sv.plots = lf.sv.plots || {}; lf.sv.plots[p.id] = sv; }
+      try { KH.send(p, sv); } catch (e) {}
+    }
+    // you're the owner: a key holder's change came in
+    function keyEdit(q, uid, sv, name) {
+      const land = q && q.plotOf && (DATA.P || []).find(x => x.id === q.plotOf);
+      if (!land || !owns(land) || !uid) return 'not yours';
+      const plan = lotPlan(land), it = plan && plan.items.find(i => i.k === 'plot' && plotId(land, i.n) === q.id);
+      if (!it || !(it.keys || []).some(k => k.u === uid)) return 'no keys';
+      if (H.on && H.p && H.p.id === q.id && DECO.on) return 'busy';
+      const d = design(q, sv); homesSave()[q.id] = pack(d); save();
+      if (H.on && H.p && H.p.id === q.id && !H.visit) { restoreSnap(JSON.stringify(homesSave()[q.id])); frame(H.d); buildInside(); if (H.ground) { H.ground.geometry.dispose(); H.ground.geometry = lotGrass(H.d); } bounds(); homeCars(); goFloor(Math.min(H.fl, H.d.floors.length - 1)); }
+      rebuildOutside(q.id);
+      for (const f of KEPT) try { f({ kind: 'land', id: land.id }); } catch (e) {}
+      return null;
+    }
+    const backPay = (n, why) => { if (!H.kh) earn(n, why); };
     // the frame: a bought house and the studio centre on their own footprint; land centres on the whole grid so the
     // builder sees all of it. _hx/_hz is the front middle of the ground floor (where the street side of the house is).
     function frame(d) {
@@ -7577,7 +7605,7 @@ uniform mat3 normalMatrix;
 
     // ---- inside: the house turned round so the street is behind you, the floor you're on at y = 0
     let VISIT = null;   // { p, sv, name, uid }: the house you were let into
-    const H = { on: false, p: null, d: null, kind: null, own: false, visit: null, carsG: null, fl: 0, root: null, sh: null, furnG: [], pieces: new Map(), extra0: { solids: [], stations: [] }, ground: null, grid: null, start: null, flWalk: 0, posWalk: null };
+    const H = { on: false, p: null, d: null, kind: null, own: false, kh: false, visit: null, carsG: null, fl: 0, root: null, sh: null, furnG: [], pieces: new Map(), extra0: { solids: [], stations: [] }, ground: null, grid: null, start: null, flWalk: 0, posWalk: null };
     const flip = b => ({ x0: -b.x1, x1: -b.x0, z0: -b.z1, z1: -b.z0, h: b.h });   // design frame -> room
     const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
     const free = (x, z, r = 0.35) => Math.abs(x) < IN.W / 2 - r && Math.abs(z) < IN.D / 2 - r && !IN.solids.some(b => x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r);
@@ -7590,7 +7618,7 @@ uniform mat3 normalMatrix;
     function furnish(p) {
       const vis = VISIT && VISIT.p.id === p.id ? VISIT : null;
       const d = design(p, vis ? vis.sv : null), k = d.kind; useFrame(d);
-      Object.assign(H, { on: true, p, d, kind: k, own: !vis && owns(p), visit: vis, fl: 0, sh: null, furnG: [], pieces: new Map(), extra0: { solids: [], stations: [] }, ground: null, grid: null, carsG: null });
+      Object.assign(H, { on: true, p, d, kind: k, own: !vis && owns(p), kh: !!vis && !!p.plotOf && hasKeys(p), visit: vis, fl: 0, sh: null, furnG: [], pieces: new Map(), extra0: { solids: [], stations: [] }, ground: null, grid: null, carsG: null });
       const root = new THREE.Group(); root.rotation.y = Math.PI; root.position.y = -BASE; IN.room.add(root); H.root = root;
       if (k === 'land') {
         // your lot: grass all round where you can build
@@ -7601,7 +7629,7 @@ uniform mat3 normalMatrix;
       goFloor(0);
       const dr = H.sh.door;
       H.start = dr ? freeNear(-dr.x + 1.4, -dr.z - 2.6) : [0, IN.D / 2 - 2];
-      if (k === 'land' && H.own && !d._built && !d.garN) setTimeout(() => { if (H.on && H.p === p && !DECO.on) { decoStart(); buildMode(); } }, 400);
+      if (k === 'land' && (H.own || (H.kh && !KH.why(p))) && !d._built && !d.garN) setTimeout(() => { if (H.on && H.p === p && !DECO.on) { decoStart(); buildMode(); } }, 400);
       return H.start;
     }
     // the lot's grass, cut open where the pool goes (the water sits below the grass line)
@@ -7732,7 +7760,7 @@ uniform mat3 normalMatrix;
       if (DECO.on) decoEnd();
       VISIT = null; H.visit = null; H.carsG = null;
       H.on = false; H.pieces = new Map(); H.root = null; H.sh = null; H.furnG = [];
-      document.body.classList.remove('at-home');
+      document.body.classList.remove('at-home', 'at-key');
     }
     function anim(t) { if (!H.on) return; for (const pc of H.pieces.values()) for (const fn of pc.anim) fn(t); }
     // you just bought the house you're touring
@@ -7756,7 +7784,7 @@ uniform mat3 normalMatrix;
       st.textContent = `
 #decbtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 222px); width: 50px; height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 22px; display: none; z-index: 8; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.45); padding: 0; line-height: 1; }
 #decbtn small { display: block; font: 600 10px var(--body); margin-top: 3px; }
-body.indoors.at-home:not(.creating):not(.phoning):not(.decorating) #decbtn { display: block; }
+body.indoors.at-home:not(.creating):not(.phoning):not(.decorating) #decbtn, body.indoors.at-key:not(.creating):not(.phoning):not(.decorating) #decbtn { display: block; }
 body.indoors.at-home .nosbtn { display: none !important; }   /* NOS / anti-lag stay in the car, not over Decorate */
 body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu, #mini) { display: none !important; }
 #deco { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: rgba(16,14,20,0.94); border-top: 1px solid var(--line); padding: 10px max(14px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 10px) max(14px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow: auto; font-family: var(--body); color: var(--fg); }
@@ -7781,7 +7809,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       if (ui) return;
       css();
       const b = document.createElement('button'); b.id = 'decbtn'; b.setAttribute('aria-label', 'Decorate your home'); b.innerHTML = '🛋<small>Decorate</small>'; document.body.appendChild(b);
-      b.onclick = () => { if (H.on && H.own) decoStart(); };
+      b.onclick = () => { if (!H.on) return; if (H.own) return decoStart(); if (H.kh) { const w = KH.why(H.p); if (w) return toast(w, 'bad'); decoStart(); } };
       ui = document.createElement('div'); ui.id = 'deco'; ui.hidden = true; document.body.appendChild(ui);
       // keys while decorating: Ctrl+Z / Ctrl+Y, R turns, the arrows nudge what you're placing, Enter puts it down, Esc cancels
       addEventListener('keydown', e => {
@@ -7919,7 +7947,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     function sell() {
       const f = DECO.sel; if (!f) return;
       if (isStairs(f) && roomTiles(H.d, H.fl + 1) > 0 && H.d.furn[H.fl].filter(isStairs).length < 2) { toast('Upstairs needs these stairs. Take out the rooms up there first.', 'bad'); return; }
-      dropPiece(f); H.d.furn[H.fl] = H.d.furn[H.fl].filter(o => o !== f); earn(refundOf(f), `Sold the ${FURN_BY_ID[f.id].name.toLowerCase()}`);
+      dropPiece(f); H.d.furn[H.fl] = H.d.furn[H.fl].filter(o => o !== f); backPay(refundOf(f), `Sold the ${FURN_BY_ID[f.id].name.toLowerCase()}`);
       DECO.sel = null; DECO.mode = 'browse'; clearMark();
       if (isStairs(f)) { tidy(H.d); rebuildAll(); } else { refresh(); keep(H.d); }
       draw();
@@ -7946,7 +7974,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       const undo = () => { const [a, b, c] = JSON.parse(before); d.floors = a; d.walls = b; d.furn = c; d._dw = null; };
       if (!n && !diff) { undo(); toast('Nothing changed there.', 'bad'); return false; }
       if (diff > 0 && !spend(diff, label)) { undo(); return false; }
-      if (diff < 0) earn(Math.round(-diff * 0.5), 'Building materials back');
+      if (diff < 0) backPay(Math.round(-diff * 0.5), 'Building materials back');
       rebuildAll(); return true;
     }
     function buildTap(x, z) {
@@ -8055,7 +8083,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       d._dw = null;
     }
     function commit() {
-      if (!DECO.on || !DECO.base || DECO.mode === 'place' || H.visit) return;
+      if (!DECO.on || !DECO.base || DECO.mode === 'place' || (H.visit && !H.kh)) return;
       const now = snap(); if (now === DECO.base.s) { DECO.base.cash = S.cash; return; }
       DECO.hist.push({ b: DECO.base.s, a: now, spent: DECO.base.cash - S.cash }); if (DECO.hist.length > 50) DECO.hist.shift();
       DECO.fut = []; DECO.base = { s: now, cash: S.cash };
@@ -8064,7 +8092,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       const e = from.pop(); if (!e) return;
       const target = back ? e.b : e.a, money = back ? e.spent : -e.spent;   // what comes back to you
       const gN = (JSON.parse(target).garN | 0), cur = H.d.garN | 0;
-      if (H.d.kind === 'land' && gN < cur && S.garage.length > garageCap() - cur + gN) { from.push(e); toast(`You've got ${S.garage.length} cars stored. Take some out first.`, 'bad'); return; }
+      if (H.d.kind === 'land' && !H.kh && gN < cur && S.garage.length > garageCap() - cur + gN) { from.push(e); toast(`You've got ${S.garage.length} cars stored. Take some out first.`, 'bad'); return; }
       if (money < 0 && !spend(-money, back ? 'Undo' : 'Redo')) { from.push(e); return; }
       if (money > 0) earn(money, back ? 'Undo: money back' : 'Redo: money back');
       restoreSnap(target); to.push(e);
@@ -8080,7 +8108,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       d.fin = Object.assign({}, d.fin); if (f === 'std') delete d.fin[code]; else d.fin[code] = f;
       const diff = shellCost(d) - c0;
       if (diff > 0 && !spend(diff, 'Flooring')) { d.fin = before; draw(); return; }
-      if (diff < 0) earn(Math.round(-diff * 0.5), 'Old flooring back');
+      if (diff < 0) backPay(Math.round(-diff * 0.5), 'Old flooring back');
       rebuildAll(); draw();
     }
     function usePreset(id) {
@@ -8103,7 +8131,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     const GAR_SIZES = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30];
     function setGarage(n) {
       const d = H.d, old = d.garN | 0; if (n === old) return;
-      if (n < old && S.garage.length > garageCap() - old + n) { toast(`You've got ${S.garage.length} cars stored. Take some out before making it smaller.`, 'bad'); return; }
+      if (n < old && !H.kh && S.garage.length > garageCap() - old + n) { toast(`You've got ${S.garage.length} cars stored. Take some out before making it smaller.`, 'bad'); return; }
       if (shellEdit(() => { d.garN = n; return 1; }, n ? `${n}-car garage` : 'Garage')) toast(n ? `${n}-car garage built. Your cars park in it.` : 'Garage knocked down.', 'good');
       draw();
     }
@@ -8114,7 +8142,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       if (JSON.stringify(d.gx) === before) return;
       const diff = shellCost(d) - c0;
       if (diff > 0 && !spend(diff, 'Garage build')) { d.gx = JSON.parse(before); draw(); return; }
-      if (diff < 0) earn(Math.round(-diff * 0.5), 'Garage parts back');
+      if (diff < 0) backPay(Math.round(-diff * 0.5), 'Garage parts back');
       rebuildAll(); draw(); toast('Garage updated.', 'good');
     }
     function setFloor(k) { clearMark(); clearPick(); clearGhost(); DECO.first = null; DECO.sel = null; if (DECO.mode !== 'build' && DECO.mode !== 'paint') DECO.mode = 'browse'; hideGrid(); goFloor(k); if (DECO.mode === 'build') showGrid(); draw(); }
@@ -8138,7 +8166,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       if (!ui) return; ui.hidden = false;
       const land = H.kind === 'land';
       commit();
-      const ur = H.visit ? '' : `<button class="btn" data-a="undo" aria-label="Undo"${DECO.hist.length ? '' : ' disabled'}>↶</button><button class="btn" data-a="redo" aria-label="Redo"${DECO.fut.length ? '' : ' disabled'}>↷</button>`;
+      const ur = H.visit && !H.kh ? '' : `<button class="btn" data-a="undo" aria-label="Undo"${DECO.hist.length ? '' : ' disabled'}>↶</button><button class="btn" data-a="redo" aria-label="Redo"${DECO.fut.length ? '' : ' disabled'}>↷</button>`;
       const head = (t, extra = '') => `<div class="dh"><b>${esc(t)}</b><span>${money(S.cash)}</span>${ur}${extra}<button class="btn go" data-a="done">Done</button></div>`;
       const cam = '<button class="btn" data-a="rotl" aria-label="Turn left">⟲</button><button class="btn" data-a="rotr" aria-label="Turn right">⟳</button>';
       let h = '';
@@ -8158,7 +8186,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
           + lookRows(DECO.f);
       } else if (DECO.mode === 'sel') {
         const f = DECO.sel, F = FURN_BY_ID[f.id];
-        h = head(F.name) + `<div class="dr"><button class="btn" data-a="turn">↻ Turn</button><button class="btn" data-a="move">Move</button><button class="btn" data-a="copy">Copy ${money(F.price)}</button><button class="btn" data-a="sell">Sell +${money(refundOf(f))}</button><button class="btn" data-a="back">Shop</button></div>` + lookRows(f);
+        h = head(F.name) + `<div class="dr"><button class="btn" data-a="turn">↻ Turn</button><button class="btn" data-a="move">Move</button><button class="btn" data-a="copy">Copy ${money(F.price)}</button><button class="btn" data-a="sell">${H.kh ? 'Take out' : `Sell +${money(refundOf(f))}`}</button><button class="btn" data-a="back">Shop</button></div>` + lookRows(f);
       } else if (DECO.mode === 'paint') {
         const d = H.d;
         h = head('Paint the house', '<button class="btn" data-a="back">Shop</button>')
@@ -9152,8 +9180,8 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     // let into someone else's house: their design, their name on it
     function visit(p, sv, name, uid) { if (inside) leaveInterior(true); VISIT = { p, sv, name, uid }; enterInterior(p); toast(`At ${name}'s place.`, 'good'); }
     window.__home = { get foot() { return foot; }, get IN() { return IN; }, LOOK, H, DECO, buy, tap: (x, z) => tap({ x, z }), confirmPlace, turn, sell, OUTS, draw, design, decoStart, decoEnd, buildMode, usePreset, setFloor, goFloor, rebuildOutside, summary, kindOf,
-      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, gxEdit, cleanGx, undo, redo, nudge, finEdit, estimate, dragDown, dragMove, dragUp, DRAG, shellCost, furnCost, snap, FINISHES, garBox: d => withFrame(d, () => garBox(d)), GX_EX, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tileXZ: (tx, ty) => ({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), cornerXZ: (cx, cy) => ({ x: -X(cx), z: -Z(cy) }), PRESETS, canPlace, showPlace, cancelPlace, REALTY: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, blkOf, PIX, sellQuote, sellOut }, STRIPS: { STRIPS, stripTrack, stripPush, stripName }, PAY: { ranchPay, ranchPayAll, sleep: () => sleep() }, RANCH: { RK, LP, PLOTS, RL, owns, planOpen, planClose, planFit, planPut, planRemove, planTurn, planDraw, planUI, lotPlan, lotFits, homeZone, packOut, ranchSync, ranchStep, itBox, lotOfLand, hasKeys, toScr }, tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
-    return { place, skipB, furnish, leave, anim, tap, dragDown, dragMove, dragUp, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns, packOut, hasKeys, planOpen, PLOTS, realty: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, PIX, sellQuote, sellOut, onSold: f => SOLD.push(f) } };
+      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, gxEdit, cleanGx, undo, redo, nudge, finEdit, estimate, dragDown, dragMove, dragUp, DRAG, shellCost, furnCost, snap, FINISHES, garBox: d => withFrame(d, () => garBox(d)), GX_EX, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tileXZ: (tx, ty) => ({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), cornerXZ: (cx, cy) => ({ x: -X(cx), z: -Z(cy) }), PRESETS, canPlace, showPlace, cancelPlace, REALTY: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, blkOf, PIX, sellQuote, sellOut }, STRIPS: { STRIPS, stripTrack, stripPush, stripName }, PAY: { ranchPay, ranchPayAll, sleep: () => sleep() }, RANCH: { RK, LP, PLOTS, RL, owns, planOpen, planClose, planFit, planPut, planRemove, planTurn, planDraw, planUI, lotPlan, lotFits, homeZone, packOut, ranchSync, ranchStep, itBox, lotOfLand, hasKeys, toScr, KH, keyEdit }, tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
+    return { place, skipB, furnish, leave, anim, tap, dragDown, dragMove, dragUp, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, KH, keyEdit, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns, packOut, hasKeys, planOpen, PLOTS, realty: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, PIX, sellQuote, sellOut, onSold: f => SOLD.push(f) } };
   })();
   // ---------- car button: open and close the doors, hood and trunk of your car ----------
   const backName = () => { const m = car && car.userData.model; const n = m && Object.keys(m.userData.panels).find(k => panelKind(k) === 'trunk'); return n === 'tailgate' ? 'Tailgate' : n === 'hatch' ? 'Hatch' : n === 'swing' ? 'Rear door' : n === 'liftgate' ? 'Liftgate' : 'Trunk'; };
@@ -20914,6 +20942,18 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
     hnRpc('rfg_deed_release', { p_uid: netMe().uid, p_tok: S.crewKey, p_prop: p.id }).catch(() => {});
     netSend({ k: 'undeed', p: p.id, u: S.uid });
   });
+  // key holders building on your land: their changes come to you, you check the keys and save them
+  const hnKH = { t: 0, p: null, sv: null };
+  HOME.KH.why = p => { const f = HOME.FOREIGN.get(p.id); if (!f) return 'That house isn\'t on the server right now.'; if (!netOn() || !hnPeerOf(f.uid)) return `${f.name} has to be on the server for you to build on their land.`; return null; };
+  HOME.KH.send = (p, sv) => {
+    hnKH.p = p; hnKH.sv = sv; clearTimeout(hnKH.t);
+    hnKH.t = setTimeout(() => {
+      const f = HOME.FOREIGN.get(hnKH.p.id), q = f && hnPeerOf(f.uid);
+      if (!q || !netOn()) return toast(`${f ? f.name : 'Your friend'} left the server. Your last change didn't save on their land.`, 'bad');
+      if (JSON.stringify(hnKH.sv).length > 95000) return toast('That house is too big to send.', 'bad');
+      netSend({ k: 'hkd', to: q.id, p: hnKH.p.id, sv: hnKH.sv, n: netMe().name });
+    }, 700);
+  };
   function hnLose(p, name) {
     if (!S.props.includes(p.id)) return;
     if (inside && IN.place && IN.place.id === p.id) leaveInterior();
@@ -20994,6 +21034,12 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
         { t: 'Let them in', s: 'They walk around inside your house', btn: 'Open up', act: () => { hnLetIn(p, place.id); closeMenu(); toast(`Let ${who} in.`, 'good'); } },
         { t: 'Not now', s: 'They get told you\'re busy', btn: 'No', act: () => { netSend({ k: 'hn', to: p.id, p: place.id }); closeMenu(); } }] }));
     } else if (m.k === 'hn' && place) { HN.knock = null; toast(`${p.name} can't have company right now.`, 'bad'); }
+    else if (m.k === 'hkd' && typeof m.p === 'string' && m.sv && typeof m.sv === 'object' && HOME.PLOTS.get(m.p)) {
+      const q = HOME.PLOTS.get(m.p), who = nName(m.n, p.name), why = HOME.keyEdit(q, p.uid, m.sv, who);
+      if (!why) { if (!HN.khSeen || HN.khSeen !== p.uid + m.p) { HN.khSeen = p.uid + m.p; toast(`🔨 ${who} is building on ${q.name}`, 'good'); } }
+      else netSend({ k: 'hkn', to: p.id, p: m.p, w: why });
+    }
+    else if (m.k === 'hkn' && typeof m.p === 'string') toast(m.w === 'busy' ? `${p.name} is decorating that house right now. Your last change didn't save.` : `${p.name}'s land didn't take that change (${m.w === 'no keys' ? 'your keys were taken back' : 'it isn\'t theirs anymore'}).`, 'bad');
     else if (m.k === 'hd' && place && HOME.kindOf(place) && m.sv && typeof m.sv === 'object') {
       const name = nName(m.n, p.name), uid = typeof m.u === 'string' ? m.u : p.uid;
       // the street view of their house (not the studio: everybody has their own)
