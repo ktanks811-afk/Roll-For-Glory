@@ -335,17 +335,17 @@
     const i = LVW.looks.length, R = lvRng('look:' + i), fem = i % 2 === 1, L = PEOPLE.randomLook(R, fem);
     const old = i % 5 === 3 || i % 5 === 4;
     if (old) { L.hair = R() < 0.5 ? '#9a9a9a' : '#e8e8e8'; L.hat = 'no_hat'; L.extras = L.extras.filter(x => !/grill|chain|cuban|tennis|septum|nose/.test(x)); }   // the older folks
-    try { LVW.looks.push({ P: hNameParts(PEOPLE.build(L, 1)), fem, old }); } catch (er) { LVW.pool = LVW.looks.length; }
+    try { LVW.looks.push({ P: hNameParts(PEOPLE.build(L, 1)), fem, old, L }); } catch (er) { LVW.pool = LVW.looks.length; }
   }
   function lvBody(who) {
     const fit = LVW.looks.filter(l => l.fem === who.fem && !!who.elder === l.old), use = fit.length ? fit : LVW.looks.filter(l => l.fem === who.fem);
-    if (use.length) { const B = use[who.look % use.length]; return hClone(B.P); }
+    if (use.length) { const B = use[who.look % use.length], c = hClone(B.P); c.lvL = B.L; return c; }
     return crowdPerson(who.look);
   }
   function lvEnt(id, P, who, extra) {
     const body = lvBody(who); if (!body) return null;
     const e = hEnt(Object.assign({ id, kind: 'ped', name: who.name, who, pl: P, mode: 'walk', hp: who.elder ? 70 : 90, ox: 0, oz: 0, hy: 0, hx: 0 }, extra));
-    hDress(e, body); body.wrap.scale.setScalar(who.scale);
+    hDress(e, body); e.lvL = body.lvL; body.wrap.scale.setScalar(who.scale);
     if (lvMem(e) && lvMem(e).met) hLabel(e);
     LVW.stats.spawned++; return e;
   }
