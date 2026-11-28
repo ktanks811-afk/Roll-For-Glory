@@ -302,6 +302,12 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
 .mk-item canvas { width: 100%; height: auto; display: block; margin-bottom: 4px; }
 .mk-item b, .mk-item span, .mk-item small { padding: 0 10px; } .mk-item b { font-size: 17px; } .mk-item span { font-size: 14px; line-height: 1.2; } .mk-item small { color: var(--muted); font-size: 12px; }
 .mk-detail canvas { width: 100%; height: auto; border-radius: 10px; }
+.rl-tabs { display: flex; gap: 6px; padding: 8px 12px 0; overflow-x: auto; } .rl-tab { flex: none; background: #17181d; border: 1px solid var(--line); color: var(--fg); border-radius: 16px; padding: 6px 12px; font: 600 13px var(--body); cursor: pointer; } .rl-tab.on { background: #2bb673; border-color: #2bb673; color: #fff; }
+.rl-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px 0; color: var(--muted); font-size: 13px; } .rl-bar select { background: #17181d; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font: 13px var(--body); }
+.rl-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px 12px 14px; } .rl-card { background: #17181d; border: 1px solid var(--line); border-radius: 10px; padding: 0 0 8px; overflow: hidden; color: var(--fg); text-align: left; display: flex; flex-direction: column; cursor: pointer; font-family: var(--body); }
+.rl-card img, .rl-photos img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: linear-gradient(135deg,#2a3a4a,#1a2028); } .rl-txt { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px 0; } .rl-txt b { font-size: 17px; } .rl-txt span { font-size: 14px; line-height: 1.2; } .rl-txt small { color: var(--muted); font-size: 12px; }
+.rl-photos { display: flex; flex: none; overflow-x: auto; scroll-snap-type: x mandatory; border-radius: 10px; } .rl-photos img { flex: none; scroll-snap-align: start; } .rl-dots { display: flex; justify-content: center; gap: 6px; padding: 6px 0 2px; } .rl-dots i { width: 7px; height: 7px; border-radius: 50%; background: #555; } .rl-dots i.on { background: #2bb673; }
+@media (orientation: landscape) and (max-height: 500px) { .rl-grid { grid-template-columns: repeat(4, 1fr); } .rl-photos img { max-height: 160px; } }
 .mk-price { font-size: 26px; font-weight: 700; } .mk-title { font-size: 18px; font-weight: 600; } .mk-sub, .mk-note { color: var(--muted); font-size: 14px; margin: 0; }
 .mk-seller { background: #17181d; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
 @media (orientation: landscape) and (max-height: 500px) { .mk-grid { grid-template-columns: repeat(4, 1fr); } .mk-detail canvas { max-height: 140px; object-fit: contain; } }
@@ -776,7 +782,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const B = D.B, x0 = B[i], z0 = B[i + 1], w = B[i + 2], d = B[i + 3], h = B[i + 4], kind = D.kinds[B[i + 5]], hex = D.colors[B[i + 6]], ex = B[i + 7] >= 0 ? D.extras[B[i + 7]] : null;
     const x1 = x0 + w, z1 = z0 + d, cx = x0 + w / 2, cz = z0 + d / 2, hs = hash(bi + 1), hs2 = hash(bi * 7 + 3);
     if (HOME.skipB(ex)) return;   // your home: the real house goes here instead (_home.js)
-    if (!NO_SOLID.has(kind) && kind !== 'parked') solids.add({ x0, z0, x1, z1 }, x0, z0, x1, z1);
+    let bso = null; if (!NO_SOLID.has(kind) && kind !== 'parked') { bso = { x0, z0, x1, z1 }; solids.add(bso, x0, z0, x1, z1); }
     if (LM.byB.has(i)) return;   // one of our banks or shops stands here (_landmarks.js)
     if (kind === 'parked') {
       solids.add({ x0, z0, x1, z1, park: 1 }, x0, z0, x1, z1);
@@ -789,7 +795,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     const c = lin(hex, GB), ring = R4(x0, z0, x1, z1);
     const roofFlat = lin(FLAT_ROOFS[Math.floor(hs2 * FLAT_ROOFS.length)]);
     switch (kind) {
-      case 'house': addHouseSpot(x0, z0, w, d, h, bi); break;   // one of our house designs (_houses.js)
+      case 'house': addHouseSpot(x0, z0, w, d, h, bi); HS.list[HS.list.length - 1].so = bso; break;   // one of our house designs (_houses.js)
       case 'home': {
         const hw = Math.max(2.9, Math.min(h * 0.58, 6.5)), rise = Math.min(Math.min(w, d) * 0.32, h * 0.5 + 1);
         prism(A('house'), null, ring, 0, hw, c, null, 16, 6, Math.floor(hs * 4) / 4, 0);
@@ -1338,6 +1344,7 @@ body.indoors.has-garage:not(.creating):not(.phoning) #garbtn { display: block; }
     expo: ['Expo', 'Shows and the fair.'],
     rig: ['Oil rig', 'Oil money on your land.'],
     landmark: ['Landmark', 'A Fort Worth landmark.'],
+    pstrip: ['Drag strip', 'A player-built strip. Race the tree.'],
   };
   const typeLabel = t => (TYPE_INFO[t] || [t])[0];
   const placeGrid = new Grid(60);
@@ -4098,7 +4105,7 @@ uniform mat3 normalMatrix;
   const STYLE = { repair: 'shop', perf: 'shop', visual: 'shop', rims: 'shop', chop: 'shop', gas: 'store', corner: 'store', food: 'diner', clothing: 'boutique', mall: 'mall', pawn: 'pawn', dispensary: 'pawn', plug: 'trap', trap: 'trap',
     bank: 'bank', dealer: 'showroom', usedlot: 'showroom', trailers: 'office', marina: 'office', realty: 'office', police: 'office', court: 'court', hospital: 'clinic', work: 'office', studio: 'studio', airport: 'airport',
     salebarn: 'office', kennel: 'office', growfarm: 'office', home: 'house', property: 'house' };
-  const OUTDOOR = { land: 'buyProp', meet: 'meet', carshow: 'meet', expo: 'meet', sprint: 'race', roll: 'race', drag: 'strip', hoghunt: 'dogs', baypen: 'dogs', rig: 'jobs' };
+  const OUTDOOR = { land: 'buyProp', meet: 'meet', carshow: 'meet', expo: 'meet', sprint: 'race', roll: 'race', drag: 'strip', pstrip: 'pstrip', hoghunt: 'dogs', baypen: 'dogs', rig: 'jobs' };
   const IN = { scene: null, cam: null, place: null, avatar: null, stations: [], solids: [], W: 0, D: 0, pos: new THREE.Vector3(), target: null, yaw: 0, walk: 0, near: null, camPos: new THREE.Vector3() };
   let inside = false;
   const FLOORS = {};
@@ -6590,7 +6597,7 @@ uniform mat3 normalMatrix;
       if (k === 'studio') { d = { floors: [PLAN], walls: [STUDIO_WALLS], garage: true, wall: '#d9c9a8', roof: '#3a3330', roofStyle: 'shingle', skin: 'siding' }; base = [START_FURN]; }
       else if (k === 'property') {
         const hp = HP[p.id], pr = PRESETS[hp.house];
-        d = { floors: pr.floors.slice(), walls: pr.floors.map(() => []), wall: hp.wall || pr.wall, roof: hp.roof || pr.roof, roofStyle: hp.style || pr.roofStyle || 'shingle', skin: hp.house === 'one' ? 'brick' : 'siding' };
+        d = { floors: pr.floors.slice(), walls: pr.floors.map(() => []), wall: hp.wall || pr.wall, roof: hp.roof || pr.roof, roofStyle: hp.style || pr.roofStyle || 'shingle', skin: hp.skin || (hp.house === 'one' ? 'brick' : 'siding') };
         base = pr.furn;
       } else {
         const fl = (Array.isArray(sv.floors) ? sv.floors : []).filter(s => typeof s === 'string' && s.length === GW * GD && /^[.LKDBAOGHPTMSUCW]+$/.test(s)).slice(0, MAX_FLOORS);
@@ -6603,7 +6610,7 @@ uniform mat3 normalMatrix;
       Object.assign(d, { kind: k, id: p.id, name: p.name, furn: [], plotOf: p.plotOf || null });
       if (hex(sv.wall)) d.wall = sv.wall; if (hex(sv.roof)) d.roof = sv.roof;
       const prd = k === 'property' ? PRESETS[HP[p.id].house] : null;
-      if (prd && SKINS.some(s => s[0] === prd.skin)) d.skin = prd.skin;
+      if (prd && SKINS.some(s => s[0] === prd.skin) && !HP[p.id].skin) d.skin = prd.skin;
       if (ROOF_STYLES.some(r => r[0] === sv.roofStyle)) d.roofStyle = sv.roofStyle; if (SKINS.some(s => s[0] === sv.skin)) d.skin = sv.skin;
       d.fin = cleanFin(sv.fin || (prd && prd.fin));
       for (const q of ['iw', 'trim', 'door']) d[q] = hex(sv[q]) ? sv[q] : prd && hex(prd[q]) ? prd[q] : null;
@@ -7476,7 +7483,7 @@ uniform mat3 normalMatrix;
       }
       for (const o of OUTS.values()) makeProxy(o);
       const st = OUTS.get(STUDIO); if (st) buildOut(st);
-      ranchInit(D);
+      blkInit(); ranchInit(D);
     }
     const hasHouse = o => kindOf(o.p) !== 'land' || ((owns(o.p) || FOREIGN.has(o.p.id)) && (design(o.p)._built || !!design(o.p).garN));
     function placeOf(o, d) {
@@ -8265,6 +8272,8 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       { k: 'court', name: 'Basketball court', ico: '🏀', w: 28, d: 15, price: 18000, flat: 1, s: 'Full court with lines and two hoops' },
       { k: 'helipad', name: 'Helipad', ico: '🚁', w: 20, d: 20, price: 40000, flat: 1, s: 'Lit pad for the chopper' },
       { k: 'pumpjack', name: 'Pumpjack', ico: '🛢️', w: 8, d: 4, price: 120000, solid: [7, 2.6], s: 'Nods all day on its own well' },
+      { k: 'strip8', name: 'Drag strip · 1/8 mile', ico: '🏁', w: 26, d: 400, price: 250000, max: 2, flat: 1, len: 201.17, s: 'Two lanes on a Christmas tree, walls, bleachers, a tower and the shutdown. Race AI racers or friends online' },
+      { k: 'strip4', name: 'Drag strip · 1/4 mile', ico: '🏁', w: 26, d: 640, price: 450000, max: 2, flat: 1, len: 402.34, s: 'A full quarter mile: tree, walls, bleachers, tower, lights and a long shutdown. Race AI racers or friends online' },
     ];
     const RK_BY = Object.fromEntries(RK.map(r => [r.k, r]));
     const RMAX = 140;
@@ -8348,8 +8357,53 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       // the rest: drawn as one mesh per land, solids for what you can't drive through
       let r = RL.get(id); if (!r) RL.set(id, (r = { p: land, lot: null, g: null, rs: [], spin: [], sig: '' }));
       r.lot = plan; r.sig = '';
-      ranchSolids(r);
+      ranchSolids(r); stripSync(land, plan);
       if (r.g) ranchMesh(r);
+    }
+    // ---- drag strips (Kimari 2026-11-28: "make it where you can build drag strips for online friends"). A strip on
+    // your land (or a friend's) is a track for roll racing's digs: pull into the staging lanes for AI racers, or
+    // invite anybody on the server to race on it with a bet. It rides with the land plan, so everybody has it.
+    const rotXZ = (it, lx, lz) => { const a = it.r * Math.PI / 2, c = Math.cos(a), s = Math.sin(a); return [it.x + lx * c + lz * s, it.z - lx * s + lz * c]; };
+    function rotBox(it, [a, b, c, d]) { const P = [rotXZ(it, a, b), rotXZ(it, c, d)]; return [Math.min(P[0][0], P[1][0]), Math.min(P[0][1], P[1][1]), Math.max(P[0][0], P[1][0]), Math.max(P[0][1], P[1][1])]; }
+    const STRIPS = new Map();   // track id -> { t, p, land, on }
+    let stripGone = [];
+    const NOGRASS = new Map(); let grassDue = false;
+    function grassPush() { grassDue = true; if (!window.__egNoGrass) return; try { for (const [k, r] of NOGRASS) window.__egNoGrass(k, r); grassDue = false; } catch (e) {} }
+    const hsh = str => { let h = 7; for (const ch of String(str)) h = (h * 31 + ch.charCodeAt(0)) % 999983; return h; };
+    const stripId = (land, it) => `ps${hsh(land.id)}_${it.x}_${it.z}_${it.r}`;
+    function stripName(land, it) {
+      const fo = FOREIGN.get(land.id), who = owns(land) ? (S.name || 'My') : fo && fo.name ? fo.name : land.name;
+      const plan = lotPlan(land), same = plan ? plan.items.filter(o => o.k === it.k) : [], i = same.findIndex(o => o.x === it.x && o.z === it.z);
+      return `${who}'s ${it.k === 'strip4' ? 'Quarter' : 'Eighth'} Mile${i > 0 ? ' ' + (i + 1) : ''}`;
+    }
+    function stripTrack(land, it) {
+      const R = RK_BY[it.k], L = lotOfLand(land), d = R.d / 2, z0 = -d + 20, a = it.r * Math.PI / 2, dx = Math.sin(a), dz = Math.cos(a);
+      const [sx, sz] = rotXZ(it, 0, z0), fo = FOREIGN.get(land.id);
+      return { id: stripId(land, it), name: stripName(land, it), x: L.cx + sx, z: L.cz + sz, dx, dz, len: R.len, run: d - 14 - (z0 + R.len), w: 14, lanes: [-3.1, 3.1], back: 18,
+        owner: owns(land) ? (S.name || 'You') : fo ? fo.name : null, land: land.id };
+    }
+    function stripSync(land, plan) {
+      const want = new Set();
+      if (plan) for (const it of plan.items) {
+        if (!RK_BY[it.k].len) continue;
+        const t = stripTrack(land, it); want.add(t.id);
+        let v = STRIPS.get(t.id);
+        if (v) { placeGrid.del(v.p); }
+        const p = { id: 'pstrip:' + t.id, type: 'pstrip', name: t.name, owner: t.owner, trk: t.id, x: t.x - t.dx * 10, z: t.z - t.dz * 10, blurb: `${it.k === 'strip4' ? 'Quarter' : 'Eighth'} mile on the tree. Pull into the staging lanes to race.` };
+        Object.assign(p, { x0: p.x - 26, z0: p.z - 26, x1: p.x + 26, z1: p.z + 26 }); placeGrid.add(p, p.x0, p.z0, p.x1, p.z1);
+        STRIPS.set(t.id, v = { t, p, land: land.id, on: false });
+      }
+      for (const [id, v] of [...STRIPS]) if (v.land === land.id && !want.has(id)) { placeGrid.del(v.p); STRIPS.delete(id); stripGone.push(id); }
+      // no grass growing through the asphalt
+      { const L = lotOfLand(land), rects = plan ? plan.items.filter(it => RK_BY[it.k].len).map(it => { const b = itBox(it); return [L.cx + b.x0, L.cz + b.z0, L.cx + b.x1, L.cz + b.z1]; }) : [];
+        NOGRASS.set('strip:' + land.id, rects); grassPush(); }
+      stripPush();
+    }
+    function stripPush() {
+      const rr = window.__yb && window.__yb.rr; if (!rr || !rr.addTrack) return false;
+      for (const id of stripGone) rr.removeTrack(id); stripGone = [];
+      for (const v of STRIPS.values()) if (!v.on || !rr.tracks.includes(v.t)) { rr.addTrack(v.t); v.on = true; }
+      return true;
     }
     function ranchInit(D) {
       for (const p of D.P) if (p.type === 'land' && (owns(p) || FOREIGN.has(p.id))) ranchSync(p.id);
@@ -8550,6 +8604,42 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
           for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; g.cyl(Math.cos(a) * 9.2, Math.sin(a) * 9.2, 0.14, 0.1, 0.3, '#ffd23f', 8); }
           break;
         }
+        case 'strip8': case 'strip4': {
+          const z0 = -d + 20, zf = z0 + R.len, lanes = [-3.1, 3.1];
+          g.box(-w, 0, -d, w, 0.03, d, '#77705f');                                    // gravel apron
+          g.box(-7, 0.03, -d + 2, 7, 0.06, d, '#2b2c2e');                             // asphalt
+          g.box(-7, 0.06, z0 - 14, 7, 0.07, z0 + 100, '#8f8d87');                     // concrete launch pad
+          for (const lx of lanes) { g.box(lx - 1.05, 0.07, z0 - 1, lx + 1.05, 0.074, z0 + 70, '#1c1c1e'); g.box(lx - 1.6, 0.07, z0 - 12, lx + 1.6, 0.073, z0 - 3, '#3a3a3c'); }   // rubber down the groove, the burnout box
+          g.box(-0.09, 0.074, z0 - 14, 0.09, 0.078, d - 14, '#f2efe8');               // center line
+          for (const ex of [-6.6, 6.6]) g.box(ex - 0.08, 0.074, z0 - 14, ex + 0.08, 0.078, d - 14, '#f2d23a');
+          g.box(-7, 0.074, z0 - 0.12, 7, 0.08, z0 + 0.12, '#f2efe8');                 // the start line
+          for (let i = 0; i < 14; i++) for (let j = 0; j < 2; j++) g.box(-7 + i, 0.074, zf + j - 1, -6 + i, 0.08, zf + j, (i + j) % 2 ? '#111' : '#f2efe8');   // the finish, checkered
+          for (const [mz, m] of [[18.3, 0], [100.6, 1], [201.17, 2], [304.8, 1]]) if (mz < R.len) for (const ex of [-7.6, 7.6]) g.box(ex - 0.3, 0, z0 + mz - 0.3, ex + 0.3, 1.2 + m * 0.3, z0 + mz + 0.3, '#f2efe8');   // 60 ft, 330, 1/8, 1000 ft cones
+          for (const ex of [-7.3, 7.3]) { g.box(ex - 0.2, 0, -d + 2, ex + 0.2, 0.95, d - 2, '#cfccc4'); for (let z = -d + 2; z < d - 2; z += 12) g.box(ex - 0.21, 0.6, z, ex + 0.21, 0.95, z + 6, '#c8322a'); }   // concrete walls
+          g.box(-7, 0.06, d - 14, 7, 0.32, d - 3, '#cdb582');                          // sand trap
+          for (let x = -7; x <= 7; x += 1.75) g.box(x - 0.05, 0, d - 2.2, x + 0.05, 3, d - 2, '#3a3a3a');
+          g.box(-7, 2.2, d - 2.2, 7, 2.9, d - 2.1, '#e85a1a');                          // catch net
+          // the Christmas tree in the middle, just past the line, facing the cars
+          const tz = z0 + 6; g.box(-0.12, 0, tz - 0.12, 0.12, 3.9, tz + 0.12, '#2a2a2c'); g.box(-0.62, 1.5, tz - 0.2, 0.62, 3.9, tz + 0.08, '#1a1a1c');
+          const bulb = ['#f4eed6', '#f4eed6', '#ffb31a', '#ffb31a', '#ffb31a', '#28e04a', '#ff2a2a'];
+          bulb.forEach((hx, i) => { const y = 3.6 - i * 0.32; for (const bx of [-0.3, 0.3]) g.box(bx - 0.12, y - 0.12, tz - 0.32, bx + 0.12, y + 0.12, tz - 0.2, hx); });
+          for (const lx of lanes) { g.box(lx + 1.35, 0, z0 - 0.4, lx + 1.55, 0.5, z0 - 0.2, '#f2d23a'); g.box(lx - 1.55, 0, z0 - 0.4, lx - 1.35, 0.5, z0 - 0.2, '#f2d23a'); }   // staging beams
+          // bleachers on the right, the tower on the left, both at the start
+          for (let i = 0; i < 5; i++) g.box(8.4 + i * 0.9, 0, z0 - 12, 8.4 + (i + 1) * 0.9, 0.45 * (i + 1), z0 + 70, i % 2 ? '#9aa0a6' : '#8a9096');
+          g.box(12.8, 0, z0 - 12, 12.95, 3.4, z0 + 70, '#6a6e72');
+          g.box(-12.4, 0, z0 + 4, -8.4, 7, z0 + 10, '#e8e4da'); g.box(-12.45, 4.6, z0 + 3.95, -8.35, 6.2, z0 + 10.05, '#25384a'); g.box(-12.8, 7, z0 + 3.6, -8, 7.35, z0 + 10.4, '#3a3e44');
+          g.box(-12.2, 7.35, z0 + 6.5, -12, 9.5, z0 + 6.7, '#3a3e44');
+          // light poles down both sides
+          for (let z = -d + 30; z < d - 10; z += 60) for (const ex of [-8.4, 8.4]) { g.cyl(ex, z, 0.14, 0, 10, '#7a7e82', 6); g.box(ex - Math.sign(ex) * 1.4, 9.7, z - 0.4, ex + Math.sign(ex) * 0.1, 10.1, z + 0.4, '#e8e4c8'); }
+          // the time slips: board at the finish
+          for (const ex of [-7.9, 7.9]) g.box(ex - 0.15, 0, zf - 0.15, ex + 0.15, 6.4, zf + 0.15, '#2a2a2c');
+          g.box(-7.9, 5.4, zf - 0.1, 7.9, 6.4, zf + 0.1, '#1a1a1c');
+          sp.push({ kind: 'sign', at: [0, 5.9, zf - 0.2], text: 'FINISH', ry: Math.PI });
+          for (const ex of [-7.9, 7.9]) g.box(ex - 0.15, 0, z0 - 15.15, ex + 0.15, 6.4, z0 - 14.85, '#2a2a2c');
+          g.box(-7.9, 5.4, z0 - 15.1, 7.9, 6.4, z0 - 14.9, '#1a1a1c');
+          sp.push({ kind: 'sign', at: [0, 5.9, z0 - 15.2], text: it.snm || 'Drag strip', ry: Math.PI });
+          break;
+        }
         case 'pumpjack': {
           g.box(-3.8, 0, -1.2, 3.8, 0.4, 1.2, '#5a5e62');
           for (const z of [-0.7, 0.7]) { g.boxR(-0.7, 2.2, z, 0.2, 4.4, 0.2, 0, '#2a3a5a', 0, 0.3); g.boxR(0.7, 2.2, z, 0.2, 4.4, 0.2, 0, '#2a3a5a', 0, -0.3); }
@@ -8584,14 +8674,14 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       for (const it of plan.items) {
         const a = g.parts.length, b = g.water.length, sp = [];
         const pid = it.k === 'plot' ? plotId(land, it.n) : null, po = pid && OUTS.get(pid);
-        drawItem(g, Object.assign({}, it, { empty: it.k === 'plot' && !(po && hasHouse(po)) }), sp, landName);
+        drawItem(g, Object.assign({}, it, { empty: it.k === 'plot' && !(po && hasHouse(po)), snm: RK_BY[it.k].len ? stripName(land, it) : null }), sp, landName);
         place(g.parts, it, a); place(g.water, it, b);
         for (const s of sp) {
           const c = Math.cos(it.r * Math.PI / 2), sn = Math.sin(it.r * Math.PI / 2), wx = L.cx + it.x + s.at[0] * c + s.at[2] * sn, wz = L.cz + it.z - s.at[0] * sn + s.at[2] * c;
           let m;
           if (s.kind === 'sign') { m = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.15), new THREE.MeshStandardMaterial({ map: signTex(s.text), roughness: 0.7, side: THREE.DoubleSide })); }
           else m = new THREE.Mesh(mergeParts(s.g.parts), rMat);
-          const holder = new THREE.Group(); holder.position.set(wx, s.at[1], wz); holder.rotation.y = it.r * Math.PI / 2; holder.add(m); group.add(holder);
+          const holder = new THREE.Group(); holder.position.set(wx, s.at[1], wz); holder.rotation.y = it.r * Math.PI / 2 + (s.ry || 0); holder.add(m); group.add(holder);
           if (s.kind !== 'sign') { m.castShadow = true; r.spin.push({ m, kind: s.kind, ph: (it.x + it.z) * 0.1 }); }
         }
       }
@@ -8607,11 +8697,14 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
         const R = RK_BY[it.k]; let boxes = [];
         if (R.solid) { const odd = it.r % 2 === 1, w = (odd ? R.solid[1] : R.solid[0]) / 2, d = (odd ? R.solid[0] : R.solid[1]) / 2; boxes.push([it.x - w, it.z - d, it.x + w, it.z + d]); }
         if (it.k === 'arch') { const c = Math.cos(it.r * Math.PI / 2), s = Math.sin(it.r * Math.PI / 2); for (const lx of [-5.5, 5.5]) { const x = it.x + lx * c, z = it.z - lx * s; boxes.push([x - 0.5, z - 0.5, x + 0.5, z + 0.5]); } }
+        if (R.len) { const d = R.d / 2, z0 = -d + 20; for (const b of [[-7.5, -d + 2, -7.1, d - 2], [7.1, -d + 2, 7.5, d - 2], [8.4, z0 - 12, 13, z0 + 70], [-12.4, z0 + 4, -8.4, z0 + 10]]) boxes.push(rotBox(it, b)); }
         for (const [a, b, c, d] of boxes) { const q = { x0: L.cx + a, z0: L.cz + b, x1: L.cx + c, z1: L.cz + d }; solids.add(q, q.x0, q.z0, q.x1, q.z1); r.rs.push(q); }
       }
     }
     // every half second: draw the plans of land you're near, drop the far ones
     function ranchStep() {
+      if (stripGone.length || [...STRIPS.values()].some(v => !v.on)) stripPush();
+      if (grassDue) grassPush();
       const cx = camera.position.x, cz = camera.position.z;
       for (const r of RL.values()) {
         if (!r.lot || !r.lot.items.length) { if (r.g) ranchDrop(r); continue; }
@@ -8661,7 +8754,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
     function planZoom(k) { const L = lotOfLand(LP.p), cv = document.getElementById('lp-cv'), mn = Math.min(cv.clientWidth / (L.hw * 2 + 16), cv.clientHeight / (L.hd * 2 + 16)) * 0.8; LP.sc = Math.max(mn, Math.min(12, LP.sc * k)); planDraw(); }
     const toScr = (x, z) => { const cv = document.getElementById('lp-cv'); return [cv.clientWidth / 2 + (x - LP.vx) * LP.sc, cv.clientHeight / 2 + (z - LP.vz) * LP.sc]; };
     const toLot = (sx, sy) => { const cv = document.getElementById('lp-cv'); return [(sx - cv.clientWidth / 2) / LP.sc + LP.vx, (sy - cv.clientHeight / 2) / LP.sc + LP.vz]; };
-    const ITEM_COL = { plot: '#c8b08a', barn: '#9a2a22', stable: '#7a5a3a', shop: '#a8aeb4', silo: '#c8ccd0', windmill: '#8a8e92', pond: '#2f6a8a', paddock: '#8aa05a', cattle: '#6a8a3a', horses: '#7a9a4a', hay: '#c8a85a', coop: '#c8b48a', garden: '#5a7a2a', arch: '#6a4a2a', road: '#9a8c74', court: '#b86a3a', helipad: '#7a7e82', pumpjack: '#2a3a5a' };
+    const ITEM_COL = { plot: '#c8b08a', barn: '#9a2a22', stable: '#7a5a3a', shop: '#a8aeb4', silo: '#c8ccd0', windmill: '#8a8e92', pond: '#2f6a8a', paddock: '#8aa05a', cattle: '#6a8a3a', horses: '#7a9a4a', hay: '#c8a85a', coop: '#c8b48a', garden: '#5a7a2a', arch: '#6a4a2a', road: '#9a8c74', court: '#b86a3a', helipad: '#7a7e82', pumpjack: '#2a3a5a', strip8: '#3a3c40', strip4: '#3a3c40' };
     function planDraw() {
       const cv = document.getElementById('lp-cv'); if (!cv || !LP.on) return;
       const dpr = Math.min(2, devicePixelRatio || 1), W = cv.clientWidth, Hh = cv.clientHeight;
@@ -8776,6 +8869,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
           <div style="display:flex;flex-wrap:wrap;gap:6px">
             ${it.k === 'plot' ? `<button class="btn go" data-a="build">${built ? 'Go in' : 'Build the house'}</button><button class="btn" data-a="keys">🔑 Keys</button>` : ''}
             ${it.k === 'arch' ? '<button class="btn" data-a="rename">Name on the sign</button>' : ''}
+            ${RK_BY[it.k].len ? '<button class="btn go" data-a="strip">🏁 GPS to the start line</button>' : ''}
             <button class="btn" data-a="turn">↻ Turn</button><button class="btn" data-a="remove">Remove</button>
             <span style="font-size:12px;color:#9aa8b4;align-self:center">Drag it to move it.</span></div>`;
         return;
@@ -8801,6 +8895,7 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       if (a === 'keysback') { LP.keysFor = null; planUI(); return; }
       if (a === 'rename') { const v = window.prompt('Name on the sign', it.nm || `${S.name} Ranch`); if (v != null) { it.nm = v.replace(/[<>]/g, '').slice(0, 28); planKeep(); } return; }
       if (a === 'build') { const q = PLOTS.get(plotId(LP.p, it.n)); if (!q) return; planClose(); if (inside) leaveInterior(true); enterInterior(q); return; }
+      if (a === 'strip') { const t = stripTrack(LP.p, it); planClose(); setPin(t.name, t.x - t.dx * 10, t.z - t.dz * 10); toast(`GPS set to ${t.name}. Pull into the staging lanes to race.`, 'good'); return; }
     }
     // keys: whoever's on a plot's key list walks in like it's theirs (as a guest, it's still the owner's house)
     const hasKeys = p => { const f = p && FOREIGN.get(p.id); return !!(f && f.keys && S.uid && f.keys.some(k => k.u === S.uid)); };
@@ -8818,11 +8913,192 @@ body.decorating :is(#stick, #prompt, #walkhint, #phonebtn, #garbtn, #hud, #menu,
       return sv;
     }
 
+    // ---- houses on the block (Kimari 2026-11-28: "buy houses that's on the block from a realty app that actually has
+    // pictures of each property"). Every generated street house can come up for sale (about one in eight, the same
+    // ones for everybody). Buy it and it becomes a real house: the plan that matches its size (starter, ranch,
+    // two-story, three-story, Stop Six shotgun, estate) in its own colours, with a front door, keys and the builder.
+    // Its id is blk_<n>, n its place in HS.list, which is the same in every copy of the game.
+    const BLK_PLAN = { starter: 'starter', one: 'one', two: 'two', three: 'three', stopsix: 'shotgun', mansion: 'mansion' };
+    const BLK_BASE = { starter: 92000, stopsix: 68000, one: 168000, two: 248000, three: 395000, mansion: 820000 };
+    const BLK_SLOTS = { starter: 2, stopsix: 1, one: 4, two: 5, three: 8, mansion: 12 };
+    const blkHash = (H, k) => { const v = Math.sin(H.cx * 12.9898 + H.cz * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
+    const blkOf = id => { const m = /^blk_(\d+)$/.exec(id || ''); return m && typeof HS !== 'undefined' && HS.list[+m[1]] ? +m[1] : null; };
+    const hexOf = c => { if (!c) return null; if (typeof c === 'string') return c; const k = c.clone ? c.clone() : new THREE.Color(c); if (k.convertLinearToSRGB) k.convertLinearToSRGB(); return '#' + k.getHexString(); };
+    function blkStreet(H) {
+      const fx = -Math.sin(H.ry), fz = -Math.cos(H.ry), sz = HOUSE_SIZE[H.id] || [12, 12, 1], ld = sz[1] * H.sz;
+      const front = [H.cx + fx * ld / 2, H.cz + fz * ld / 2];
+      let st = null; try { st = streetAt(front[0] + fx * 10, front[1] + fz * 10) || streetAt(front[0] + fx * 18, front[1] + fz * 18); } catch (e) {}
+      let num = 100 + Math.round(blkHash(H, 3) * 40) * 2;
+      if (st) { const horiz = Math.abs(st.bz - st.az) < 0.01, along = horiz ? H.cx - Math.min(st.ax, st.bx) : H.cz - Math.min(st.az, st.bz); num = 100 + Math.round(Math.abs(along) / 6) * 2 + (((horiz ? fz : fx) > 0) ? 1 : 0) + Math.floor(Math.abs(horiz ? st.az : st.ax) / 400) * 100 % 3000; }
+      return { fx, fz, front, ld, name: `${num} ${st && st.name ? st.name : 'Oak St'}` };
+    }
+    // the house as it stands on the street, made into a place you can buy
+    function blkPlace(i) {
+      const H = HS.list[i], id = 'blk_' + i, P = (DATA.P || []).find(q => q.id === id); if (P) return P;
+      const st = blkStreet(H), face = Math.atan2(st.fx, st.fz);
+      let r = null; try { r = window.__uq && window.__uq.recipe(H); } catch (e) {}
+      const plan = BLK_PLAN[H.id] || 'starter', base = BLK_BASE[H.id] || 120000;
+      const area = Math.max(0.6, Math.min(1.8, H.sx * H.sz)), wear = r && r.wear != null ? r.wear : 0;
+      let town = ''; try { town = districtAt(H.cx, H.cz) || regionAt(H.cx, H.cz) || ''; } catch (e) {}
+      const zone = /westover|rivercrest|preston|highland|frisco|southlake|colleyville|buckhead|hills|kessler|mira vista|tanglewood/i.test(town) ? 1.8 : /stop six|polytechnic|como|eastwood|everman|forest hill|south dallas|compton/i.test(town) ? 0.6 : 1;
+      const price = Math.round(base * (0.75 + area * 0.35) * zone * (1 - wear * 0.35) * (0.92 + blkHash(H, 5) * 0.16) / 500) * 500;
+      const skinOf = { brick: 'brick', stucco: 'stucco', stone: 'stone', board: 'batten', shake: 'batten', siding: 'siding' };
+      const roofSt = r ? (r.rType === 'flat' ? 'flat' : /metal/i.test(String(r.rTile)) ? 'metal' : /tile/i.test(String(r.rTile)) ? 'tile' : r.rType === 'gable' ? 'gable' : 'shingle') : 'shingle';
+      HP[id] = { house: plan, wall: hexOf(r && r.wc) || '#d9d2c0', roof: hexOf(r && r.rc) || '#4a4844', style: roofSt, skin: skinOf[r && r.wallKind] || (plan === 'one' ? 'brick' : 'siding'), slots: BLK_SLOTS[H.id] || 2 };
+      return { id, type: 'property', name: st.name, x: st.front[0] + st.fx * 4, z: st.front[1] + st.fz * 4, face, color: '#ffffff', blk: true, hi: i, price, town, wear };
+    }
+    const blkTaken = id => { if (S.props.includes(id) || FOREIGN.has(id)) return true; try { const t = window.__hn && window.__hn.takenBy(id); return !!t; } catch (e) { return false; } };
+    // the houses for sale near a spot (nearest first)
+    function blkForSale(x, z, n = 30, R = 1500) {
+      if (typeof HS === 'undefined') return [];
+      const out = [];
+      HS.list.forEach((H, i) => { if (H.gone) return; const d = Math.hypot(H.cx - x, H.cz - z); if (d > R || blkHash(H, 1) > 0.13 || blkTaken('blk_' + i)) return; out.push([d, i]); });
+      out.sort((a, b) => a[0] - b[0]);
+      return out.slice(0, n).map(([d, i]) => Object.assign(blkPlace(i), { dist: d }));
+    }
+    // it's somebody's now (yours, or another player's on your server): the real house goes up where it stood
+    function blkEnsure(id) {
+      const i = blkOf(id); if (i == null) return null;
+      let p = DATA.P.find(q => q.id === id);
+      if (!p) { p = blkPlace(i); DATA.P.push(p); }
+      if (!OUTS.has(id)) {
+        const q = Math.PI / 2, ry = Math.round((p.face + Math.PI) / q) * q, ox = Math.round(Math.sin(p.face)), oz = Math.round(Math.cos(p.face));
+        const o = { p, anchor: [p.x - ox * 4, p.z - oz * 4], ry, group: null, proxy: null, rs: [] }; OUTS.set(id, o);
+        const H = HS.list[i];
+        if (H.so) { unsolid(H.so); H.so = null; }
+        try { window.__uq && window.__uq.hide(i); } catch (e) { H.gone = true; }
+        makeProxy(o); if (hasHouse(o)) setSolids(o, design(p), placeOf(o, design(p)));
+      }
+      return p;
+    }
+    function blkInit() {
+      if (!propPrice.blk) { const pp = propPrice; propPrice = p => (p && p.blk ? p.price : pp(p)); propPrice.blk = 1; }
+      for (const id of S.props) if (blkOf(id) != null) blkEnsure(id);
+    }
+
+    // ---- pictures: the real house rendered off screen (the same shell you walk into), cached as small JPEGs
+    const PIX = new Map();
+    let PS = null;
+    function picScene() {
+      if (PS) return PS;
+      const sc = new THREE.Scene(), hemi = new THREE.HemisphereLight(0xdfeeff, 0x6a5a3a, 0.75), sun = new THREE.DirectionalLight(0xfff2dc, 1.25);
+      sun.position.set(-30, 50, -40); sc.add(hemi, sun, sun.target);
+      const g = new THREE.Mesh(new THREE.CircleGeometry(400, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#5f7d3a', roughness: 1 })); g.position.y = -0.01; sc.add(g);
+      const tm = new THREE.MeshStandardMaterial({ color: '#3f6a2c', roughness: 0.9 }), trunk = new THREE.MeshStandardMaterial({ color: '#5a4030', roughness: 0.9 });
+      const trees = new THREE.Group(); sc.add(trees);
+      PS = { sc, sun, ground: g, trees, tm, trunk, rt: null, cam: new THREE.PerspectiveCamera(38, 1.6, 0.5, 2000) };
+      return PS;
+    }
+    function picTrees(seed, R0, R1, n) {
+      const T = PS.trees; while (T.children.length) { const c = T.children.pop(); c.geometry.dispose(); }
+      let s = seed; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+      for (let k = 0; k < n; k++) {
+        const a = r() * Math.PI * 2, d = R0 + r() * (R1 - R0), x = Math.cos(a) * d, z = Math.sin(a) * d, h = 5 + r() * 6;
+        const c = new THREE.Mesh(new THREE.SphereGeometry(h * 0.42, 9, 7), PS.tm); c.position.set(x, h * 0.75, z); c.scale.y = 1.15; T.add(c);
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, h * 0.6, 6), PS.trunk); t.position.set(x, h * 0.3, z); T.add(t);
+      }
+    }
+    function snapTo(w, h, cam, extra) {
+      const R = renderer, P = picScene();
+      if (!P.rt || P.rt.width !== w || P.rt.height !== h) { if (P.rt) P.rt.dispose(); P.rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: true }); P.rt.texture.encoding = THREE.sRGBEncoding; }
+      P.sc.background = new THREE.Color('#a9cdef'); P.sc.fog = new THREE.Fog('#cfe2f2', 160, 900); if (scene.environment) P.sc.environment = scene.environment;
+      const prevT = R.getRenderTarget(), sh = R.shadowMap.enabled; R.shadowMap.enabled = false;
+      R.setRenderTarget(P.rt); R.clear(); R.render(P.sc, cam); const buf = new Uint8Array(w * h * 4); R.readRenderTargetPixels(P.rt, 0, 0, w, h, buf); R.setRenderTarget(prevT); R.shadowMap.enabled = sh;
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d'), img = x.createImageData(w, h);
+      for (let y = 0; y < h; y++) img.data.set(buf.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+      x.putImageData(img, 0, 0); if (extra) extra(x, w, h);
+      return cv.toDataURL('image/jpeg', 0.84);
+    }
+    // a house: 'front' (from the street, three quarters), 'back' (the yard, from up high)
+    function housePic(p, view, w = 480, h = 300) {
+      const key = `${p.id}:${view}:${w}`; if (PIX.has(key)) return PIX.get(key);
+      const P = picScene(), d = design(p), sh = buildShell(d, true), G = sh.group;
+      P.sc.add(G); G.position.set(0, 0, 0); G.rotation.y = 0; G.updateMatrixWorld(true);
+      const bb = new THREE.Box3().setFromObject(G), c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3()), R = Math.max(sz.x, sz.z, sz.y * 1.4);
+      let seed = 7; for (const ch of p.id) seed = (seed * 31 + ch.charCodeAt(0)) % 2147483646 || 7;
+      picTrees(seed, R * 0.9 + 6, R * 2.4 + 20, 26);
+      const cam = P.cam; cam.aspect = w / h; cam.fov = 38; cam.updateProjectionMatrix();
+      const dist = R * 1.25 + 6;
+      // the front of the house faces -z in its own frame
+      if (view === 'back') { cam.position.set(c.x + dist * 0.55, sz.y + dist * 0.62, bb.max.z + dist * 0.75); P.sun.position.set(30, 50, 40); }
+      else { cam.position.set(c.x - dist * 0.5, Math.max(2.2, sz.y * 0.55) + dist * 0.12, bb.min.z - dist * 0.82); P.sun.position.set(-30, 50, -40); }
+      cam.lookAt(c.x, sz.y * 0.4, c.z);
+      { const ax = cam.position.x, az = cam.position.z, bx = c.x, bz = c.z, L2 = (bx - ax) ** 2 + (bz - az) ** 2 || 1;
+        for (const t of P.trees.children) { t.position.x += c.x; t.position.z += c.z; }
+        const kill = [];
+        for (const t of P.trees.children) { const k = Math.max(0, Math.min(1, ((t.position.x - ax) * (bx - ax) + (t.position.z - az) * (bz - az)) / L2)), px = ax + (bx - ax) * k, pz = az + (bz - az) * k; const tx = t.position.x - ax, tz = t.position.z - az, td = Math.hypot(tx, tz), cosA = (tx * (bx - ax) + tz * (bz - az)) / (td * Math.sqrt(L2) || 1); if (Math.hypot(t.position.x - px, t.position.z - pz) < 7 || td < 10 || (td < Math.sqrt(L2) + 4 && cosA > 0.78)) kill.push(t); }
+        for (const t of kill) { P.trees.remove(t); t.geometry.dispose(); } }
+      let url = '';
+      try { url = snapTo(w, h, cam); } finally { P.sc.remove(G); disposeTree(G); }
+      PIX.set(key, url); return url;
+    }
+    // raw land: the lot from the air, fenced, the trees on it, a sign at the road
+    function landPic(p, w = 480, h = 300) {
+      const key = `${p.id}:land:${w}`; if (PIX.has(key)) return PIX.get(key);
+      const P = picScene(), L = p.lot ? { hw: (p.lot.x1 - p.lot.x0) / 2, hd: (p.lot.z1 - p.lot.z0) / 2 } : { hw: 50, hd: 50 };
+      const S2 = Math.min(1, 150 / Math.max(L.hw, L.hd)), hw = L.hw * S2, hd = L.hd * S2;   // big ranches are drawn shrunk to fit the frame
+      const G = new THREE.Group(), M2 = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 });
+      const field = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, hd * 2).rotateX(-Math.PI / 2), M2('#8a9a4a')); field.position.y = 0.02; G.add(field);
+      const post = new THREE.BoxGeometry(0.16, 1.3, 0.16), pm = M2('#6b5236'), rails = [];
+      for (const [ax, az, bx, bz] of [[-hw, -hd, hw, -hd], [hw, -hd, hw, hd], [hw, hd, -hw, hd], [-hw, hd, -hw, -hd]]) {
+        const L2 = Math.hypot(bx - ax, bz - az), n = Math.max(2, Math.round(L2 / 6));
+        for (let k = 0; k <= n; k++) { const m = new THREE.Mesh(post, pm); m.position.set(ax + (bx - ax) * k / n, 0.65, az + (bz - az) * k / n); G.add(m); }
+        const rl = new THREE.Mesh(new THREE.BoxGeometry(L2, 0.08, 0.06), M2('#c8bca0')); rl.position.set((ax + bx) / 2, 1.0, (az + bz) / 2); rl.rotation.y = -Math.atan2(bz - az, bx - ax); G.add(rl); rails.push(rl);
+      }
+      let s = 11; for (const ch of p.id) s = (s * 31 + ch.charCodeAt(0)) % 2147483646 || 11; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+      const big = L.hw * L.hd * 4 / 4047 > 60;
+      if (big || r() > 0.5) { const pond = new THREE.Mesh(new THREE.CircleGeometry(1, 28).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#3a6a7a', roughness: 0.1, metalness: 0.2 })); pond.scale.set(hw * 0.18, 1, hd * 0.12); pond.position.set((r() - 0.5) * hw, 0.05, (r() - 0.5) * hd); G.add(pond); }
+      const sign = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.2, 0.1), M2('#c8302a')); sign.position.set(0, 1.6, -hd - 1.5); G.add(sign);
+      const sp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2, 0.12), pm); sp.position.set(0, 1, -hd - 1.5); G.add(sp);
+      const road = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 + 300, 9).rotateX(-Math.PI / 2), M2('#3a3a3c')); road.position.set(0, 0.03, -hd - 8); G.add(road);
+      P.sc.add(G); picTrees(s, 4, Math.max(hw, hd) * 0.9, big ? 40 : 18);
+      for (const t of P.trees.children) { t.position.x = Math.max(-hw + 2, Math.min(hw - 2, t.position.x * (hw / Math.max(hw, hd)))); t.position.z = Math.max(-hd + 2, Math.min(hd - 2, t.position.z * (hd / Math.max(hw, hd)))); }
+      const cam = P.cam; cam.aspect = w / h; cam.fov = 42; cam.updateProjectionMatrix();
+      const R = Math.max(hw, hd); cam.position.set(-R * 0.6, R * 0.95 + 12, -hd - R * 1.05); cam.lookAt(0, 0, 0); P.sun.position.set(-30, 60, -30);
+      const ac = Math.round(L.hw * L.hd * 4 / 4047 * 10) / 10;
+      let url = '';
+      try { url = snapTo(w, h, cam, (x, W, Hh) => { x.fillStyle = 'rgba(0,0,0,0.55)'; x.fillRect(0, Hh - 30, W, 30); x.fillStyle = '#fff'; x.font = 'bold 15px system-ui'; x.fillText(`${ac} acres · fenced${big ? ' · stock pond' : ''}`, 10, Hh - 10); }); }
+      finally { P.sc.remove(G); G.traverse(m => { if (m.geometry && m.geometry !== post) m.geometry.dispose(); }); post.dispose(); while (P.trees.children.length) { const c = P.trees.children.pop(); c.geometry.dispose(); } }
+      PIX.set(key, url); return url;
+    }
+    // the floor plan, every floor side by side, room colours and names
+    function planPic(p, w = 480, h = 300) {
+      const key = `${p.id}:plan:${w}`; if (PIX.has(key)) return PIX.get(key);
+      const d = design(p), nF = d.floors.length, cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d');
+      x.fillStyle = '#f4f1ea'; x.fillRect(0, 0, w, h);
+      const pad = 10, cw = (w - pad * (nF + 1)) / nF, t = Math.min(cw / GW, (h - 40) / GD);
+      d.floors.forEach((f, k) => {
+        const ox = pad + k * (cw + pad) + (cw - GW * t) / 2, oy = 28;
+        x.fillStyle = '#333'; x.font = 'bold 12px system-ui'; x.textAlign = 'center'; x.fillText(k === 0 ? 'Ground floor' : `Floor ${k + 1}`, ox + GW * t / 2, 18);
+        for (let i = 0; i < GW * GD; i++) { const c = f[i]; if (c === '.') continue; const R = ROOM_BY_ID[c]; x.fillStyle = c === 'W' ? '#5ab0d0' : c === 'P' ? '#d8cfbe' : (R && R.c) || '#ccc'; x.fillRect(ox + (i % GW) * t, oy + ((i / GW) | 0) * t, t + 0.5, t + 0.5); }
+        // walls round each room
+        x.strokeStyle = '#222'; x.lineWidth = 1.6; x.beginPath();
+        for (let i = 0; i < GW * GD; i++) { const c = f[i]; if (c === '.' || c === 'P' || c === 'W') continue; const gx = i % GW, gy = (i / GW) | 0;
+          for (const [dx, dy, ax, ay, bx, by] of [[0, -1, 0, 0, 1, 0], [0, 1, 0, 1, 1, 1], [-1, 0, 0, 0, 0, 1], [1, 0, 1, 0, 1, 1]]) { const nx = gx + dx, ny = gy + dy, nc = nx >= 0 && nx < GW && ny >= 0 && ny < GD ? f[ny * GW + nx] : '.'; if (nc !== c) { x.moveTo(ox + (gx + ax) * t, oy + (gy + ay) * t); x.lineTo(ox + (gx + bx) * t, oy + (gy + by) * t); } } }
+        x.stroke();
+        // a label in the middle of each room
+        const seen = new Set();
+        for (let i = 0; i < GW * GD; i++) { const c = f[i]; if (seen.has(i) || c === '.' || c === 'P') continue; const st = [i], cells = []; seen.add(i); while (st.length) { const j = st.pop(); cells.push(j); const gx = j % GW, gy = (j / GW) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = gx + dx, ny = gy + dy, q = ny * GW + nx; if (nx >= 0 && nx < GW && ny >= 0 && ny < GD && !seen.has(q) && f[q] === c) { seen.add(q); st.push(q); } } }
+          if (cells.length < 2) continue; const mx = cells.reduce((a, j) => a + j % GW, 0) / cells.length, my = cells.reduce((a, j) => a + ((j / GW) | 0), 0) / cells.length, R = ROOM_BY_ID[c];
+          x.fillStyle = '#fff'; x.font = `bold ${Math.max(8, Math.min(11, t * 0.7))}px system-ui`; x.fillText(R ? R.name.replace(' room', '') : c, ox + (mx + 0.5) * t, oy + (my + 0.5) * t + 4); }
+      });
+      const url = cv.toDataURL('image/jpeg', 0.88); PIX.set(key, url); return url;
+    }
+    // the facts on a listing
+    function listingFacts(p) {
+      const k = kindOf(p);
+      if (k === 'land') { const ac = p.lot ? Math.round((p.lot.x1 - p.lot.x0) * (p.lot.z1 - p.lot.z0) / 4047 * 10) / 10 : 3; return { kind: 'land', acres: ac, text: `${ac} acres of raw land · build anything` }; }
+      const d = design(p), comp = c => { let n = 0; d.floors.forEach(f => { const seen = new Set(); for (let i = 0; i < GW * GD; i++) { if (f[i] !== c || seen.has(i)) continue; n++; const st = [i]; seen.add(i); while (st.length) { const j = st.pop(), gx = j % GW, gy = (j / GW) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = gx + dx, ny = gy + dy, q = ny * GW + nx; if (nx >= 0 && nx < GW && ny >= 0 && ny < GD && !seen.has(q) && f[q] === c) { seen.add(q); st.push(q); } } } } }); return n; };
+      const tiles = d.floors.reduce((t, f) => t + [...f].filter(isRoom).length, 0), sqft = Math.round(tiles * 4 * 10.764 / 10) * 10;
+      const cn = counts(d), beds = Math.max(cn.beds, comp('B')), baths = Math.max(cn.baths, comp('A')), slots = (HP[p.id] && HP[p.id].slots) || 2, pool = d.floors[0].includes('W');
+      return { kind: 'house', beds, baths, sqft, floors: d.floors.length, slots, pool, text: `${beds} bd · ${baths} ba · ${sqft.toLocaleString()} sq ft · ${d.floors.length} ${d.floors.length > 1 ? 'stories' : 'story'} · ${slots}-car${pool ? ' · pool' : ''}` };
+    }
+
     // let into someone else's house: their design, their name on it
     function visit(p, sv, name, uid) { if (inside) leaveInterior(true); VISIT = { p, sv, name, uid }; enterInterior(p); toast(`At ${name}'s place.`, 'good'); }
     window.__home = { get foot() { return foot; }, get IN() { return IN; }, LOOK, H, DECO, buy, tap: (x, z) => tap({ x, z }), confirmPlace, turn, sell, OUTS, draw, design, decoStart, decoEnd, buildMode, usePreset, setFloor, goFloor, rebuildOutside, summary, kindOf,
-      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, gxEdit, cleanGx, undo, redo, nudge, finEdit, estimate, dragDown, dragMove, dragUp, DRAG, shellCost, furnCost, snap, FINISHES, garBox: d => withFrame(d, () => garBox(d)), GX_EX, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tileXZ: (tx, ty) => ({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), cornerXZ: (cx, cy) => ({ x: -X(cx), z: -Z(cy) }), PRESETS, canPlace, showPlace, cancelPlace, RANCH: { RK, LP, PLOTS, RL, owns, planOpen, planClose, planFit, planPut, planRemove, planTurn, planDraw, planUI, lotPlan, lotFits, homeZone, packOut, ranchSync, ranchStep, itBox, lotOfLand, hasKeys, toScr }, tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
-    return { place, skipB, furnish, leave, anim, tap, dragDown, dragMove, dragUp, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns, packOut, hasKeys, planOpen, PLOTS };
+      tool: t => { DECO.tool = t; DECO.first = null; }, setGarage, gxEdit, cleanGx, undo, redo, nudge, finEdit, estimate, dragDown, dragMove, dragUp, DRAG, shellCost, furnCost, snap, FINISHES, garBox: d => withFrame(d, () => garBox(d)), GX_EX, pack, FOREIGN, visit, tapTile: (tx, ty) => tap({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), tileXZ: (tx, ty) => ({ x: -(X(tx) + TL / 2), z: -(Z(ty) + TL / 2) }), cornerXZ: (cx, cy) => ({ x: -X(cx), z: -Z(cy) }), PRESETS, canPlace, showPlace, cancelPlace, REALTY: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, blkOf, PIX }, STRIPS: { STRIPS, stripTrack, stripPush, stripName }, RANCH: { RK, LP, PLOTS, RL, owns, planOpen, planClose, planFit, planPut, planRemove, planTurn, planDraw, planUI, lotPlan, lotFits, homeZone, packOut, ranchSync, ranchStep, itBox, lotOfLand, hasKeys, toScr }, tapCorner: (cx, cy) => tap({ x: -X(cx), z: -Z(cy) }) };
+    return { place, skipB, furnish, leave, anim, tap, dragDown, dragMove, dragUp, stepDeco, stepOut, bindUI, DECO, H, isHome: p => !!kindOf(p) && ((VISIT && VISIT.p.id === p.id) || kindOf(p) !== 'land' || owns(p)), design, canPlace, rebuildOutside, OUTS, pack, FOREIGN, KEPT, visit, kindOf, owns, packOut, hasKeys, planOpen, PLOTS, realty: { housePic, landPic, planPic, listingFacts, blkForSale, blkEnsure, blkPlace, PIX } };
   })();
   // ---------- car button: open and close the doors, hood and trunk of your car ----------
   const backName = () => { const m = car && car.userData.model; const n = m && Object.keys(m.userData.panels).find(k => panelKind(k) === 'trunk'); return n === 'tailgate' ? 'Tailgate' : n === 'hatch' ? 'Hatch' : n === 'swing' ? 'Rear door' : n === 'liftgate' ? 'Liftgate' : 'Trunk'; };
@@ -10555,6 +10831,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
   const PHONE_APPS = [
     { id: 'map', name: 'Map', icon: '🗺', bg: '#2a7bff' },
     { id: 'market', name: 'Marketplace', icon: '🏪', bg: '#1877f2' },
+    { id: 'realty', name: 'Realty', icon: '🏡', bg: 'linear-gradient(135deg,#2bb673,#0a6a4a)' },
     { id: 'cars', name: 'My Cars', icon: '🚗', bg: '#c0c4cc' },
     { id: 'parts', name: 'Engine Lab', icon: '🔧', bg: 'linear-gradient(135deg,#c8341e,#5a0f0a)' },
     { id: 'hustle', name: 'Hustle', icon: '💼', bg: '#2f9e5a' },
@@ -10585,6 +10862,7 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     if (id === 'stuff') return toMenu(myStuff);
     if (id === 'style') { closePhone(); if (foot.on || !driving) openCreator(false); else openMenu(() => MENUS.look(null)); return; }
     if (id === 'market') return marketApp(sc);
+    if (id === 'realty') return realtyApp(sc);
     if (id === 'hustle') return hustleApp(sc);
     if (id === 'online') return onlineApp(sc);
     if (id === 'map') { closePhone(); openBigMap(); return; }
@@ -10716,6 +10994,86 @@ body.lc-ok #lcbtn,body.lay-edit #lcbtn{display:block}body.roll-on #lcbtn,body.st
     save(); refreshStats(); closePhone();
     toast(first ? `${L.seller} dropped off your ${carLabel(carOf(c.id))}. It's parked right here.` : `Bought it. Your ${carLabel(carOf(c.id))} is in your garage.`, 'good');
   }
+
+  // ---------- Realty: every house and piece of land for sale, with real pictures (Kimari 2026-11-28) ----------
+  // Houses on the block near you (the street houses that are up for sale), the named houses, land and ranches.
+  // The pictures are the real houses rendered off screen (the same shell you walk into) plus a floor plan, and raw
+  // land from the air. Tap one for the photos and the facts, set GPS to it, or buy it right there.
+  const RL_APP = { tab: 'near', sort: 'near', q: [], busy: false, list: [] };
+  const rlPos = () => (driving ? (foot.on ? [foot.x, foot.z] : [drv.x, drv.z]) : [camera.position.x, camera.position.z]);
+  function rlList(tab) {
+    const [x, z] = rlPos(), R = HOME.realty, taken = id => { try { return !!(window.__hn && window.__hn.takenBy(id)); } catch (e) { return false; } };
+    let list;
+    if (tab === 'near') list = R.blkForSale(x, z, 36, 2200);
+    else if (tab === 'houses') list = DATA.P.filter(q => q.type === 'property' && !q.blk && HOME.kindOf(q) && !S.props.includes(q.id) && !taken(q.id));
+    else if (tab === 'land') list = DATA.P.filter(q => q.type === 'land' && !S.props.includes(q.id) && !taken(q.id));
+    else list = S.props.map(id => DATA.P.find(q => q.id === id)).filter(q => q && HOME.kindOf(q) && HOME.kindOf(q) !== 'studio');
+    for (const q of list) { q._price = propPrice(q); q._dist = Math.hypot(q.x - x, q.z - z); }
+    const s = RL_APP.sort; list.sort((a, b) => s === 'low' ? a._price - b._price : s === 'high' ? b._price - a._price : a._dist - b._dist);
+    return list;
+  }
+  const rlWhere = q => { let t = q.town || ''; try { t = t || districtAt(q.x, q.z) || regionAt(q.x, q.z) || ''; } catch (e) {} return t; };
+  const rlMi = d => d < 1609 ? `${Math.round(d / 1609 * 10) / 10} mi` : `${Math.round(d / 1609)} mi`;
+  function rlPic(q, view) { const R = HOME.realty; return HOME.kindOf(q) === 'land' ? R.landPic(q) : view === 'plan' ? R.planPic(q) : R.housePic(q, view || 'front'); }
+  // pictures are made a few at a time so the app stays smooth
+  function rlPump() {
+    if (RL_APP.busy || PH.app !== 'realty') return;
+    const job = RL_APP.q.shift(); if (!job) return;
+    RL_APP.busy = true;
+    setTimeout(() => { try { const url = rlPic(job.q, job.view); for (const im of document.querySelectorAll(`img[data-pic="${job.q.id}:${job.view}"]`)) im.src = url; } catch (e) { console.warn('realty pic', e.message); } RL_APP.busy = false; rlPump(); }, 30);
+  }
+  function rlAsk(q, view) { RL_APP.q.push({ q, view }); rlPump(); }
+  function realtyApp(sc, pick) {
+    PH.app = 'realty'; sc.className = 'ph-screen'; RL_APP.q = [];
+    if (pick) return rlDetail(sc, pick);
+    const tabs = [['near', 'On the block'], ['houses', 'Houses'], ['land', 'Land & ranches'], ['mine', 'Mine']];
+    const list = rlList(RL_APP.tab); RL_APP.list = list;
+    sc.innerHTML = `${phoneHead('Realty')}<div class="rl-tabs">${tabs.map(([k, n]) => `<button class="rl-tab${RL_APP.tab === k ? ' on' : ''}" data-t="${k}">${n}</button>`).join('')}</div>
+      <div class="rl-bar"><span>${list.length} ${RL_APP.tab === 'mine' ? 'yours' : 'for sale'} · ${money(S.cash)} cash</span><select id="rl-sort"><option value="near"${RL_APP.sort === 'near' ? ' selected' : ''}>Closest</option><option value="low"${RL_APP.sort === 'low' ? ' selected' : ''}>Price ↑</option><option value="high"${RL_APP.sort === 'high' ? ' selected' : ''}>Price ↓</option></select></div>
+      <div class="rl-grid">${list.map(q => { const f = HOME.realty.listingFacts(q); return `<button class="rl-card" data-id="${q.id}"><img data-pic="${q.id}:front" alt=""><div class="rl-txt"><b>${RL_APP.tab === 'mine' ? 'Yours' : money(q._price)}</b><span>${esc(q.name)}</span><small>${esc(f.text)}</small><small>${esc(rlWhere(q))} · ${rlMi(q._dist)}</small></div></button>`; }).join('') || `<p class="mk-info">${RL_APP.tab === 'near' ? 'No houses for sale on the blocks around you. Try somewhere else in town.' : 'Nothing here right now.'}</p>`}</div>`;
+    for (const q of list) rlAsk(q, 'front');
+    sc.querySelectorAll('.rl-tab').forEach(b => b.onclick = () => { RL_APP.tab = b.dataset.t; realtyApp(sc); });
+    phoneEl('rl-sort').onchange = e => { RL_APP.sort = e.target.value; realtyApp(sc); };
+    sc.querySelectorAll('.rl-card').forEach(b => b.onclick = () => realtyApp(sc, b.dataset.id));
+    sc.querySelector('.ph-back').onclick = phoneHome;
+  }
+  function rlDetail(sc, id) {
+    const q = RL_APP.list.find(x => x.id === id) || DATA.P.find(x => x.id === id); if (!q) return realtyApp(sc);
+    const land = HOME.kindOf(q) === 'land', own = S.props.includes(q.id), f = HOME.realty.listingFacts(q), views = land ? ['front'] : ['front', 'back', 'plan'];
+    const price = propPrice(q);
+    sc.innerHTML = `${phoneHead('Realty')}<div class="ph-body rl-detail">
+      <div class="rl-photos">${views.map(v => `<img data-pic="${q.id}:${v}" alt="">`).join('')}</div>
+      ${views.length > 1 ? `<div class="rl-dots">${views.map((v, i) => `<i${i ? '' : ' class="on"'}></i>`).join('')}</div>` : ''}
+      <div class="mk-price">${own ? 'You own this' : money(price)}</div><div class="mk-title">${esc(q.name)}</div>
+      <div class="mk-sub">${esc(f.text)}</div><div class="mk-sub">${esc(rlWhere(q))} · ${rlMi(q._dist || 0)} away${q.blk ? ' · on the block' : ''}${q.blk && q.wear > 0.5 ? ' · needs work' : ''}</div>
+      ${land ? '<p class="mk-note">Raw land. Build your own house and garage on it, then plan the rest: house lots for your friends, barns, cattle, horses, roads.</p>' : '<p class="mk-note">Walk-in house. Change the paint and furniture, park cars in the garage, invite people over.</p>'}
+      <div class="row">${own ? '' : `<button class="btn go" id="rl-buy">Buy for ${money(price)}</button>`}<button class="btn" id="rl-gps">📍 GPS</button></div>
+      <p class="mk-note">You have ${money(S.cash)} cash.</p></div>`;
+    for (const v of views) rlAsk(q, v);
+    const ph = sc.querySelector('.rl-photos'), dots = sc.querySelectorAll('.rl-dots i');
+    if (ph) ph.onscroll = () => { const k = Math.round(ph.scrollLeft / ph.clientWidth); dots.forEach((d, i) => d.classList.toggle('on', i === k)); };
+    phoneEl('rl-gps').onclick = () => { setPin(q.name, q.x, q.z); toast(`GPS set to ${q.name}.`, 'good'); };
+    const b = phoneEl('rl-buy'); if (b) b.onclick = () => rlBuy(sc, q);
+    sc.querySelector('.ph-back').onclick = () => realtyApp(sc);
+  }
+  function rlBuy(sc, q) {
+    if (q.blk && !DATA.P.find(x => x.id === q.id)) DATA.P.push(q);   // so the deed and the online code can find it
+    const m = MENUS.buyProp(q), r0 = m && m.rows && m.rows[0];
+    if (!r0 || r0.off || !r0.act) { toast(m && m.sub ? m.sub : 'Not for sale.', 'bad'); return; }
+    r0.act();
+    let tries = 0;
+    const done = () => {
+      if (S.props.includes(q.id)) {
+        if (q.blk) HOME.realty.blkEnsure(q.id);
+        HOME.rebuildOutside(q.id); setPin(q.name, q.x, q.z);
+        toast(`${q.name} is yours. GPS is set, go see it.`, 'good'); RL_APP.tab = 'mine'; if (PH.app === 'realty') realtyApp(sc);
+      } else if (tries++ < 25) setTimeout(done, 200);
+      else if (q.blk && !S.props.includes(q.id)) { const at = DATA.P.indexOf(q); if (at >= 0 && !HOME.OUTS.has(q.id)) DATA.P.splice(at, 1); }
+    };
+    done();
+  }
+  window.__realty = { RL_APP, rlList, open() { openPhone(); if (!PH.open) { PH.open = true; phoneEl('phone').hidden = false; document.body.classList.add('phoning'); } phoneApp('realty'); }, close: closePhone };
+  { const _rlL = MENUS.listings; MENUS.listings = () => { const m = _rlL(); m.rows.unshift({ t: '📱 See every listing with pictures', s: 'Houses on the block, houses, land and ranches in the Realty app', btn: 'Realty', act: () => { closeMenu(); openPhone(); if (PH.open) phoneApp('realty'); } }); return m; }; }
   // ---------- big map: the whole world top-down (towns, roads, every place), tap a spot for GPS ----------
   let MAPIMG = null; // the overview ground canvas, kept by makeGround
   const PLACE_ICON = { home: '🏠', garage: '🅿', repair: '🔧', perf: '⚙', visual: '🎨', rims: '🛞', dealer: '🚘', usedlot: '🚙', gas: '⛽', corner: '🏪', food: '🍔', clothing: '👕', mall: '🛍', pawn: '💰', chop: '🪚', bank: '🏦', realty: '🔑', property: '🏡', land: '🌾', trap: '🏚', plug: '📦', dispensary: '🌿', growfarm: '🌱', police: '🚓', court: '⚖', hospital: '🏥', studio: '🎤', work: '💼', trailers: '🚛', carshow: '🏆', meet: '🏁', sprint: '🏁', roll: '🛣', drag: '🚦', airport: '✈', marina: '⚓', salebarn: '🐄', kennel: '🐕', hoghunt: '🐗', baypen: '🐗', expo: '🎪', rig: '🛢', landmark: '⭐' };
@@ -20450,7 +20808,7 @@ body.phoning #hoodpill,body.creating #hoodpill,body.indoors #hoodpill{display:no
   // Inviting: the owner sends their house ('hd', the design as it's saved) to who they let in; that player walks
   // around inside the real thing, and each of you sees the other in there ('hm' on the state packets).
   const HN = { server: '', owners: new Map(), loadT: 0, loading: false, init: false, knock: null, views: new Map(), told: new Set(), entering: false, sentIn: null };
-  const hnPlace = id => DATA.P.find(q => q.id === id);
+  const hnPlace = id => DATA.P.find(q => q.id === id) || (/^blk_\d+$/.test(id || '') ? HOME.realty.blkEnsure(id) : undefined);
   // ?net=local: the same deed rules kept in this browser, so two tabs can test them (like 2D's local deeds)
   async function hnRpc(fn, a) {
     if (!NET_LOCAL) return netRpc(fn, a);
@@ -29862,7 +30220,9 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
       if (T.go != null && T.t - T.traceT >= 0.1 && T.trace.length < 900) { T.traceT = T.t; T.trace.push([+(T.t - T.go).toFixed(2), front - T.goS, v, oF - T.goS, oV]); }
       if (T.ph === 'run' && (me.done != null || me.dq)) { T.ph = 'done'; T.end = T.t; }
       const themDone = T.kind === 'net' ? T.them && (T.them.et != null || T.them.out) : A && (A.done != null || A.jump || A._crk);
-      if (T.ph === 'run' && themDone && T.go != null && T.t - T.go - (T.kind === 'net' ? (T.them.et || 0) : A.done || 0) > 9) { me.dq = me.dq || `${who(T)} was long gone`; T.ph = 'done'; T.end = T.t; }
+      // they finished and you're still nowhere 9 s later; if they jumped or went out (no time), you get the whole run to finish
+      const theirT = T.kind === 'net' ? T.them && T.them.et : A && A.done;
+      if (T.ph === 'run' && themDone && T.go != null && (theirT != null ? T.t - T.go - theirT > 9 : T.t - T.go > 45)) { me.dq = me.dq || `${who(T)} was long gone`; T.ph = 'done'; T.end = T.t; }
       if (T.ph === 'done' && !T.shown) {
         const wait = T.kind === 'net' ? 14 : 7;   // a slower AI still gets to the line, so the slip has their time and the margin
         if ((themDone && T.t - T.end > 0.7) || T.t - T.end > wait || (me.jump && T.t - T.end > 1.4 && T.kind === 'ai')) rrEnd();
@@ -30503,6 +30863,20 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
     return { title: 'Roll race right here', sub: `${C.name} · ${Math.round(C.ahead * 3.281).toLocaleString()} ft of straight ahead · they pull up next to you`, rows };
   }
   RR.hereMenu = rrHereMenu;
+  // a strip somebody built on their land: digs on the tree against the racers, or invite an online player to it
+  MENUS.pstrip = p => {
+    if (!S.car) return noCar(p);
+    const t = RR.tracks.find(x => x.id === p.trk);
+    if (!t) return { title: p.name, sub: 'This strip is gone', rows: [{ t: 'Nothing to race on here', s: 'The owner took it down', btn: 'OK', act: () => closeMenu() }] };
+    const C = rrTrackC(t), pf = rrPrefs();
+    if (pf.d > t.len + 1) pf.d = t.len;
+    const start = o => { const ok = rrStart(Object.assign({}, o, { where: 'spot', C: rrTrackC(t), v0: 0, dist: Math.min(o.dist || pf.d, t.len) })); if (ok) RR.race.spot = p; return ok; };
+    const rows = rrRows(start, C, true).filter(r => !/^(\d+ roll ·|Dig · from a stop|Pace ·|Racers pulling up)/.test(r.t));
+    const net = rows.find(r => r.t.startsWith('🌐'));
+    if (net) { net.s = net.off ? net.s : `Pick the player and the bet. It's set for a dig on ${t.name}; you both get put on the line.`; net.act = () => { const f = rrIvf(); f.where = 'trk:' + t.id; f.type = 'dig'; f.d = Math.min(pf.d, t.len); rrInvOpen(); }; }
+    rows.unshift({ t: `🏁 Dig on the tree · ${rrDL(Math.min(pf.d, t.len))}`, s: `${t.owner ? t.owner + "'s strip" : 'Drag strip'}. Two lanes, both of you on the line, go on the third honk. Pick a racer below or race somebody online.`, btn: '', off: true });
+    return { title: p.name, sub: `${rrDL(t.len)} strip · you: ${carHp(S.car)} hp`, rows };
+  };
   // the Car panel gets a button for it
   { const _rcp = renderCarPanel; renderCarPanel = function () { const r = _rcp.apply(this, arguments); try { const el = $('carpanel'); if (el && !el.hidden && driving && !foot.on && S.car && !el.querySelector('[data-rr]')) { el.insertAdjacentHTML('beforeend', `<button class="btn go" data-rr="1">🏁 Roll race</button>`); el.querySelector('[data-rr]').onclick = () => { el.hidden = true; if (RR.on) { toast('Finish this race first.', 'bad'); return; } openMenu(rrHereMenu); }; } } catch (e) {} return r; }; }
 
@@ -30529,7 +30903,7 @@ body.yd-fight #stick,body.yd-fight #walkhint,body.yd-fight #prompt,body.yd-fight
   }
   RR.ags = () => { const L = []; if (RR.race && RR.race.A && !RR.race.A.dead) L.push(RR.race.A); if (RR.pull && RR.pull.A && !RR.pull.A.dead) L.push(RR.pull.A); for (const A of RR.ghosts) if (!A.dead) L.push(A); return L; };
   RR.movers = () => RR.ags().filter(A => A.slot);
-  Object.assign(RR, { start: rrStart, startSpot: rrStartSpot, close: rrClose, course: rrCourse, spot: rrSpot, step: rrStep, frame: rrFrame, end: rrEnd, pass: rrPass, honk: rrMyHonk, challenge: rrChallenge, invite: rrInvOpen, inviteSend: rrInvSend, trackCourse: rrTrackC, pickRival: rrPickRival, nightEnter: rrNightEnter, pullStep: rrPullStep, lanes: rrLanes, S: rrS, lat: rrLat, yaw: rrYaw, maxDist: rrMaxDist, inFn: rrIn, input: () => input(), hud: rrHud });
+  Object.assign(RR, { start: rrStart, startSpot: rrStartSpot, close: rrClose, course: rrCourse, spot: rrSpot, step: rrStep, frame: rrFrame, end: rrEnd, pass: rrPass, honk: rrMyHonk, challenge: rrChallenge, invite: rrInvOpen, inviteSend: rrInvSend, trackCourse: rrTrackC, invPlaces: rrInvPlaces, roomFor: rrRoomFor, pickRival: rrPickRival, nightEnter: rrNightEnter, pullStep: rrPullStep, lanes: rrLanes, S: rrS, lat: rrLat, yaw: rrYaw, maxDist: rrMaxDist, inFn: rrIn, input: () => input(), hud: rrHud });
   // ==== ROLL RACING (end) ====
   YB.traffic = HT;
 
@@ -31113,7 +31487,11 @@ float envCloudShade( vec3 vp ) {
   const inR = (A, x, z) => { for (const r of A) if (x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]) return true; return false; };
   const inWater = (x, z, pad = 2) => { for (const w of WATER) if (x > w.x - pad && x < w.x + w.w + pad && z > w.z - pad && z < w.z + w.d + pad) return true; for (const l of DATA.lakes || []) if (x > l.x0 - pad && x < l.x1 + pad && z > l.z0 - pad && z < l.z1 + pad) return true; return false; };
   // 0 = no grass here (pavement, buildings, water, town ground), else the grass kind
+  // strips and pads players build: no grass through the asphalt (key -> [[x0, z0, x1, z1], ...])
+  const EGX = new Map();
+  window.__egNoGrass = (key, rects) => { if (rects && rects.length) EGX.set(key, rects); else if (!EGX.delete(key)) return; try { EG.tiles.clear(); EG.at = [1e9, 1e9]; } catch (e) {} };
   function groundKind(x, z) {
+    if (EGX.size) for (const A of EGX.values()) if (inR(A, x, z)) return 0;
     let k = null; for (const o of EGL.lots.at(x, z)) if (x >= o.x0 && x <= o.x1 && z >= o.z0 && z <= o.z1) { k = o.k; if (!GRASS_LOT[k]) return 0; }
     if (k) return GRASS_LOT[k];
     if (inR(EGL.towns, x, z)) return 0;
@@ -36224,7 +36602,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     function buildCell(c) {
       const t0 = performance.now(), a = new Acc(), loc = new Acc();
       for (const i of c.list) {
-        const H = HS.list[i];
+        const H = HS.list[i]; if (H.gone) continue;
         if (H.gap == null) H.gap = gapFor(H);
         loc.p.length = 0; loc.u.length = 0; loc.c.length = 0; A = loc;
         try { buildHouse(H); } catch (e) { console.warn('house ' + i + ': ' + e.message); }
@@ -36278,7 +36656,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
       HS.dirty = false;
       const far = VIS.mid; let np = 0;
       HS.list.forEach(H => {
-        if (H.cell && H.cell.mesh) return;
+        if (H.gone || (H.cell && H.cell.mesh)) return;
         const d = Math.hypot(H.cx - cp.x, H.cz - cp.z, cp.y * 0.6); if (d > far) return;
         const F = recipe(H).far;
         _uqp.set(H.cx, 0.04, H.cz); _uqq.setFromAxisAngle(_uqy, H.ry); _uqs.set(F.w, F.h, F.d); HS.wall.setMatrixAt(np, _uqm.compose(_uqp, _uqq, _uqs));
@@ -36511,6 +36889,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     const _api = { begin: acc => { A = acc; }, end: () => { A = null; }, shade, boxFaces, SIDE_IDX, fWall, sbx, sbox, ledge, T };
     const dbgNear = () => { const cp = camera.position, o = []; for (const b of buckets.values()) { if (!b.group || Math.hypot(b.cx - cp.x, b.cz - cp.z) > 1200) continue; o.push([b.layer, Math.round(b.cx), Math.round(b.cz), b.group.visible, b.gpu, b.group.children.map(m => (m.material === MATL ? 'UQ' : m.material && m.material.name || '?') + ':' + (m.geometry && m.geometry.attributes.position ? m.geometry.attributes.position.count : 0)).join(' ')]); } return o; };
     const dbg = () => { const o = {}; for (const b of buckets.values()) if (b.group) b.group.children.forEach(m => { if (m.material === MATL) o[b.layer] = (o[b.layer] || 0) + m.geometry.attributes.position.count; }); return o; };
+    window.__uq = { recipe, hide(i) { const H = HS.list[i]; if (!H || H.gone) return; H.gone = true; if (H.cell && H.cell.mesh) freeCell(H.cell); lastX = 1e9; HS.dirty = true; } };
     return { reg, dacc: () => DACC, mode: () => MODE, front, dbgNear, dbg, HS, _api, storeB, SST, step, recipe, buildHouse, stats, variety, CELLS, material, T, setR: r => { R0 = r; lastX = 1e9; } };
   })();
   if (!/uqoff=[a-z,]*houses/.test(location.search)) stepHouses = UQ.step;
@@ -36799,7 +37178,7 @@ body.ks-on > *:not(#stage):not(#ks):not(#toast):not(#menu):not(#englab):not(#par
     if (NET.room !== room || !Array.isArray(rows)) return;
     for (const r of rows) {
       if (!r || typeof r.prop !== 'string' || !r.build || typeof r.build !== 'object' || !r.build.h3 || typeof r.build.h3 !== 'object') continue;
-      const p = DATA.P.find(q => q.id === r.prop); if (!p || !HOME.kindOf(p) || S.props.includes(p.id) || String(r.uid) === S.uid) continue;
+      const p = DATA.P.find(q => q.id === r.prop) || (/^blk_\d+$/.test(r.prop) && String(r.uid) !== S.uid ? HOME.realty.blkEnsure(r.prop) : null); if (!p || !HOME.kindOf(p) || S.props.includes(p.id) || String(r.uid) === S.uid) continue;
       if (HOME.FOREIGN.has(p.id)) continue;   // they're on and sent it live: that's newer
       HOME.FOREIGN.set(p.id, { sv: r.build.h3, name: String(r.name || 'Player').slice(0, 24), uid: String(r.uid), saved: 1 });
       HOME.rebuildOutside(p.id);
