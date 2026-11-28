@@ -123,7 +123,7 @@
       B = new THREE.Mesh(new THREE.SphereGeometry(0.12, 22, 16), new THREE.MeshStandardMaterial({ color: new THREE.Color(col).convertSRGBToLinear(), roughness: 0.85 })); B.name = 'lo-belly'; B.castShadow = true; P.upper.add(B);
     }
     const q = Math.min(1, (k - 0.12) / 0.88); B.visible = true;
-    B.scale.set(0.82 + q * 0.22, 0.9 + q * 0.2, 0.25 + q * 0.95); B.position.set(0, 0.13 + q * 0.02, 0.035 + q * 0.07);
+    const c = LO.bc || { y: 0.05, yq: 0.03, z: 0.03, zq: 0.075 }; B.scale.set(0.85 + q * 0.25, 0.95 + q * 0.22, 0.3 + q * 1.05); B.position.set(0, c.y + q * c.yq, c.z + q * c.zq);
   }
   const loPregK = pr => (pr ? Math.min(1, (S.day - pr.d0 + (pr.f || 0)) / 9) : 0);
 
